@@ -16,7 +16,7 @@ export const DelegationTaskInputSchema = z
   .object({
     task_key: z.string().min(1).max(128),
     project_id: z.string().min(1).max(128).optional(),
-    provider: z.enum(['claude', 'pi', 'fake']),
+    provider: z.enum(['claude', 'pi', 'codex', 'fake']),
     title: z.string().max(256),
     text: z.string().min(1).max(32768),
     base_ref: z.string().min(1).max(256).default('HEAD'),

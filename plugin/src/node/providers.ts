@@ -68,7 +68,7 @@ export function nodeProviders(description: unknown): NodeProvider[] {
 }
 /** Delegated work runs on the agents that take one message per run; ACP agents do not. */
 export const delegatable = (p: NodeProvider): boolean =>
-  ['claude', 'pi', 'fake'].includes(p.provider)
+  ['claude', 'pi', 'codex', 'fake'].includes(p.provider)
 export function capabilityReason(provider: NodeProvider | undefined, feature: string): string {
   const capability = provider?.capabilities[feature]
   return capability?.status === 'supported'

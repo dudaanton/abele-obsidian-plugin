@@ -97,6 +97,36 @@ function fixture() {
   }
 }
 describe('trusted node delegation controller', () => {
+  it('offers Codex only when available and granted', async () => {
+    const f = fixture()
+    f.client.describe.mockResolvedValue({
+      version: undefined,
+      providers: [{ provider: 'codex', available: true }],
+    })
+    const input = { ...task, provider: 'codex' as const }
+    await expect(f.controller.create('parent', input)).rejects.toThrow(/grant/i)
+    f.client.approveDelegationGrant.mockResolvedValue({ ...grant, providers: ['codex'] })
+    await f.controller.approve({
+      parent_id: 'parent',
+      project_ids: ['project'],
+      providers: ['codex'],
+    })
+    expect((await f.controller.destinations('parent'))[0].providers).toEqual(['codex'])
+    f.client.describe.mockResolvedValue({
+      version: undefined,
+      providers: [{ provider: 'codex', available: false }],
+    })
+    expect((await f.controller.destinations('parent'))[0].providers).toEqual([])
+    await expect(f.controller.create('parent', input)).rejects.toThrow(/unavailable/i)
+    expect(f.client.createDelegation).not.toHaveBeenCalled()
+    f.client.describe.mockResolvedValue({
+      version: undefined,
+      providers: [{ provider: 'codex', available: true }],
+    })
+    await f.controller.create('parent', input)
+    expect(f.client.createDelegation.mock.calls[0][0].provider).toBe('codex')
+    f.store.close()
+  })
   it('requires explicit owner approval and returns only approved destinations', async () => {
     const f = fixture()
     await expect(f.controller.create('parent', task)).rejects.toThrow(/grant/i)

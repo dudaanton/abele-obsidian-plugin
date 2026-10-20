@@ -9,7 +9,17 @@ const Create = DelegationTaskInputSchema.extend({ node: Id })
 const Send = Target.extend({ text: z.string().min(1).max(32768) })
 const node = {
   type: 'string',
-  description: 'Device-local node reference returned by node_delegations',
+  description:
+    'Stable node ID returned by node_nodes or node_delegations; a local registration alias is also accepted',
+}
+function connectionFor(service: NodeService, id: string) {
+  const nodes = service.nodes.value
+  const exact = nodes.find((node) => node.id === id)
+  if (exact) return service.connection(exact.id)
+  const matches = nodes.filter((node) => node.expectedNodeId === id)
+  if (matches.length > 1)
+    throw new Error('Choose the node installation explicitly using its local registration alias')
+  return service.connection(matches[0]?.id ?? id)
 }
 const delegation_id = { type: 'string', description: 'Child reference returned by node_delegate' }
 const checkCancelled = (signal?: AbortSignal) => {
@@ -49,7 +59,9 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       if (signal?.aborted && name === 'node_delegate') {
         const child = value as { delegation_id?: string }
         if (child.delegation_id && typeof params.node === 'string')
-          await service.connection(params.node).delegation.cancel(parentId, child.delegation_id).catch(() => {})
+          await connectionFor(service, params.node)
+            .delegation.cancel(parentId, child.delegation_id)
+            .catch(() => {})
       }
       checkCancelled(signal)
       return result(value)
@@ -80,10 +92,19 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
                   /* Revoked/foreign resources are not model context. */
                 }
               }
-              destinations.push({ node: n.id, label: n.label, approved, children })
+              destinations.push({
+                node: n.expectedNodeId ?? n.id,
+                label: n.label,
+                approved,
+                children,
+              })
             }
           } catch {
-            destinations.push({ node: n.id, label: n.label, state: 'unavailable' })
+            destinations.push({
+              node: n.expectedNodeId ?? n.id,
+              label: n.label,
+              state: 'unavailable',
+            })
           }
         }
         return destinations
@@ -92,7 +113,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegate',
       'Delegate to node',
-      'Assign a bounded task to an owner-approved project and available Claude Code or pi provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions remain prompts in the linked child chat. This is not a filesystem sandbox.',
+      'Assign a bounded task to an owner-approved project and available Claude Code, pi or Codex provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions remain prompts in the linked child chat. This is not a filesystem sandbox.',
       {
         type: 'object',
         properties: {
@@ -103,7 +124,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
               'Stable task identity within this parent; reuse with identical arguments on retry (max 128 characters)',
           },
           project_id: { type: 'string' },
-          provider: { type: 'string', enum: ['claude', 'pi', 'fake'] },
+          provider: { type: 'string', enum: ['claude', 'pi', 'codex', 'fake'] },
           title: { type: 'string' },
           text: { type: 'string' },
           base_ref: { type: 'string', description: 'Branch/commit on the node; defaults to HEAD' },
@@ -112,7 +133,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       },
       async (parent, params, service, signal) => {
         const { node, ...input } = Create.parse(params)
-        const connection = service.connection(node)
+        const connection = connectionFor(service, node)
         await connection.connect()
         checkCancelled(signal)
         try {
@@ -138,7 +159,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       },
       async (parent, params, service, signal) => {
         const input = Send.parse(params)
-        const connection = service.connection(input.node)
+        const connection = connectionFor(service, input.node)
         await connection.connect()
         checkCancelled(signal)
         return connection.delegation.send(parent, input.delegation_id, input.text, signal)
@@ -151,7 +172,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       { type: 'object', properties: { node, delegation_id }, required: ['node', 'delegation_id'] },
       async (parent, params, service) => {
         const input = Target.parse(params)
-        const connection = service.connection(input.node)
+        const connection = connectionFor(service, input.node)
         await connection.connect()
         const status = await connection.delegation.status(parent, input.delegation_id)
         await connection.refreshDelegations()
@@ -165,7 +186,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       { type: 'object', properties: { node, delegation_id }, required: ['node', 'delegation_id'] },
       async (parent, params, service) => {
         const input = Target.parse(params)
-        const connection = service.connection(input.node)
+        const connection = connectionFor(service, input.node)
         await connection.connect()
         const result = await connection.delegation.cancel(parent, input.delegation_id)
         await connection.refreshDelegations()

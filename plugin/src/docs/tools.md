@@ -963,10 +963,12 @@ grants, access credentials, send generic node requests or answer child human pro
 
 - `node_delegations` lists approved destinations/providers, approved project IDs and full
   node-side paths, and this parent's retained children. Unapproved projects are not returned.
-  `node` is an opaque device-local registration reference, not an endpoint or credential.
+  `node` is the stable node ID also returned by `node_nodes`. All delegation tools also accept
+  this device's local registration alias; use that alias to select between installations of one node.
 - `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
-  optional `base_ref` (HEAD by default). Available providers come from the node; fake children
-  require explicit owner fixture approval and never execute code. The child gets its own
+  optional `base_ref` (HEAD by default). Available Claude Code, pi and Codex providers come from
+  the node and require a matching owner grant; fake children require explicit owner fixture
+  approval and never execute code. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
 - Creation returns `node_id`, `session_id`, `delegation_id`, `state`, not a grant or token.
   Keep the **same task_key and exact arguments** when retrying an uncertain response. Changing

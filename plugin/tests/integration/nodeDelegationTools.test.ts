@@ -6,13 +6,64 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
+vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('lists stable IDs and resolves them for all child operations', async () => {
+  const delegation = {
+    destinations: vi.fn(async () => [{ providers: ['codex'] }]),
+    cards: vi.fn(async () => []),
+    create: vi.fn(async () => ({ delegation_id: 'child' })),
+    send: vi.fn(async () => ({})),
+    status: vi.fn(async () => ({})),
+    cancel: vi.fn(async () => ({})),
+  }
+  const connection = { connect: async () => {}, refreshDelegations: async () => {}, delegation }
+  const service = {
+    nodes: { value: [{ id: 'alias', expectedNodeId: 'stable', label: 'Sample' }] },
+    connection: vi.fn((id: string) => {
+      if (id !== 'alias') throw new Error('Unknown registration')
+      return connection
+    }),
+  }
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
+  const tools = createNodeDelegationTools({
+    ensureDelegationParentId: async () => 'parent',
+  } as ChatSession)
+  const listed = await tools[0].execute('list', {})
+  expect(JSON.stringify(listed)).toContain('stable')
+  expect(JSON.stringify(listed)).not.toContain('alias')
+  expect(tools[1].parameters.properties?.provider).toMatchObject({
+    enum: expect.arrayContaining(['codex']),
+  })
+  for (const node of ['stable', 'alias']) {
+    await tools[1].execute('create', {
+      node,
+      task_key: 'key',
+      project_id: 'project',
+      provider: 'codex',
+      title: 'Task',
+      text: 'Work',
+    })
+    for (const tool of tools.slice(2))
+      await tool.execute('child', {
+        node,
+        delegation_id: 'child',
+        ...(tool.name.endsWith('_send') ? { text: 'Continue' } : {}),
+      })
+  }
+  for (const action of ['create', 'send', 'status', 'cancel'] as const)
+    expect(delegation[action]).toHaveBeenCalledTimes(2)
+  service.nodes.value.push({ id: 'second', expectedNodeId: 'stable', label: 'Other installation' })
+  await expect(
+    tools[3].execute('ambiguous', { node: 'stable', delegation_id: 'child' })
+  ).rejects.toThrow(/installation/i)
+})
 it('never creates after Stop while connecting, and cancels a child accepted concurrently with Stop', async () => {
   let release!: () => void
   const gate = new Promise<void>((resolve) => { release = resolve })
   const created = vi.fn(async () => ({ delegation_id: 'child' }))
   const cancel = vi.fn(async () => {})
-  const service = { connection: () => ({ connect: () => gate, delegation: { create: created, cancel }, refreshDelegations: async () => {} }) }
+  const service = { nodes: { value: [] }, connection: () => ({ connect: () => gate, delegation: { create: created, cancel }, refreshDelegations: async () => {} }) }
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
   const tools = createNodeDelegationTools({ ensureDelegationParentId: async () => 'parent' } as ChatSession)
   const signal = new AbortController()
