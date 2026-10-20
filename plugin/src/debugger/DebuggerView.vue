@@ -8,16 +8,19 @@
       :text="t('debug.empty')"
     />
     <template v-else>
-      <TreeItem
-        v-for="peer in peers"
-        :key="peer.sessionId"
-        class="abele-debug-view__session"
-        :data-session-id="peer.sessionId"
-        :text="`${peer.controller.session.program} · ${peer.sessionId}`"
-        :active="peer === binding"
-        :flair="peerState(peer)"
-        @click="chooseSession(peer)"
-      />
+      <div v-if="peers.length" class="abele-debug-view__sessions">
+        <Dropdown
+          :model-value="binding.sessionId ?? ''"
+          :options="
+            peers.map((peer) => ({
+              value: peer.sessionId!,
+              display: `${peer.controller.session.program} · ${peerState(peer)} · ${peer.sessionId?.slice(0, 8)}`,
+            }))
+          "
+          :aria-label="t('streamC.95b22255ddc6fba2')"
+          @update:model-value="chooseSession"
+        />
+      </div>
       <div v-if="error" class="abele-debug-view__error" role="alert">
         <NodeErrorText :error="error" />
       </div>
@@ -57,7 +60,7 @@ import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
-import TreeItem from '@/components/obsidian/TreeItem.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { openDebugValue } from './DebugValueTab'
 import { browserMenu, folderMenu, openRun, runMenu } from './trace/panel'
@@ -81,7 +84,9 @@ const peers = computed(() => {
   for (const peer of peers) void peer.revision.value
   return peers.length > 1 ? peers : []
 })
-async function chooseSession(peer: DebuggerBinding) {
+async function chooseSession(sessionId: string) {
+  const peer = peers.value.find((peer) => peer.sessionId === sessionId)
+  if (!peer) return
   const owner = service.owner(peer)
   if (!owner || !peer.sessionId) return
   const { showSession } = await import('./register')
@@ -182,5 +187,8 @@ function retry() {
   color: var(--text-error);
   font-size: var(--font-ui-small);
   overflow-wrap: anywhere;
+}
+.abele-debug-view__sessions {
+  padding: var(--size-4-2) var(--size-4-3);
 }
 </style>

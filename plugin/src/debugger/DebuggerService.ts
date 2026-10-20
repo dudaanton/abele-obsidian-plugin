@@ -3,7 +3,7 @@ import { computed, shallowRef, watch, type WatchStopHandle } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { debugIdentity, debugOwnerParams, isFolderOwner, type DebugOwner } from './owner'
-import { DebuggerSnapshotSchema } from '@abele/node-protocol'
+import { DebuggerSnapshotSchema, type DebuggerSnapshot } from '@abele/node-protocol'
 import { z } from 'zod'
 import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
@@ -306,6 +306,7 @@ export interface DebugSourceReveal {
 export class DebuggerService {
   static readonly instance = new DebuggerService()
   readonly sourceRevision = shallowRef(0)
+  private stopped = false
   private readonly folders = new Map<DebuggerBinding, { sessionId: string; target: PathTarget }>()
   private readonly selectedFolders = new Map<string, DebuggerBinding>()
   private folderKey(target: PathTarget) {
@@ -430,6 +431,7 @@ export class DebuggerService {
   readonly active = shallowRef<DebuggerBinding | null>(null)
   private readonly bindings = new Map<string, DebuggerBinding>()
   private readonly owners = new WeakMap<DebuggerBinding, DebugOwner>()
+  private readonly preferredSessions = new Set<string>()
   owner(binding: DebuggerBinding) {
     return this.owners.get(binding)
   }
@@ -448,16 +450,24 @@ export class DebuggerService {
     })
   }
   selectionState() {
+    if (this.stopped) return undefined
     const binding = this.active.value
     const target = binding && this.folder(binding)
-    if (!binding?.sessionId || !target) return {}
+    const sessionId = binding?.sessionId ?? (binding && this.folders.get(binding)?.sessionId)
+    if (!binding || !sessionId || !target) return {}
     return {
-      sessionId: binding.sessionId,
+      sessionId,
+      sessions: [
+        ...new Set([
+          sessionId,
+          ...this.peers(binding).flatMap((peer) => (peer.sessionId ? [peer.sessionId] : [])),
+        ]),
+      ].slice(0, 256),
       target,
       sources: [
         ...(this.sources.get(this.key(binding.registrationId, binding.conversationId)) ?? []),
       ]
-        .filter(([, source]) => source.debugSessionId === binding.sessionId)
+        .filter(([, source]) => source.debugSessionId === sessionId)
         .slice(0, 256)
         .map(([sourceId, source]) => ({
           sourceId,
@@ -470,6 +480,7 @@ export class DebuggerService {
     const parsed = z
       .object({
         sessionId: z.string().min(1).max(128),
+        sessions: z.array(z.string().min(1).max(128)).max(256).default([]),
         target: z.unknown(),
         sources: z
           .array(
@@ -488,7 +499,7 @@ export class DebuggerService {
     const tab = NodePathTabSchema.safeParse({ kind: 'history', target: parsed.data.target })
     if (!tab.success) return
     const owner = ownerOf(tab.data.target)
-    await owner.connection.connect()
+    for (const id of parsed.data.sessions) this.preferredSessions.add(id)
     const binding = this.binding(owner, parsed.data.sessionId)
     for (const source of parsed.data.sources)
       this.registerSource(
@@ -501,6 +512,12 @@ export class DebuggerService {
         tab.data.target
       )
     this.select(binding)
+    try {
+      await owner.connection.connect()
+    } catch (error) {
+      binding.fail(error)
+      throw error
+    }
     await binding.open(parsed.data.sessionId)
     await this.discover(owner)
   }
@@ -508,7 +525,7 @@ export class DebuggerService {
     void this.sourceRevision.value
     const target = this.folder(binding)
     if (!target) return [binding]
-    return [...this.bindings.values()].filter((candidate) => {
+    const candidates = [...this.bindings.values()].filter((candidate) => {
       const folder = this.folder(candidate)
       return (
         folder?.registrationId === target.registrationId &&
@@ -517,11 +534,53 @@ export class DebuggerService {
         !!candidate.sessionId
       )
     })
+    const visible = new Set(
+      this.uniqueSessions(
+        candidates.flatMap((candidate) =>
+          candidate.controller.snapshot ? [candidate.controller.snapshot] : []
+        )
+      ).map((snapshot) => snapshot.debug_session_id)
+    )
+    return candidates.filter(
+      (candidate) => !!candidate.sessionId && visible.has(candidate.sessionId)
+    )
+  }
+  private uniqueSessions(sessions: DebuggerSnapshot[]) {
+    const known = new Set([...this.bindings.values()].map((binding) => binding.sessionId))
+    const score = (snapshot: DebuggerSnapshot) =>
+      (snapshot.debug_session_id === this.active.value?.sessionId ? 100000 : 0) +
+      (this.preferredSessions.has(snapshot.debug_session_id) ? 20000 : 0) +
+      (known.has(snapshot.debug_session_id) ? 10000 : 0) +
+      (snapshot.lifecycle === 'active' ? 1000 : 0) +
+      (snapshot.selected_thread_id !== null ? 100 : 0) +
+      snapshot.breakpoints.length
+    const unique = new Map<string, DebuggerSnapshot>()
+    for (const snapshot of sessions) {
+      const target = snapshot.target,
+        evidence = target.process_evidence
+      // Older native adapters expose both their wrapper and driver session. Prefer process
+      // evidence; their PID-bearing launch identity is the compatibility fallback.
+      const nativePid = / · pid ([1-9]\d*)$/.exec(target.launch_configuration_id)?.[1]
+      const pid = evidence?.pid ?? (nativePid ? Number(nativePid) : undefined)
+      const key =
+        (evidence || target.process_ownership === 'external') && pid
+          ? JSON.stringify([
+              target.node_id,
+              target.project_id,
+              target.workspace_id,
+              target.worktree_id,
+              pid,
+            ])
+          : snapshot.debug_session_id
+      const previous = unique.get(key)
+      if (!previous || score(snapshot) > score(previous)) unique.set(key, snapshot)
+    }
+    return [...unique.values()]
   }
   async discover(owner: DebugOwner) {
     if (!isFolderOwner(owner)) return
     const sessions = await this.sessions(owner)
-    for (const s of new Map(sessions.map((s) => [s.debug_session_id, s])).values()) {
+    for (const s of this.uniqueSessions(sessions)) {
       const binding = this.binding(owner, s.debug_session_id)
       if (!binding.sessionId) await binding.open(s.debug_session_id)
     }
@@ -533,6 +592,7 @@ export class DebuggerService {
     return JSON.stringify([registrationId, conversationId])
   }
   binding(presenter: DebugOwner, sessionId?: string) {
+    this.stopped = false
     const identity = debugIdentity(presenter, sessionId)
     if (isFolderOwner(presenter)) {
       if (sessionId) {
@@ -566,7 +626,8 @@ export class DebuggerService {
     this.owners.set(binding, presenter)
     if (isFolderOwner(presenter)) {
       const tracked = this.folders.get(binding)
-      if (!tracked) this.folders.set(binding, { sessionId: '', target: { ...presenter.target } })
+      if (!tracked)
+        this.folders.set(binding, { sessionId: sessionId ?? '', target: { ...presenter.target } })
     }
     return binding
   }
@@ -583,7 +644,7 @@ export class DebuggerService {
     const sessions = z
       .array(z.unknown().transform((raw) => DebuggerSnapshotSchema.parse(raw)))
       .parse(result)
-    return [...new Map(sessions.map((s) => [s.debug_session_id, s])).values()]
+    return this.uniqueSessions(sessions)
   }
   select(binding: DebuggerBinding) {
     this.active.value = binding
@@ -592,6 +653,11 @@ export class DebuggerService {
     ++this.sourceRevision.value
   }
   selectFolder(target: PathTarget) {
+    const current = this.active.value
+    const folder = current && this.folder(current)
+    // Rehydrating the file drawer can select this folder before the retained debugger's
+    // first status reply. Keep that pending selection instead of clearing it as absent.
+    if (folder && this.folderKey(folder) === this.folderKey(target)) return
     this.active.value = this.folderBinding(target) ?? null
     ++this.sourceRevision.value
   }
@@ -755,9 +821,11 @@ export class DebuggerService {
     })
   }
   destroy() {
+    this.stopped = true
     for (const binding of this.bindings.values()) binding.destroy()
     this.bindings.clear()
     this.sources.clear()
+    this.preferredSessions.clear()
     this.folders.clear()
     this.selectedFolders.clear()
     this.admissions.clear()

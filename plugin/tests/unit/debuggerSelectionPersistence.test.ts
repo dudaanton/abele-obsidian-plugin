@@ -1,0 +1,59 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { nextTick, ref } from 'vue'
+import type { Plugin } from 'obsidian'
+import { DebuggerService } from '@/debugger/DebuggerService'
+import { registerDebuggerSelection } from '@/debugger/selection'
+
+const cleanups: (() => void)[] = []
+afterEach(() => {
+  for (const stop of cleanups.splice(0)) stop()
+  DebuggerService.instance.destroy()
+  vi.restoreAllMocks()
+})
+it('restores a remembered session even when the mobile layout omits the Debug leaf', async () => {
+  const saved = { sessionId: 'sample-debug', target: {}, sessions: ['sample-debug'], sources: [] }
+  const ready: (() => Promise<void>)[] = []
+  const leaf = { setViewState: vi.fn(async () => {}) }
+  const plugin = {
+    app: {
+      loadLocalStorage: vi.fn(() => saved),
+      saveLocalStorage: vi.fn(),
+      workspace: {
+        onLayoutReady: (callback: () => Promise<void>) => ready.push(callback),
+        getLeavesOfType: () => [],
+        getLeftLeaf: () => leaf,
+      },
+    },
+    register: (stop: () => void) => cleanups.push(stop),
+  } as unknown as Plugin
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  await ready[0]()
+  expect(leaf.setViewState).toHaveBeenCalledExactlyOnceWith({
+    type: 'sample-debug-view',
+    active: false,
+    state: saved,
+  })
+})
+
+it('saves bounded selection metadata and preserves it during service teardown', async () => {
+  const service = DebuggerService.instance
+  const saved = { sessionId: 'sample-debug', target: {}, sessions: ['sample-debug'], sources: [] }
+  const save = vi.fn()
+  const plugin = {
+    app: {
+      loadLocalStorage: () => null,
+      saveLocalStorage: save,
+      workspace: { onLayoutReady: vi.fn() },
+    },
+    register: (stop: () => void) => cleanups.push(stop),
+  } as unknown as Plugin
+  const selection = vi.spyOn(service, 'selectionState').mockReturnValue(saved as never)
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  service.active.value = { revision: ref(0) } as never
+  await nextTick()
+  expect(save).toHaveBeenLastCalledWith('abele-debug-selection', saved)
+  selection.mockReturnValue(undefined)
+  service.active.value = null
+  await nextTick()
+  expect(save).toHaveBeenCalledTimes(1)
+})

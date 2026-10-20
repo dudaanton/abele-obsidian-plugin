@@ -10,13 +10,19 @@ import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
 import { registerTraceTabs } from './trace/TraceTabs'
 import { revealSidebarView } from '@/views/revealSidebarView'
+import { registerDebuggerSelection } from './selection'
 export const DEBUG_VIEW_TYPE = 'abele-debug-view'
 export class DebugView extends ItemView {
   private vue?: KitMount
+  private savedState: Record<string, unknown> = {}
   getState() {
-    return DebuggerService.instance.selectionState()
+    const state = DebuggerService.instance.selectionState()
+    if (state !== undefined) this.savedState = state
+    return this.savedState
   }
   async setState(state: unknown, result: ViewStateResult) {
+    if (state && typeof state === 'object' && !Array.isArray(state) && 'sessionId' in state)
+      this.savedState = { ...state }
     try {
       const { folderOwner } = await import('./folderActions')
       await DebuggerService.instance.restoreSelection(state, folderOwner)
@@ -56,6 +62,7 @@ export function registerDebugger(plugin: Plugin) {
   registerDebugValues(plugin)
   registerTraceTabs(plugin)
   plugin.registerView(DEBUG_VIEW_TYPE, (leaf) => new DebugView(leaf))
+  registerDebuggerSelection(plugin, DEBUG_VIEW_TYPE)
   const keyboard = (event: KeyboardEvent) => {
     const action = debuggerKey(event),
       binding = DebuggerService.instance.active.value

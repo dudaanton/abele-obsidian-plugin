@@ -12,6 +12,7 @@ const f = vi.hoisted(() => ({
   restore: vi.fn(async () => {}),
   owner: vi.fn(),
   active: { value: null as unknown },
+  selection: vi.fn(),
 }))
 vi.mock('@/debugger/DebuggerService', () => ({
   DebuggerService: {
@@ -22,6 +23,7 @@ vi.mock('@/debugger/DebuggerService', () => ({
       restoreSelection: f.restore,
       active: f.active,
       owner: f.owner,
+      selectionState: f.selection,
     },
   },
 }))
@@ -36,6 +38,21 @@ vi.mock('@/debugger/startProgram', async (original) => {
 import { DebugView, showSession } from '@/debugger/register'
 
 afterEach(() => vi.clearAllMocks())
+
+it('keeps saved view identity when plugin teardown clears the shared service', () => {
+  const saved = { sessionId: 'sample-debug', sessions: ['sample-debug'], target: {}, sources: [] }
+  f.selection.mockReturnValueOnce(saved).mockReturnValue(undefined)
+  const view = new DebugView({} as never)
+  expect(view.getState()).toEqual(saved)
+  expect(view.getState()).toEqual(saved)
+})
+it('clears saved selection when switching to a folder with no debug session', () => {
+  const saved = { sessionId: 'sample-debug' }
+  f.selection.mockReturnValueOnce(saved).mockReturnValue({})
+  const view = new DebugView({} as never)
+  expect(view.getState()).toEqual(saved)
+  expect(view.getState()).toEqual({})
+})
 
 function fixture(lifecycle: 'terminated' | 'detached' | 'failed' | 'connection-lost') {
   const snapshots = new Map(

@@ -9,6 +9,80 @@ afterEach(() => {
   service.destroy()
   vi.restoreAllMocks()
 })
+it('retains the saved selection with its offline reason if reconnecting cannot complete', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  const owner = {
+    kind: 'folder-debug',
+    target,
+    connection: {
+      state: ref('offline'),
+      connect: vi.fn(async () => {
+        throw new Error('Sample node is offline')
+      }),
+    },
+  } as unknown as FolderDebugOwner
+  const saved = { sessionId: 'sample-debug', target, sessions: ['sample-debug'], sources: [] }
+  await expect(service.restoreSelection(saved, () => owner)).rejects.toThrow(
+    'Sample node is offline'
+  )
+  expect(service.selectionState()).toMatchObject({ sessionId: 'sample-debug', target })
+  expect(service.active.value?.controller.session.status).toBe('lost')
+  expect(service.active.value?.controller.error).toBe('Sample node is offline')
+})
+it.each(['external', 'owned'] as const)(
+  'shows one observation per %s process when native and driver session IDs differ',
+  (ownership) => {
+    const owner = {
+      kind: 'folder-debug',
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+      connection: { state: ref('connected') },
+    } as unknown as FolderDebugOwner
+    const bindings = ['sample-first', 'sample-mirror', 'sample-second'].map((id, i) => {
+      const binding = service.binding(owner, id)
+      const snapshot = debuggerSnapshot({ debug_session_id: id })
+      snapshot.target.process_ownership = ownership
+      snapshot.target.launch_configuration_id = `sample.cjs · pid ${i < 2 ? 4101 : 4102}`
+      if (i === 0 || ownership === 'owned')
+        snapshot.target.process_evidence = {
+          pid: i < 2 ? 4101 : 4102,
+          ownership_id: 'sample-ownership',
+          start_identity: 'sample-process-start',
+          executable_sha256: 'a'.repeat(64),
+        }
+      binding.controller.observe({ observation: 'current', snapshot })
+      return binding
+    })
+    service.select(bindings[0])
+    expect(service.peers(bindings[0])).toEqual([bindings[0], bindings[2]])
+  }
+)
+it('keeps a restored selection while its folder reconnects before the snapshot arrives', () => {
+  const owner = {
+    kind: 'folder-debug',
+    target: {
+      registrationId: 'sample-registration',
+      nodeId: 'sample-node',
+      kind: 'worktree',
+      id: 'sample-tree',
+    },
+    connection: { state: ref('connected') },
+  } as unknown as FolderDebugOwner
+  const binding = service.binding(owner, 'sample-debug')
+  service.select(binding)
+  service.selectFolder(owner.target)
+  expect(service.active.value).toBe(binding)
+})
 it('reuses an observed session when the same folder opens it from another owner surface', () => {
   const connection = { state: ref('connected') }
   const target = {
@@ -53,6 +127,7 @@ it('restores the selected folder session and its source mappings from view state
   )
   service.select(binding)
   const state = service.selectionState()
+  expect(state).toMatchObject({ sessions: ['sample-debug'] })
   service.destroy()
   const restored = service.binding(owner, 'sample-debug')
   vi.spyOn(restored, 'open').mockImplementation(async () => {

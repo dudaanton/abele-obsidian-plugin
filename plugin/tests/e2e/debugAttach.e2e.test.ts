@@ -218,26 +218,32 @@ it('retains independent folder sessions across switching and reload on desktop a
     }
     const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0]??app.workspace.getLeftLeaf(false);
     await leaf.setViewState({type:'abele-debug-view',active:true});await app.workspace.revealLeaf(leaf);
-    const row=await until(()=>document.querySelector('[data-session-id="'+ids[0]+'"] .tree-item-self'),'first session in switcher');row.click();
+    const switcher=await until(()=>document.querySelector('select[aria-label="Select a debug session"] option[value="'+ids[0]+'"]')?.parentElement,'first session in switcher');switcher.value=ids[0];switcher.dispatchEvent(new Event('change',{bubbles:true}));
     await until(()=>service.active.value?.sessionId===ids[0]&&service.active.value.controller.session.status==='running','selected running session');
     const pause=await until(()=>document.querySelector('.abele-debug-panel [aria-label^="Pause"]'),'Pause control');pause.click();
     await until(()=>service.active.value.controller.session.status==='paused','selected session paused');
-    if(service.peers(service.active.value).filter(b=>ids.includes(b.sessionId)).length!==2)throw Error('Missing or duplicate session');
+    if(service.peers(service.active.value).length!==2)throw Error('Missing or duplicate session: '+JSON.stringify(service.peers(service.active.value).map(b=>b.controller.snapshot.target)));
     if(!document.querySelector('.abele-debug-panel__state')?.textContent.trim())throw Error('Pause reason hidden');
+    if(leaf.view.getState().sessionId!==ids[0])throw Error('Selected session missing from saved view state');
     app.workspace.requestSaveLayout();await wait(1500);await shot('folder-sessions-paused-desktop');return ids;
   })()`)
   expect(ids).toHaveLength(2)
   const phone = await withEmulatedPhone(async () =>
     inApp<{ restored: boolean; overflow: number }>(`(async()=>{${prelude}
     const service=api.DebuggerService.instance,ids=${JSON.stringify(ids)};
-    await until(()=>service.active.value?.sessionId===ids[0]&&service.active.value.controller.current,'restored selected session',600);
-    await until(()=>ids.every(id=>document.querySelector('[data-session-id="'+id+'"]')),'restored session switcher',600);
+    await until(()=>service.active.value?.sessionId===ids[0]&&service.active.value.controller.current,'restored selected session; saved='+JSON.stringify(app.workspace.getLeavesOfType('abele-debug-view').map(l=>l.getViewState())),600);
+    await until(()=>ids.every(id=>document.querySelector('select[aria-label="Select a debug session"] option[value="'+id+'"]')),'restored session switcher',600);
     const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
     const split=leaf.getRoot()===app.workspace.rightSplit?app.workspace.rightSplit:app.workspace.leftSplit;
     split.collapse();await wait(300);split.expand();await wait(700);
     await shot('folder-sessions-paused-phone');
     const panel=document.querySelector('.abele-debug-panel');
-    return {restored:service.active.value.controller.session.status==='paused',overflow:panel.scrollWidth-panel.clientWidth};
+    const result={restored:service.active.value.controller.session.status==='paused',overflow:panel.scrollWidth-panel.clientWidth};
+    for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))leaf.detach();
+    app.commands.executeCommandById('abele:node-folder-debug-attach');
+    await until(()=>document.querySelector('.modal-container .prompt'),'attach command before the Node view');
+    await shot('folder-attach-command-phone');closePicker();
+    return result;
   })()`)
   )
   expect(phone.restored).toBe(true)

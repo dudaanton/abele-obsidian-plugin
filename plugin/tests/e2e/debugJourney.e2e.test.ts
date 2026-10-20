@@ -335,9 +335,11 @@ it.each(['desktop', 'phone'])(
       const result={conversation:snapshot.target.conversation_id,chats:chats.tabOrder.value.filter(id=>id.startsWith('node:')).length,sessions:(await client.listSessions()).length};
       await binding.controller.command('stop');
       await binding.rerun();
-      await until(()=>binding.controller.session.status==='paused','folder restart after exit',500);
-      if(binding.controller.snapshot.target.conversation_id!==null)throw Error('Restart acquired a chat owner');
-      await binding.controller.command('stop');
+      await until(()=>api.DebuggerService.instance.active.value!==binding&&api.DebuggerService.instance.active.value?.controller.session.status==='paused','folder restart after exit',500);
+      const restarted=api.DebuggerService.instance.active.value;
+      if(binding.controller.session.status!=='exited')throw Error('Restart replaced the ended session observation');
+      if(restarted.controller.snapshot.target.conversation_id!==null)throw Error('Restart acquired a chat owner');
+      await restarted.controller.command('stop');
       return result;
     })()`)
       expect(result).toEqual({ conversation: null, chats: 0, sessions: 0 })
