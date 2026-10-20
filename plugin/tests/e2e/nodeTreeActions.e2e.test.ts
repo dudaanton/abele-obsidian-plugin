@@ -29,6 +29,14 @@ const probe = (device: string) =>
     }
     await state.model.refresh()
     if (state.model.current.value.location?.path !== '/sample/worktrees/' + state.model.current.value.id) throw Error('Canonical worktree location was discarded')
+    const status = client.repository.status, tree = client.repository.tree
+    client.repository.status = async params => {
+      const page = await status(params)
+      return { ...page, entries: [...page.entries, { path: 'src/nested/sample-long-file-name.ts', index: ' ', worktree: 'M' }, { path: 'src/nested/sample-long-file-name-0.ts', index: '?', worktree: '?' }] }
+    }
+    client.repository.tree = async params => params.revision.kind === 'commit' && params.path === 'src/nested'
+      ? { entries: ['sample-long-file-name.ts', ...Array.from({ length: 29 }, (_, i) => 'sample-long-file-name-' + (i + 1) + '.ts')].map(name => ({ path: 'src/nested/' + name, name, kind: 'file' })), cursor: null, incomplete: false, omissions: [] }
+      : tree(params)
     let fits = true
     for (const [name, suffix] of [['New file…', 'new-file'], ['New folder…', 'new-folder'], ['Rename…', 'rename'], ['Move…', 'move'], ['Delete…', 'delete']]) {
       await app.workspace.revealLeaf(state.leaf)
@@ -77,10 +85,11 @@ const probe = (device: string) =>
         await wait(100)
         const label = name === 'Rename…' ? 'Rename' : 'Move'
         ;[...modal.querySelectorAll('button')].find(button => button.textContent.trim() === label).click()
-        await until(() => document.querySelector('.modal.abele-modal')?.textContent.includes('nested/sample-long-file-name.ts'))
+        await until(() => document.querySelector('.modal.abele-modal')?.textContent.includes('31 files in 2 folders'))
         modal = document.querySelector('.modal.abele-modal')
       }
-      await until(() => modal.textContent.includes('nested/sample-long-file-name.ts'))
+      await until(() => modal.textContent.includes('31 files in 2 folders'))
+      if (modal.textContent.includes('nested/sample-long-file-name.ts')) throw Error('File details were not collapsed')
       await wait(200)
       await until(() => modal.closest('.modal-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))
       const box = modal.getBoundingClientRect()
@@ -88,6 +97,17 @@ const probe = (device: string) =>
       if (!fits) throw Error('Dialog outside viewport: ' + device + '-' + suffix + ' ' + JSON.stringify(box.toJSON()))
       if ([...modal.querySelectorAll('button')].some(button => button.textContent.includes("…") || button.textContent.includes("..."))) throw Error('Folder action button contains an ellipsis')
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + device + '-' + suffix + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
+      const disclosure = modal.querySelector('[aria-expanded="false"]')
+      if (!disclosure?.textContent.includes('Show files')) throw Error('Show files is missing')
+      disclosure.click()
+      await until(() => modal.textContent.includes('nested/sample-long-file-name.ts') && modal.textContent.includes('Uncommitted') && modal.textContent.includes('Untracked'))
+      await until(() => modal.closest('.modal-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))
+      const expanded = modal.getBoundingClientRect()
+      if (expanded.left < 0 || expanded.right > innerWidth || expanded.top < 0 || expanded.bottom > innerHeight) throw Error('Expanded confirmation outside viewport: ' + JSON.stringify(expanded.toJSON()))
+      const list = modal.querySelector('.abele-confirm__files')
+      if (list.scrollHeight <= list.clientHeight) throw Error('Long confirmation list does not scroll')
+      if ([...list.querySelectorAll('[role="listitem"]')].some(row => row.textContent.trim() === '/')) throw Error('Root slash leaked into the file list')
+      require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + device + '-' + suffix + '-expanded.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
       ;[...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Cancel').click()
       await until(() => !document.querySelector('.modal.abele-modal'))
     }

@@ -233,6 +233,8 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       if(advertised.includes('repository.v1.file.directory')){
         const folderAction=async(path,label,destination)=>{
           await operate(path,label,destination,true);
+          await until(()=>document.querySelector('.modal.abele-modal [aria-expanded="false"]'));
+          document.querySelector('.modal.abele-modal [aria-expanded="false"]').click();
           await until(()=>document.querySelector('.modal.abele-modal')?.textContent.includes('renamed.ts'));
           const modal=document.querySelector('.modal.abele-modal');
           require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/folder-'+label.replace(/…$/,'').toLowerCase()+'.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());

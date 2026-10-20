@@ -1,5 +1,16 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.files.directoryDeleteSummary': '¿Eliminar la carpeta {path} con {files} en {folders}?',
+  'node.files.directoryMoveSummary':
+    '¿Mover la carpeta {path} con {files} en {folders} a {destination}?',
+  'node.files.showFiles': 'Mostrar archivos',
+  'node.files.uncommitted': 'Sin confirmar',
+  'node.files.untracked': 'Sin seguimiento',
+  'node.files.gitStatusUnavailable': 'Estado de Git no disponible',
+  'node.files.gitRecoveryWarning':
+    'El contenido sin confirmar o sin seguimiento no se puede recuperar de Git.',
+  'node.files.fileCount': { one: '{count} archivo', other: '{count} archivos' },
+  'node.files.folderCount': { one: '{count} carpeta', other: '{count} carpetas' },
   'node.files.renameAction': 'Renombrar',
   'node.files.moveAction': 'Mover',
   'node.files.directoryConfirm':

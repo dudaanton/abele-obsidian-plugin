@@ -1,5 +1,26 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.files.directoryDeleteSummary': 'Удалить папку {path}: {files}, {folders}?',
+  'node.files.directoryMoveSummary':
+    'Переместить папку {path} ({files}, {folders}) в {destination}?',
+  'node.files.showFiles': 'Показать файлы',
+  'node.files.uncommitted': 'Не закоммичен',
+  'node.files.untracked': 'Не отслеживается',
+  'node.files.gitStatusUnavailable': 'Статус Git недоступен',
+  'node.files.gitRecoveryWarning':
+    'Содержимое незакоммиченных и неотслеживаемых файлов нельзя восстановить из Git.',
+  'node.files.fileCount': {
+    one: '{count} файл',
+    few: '{count} файла',
+    many: '{count} файлов',
+    other: '{count} файла',
+  },
+  'node.files.folderCount': {
+    one: '{count} папка',
+    few: '{count} папки',
+    many: '{count} папок',
+    other: '{count} папки',
+  },
   'node.files.renameAction': 'Переименовать',
   'node.files.moveAction': 'Переместить',
   'node.files.directoryConfirm': 'Удалить папку {path}? Будут удалены все перечисленные элементы:',

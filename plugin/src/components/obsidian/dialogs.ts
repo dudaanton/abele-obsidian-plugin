@@ -5,6 +5,7 @@ import ConfirmModal from './ConfirmModal.vue'
 import PromptModal from './PromptModal.vue'
 import ChoiceModal from './ChoiceModal.vue'
 import type { Choice } from './choice'
+import type { ConfirmationDetails } from './confirmationDetails'
 
 export type { Choice }
 
@@ -69,6 +70,7 @@ export async function confirmDialog(
     size?: ShellSize
     /** What will be lost, named. Each line is its own paragraph. */
     message: string
+    details?: ConfirmationDetails
     confirmText?: string
     confirmTooltip?: string
     cancelTooltip?: string

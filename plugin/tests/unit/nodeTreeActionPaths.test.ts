@@ -22,7 +22,11 @@ vi.mock('@/node/NodeService', () => ({
         client: {
           channel: { channel: { welcome: { methods: ['repository.v1.file.directory'] } } },
           nodePath: { fileDirectory: f.directory },
-          repository: { editingStatus: async () => ({ enabled: true }) },
+          repository: {
+            editingStatus: async () => ({ enabled: true }),
+            observe: async () => ({ revision: { kind: 'working', head: null } }),
+            status: async () => ({ entries: [], cursor: null, incomplete: false, omissions: [] }),
+          },
         },
       }),
     }),
@@ -97,7 +101,12 @@ it('previews the complete directory manifest before move or delete, and cancella
   await nodeTreeAction('rename', { target, path: 'src/old-folder', directory: true })
   expect(f.directory).toHaveBeenCalledWith({ worktree_id: target.id, path: 'src/old-folder' })
   expect(f.confirm).toHaveBeenLastCalledWith(
-    expect.objectContaining({ message: expect.stringContaining('child.ts'), size: 'tall' })
+    expect.objectContaining({
+      message: expect.stringContaining('1 file'),
+      details: expect.objectContaining({
+        items: expect.arrayContaining([expect.objectContaining({ path: 'child.ts' })]),
+      }),
+    })
   )
   expect(f.move).not.toHaveBeenCalled()
   await nodeTreeAction('delete', { target, path: 'src/old-folder', directory: true })

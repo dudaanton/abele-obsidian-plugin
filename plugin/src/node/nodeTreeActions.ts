@@ -10,6 +10,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import type { NodePathContext } from './NodePathOwnerActions'
 import { nodeAdvertisesMethod } from './advertisedMethods'
+import { directoryPreview } from './nodeDirectoryPreview'
 
 export type TreeAction = 'newFile' | 'newFolder' | 'rename' | 'move' | 'delete'
 export async function nodeTreeAction(action: TreeAction, context: NodePathContext): Promise<void> {
@@ -73,21 +74,26 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
       ? context
       : await model.port.file(target, path, undefined, context.revision)
   if (!file.contentId) throw new ChannelError('unsupported_method')
+  const preview = manifest
+    ? await directoryPreview(connection.client, target, path, manifest.entries)
+    : undefined
+  const counts = preview
+    ? {
+        path,
+        files: t('node.files.fileCount', { count: preview.files }),
+        folders: t('node.files.folderCount', { count: preview.folders }),
+      }
+    : undefined
   if (action === 'delete') {
     if (
       !(await confirmDialog({
         title: t('node.files.delete'),
         message: t('node.files.deleteConfirm', { path }),
         confirmText: t('kit.delete'),
-        ...(manifest
+        ...(preview && counts
           ? {
-              size: 'tall' as const,
-              message:
-                t('node.files.directoryConfirm', { path }) +
-                '\n' +
-                manifest.entries
-                  .map((entry) => `${entry.path}${entry.kind === 'directory' ? '/' : ''}`)
-                  .join('\n'),
+              message: t('node.files.directoryDeleteSummary', counts),
+              details: preview.details,
             }
           : {}),
       }))
@@ -112,17 +118,12 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
     if (!value) return
     const destination = renaming && parent ? `${parent}/${value}` : value
     if (destination === path) return
-    if (manifest) {
+    if (manifest && preview && counts) {
       if (
         !(await confirmDialog({
           title: t(renaming ? 'node.files.rename' : 'node.files.move'),
-          size: 'tall',
-          message:
-            t('node.files.directoryMoveConfirm', { path, destination }) +
-            '\n' +
-            manifest.entries
-              .map((entry) => `${entry.path}${entry.kind === 'directory' ? '/' : ''}`)
-              .join('\n'),
+          message: t('node.files.directoryMoveSummary', { ...counts, destination }),
+          details: preview.details,
           confirmText: t(renaming ? 'node.files.renameAction' : 'node.files.moveAction'),
         }))
       )

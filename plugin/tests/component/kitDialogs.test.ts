@@ -38,6 +38,33 @@ const type = (value: string) => {
 const enter = () =>
   field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
 
+it('keeps confirmation files collapsed until asked, with relative paths and recovery markers', async () => {
+  const reply = confirmDialog({
+    title: 'Delete folder',
+    message: 'Delete folder src with 31 files in 2 folders?',
+    details: {
+      label: 'Show files',
+      notice: 'Changed contents cannot be recovered from Git.',
+      items: [
+        { path: 'nested/sample.ts', badge: 'Uncommitted' },
+        { path: 'draft.ts', badge: 'Untracked' },
+      ],
+    },
+  })
+  await flushPromises()
+  expect(modal()?.textContent).toContain('31 files in 2 folders')
+  expect(modal()?.textContent).not.toContain('nested/sample.ts')
+  const control = modal()!.querySelector<HTMLElement>('[aria-expanded="false"]')!
+  expect(control.textContent).toContain('Show files')
+  control.click()
+  await flushPromises()
+  expect(modal()?.textContent).toContain('nested/sample.ts')
+  expect(modal()?.textContent).toContain('Uncommitted')
+  expect(modal()?.textContent).toContain('Untracked')
+  press('Cancel')
+  await expect(reply).resolves.toBe(false)
+})
+
 describe('openDialog', () => {
   const asking = defineComponent({
     emits: ['answer', 'close'],

@@ -1,5 +1,16 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.files.directoryDeleteSummary': 'Ordner {path} mit {files} in {folders} löschen?',
+  'node.files.directoryMoveSummary':
+    'Ordner {path} mit {files} in {folders} nach {destination} verschieben?',
+  'node.files.showFiles': 'Dateien anzeigen',
+  'node.files.uncommitted': 'Nicht committet',
+  'node.files.untracked': 'Nicht verfolgt',
+  'node.files.gitStatusUnavailable': 'Git-Status nicht verfügbar',
+  'node.files.gitRecoveryWarning':
+    'Nicht committierte und nicht verfolgte Inhalte können nicht aus Git wiederhergestellt werden.',
+  'node.files.fileCount': { one: '{count} Datei', other: '{count} Dateien' },
+  'node.files.folderCount': { one: '{count} Ordner', other: '{count} Ordnern' },
   'node.files.renameAction': 'Umbenennen',
   'node.files.moveAction': 'Verschieben',
   'node.files.directoryConfirm':

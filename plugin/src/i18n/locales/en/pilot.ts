@@ -1,4 +1,15 @@
 export const en = {
+  'node.files.directoryDeleteSummary': 'Delete folder {path} with {files} in {folders}?',
+  'node.files.directoryMoveSummary':
+    'Move folder {path} with {files} in {folders} to {destination}?',
+  'node.files.showFiles': 'Show files',
+  'node.files.uncommitted': 'Uncommitted',
+  'node.files.untracked': 'Untracked',
+  'node.files.gitStatusUnavailable': 'Git status unavailable',
+  'node.files.gitRecoveryWarning':
+    'Uncommitted and untracked contents cannot be recovered from Git.',
+  'node.files.fileCount': { one: '{count} file', other: '{count} files' },
+  'node.files.folderCount': { one: '{count} folder', other: '{count} folders' },
   'node.files.renameAction': 'Rename',
   'node.files.moveAction': 'Move',
   'node.files.directoryConfirm':

@@ -1,5 +1,15 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.files.directoryDeleteSummary': 'Dzēst mapi {path} ar {files} un {folders}?',
+  'node.files.directoryMoveSummary':
+    'Pārvietot mapi {path} ar {files} un {folders} uz {destination}?',
+  'node.files.showFiles': 'Rādīt failus',
+  'node.files.uncommitted': 'Nav kommitēts',
+  'node.files.untracked': 'Netiek izsekots',
+  'node.files.gitStatusUnavailable': 'Git statuss nav pieejams',
+  'node.files.gitRecoveryWarning': 'Nekommitētu un neizsekotu saturu nevar atjaunot no Git.',
+  'node.files.fileCount': { zero: '{count} failu', one: '{count} fails', other: '{count} faili' },
+  'node.files.folderCount': { zero: '{count} mapju', one: '{count} mape', other: '{count} mapes' },
   'node.files.renameAction': 'Pārdēvēt',
   'node.files.moveAction': 'Pārvietot',
   'node.files.directoryConfirm': 'Dzēst mapi {path}? Tiks dzēsti visi tālāk norādītie ieraksti:',
