@@ -7,6 +7,7 @@ import type {
 import {
   DelegationSchema,
   DelegationGrantSchema,
+  DelegationSendResultSchema,
   type ExpectedExecutionTarget,
 } from '@abele/node-protocol'
 import {
@@ -67,7 +68,10 @@ export class NodeDelegationController {
     this.wakeEpochs.set(parent, (this.wakeEpochs.get(parent) ?? 0) + 1)
     return this.store.transaction((s) => {
       for (const task of Object.values(storage(s).tasks))
-        if (task.parentId === parent) task.awaitingResult = false
+        if (task.parentId === parent) {
+          task.awaitingResult = false
+          task.parentStopped = true
+        }
     })
   }
   /** Only an explicitly resumed parent turn can arm new waiters after Stop. */
@@ -415,6 +419,8 @@ export class NodeDelegationController {
       task.cancelSettled = false
       task.awaitingResult = !this.stoppedParents.has(parent)
       task.followupMailboxSeq = status.mailbox_head_seq
+      task.followupAcceptedSeq = result.accepted_seq
+      task.parentStopped = this.stoppedParents.has(parent)
     })
     return result
   }
@@ -433,7 +439,10 @@ export class NodeDelegationController {
       const local = storage(s)
       // Retry waiter clearing if Stop's initial durable write failed.
       for (const task of Object.values(local.tasks))
-        if (this.stoppedParents.has(task.parentId)) task.awaitingResult = false
+        if (this.stoppedParents.has(task.parentId)) {
+          task.awaitingResult = false
+          task.parentStopped = true
+        }
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
         if (method === 'delegation.grant.create' || method === 'delegation.grant.revoke') {
@@ -442,6 +451,37 @@ export class NodeDelegationController {
             const old = local.grants[parsed.data.grant_id]
             // Replaying an old approval must not revive a later revocation.
             if (!old?.revoked) local.grants[parsed.data.grant_id] = parsed.data
+          }
+        }
+        if (method === 'delegation.send') {
+          const reply = DelegationSendResultSchema.safeParse(receipt.result)
+          const params = receipt.request?.params as { delegation_id?: string } | undefined
+          const task = Object.values(local.tasks).find(
+            (t) => t.child?.delegation_id === params?.delegation_id
+          )
+          if (
+            task?.child &&
+            reply.success &&
+            !('code' in reply.data) &&
+            reply.data.accepted_seq > (task.followupAcceptedSeq ?? 0)
+          ) {
+            task.followupAcceptedSeq = reply.data.accepted_seq
+            // A newer observed status can include a later cancellation or an already
+            // delivered result. Replaying an old send receipt must not undo either.
+            if (task.status && task.status.session_head_seq >= reply.data.accepted_seq) {
+              if (task.status.state === 'running' && !task.cancelled) {
+                task.followupMailboxSeq = task.status.mailbox_head_seq
+                task.awaitingResult = !task.parentStopped && !this.stoppedParents.has(task.parentId)
+              }
+            } else {
+              task.followupMailboxSeq =
+                task.status?.mailbox_head_seq ?? task.followupMailboxSeq ?? 0
+              delete task.status
+              task.child.state = 'running'
+              task.cancelled = false
+              task.cancelSettled = false
+              task.awaitingResult = !task.parentStopped && !this.stoppedParents.has(task.parentId)
+            }
           }
         }
         if (method === 'delegation.create') {

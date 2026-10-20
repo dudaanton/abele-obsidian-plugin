@@ -816,3 +816,117 @@ it('recovers a pending owner prompt even when its opening event has left the tra
   expect((await f.controller.cards('parent'))[0].prompts).toEqual([prompt])
   f.store.close()
 })
+
+it.each([
+  [false, false],
+  [true, false],
+  [true, true],
+])(
+  'reconciles an accepted follow-up after its reply is lost (parent stopped: %s, reloaded: %s)',
+  async (stopped, reloaded) => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    await f.store.transaction((s) => {
+      const local = Object.values(s.delegation!.tasks)[0]
+      local.status = {
+        ...local.child!,
+        state: 'completed',
+        session_head_seq: 17,
+        mailbox_head_seq: 1,
+        pending_human_prompts: 0,
+      }
+      local.cancelled = true
+      local.cancelSettled = true
+      local.awaitingResult = false
+      s.cursors.mailbox = 1
+      s.events.mailbox = [
+        {
+          kind: 'event',
+          node_id: 'node',
+          stream_id: 'mailbox',
+          seq: 1,
+          actor: { kind: 'node' },
+          at: '2028-01-01T00:00:00Z',
+          type: 'delegation.result',
+          data: {
+            delegation_id: 'delegation',
+            session_id: 'child',
+            report_id: 'sample-previous',
+            text: 'Previous result',
+          },
+        },
+      ]
+      s.results['sample-followup-operation'] = {
+        request: {
+          method: 'delegation.send',
+          params: {
+            delegation_id: 'delegation',
+            text: 'Continue the sample task',
+            observed_seq: 17,
+          },
+        },
+        result: { input_id: 'sample-followup', accepted_seq: 18 },
+      }
+    })
+    if (stopped) await f.controller.stopParent('parent')
+    f.client.delegationStatus.mockResolvedValue({
+      ...child,
+      state: 'running',
+      session_head_seq: 18,
+      mailbox_head_seq: 1,
+      pending_human_prompts: 0,
+    })
+    const controller = reloaded
+      ? new NodeDelegationController(f.client as unknown as NodeClient, f.store)
+      : f.controller
+    await controller.restore()
+    const [card] = await controller.cards('parent')
+    expect(card.state).toBe('running')
+    expect(card.reports).toEqual([])
+    expect(
+      await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].awaitingResult)
+    ).toBe(!stopped)
+    expect(f.client.sendDelegation).not.toHaveBeenCalled()
+    expect(f.client.cancelDelegation).not.toHaveBeenCalled()
+    f.store.close()
+  }
+)
+
+it.each(['completed', 'cancelled'] as const)(
+  'does not replay a send receipt over a newer %s observation',
+  async (state) => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    await f.store.transaction((s) => {
+      const local = Object.values(s.delegation!.tasks)[0]
+      local.status = {
+        ...local.child!,
+        state,
+        session_head_seq: 20,
+        mailbox_head_seq: 1,
+        pending_human_prompts: 0,
+      }
+      local.cancelled = state === 'cancelled'
+      local.cancelSettled = state === 'cancelled'
+      local.awaitingResult = false
+      s.results['sample-old-followup'] = {
+        request: {
+          method: 'delegation.send',
+          params: { delegation_id: 'delegation', text: 'Previous input', observed_seq: 17 },
+        },
+        result: { input_id: 'sample-old-input', accepted_seq: 18 },
+      }
+    })
+    await f.controller.restore()
+    expect((await f.controller.cards('parent'))[0].state).toBe(
+      state === 'completed' ? 'completed · receiving mailbox' : state + ' · receiving mailbox'
+    )
+    expect(
+      await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].awaitingResult)
+    ).toBe(false)
+    expect(f.client.sendDelegation).not.toHaveBeenCalled()
+    f.store.close()
+  }
+)

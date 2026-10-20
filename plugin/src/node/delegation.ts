@@ -50,7 +50,9 @@ export const DelegationStorageSchema = z
           cancelled: z.boolean().optional(),
           cancelSettled: z.boolean().optional(),
           awaitingResult: z.boolean().optional(),
+          parentStopped: z.boolean().optional(),
           followupMailboxSeq: z.number().int().nonnegative().optional(),
+          followupAcceptedSeq: z.number().int().nonnegative().optional(),
           status: z
             .custom<DelegationStatus>((v) => DelegationStatusSchema.safeParse(v).success)
             .optional(),

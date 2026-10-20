@@ -2891,3 +2891,7 @@ and bounded current status for reconnect recovery. The session journal carries o
 and owner prompts; delegation cards project the child's pending prompts from that same
 journal. Answers from parent and child cards share one durable prompt identity.
 These records are never vault notes and do not travel with transferred settings.
+
+Delegation follow-ups retain their accepted child sequence locally. Receipt recovery
+re-arms the existing child after a lost response, without sending the input again or
+reviving a later cancellation or an already delivered result.
