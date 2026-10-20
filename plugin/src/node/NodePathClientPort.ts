@@ -298,7 +298,10 @@ export class NodePathClientPort implements NodePathPort {
         for (const row of listed) {
           const target = this.binding(project.project_id, 'worktree', row.worktree_id)
           const workspace = workspaces.find((w) => w.workspace_id === row.workspace_id)
-          const path = row.kind === 'root' ? project.root_path : workspace?.path
+          const path =
+            row.kind === 'root'
+              ? project.root_path
+              : (workspace?.path ?? (row.path_label.startsWith('/') ? row.path_label : undefined))
           if (path?.startsWith('/'))
             target.location = {
               root: project.root_path,

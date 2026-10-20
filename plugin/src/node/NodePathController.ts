@@ -547,8 +547,22 @@ export async function attachNodePathWorktree(
   if (row.kind === 'external')
     await connection.client.repository.editing({ worktree_id: row.worktree_id, enabled: true })
   await new NodePathMutations(connection.client).selection(target.projectId, row.worktree_id, true)
+  const root =
+    target.location?.root ??
+    model.folders?.value.find((folder) => folder.id === target.projectId)?.path
+  const copyLocation =
+    root && row.path_label.startsWith('/')
+      ? { root, path: row.path_label, kind: row.kind }
+      : undefined
   const selecting = model.selectTarget(
-    { ...target, kind: 'worktree', id: row.worktree_id },
+    {
+      nodeId: target.nodeId,
+      registrationId: target.registrationId,
+      projectId: target.projectId,
+      kind: 'worktree',
+      id: row.worktree_id,
+      ...(copyLocation ? { location: copyLocation } : {}),
+    },
     {
       id: row.worktree_id,
       kind: row.kind === 'root' ? 'project' : row.detached ? 'detached' : 'worktree',

@@ -56,6 +56,38 @@ vi.mock('@/node/NodePathDialogs', () => ({}))
 vi.mock('@/node/NodePairingDialogHost', () => ({}))
 vi.mock('@/node/NodePathOwnerActions', () => ({}))
 
+it('attaches with the new worktree location instead of retaining the root location or incarnation', async () => {
+  const model = {
+    registrationId: 'sample-registration',
+    selectTarget: vi.fn(async () => {}),
+    refresh: vi.fn(async () => {}),
+    report: vi.fn(),
+  }
+  const target = {
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-root',
+    incarnation: 'root-incarnation',
+    location: { root: '/sample/project', path: '/sample/project', kind: 'root' as const },
+  }
+  await attachNodePathWorktree(model as unknown as NodePathModel, target, {
+    worktree_id: 'sample-external',
+    project_id: 'sample-project',
+    kind: 'external',
+    branch: 'refs/heads/topic',
+    detached: false,
+    path_label: '/sample/copy',
+    availability: 'available',
+  } as never)
+  expect(model.selectTarget.mock.calls[0][0]).toMatchObject({
+    id: 'sample-external',
+    location: { root: '/sample/project', path: '/sample/copy', kind: 'external' },
+  })
+  expect(model.selectTarget.mock.calls[0][0]).not.toHaveProperty('incarnation')
+})
+
 it('selects an attached worktree without waiting for the catalogue refresh', async () => {
   const model = {
     registrationId: 'sample-registration',

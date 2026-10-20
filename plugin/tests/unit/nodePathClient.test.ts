@@ -60,6 +60,41 @@ function fake() {
   return { ...f, client, port }
 }
 describe('validated node path reads', () => {
+  it('retains an external worktree absolute path for recovery and Copy path separately from its display name', async () => {
+    const { port, client } = fake()
+    client.describe.mockResolvedValue({
+      capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+    })
+    vi.spyOn(client.repository, 'worktrees').mockResolvedValue({
+      entries: [
+        {
+          worktree_id: 'sample-external',
+          project_id: project.project_id,
+          workspace_id: null,
+          kind: 'external',
+          path_label: '/sample/12345678-1234-1234-1234-123456789abc',
+          branch: 'refs/heads/topic',
+          detached: false,
+          head: HEAD,
+          availability: 'available',
+          locked: false,
+          prunable: false,
+          dirty: false,
+          listed: true,
+        },
+      ],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
+    const catalogue = await port.catalogue()
+    expect(catalogue.folders[0].copies[0].path).toBe('topic')
+    expect(catalogue.targets[0].location).toEqual({
+      root: project.root_path,
+      path: '/sample/12345678-1234-1234-1234-123456789abc',
+      kind: 'external',
+    })
+  })
   it('opens a committed change against the chosen base without reading working changes', async () => {
     const { port, client, calls } = fake()
     const { targets } = await port.catalogue()
