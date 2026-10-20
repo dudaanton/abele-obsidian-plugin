@@ -386,7 +386,7 @@ it.each(['desktop', 'phone'])(
       const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0];
       const sourceLeaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
       await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
-      await recordPoint(frame.line,['1'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
+      await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
       await shot(${JSON.stringify(name)}+'-record-point');
       const watch=await until(()=>{const field=visible('.abele-debug-panel__add input');return field&&!field.disabled?field:null},'watch input ready');
