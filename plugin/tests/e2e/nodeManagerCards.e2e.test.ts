@@ -98,11 +98,12 @@ async function inspectRuns(label: string) {
         await evalLong(`(async () => {
         for(let i=0;i<100&&!document.querySelector('.abele-node-manager-run');i++) await new Promise(r=>setTimeout(r,50));
         const root=document.querySelector('.abele-node-manager-run');
-        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval')});
+        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval'),stops:[...root.querySelectorAll('button')].filter(button => button.textContent.trim()==='Stop').length});
       })()`)
-      ) as { overflow: boolean; text: string; approval: boolean }
+      ) as { overflow: boolean; text: string; approval: boolean; stops: number }
       expect(report.overflow).toBe(false)
       expect(report.approval).toBe(state === 'pending_approval')
+      expect(report.stops).toBe(['pending_approval', 'running'].includes(state) ? 1 : 0)
       if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')
       if (state === 'outcome_unknown') expect(report.text).toContain('The result is unknown')
       columnShot(`${shots}/${label}-command-${state}.png`)

@@ -247,3 +247,23 @@ it('never reads a same-named vault file to preview a node write prompt', async (
     read.mockRestore()
   }
 })
+
+it('offers one Stop control for a manager command while its owner approval is visible', async () => {
+  const { useVault } = await import('../helpers/testEnv')
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  useVault([])
+  const wrapper = mount(NodeManagerRunCard, {
+    props: { card: nodeManagerFixture('pending_approval') },
+  })
+  try {
+    const stops = () => wrapper.findAll('button').filter((button) => button.text() === 'Stop')
+    expect(stops()).toHaveLength(1)
+    await stops()[0].trigger('click')
+    expect(wrapper.emitted('cancel')).toHaveLength(1)
+    await wrapper.setProps({ card: nodeManagerFixture('running') })
+    expect(stops()).toHaveLength(1)
+  } finally {
+    wrapper.unmount()
+  }
+})

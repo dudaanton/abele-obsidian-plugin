@@ -19,7 +19,7 @@
       @stop="emit('cancel')"
     />
     <Button
-      v-if="['pending_approval', 'running'].includes(card.run.state)"
+      v-if="['pending_approval', 'running'].includes(card.run.state) && !card.prompts.length"
       plain
       :text="t('streamB.stop.cae7d5')"
       :disabled="disabled"
