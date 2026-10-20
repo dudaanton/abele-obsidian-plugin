@@ -339,12 +339,12 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       const session={conversationVersion:{value:0},branchSelectionVersion:0},context={session,interactive:true};
       const tools=api.createAgentTools({everything:true,nodeRepositoryApproval:async()=>true});
       const ids={node:window.__sampleRepositoryNode,project:window.__sampleRepositoryProject,workspace:window.__sampleRepositoryWorkspace,path:'app.ts'};
-      const read=await tools.find(t=>t.name==='node_file').execute('read',ids,undefined,context);
+      const read=await tools.find(t=>t.name==='node_file').execute('read',ids,undefined,context).catch(error=>{throw Error('Current file read failed: '+error.message)});
       const contentId=read.content[0].text.match(/Exact file content identity: ([a-f0-9]{64})/)[1];
       const proposal=tools.find(t=>t.name==='node_propose_edit'),params={...ids,expected_content_id:contentId,text:'export const value = 8\\n'};
       let refused=false;try{await proposal.execute('unapproved',params,undefined,context)}catch(e){refused=e.message.includes('per-edit')}
       if(!refused)throw Error('Proposal accepted without per-edit approval');
-      await proposal.execute('approved',params,undefined,{...context,approved:true});
+      await proposal.execute('approved',params,undefined,{...context,approved:true}).catch(error=>{throw Error('Edit proposal failed: '+error.message)});
       await until(()=>[...document.querySelectorAll('.abele-github-blob > .abele-github-code .cm-content')].some(el=>el.getBoundingClientRect().width&&el.textContent.includes('value = 8')));
       return 'proposal retained without a node save';
     })()`)

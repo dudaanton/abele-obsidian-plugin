@@ -523,6 +523,11 @@ export function createNodeTools(
               result = await s.folder(ref, path)
               break
             case 'file': {
+              if (ref === 'WORKTREE' || ref === 'Working tree') {
+                guard()
+                tab.source.refresh?.()
+                guard()
+              }
               const fileRef = s.contentIdentity ? await s.resolve(ref) : ref
               result = await s.text(fileRef, path)
               if (p.start_line !== undefined || p.end_line !== undefined) {

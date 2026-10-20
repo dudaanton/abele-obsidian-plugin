@@ -4,6 +4,42 @@ import { createNodeTools, NodeRepositoryToolsHost } from '@/ai/tools/node'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { RepositorySource } from '@/repository/source'
 import type { ToolContext } from '@/ai/toolContext'
+import { ChannelError } from '@abele/channel-protocol'
+
+it('captures a fresh current-file alias without rebinding explicit retained revisions', async () => {
+  let fresh = false
+  const session = {} as ChatSession
+  const host = new NodeRepositoryToolsHost()
+  const refresh = vi.fn(() => {
+    fresh = true
+  })
+  const source = {
+    identity: { provider: 'node', installation: 'i', node: 'n', project: 'p', workspace: 'w' },
+    cacheNamespace: 'sample-generation',
+    assertCurrent: vi.fn(),
+    refresh,
+    resolve: async (ref: string) =>
+      ref === 'WORKTREE' ? (fresh ? 'working-new' : 'working-old') : ref,
+    text: async (ref: string) => {
+      if (ref === 'working-old') throw new ChannelError('stale_revision')
+      return 'current sample bytes'
+    },
+    contentIdentity: async () => 'a'.repeat(64),
+  } as unknown as RepositorySource
+  host.attach({ source, selection: () => null, open: vi.fn() })
+  host.grant(session, 'n', 'p')
+  const tool = createNodeTools(host).find((tool) => tool.name === 'node_file')!
+  const params = { node: 'n', project: 'p', workspace: 'w', path: 'sample.ts' }
+  const result = await tool.execute('current', params, undefined, { session } as ToolContext)
+  expect(result.content[0].text).toContain('current sample bytes')
+  expect(refresh).toHaveBeenCalledOnce()
+  await expect(
+    tool.execute('retained', { ...params, revision: 'working-old' }, undefined, {
+      session,
+    } as ToolContext)
+  ).rejects.toThrow('stale_revision')
+  expect(refresh).toHaveBeenCalledOnce()
+})
 
 it('rejects retained results after A→B→A without requiring a new chat project grant', async () => {
   const session = {
