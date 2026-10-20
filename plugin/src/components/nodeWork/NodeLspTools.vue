@@ -77,7 +77,7 @@ import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 import { openNodePathTab } from '@/node/nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
-import { DefinitionPicker } from '@/github/search/DefinitionPicker'
+import { DefinitionPicker } from '@/github/search/definitionPicker'
 import { LSP_CONNECTION } from '@/node/lspConnection'
 import { lspMenuLabel } from '@/node/lspMenu'
 
