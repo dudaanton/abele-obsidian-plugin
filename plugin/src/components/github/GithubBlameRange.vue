@@ -163,7 +163,7 @@ onBeforeUnmount(() => {
     .abele-github-user {
       min-width: 0;
       // Reserve the native button inset inside the compact attribution column.
-      max-width: 12ch;
+      max-width: 9ch;
     }
     .abele-github-user__label {
       overflow: hidden;
@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
   }
   &__name {
     min-width: 0;
-    max-width: 12ch;
+    max-width: 9ch;
     overflow: hidden;
     text-overflow: ellipsis;
   }

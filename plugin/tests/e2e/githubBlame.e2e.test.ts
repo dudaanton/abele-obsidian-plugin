@@ -180,10 +180,12 @@ describe.skipIf(!available)('file blame on a phone', () => {
       // A quick return from the commit can reuse the still-visible file pane with blame on.
       const blameToggle = root.querySelector('button[aria-label="Toggle line blame"]')
       if (blameToggle.getAttribute('aria-pressed') !== 'true') blameToggle.click()
-      if (!(await until(() => [...root.querySelectorAll('.abele-github-blame-range')].some(e => e.textContent.includes('Sample attribution 88'))))) throw Error('Late attribution missing')
+      // The compact gutter paints author/date; its native tooltip retains the range message.
+      const lateRange = () => [...root.querySelectorAll('.abele-github-blame-range__open')].some(e => e.getAttribute('aria-label')?.includes('Sample attribution 88'))
+      if (!(await until(lateRange))) throw Error('Late attribution missing')
       const report = {
         marked: placeInView(root.querySelector('.abele-github-code__line_target')).inView,
-        lateRange: [...root.querySelectorAll('.abele-github-blame-range')].some(e => e.textContent.includes('Sample attribution 88')),
+        lateRange: lateRange(),
         count: root.querySelectorAll('.abele-github-blame-range').length,
       }
       const toggle = root.querySelector('button[aria-label="Toggle line blame"]')
