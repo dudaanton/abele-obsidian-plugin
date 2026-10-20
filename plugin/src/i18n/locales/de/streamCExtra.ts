@@ -1,4 +1,11 @@
 export const extra = {
+  'requests.include': '{name} verwenden',
+  'requests.record': 'Anfrage aufzeichnen',
+  'requests.timeout': 'Auf Antwort warten',
+  'requests.timeoutSeconds': '{seconds} s',
+  'requests.paused': 'Warten — das Programm ist bei {location} angehalten',
+  'requests.openPaused': 'Angehaltenen Debugger öffnen',
+  'node.error.runMissing': 'Diese Aufzeichnung ist nicht mehr auf dem Knoten.',
   'streamC.readerForward': 'Vorwärts',
   'streamC.approving': 'Wird genehmigt…',
   'streamC.6fd9013400843e8c': 'Debugger-Anfrage fehlgeschlagen',

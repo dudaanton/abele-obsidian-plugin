@@ -1,14 +1,23 @@
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Platform } from 'obsidian'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import RequestView from '@/components/debugger/http/RequestView.vue'
 import RequestsPanel from '@/components/debugger/http/RequestsPanel.vue'
+import RequestPairs from '@/components/debugger/http/RequestPairs.vue'
+import CodeField from '@/components/obsidian/CodeField.vue'
+import DebugValueView from '@/components/debugger/DebugValueView.vue'
 import type { HttpRequest } from '@/components/debugger/http/types'
 import { useVault } from '../helpers/testEnv'
 
 // The request's width beside its answer is kept on the device, as the app keeps it.
 beforeEach(() => {
   useVault([])
+})
+afterEach(() => {
+  Platform.isPhone = false
+  vi.restoreAllMocks()
 })
 
 const request = (missing?: string): HttpRequest => ({
@@ -25,6 +34,87 @@ const request = (missing?: string): HttpRequest => ({
 const vars = [{ key: 'base', value: 'http://localhost:4000' }]
 
 describe('request script slots', () => {
+  it('identifies the request collection inside the phone tab as well as its title', () => {
+    const view = mount(RequestView, {
+      props: { request: request(), environment: 'local', vars, collection: 'Samples/Orders' },
+    })
+    expect(view.find('.abele-http-request__collection').text()).toBe('Samples/Orders')
+  })
+  it('opens the paused debugger in one press and changes the answer timeout', async () => {
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        outcome: { kind: 'sending' },
+        pausedAt: 'src/sample.ts:12',
+      },
+    })
+    expect(view.find('.abele-http-request__paused').text()).toContain(
+      'Waiting — the program is paused at src/sample.ts:12'
+    )
+    await view.find('.abele-http-request__paused').trigger('click')
+    expect(view.emitted('open-debugger')).toEqual([[]])
+    await view.find('.abele-http-request__timeout select').setValue('60000')
+    expect(view.emitted('timeout')).toEqual([[60000]])
+  })
+  it('brings a completed answer into view on a phone', async () => {
+    Platform.isPhone = true
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const view = mount(RequestView, {
+      props: { request: request(), environment: 'local', vars, outcome: { kind: 'sending' } },
+    })
+    const scroll = vi.fn()
+    view.find('.abele-http-request__answer').element.scrollIntoView = scroll
+    await view.setProps({
+      outcome: {
+        kind: 'answered',
+        response: { status: 200, reason: 'OK', ms: 1, bytes: 2, headers: [], body: '{}' },
+      },
+    })
+    await nextTick()
+    expect(scroll).not.toHaveBeenCalled()
+    for (const callback of [...frames]) callback(0)
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
+    view.unmount()
+  })
+  it('uses JSON highlighting before a body has been entered', () => {
+    const view = mount(RequestView, {
+      props: { request: { ...request(), body: undefined }, environment: 'local', vars },
+    })
+    expect(view.findComponent(CodeField).props('path')).toBe('body.json')
+  })
+  it('labels inclusion consistently whether the row is checked or unchecked', async () => {
+    const view = mount(RequestPairs, {
+      props: { pairs: [{ key: 'sample', value: 'value' }], label: 'Headers', adding: 'Add' },
+    })
+    const label = view.find('input[type=checkbox]').attributes('aria-label')
+    expect(label).toBe('Include sample')
+    await view.setProps({ pairs: [{ key: 'sample', value: 'value', off: true }] })
+    expect(view.find('input[type=checkbox]').attributes('aria-label')).toBe(label)
+  })
+  it('wraps response values and gives the recording switch a visible label', () => {
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        recording: 'sample.js',
+        intoRecording: true,
+        outcome: {
+          kind: 'answered',
+          response: { status: 200, reason: 'OK', ms: 1, bytes: 2, headers: [], body: '{}' },
+        },
+      },
+    })
+    expect(view.findComponent(DebugValueView).props('wrap')).toBe(true)
+    expect(view.find('.abele-http-request__recording').text()).toContain('Record request')
+    expect(view.find('[role=switch]').attributes('aria-checked')).toBe('true')
+  })
   it('opens an assigned script and offers change/remove even when it is missing', async () => {
     const view = mount(RequestView, {
       props: {

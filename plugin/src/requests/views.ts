@@ -48,6 +48,8 @@ import type { Pair, RequestDoc } from './wire'
 import { ScriptService } from '@/scripting/ScriptService'
 import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPicker'
 import { assignRequestScript, requestScriptProblems, type ScriptMoment } from './scripts'
+import { collectionOf } from './shapes'
+import { DebuggerService } from '@/debugger/DebuggerService'
 
 export const REQUESTS_VIEW = 'abele-requests'
 export { REQUEST_TAB_VIEW }
@@ -287,13 +289,13 @@ export class RequestTab extends ItemView {
   getDisplayText() {
     const s = this.current.value
     if (!s) return 'Request'
-    return (
+    const name =
       RequestsService.instance().model(s).entry(s.id).doc?.name ??
       s.id
         .split('/')
         .pop()
         .replace(/\.http$/, '')
-    )
+    return collectionOf(s.id) ? `${name} · ${collectionOf(s.id)}` : name
   }
   getIcon() {
     return 'send-horizontal'
@@ -360,11 +362,26 @@ export class RequestTab extends ItemView {
             const doc = entry.doc
             if (!doc) return h(EmptyState, { text: entry.error ?? 'Reading the request…' })
             const recording = service.recording(s).value
+            const binding = DebuggerService.instance.active.value
+            if (binding) void binding.revision.value
+            const session =
+              binding?.registrationId === s.registrationId &&
+              binding.controller.snapshot?.target.project_id === s.projectId
+                ? binding.controller.session
+                : undefined
+            const frame = session?.frames.find((f) => f.file)
+            const pausedAt =
+              session?.status === 'paused'
+                ? frame
+                  ? `${frame.file}:${frame.line}`
+                  : (session.reason ?? '')
+                : undefined
             const outcome = entry.outcome
             const checks = outcome?.kind === 'answered' ? outcome.response.checks : undefined
             return h(RequestView, {
               request: viewRequest(s.id, doc, checks),
               environment: model.state.environment ?? 'no environment',
+              collection: collectionOf(s.id),
               vars: shownVars(model),
               outcome,
               history: entry.history,
@@ -372,6 +389,14 @@ export class RequestTab extends ItemView {
               compareWith: entry.compare,
               recording: recording?.name,
               intoRecording: model.state.intoRecording,
+              timeoutMs: model.timeout(s.id),
+              pausedAt,
+              onTimeout: (ms: number): void => model.setTimeout(s.id, ms),
+              onOpenDebugger: (): void => {
+                void import('@/debugger/register').then((d) =>
+                  revealSidebarView(app(), d.DEBUG_VIEW_TYPE)
+                )
+              },
               scriptProblems: requestScriptProblems(
                 doc.scripts,
                 ScriptService.getInstance().scriptList.value.map((s) => s.meta)
@@ -477,6 +502,9 @@ export async function openRequestsView(obsidian: App = app(), pickOpenProject = 
   if (leaf.getViewState().type !== REQUESTS_VIEW)
     await leaf.setViewState({ type: REQUESTS_VIEW, active: true })
   await revealSidebarView(obsidian, REQUESTS_VIEW)
+  const service = RequestsService.instance()
+  const context = service.context.value
+  if (context) await service.model(context).load().catch(say)
 }
 
 /** A .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request copied:

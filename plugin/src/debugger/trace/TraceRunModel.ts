@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { nodeErrorWords } from '@/node/errorWords'
 // A run open in its tab: the steps, the step picked and what its values are made of, a value
 // followed through the run. Shapes and changes are asked of the node only for the step looked at.
 import { reactive } from 'vue'
@@ -42,7 +43,7 @@ export class TraceRunModel {
       if (wanted) this.picked = wanted
       if (this.picked) await this.fill(this.picked)
     } catch (e) {
-      this.error = e instanceof Error ? e.message : t('streamC.77490b1334072a11')
+      this.error = e instanceof Error ? nodeErrorWords(e.message) : t('streamC.77490b1334072a11')
       console.debug('[trace] Run unavailable', e)
     } finally {
       this.loading = false

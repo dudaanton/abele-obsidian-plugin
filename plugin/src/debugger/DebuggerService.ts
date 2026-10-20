@@ -9,7 +9,7 @@ import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
 import { TraceSession } from './trace/TraceSession'
 import { nodeTraceSupported, TraceRpc } from './trace/wire'
-import { Platform } from 'obsidian'
+import { ItemView, Platform } from 'obsidian'
 import type { PathTarget } from '@/node/NodePathModel'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
@@ -268,7 +268,15 @@ export class DebuggerBinding {
         this.loadedEpoch = epoch
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
-        if (f && DebuggerService.instance.active.value === this)
+        const view = Platform.isPhone
+          ? GlobalStore.getInstance().app.workspace.getActiveViewOfType(ItemView)
+          : undefined
+        const request = view?.getViewType() === 'abele-request' ? view.getState() : undefined
+        // The request tab names the paused location and opens the controls in one press.
+        const keepRequest =
+          request?.registrationId === this.registrationId &&
+          request.projectId === this.controller.snapshot?.target.project_id
+        if (f && !keepRequest && DebuggerService.instance.active.value === this)
           DebuggerService.instance.reveal(this, f.file, f.line)
       }
     })().finally(() => {

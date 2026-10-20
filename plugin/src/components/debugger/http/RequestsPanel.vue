@@ -228,4 +228,23 @@ const toggle = (name: string) => (folded.has(name) ? folded.delete(name) : folde
   padding: 0;
   color: var(--text-faint);
 }
+.abele-requests-panel__project {
+  .abele-tree-item__inner {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .abele-tree-item__text {
+    flex: 1 1 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .abele-tree-item__note {
+    flex-basis: 100%;
+    padding-inline-start: calc(var(--icon-xs) + var(--size-4-1));
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
 </style>

@@ -2,7 +2,9 @@ import { expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { DebuggerClient } from '@abele/node-client'
 import { DebuggerControlMethodSchemas } from '@abele/node-protocol'
-import { DebuggerBinding } from '@/debugger/DebuggerService'
+import { DebuggerBinding, DebuggerService } from '@/debugger/DebuggerService'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { Platform } from 'obsidian'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
 it('keeps a session request failure distinct from a lost node connection', () => {
@@ -17,6 +19,58 @@ it('keeps a session request failure distinct from a lost node connection', () =>
     binding.destroy()
   }
 })
+
+it.each([
+  [true, true, false],
+  [true, false, true],
+  [false, true, true],
+])(
+  'preserves request focus only on the same phone project (%s, %s)',
+  async (phone, sameProject, reveals) => {
+    const binding = new DebuggerBinding(
+      { state: ref('connected'), client: {} } as unknown as NodeConnection,
+      'sample-chat',
+      'sample-registration'
+    )
+    binding.controller.observe({ observation: 'current', snapshot: debuggerStatus().snapshot })
+    binding.controller.session.status = 'paused'
+    vi.spyOn(binding.controller, 'refreshApprovals').mockResolvedValue(undefined)
+    vi.spyOn(binding.controller, 'refreshHistory').mockResolvedValue(undefined)
+    vi.spyOn(binding.controller, 'refreshOutput').mockResolvedValue(undefined)
+    vi.spyOn(binding.controller, 'loadStack').mockImplementation(async () => {
+      binding.controller.session.frames = [{ name: 'sample', file: 'sample.ts', line: 12 }]
+    })
+    const reveal = vi.spyOn(DebuggerService.instance, 'reveal').mockImplementation(() => {})
+    const store = GlobalStore.getInstance() as unknown as { _app: unknown }
+    const previous = store._app
+    store._app = {
+      workspace: {
+        getActiveViewOfType: () => ({
+          getViewType: () => 'abele-request',
+          getState: () => ({
+            registrationId: 'sample-registration',
+            projectId: sameProject
+              ? binding.controller.snapshot!.target.project_id
+              : 'other-project',
+          }),
+        }),
+      },
+    }
+    Platform.isPhone = phone
+    // Only the session the panel shows moves the editor.
+    DebuggerService.instance.active.value = binding
+    try {
+      await binding.refresh()
+      expect(reveal).toHaveBeenCalledTimes(reveals ? 1 : 0)
+    } finally {
+      Platform.isPhone = false
+      DebuggerService.instance.active.value = null
+      store._app = previous
+      binding.destroy()
+      vi.restoreAllMocks()
+    }
+  }
+)
 it('shows a native launch that terminates before its first stop without replaying any effect', async () => {
   const starting = debuggerStatus({
     lifecycle: 'configuring',

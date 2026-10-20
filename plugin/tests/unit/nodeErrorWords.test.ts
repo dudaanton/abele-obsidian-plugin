@@ -6,6 +6,7 @@ import { catalogs } from '@/i18n/catalogs'
 afterEach(() => initializeLocale('en'))
 
 it.each([
+  ['trace_run_not_found', 'This run is no longer on the node.'],
   [
     'paired_route_tls_or_unreachable',
     'The node could not be reached securely. Check its address, certificate and connection.',

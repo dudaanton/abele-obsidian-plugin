@@ -1,4 +1,11 @@
 export const extra = {
+  'requests.include': 'Include {name}',
+  'requests.record': 'Record request',
+  'requests.timeout': 'Wait for an answer',
+  'requests.timeoutSeconds': '{seconds} s',
+  'requests.paused': 'Waiting — the program is paused at {location}',
+  'requests.openPaused': 'Open paused debugger',
+  'node.error.runMissing': 'This run is no longer on the node.',
   'streamC.readerForward': 'Go forward',
   'streamC.approving': 'Approving…',
   'streamC.6fd9013400843e8c': 'Debugger request failed',

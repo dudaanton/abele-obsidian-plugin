@@ -1,4 +1,11 @@
 export const extra = {
+  'requests.include': 'Incluir {name}',
+  'requests.record': 'Grabar solicitud',
+  'requests.timeout': 'Esperar respuesta',
+  'requests.timeoutSeconds': '{seconds} s',
+  'requests.paused': 'Esperando — el programa está pausado en {location}',
+  'requests.openPaused': 'Abrir depurador pausado',
+  'node.error.runMissing': 'Esta grabación ya no está en el nodo.',
   'streamC.readerForward': 'Adelante',
   'streamC.approving': 'Aprobando…',
   'streamC.6fd9013400843e8c': 'Falló la solicitud del depurador',

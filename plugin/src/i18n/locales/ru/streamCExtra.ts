@@ -1,4 +1,11 @@
 export const extra = {
+  'requests.include': 'Использовать {name}',
+  'requests.record': 'Записать запрос',
+  'requests.timeout': 'Ждать ответа',
+  'requests.timeoutSeconds': '{seconds} с',
+  'requests.paused': 'Ожидание — программа приостановлена на {location}',
+  'requests.openPaused': 'Открыть приостановленный отладчик',
+  'node.error.runMissing': 'Этой записи больше нет на узле.',
   'streamC.readerForward': 'Вперёд',
   'streamC.approving': 'Одобрение…',
   'streamC.6fd9013400843e8c': 'Запрос отладчика не выполнен',

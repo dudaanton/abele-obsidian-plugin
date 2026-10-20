@@ -5,6 +5,7 @@
   <div class="abele-http-request" :class="{ 'abele-http-request_phone': phone }">
     <div ref="layout" class="abele-http-request__layout" :style="split">
       <div class="abele-http-request__top">
+        <div v-if="collection" class="abele-http-request__collection">{{ collection }}</div>
         <div class="abele-http-request__line">
           <Dropdown
             class="abele-http-request__method"
@@ -25,24 +26,7 @@
             @change="emit('change', { ...request, url: ($event.target as HTMLInputElement).value })"
             @keydown.enter.prevent="send"
           />
-          <Icon
-            v-if="recording"
-            class="abele-http-request__into"
-            :class="{ 'abele-http-request__into_on': intoRecording }"
-            icon="circle-dot"
-            :active="intoRecording"
-            role="switch"
-            :aria-checked="intoRecording"
-            :tooltip="
-              intoRecording
-                ? t('streamC.14015fafa5fabf10', { v1: String(recording) })
-                : t('streamC.1ebadc42989ca38a', { v1: String(recording) })
-            "
-            @click="emit('into-recording', !intoRecording)"
-          />
-          <!-- Only while a program is recorded: whether this send goes into the recording, so its
-           answer and the code's steps it caused stand in one run. Otherwise there is no such
-           choice and nothing about recording shows. -->
+          <!-- Send stays beside the address; its recording options are labelled below. -->
           <Button
             class="abele-http-request__send"
             accent
@@ -62,6 +46,44 @@
             @click="send"
           />
         </div>
+        <div class="abele-http-request__options">
+          <label
+            v-if="recording"
+            class="abele-http-request__recording"
+            @click="emit('into-recording', !intoRecording)"
+          >
+            <Checkbox
+              class="abele-http-request__into"
+              :class="{ 'abele-http-request__into_on': intoRecording }"
+              :is-enabled="intoRecording"
+              role="switch"
+              :aria-label="t('requests.record')"
+              @toggle="emit('into-recording', !intoRecording)"
+            />
+            <span>{{ t('requests.record') }} · {{ recording }}</span>
+          </label>
+          <label class="abele-http-request__timeout">
+            <span>{{ t('requests.timeout') }}</span>
+            <Dropdown
+              :model-value="String(timeoutMs)"
+              :options="
+                [30000, 60000, 180000, 300000].map((ms) => ({
+                  value: String(ms),
+                  display: t('requests.timeoutSeconds', { seconds: ms / 1000 }),
+                }))
+              "
+              :aria-label="t('requests.timeout')"
+              @update:model-value="(value: string) => emit('timeout', Number(value))"
+            />
+          </label>
+        </div>
+        <Button
+          v-if="pausedAt"
+          class="abele-http-request__paused"
+          :text="t('requests.paused', { location: pausedAt })"
+          :tooltip="t('requests.openPaused')"
+          @click="emit('open-debugger')"
+        />
         <!-- What it goes to: the address with this environment's values put in, a key by its name. -->
         <div class="abele-http-request__resolved">
           <Icon icon="layers" size="xs" no-hover />
@@ -98,7 +120,7 @@
               v-else-if="part.id === 'body'"
               class="abele-http-request__body"
               :value="request.body?.text ?? ''"
-              :path="`body.${request.body?.format === 'json' ? 'json' : 'txt'}`"
+              :path="`body.${!request.body || request.body.format === 'json' ? 'json' : 'txt'}`"
               :label="t('streamC.6ccaa6415b5ee449')"
               :placeholder="t('streamC.e5c6c6025a921a07')"
               @change="
@@ -192,7 +214,7 @@
       />
 
       <!-- The answer, as DevTools reads a request: a line of facts, then the body and the headers. -->
-      <div class="abele-http-request__answer" aria-live="polite">
+      <div ref="answer" class="abele-http-request__answer" aria-live="polite">
         <template v-if="outcome?.kind === 'answered'">
           <div class="abele-http-request__facts abele-selectable">
             <span
@@ -245,6 +267,7 @@
             class="abele-http-request__body-view"
             :name="t('streamC.6ccaa6415b5ee449')"
             :value="outcome.response.body"
+            wrap
           />
           <!-- Name and value in two columns, as DevTools lists them: a long value (a policy, a
                cookie) wraps under itself and never pushes its name out. -->
@@ -374,9 +397,10 @@ import { t } from '@/i18n'
 // out of sight; what is folded is remembered for the tab. A value that cannot be sent as it is
 // (a key the plugin does not have, a variable with no value) keeps Send off and says why in the
 // tooltip; the address under the line shows it in red.
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import Button from '../../obsidian/Button.vue'
+import Checkbox from '../../obsidian/Checkbox.vue'
 import CodeField from '../../obsidian/CodeField.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
@@ -405,6 +429,7 @@ const props = withDefaults(
   defineProps<{
     request: HttpRequest
     environment: string
+    collection?: string
     /** The environment's values, to show what the address comes to. */
     vars?: HttpEnvironment['vars']
     outcome?: HttpOutcome
@@ -417,23 +442,30 @@ const props = withDefaults(
     /** The program being recorded now, when one is: a send may go into it. */
     recording?: string
     intoRecording?: boolean
+    timeoutMs?: number
+    pausedAt?: string
     /** Why a named script cannot run, when it cannot: gone, or not made to run around requests. */
     scriptProblems?: { before?: string; after?: string }
   }>(),
   {
     vars: () => [],
+    collection: undefined,
     outcome: undefined,
     history: () => [],
     shownSend: undefined,
     compareWith: undefined,
     recording: undefined,
     intoRecording: false,
+    timeoutMs: 300000,
+    pausedAt: undefined,
     scriptProblems: () => ({}),
   }
 )
 const emit = defineEmits<{
   (e: 'change', request: HttpRequest): void
   (e: 'send'): void
+  (e: 'timeout', ms: number): void
+  (e: 'open-debugger'): void
   (e: 'open-run'): void
   (e: 'open-script', name: string): void
   /** The picker of `@request` scripts, for the script run before it goes or after it comes back. */
@@ -447,6 +479,7 @@ const emit = defineEmits<{
 }>()
 
 const phone = Platform.isPhone
+const answer = ref<HTMLElement>()
 const WHEN = {
   before: t('streamC.d733f8c9697720a6'),
   after: t('streamC.c01b93eb231f467d'),
@@ -570,6 +603,12 @@ watch(
   (now, before) => {
     // A fresh answer is read from its body; looking through the history keeps its tab.
     if (now?.kind !== 'answered' || before?.kind !== 'answered') answerTab.value = 'body'
+    if (phone && before?.kind === 'sending' && now?.kind !== 'sending')
+      void nextTick(() =>
+        window.requestAnimationFrame(() =>
+          answer.value?.scrollIntoView?.({ block: 'start', behavior: 'auto' })
+        )
+      )
   }
 )
 watch(
@@ -692,6 +731,37 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
+}
+
+.abele-http-request__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2) var(--size-4-4);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+.abele-http-request__collection {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.abele-http-request__recording,
+.abele-http-request__timeout {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+.abele-http-request__recording > span {
+  overflow-wrap: anywhere;
+}
+.abele-http-request__paused {
+  align-self: flex-start;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 // The tab already says it is the body; the viewer keeps only its size and lines.

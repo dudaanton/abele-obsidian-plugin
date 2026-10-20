@@ -1,4 +1,11 @@
 export const extra = {
+  'requests.include': 'Iekļaut {name}',
+  'requests.record': 'Ierakstīt pieprasījumu',
+  'requests.timeout': 'Gaidīt atbildi',
+  'requests.timeoutSeconds': '{seconds} s',
+  'requests.paused': 'Gaida — programma apturēta vietā {location}',
+  'requests.openPaused': 'Atvērt apturēto atkļūdotāju',
+  'node.error.runMissing': 'Šī ieraksta mezglā vairs nav.',
   'streamC.readerForward': 'Uz priekšu',
   'streamC.approving': 'Apstiprina…',
   'streamC.6fd9013400843e8c': 'Atkļūdotāja pieprasījums neizdevās',

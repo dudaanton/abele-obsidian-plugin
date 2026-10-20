@@ -7628,5 +7628,40 @@
     "englishHash": "ae8d2762e1ba0dc05b098689fcc6973c0582255949fd85ec7f3cffeecb2a77be",
     "context": "Executable review approval in progress",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.include": {
+    "englishHash": "d221a09988997426e35572443fb3cf5fbbc7826bc6cc6fb6bd0b78cbf762d2c0",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.record": {
+    "englishHash": "79eca443b0546213fc16982e9fe58a0ddac3d1ffa9521100cb0de8cf4e0652e9",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.timeout": {
+    "englishHash": "94d0433a1fef26555776e7d01582a7c79a4b771d35a7def46f8cf38972629580",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.timeoutSeconds": {
+    "englishHash": "a6c0b174c3dd84e17fe8fdceb8bd927c4ff77c8b7949690f6f2937efee2796cc",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.paused": {
+    "englishHash": "6d1d16198330936f97b9766f0d8784d3e0efd6ab08139637d9fce10307721f2e",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "requests.openPaused": {
+    "englishHash": "d9ba3c839b13cb10fa5e1481e6af1b7fdc9c5b2764648654bb23eb678bd12a3e",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "node.error.runMissing": {
+    "englishHash": "f8de769d6ba9d4d8e5f36fb1f67cf91053633f682047595ce5d5239876b27842",
+    "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

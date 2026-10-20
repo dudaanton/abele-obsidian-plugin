@@ -22,11 +22,7 @@
         type="checkbox"
         class="abele-http-pairs__on"
         :checked="!pair.off"
-        :aria-label="
-          pair.off
-            ? t('streamC.3d1afac7ffed82e8', { v1: String(pair.key) })
-            : t('streamC.1d1bbfbf2916a4f7', { v1: String(pair.key) })
-        "
+        :aria-label="t('requests.include', { name: pair.key })"
         @change="emit('change', i, { ...pair, off: !pair.off })"
       />
       <input

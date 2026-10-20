@@ -23,6 +23,15 @@ it('follows recording until it ends and releases its timer', async () => {
   }
 })
 
+it('explains a recording that is no longer on the node', async () => {
+  const rpc = new TraceRpc(async () => {
+    throw new Error('trace_run_not_found')
+  })
+  const model = new TraceRunModel(rpc, 'project-1', 'run-1', () => {})
+  await model.load()
+  expect(model.error).toBe('This run is no longer on the node.')
+})
+
 const summary = {
   id: 'run-1',
   name: 'Sample run',
