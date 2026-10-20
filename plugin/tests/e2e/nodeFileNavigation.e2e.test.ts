@@ -38,17 +38,19 @@ it.each([false, true])(
       await until(()=>pane.querySelector('.abele-file-view__header') && pane.querySelector('.cm-line'));
       await wait(1200);
       const content = pane.querySelector('.abele-node-main');
-      const height = content.getBoundingClientRect().height - 24;
-      pane.style.flex = '0 0 auto';
-      pane.style.height = height+'px';
-      pane.style.maxHeight = height+'px';
+      const card = pane.querySelector('.abele-file-view');
+      const style = getComputedStyle(content);
+      const height = card.getBoundingClientRect().height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) - 24;
+      content.style.flex = '0 0 auto';
+      content.style.height = height+'px';
+      content.style.maxHeight = height+'px';
       await leaf.setViewState({type:'abele-node-file',active:true,state:{...tab,line:9}});
       await wait(200);
       await leaf.setViewState({type:'abele-node-file',active:true,state:tab});
       await until(()=>pane.querySelector('.abele-file-view__header') && pane.querySelector('.cm-line'));
       await wait(1200);
       const header = pane.querySelector('.abele-file-view__header');
-      const result = {range:pane.scrollHeight-pane.clientHeight,scroll:pane.scrollTop,headerTop:header.getBoundingClientRect().top-pane.getBoundingClientRect().top};
+      const result = {range:content.scrollHeight-content.clientHeight,scroll:content.scrollTop,headerTop:header.getBoundingClientRect().top-content.getBoundingClientRect().top};
       require('fs').writeFileSync(${JSON.stringify(shots + '/')}+${JSON.stringify(phone ? 'phone' : 'desktop')}+'-short-linked-file.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
       return JSON.stringify(result);
     } finally {
