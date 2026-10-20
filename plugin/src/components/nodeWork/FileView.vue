@@ -20,26 +20,30 @@
       @find="emit('find')"
     />
     <Diff
-      v-if="!image && !metadataNote && mode === 'diff' && change"
-      :text-left="change.before"
-      :text-right="change.after"
+      v-if="comparison"
+      :text-left="comparison.before"
+      :text-right="comparison.after"
       :path="path"
       :layout="layout"
       class="abele-file-view__card"
     >
       <template #title>
         <span class="abele-file-view__title">
-          <ChangeCodes :change="change" />
+          <ChangeCodes :change="comparison" />
           <span class="abele-file-view__path"
-            >{{ change.from ? `${change.from} → ` : '' }}{{ path }}</span
+            >{{ comparison.from ? `${comparison.from} → ` : '' }}{{ path }}</span
           >
-          <span ref="glyphHost" class="abele-file-view__tools" />
-          <span v-if="change.when" class="abele-file-view__when">{{ change.when }}</span>
+          <span ref="diffGlyphHost" class="abele-file-view__tools" />
+          <span v-if="comparison.when" class="abele-file-view__when">{{ comparison.when }}</span>
         </span>
       </template>
     </Diff>
 
-    <div v-else class="abele-file-view__card abele-file-view__file">
+    <div
+      v-if="$slots.code || !comparison"
+      v-show="!comparison"
+      class="abele-file-view__card abele-file-view__file"
+    >
       <div class="abele-file-view__header">
         <span class="abele-file-view__title">
           <ChangeCodes v-if="change" :change="change" />
@@ -51,7 +55,7 @@
             image ? plural(image.bytes.byteLength, 'byte') : plural(text.split('\n').length, 'line')
           }}
         </span>
-        <span ref="glyphHost" class="abele-file-view__tools" />
+        <span ref="fileGlyphHost" class="abele-file-view__tools" />
       </div>
       <div v-if="metadataNote && !image" class="abele-file-view__metadata abele-file-view__size">
         {{ metadataNote }}
@@ -62,7 +66,7 @@
         :key="repository.cacheNamespace"
         :text="text"
         :file="repositoryFile"
-        :glyph-host="glyphHost"
+        :glyph-host="fileGlyphHost"
         plain
         :offline="offline"
         :range="linkedRange"
@@ -173,6 +177,9 @@ const metadataNote = computed(() =>
       ? t('streamB.binaryFileNoTextDiff.1dcb4a')
       : props.change?.previewNote
 )
+const comparison = computed(() =>
+  !props.image && !metadataNote.value && props.mode === 'diff' ? props.change : undefined
+)
 const imageUrl = ref('')
 const releaseImage = () => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
@@ -195,7 +202,9 @@ const linkedRange = computed(() => {
     ? { start: props.line, end: Math.min(props.endLine ?? props.line, count) }
     : undefined
 })
-const glyphHost = ref<HTMLElement>()
+const fileGlyphHost = ref<HTMLElement>()
+const diffGlyphHost = ref<HTMLElement>()
+const glyphHost = computed(() => (comparison.value ? diffGlyphHost.value : fileGlyphHost.value))
 provide(
   REPOSITORY_SOURCE,
   computed(() => props.repository ?? null)

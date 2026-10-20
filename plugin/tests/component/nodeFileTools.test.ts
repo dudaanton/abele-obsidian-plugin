@@ -162,6 +162,27 @@ describe('node file repository tools', () => {
     expect(view.get('.sample-debug-surface').isVisible()).toBe(false)
     await view.get('[aria-label="Toggle line blame"]').trigger('click')
     expect(view.get('.sample-debug-surface').isVisible()).toBe(true)
+    const surface = view.get('.sample-debug-surface').element
+    const model = view.props('model')
+    model.document.value = {
+      ...model.document.value!,
+      change: {
+        path: 'sample.ts',
+        kind: 'modified',
+        before: 'const sample = 0',
+        after: 'const sample = 1',
+        added: 1,
+        removed: 1,
+      },
+    }
+    model.mode.value = 'diff'
+    await flushPromises()
+    expect(view.find('.sample-debug-surface').exists()).toBe(true)
+    expect(view.get('.sample-debug-surface').isVisible()).toBe(false)
+    model.mode.value = 'file'
+    await flushPromises()
+    expect(view.get('.sample-debug-surface').element).toBe(surface)
+    expect(view.get('.sample-debug-surface').isVisible()).toBe(true)
   })
   it('rereads an expired working file once and then blames it at the fresh revision', async () => {
     const blame = vi

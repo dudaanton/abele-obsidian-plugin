@@ -8,6 +8,7 @@ import { debuggerSnapshot } from '../fixtures/debugger'
 import { programFiles } from '@/debugger/programFiles'
 import { NodeClient } from '@abele/node-client'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+const fileViewStub = { template: '<div><slot name="code" /></div>' }
 
 const target = {
   registrationId: 'sample-node',
@@ -24,7 +25,7 @@ it('rechecks a refusal on document changes, without polling it on every debugger
   const document = ref({ target, path: 'lib/helper.ts', text: 'const sample = 2' })
   const wrapper = mount(NodePathFilePane, {
     props: { model: { document, mode: ref('file'), busy: ref(false), error: ref('') } as never },
-    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+    global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
   })
   try {
     await flushPromises()
@@ -259,7 +260,7 @@ it('gives an already-open tab its margin when its folder session appears', async
         error: ref(''),
       } as never,
     },
-    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+    global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
   })
   expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(false)
   fixture()
@@ -281,7 +282,7 @@ it('shows a muted source-map refusal in the file tab', async () => {
         error: ref(''),
       } as never,
     },
-    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+    global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
   })
   await flushPromises()
   expect(wrapper.find('[role="status"]').text()).toMatch(/build with source maps/i)
@@ -300,7 +301,7 @@ it('keeps an unknown refusal code in the tooltip', async () => {
         error: ref(''),
       } as never,
     },
-    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+    global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
   })
   await flushPromises()
   expect(wrapper.find('[role="status"]').attributes('title')).toBe('debugger_sample_future_refusal')

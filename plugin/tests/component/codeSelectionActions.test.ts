@@ -228,7 +228,9 @@ it('returns to the file and notifies the host when its debug source is revealed'
   await flushPromises()
   expect(model.mode.value).toBe('file')
   expect(view.emitted('reveal')).toEqual([[1]])
-  expect(view.findComponent(FileView).exists()).toBe(false)
+  expect(view.findComponent(FileView).exists()).toBe(true)
+  expect(view.findComponent(NodePathDebugFile).exists()).toBe(true)
+  expect(view.find('.abele-diff').exists()).toBe(false)
 })
 
 it('hands pending GitHub note snippets to the linker so it can handle a failed permalink', async () => {

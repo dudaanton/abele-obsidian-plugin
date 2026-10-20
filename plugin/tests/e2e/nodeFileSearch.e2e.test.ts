@@ -207,6 +207,9 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         const target={nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}};
         const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target,path:'src/sample.ts',debug:{conversationId:'sample-debug-chat',sourceId:'sample-source',debugSessionId:'sample-debug',incarnation:'sample-incarnation'}}});await app.workspace.revealLeaf(leaf);
         await until(()=>file()?.querySelector('.abele-debug-source__margin'),'Mapped source in ordinary file');return 'mapped source'})()`)
+      await evalLong(`(async()=>{${prelude}
+        const source=file().querySelector('.abele-debug-source'),leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));leaf.view.file.mode.value='diff';await until(()=>file()?.querySelector('.abele-diff'),'Mapped-source comparison');
+        if(!source.isConnected)throw Error('Comparison destroyed the mapped source');file().querySelector('[data-node-find]').click();await until(()=>file()?.querySelector('[role=search] input'),'Find from mapped comparison');if(file().querySelector('.abele-debug-source')!==source)throw Error('Find remounted the mapped source');file().querySelector('[role=search] input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!file()?.querySelector('[role=search]'),'Mapped comparison find closes');return 'mapped source retained'})()`)
       await search(shell, 'mapped-source')
       await checkTools(shell, 'mapped-source')
       await closeFile()
