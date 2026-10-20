@@ -946,11 +946,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * gate on: a chat already on that agent has not switched to it, and saying that it has puts
    * a line into the conversation for a thing that did not happen.
    */
-  bindAgent(agentId: string): boolean {
+  bindAgent(agentId: string, options: { keepNodeScope?: boolean } = {}): boolean {
     if (agentId === this.agentId.value) return false
 
     this.agentId.value = agentId
-    this.overrides.value = {}
+    this.overrides.value =
+      options.keepNodeScope && hasNodeScope(this)
+        ? { nodeScope: this.overrides.value.nodeScope }
+        : {}
     this.syncScopeFromAgent()
     return true
   }

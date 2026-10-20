@@ -221,6 +221,20 @@ describe('nested node access', () => {
     )
     expect((await show(C2)).overrides.value.nodeScope).toBeUndefined()
   })
+
+  it('keeps the child’s node scope when promotion changes its agent', async () => {
+    const service = CommentService.getInstance()
+    const parent = await show(C1)
+    parent.bindAgent(AgentRegistry.getInstance().create({ name: 'Sample executor' }).id)
+    parent.overrides.value = { nodeScope: scope }
+    const child = (await service.createOnMessage(parent, 'c1a'))!
+    const own = [{ ...scope[0], node_id: 'another-sample-node' }]
+    child.overrides.value = { nodeScope: own }
+    await child.save()
+    expect(await service.expand(child.commentId!)).toBe('moved')
+    expect(child.overrides.value.nodeScope).toEqual(own)
+    expect((await metadataOf(path(child.commentId!)))?.overrides?.nodeScope).toEqual(own)
+  })
 })
 
 describe('asking inside a comment', () => {

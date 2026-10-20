@@ -862,8 +862,8 @@ export class CommentService implements CommentInfoSource {
       const fallback = AgentRegistry.getInstance().defaultAgent()
       // Bound rather than switched: nothing is said about the move until the file has taken it.
       // The binding re-syncs the scope, and the anchored note survives that — `applyScope` puts
-      // it back. Overrides are dropped, which is right: they were the comment agent's.
-      const switched = fallback ? session.bindAgent(fallback.id) : false
+      // it back. Agent overrides are dropped; node access belongs to this conversation.
+      const switched = fallback ? session.bindAgent(fallback.id, { keepNodeScope: true }) : false
 
       const file = session.currentChatFile.value
       // Named before it is saved, not after: `saveChat` pushes the snapshot's title back over
