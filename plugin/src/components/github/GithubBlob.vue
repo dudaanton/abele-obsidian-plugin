@@ -71,11 +71,13 @@
       v-if="blaming && blameError"
       :text="blameError"
       :busy="blameBusy"
-      @retry="askBlame"
+      @retry="askBlame()"
     />
 
+    <!-- A mapped source keeps its mounted debugger state while blame uses the ordinary viewer. -->
+    <div v-if="$slots.code" v-show="!blaming"><slot name="code" /></div>
     <GithubMarkdown
-      v-if="mode === 'preview' && !blaming"
+      v-if="mode === 'preview' && !blaming && !$slots.code"
       ref="preview"
       :text="text"
       :file="file"
@@ -99,7 +101,7 @@
     </GithubMarkdown>
 
     <GithubCode
-      v-else
+      v-else-if="!$slots.code || blaming"
       ref="code"
       :text="visibleText"
       :path="file.path"
@@ -146,7 +148,8 @@
 <script setup lang="ts">
 import { presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
-import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { ChannelError } from '@abele/channel-protocol'
 import Icon from '../obsidian/Icon.vue'
 import GithubNotice from './GithubNotice.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
@@ -337,7 +340,9 @@ const blameBusy = ref(false)
 const blameError = ref('')
 const blameRanges = shallowRef<BlameRange[] | null>(null)
 let blameRequest = 0
-const askBlame = async () => {
+// Set while an expired file is reread for blame, so its new revision keeps blame on.
+let rereading = false
+const askBlame = async (reread = true): Promise<void> => {
   const current = source.value
   if (!current) return
   const request = ++blameRequest
@@ -347,6 +352,28 @@ const askBlame = async () => {
     const ranges = await current.blame(props.file.ref, props.file.path)
     if (request === blameRequest) blameRanges.value = ranges
   } catch (error) {
+    // An expired working revision is reread once, then blamed at the fresh one.
+    if (
+      reread &&
+      request === blameRequest &&
+      props.refresh &&
+      props.file.ref.startsWith('working-') &&
+      error instanceof ChannelError &&
+      error.code === 'stale_revision'
+    ) {
+      console.debug('[github] Refreshing expired file before blame', props.file.path)
+      rereading = true
+      try {
+        await props.refresh()
+        await nextTick()
+        if (request === blameRequest && blaming.value) return askBlame(false)
+        return
+      } catch (failure) {
+        error = failure
+      } finally {
+        rereading = false
+      }
+    }
     if (request === blameRequest) blameError.value = presentUiError(error)
   } finally {
     if (request === blameRequest) blameBusy.value = false
@@ -367,9 +394,10 @@ watch(
     props.text,
   ],
   () => {
+    blameRanges.value = null
+    if (rereading) return
     ++blameRequest
     blaming.value = false
-    blameRanges.value = null
     blameBusy.value = false
     blameError.value = ''
   }

@@ -1,19 +1,9 @@
 <template>
-  <div ref="root" class="abele-node-main">
+  <div class="abele-node-main">
     <div v-if="model.busy.value" role="status">{{ t('streamB.loadingFile.e937ad') }}</div>
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
     <template v-if="model.document.value">
-      <NodeLspTools
-        v-if="
-          effectiveDebug && !endLine && model.mode.value === 'file' && model.document.value.target
-        "
-        :root="root"
-        :target="model.document.value.target"
-        :path="model.document.value.path"
-        :text="model.document.value.text"
-        :offline="offline"
-      />
       <div
         v-if="line && (endLine ?? line) > model.document.value.text.split('\n').length"
         role="status"
@@ -26,26 +16,7 @@
       <div v-if="model.document.value.note" role="status">
         {{ presentUiField(model.document.value, 'note') }}
       </div>
-      <NodePathDebugFile
-        v-if="effectiveDebug && !endLine"
-        v-show="model.mode.value === 'file'"
-        :key="
-          JSON.stringify([
-            effectiveDebug.sourceId,
-            effectiveDebug.debugSessionId,
-            effectiveDebug.incarnation,
-            effectiveDebug.path,
-          ])
-        "
-        :context="{ ...effectiveDebug, ...(line ? { line } : {}), text: model.document.value.text }"
-        :repository="repository"
-        :revision="revision"
-        :refresh="() => model.refresh()"
-        @reveal="revealSource"
-        @selection="debugSelection"
-      />
       <FileView
-        v-if="!effectiveDebug || endLine || model.mode.value !== 'file'"
         :path="model.document.value.path"
         :text="model.document.value.text"
         :image="model.document.value.image"
@@ -57,12 +28,34 @@
         :end-line="endLine"
         :code-target="model.target"
         :offline="offline"
+        :refresh="() => model.refresh()"
         @find="model.mode.value = 'file'"
         @menu="(event, selection, lines) => emit('menu', event, selection, lines)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
         @note="emit('note', $event)"
-      />
+      >
+        <template v-if="effectiveDebug && !endLine" #code>
+          <NodePathDebugFile
+            embedded
+            :key="
+              JSON.stringify([
+                effectiveDebug.sourceId,
+                effectiveDebug.debugSessionId,
+                effectiveDebug.incarnation,
+                effectiveDebug.path,
+              ])
+            "
+            :context="{
+              ...effectiveDebug,
+              ...(line ? { line } : {}),
+              text: model.document.value.text,
+            }"
+            @reveal="revealSource"
+            @selection="debugSelection"
+          />
+        </template>
+      </FileView>
     </template>
   </div>
 </template>
@@ -72,7 +65,6 @@ import { presentUiField } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
-import NodeLspTools from './NodeLspTools.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, provide, ref, watch } from 'vue'
@@ -102,7 +94,6 @@ const props = withDefaults(
   }
 )
 const service = DebuggerService.instance
-const root = ref<HTMLElement>()
 provide(FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false

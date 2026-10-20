@@ -16,6 +16,17 @@ export function mountNodePathDebugSource(
   const extension = selection
     ? mountDebugSource(host, captured, selection)
     : mountDebugSource(host, captured)
+  const reveal = (line: number) => {
+    extension.reveal(line)
+    queueMicrotask(() => {
+      const element = host.querySelector<HTMLElement>('.cm-editor')
+      const editor = element && EditorView.findFromDOM(element)
+      if (editor) {
+        const selected = editor.state.doc.line(Math.max(1, Math.min(line, editor.state.doc.lines)))
+        editor.dispatch({ effects: EditorView.scrollIntoView(selected.from, { y: 'center' }) })
+      }
+    })
+  }
   const stop = registerDebugSourceRevealer((request) => {
     if (
       request.registrationId !== captured.registrationId ||
@@ -25,22 +36,12 @@ export function mountNodePathDebugSource(
     )
       return false
     console.debug('[debugger] Source reveal handler', captured.path, request.line)
-    extension.reveal(request.line)
+    reveal(request.line)
     show(request.line)
-    queueMicrotask(() => {
-      const element = host.querySelector<HTMLElement>('.cm-editor')
-      const editor = element && EditorView.findFromDOM(element)
-      if (editor) {
-        const line = editor.state.doc.line(
-          Math.max(1, Math.min(request.line, editor.state.doc.lines))
-        )
-        editor.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
-      }
-    })
     return true
   })
   return {
-    reveal: (line: number) => extension.reveal(line),
+    reveal,
     update: (text: string) => extension.update(text),
     destroy: () => {
       stop()

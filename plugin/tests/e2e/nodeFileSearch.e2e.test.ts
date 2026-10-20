@@ -59,7 +59,7 @@ async function checkTools(shell: string, entry: string) {
         if(app.workspace.getLeavesOfType('abele-node-file').length!==leaves.length||app.workspace.getLeavesOfType('abele-github').length!==repos)throw Error('Same-file definition opened another tab');
         if(file().closest('.abele-node-main').querySelector('[role=alert]'))throw Error('Unchanged file became stale');
         file().querySelectorAll('.cm-line')[1].dispatchEvent(new MouseEvent('contextmenu',point));
-        await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target')&&leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Definition destination');return 'definition'})()`)
+        await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target, .abele-debug-source__line_here')&&leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Definition destination');return 'definition'})()`)
   await capture(`${shell}-${entry}-definition`)
 }
 
@@ -201,6 +201,14 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         await checkTools(shell, label.toLowerCase())
         await closeFile()
       }
+      // A retained debugger source uses the same ordinary file tab and its search controls.
+      await evalLong(`(async()=>{${prelude}
+        const target={nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}};
+        const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target,path:'src/sample.ts',debug:{conversationId:'sample-debug-chat',sourceId:'sample-source',debugSessionId:'sample-debug',incarnation:'sample-incarnation'}}});await app.workspace.revealLeaf(leaf);
+        await until(()=>file()?.querySelector('.abele-debug-source__margin'),'Mapped source in ordinary file');return 'mapped source'})()`)
+      await search(shell, 'mapped-source')
+      await checkTools(shell, 'mapped-source')
+      await closeFile()
     }
     await scenario(shell)
   } finally {

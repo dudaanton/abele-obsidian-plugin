@@ -66,8 +66,12 @@
         plain
         :offline="offline"
         :range="linkedRange"
+        :refresh="refresh"
         @open="openRepositoryLink"
-      />
+      >
+        <template v-if="$slots.code" #code><slot name="code" /></template>
+      </GithubBlob>
+      <slot v-else-if="$slots.code && !metadataNote && !image" name="code" />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
       <div
         v-else-if="!metadataNote && !image"
@@ -77,7 +81,7 @@
     </div>
 
     <SelectionBar
-      v-if="!image && !metadataNote"
+      v-if="!image && !metadataNote && (!$slots.code || (mode === 'diff' && change))"
       :scope="root"
       within=".cm-content, .abele-diff__text"
       under=".abele-file-view__header, .abele-diff__header"
@@ -134,6 +138,8 @@ const props = withDefaults(
     endLine?: number
     codeTarget?: PathTarget
     offline?: boolean
+    /** Rereads the file, when its working revision has expired. */
+    refresh?: () => Promise<void>
   }>(),
   {
     change: undefined,
@@ -146,6 +152,7 @@ const props = withDefaults(
     endLine: undefined,
     codeTarget: undefined,
     offline: false,
+    refresh: undefined,
   }
 )
 

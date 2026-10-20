@@ -60,3 +60,24 @@ it('rereads an expired working file before asking for blame on the refreshed rev
   expect(stale).toHaveBeenCalledOnce()
   wrapper.unmount()
 })
+it('leaves the header, search and blame to the surrounding file view when embedded', () => {
+  const wrapper = mount(NodePathDebugFile, {
+    props: {
+      context: {
+        registrationId: 'sample-registration',
+        conversationId: 'sample-chat',
+        sourceId: 'sample-source',
+        debugSessionId: 'sample-debug',
+        incarnation: 'sample-incarnation',
+        path: 'src/sample.ts',
+        text: 'const sample = 1',
+      },
+      embedded: true,
+    },
+    global: { stubs: { NodeFileTools: true } },
+  })
+  expect(wrapper.find('.abele-node-debug-file').exists()).toBe(true)
+  expect(wrapper.find('.abele-file-view__header').exists()).toBe(false)
+  expect(wrapper.findComponent(NodeFileTools).exists()).toBe(false)
+  wrapper.unmount()
+})

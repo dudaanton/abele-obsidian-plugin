@@ -1,5 +1,7 @@
 <template>
-  <div ref="root" class="abele-file-view">
+  <!-- Inside a file view the surrounding view supplies the header, search and blame. -->
+  <div v-if="embedded" ref="host" class="abele-node-debug-file" />
+  <div v-else ref="root" class="abele-file-view">
     <div class="abele-file-view__header">
       <span class="abele-file-view__path">{{ context.path }}</span>
       <span ref="glyphHost" class="abele-file-view__tools">
@@ -52,6 +54,7 @@ const props = defineProps<{
   repository?: RepositorySource
   revision?: string
   refresh?: () => Promise<void>
+  embedded?: boolean
 }>()
 const emit = defineEmits<{
   reveal: [line: number]

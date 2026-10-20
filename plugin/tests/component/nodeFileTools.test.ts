@@ -11,6 +11,7 @@ import { NodeRepositorySource } from '@/repository/node'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
 import { ref, shallowRef } from 'vue'
+import { ChannelError } from '@abele/channel-protocol'
 import { useVault } from '../helpers/testEnv'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
 import { openNodeRepositoryTarget } from '@/node/openRepository'
@@ -71,6 +72,75 @@ function setup(blame = vi.fn().mockResolvedValue([])) {
   return { view, source }
 }
 describe('node file repository tools', () => {
+  it('retains search and blame controls when a debugger mapping supplies the code surface', async () => {
+    const { source } = setup()
+    const view = mount(NodePathFilePane, {
+      attachTo: document.body,
+      props: {
+        model: {
+          target: {
+            nodeId: 'sample-node',
+            registrationId: 'node',
+            projectId: 'project',
+            kind: 'worktree',
+            id: 'tree',
+          },
+          busy: ref(false),
+          error: ref(''),
+          mode: ref('file'),
+          document: shallowRef({ path: 'sample.ts', text: 'const sample = 1' }),
+        } as never,
+        repository: source,
+        revision: 'working-sample',
+        debug: {
+          registrationId: 'node',
+          conversationId: 'sample-chat',
+          sourceId: 'sample-source',
+          debugSessionId: 'sample-session',
+          incarnation: 'sample-incarnation',
+          path: 'sample.ts',
+          text: 'const sample = 1',
+        },
+      },
+      global: {
+        stubs: {
+          NodePathDebugFile: {
+            props: ['context'],
+            template: '<div class="sample-debug-surface">const sample = 1</div>',
+          },
+        },
+      },
+    })
+    views.push(view)
+    await flushPromises()
+    expect(view.find('[data-node-find]').exists()).toBe(true)
+    expect(navFor(view.get('.abele-file-view').element)).toBeDefined()
+    await view.get('[data-node-find]').trigger('click')
+    expect(view.find('[role=search]').exists()).toBe(true)
+    await view.get('[aria-label="Toggle line blame"]').trigger('click')
+    await flushPromises()
+    expect(view.get('[aria-label="Toggle line blame"]').attributes('aria-pressed')).toBe('true')
+    expect(view.get('.sample-debug-surface').isVisible()).toBe(false)
+    await view.get('[aria-label="Toggle line blame"]').trigger('click')
+    expect(view.get('.sample-debug-surface').isVisible()).toBe(true)
+  })
+  it('rereads an expired working file once and then blames it at the fresh revision', async () => {
+    const blame = vi
+      .fn()
+      .mockRejectedValueOnce(new ChannelError('stale_revision'))
+      .mockResolvedValue([])
+    const { view } = setup(blame)
+    const refresh = vi.fn(async () => {
+      await view.setProps({ revision: 'working-fresh' } as never)
+    })
+    await view.setProps({ refresh } as never)
+    await flushPromises()
+    await view.get('[aria-label="Toggle line blame"]').trigger('click')
+    await flushPromises()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(blame).toHaveBeenLastCalledWith('working-fresh', 'sample.ts')
+    expect(view.find('[role=alert]').exists()).toBe(false)
+  })
   it('routes rendered working-file links through the ordinary file navigation binding', async () => {
     const { source } = setup()
     const navigate = vi.fn(() => true)
