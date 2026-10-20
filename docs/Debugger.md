@@ -29,8 +29,8 @@ and starts the selected file on the node under the debugger.
 The node runs it with its own Node, an empty environment and no shell. On supporting nodes,
 **Stop at start** defaults off; turn it on to hold the first line. Older nodes retain their startup
 hold. Arguments are remembered separately for each program and folder. Its session opens in the
-view and its file opens in a node tab with the margin, so record
-points and breakpoints go in before the program goes on; other JavaScript files open from the same
+view and its file opens in a node tab with the margin. Enable Stop at start to place record
+points and breakpoints before the program continues; other JavaScript files open from the same
 folder take breakpoints too, and so do TypeScript files open from it when a source map of the build
 lists them and is not older than they are (the node maps their lines onto the JavaScript that
 runs). Opening another source file while the session runs asks the node to admit it, then adds
