@@ -3567,6 +3567,7 @@ export const de = {
   'debug.uncaughtExceptions': 'Nicht abgefangene Ausnahmen',
   'debug.editCondition': 'Bedingung bearbeiten',
   'debug.editLogMessage': 'Protokollnachricht',
+  'debug.editHitCount': 'Trefferzahl',
   'debug.hitCountUnavailable': 'Dieser Knoten unterstützt keinen Trefferzähler',
   'debug.disableBreakpoint': 'Haltepunkt deaktivieren',
   'debug.enableBreakpoint': 'Haltepunkt aktivieren',

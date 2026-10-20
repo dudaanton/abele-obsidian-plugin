@@ -20,6 +20,25 @@ it('does not list runs with no recorded evidence', async () => {
   s.dispose()
 })
 
+it('keeps disabled breakpoint intent when editing a record condition', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger([{ id: 'sample-disabled', line: 4 }])
+  debug.known[0].state = 'disabled' as never
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 4, { take: ['sample'], when: 'sample.ready' })
+    expect(debug.setBreakpoint).toHaveBeenCalledWith(
+      'sample-disabled',
+      'sample-source',
+      4,
+      'sample.ready',
+      { enabled: false }
+    )
+  } finally {
+    trace.dispose()
+  }
+})
+
 it('retains record registration when cleanup has no confirmed receipt', async () => {
   const node = fakeNode(),
     debug = fakeDebugger()

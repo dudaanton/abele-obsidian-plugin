@@ -3530,6 +3530,7 @@ export const lv = {
   'debug.uncaughtExceptions': 'Nepārtvertie izņēmumi',
   'debug.editCondition': 'Rediģēt nosacījumu',
   'debug.editLogMessage': 'Žurnāla ziņojums',
+  'debug.editHitCount': 'Trāpījumu skaits',
   'debug.hitCountUnavailable': 'Šis mezgls neatbalsta trāpījumu skaitītāju',
   'debug.disableBreakpoint': 'Atspējot pārtraukumpunktu',
   'debug.enableBreakpoint': 'Iespējot pārtraukumpunktu',

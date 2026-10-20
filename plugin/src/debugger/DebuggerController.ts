@@ -94,6 +94,26 @@ export class DebuggerController {
   private frameHandles: string[] = []
   private disabledBreakpoints = new Map<string, DebuggerBreakpointRequest>()
   exceptionFilters: string[] = []
+  private breakpointCapabilities = { breakpoint_hit_condition: false, breakpoint_enabled: false }
+  setCapabilities(capabilities: {
+    breakpoint_hit_condition?: boolean
+    breakpoint_enabled?: boolean
+  }) {
+    this.breakpointCapabilities = {
+      breakpoint_hit_condition: capabilities.breakpoint_hit_condition === true,
+      breakpoint_enabled: capabilities.breakpoint_enabled === true,
+    }
+    this.notify()
+  }
+  get supportsHitCondition() {
+    return (
+      this.breakpointCapabilities.breakpoint_hit_condition &&
+      !!this.snapshot?.adapter_capabilities.includes('supportsHitConditionalBreakpoints')
+    )
+  }
+  get supportsNativeEnabled() {
+    return this.breakpointCapabilities.breakpoint_enabled
+  }
   constructor(
     readonly transport: DebuggerTransport,
     private readonly changed: () => void
@@ -208,28 +228,7 @@ export class DebuggerController {
     this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
     const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
     this.session.reason = stop?.description ?? stop?.reason
-    this.session.breakpoints = s.breakpoints
-      .filter((b) => !this.disabledBreakpoints.has(b.breakpoint_id))
-      .map((b) => ({
-        file: this.sources.get(b.source_id) ?? b.source_id,
-        line: b.resolved_line ?? b.line,
-        state:
-          b.status === 'verified' || b.status === 'relocated'
-            ? 'set'
-            : b.status === 'rejected'
-              ? 'rejected'
-              : 'pending',
-        reason: breakpointMessage(b.message),
-        ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
-      }))
-    this.session.breakpoints.push(
-      ...[...this.disabledBreakpoints.values()].map((b) => ({
-        file: this.path(b.source_id) ?? b.source_id,
-        line: b.line,
-        state: 'disabled' as const,
-        ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
-      }))
-    )
+    this.session.breakpoints = this.knownBreakpoints()
     if (!this.session.frames.length && stop?.location)
       this.session.frames = [
         {
@@ -621,9 +620,11 @@ export class DebuggerController {
     sourceId: string,
     line: number,
     condition?: string,
-    options?: { log_message?: string; enabled?: boolean }
+    options?: { log_message?: string; enabled?: boolean; hit_condition?: string }
   ) {
-    if (options?.enabled === false)
+    if (options?.hit_condition && !this.supportsHitCondition)
+      return Promise.reject(new Error(t('debug.hitCountUnavailable')))
+    if (options?.enabled === false && !this.breakpointCapabilities.breakpoint_enabled)
       return this.human(async () => {
         this.disabledBreakpoints.set(breakpointId, {
           breakpoint_id: breakpointId,
@@ -631,6 +632,7 @@ export class DebuggerController {
           line,
           ...(condition ? { condition } : {}),
           ...(options.log_message ? { log_message: options.log_message } : {}),
+          ...(options.hit_condition ? { hit_condition: options.hit_condition } : {}),
         })
         this.session.breakpoints = this.knownBreakpoints()
         this.notify()
@@ -643,6 +645,10 @@ export class DebuggerController {
           line,
           ...(condition ? { condition } : {}),
           ...(options?.log_message ? { log_message: options.log_message } : {}),
+          ...(options?.hit_condition ? { hit_condition: options.hit_condition } : {}),
+          ...(this.breakpointCapabilities.breakpoint_enabled && options?.enabled !== undefined
+            ? { enabled: options.enabled }
+            : {}),
         },
       ],
       remove: [],
@@ -657,11 +663,19 @@ export class DebuggerController {
       })
     return this.patchBreakpoints(() => ({ upsert: [], remove: [breakpointId] }))
   }
-  editBreakpoint(id: string, edit: { condition?: string; log_message?: string }) {
+  editBreakpoint(
+    id: string,
+    edit: { condition?: string; log_message?: string; hit_condition?: string }
+  ) {
+    if (edit.hit_condition !== undefined && !this.supportsHitCondition)
+      return Promise.reject(new Error(t('debug.hitCountUnavailable')))
     return this.patchBreakpoints((s) => {
       const b = s.breakpoints.find((b) => b.breakpoint_id === id)
       if (!b) throw new Error('Breakpoint is unavailable')
-      return { upsert: [{ ...this.breakpointRequest(b), ...edit }], remove: [] }
+      const request = { ...this.breakpointRequest(b), ...edit }
+      for (const key of ['condition', 'log_message', 'hit_condition'] as const)
+        if (!request[key]) delete request[key]
+      return { upsert: [request], remove: [] }
     })
   }
   private breakpointRequest(b: DebuggerBreakpointRequest): DebuggerBreakpointRequest {
@@ -672,9 +686,25 @@ export class DebuggerController {
       ...(b.column !== undefined ? { column: b.column } : {}),
       ...(b.condition ? { condition: b.condition } : {}),
       ...(b.log_message ? { log_message: b.log_message } : {}),
+      ...(this.breakpointCapabilities.breakpoint_hit_condition && b.hit_condition
+        ? { hit_condition: b.hit_condition }
+        : {}),
+      ...(this.breakpointCapabilities.breakpoint_enabled && b.enabled !== undefined
+        ? { enabled: b.enabled }
+        : {}),
     }
   }
   async setBreakpointEnabled(id: string, enabled: boolean) {
+    if (this.breakpointCapabilities.breakpoint_enabled) {
+      const result = await this.patchBreakpoints((s) => {
+        const point =
+          s.breakpoints.find((b) => b.breakpoint_id === id) ?? this.disabledBreakpoints.get(id)
+        if (!point) throw new Error('Breakpoint is unavailable')
+        return { upsert: [{ ...this.breakpointRequest(point), enabled }], remove: [] }
+      })
+      if (result?.outcome === 'completed') this.disabledBreakpoints.delete(id)
+      return result
+    }
     const b = enabled
       ? this.disabledBreakpoints.get(id)
       : this.snapshot?.breakpoints.find((b) => b.breakpoint_id === id)
@@ -728,22 +758,24 @@ export class DebuggerController {
     ].map((b) => ({
       file: this.path(b.source_id) ?? b.source_id,
       line: 'resolved_line' in b ? ((b.resolved_line as number | null) ?? b.line) : b.line,
-      state: this.disabledBreakpoints.has(b.breakpoint_id)
-        ? ('disabled' as const)
-        : 'status' in b && (b.status === 'verified' || b.status === 'relocated')
-          ? ('set' as const)
-          : 'status' in b && b.status === 'rejected'
-            ? ('rejected' as const)
-            : ('pending' as const),
+      state:
+        this.disabledBreakpoints.has(b.breakpoint_id) || b.enabled === false
+          ? ('disabled' as const)
+          : 'status' in b && (b.status === 'verified' || b.status === 'relocated')
+            ? ('set' as const)
+            : 'status' in b && b.status === 'rejected'
+              ? ('rejected' as const)
+              : ('pending' as const),
       reason: breakpointMessage(
         'message' in b && typeof b.message === 'string' ? b.message : undefined
       ),
-      enabled: !this.disabledBreakpoints.has(b.breakpoint_id),
+      enabled: !this.disabledBreakpoints.has(b.breakpoint_id) && b.enabled !== false,
       id: b.breakpoint_id,
       sourceId: b.source_id,
       requestedLine: b.line,
       ...(b.condition ? { condition: b.condition } : {}),
       ...(b.log_message ? { log_message: b.log_message } : {}),
+      ...(b.hit_condition ? { hit_condition: b.hit_condition } : {}),
       ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
     }))
   }

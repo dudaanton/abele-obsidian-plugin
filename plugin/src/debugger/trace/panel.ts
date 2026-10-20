@@ -107,17 +107,31 @@ export function marginMenu(
     )
   }
   if (known && !record) {
-    for (const field of ['condition', 'log_message'] as const) {
+    const fields = [
+      'condition',
+      'log_message',
+      ...(binding.controller.supportsHitCondition ? ['hit_condition'] : []),
+    ] as ('condition' | 'log_message' | 'hit_condition')[]
+    for (const field of fields) {
+      const label =
+        field === 'condition'
+          ? t('debug.editCondition')
+          : field === 'hit_condition'
+            ? t('debug.editHitCount')
+            : t('debug.editLogMessage')
       menu.addItem((item) =>
         item
-          .setTitle(field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'))
+          .setTitle(label)
           .setIcon('pencil')
-          .setDisabled(!binding.controller.current || !known.enabled)
+          .setDisabled(
+            !binding.controller.current ||
+              (!known.enabled && !binding.controller.supportsNativeEnabled)
+          )
           .onClick(async () => {
             const value = await promptDialog({
-              title: field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'),
+              title: label,
               value: known[field] ?? '',
-              label: field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'),
+              label,
               submitText: t('settings.GithubSettings.edit.464c4ffd'),
               validate: (value) => value,
             })
@@ -126,7 +140,8 @@ export function marginMenu(
           })
       )
     }
-    menu.addItem((item) => item.setTitle(t('debug.hitCountUnavailable')).setDisabled(true))
+    if (!binding.controller.supportsHitCondition)
+      menu.addItem((item) => item.setTitle(t('debug.hitCountUnavailable')).setDisabled(true))
   }
   if (known)
     menu.addItem((item) =>

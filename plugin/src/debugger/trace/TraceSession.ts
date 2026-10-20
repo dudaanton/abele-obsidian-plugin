@@ -10,7 +10,13 @@ import type { TraceRpc, WirePoint, WireRunPoint, WireRunSummary, WireStatus } fr
 export interface TraceBreakpoints {
   readonly snapshot: DebuggerSnapshot | null
   knownBreakpoints(): (KnownBreakpoint & { sourceId: string; requestedLine: number })[]
-  setBreakpoint(id: string, sourceId: string, line: number, condition?: string): Promise<unknown>
+  setBreakpoint(
+    id: string,
+    sourceId: string,
+    line: number,
+    condition?: string,
+    options?: { enabled?: boolean }
+  ): Promise<unknown>
   removeBreakpoint(id: string): Promise<unknown>
 }
 
@@ -156,12 +162,12 @@ export class TraceSession {
     )
     let pending = false
     if (!existing || existing.kind === 'log' || (existing.condition ?? '') !== (edit.when ?? '')) {
-      const result = await this.debug.setBreakpoint(
-        id,
-        sourceId,
-        existing?.requestedLine ?? line,
-        edit.when
-      )
+      const result =
+        existing?.state === 'disabled'
+          ? await this.debug.setBreakpoint(id, sourceId, existing.requestedLine, edit.when, {
+              enabled: false,
+            })
+          : await this.debug.setBreakpoint(id, sourceId, existing?.requestedLine ?? line, edit.when)
       if (
         result &&
         typeof result === 'object' &&

@@ -359,6 +359,16 @@ it.each(['desktop', 'phone'])(
         await until(()=>item('Edit condition'),'breakpoint menu');
       };
       await bpMenu();await shot(${JSON.stringify(name)}+'-breakpoint-menu');
+      if(binding.controller.supportsHitCondition){
+        press(item('Hit count'));
+        const count=await until(()=>visible('.modal input[aria-label="Hit count"]'),'hit count editor');
+        count.value='3';count.dispatchEvent(new Event('input',{bubbles:true}));
+        await shot(${JSON.stringify(name)}+'-hit-count-editor');
+        press([...count.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
+        await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.hit_condition==='3'),'hit count saved');
+        noOwnerApproval();
+        await bpMenu();
+      }else if(!item('Hit count is not supported by this node'))throw Error('Missing hit-count fallback');
       press(item('Edit condition'));
       const condition=await until(()=>visible('.modal input[aria-label="Edit condition"]'),'condition editor');
       condition.value='1 < 2 && "a" < "b"';condition.dispatchEvent(new Event('input',{bubbles:true}));
@@ -377,6 +387,7 @@ it.each(['desktop', 'phone'])(
       await shot(${JSON.stringify(name)}+'-log-point');
       await bpMenu();press(item('Disable breakpoint'));
       await until(()=>binding.controller.knownBreakpoints().some(b=>b.id==='sample-controls'&&!b.enabled),'disabled breakpoint');
+      if(binding.controller.supportsNativeEnabled&&!binding.controller.snapshot.breakpoints.some(b=>b.breakpoint_id==='sample-controls'&&b.enabled===false))throw Error('Disabled point was not retained on node');
       showPoints();
       await shot(${JSON.stringify(name)}+'-breakpoint-disabled');
       press(visible('[aria-label="Remove all breakpoints"]'));

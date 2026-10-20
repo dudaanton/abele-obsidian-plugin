@@ -28,6 +28,14 @@ folder execution targets and nullable conversation IDs in snapshots. Only
 ES2022, NodeNext modules and source maps; all other payload files are unchanged.
 The plugin negotiates this extension with a read-only folder session listing,
 since this node revision does not advertise the protocol minor in its description.
+The protocol also carries the optional breakpoint `hit_condition` and `enabled`
+fields from upstream `eb1a38a`, via `patches/breakpoint-options.patch` against the
+packaged `dist/` files. This adds the runtime schema fields and their generated
+declaration shapes without changing other contracts. The debugger JavaScript source
+map retains the original mappings with two unmapped lines inserted immediately
+before `log_message`. Apply this payload patch after the source patches and build
+above when reproducing these tarballs. The plugin sends these fields only when the
+node advertises their capability; hit counts also require adapter support.
 Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.

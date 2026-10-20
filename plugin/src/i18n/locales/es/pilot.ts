@@ -3588,6 +3588,7 @@ export const es = {
   'debug.uncaughtExceptions': 'Excepciones no capturadas',
   'debug.editCondition': 'Editar condición',
   'debug.editLogMessage': 'Mensaje de registro',
+  'debug.editHitCount': 'Número de aciertos',
   'debug.hitCountUnavailable': 'Este nodo no admite el contador de aciertos',
   'debug.disableBreakpoint': 'Desactivar punto de interrupción',
   'debug.enableBreakpoint': 'Activar punto de interrupción',

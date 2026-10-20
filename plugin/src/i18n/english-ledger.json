@@ -26298,5 +26298,15 @@
       "es",
       "de"
     ]
+  },
+  "debug.editHitCount": {
+    "englishHash": "aba4bd3294a7f54c5487751271d401a9b27f97f2c75c65c33e3563ab0aa41f78",
+    "context": "Debugger breakpoint hit-count editor",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

@@ -66,6 +66,7 @@ export interface CarriedPoint {
   line: number
   condition?: string
   log_message?: string
+  hit_condition?: string
   enabled?: boolean
   take?: string[]
   note?: string
@@ -82,6 +83,7 @@ export function carriedPoints(binding: DebuggerBinding): CarriedPoint[] {
         line: b.requestedLine,
         ...(b.condition ? { condition: b.condition } : {}),
         ...(b.log_message ? { log_message: b.log_message } : {}),
+        ...(b.hit_condition ? { hit_condition: b.hit_condition } : {}),
         ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),
         ...(point ? { take: point.take } : {}),
         ...(point?.note ? { note: point.note } : {}),
@@ -248,18 +250,20 @@ export async function startProgram(
       continue
     }
     if (c.take && binding.trace) {
-      if (c.enabled === false)
+      if (c.enabled === false || c.hit_condition)
         await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
-          enabled: false,
+          ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
+          ...(c.hit_condition ? { hit_condition: c.hit_condition } : {}),
         })
       await binding.trace.savePoint(sourceId, c.line, {
         take: c.take,
         ...(c.condition ? { when: c.condition } : {}),
         ...(c.note ? { note: c.note } : {}),
       })
-    } else if (c.log_message || c.enabled === false)
+    } else if (c.log_message || c.hit_condition || c.enabled === false)
       await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
         ...(c.log_message ? { log_message: c.log_message } : {}),
+        ...(c.hit_condition ? { hit_condition: c.hit_condition } : {}),
         ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
       })
     else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)

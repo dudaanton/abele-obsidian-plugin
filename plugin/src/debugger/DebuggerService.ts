@@ -13,6 +13,7 @@ import { ItemView, Platform } from 'obsidian'
 import type { PathTarget } from '@/node/NodePathModel'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+import { breakpointCapabilities } from './breakpointCapabilities'
 
 export interface SourceAdmission {
   message: string
@@ -104,7 +105,8 @@ export class DebuggerBinding {
       const result = await this.connection.client.debugger.status(sessionId)
       console.debug('[debugger] Snapshot read', sessionId, result.snapshot.lifecycle)
       if (abort.signal.aborted || this.disposed) return
-      if (!this.trace && (await this.recordsRuns())) {
+      const recordsRuns = await this.recordsRuns()
+      if (!this.trace && recordsRuns) {
         this.trace = new TraceSession(
           new TraceRpc((method, params) => this.connection.client.request(method, params)),
           this.controller,
@@ -142,9 +144,13 @@ export class DebuggerBinding {
   private async recordsRuns() {
     try {
       const client = this.connection.client as { describe?: () => Promise<unknown> }
-      return typeof client.describe === 'function' && nodeTraceSupported(await client.describe())
+      const description =
+        typeof client.describe === 'function' ? await client.describe() : undefined
+      this.controller.setCapabilities(breakpointCapabilities(description))
+      return nodeTraceSupported(description)
     } catch (e) {
       console.debug('[debugger] Run recording support unknown', e)
+      this.controller.setCapabilities({})
       return false
     }
   }

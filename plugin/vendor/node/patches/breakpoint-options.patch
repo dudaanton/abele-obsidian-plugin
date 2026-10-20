@@ -1,0 +1,519 @@
+--- a/dist/debugger.js
++++ b/dist/debugger.js
+@@ -85,6 +85,8 @@
+     line,
+     column: line.optional(),
+     condition: z.string().min(1).max(8192).optional(),
++    hit_condition: z.string().min(1).max(8192).optional(),
++    enabled: z.boolean().optional(),
+     log_message: z.string().min(1).max(8192).optional(),
+ })
+     .strict();
+--- a/dist/debugger-control.d.ts
++++ b/dist/debugger-control.d.ts
+@@ -1106,6 +1106,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         }, "strict", z.ZodTypeAny, {
+             source_id: string;
+@@ -1113,6 +1115,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             source_id: string;
+@@ -1120,6 +1124,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         remove: z.ZodArray<z.ZodString, "many">;
+@@ -1134,6 +1140,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         remove: string[];
+@@ -1149,6 +1157,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         remove: string[];
+--- a/dist/debugger.d.ts
++++ b/dist/debugger.d.ts
+@@ -238,6 +238,8 @@
+     line: z.ZodNumber;
+     column: z.ZodOptional<z.ZodNumber>;
+     condition: z.ZodOptional<z.ZodString>;
++    hit_condition: z.ZodOptional<z.ZodString>;
++    enabled: z.ZodOptional<z.ZodBoolean>;
+     log_message: z.ZodOptional<z.ZodString>;
+ }, "strict", z.ZodTypeAny, {
+     source_id: string;
+@@ -245,6 +247,8 @@
+     breakpoint_id: string;
+     column?: number | undefined;
+     condition?: string | undefined;
++    hit_condition?: string | undefined;
++    enabled?: boolean | undefined;
+     log_message?: string | undefined;
+ }, {
+     source_id: string;
+@@ -252,6 +256,8 @@
+     breakpoint_id: string;
+     column?: number | undefined;
+     condition?: string | undefined;
++    hit_condition?: string | undefined;
++    enabled?: boolean | undefined;
+     log_message?: string | undefined;
+ }>;
+ export type DebuggerBreakpointRequest = z.infer<typeof DebuggerBreakpointRequestSchema>;
+@@ -447,6 +453,8 @@
+         line: z.ZodNumber;
+         column: z.ZodOptional<z.ZodNumber>;
+         condition: z.ZodOptional<z.ZodString>;
++        hit_condition: z.ZodOptional<z.ZodString>;
++        enabled: z.ZodOptional<z.ZodBoolean>;
+         log_message: z.ZodOptional<z.ZodString>;
+     }, "strict", z.ZodTypeAny, {
+         source_id: string;
+@@ -454,6 +462,8 @@
+         breakpoint_id: string;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }, {
+         source_id: string;
+@@ -461,6 +471,8 @@
+         breakpoint_id: string;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }>, "many">;
+     remove: z.ZodArray<z.ZodString, "many">;
+@@ -473,6 +485,8 @@
+         breakpoint_id: string;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }[];
+     remove: string[];
+@@ -485,6 +499,8 @@
+         breakpoint_id: string;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }[];
+     remove: string[];
+@@ -638,6 +654,8 @@
+     line: z.ZodNumber;
+     column: z.ZodOptional<z.ZodNumber>;
+     condition: z.ZodOptional<z.ZodString>;
++    hit_condition: z.ZodOptional<z.ZodString>;
++    enabled: z.ZodOptional<z.ZodBoolean>;
+     log_message: z.ZodOptional<z.ZodString>;
+ } & {
+     status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -654,6 +672,8 @@
+     resolved_column: number | null;
+     column?: number | undefined;
+     condition?: string | undefined;
++    hit_condition?: string | undefined;
++    enabled?: boolean | undefined;
+     log_message?: string | undefined;
+ }, {
+     status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -665,6 +685,8 @@
+     resolved_column: number | null;
+     column?: number | undefined;
+     condition?: string | undefined;
++    hit_condition?: string | undefined;
++    enabled?: boolean | undefined;
+     log_message?: string | undefined;
+ }>;
+ export declare const DebuggerSnapshotSchema: z.ZodObject<{
+@@ -821,6 +843,8 @@
+         line: z.ZodNumber;
+         column: z.ZodOptional<z.ZodNumber>;
+         condition: z.ZodOptional<z.ZodString>;
++        hit_condition: z.ZodOptional<z.ZodString>;
++        enabled: z.ZodOptional<z.ZodBoolean>;
+         log_message: z.ZodOptional<z.ZodString>;
+     } & {
+         status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -837,6 +861,8 @@
+         resolved_column: number | null;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }, {
+         status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -848,6 +874,8 @@
+         resolved_column: number | null;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }>, "many">;
+     adapter_capabilities: z.ZodArray<z.ZodString, "many">;
+@@ -881,6 +909,8 @@
+         resolved_column: number | null;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }[];
+     pending_commands: string[];
+@@ -946,6 +976,8 @@
+         resolved_column: number | null;
+         column?: number | undefined;
+         condition?: string | undefined;
++        hit_condition?: string | undefined;
++        enabled?: boolean | undefined;
+         log_message?: string | undefined;
+     }[];
+     pending_commands: string[];
+@@ -1194,6 +1226,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         } & {
+             status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -1210,6 +1244,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -1221,6 +1257,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         adapter_capabilities: z.ZodArray<z.ZodString, "many">;
+@@ -1254,6 +1292,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1319,6 +1359,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1399,6 +1441,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1471,6 +1515,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1543,6 +1589,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1615,6 +1663,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1857,6 +1907,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         } & {
+             status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -1873,6 +1925,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -1884,6 +1938,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         adapter_capabilities: z.ZodArray<z.ZodString, "many">;
+@@ -1917,6 +1973,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -1982,6 +2040,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2050,6 +2110,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2134,6 +2196,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2441,6 +2505,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         } & {
+             status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -2457,6 +2523,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -2468,6 +2536,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         adapter_capabilities: z.ZodArray<z.ZodString, "many">;
+@@ -2501,6 +2571,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2566,6 +2638,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2648,6 +2722,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2722,6 +2798,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -2931,6 +3009,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         } & {
+             status: z.ZodEnum<["requested", "verified", "relocated", "rejected", "pending"]>;
+@@ -2947,6 +3027,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             status: "verified" | "requested" | "relocated" | "rejected" | "pending";
+@@ -2958,6 +3040,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         adapter_capabilities: z.ZodArray<z.ZodString, "many">;
+@@ -2991,6 +3075,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -3056,6 +3142,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -3123,6 +3211,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -3197,6 +3287,8 @@
+             resolved_column: number | null;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         pending_commands: string[];
+@@ -3960,6 +4052,8 @@
+             line: z.ZodNumber;
+             column: z.ZodOptional<z.ZodNumber>;
+             condition: z.ZodOptional<z.ZodString>;
++            hit_condition: z.ZodOptional<z.ZodString>;
++            enabled: z.ZodOptional<z.ZodBoolean>;
+             log_message: z.ZodOptional<z.ZodString>;
+         }, "strict", z.ZodTypeAny, {
+             source_id: string;
+@@ -3967,6 +4061,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }, {
+             source_id: string;
+@@ -3974,6 +4070,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }>, "many">;
+         remove: z.ZodArray<z.ZodString, "many">;
+@@ -3988,6 +4086,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         remove: string[];
+@@ -4003,6 +4103,8 @@
+             breakpoint_id: string;
+             column?: number | undefined;
+             condition?: string | undefined;
++            hit_condition?: string | undefined;
++            enabled?: boolean | undefined;
+             log_message?: string | undefined;
+         }[];
+         remove: string[];

@@ -3409,6 +3409,7 @@ export const en = {
   'debug.uncaughtExceptions': 'Uncaught exceptions',
   'debug.editCondition': 'Edit condition',
   'debug.editLogMessage': 'Log message',
+  'debug.editHitCount': 'Hit count',
   'debug.hitCountUnavailable': 'Hit count is not supported by this node',
   'debug.disableBreakpoint': 'Disable breakpoint',
   'debug.enableBreakpoint': 'Enable breakpoint',

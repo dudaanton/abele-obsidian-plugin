@@ -152,15 +152,142 @@ it('explains an unbound breakpoint without adapter jargon', () => {
   expect(model.session.breakpoints[0].reason).toMatch(/program.*not loaded code/i)
 })
 
-it.fails('BUG: the node breakpoint contract must carry a native hit condition', () => {
+it('the node breakpoint contract carries native hit conditions and disabled state', () => {
   expect(
     DebuggerBreakpointRequestSchema.safeParse({
       breakpoint_id: 'sample-bp',
       source_id: 'sample-source',
       line: 7,
       hit_condition: '3',
+      enabled: false,
     }).success
   ).toBe(true)
+})
+
+it.each([false, true])('uses native enabled state only when advertised: %s', async (advertised) => {
+  const { model, command } = fixture()
+  model.setCapabilities({ breakpoint_enabled: advertised, breakpoint_hit_condition: advertised })
+  const bp = {
+    breakpoint_id: 'sample-native',
+    source_id: 'sample-source',
+    line: 7,
+    enabled: false,
+    hit_condition: '3',
+    status: 'verified',
+    resolved_line: 7,
+    resolved_column: null,
+    message: null,
+  }
+  model.observe({ observation: 'current', snapshot: snapshot({ breakpoints: [bp] }) })
+  if (advertised) {
+    expect(model.knownBreakpoints()[0]).toMatchObject({
+      enabled: false,
+      state: 'disabled',
+      hit_condition: '3',
+    })
+    await model.setBreakpointEnabled(bp.breakpoint_id, true)
+    expect(command).toHaveBeenLastCalledWith(
+      'breakpoints.patch',
+      expect.objectContaining({
+        upsert: [expect.objectContaining({ enabled: true, hit_condition: '3' })],
+        remove: [],
+      })
+    )
+  } else {
+    await model.setBreakpointEnabled(bp.breakpoint_id, false)
+    expect(command).toHaveBeenLastCalledWith(
+      'breakpoints.patch',
+      expect.objectContaining({
+        upsert: [],
+        remove: [bp.breakpoint_id],
+      })
+    )
+  }
+})
+
+it.each([false, true])('gates hit counts on both node and adapter support: %s', async (adapter) => {
+  const { model, command } = fixture()
+  model.setCapabilities({ breakpoint_hit_condition: true, breakpoint_enabled: true })
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      adapter_capabilities: adapter ? ['supportsHitConditionalBreakpoints'] : [],
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-native',
+          source_id: 'sample-source',
+          line: 7,
+          status: 'verified',
+          resolved_line: 7,
+          resolved_column: null,
+          message: null,
+        },
+      ],
+    }),
+  })
+  expect(model.supportsHitCondition).toBe(adapter)
+  if (adapter) {
+    await model.editBreakpoint('sample-native', { hit_condition: 'n < 4 && n > 0' })
+    expect(command).toHaveBeenLastCalledWith(
+      'breakpoints.patch',
+      expect.objectContaining({
+        upsert: [expect.objectContaining({ hit_condition: 'n < 4 && n > 0' })],
+      })
+    )
+  } else {
+    await expect(model.editBreakpoint('sample-native', { hit_condition: '3' })).rejects.toThrow()
+    expect(command).not.toHaveBeenCalled()
+  }
+})
+
+it('preserves native disabled and hit intent while clearing an editor field', async () => {
+  const { model, command } = fixture()
+  model.setCapabilities({ breakpoint_enabled: true, breakpoint_hit_condition: true })
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      adapter_capabilities: ['supportsHitConditionalBreakpoints'],
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-native',
+          source_id: 'sample-source',
+          line: 7,
+          enabled: false,
+          hit_condition: '3',
+          condition: 'n < 4',
+          log_message: 'sample {n}',
+          status: 'verified',
+          resolved_line: 7,
+          resolved_column: null,
+          message: null,
+        },
+      ],
+    }),
+  })
+  await model.editBreakpoint('sample-native', { hit_condition: '' })
+  const patch = command.mock.calls.at(-1)![1] as any
+  expect(patch.upsert[0]).toEqual({
+    breakpoint_id: 'sample-native',
+    source_id: 'sample-source',
+    line: 7,
+    enabled: false,
+    condition: 'n < 4',
+    log_message: 'sample {n}',
+  })
+})
+
+it('can enable a retained fallback point after the node gains native enabled support', async () => {
+  const { model, command } = fixture()
+  await model.setBreakpoint('sample-upgraded', 'sample-source', 7, undefined, { enabled: false })
+  model.setCapabilities({ breakpoint_enabled: true })
+  await model.setBreakpointEnabled('sample-upgraded', true)
+  expect(command).toHaveBeenLastCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      upsert: [expect.objectContaining({ breakpoint_id: 'sample-upgraded', enabled: true })],
+      remove: [],
+    })
+  )
 })
 
 it('updates breakpoint expressions verbatim and preserves the other fields', async () => {

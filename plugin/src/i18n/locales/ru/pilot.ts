@@ -3589,6 +3589,7 @@ export const ru = {
   'debug.uncaughtExceptions': 'Неперехваченные исключения',
   'debug.editCondition': 'Изменить условие',
   'debug.editLogMessage': 'Сообщение журнала',
+  'debug.editHitCount': 'Число попаданий',
   'debug.hitCountUnavailable': 'Этот узел не поддерживает счётчик попаданий',
   'debug.disableBreakpoint': 'Отключить точку остановки',
   'debug.enableBreakpoint': 'Включить точку остановки',
