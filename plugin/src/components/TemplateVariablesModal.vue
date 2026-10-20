@@ -349,8 +349,9 @@ function confirmValues() {
   color: var(--text-muted);
   font-size: var(--font-small);
   align-self: flex-start;
-  /* Its glyph on the fields' edge: no inset to hang past the dialog's own. */
-  padding: var(--size-2-1) 0;
+  /* The glyph stays on the fields' edge without shrinking its hover box. */
+  margin-inline: calc(-1 * var(--size-2-3));
+  margin-block: calc(-1 * var(--size-2-2));
   border-radius: var(--radius-s);
 }
 
@@ -401,8 +402,9 @@ function confirmValues() {
   align-items: center;
   gap: var(--size-4-1);
   font-size: var(--font-small);
-  /* The first glyph on the fields' edge; the words between keep them apart. */
-  padding: var(--size-2-1) 0;
+  /* Keep the hover box whole while its glyph stays on the fields' edge. */
+  margin-inline: calc(-1 * var(--size-2-3));
+  margin-block: calc(-1 * var(--size-2-2));
   border-radius: var(--radius-s);
   color: var(--text-muted);
 }

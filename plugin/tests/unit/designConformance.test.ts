@@ -17,10 +17,107 @@ import { en } from '@/i18n/locales/en/pilot'
 import { inspectDesign, inspectCss } from '../helpers/designParser'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import { baseParse, NodeTypes, type TemplateChildNode } from '@vue/compiler-dom'
-import { en } from '@/i18n/locales/en/pilot'
+import postcss from 'postcss'
+import { initCompiler } from 'sass-embedded'
 
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
 const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
+
+describe('glyph button boxes', () => {
+  it('never zeroes the padding of an interactive glyph', () => {
+    const failures: string[] = []
+    const compiler = initCompiler()
+    try {
+      for (const path of walk(ROOT)) {
+        const source = readFileSync(path, 'utf8')
+        const iconNames = new Set(['Icon'])
+        const buttonNames = new Set(['Button'])
+        for (const match of source.matchAll(
+          /import\s+(\w+)\s+from\s+['"][^'"]*\/(Icon|Button)\.vue['"]/g
+        ))
+          (match[2] === 'Icon' ? iconNames : buttonNames).add(match[1])
+        const root = document.createElement('body')
+        const add = (node: TemplateChildNode, parent: HTMLElement) => {
+          if (node.type !== NodeTypes.ELEMENT) return
+          const el = document.createElement(node.tag.toLowerCase())
+          for (const prop of node.props) {
+            if (prop.type === NodeTypes.ATTRIBUTE && prop.name === 'class')
+              el.className = prop.value?.content ?? ''
+          }
+          const clicked = node.props.some(
+            (prop) =>
+              prop.type === NodeTypes.DIRECTIVE &&
+              prop.name === 'on' &&
+              prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
+              prop.arg.content === 'click'
+          )
+          const plain = node.props.some(
+            (prop) => prop.type === NodeTypes.ATTRIBUTE && prop.name === 'plain'
+          )
+          if (iconNames.has(node.tag)) el.classList.add('abele-obsidian-icon')
+          const active = node.props.some(
+            (prop) =>
+              prop.type === NodeTypes.DIRECTIVE &&
+              prop.name === 'bind' &&
+              prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
+              ['active', 'interactive'].includes(prop.arg.content) &&
+              !(prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION && prop.exp.content === 'false')
+          )
+          if (
+            (iconNames.has(node.tag) && (clicked || active)) ||
+            (buttonNames.has(node.tag) && plain)
+          )
+            el.classList.add('clickable-icon')
+          parent.append(el)
+          // Kit slots may receive interactive metadata/actions from a caller.
+          if (path.includes(`${join('components', 'obsidian')}/`) && node.tag === 'slot') {
+            const glyph = document.createElement('button')
+            glyph.className = 'abele-obsidian-icon clickable-icon'
+            el.append(glyph)
+          }
+          node.children.forEach((child) => add(child, el))
+        }
+        const descriptor = parseSfc(source).descriptor
+        baseParse(descriptor.template?.content ?? '').children.forEach((node) => add(node, root))
+        const css = compiler.compileString(
+          descriptor.styles.map((style) => style.content).join('\n'),
+          {
+            logger: { warn() {}, debug() {} },
+          }
+        ).css
+        postcss.parse(css).walkRules((rule) => {
+          if (rule.parent?.type === 'atrule' && rule.parent.name.endsWith('keyframes')) return
+          if (
+            !rule.nodes.some(
+              (node) =>
+                node.type === 'decl' &&
+                node.prop.startsWith('padding') &&
+                /(?:^|\s)0(?:px)?(?:\s|$)/.test(node.value)
+            )
+          )
+            return
+          const targetsGlyph = ['', 'is-phone is-mobile'].some((mode) => {
+            root.className = mode
+            return [...root.querySelectorAll('.clickable-icon')].some((el) =>
+              rule.selectors.some((selector) => !selector.includes('::') && el.matches(selector))
+            )
+          })
+          if (!targetsGlyph) return
+          rule.walkDecls(
+            /^padding(?:-(?:block|inline)(?:-start|-end)?|-(?:top|right|bottom|left))?$/,
+            (decl) => {
+              if (/(?:^|\s)0(?:px)?(?:\s|$)/.test(decl.value))
+                failures.push(`${name(path)}: ${rule.selector} { ${decl.prop}: ${decl.value} }`)
+            }
+          )
+        })
+      }
+    } finally {
+      compiler.dispose()
+    }
+    expect(failures).toEqual([])
+  })
+})
 
 /**
  * What the standard covers today: the shared kit, every settings screen, the sync dialogs, and

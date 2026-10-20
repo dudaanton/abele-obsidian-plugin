@@ -424,8 +424,11 @@ const onKey = (event: KeyboardEvent) => {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 
-  .abele-obsidian-icon {
+  .abele-obsidian-icon:not(.clickable-icon) {
     padding: 0;
+  }
+  .abele-obsidian-icon.clickable-icon {
+    margin-block: calc(-1 * var(--size-2-2));
   }
 }
 .abele-chat-outline__note-text {

@@ -116,8 +116,7 @@ function showAll() {
   display: inline-flex;
   align-items: center;
   gap: var(--size-2-1);
-  height: auto;
-  padding: 0 var(--size-2-1);
+  margin-block: calc(-1 * var(--size-2-2));
   font-size: inherit;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);

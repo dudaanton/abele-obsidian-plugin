@@ -122,7 +122,7 @@ function open() {
     gap: var(--size-2-1);
     min-width: var(--abele-touch-min, var(--touch-size-s));
     min-height: var(--abele-touch-min, var(--touch-size-s));
-    padding-inline: 0;
+    margin-inline: calc(-1 * var(--size-2-3));
   }
 }
 

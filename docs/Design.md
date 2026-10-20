@@ -71,6 +71,8 @@ Every action has an accessible name, visible focus ring and keyboard operation. 
 interactive mode is a real `button type="button"` using native `.clickable-icon`; Enter and
 Space activate it through browser semantics. Decorative mode has no tab stop or button role.
 Existing click-listener/toggle callers infer interactive mode; new code should name it explicitly.
+Glyph buttons keep the native `.clickable-icon` padding and box. Align a compact line with
+negative margins; never flatten its hover box with zero padding or a smaller height override.
 Do not add parallel role/tab/key handlers to a semantic button. Disabled actions give a reason.
 An object-opening row shows a native `chevron-right` with native hover/cursor treatment.
 A disclosure-only row's title also toggles its detail, like a native tree item; this never opens

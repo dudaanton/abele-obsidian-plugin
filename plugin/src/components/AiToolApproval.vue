@@ -798,7 +798,7 @@ const toggleEdit = () => {
   min-width: 0;
   color: var(--text-normal);
 
-  .abele-obsidian-icon {
+  .abele-obsidian-icon:not(.clickable-icon) {
     padding: 0;
     color: var(--icon-color);
   }
@@ -810,7 +810,7 @@ const toggleEdit = () => {
 }
 
 .abele-tool-approval .abele-tool-approval__more {
-  padding: var(--size-2-1);
+  margin-block: calc(-1 * var(--size-2-2));
 }
 
 .abele-tool-approval__path {

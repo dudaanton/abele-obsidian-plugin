@@ -107,8 +107,8 @@ async function openParent(): Promise<void> {
   display: flex;
   align-items: center;
   gap: var(--size-2-2);
-  margin-top: var(--size-4-1);
-  padding: 0;
+  margin: calc(var(--size-4-1) - var(--size-2-2)) calc(-1 * var(--size-2-3))
+    calc(-1 * var(--size-2-2));
   background: transparent;
   border: none;
   box-shadow: none;

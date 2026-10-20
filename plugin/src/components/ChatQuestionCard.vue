@@ -144,8 +144,9 @@ function onKey(event: KeyboardEvent) {
   font-variant-numeric: tabular-nums;
   line-height: inherit;
 }
+// Obsidian's whole button box, its height taken back so the question's line does not grow.
 .abele-chat-question .abele-chat-question__skip {
-  padding: var(--size-2-1);
+  margin-block: calc(-1 * var(--size-2-2));
 }
 // A finger's box reaches past the first line, centred on it, so the cross stays level with it.
 body.is-mobile .abele-chat-question .abele-chat-question__skip {

@@ -19,6 +19,7 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 import { checkScreen } from '../design/rules'
+import { measureGlyphBoxes } from './helpers/glyphBoxes'
 
 targets('desktop')
 
@@ -35,6 +36,7 @@ type Report = {
   events: string[]
   shots: string[]
   left: number
+  glyphs: ReturnType<typeof measureGlyphBoxes>
 }
 
 /** Opens each page, measures it, pictures it and closes it again. */
@@ -42,11 +44,14 @@ async function measure(mode: 'desktop' | 'phone'): Promise<Report> {
   return JSON.parse(
     await evalLong(`(async () => {
       ${RULES}
+      const measureGlyphBoxes = ${measureGlyphBoxes.toString()}
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       const visible = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
       const shots = []
+      const glyphs = []
       const shoot = async (name) => {
         await wait(300)
+        glyphs.push(...measureGlyphBoxes(document.querySelector('.abele-design-catalogue') ?? document.querySelector('.modal.abele-modal') ?? document.body))
         const file = ${JSON.stringify(SHOTS)} + '/2026-10-15-design-c-' + name + '-${mode}.png'
         const image = await require('@electron/remote').getCurrentWebContents().capturePage()
         require('fs').writeFileSync(file, image.toPNG())
@@ -59,7 +64,7 @@ async function measure(mode: 'desktop' | 'phone'): Promise<Report> {
         await new Promise(requestAnimationFrame)
         return document.querySelector('.abele-design-catalogue')
       }
-      const report = { shots }
+      const report = { shots, glyphs }
       try {
         let root = await open('details')
         const r7 = checkScreen({ root }).rules.find((rule) => rule.id === 'Р7')
@@ -141,6 +146,8 @@ function assertReport(r: Report, mode: 'desktop' | 'phone') {
   expect(r.shots).toHaveLength(7)
   // Every dialog it opened is closed again, so the next picture and the next file start clean.
   expect(r.left).toBe(0)
+  expect(r.glyphs.length).toBeGreaterThan(0)
+  expect(r.glyphs.filter((glyph) => glyph.squashed)).toEqual([])
 }
 
 describe('the designer corrections to the kit screens', () => {

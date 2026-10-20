@@ -135,15 +135,13 @@ onBeforeUnmount(() => {
 .abele-github-blame-range {
   width: max-content;
   height: 1lh;
-  overflow: hidden;
 
   &__open.clickable-icon {
     display: flex;
     justify-content: flex-start;
     gap: var(--size-2-2);
     width: max-content;
-    height: 100%;
-    padding: 0 var(--size-2-2);
+    margin-block: calc(-1 * var(--size-2-2));
     font-size: inherit;
     color: var(--text-muted);
     > .abele-obsidian-button__label {

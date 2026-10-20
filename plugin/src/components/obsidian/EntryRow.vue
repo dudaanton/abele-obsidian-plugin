@@ -170,29 +170,16 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   // and the glyph rode above the line where glyphs are larger, on a phone: the words give the
   // baseline and the glyph stands in the middle of their line, lifted by the step a smaller
   // size on the name's baseline sits lower than the name's middle.
-  .abele-obsidian-icon {
+  .abele-obsidian-icon:not(.clickable-icon) {
     height: auto;
     padding: 0;
     align-items: baseline;
   }
-  // A code that opens something is a button, and a phone holds every button to a finger's size:
-  // iOS then set its words at the top of that box and its glyph in the middle, a line apart, and
-  // the box pushed the quiet line down. The box keeps the line's height; the finger's room is
-  // drawn around it, unseen, so the tap still lands.
-  .clickable-icon {
-    position: relative;
+  // Interactive codes keep the host's whole hover and touch box on the code's line.
+  .abele-obsidian-icon.clickable-icon {
+    margin-block: calc(-1 * var(--size-2-2));
   }
-  body.is-phone & .abele-obsidian-icon.clickable-icon {
-    min-width: 0;
-    min-height: 0;
-
-    &::after {
-      content: '';
-      position: absolute;
-      inset: min(0px, calc((100% - var(--abele-touch-min)) / 2));
-    }
-  }
-  .abele-obsidian-icon__icon {
+  .abele-obsidian-icon:not(.clickable-icon) .abele-obsidian-icon__icon {
     align-self: center;
     position: relative;
     top: calc(-1 * var(--size-2-1));

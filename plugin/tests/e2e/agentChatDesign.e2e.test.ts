@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { measureGlyphBoxes } from './helpers/glyphBoxes'
 
 targets('desktop')
 const shots = shotDir('abele-agent-chat-design')
@@ -30,6 +31,8 @@ const sampleReply = [
 
 // Synthetic session state drives the real sidebar. No provider is started and no tool runs.
 const probe = (screen: string) => `(async () => {
+  var __name = (fn) => fn
+  const measureGlyphBoxes = ${measureGlyphBoxes.toString()}
   const api = window.__abeleTest
   const chats = api.ChatService.getInstance()
   const config = api.AbeleConfig.getInstance()
@@ -38,7 +41,7 @@ const probe = (screen: string) => `(async () => {
   const oldTab = chats.activeTabId.value
   const collapsed = app.workspace.rightSplit.collapsed
   const owned = []
-  const report = { states: [], shots: [], overflow: [], touch: [], error: '' }
+  const report = { states: [], shots: [], overflow: [], touch: [], glyphs: [], error: '' }
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => {
     const end = Date.now() + 8000
@@ -68,6 +71,7 @@ const probe = (screen: string) => `(async () => {
     await wait(300)
     document.activeElement?.blur?.()
     const pane = root()
+    report.glyphs.push(...measureGlyphBoxes(pane))
     const box = pane.getBoundingClientRect()
     const walk = el => {
       const style = getComputedStyle(el), r = el.getBoundingClientRect()
@@ -214,6 +218,7 @@ interface Report {
   shots: string[]
   overflow: string[]
   touch: { name: string; width: number; height: number }[]
+  glyphs: ReturnType<typeof measureGlyphBoxes>
   error: string
 }
 
@@ -246,6 +251,8 @@ describe('the real agent chat design', () => {
         ])
         expect(report.shots).toHaveLength(10)
         expect(report.overflow).toEqual([])
+        expect(report.glyphs.length).toBeGreaterThan(0)
+        expect(report.glyphs.filter((glyph) => glyph.squashed)).toEqual([])
         for (const target of report.touch) {
           expect(target.width, target.name).toBeGreaterThanOrEqual(44)
           expect(target.height, target.name).toBeGreaterThanOrEqual(44)

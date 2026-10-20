@@ -303,8 +303,13 @@ body:not(.is-grabbing) .abele-tree-item__self.is-clickable:hover {
   align-items: center;
   gap: var(--size-4-1);
 
-  .abele-obsidian-icon {
+  // A code is drawn bare; a glyph that opens something keeps Obsidian's whole button box, its
+  // height taken back by a margin so the row does not grow.
+  .abele-obsidian-icon:not(.clickable-icon) {
     padding: 0;
+  }
+  .abele-obsidian-icon.clickable-icon {
+    margin-block: calc(-1 * var(--size-2-2));
   }
 }
 

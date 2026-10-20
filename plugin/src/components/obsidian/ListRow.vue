@@ -264,7 +264,7 @@ body:not(.is-phone) .abele-list-row__inline-fold {
   height: auto;
   margin: 0;
 }
-.abele-list-row__leading .abele-obsidian-icon {
+.abele-list-row__leading .abele-obsidian-icon:not(.clickable-icon) {
   min-height: 0;
   padding: 0;
 }
@@ -276,17 +276,10 @@ body:not(.is-phone) .abele-list-row__inline-fold {
   gap: var(--size-2-1);
   margin: 0;
 }
-.abele-list-row__actions .abele-obsidian-icon {
-  /* Keep the native horizontal inset, but centre the glyph on the row's first line. */
-  font: inherit;
-  min-height: 1lh;
-  align-items: center;
-  padding-block: 0;
-}
-.abele-list-row__actions .abele-obsidian-icon__icon {
-  /* The phone hit box stays large; its paint still follows the title's first line. */
-  align-self: flex-start;
-  height: 1lh;
+/* Obsidian's whole button box, so its light on hover is the shape every glyph button has; its
+   height is taken back by a margin, centred on the title's first line, so the row does not grow. */
+.abele-list-row__actions .abele-obsidian-icon.clickable-icon {
+  margin-block: calc((1lh - var(--icon-size) - 2 * var(--size-2-2)) / 2);
 }
 .abele-list-row__snippet,
 .abele-list-row__state {
