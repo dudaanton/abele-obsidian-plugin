@@ -326,7 +326,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (!el || composing.value) return
     if (el.clientHeight !== boxHeight) {
       boxHeight = el.clientHeight
-      if (!shouldAutoScroll) scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
+      if (!shouldAutoScroll) {
+        // A reply and the composer can change together. The old bottom gap excludes the
+        // reply's new height; using it would scroll that height past the reader.
+        if (anchors.anchor) holdAnchor()
+        else if (anchors.keepingReader) holdSteady()
+        else scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
+        bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+      }
     }
     // A narrower box wraps the text longer; a reader at the end stays at the end.
     doScroll()

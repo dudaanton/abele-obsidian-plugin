@@ -241,6 +241,9 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     steadyReader,
     holdSteady,
     endSteady,
+    get keepingReader() {
+      return !!steady
+    },
     get closed() {
       return closed
     },
