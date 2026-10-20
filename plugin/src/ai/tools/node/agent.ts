@@ -645,7 +645,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           // Retry only the exact retained action. Its target may already be gone;
           // re-resolving it would prevent recovering the original deletion receipt.
           return retain(
-            await safe(() =>
+            await safe<unknown>(() =>
               name === 'node_git_commit'
                 ? client.repository.git.commit(
                     protocol.RepositoryGitMethodSchemas['repository.v1.git.commit'].parse(request),
