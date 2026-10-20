@@ -76,8 +76,8 @@ export class ChatLetters {
       )
     })
     const tail = delivery.then(
-      () => undefined,
-      () => undefined
+      (): void => undefined,
+      (): void => undefined
     )
     this.receiving.set(target, tail)
     void tail.then(() => {
