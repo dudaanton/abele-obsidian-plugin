@@ -46,7 +46,7 @@ export const reviewSourceSchema = z
     tokenId: reviewId,
     scope: z
       .object({
-        kind: z.enum(['folder', 'group']),
+        kind: z.enum(['folder', 'group', 'file']),
         id: reviewId,
         path: z.string().min(1).max(1024),
       })

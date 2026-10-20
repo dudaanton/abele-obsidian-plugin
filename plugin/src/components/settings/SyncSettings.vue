@@ -214,6 +214,8 @@ const tone = (row: TokenConnectionRecord) => {
   const own = connectionTone(row, activity.value[row.id])
   const items = itemsOf(row)
   if (!items) return own
+  if (items.length && items.every((item) => item.state.kind === 'detached')) return 'faint'
+  if (items[0]?.state.kind === 'detached') return setTone(items)
   const worst = setTone(items)
   return RANK.indexOf(worst) > RANK.indexOf(own) ? worst : own
 }
@@ -221,6 +223,13 @@ const line = (row: TokenConnectionRecord) => {
   if (errors.value[row.id]) return errors.value[row.id]
   const own = connectionLine(row, activity.value[row.id], settingsSyncText, settingsSyncWhen)
   const items = itemsOf(row)
+  if (items?.[0]?.state.kind === 'detached')
+    return setLine(
+      items,
+      items.every((item) => item.state.kind === 'detached')
+        ? 'No longer shared · copy kept'
+        : 'Synced'
+    )
   return items ? setLine(items, own) : own
 }
 const shareHost = computed(() => {
@@ -358,6 +367,13 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
       .onClick(() => (dialog.value = { mode: 'disconnect', connectionId: row.id }))
   )
   menu.addItem((item) => {
+    if (sets.value?.several(row.id) && !sets.value.owner(row.id)) {
+      item
+        .setTitle('Only the issuer can delete these files from the server')
+        .setIcon('cloud-off')
+        .setDisabled(true)
+      return
+    }
     const configure = (facts: ServerDeleteFacts | null) => {
       item
         .setTitle(

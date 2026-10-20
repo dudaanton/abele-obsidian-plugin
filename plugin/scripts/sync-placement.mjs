@@ -69,6 +69,15 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          'this.scanFilter = opts.client.reportSizeRefusals ? localFilter : this.filter;',
+          `const scanFilter = opts.client.reportSizeRefusals ? localFilter : this.filter;
+          this.scanFilter = {
+            excluded: (path, size) => scanFilter.excluded(path, size) ||
+              opts.fs[Symbol.for('abele.sync.upload-owner-v1')]?.(path) === false,
+          };`
+        )
+        code = replaceOnce(
+          code,
           'async cycle() {',
           `async cycle() {
           const pass = this.ctx.opts.fs[Symbol.for('abele.sync.inventory-pass-v1')];

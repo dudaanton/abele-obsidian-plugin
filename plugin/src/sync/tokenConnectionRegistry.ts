@@ -10,6 +10,7 @@ import { isLegacyAccessSlot } from './discardLegacyConnections'
 import { LocalPlacementError } from './localFolderPlacement'
 
 export const TOKEN_REGISTRY_KEY = 'abele-sync-connections-v2'
+export const ITEM_REGISTRY_KEY = 'abele-sync-item-connections-v1'
 const secretPrefix = DEVICE_SECRET_PREFIX + 'token-'
 const id = z.string().min(1).max(200)
 const localRootSchema = z
@@ -33,7 +34,7 @@ const physicalRootSchema = z
     }
   })
 const scopeSchema = z
-  .object({ kind: z.enum(['folder', 'group']), id, path: z.string().min(1).max(1024) })
+  .object({ kind: z.enum(['folder', 'group', 'file']), id, path: z.string().min(1).max(1024) })
   .strict()
 export type TokenScope = z.infer<typeof scopeSchema>
 /** Metadata from the frozen v2 contract; parsing/QR and HTTP adapters are separate stages. */
@@ -135,6 +136,10 @@ const validatedDocuments = new WeakMap<LocalStorage, { text: string; doc: Docume
  * proceeding; a prepared token binding can resume after interrupted provisioning.
  */
 export class TokenConnectionRegistry {
+  private readonly newItemIds = new Set<string>()
+  get localStorage(): LocalStorage {
+    return this.local
+  }
   private constructor(private readonly local: LocalStorage) {}
   static open(local: LocalStorage): TokenConnectionRegistry {
     const registry = new TokenConnectionRegistry(local)
@@ -142,6 +147,7 @@ export class TokenConnectionRegistry {
       registry.validated()
       return registry
     }
+    if (local.loadLocalStorage(ITEM_REGISTRY_KEY) != null) throw recovery()
     registry.write(TOKEN_REGISTRY_KEY, { version: 2, selectedId: '', records: [] })
     registry.validated()
     return registry
@@ -163,7 +169,50 @@ export class TokenConnectionRegistry {
     }
   }
   private write(key: string, value: unknown): void {
-    if (key === TOKEN_REGISTRY_KEY) validatedDocuments.delete(this.local)
+    if (key === TOKEN_REGISTRY_KEY) {
+      validatedDocuments.delete(this.local)
+      const doc = documentSchema.parse(value)
+      const prior = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
+      const items = prior == null ? { records: [], cleanup: [], selectedId: '' } : this.check(prior)
+      const itemIds = new Set([
+        ...items.records.map((one) => one.id),
+        ...(items.cleanup ?? []).map((one) => one.id),
+        ...this.newItemIds,
+      ])
+      const legacyRaw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
+      const legacy = legacyRaw == null ? undefined : this.check(legacyRaw)
+      const split = (isItem: boolean): Document => {
+        const records = doc.records.filter((one) => itemIds.has(one.id) === isItem)
+        const cleanup = (doc.cleanup ?? []).filter((one) => itemIds.has(one.id) === isItem)
+        const old = isItem ? items : legacy
+        return {
+          version: 2,
+          selectedId: records.some((one) => one.id === doc.selectedId)
+            ? doc.selectedId
+            : records.some((one) => one.id === old?.selectedId)
+              ? old.selectedId
+              : (records[0]?.id ?? ''),
+          records,
+          ...(cleanup.length || old?.cleanup !== undefined ? { cleanup } : {}),
+        }
+      }
+      for (const [target, data] of [
+        [TOKEN_REGISTRY_KEY, split(false)],
+        [ITEM_REGISTRY_KEY, split(true)],
+      ] as const) {
+        if (
+          target === ITEM_REGISTRY_KEY &&
+          prior == null &&
+          !data.records.length &&
+          !data.cleanup?.length
+        )
+          continue
+        if (same(this.local.loadLocalStorage(target), data)) continue
+        this.local.saveLocalStorage(target, clone(data))
+        if (!same(this.local.loadLocalStorage(target), data)) throw recovery()
+      }
+      return
+    }
     this.local.saveLocalStorage(key, clone(value))
     if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
   }
@@ -174,10 +223,20 @@ export class TokenConnectionRegistry {
   /** The validated document, read-only: shared with later reads until the storage changes. */
   private validated(): Document {
     const raw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
-    const text = JSON.stringify(raw)
+    const itemRaw = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
+    const text = JSON.stringify([raw, itemRaw])
     const known = validatedDocuments.get(this.local)
     if (known && known.text === text) return known.doc
-    const doc = clone(this.check(raw))
+    const base = this.check(raw)
+    const items = itemRaw == null ? null : this.check(itemRaw)
+    const doc = clone(
+      this.check({
+        ...base,
+        selectedId: base.selectedId || items?.selectedId || '',
+        records: [...base.records, ...(items?.records ?? [])],
+        cleanup: [...(base.cleanup ?? []), ...(items?.cleanup ?? [])],
+      })
+    )
     validatedDocuments.set(this.local, { text, doc })
     return doc
   }
@@ -232,10 +291,11 @@ export class TokenConnectionRegistry {
     if (!record) throw recovery()
     return record
   }
-  add(): string {
+  add(item = false): string {
     const doc = this.document(),
       localId = crypto.randomUUID()
     doc.records.push(this.empty(localId))
+    if (item) this.newItemIds.add(localId)
     if (!doc.selectedId) doc.selectedId = localId
     this.write(TOKEN_REGISTRY_KEY, doc)
     return localId

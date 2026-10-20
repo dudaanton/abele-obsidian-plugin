@@ -12,6 +12,7 @@ const itemSchema = z
     path: z.string().min(1).max(1024),
     detached: z.boolean(),
     paused: z.boolean(),
+    recordId: id.optional(),
   })
   .strict()
 const connectionSchema = z
@@ -22,7 +23,7 @@ const documentSchema = z
   .strict()
 type Document = z.infer<typeof documentSchema>
 export type StoredSetItem = z.infer<typeof itemSchema>
-export type SetItem = Omit<StoredSetItem, 'detached' | 'paused'>
+export type SetItem = Omit<StoredSetItem, 'detached' | 'paused' | 'recordId'>
 export type ConnectionSet = z.infer<typeof connectionSchema>
 const clone = <T>(value: T): T => structuredClone(value)
 
@@ -76,7 +77,42 @@ export class ConnectionSets {
   get(connectionId: string): ConnectionSet | null {
     return clone(this.read().connections.find((one) => one.id === connectionId) ?? null)
   }
-  create(connectionId: string, label: string, items: SetItem[]): void {
+  all(): ConnectionSet[] {
+    return clone(this.read().connections)
+  }
+  forRecord(recordId: string): { connection: ConnectionSet; item: StoredSetItem } | null {
+    for (const connection of this.all()) {
+      const item = connection.items.find((one) => one.recordId === recordId)
+      if (item) return { connection, item }
+    }
+    return null
+  }
+  bind(connectionId: string, itemId: string, recordId: string): void {
+    const doc = this.read()
+    const item = doc.connections
+      .find((one) => one.id === connectionId)
+      ?.items.find((one) => one.id === itemId)
+    if (!item) throw new Error('Unknown share item')
+    if (
+      doc.connections.some((one) =>
+        one.items.some((other) => other.recordId === recordId && other !== item)
+      )
+    )
+      throw new Error('Item engine already belongs to another share')
+    item.recordId = recordId
+    this.save(doc)
+  }
+  forget(connectionId: string): void {
+    const doc = this.read()
+    doc.connections = doc.connections.filter((one) => one.id !== connectionId)
+    this.save(doc)
+  }
+  create(
+    connectionId: string,
+    label: string,
+    items: SetItem[],
+    records: Record<string, string> = {}
+  ): void {
     if (!items.length) throw new Error('Choose at least one share item')
     assertItemSet(items)
     const doc = this.read()
@@ -85,7 +121,12 @@ export class ConnectionSets {
     doc.connections.push({
       id: connectionId,
       label,
-      items: items.map((one) => ({ ...one, detached: false, paused: false })),
+      items: items.map((one) => ({
+        ...one,
+        detached: false,
+        paused: false,
+        ...(records[one.id] ? { recordId: records[one.id] } : {}),
+      })),
     })
     this.save(doc)
   }

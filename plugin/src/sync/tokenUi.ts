@@ -19,6 +19,7 @@ import type { ConsentResolvePort, AttachmentQuestion } from './attachmentConsent
 import type { openDeviceReviews } from './openDeviceReviews'
 import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
 import { transferText } from './transferProgress'
+import { TokenItemSets } from './tokenItemSets'
 
 /** Its owner deleted what this connection opens; the device stops and keeps every file. */
 export const SCOPE_DELETED = 'Deleted on the server. Every file stays on this device.'
@@ -152,9 +153,11 @@ export const scopeName = (scope: V2Scope | null, text: SyncText = englishSyncTex
         )
       : scope.kind === 'group'
         ? text('Group: {name}', { name: scope.path.split('/').pop().replace(/\.md$/i, '') })
-        : scope.path === '/'
-          ? text('Whole vault')
-          : text('Folder: {path}', { path: scope.path })
+        : scope.kind === 'file'
+          ? text('File: {path}', { path: scope.path })
+          : scope.path === '/'
+            ? text('Whole vault')
+            : text('Folder: {path}', { path: scope.path })
 /** A connection's name without its server: the group, the folder's own name, or the vault. */
 export const scopeShortName = (scope: V2Scope | null, text: SyncText = englishSyncText) =>
   !scope || scope.path === UNAVAILABLE_SCOPE_PATH
@@ -272,6 +275,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   restoreRoot?(): Promise<void>
   followRoot?(): Promise<void>
   followServerRoot?(): Promise<void>
+  removeRetainedCopy?(id: string): Promise<void>
   pause(paused: boolean): Promise<void>
   disconnect(): Promise<void>
   /** Stable local identities already recorded by the engine, never derived from a path. */
@@ -330,6 +334,7 @@ export class TokenUi {
   readonly questions = shallowRef<AttachmentQuestion[]>([])
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
+  readonly itemSets: TokenItemSets
   readonly approvalStatus = shallowRef<Record<string, string>>({})
   private readonly installing = new Map<string, Promise<void>>()
   private readonly deletionFacts = new Map<
@@ -345,6 +350,7 @@ export class TokenUi {
   ) {
     // Vue must observe the exposed refs, never proxy IndexedDB/state/runtime host objects.
     markRaw(this)
+    this.itemSets = new TokenItemSets(this, this.secrets, this.transport)
     this.registry.finishForgotten(this.secrets)
     this.refresh()
     const activity: Record<string, ConnectionActivity> = {}
@@ -368,7 +374,35 @@ export class TokenUi {
     this.activity.value = activity
   }
   refresh(): void {
-    this.rows.value = this.registry.records()
+    this.itemSets.prune()
+    this.rows.value = this.registry
+      .records()
+      .filter((row) => {
+        const binding = this.itemSets.store.forRecord(row.id)
+        return !binding || binding.connection.id === row.id
+      })
+      .map((row) => {
+        const set = this.itemSets.store.get(row.id)
+        if (!set) return row
+        const active = set.items.filter((item) => !item.detached)
+        const statuses = active.flatMap(
+          (item) =>
+            this.registry.records().find((record) => record.id === item.recordId)?.status ?? []
+        )
+        const rank: TokenConnectionRecord['status'][] = [
+          'error',
+          'needs-token',
+          'scope_unavailable',
+          'scope_updating',
+          'offline',
+          'joining',
+          'syncing',
+          'idle',
+          'paused',
+        ]
+        const status = rank.find((status) => statuses.includes(status)) ?? 'paused'
+        return { ...row, status, paused: active.length > 0 && active.every((item) => item.paused) }
+      })
   }
   setTrusted(id: string, trusted: boolean): void {
     this.registry.setTrusted(id, trusted)
@@ -603,8 +637,22 @@ export class TokenUi {
   }
   private async connectToken(text: string, signal?: AbortSignal): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.
-    const token = decodeAccessToken(text),
-      client = new V2Client(token, this.transport)
+    const token = decodeAccessToken(text)
+    if (token.v === 2) {
+      const id = await this.itemSets.enroll(token, signal)
+      this.refresh()
+      if (this.connectionsChanged !== noConnectionHost)
+        void connectStage(
+          'starting sync',
+          'Could not finish starting sync. Try Sync now again.',
+          (assertCurrent) => this.connectionsChanged(assertCurrent)
+        ).catch((error) => {
+          if (this.registry.records().some((one) => one.id === id))
+            this.publish(id, { error: connectionError(error) })
+        })
+      return
+    }
+    const client = new V2Client(token, this.transport)
     if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
     const guard = () =>
       connectStage(
@@ -617,12 +665,24 @@ export class TokenUi {
         signal
       )
     await guard()
-    const authority = await connectStage(
-      'checking server',
-      'The server is not reachable. Check your connection and try again.',
-      (_, stageSignal) => client.connection(stageSignal),
-      signal
-    )
+    let authority: Awaited<ReturnType<V2Client['connection']>>
+    try {
+      authority = await connectStage(
+        'checking server',
+        'The server is not reachable. Check your connection and try again.',
+        (_, stageSignal) => client.connection(stageSignal),
+        signal
+      )
+    } catch (error) {
+      if (!(error instanceof V2ClientError) || error.code !== 'forbidden') throw error
+      const id = await this.itemSets.enroll(token, signal)
+      this.refresh()
+      if (this.connectionsChanged !== noConnectionHost)
+        void this.connectionsChanged(() => {
+          if (signal?.aborted) throw new Error('Connection cancelled')
+        }).catch((error) => this.publish(id, { error: connectionError(error) }))
+      return
+    }
     await guard()
     if (signal?.aborted) throw new ConnectStageError('Connection cancelled.')
     if (token.scope.kind !== authority.scope.kind || token.scope.id !== authority.scope.id)
@@ -722,10 +782,7 @@ export class TokenUi {
     }
   }
   client(id: string): V2Client {
-    const record = this.registry.records().find((one) => one.id === id)
-    const key = record && this.secrets.get(record.secretReference)
-    if (!record?.scope || !key) throw new V2ClientError('bad-token')
-    return new V2Client({ v: 1, address: record.address, key, scope: record.scope }, this.transport)
+    return this.itemSets.client(id)
   }
   async serverDeleteFacts(
     id: string
@@ -923,6 +980,23 @@ export class TokenUi {
     }
   }
   async sync(id: string): Promise<void> {
+    if (this.itemSets.store.get(id)) {
+      if (await this.itemSets.refresh(id)) await this.connectionsChanged()
+      const failures: unknown[] = []
+      for (const item of this.itemSets.store.get(id).items) {
+        if (!item.recordId || item.detached || item.paused) continue
+        try {
+          await this.syncRecord(item.recordId)
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+      if (failures.length) throw new AggregateError(failures, 'Some shared items could not sync')
+      return
+    }
+    await this.syncRecord(id)
+  }
+  private async syncRecord(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (record?.state['abele-sync-token-state:scope-deleted']) throw new Error(SCOPE_DELETED)
     if (record?.state['abele-sync-token-state:server-delete'])
@@ -942,6 +1016,12 @@ export class TokenUi {
     this.refresh()
   }
   async pause(id: string, paused: boolean): Promise<void> {
+    const set = this.itemSets.store.get(id)
+    if (set) {
+      for (const item of set.items)
+        if (!item.detached) await this.itemSets.pauseItem(id, item.id, paused)
+      return
+    }
     const state = this.registry.records().find((one) => one.id === id)?.state
     if (
       state?.['abele-sync-token-state:scope-deleted'] ||
@@ -953,6 +1033,19 @@ export class TokenUi {
     await this.runtimes.get(id)?.pause(paused)
   }
   async disconnect(id: string): Promise<void> {
+    const set = this.itemSets.store.get(id)
+    if (set) {
+      for (const item of [...set.items].sort(
+        (a, b) => Number(a.recordId === id) - Number(b.recordId === id)
+      ))
+        if (item.recordId) await this.disconnectRecord(item.recordId)
+      this.itemSets.store.forget(id)
+      this.refresh()
+      return
+    }
+    await this.disconnectRecord(id)
+  }
+  private async disconnectRecord(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record) return
     // Snapshot authority and policy before waiting; successful exchanges persist
@@ -1009,6 +1102,8 @@ export class TokenUi {
             id: item.file_id,
             path: item.path,
           })
+        if (item.kind !== 'directory')
+          scopes.push({ kind: 'file', id: item.file_id, path: item.path })
       }
       next = page.next
     } while (next !== null)

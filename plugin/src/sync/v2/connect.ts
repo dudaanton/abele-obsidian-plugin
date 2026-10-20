@@ -10,6 +10,7 @@ export async function connectToken(
   transport: typeof fetch
 ): Promise<V2Client> {
   const token = decodeAccessToken(text)
+  if (token.v !== 1) throw new V2ClientError('bad-token')
   if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
   const client = new V2Client(token, transport)
   const authority = await client.connection()

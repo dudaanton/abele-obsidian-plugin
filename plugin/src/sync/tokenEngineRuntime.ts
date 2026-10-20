@@ -67,11 +67,17 @@ import { RESTORE_HEADER, assertResponseGeneration, fenceHostGeneration } from '.
 import type { ScopeRootIssue } from './scopeRoot'
 import { LocalFolderPlacement, LocalPlacementError } from './localFolderPlacement'
 import { verifyFolderSet, type FolderEntries } from './verifyFolderSet'
+import { tokenScope } from './v2/client'
+import { RetainedShareCopies } from './retainedShareCopies'
+import type { ConnectionItem } from './shareSets'
 
 export interface TokenEngineOptions {
   mobile?: boolean
   id: string
   encoded: string
+  item?: string
+  uploadAllowed?(path: string): boolean
+  retainedChanged?(items: ConnectionItem[]): void
   fs: FileSystem
   state: StateStore
   reviews: DeviceReviews
@@ -285,7 +291,8 @@ export class TokenEngineRuntime
     this.localFs = options.fs
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
-    this.token = decodeAccessToken(options.encoded)
+    const decoded = decodeAccessToken(options.encoded)
+    this.token = { ...decoded, scope: tokenScope(decoded, options.item) }
     if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
       options.fs = scopedFileSystem(
         options.fs,
@@ -641,6 +648,7 @@ export class TokenEngineRuntime
       )
     this.client = new V2EngineClient(options.encoded, {
       fetch: transport,
+      item: options.item,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     const hasBlob = this.client.hasBlob.bind(this.client)
@@ -736,7 +744,11 @@ export class TokenEngineRuntime
         }
       }
     }
-    this.client.onRemoval = (_id, path) => options.covers(path)
+    this.client.onRemoval = async (id) => {
+      const entry = await options.state.byFileId(id)
+      if (entry) await new RetainedShareCopies(options.state).remember(entry)
+      return true
+    }
     const manifest = this.client.manifest.bind(this.client)
     this.client.manifest = async (...args) => {
       const page = await manifest(...args)
@@ -747,6 +759,7 @@ export class TokenEngineRuntime
     this.client.changes = async (...args) => {
       const page = await changes(...args)
       this.finishFolderPreparation()
+      await this.publishRetainedCopies()
       return page
     }
     const openVersion = this.client.openVersion.bind(this.client)
@@ -855,6 +868,8 @@ export class TokenEngineRuntime
       client: options.engineClient?.(this.client) ?? this.client,
       fs: new Proxy(options.fs, {
         get: (target, name) => {
+          if (name === Symbol.for('abele.sync.upload-owner-v1'))
+            return (path: string) => options.uploadAllowed?.(path) ?? true
           if (name === 'watch' && target.watch)
             return (notify: (paths: string[]) => void) =>
               target.watch((paths) => {
@@ -1858,6 +1873,7 @@ export class TokenEngineRuntime
     this.assertHeld()
     const result = await scan(this.options.fs, this.options.state, {
       excluded: (path, size) =>
+        (this.options.uploadAllowed && !this.options.uploadAllowed(path)) ||
         this.blocked(path) ||
         !this.client.includes(path) ||
         isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts'),
@@ -1906,6 +1922,67 @@ export class TokenEngineRuntime
     this.assertHeld()
     await this.syncThroughReviews()
     await this.outbox.drain(retryHeld)
+  }
+  private async publishRetainedCopies(): Promise<void> {
+    if (!this.options.retainedChanged) return
+    const items: ConnectionItem[] = []
+    for (const entry of await new RetainedShareCopies(this.options.state).read()) {
+      if (this.client.includes(entry.wirePath)) continue
+      const stat = await this.options.fs.stat(entry.path)
+      if (!stat) continue
+      const fingerprint = await fingerprintFile(this.options.fs, entry.path, sha256)
+      const edited = fingerprint.sha === entry.sha && fingerprint.size === entry.size ? 0 : 1
+      const physical = this.placement?.toLocal(entry.path) ?? entry.path
+      items.push({
+        id: 'retained:' + this.options.id + ':' + entry.fileId,
+        kind: 'file',
+        path: physical,
+        state: { kind: 'detached' },
+        files: 1,
+        edited,
+        kept: !edited && (await this.options.covers(physical)) ? 1 : 0,
+      })
+    }
+    this.options.retainedChanged(items)
+  }
+  async removeRetainedCopy(id: string): Promise<void> {
+    await this.engine.runExclusive(async () => {
+      this.assertHeld()
+      const retained = new RetainedShareCopies(this.options.state)
+      const entry = (await retained.read()).find(
+        (one) => 'retained:' + this.options.id + ':' + one.fileId === id
+      )
+      if (!entry || this.client.includes(entry.wirePath))
+        throw new Error('This file is shared again; its copy is kept')
+      const work = async () => {
+        this.assertHeld()
+        const physical = this.placement?.toLocal(entry.path) ?? entry.path
+        if (await this.options.covers(physical))
+          throw new Error('Another connection still shares this file; its copy is kept')
+        const before = await this.options.fs.stat(entry.path)
+        if (!before) {
+          await retained.forget(entry.fileId)
+          return
+        }
+        const fingerprint = await fingerprintFile(this.options.fs, entry.path, sha256)
+        const latest = await this.options.fs.stat(entry.path)
+        if (
+          fingerprint.sha !== entry.sha ||
+          fingerprint.size !== entry.size ||
+          !latest ||
+          latest.mtime !== before.mtime ||
+          latest.size !== before.size
+        )
+          throw new Error('This file was edited here; its copy is kept')
+        await this.options.fs.remove(entry.path)
+        await retained.forget(entry.fileId)
+      }
+      const placement = Reflect.get(this.options.fs, PLACEMENT) as
+        | ((paths: string[], work: () => Promise<void>, preserve: boolean) => Promise<void>)
+        | undefined
+      await (placement ? placement([entry.path], work, false) : work())
+      await this.publishRetainedCopies()
+    })
   }
   /** A run an approved installation stopped on purpose is not the caller's failure: an
    * offline error while installing (the engine's own `sync stopped` included) waits for the
@@ -2330,6 +2407,7 @@ export class TokenEngineRuntime
   private async applyDirectory(candidate: ExecutableCandidate, fs: FileSystem): Promise<void> {
     const work = async () => {
       const local = new V2EngineClient(this.options.encoded, {
+        item: this.options.item,
         fetch: async (input) => {
           const path = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url

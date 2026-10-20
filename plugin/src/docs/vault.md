@@ -17,6 +17,14 @@ pause flags and detached flags. Detached entries are retained so their local cop
 ledger identities can be kept. Grouping never changes the single-scope registry format and
 does not travel through settings transfer.
 
+Per-item engine records use `abele-sync-item-connections-v1` separately from the legacy
+registry, including file selectors. Each has its own device-secret reference and ledger;
+the grouping records their local record IDs. A downgrade ignores both new keys and can
+still read the original registry. Departure baselines are retained in the item ledger at
+`plugin:retained-share-copies-v1`, after their active entries leave the feed. Explicit copy
+removal compares current bytes with those baselines and preserves edited or otherwise
+covered files. It never sends server deletes.
+
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.
 

@@ -40,6 +40,9 @@
       Deleted here, it leaves the server for that group too.
     </p>
     <p class="abele-server-delete__note">{{ note || t('streamC.ad151a07bc5a6fa5') }}</p>
+    <p v-if="facts.unavailableReason" class="abele-server-delete__error" role="alert">
+      {{ facts.unavailableReason }}
+    </p>
     <p v-if="failure" class="abele-server-delete__error" role="alert">{{ failure }}</p>
     <template #footer>
       <Button :text="t('kit.cancel')" :tooltip="t('kit.cancelTooltip')" @click="close" />

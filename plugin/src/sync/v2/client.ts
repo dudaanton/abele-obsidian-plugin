@@ -5,8 +5,13 @@ import {
   V2_READ_ONLY_CAPABILITY,
   V2DeleteScopeRequestSchema,
   V2DeleteScopeResponseSchema,
+  V2ScopeItemSchema,
+  V2ScopeItemsResponseSchema,
+  V2AddScopeItemRequestSchema,
+  V2RemoveScopeItemResponseSchema,
 } from '@abele/sync-sdk/protocol'
 import * as wire from './contract'
+export type ScopeItem = ReturnType<typeof V2ScopeItemSchema.parse>
 import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-sdk/core'
 import { ShaSchema } from './fileSchemas'
 import {
@@ -41,19 +46,66 @@ export function decodeAccessToken(text: string): wire.V2AccessToken {
     throw new V2ClientError('bad-token')
   }
 }
+export function tokenScope(token: wire.V2AccessToken, item?: string): wire.V2Scope {
+  if (token.v === 1) return token.scope
+  const preview = item === undefined ? token.items[0] : token.items.find((one) => one.id === item)
+  if (!preview) throw new V2ClientError('bad-token')
+  return { kind: preview.kind, id: preview.scope_id, path: preview.path }
+}
 
 /** One authority and one API for root, folder and group tokens. No legacy fallback. */
 export class V2Client {
   private readonly token: wire.V2AccessToken
   constructor(
     token: wire.V2AccessToken,
-    private readonly transport: typeof fetch
+    private readonly transport: typeof fetch,
+    private readonly item?: string
   ) {
     try {
       this.token = wire.V2AccessTokenSchema.parse(token)
     } catch {
       throw new V2ClientError('bad-token')
     }
+  }
+  itemClient() {
+    // Management is key-level; a detached content item must not select its authority.
+    const client = new V2Client(this.token, this.transport)
+    const items = () => client.request('connection/items', V2ScopeItemsResponseSchema)
+    return {
+      items,
+      supportsItems: async () => {
+        try {
+          await items()
+          return true
+        } catch (error) {
+          if (error instanceof V2ClientError && error.status === 404) return false
+          throw error
+        }
+      },
+      tokenItems: (tokenId: string) =>
+        client.request('tokens/' + identifier(tokenId) + '/items', V2ScopeItemsResponseSchema),
+      addItem: (tokenId: string, scope: wire.V2Selector) =>
+        client.request('tokens/' + identifier(tokenId) + '/items', V2ScopeItemSchema, {
+          method: 'POST',
+          body: JSON.stringify(V2AddScopeItemRequestSchema.parse({ scope })),
+        }),
+      removeItem: (tokenId: string, itemId: string) =>
+        client.request(
+          'tokens/' + identifier(tokenId) + '/items/' + identifier(itemId),
+          V2RemoveScopeItemResponseSchema,
+          { method: 'DELETE' }
+        ),
+      deleteItem: (itemId: string, requestId: string) =>
+        client.request(
+          'connection/items/' + identifier(itemId) + '/delete',
+          V2DeleteScopeResponseSchema,
+          { method: 'POST', body: '{}', headers: { 'idempotency-key': requestId } }
+        ),
+    }
+  }
+  /** Owner listing stays behind this port while older item servers lack the route. */
+  ownedItems(tokenId: string) {
+    return this.itemClient().tokenItems(tokenId)
   }
   private async request<T>(
     route: string,
@@ -71,6 +123,7 @@ export class V2Client {
     const headers = new Headers(init.headers)
     headers.set(V2_CAPABILITIES_HEADER, V2_READ_ONLY_CAPABILITY)
     headers.set('Authorization', 'Bearer ' + this.token.key)
+    if (this.item) headers.set('abele-scope-item', this.item)
     if (init.body !== undefined && !headers.has('Content-Type'))
       headers.set('Content-Type', 'application/json')
     let response: Response

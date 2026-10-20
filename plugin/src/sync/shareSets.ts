@@ -96,6 +96,8 @@ export interface ConnectionItem extends ShareItem {
   /** Files of it on this device, and how many of those were changed here. */
   files?: number
   edited?: number
+  /** Unedited files retained because another active item still syncs them. */
+  kept?: number
 }
 
 export type ItemTone = 'green' | 'orange' | 'red' | 'accent' | 'faint'
@@ -185,6 +187,7 @@ export interface ShareSetSource {
   remove: (connectionId: string | undefined, shareId: string, itemId: string) => Promise<void>
   revoke: (connectionId: string | undefined, shareId: string) => Promise<void>
   preview: (token: string) => SharePreview | null
+  resolvePreview?: (token: string, signal: AbortSignal) => Promise<SharePreview>
   pauseItem: (connectionId: string, itemId: string, paused: boolean) => Promise<void>
   followItem: (connectionId: string, itemId: string) => Promise<void>
   removeCopy: (connectionId: string, itemId: string) => Promise<void>

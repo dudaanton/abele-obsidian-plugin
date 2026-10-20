@@ -2,7 +2,7 @@ import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from
 import { connectionPrivateRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
-import { caseKey, encodeAccessToken } from '@abele/sync-sdk/protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import {
   V2EngineClient,
   GENERATION_KEY,
@@ -54,6 +54,10 @@ import { watchScopeRoot } from './scopeRoot'
 import { LocalFolderPlacement } from './localFolderPlacement'
 import { inspectFolder } from './verifyFolderSet'
 import { localGroupCandidates } from './localGroupCandidates'
+import { removeDetachedCopies } from './removeDetachedCopies'
+import { RetainedShareCopies } from './retainedShareCopies'
+import { fingerprintFile } from '@abele/sync-sdk/core'
+import { sha256 } from './external/hash'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -81,6 +85,11 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
+    ui.itemSets.install()
+    ui.itemSets.copyCounts = (id) => this.detachedCopies(id, false)
+    ui.itemSets.removeLocal = async (id) => {
+      await this.detachedCopies(id, true)
+    }
     externalActionsOf.set(app.vault, this)
     this.localFiles = new TokenAttachmentHost(app, (path) =>
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
@@ -237,6 +246,10 @@ export class TokenEngines {
   /** Resume/pocket events share the same engine operations as explicit Sync now. */
   async foreground(visible: boolean): Promise<void> {
     if (this.closed) return
+    if (visible && (await this.ui.itemSets.refreshAll())) {
+      this.start()
+      await this.engines.settled()
+    }
     if (visible) this.presentReviews()
     if (!Platform.isMobile) return
     await Promise.all(
@@ -252,6 +265,12 @@ export class TokenEngines {
   }
   start(): void {
     if (this.closed) return
+    void this.ui.itemSets
+      .refreshAll()
+      .then((changed) => {
+        if (changed && !this.closed) this.start()
+      })
+      .catch((error) => console.debug('[Abele Sync items]', error))
     const teardown = pendingTeardown(this.app)
     const documents = teardown.then(() => activeExternalDocuments(this.app, factoryOf(this.deps)))
     const beforeOpening = documents.then(async (found) => {
@@ -291,6 +310,7 @@ export class TokenEngines {
         (one) =>
           one.secretReference &&
           one.scope &&
+          !this.ui.itemSets.store.forRecord(one.id)?.item.detached &&
           !one.pending &&
           one.status !== 'needs-token' &&
           !one.state['abele-sync-token-state:scope-deleted'] &&
@@ -310,6 +330,10 @@ export class TokenEngines {
   private failed(id: string, error: unknown): void {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const code = (error as { code?: string })?.code
+    if (code === 'forbidden' || code === 'scope_removed')
+      void this.ui.itemSets.refreshAll().then((changed) => {
+        if (changed && !this.closed) this.start()
+      })
     if (code === 'startup-cancelled') return
     if (
       code !== 'scope_deleted' &&
@@ -622,55 +646,44 @@ export class TokenEngines {
       if (ordinary.needsRecoveryHandshake() || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)
-          const client = new V2EngineClient(
-            encodeAccessToken({
-              v: 1,
-              address: record.address,
-              key,
-              scope: record.scope,
-            }),
-            {
-              fetch: async (input, init) => {
-                assertActive()
-                const connection =
-                  new URL(
-                    typeof input === 'string'
-                      ? input
-                      : input instanceof URL
-                        ? input.href
-                        : input.url
-                  ).pathname === '/v2/connection'
-                const headers = new Headers(init?.headers)
-                const expected = await state.getMeta(GENERATION_KEY)
-                if (!connection && expected) headers.set(RESTORE_HEADER, expected)
-                const response = await transport(input, {
-                  ...init,
-                  headers,
-                  signal: startup.signal,
-                })
-                assertActive()
-                if (!connection) assertResponseGeneration(response, expected)
-                if (response.ok && connection) {
-                  const generation = response.headers.get(RESTORE_HEADER)
-                  await fenceHostGeneration(
-                    state,
-                    generation,
-                    (archive) => ordinary.retireGeneration(generation, archive),
-                    async (archive) => {
-                      const reviews = this.ui.reviews?.executables
-                      if (!reviews) return
-                      await archive(
-                        (await reviews.state()).filter((one) => one.source.id === record.id)
-                      )
-                      await reviews.forgetSource(record.id)
-                    }
-                  )
-                  await reconcileGeneration(state, generation ?? undefined)
-                }
-                return response
-              },
-            }
-          )
+          const client = new V2EngineClient(this.ui.itemSets.encoded(record), {
+            item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
+            fetch: async (input, init) => {
+              assertActive()
+              const connection =
+                new URL(
+                  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+                ).pathname === '/v2/connection'
+              const headers = new Headers(init?.headers)
+              const expected = await state.getMeta(GENERATION_KEY)
+              if (!connection && expected) headers.set(RESTORE_HEADER, expected)
+              const response = await transport(input, {
+                ...init,
+                headers,
+                signal: startup.signal,
+              })
+              assertActive()
+              if (!connection) assertResponseGeneration(response, expected)
+              if (response.ok && connection) {
+                const generation = response.headers.get(RESTORE_HEADER)
+                await fenceHostGeneration(
+                  state,
+                  generation,
+                  (archive) => ordinary.retireGeneration(generation, archive),
+                  async (archive) => {
+                    const reviews = this.ui.reviews?.executables
+                    if (!reviews) return
+                    await archive(
+                      (await reviews.state()).filter((one) => one.source.id === record.id)
+                    )
+                    await reviews.forgetSource(record.id)
+                  }
+                )
+                await reconcileGeneration(state, generation ?? undefined)
+              }
+              return response
+            },
+          })
           const head = await client.state()
           await fenceRestoredJournal(state, head.head_seq, ordinary, undefined, client)
           await ordinary.fenceRecovery(state, head.head_seq)
@@ -787,12 +800,25 @@ export class TokenEngines {
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),
           progress: (transfer) => this.ui.publish(record.id, { transfer, comparison: undefined }),
           event: (text) => this.ui.recordEvent(record.id, text),
-          encoded: encodeAccessToken({
-            v: 1,
-            address: record.address,
-            key,
-            scope: record.scope,
-          }),
+          encoded: this.ui.itemSets.encoded(record),
+          item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
+          retainedChanged: (items) => this.ui.itemSets.retainedChanged(record.id, items),
+          uploadAllowed: (path) => {
+            const binding = this.ui.itemSets.store.forRecord(record.id)
+            if (!binding) return true
+            const physical = externalPlacement?.toLocal(path) ?? path
+            const owner = this.ui.itemSets.store.uploader(
+              binding.connection.id,
+              physical,
+              (itemId, candidate) => {
+                const item = binding.connection.items.find((one) => one.id === itemId)
+                return item?.recordId === record.id
+                  ? (runtime?.covers(candidate) ?? false)
+                  : !!item?.recordId && !!this.live.get(item.recordId)?.covers(candidate)
+              }
+            )
+            return owner === binding.item.id
+          },
           discoveryCandidates: (paths) => {
             for (const path of paths) groupCandidates.add(path.normalize('NFC'))
           },
@@ -854,7 +880,9 @@ export class TokenEngines {
                         groups: this.app.metadataCache.getFileCache(file)?.frontmatter?.groups,
                       }))
                     )
-                  : undefined,
+                  : record.scope.kind === 'file'
+                    ? [discoveryScope.path]
+                    : undefined,
               key: await scopeKey(selective, text),
               ignore: ignoreFor(this.app.vault.configDir, text),
             }
@@ -938,6 +966,7 @@ export class TokenEngines {
           restoreRoot: () => runtime.restoreRoot(),
           followRoot: () => runtime.followRoot(),
           followServerRoot: () => runtime.followServerRoot(),
+          removeRetainedCopy: (id) => runtime.removeRetainedCopy(id),
           pause: (paused) => runtime.pause(paused),
           updateSelective: (selective) => runtime.updateSelective(selective),
           opened: (path) => runtime.opened(path),
@@ -1152,6 +1181,10 @@ export class TokenEngines {
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
+    if (report)
+      void this.ui.itemSets.refreshAll().then((changed) => {
+        if (changed && !this.closed) this.start()
+      })
     tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
     if (this.ui.registry.records().find((one) => one.id === id)?.rootIssue) return
     if (
@@ -1267,6 +1300,90 @@ export class TokenEngines {
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(status, report)
   }
   /** Explicit reset/unload cancellation; does not forget records or bypass departure checks. */
+  private async detachedCopies(
+    id: string,
+    remove: boolean
+  ): Promise<{ files: number; edited: number; kept: number }> {
+    const binding = this.ui.itemSets.store.forRecord(id)
+    if (!binding?.item.detached) throw new Error('Only an item no longer shared may lose its copy')
+    const record = this.ui.registry.records().find((one) => one.id === id)
+    if (!record?.scope) throw new Error('Connection is unavailable')
+    await this.ui.connectionChangeGuard(id)
+    await this.engines.remove(id)
+    let active = true
+    const fence = new RuntimeFence(
+      this.app,
+      record.ledgerId,
+      () => active && !!this.ui.itemSets.store.forRecord(id)?.item.detached
+    )
+    let store: IndexedDbStateStore | undefined
+    try {
+      store = await openTokenLedger(factoryOf(this.deps), this.ui.registry, record, () =>
+        fence.assertOwned()
+      )
+      fence.activate()
+      const raw = new ObsidianFileSystem(this.app, { runtimeFence: fence, journalOwner: id })
+      const fs =
+        record.scope.kind === 'folder' && record.scope.path !== '/'
+          ? new LocalFolderPlacement(
+              record.scope.path,
+              record.localRoot ?? record.scope.path
+            ).fileSystem(raw)
+          : raw
+      const placement =
+        record.scope.kind === 'folder' && record.scope.path !== '/'
+          ? new LocalFolderPlacement(record.scope.path, record.localRoot ?? record.scope.path)
+          : null
+      const covered = (path: string) =>
+        [...this.live.values()].some((runtime) => runtime.covers(placement?.toLocal(path) ?? path))
+      const retained = new RetainedShareCopies(store)
+      const copies = new Proxy(store, {
+        get(target, key) {
+          if (key === 'all')
+            return async function* () {
+              const seen = new Set<string>()
+              for await (const entry of target.all()) {
+                seen.add(entry.path)
+                yield entry
+              }
+              for (const entry of await retained.read()) if (!seen.has(entry.path)) yield entry
+            }
+          if (key === 'delete')
+            return async (path: string) => {
+              for (const entry of await retained.read())
+                if (entry.path === path) await retained.forget(entry.fileId)
+              await target.delete(path)
+            }
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+      if (remove)
+        await removeDetachedCopies({
+          fs,
+          state: copies,
+          detached: () => !!this.ui.itemSets.store.forRecord(id)?.item.detached,
+          covered,
+          lease: (path, work) =>
+            pathCoordinatorOf(this.app.vault).run([path], work, () => fence.assertReady()),
+        })
+      let files = 0,
+        edited = 0,
+        kept = 0
+      for await (const entry of copies.all()) {
+        if (!(await fs.stat(entry.path))) continue
+        files++
+        const fingerprint = await fingerprintFile(fs, entry.path, sha256)
+        if (fingerprint.sha !== entry.sha || fingerprint.size !== entry.size) edited++
+        else if (covered(entry.path)) kept++
+      }
+      return { files, edited, kept }
+    } finally {
+      store?.close()
+      active = false
+      fence.release()
+    }
+  }
   cancelStartup(): void {
     for (const cancel of this.startupCancels.values()) cancel()
   }
@@ -1274,6 +1391,7 @@ export class TokenEngines {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
     this.closed = true
+    this.ui.itemSets.uninstall()
     if (externalActionsOf.get(this.app.vault) === this) externalActionsOf.delete(this.app.vault)
     this.cancelStartup()
     this.app.vault.offref(this.renameEvent)

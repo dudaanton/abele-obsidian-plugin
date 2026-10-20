@@ -251,8 +251,8 @@ import { connectionError, scopeName as scopeSource, type TokenUi } from '@/sync/
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
 import type { V2Scope, V2TokenInfo } from '@/sync/v2/contract'
-import { decodeAccessToken } from '@/sync/v2/client'
-import { itemGlyph, itemName, itemPlace, shareSetSource } from '@/sync/shareSets'
+import { decodeAccessToken, tokenScope } from '@/sync/v2/client'
+import { itemGlyph, itemName, itemPlace, shareSetSource, type SharePreview } from '@/sync/shareSets'
 const props = defineProps<{
   ui: TokenUi
   mode: 'connect' | 'share' | 'review' | 'attachment' | 'disconnect'
@@ -315,14 +315,36 @@ const content = computed(() =>
 )
 const preview = computed(() => {
   try {
-    return decodeAccessToken(text.value)
+    const token = decodeAccessToken(text.value)
+    return { ...token, scope: tokenScope(token) }
   } catch {
     return null
   }
 })
+const resolvedPreview = ref<SharePreview | null>(null)
 const setPreview = computed(() =>
-  preview.value ? (shareSetSource.value?.preview(text.value) ?? null) : null
+  preview.value
+    ? (resolvedPreview.value ?? shareSetSource.value?.preview(text.value) ?? null)
+    : null
 )
+watch(text, async (value, _, cleanup) => {
+  resolvedPreview.value = null
+  const source = shareSetSource.value
+  if (!source?.resolvePreview) return
+  try {
+    if (decodeAccessToken(value).v !== 2) return
+  } catch {
+    return
+  }
+  const controller = new AbortController()
+  cleanup(() => controller.abort())
+  try {
+    const current = await source.resolvePreview(value, controller.signal)
+    if (alive && !controller.signal.aborted) resolvedPreview.value = current
+  } catch {
+    /* Connect still checks authority and reports an actionable error. */
+  }
+})
 const time = (value: number) =>
   new Date(value).toLocaleString(
     currentLocale().language === 'en' ? undefined : currentLocale().format

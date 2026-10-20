@@ -124,7 +124,7 @@ import SelectiveSync from '../settings/sync/SelectiveSync.vue'
 import ConnectionEvents from './ConnectionEvents.vue'
 import ConnectionItems from './ConnectionItems.vue'
 import RemoveCopyModal from './RemoveCopyModal.vue'
-import { setTitle, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
+import { setTitle, setTone, setLine, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
 import { connectionName, type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
@@ -202,9 +202,24 @@ const name = computed(() =>
 )
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() =>
-  row.value ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen) : ''
+  setItems.value?.[0]?.state.kind === 'detached'
+    ? setLine(
+        setItems.value,
+        setItems.value.every((item) => item.state.kind === 'detached')
+          ? 'No longer shared · copy kept'
+          : 'Synced'
+      )
+    : row.value
+      ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen)
+      : ''
 )
-const tone = computed(() => (row.value ? connectionTone(row.value, activity.value) : 'faint'))
+const tone = computed(() =>
+  setItems.value
+    ? setTone(setItems.value)
+    : row.value
+      ? connectionTone(row.value, activity.value)
+      : 'faint'
+)
 const progress = computed(() => connectionProgress(activity.value))
 const counts = computed(() => {
   const one = activity.value
