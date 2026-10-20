@@ -698,6 +698,8 @@ export class NodePathModel {
   async select(id: string): Promise<void> {
     if (this.folders.value.some((folder) => folder.id === id && folder.missing)) {
       ++this.selectionGeneration
+      ++this.branchGeneration
+      this.panelBranch.value = undefined
       this.stopWatch?.()
       this.stopWatch = undefined
       this.selected.value = id

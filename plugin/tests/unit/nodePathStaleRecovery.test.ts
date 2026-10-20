@@ -305,11 +305,13 @@ it('selects an unavailable registered folder without a workspace identity after 
     capabilities: [],
   } as never)
   await model.refresh()
+  model.panelBranch.value = { state: { branch: 'previous-topic' } } as never
   await model.select(rootFolder.id)
   expect(model.current.value).toBeUndefined()
   expect(model.currentFolder.value?.id).toBe(rootFolder.id)
   expect(model.unavailable.value).toBe(true)
   expect(model.error.value).toBe('repository_unavailable')
+  expect(model.panelBranch.value).toBeUndefined()
   expect(port.inspect).not.toHaveBeenCalled()
   expect(port.watch).not.toHaveBeenCalled()
   model.destroy()
