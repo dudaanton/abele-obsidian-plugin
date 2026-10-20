@@ -197,7 +197,7 @@ export async function openNodeFileDestination(
       if (
         !old.success ||
         old.data.kind !== 'file' ||
-        typeof old.data.stage === 'object' ||
+        (typeof old.data.stage === 'object' && !old.data.edit) ||
         old.data.path !== state.path ||
         !sameTarget(old.data.target, state.target)
       )
@@ -212,6 +212,7 @@ export async function openNodeFileDestination(
     state: {
       ...state,
       ...(retained ? { target: retained.target } : {}),
+      ...(retained?.edit ? { edit: true } : {}),
       ...(retained?.stage ? { stage: retained.stage } : {}),
       ...(retained?.debug
         ? { debug: { ...retained.debug, ...(state.line ? { line: state.line } : {}) } }

@@ -210,17 +210,27 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       await search(shell, 'mapped-source')
       await checkTools(shell, 'mapped-source')
       await closeFile()
-      await node.open(ids.session, 'Source links')
-      await evalLong(`(async()=>{${prelude}
-        await chats.revealSidebar({focus:false});await until(()=>chat()?.querySelector('a'),'Chat source link');[...chat().querySelectorAll('a')].find(a=>a.textContent==='Source').click();await until(()=>file()?.querySelector('[data-node-find]'),'Ordinary file');
+      for (const comparison of [false, true]) {
+        if (comparison) {
+          await evalLong(`(async()=>{${prelude}
+            const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:{kind:'committed',base:'HEAD~1'}}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('[data-node-find]'),'Committed comparison');return 'comparison file'})()`)
+        } else {
+          await node.open(ids.session, 'Source links')
+          await evalLong(
+            `(async()=>{${prelude}await chats.revealSidebar({focus:false});await until(()=>chat()?.querySelector('a'),'Chat source link');[...chat().querySelectorAll('a')].find(a=>a.textContent==='Source').click();await until(()=>file()?.querySelector('[data-node-find]'),'Ordinary file');return 'source file'})()`
+          )
+        }
+        await evalLong(`(async()=>{${prelude}
         const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file())),edit=leaf.containerEl.querySelector('.view-action[aria-label="Edit the file"]');if(edit)edit.click();else{const menu=leaf.containerEl.querySelector('.view-action.mod-more-options, .view-action[aria-label="More options"]');if(!menu)throw Error('File view menu missing');menu.click();await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Edit the file')),'Edit menu action');[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Edit the file')).click()}
         await until(()=>file()?.querySelector('.cm-content')?.contentEditable==='true','Editable file');return 'edit ordinary file'})()`)
-      await search(shell, 'edited-file')
-      await evalLong(`(async()=>{${prelude}
+        const entry = comparison ? 'edited-comparison' : 'edited-file'
+        await search(shell, entry)
+        await evalLong(`(async()=>{${prelude}
         const leaves=app.workspace.getLeavesOfType('abele-node-file'),leaf=leaves.find(l=>l.view.contentEl.contains(file())),repos=app.workspace.getLeavesOfType('abele-github').length,row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:box.left+box.width/2,clientY:box.top+box.height/2,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin'}));
         await until(()=>leaf.view.getState().line===1&&file()?.querySelector('.abele-github-code__line_target'),'Definition inside edited file');if(!leaf.view.getState().edit||app.workspace.getLeavesOfType('abele-node-file').length!==leaves.length||app.workspace.getLeavesOfType('abele-github').length!==repos)throw Error('Edited definition replaced the editor or opened another tab');return 'edited definition'})()`)
-      await capture(`${shell}-edited-file-definition`)
-      await closeFile()
+        await capture(`${shell}-${entry}-definition`)
+        await closeFile()
+      }
     }
     await scenario(shell)
   } finally {

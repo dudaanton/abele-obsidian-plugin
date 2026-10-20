@@ -131,6 +131,17 @@ it('provides target-bound navigation and the destination line to the edited-file
   await vi.waitFor(() => expect((view as any).file?.document.value).toBeDefined())
   const navigate = fixture.root.provide?.[FILE_NAVIGATION as symbol]
   expect(navigate).toBeTypeOf('function')
+  const comparisonLink = nodeRepositoryLink(
+    {
+      provider: 'node',
+      installation: 'sample-installation',
+      node: target.registrationId,
+      project: target.projectId,
+      workspace: target.id,
+    },
+    { kind: 'file', ref: 'a'.repeat(40), path: 'sample.ts', lines: { from: 2, to: 2 } }
+  )
+  expect(navigate(comparisonLink)).toBe(false)
   expect(
     navigate(
       nodeRepositoryLink(
@@ -155,6 +166,8 @@ it('provides target-bound navigation and the destination line to the edited-file
   ;(view as any).editing.editor.value = { draftDirty: shallowRef(false) }
   ;(view as any).editing.active.value = true
   expect(fixture.root.render().props.line).toBe(2)
+  expect(navigate(comparisonLink)).toBe(true)
+  await vi.waitFor(() => expect(fixture.openFile).toHaveBeenCalledTimes(2))
 })
 
 it('reveals a cited range in the whole file even when the existing tab shows a diff', async () => {

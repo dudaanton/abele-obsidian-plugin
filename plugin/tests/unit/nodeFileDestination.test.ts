@@ -40,6 +40,21 @@ it('does not replace an open historical file with a working-file destination', a
     expect.objectContaining({ state: expect.not.objectContaining({ stage: expect.anything() }) })
   )
 })
+it('retains a working draft opened from a committed comparison', async () => {
+  const stage = { kind: 'committed', base: 'sample-base' }
+  const current = leaf({ ...state, stage, edit: true } as never)
+  const workspace = {
+    getMostRecentLeaf: () => current,
+    getLeavesOfType: () => [current],
+    getLeaf: vi.fn(),
+    revealLeaf: vi.fn(async () => {}),
+  }
+  await openNodeFileDestination(workspace as never, { ...state, line: 3 }, false)
+  expect(workspace.getLeaf).not.toHaveBeenCalled()
+  expect(current.setViewState).toHaveBeenCalledWith(
+    expect.objectContaining({ state: expect.objectContaining({ stage, edit: true, line: 3 }) })
+  )
+})
 it('jumps within the current file without losing its debug mapping or rereading a staged document', async () => {
   const debug = {
     conversationId: 'sample-chat',

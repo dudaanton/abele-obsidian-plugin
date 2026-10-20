@@ -404,7 +404,11 @@ export class NodePathMainView extends ItemView {
       const root = {
         provide: {
           [FILE_NAVIGATION as symbol]: (url: string) => {
-            const destination = fileNavigation(state.target, url)
+            const destination = fileNavigation(
+              state.target,
+              url,
+              editing.active.value ? repositoryRef.value : undefined
+            )
             if (!destination) return false
             this.act(() =>
               openNodeFileDestination(this.app.workspace, destination, Platform.isMobile)

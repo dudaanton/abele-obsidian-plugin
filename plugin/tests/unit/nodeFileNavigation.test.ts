@@ -68,3 +68,9 @@ it('leaves historical and other workspace links in the repository viewer', () =>
     )
   ).toBeUndefined()
 })
+it('treats only the editor origin ref as current when editing began from a committed comparison', () => {
+  const ref = 'a'.repeat(40)
+  const link = nodeRepositoryLink(source, { kind: 'file', ref, path: 'sample.ts' })
+  expect(fileNavigation(target, link, ref)).toMatchObject({ kind: 'file', path: 'sample.ts' })
+  expect(fileNavigation(target, link, 'b'.repeat(40))).toBeUndefined()
+})

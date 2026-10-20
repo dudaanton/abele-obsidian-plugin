@@ -8,7 +8,9 @@ export const FILE_NAVIGATION: InjectionKey<(url: string) => boolean> =
 /** Working-file navigation stays in the file surface; historical links keep their revision. */
 export function fileNavigation(
   target: PathTarget,
-  url: string
+  url: string,
+  /** An edited draft can have been opened from this committed comparison. */
+  editorOriginRef?: string
 ): Extract<NodePathTabState, { kind: 'file' }> | undefined {
   const link = parseNodeRepositoryLink(url)
   if (
@@ -21,7 +23,8 @@ export function fileNavigation(
     !(
       link.revision?.kind === 'working-tree' ||
       link.location.ref.startsWith('working-') ||
-      link.location.ref === 'WORKTREE'
+      link.location.ref === 'WORKTREE' ||
+      (editorOriginRef !== undefined && link.location.ref === editorOriginRef)
     )
   )
     return
