@@ -7,6 +7,7 @@ import { fixtureFetch } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
 import { driver, phoneHome, screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
+import { createServerFolder } from './helpers/syncServerFolder'
 
 targets('phone')
 const fixture = liveSuite(false)
@@ -42,11 +43,9 @@ it('multi-scope S7: scan three items, pick up an addition on foreground and reta
   const owner = new V2Client(decodeAccessToken(s.server.rootToken), fixtureFetch)
   const tokenId = (await api.connection()).token_id
   const initial = (await api.itemClient().items()).items
-  const addedPath = s.root + '/Added while away/arrived.md'
+  const addedFolder = await createServerFolder(s, s.root + '/Added while away')
+  const addedPath = addedFolder.path + '/arrived.md'
   await s.put(addedPath, 'arrived on foreground')
-  const addedFolder = (await s.items()).find(
-    (item) => item.kind === 'directory' && item.path === s.root + '/Added while away'
-  )!
   try {
     phoneHome()
     await owner.itemClient().addItem(tokenId, { kind: 'folder', id: addedFolder.file_id })
