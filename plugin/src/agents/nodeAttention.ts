@@ -59,7 +59,7 @@ export function delegationAttentionRows(
           ? 'running'
           : card.state === 'completed'
             ? 'done'
-            : ['failed', 'unknown', 'cancelled'].includes(card.state)
+            : ['failed', 'unknown', 'cancelled', 'stopped'].includes(card.state)
               ? 'interrupted'
               : 'delivery'
       return {

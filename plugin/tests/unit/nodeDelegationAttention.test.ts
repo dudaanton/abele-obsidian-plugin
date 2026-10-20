@@ -19,3 +19,18 @@ it('lists working, waiting and finished node developers once by their task title
   expect(rows[1].reasons[0].kind).toBe('running')
   expect(rows[2].reasons[0].kind).toBe('done')
 })
+
+it('classifies a deadline-paused developer as interrupted rather than uncertain delivery', () => {
+  const rows = delegationAttentionRows(
+    [
+      {
+        ...nodeDelegationCardFixture(),
+        state: 'stopped',
+        reason: 'time_limit',
+        pendingHumanPrompts: 0,
+      },
+    ],
+    { id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }
+  )
+  expect(rows[0].reasons[0].kind).toBe('interrupted')
+})
