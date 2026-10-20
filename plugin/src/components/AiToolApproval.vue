@@ -237,6 +237,13 @@
     <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">
       {{ parseError }}
     </div>
+    <Button
+      v-if="nodePrompt && answerState"
+      class="abele-tool-approval__stop"
+      :text="t('streamB.stop.cae7d5')"
+      :disabled="disabled"
+      @click="stop"
+    />
     <div v-if="!nodePrompt || !answerState" class="abele-tool-approval__actions">
       <Button
         :text="t('streamB.deny.05a2d7')"
