@@ -8,6 +8,7 @@ import {
 } from '@/i18n/streamBErrors'
 
 import { reactive } from 'vue'
+import { compileQuery } from '@/github/search/textSearch'
 import type {
   NodeClient,
   RepositoryClient,
@@ -990,6 +991,7 @@ export class NodeRepositorySource implements RepositorySource {
     )
     const files = new Map<string, CodeResults['files'][number]>(),
       ref = this.remember(revision)
+    const expression = compileQuery(q)
     for (const match of page.entries) {
       if (match.content_id) this.rememberContent(ref, match.path, match.content_id)
       let file = files.get(match.path)
@@ -997,14 +999,17 @@ export class NodeRepositorySource implements RepositorySource {
         file = { path: match.path, url: this.navigation.file(ref, match.path), lines: [] }
         files.set(match.path, file)
       }
-      if (match.line)
+      if (match.line) {
+        expression.lastIndex = 0
+        const highlight = expression.exec(match.text)
         file.lines.push({
           label: String(match.line),
           text: match.text,
-          column: 0,
-          length: 0,
+          column: highlight?.index ?? 0,
+          length: highlight?.[0].length ?? 0,
           url: this.navigation.file(ref, match.path, match.line),
         })
+      }
     }
     this.assertCurrent()
     return {

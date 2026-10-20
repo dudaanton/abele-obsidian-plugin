@@ -377,6 +377,28 @@ describe('node repository source through the validated client contract', () => {
     const commits = await source.compare(BASE, HEAD, true)
     expect(commits.commits.map((c) => c.sha)).toEqual([HEAD])
   })
+  it('highlights a returned match in an ordinary file tab code search', async () => {
+    const { source, client } = fixture()
+    vi.spyOn(client.repository, 'search').mockResolvedValue({
+      entries: [{ path: 'sample.ts', line: 9, text: 'the Needle here', content_id: null }],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
+    const result = await source.search({
+      ref: WORKING_TREE,
+      scope: 'repo',
+      query: { text: 'needle' },
+      glob: '',
+      limitBytes: 1024,
+    })
+    expect(result.files[0].lines[0]).toMatchObject({
+      label: '9',
+      text: 'the Needle here',
+      column: 4,
+      length: 6,
+    })
+  })
   it('runs regex/changed search on the node and reports incomplete coverage', async () => {
     const { source, calls } = fixture()
     const results = await source.search({
