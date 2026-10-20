@@ -17,6 +17,14 @@ export const de = {
   'node.lsp.noDiagnostics': 'Keine Diagnosen',
   'node.lsp.references': 'Verwendungen von {name} suchen',
 
+  'node.actionDeniedByOwner': 'Der Benutzer hat diese Aktion abgelehnt',
+  'streamB.runSummary.move.done': 'Verschoben',
+  'streamB.runSummary.move.running': 'Verschieben',
+  'streamB.runSummary.move.waiting': 'Verschieben angefragt',
+  'node.disconnectTokenNotice':
+    'Die gespeicherte Verbindung dieses Geräts entfernen? Der Schlüssel auf dem Knoten bleibt gültig. Widerrufe den Geräteschlüssel in der Token-Liste des Knotens, um weiteren Zugriff damit zu verhindern.',
+  'node.error.requestMissing': 'Diese Anfrage ist nicht mehr auf dem Knoten vorhanden.',
+  'debug.frameSourceUnavailable': 'Für diesen Frame ist in diesem Ordner kein Quellcode verfügbar.',
   'node.files.directoryDeleteSummary': 'Ordner {path} mit {files} in {folders} löschen?',
   'node.files.directoryMoveSummary':
     'Ordner {path} mit {files} in {folders} nach {destination} verschieben?',

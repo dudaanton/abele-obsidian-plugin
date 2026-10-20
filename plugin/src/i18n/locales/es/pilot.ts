@@ -17,6 +17,15 @@ export const es = {
   'node.lsp.noDiagnostics': 'Sin diagnósticos',
   'node.lsp.references': 'Buscar referencias a {name}',
 
+  'node.actionDeniedByOwner': 'El usuario rechazó esta acción',
+  'streamB.runSummary.move.done': 'Movido',
+  'streamB.runSummary.move.running': 'Moviendo',
+  'streamB.runSummary.move.waiting': 'Movimiento solicitado',
+  'node.disconnectTokenNotice':
+    '¿Eliminar la conexión guardada de este dispositivo? Su clave seguirá activa en el nodo. Revoca la clave del dispositivo en la lista de tokens del nodo para impedir que siga accediendo con ella.',
+  'node.error.requestMissing': 'Esta solicitud ya no está en el nodo.',
+  'debug.frameSourceUnavailable':
+    'No hay código fuente disponible para este marco en esta carpeta.',
   'node.files.directoryDeleteSummary': '¿Eliminar la carpeta {path} con {files} en {folders}?',
   'node.files.directoryMoveSummary':
     '¿Mover la carpeta {path} con {files} en {folders} a {destination}?',

@@ -15,6 +15,14 @@ export const en = {
   'node.lsp.noDiagnostics': 'No diagnostics',
   'node.lsp.references': 'Find references to {name}',
 
+  'node.actionDeniedByOwner': 'User rejected this action',
+  'streamB.runSummary.move.done': 'Moved',
+  'streamB.runSummary.move.running': 'Moving',
+  'streamB.runSummary.move.waiting': 'Asked to move',
+  'node.disconnectTokenNotice':
+    'Remove this device’s saved connection? This does not revoke its key on the node. Revoke that device key in the node’s token list to prevent further access with it.',
+  'node.error.requestMissing': 'This request is no longer on the node.',
+  'debug.frameSourceUnavailable': 'This frame has no source available in this folder.',
   'node.files.directoryDeleteSummary': 'Delete folder {path} with {files} in {folders}?',
   'node.files.directoryMoveSummary':
     'Move folder {path} with {files} in {folders} to {destination}?',

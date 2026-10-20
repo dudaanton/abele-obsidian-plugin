@@ -16,6 +16,14 @@ export const lv = {
   'node.lsp.noDiagnostics': 'Nav diagnostikas ziņojumu',
   'node.lsp.references': 'Meklēt {name} lietojumus',
 
+  'node.actionDeniedByOwner': 'Lietotājs noraidīja šo darbību',
+  'streamB.runSummary.move.done': 'Pārvietots',
+  'streamB.runSummary.move.running': 'Pārvieto',
+  'streamB.runSummary.move.waiting': 'Pieprasīta pārvietošana',
+  'node.disconnectTokenNotice':
+    'Noņemt šīs ierīces saglabāto savienojumu? Tās atslēga mezglā paliks aktīva. Lai liegtu turpmāku piekļuvi ar šo atslēgu, atsauciet ierīces atslēgu mezgla tokenu sarakstā.',
+  'node.error.requestMissing': 'Šī pieprasījuma mezglā vairs nav.',
+  'debug.frameSourceUnavailable': 'Šim kadram šajā mapē nav pieejams pirmkods.',
   'node.files.directoryDeleteSummary': 'Dzēst mapi {path} ar {files} un {folders}?',
   'node.files.directoryMoveSummary':
     'Pārvietot mapi {path} ar {files} un {folders} uz {destination}?',
