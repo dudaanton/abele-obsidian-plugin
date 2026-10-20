@@ -14,7 +14,7 @@ const probe = (screen: string) => `(async () => {
   const collapsed = app.workspace.rightSplit.collapsed
   const root = 'SampleVaultChatLifecycle'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-  const until = async fn => { for (let i=0; i<100; i++) { if (fn()) return; await wait(50) } throw Error('Sample chat state timed out') }
+  const until = async (fn, stage = 'chat') => { for (let i=0; i<100; i++) { if (fn()) return; await wait(50) } throw Error('Sample state timed out: ' + stage) }
   const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, failed: false, stopped: false, permission: false, changes: false, scope: false, runFits: false, quoteWidth: 0 }
   let session
   const shot = async name => {
@@ -101,19 +101,23 @@ const probe = (screen: string) => `(async () => {
     report.changes = !!document.querySelector('.abele-chat-artifacts__changes')
     await shot('files')
     document.querySelector('.modal-close-button')?.click()
-    await until(() => !document.querySelector('.abele-chat-artifacts'))
+    await until(() => !document.querySelector('.abele-chat-artifacts'), 'files closed')
     session.scopeResolver.setFullVaultAccess(false)
     document.querySelector('.abele-ai-chat__overflow .abele-obsidian-icon').click()
-    await until(() => [...document.querySelectorAll('.menu-item')].some(el => el.textContent.trim() === 'Access, tools and chat settings'))
+    await until(() => [...document.querySelectorAll('.menu-item')].some(el => el.textContent.trim() === 'Access, tools and chat settings'), 'setup menu')
     ;[...document.querySelectorAll('.menu-item')].find(el => el.textContent.trim() === 'Access, tools and chat settings').click()
-    await until(() => document.querySelector('.abele-scope-mgr__field input'))
+    await until(() => document.querySelector('.abele-scope-mgr__field input'), 'scope field')
     const scopeInput = document.querySelector('.abele-scope-mgr__field input')
     scopeInput.focus(); scopeInput.value = root
     scopeInput.dispatchEvent(new Event('input', { bubbles: true }))
-    await until(() => [...document.querySelectorAll('.suggestion-container')].some(el => el.textContent.includes(root)))
+    await until(() => [...document.querySelectorAll('.suggestion-container')].some(el => el.textContent.includes(root)), 'scope suggestions')
     report.scope = true
     await shot('scope-suggestions')
-  } catch (error) { report.error = String(error.message ?? error) }
+  } catch (error) {
+    report.error = String(error.message ?? error)
+    report.scopeState = { fullVault: session?.scopeResolver.fullVaultAccess.value, input: document.querySelector('.abele-scope-mgr__field input')?.value, suggestions: [...document.querySelectorAll('.suggestion-container')].map(el => el.textContent.slice(0, 300)), modal: document.querySelector('.modal')?.textContent.slice(0, 1000) }
+    await shot('error')
+  }
   finally {
     document.querySelector('.modal-close-button')?.click()
     if (session) { session.abort(); await chats.deleteChat(session.id) }

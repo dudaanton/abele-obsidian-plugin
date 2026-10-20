@@ -119,6 +119,20 @@ export function runSummary(calls: readonly ChatMessage[]): string {
       if (call.toolStatus !== 'rejected') adjacent.push(call)
       else {
         flush()
+        if (
+          call.toolExecution === 'interrupted' ||
+          (call.toolExecution === 'not-run' && call.toolResult === undefined)
+        ) {
+          const label = t(
+            call.toolExecution === 'interrupted'
+              ? 'streamB.interrupted.d512d9'
+              : 'streamB.notRun.b4a984'
+          )
+          parts.push(
+            `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${readableToolName(call.toolName)}`
+          )
+          continue
+        }
         parts.push(
           t(call.toolExecution === 'not-run' ? 'streamB.actionDenied' : 'streamB.actionFailed', {
             action: readableToolName(call.toolName),

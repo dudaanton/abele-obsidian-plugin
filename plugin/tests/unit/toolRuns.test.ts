@@ -13,6 +13,18 @@ it('uses human names for short vault tool identifiers', () => {
 })
 
 let n = 0
+it('does not describe interrupted or unstarted calls as tool failures', () => {
+  expect(
+    runSummary([
+      call('edit', { toolStatus: 'rejected', toolExecution: 'interrupted', toolResult: undefined }),
+    ])
+  ).toBe('Interrupted: Edit')
+  expect(
+    runSummary([
+      call('edit', { toolStatus: 'rejected', toolExecution: 'not-run', toolResult: undefined }),
+    ])
+  ).toBe('Not run: Edit')
+})
 it('keeps adjacent successful actions counted beside a denied action', () => {
   expect(
     runSummary([
