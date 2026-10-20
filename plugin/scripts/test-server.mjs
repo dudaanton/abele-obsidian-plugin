@@ -4,7 +4,9 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { verifySyncFixture, verifySyncInputs } from './verify-sync-inputs.mjs'
+import { verifySyncFixture } from './sync-server-fixture.mjs'
+import { verifySyncSdkInputs } from './verify-sync-sdk.mjs'
+import { locateSyncRepository } from './sync-repository.mjs'
 import {
   serverTestFixtures,
   serverTestFixtureRevisions,
@@ -44,7 +46,7 @@ export function selectServerTests(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  verifySyncInputs()
+  verifySyncSdkInputs()
   const commit = SERVER_TEST_COMMIT
   const { repository, files, variables } = selectServerTests(process.argv.slice(2))
   const env = { ...process.env },
@@ -52,13 +54,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const variable of variables) {
     const expected = serverTestFixtureRevisions[variable] ?? commit
     let fixture = env[variable] || (expected === commit ? env.ABELE_SYNC_DIR : undefined)
-    if (!fixture && repository) {
+    if (!fixture) fixture = locateSyncFixture(scratch, expected)
+    if (!fixture) {
+      const sourceRepository = locateSyncRepository(
+        repository ? { env: { ABELE_SYNC_REPOSITORY: repository } } : undefined
+      )
       fixture = built.get(expected)
       if (!fixture) {
         // Export exact committed source, never use the repository's mutable dist.
         const output = execFileSync(
           process.execPath,
-          [join(plugin, 'scripts/vendor-sync.mjs'), resolve(repository), expected, 'fixture'],
+          [join(plugin, 'scripts/prepare-sync-fixture.mjs'), sourceRepository, expected],
           { cwd: plugin, encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'] }
         )
         process.stdout.write(output)

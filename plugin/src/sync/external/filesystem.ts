@@ -1,5 +1,5 @@
 import { sha256 } from './hash'
-import { type ChunkSource } from '@abele/sync-core'
+import { type ChunkSource } from '@abele/sync-sdk/core'
 import { OwnedArtifactSchema, type ExternalOperation } from './records'
 import type { ExternalReservation } from './coordination'
 

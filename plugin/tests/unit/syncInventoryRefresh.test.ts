@@ -9,8 +9,8 @@ import {
   scan,
   sha256,
   type EngineClient,
-} from '@abele/sync-core'
-import { CommitOpSchema } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 
 it.each([
   ['watch-first', 1234.75],

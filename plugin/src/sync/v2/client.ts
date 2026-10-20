@@ -5,9 +5,9 @@ import {
   V2_READ_ONLY_CAPABILITY,
   V2DeleteScopeRequestSchema,
   V2DeleteScopeResponseSchema,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 import * as wire from './contract'
-import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-core'
+import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-sdk/core'
 import { ShaSchema } from './fileSchemas'
 import {
   UploadBeginRequestSchema,

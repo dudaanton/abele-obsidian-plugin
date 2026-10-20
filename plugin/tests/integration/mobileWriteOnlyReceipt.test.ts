@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
-import { downloadToStage, TransferBudget } from '@abele/sync-core'
+import { downloadToStage, TransferBudget } from '@abele/sync-sdk/core'
 import { sha256 as incremental } from '@noble/hashes/sha2'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'

@@ -1,7 +1,7 @@
 import type { LocalStorage } from '@/sync/ledgerId'
 import { CONNECTION_KEY, inspectConnection } from '@/sync/connection'
 import type { ScriptBinding } from './ScriptProvenance'
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { LEDGER_KEY } from '@/sync/ledgerId'
 import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
 import {

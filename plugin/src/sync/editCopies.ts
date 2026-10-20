@@ -7,7 +7,7 @@ import {
   fingerprintFile,
   receiveToStage,
   TransferBudget,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { ConnectionRegistry, REGISTRY_KEY } from './connectionRegistry'
 import type { LocalStorage } from './ledgerId'
 import { PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'

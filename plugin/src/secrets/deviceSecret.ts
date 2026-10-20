@@ -4,7 +4,7 @@
  * `data.json` can write, so the road checks the name rather than trusting it — pointed at a
  * provider's key, it would otherwise send that key to a server and delete it on Disconnect.
  */
-import { normalizeServerUrl, serverUrlProblem, PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem, PLAIN_HTTP_REFUSED } from '@abele/sync-sdk/protocol'
 
 /** Identity comparison is separate from transport policy; legacy plain HTTP is never sent. */
 function bindingServer(server: string): string | null {

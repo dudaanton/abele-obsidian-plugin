@@ -22,4 +22,4 @@ export function requireLargeUploadHead(
     throw new Error(`Expected an uploaded file at ${path}; server manifest contains a directory`)
   return head
 }
-import type { V2ManifestItem } from '@abele/sync-protocol'
+import type { V2ManifestItem } from '@abele/sync-sdk/protocol'

@@ -1,5 +1,5 @@
-import { AccessClient } from '@abele/sync-core'
-import { decodeAccessToken } from '@abele/sync-protocol'
+import { AccessClient } from '@abele/sync-sdk/core'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 import { fixtureTlsFetch, syncFixtureTls } from './syncFixtureTls'
 export const fixtureFetch: typeof fetch = (input, init) =>
   String(input instanceof Request ? input.url : input).startsWith('https:')
@@ -13,7 +13,7 @@ import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
-import { verifySyncFixture } from '../../../scripts/verify-sync-inputs.mjs'
+import { verifySyncFixture } from '../../../scripts/sync-server-fixture.mjs'
 import { locateSyncRepository } from '../../../scripts/sync-repository.mjs'
 
 /** Missing or unbuilt pinned fixture is a setup failure. */
@@ -23,7 +23,7 @@ export class SiblingUnavailableError extends Error {}
  * Only the explicit clean-archive ABELE_SYNC_DIR fixture; its provenance must match the
  * pinned plugin packages. Missing input is a failure, not sibling resolution or a skip.
  */
-export const siblingRepositoryPath = locateSyncRepository(resolve(__dirname, '../../..'))
+export const siblingRepositoryPath = locateSyncRepository()
 const SIBLING = process.env.ABELE_SYNC_DIR ? resolved(process.env.ABELE_SYNC_DIR) : ''
 /**
  * The path with its links followed. In a worktree the sibling is reached through a symlink, and

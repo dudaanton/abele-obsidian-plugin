@@ -9,7 +9,7 @@
  * memory with a table nobody reads.
  *
  * The daemon's `history --diff` prints the same diff from the same algorithm, and this is that
- * file copied rather than imported: `@abele/sync-core` is the engine two hosts share, and how
+ * file copied rather than imported: `@abele/sync-sdk/core` is the engine two hosts share, and how
  * a host draws a change for a person to read is not part of it. A fix to one belongs in both.
  *
  * Which is also why the fourteen `!` assertions below are still here. The daemon compiles under

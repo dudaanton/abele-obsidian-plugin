@@ -25,11 +25,11 @@ import {
   type ContentIdentity,
   type ChunkSource,
   type SourceStamp,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from './boundedVaultIo'
 import { nativeDiagnostics } from './nativeDiagnostics'
 import type { JournalEntry } from './writeJournal'
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
 import { stagingDirectory } from './stagingDirectory'

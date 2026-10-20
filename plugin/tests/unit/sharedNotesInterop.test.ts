@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import * as shared from '@abele/notes'
+import * as shared from '@abele/sync-sdk/notes'
 import dayjs from '@/helpers/dateLibrary'
 import parseFrontmatter from '@/helpers/noteFrontmatter'
 import { loadCalendarYaml, dumpCalendarYaml } from '@/helpers/yamlDates'

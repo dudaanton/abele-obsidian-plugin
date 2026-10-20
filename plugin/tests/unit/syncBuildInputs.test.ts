@@ -2,7 +2,8 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
-import { verifySyncFixture, verifySyncInputs } from '../../scripts/verify-sync-inputs.mjs'
+import { verifySyncFixture } from '../../scripts/sync-server-fixture.mjs'
+import { verifySyncSdkInputs } from '../../scripts/verify-sync-sdk.mjs'
 import { SERVER_TEST_COMMIT } from '../../scripts/server-test-fixtures.mjs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -25,31 +26,18 @@ describe('reproducible sync build inputs', () => {
   }
 
   it('accepts the selected archive, lockfile and installed payload', () => {
-    expect(verifySyncInputs(plugin).commit).toBe('b0ed82060937d210f14838456d51fbe3fc055188')
+    expect(verifySyncSdkInputs(plugin).version).toBe('0.1.1')
   })
 
-  it('rejects a deliberately mismatched archive and provenance revision', () => {
+  it('rejects a deliberately mismatched npm package integrity', () => {
     isolated((root) => {
-      for (const path of ['package.json', 'package-lock.json', 'vendor/sync'])
-        cpSync(resolve(plugin, path), resolve(root, path), { recursive: true })
-      for (const name of ['sync-core', 'sync-protocol', 'notes'])
-        cpSync(
-          resolve(plugin, 'node_modules/@abele', name),
-          resolve(root, 'node_modules/@abele', name),
-          { recursive: true }
-        )
-      const path = resolve(root, 'vendor/sync/provenance.json')
-      const provenance = JSON.parse(readFileSync(path, 'utf8'))
-      provenance.commit = 'f927e62bb41817cd3cf0180e80f989e8c166ff1d'
-      writeFileSync(path, JSON.stringify(provenance))
-      expect(() => verifySyncInputs(root)).toThrow(/revision/i)
-      provenance.commit = 'b0ed82060937d210f14838456d51fbe3fc055188'
-      writeFileSync(path, JSON.stringify(provenance))
-      writeFileSync(
-        resolve(root, 'vendor/sync', provenance.packages['@abele/sync-core'].archive),
-        'mismatched archive'
-      )
-      expect(() => verifySyncInputs(root)).toThrow(/checksum mismatch/i)
+      for (const file of ['package.json', 'package-lock.json'])
+        cpSync(resolve(plugin, file), resolve(root, file))
+      const file = resolve(root, 'package-lock.json'),
+        value = JSON.parse(readFileSync(file, 'utf8'))
+      value.packages['node_modules/@abele/sync-sdk'].integrity = 'sha512-invalid'
+      writeFileSync(file, JSON.stringify(value))
+      expect(() => verifySyncSdkInputs(root)).toThrow(/integrity/i)
     })
   })
 
@@ -103,9 +91,9 @@ describe('reproducible sync build inputs', () => {
   it('does not run a mutation of a sibling checkout before production builds', () => {
     expect(JSON.stringify(manifest.scripts)).not.toContain('../../abele-sync')
   })
-  it('pins both packaged inputs instead of resolving a mutable sibling dist', () => {
-    for (const name of ['@abele/sync-core', '@abele/sync-protocol']) {
-      expect(manifest.dependencies[name]).toMatch(/^file:vendor\/sync\/.*\.tgz$/)
-    }
+  it('pins the shared SDK to an exact registry version instead of mutable sibling code', () => {
+    expect(manifest.dependencies['@abele/sync-sdk']).toBe('0.1.1')
+    for (const name of ['@abele/sync-core', '@abele/sync-protocol', '@abele/notes'])
+      expect(manifest.dependencies[name]).toBeUndefined()
   })
 })

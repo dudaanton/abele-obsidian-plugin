@@ -6,8 +6,8 @@ import {
   push,
   scan,
   sha256,
-} from '@abele/sync-core'
-import type { EngineClient } from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
+import type { EngineClient } from '@abele/sync-sdk/core'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 
 it('preserves a merged upload before writing it while skipping unchanged acknowledgements in the same batch', async () => {

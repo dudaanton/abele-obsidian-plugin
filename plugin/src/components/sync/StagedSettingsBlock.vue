@@ -61,7 +61,7 @@ import { t } from '@/i18n'
  */
 import { computed, ref } from 'vue'
 import { Notice } from 'obsidian'
-import type { ChangeItem } from '@abele/sync-protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import Button from '../obsidian/Button.vue'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import {

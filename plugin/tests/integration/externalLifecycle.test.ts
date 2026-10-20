@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { tokenHostFixture } from '../helpers/tokenHostFixture'
 import { openTokenLedger } from '@/sync/tokenLedger'
 import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 import { ExternalState } from '@/sync/external/state'
 import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
-import { EXTERNAL_STATE_KEY } from '@abele/sync-core'
+import { EXTERNAL_STATE_KEY } from '@abele/sync-sdk/core'
 
 const close: (() => Promise<void>)[] = []
 afterEach(async () => {

@@ -7,12 +7,12 @@ import {
   resumeJournal,
   EngineError,
   V2EngineClient,
-} from '@abele/sync-core'
-import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.js'
+} from '@abele/sync-sdk/core'
+import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
-import type { ChangeItem } from '@abele/sync-protocol'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'

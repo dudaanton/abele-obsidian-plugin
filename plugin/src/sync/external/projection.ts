@@ -1,4 +1,4 @@
-import { caseKey, validatePath } from '@abele/sync-protocol'
+import { caseKey, validatePath } from '@abele/sync-sdk/protocol'
 import { z } from 'zod'
 
 export const MAX_PROJECTION_BYTES = 16 * 1024

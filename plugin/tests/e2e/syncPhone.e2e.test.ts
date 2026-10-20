@@ -3,7 +3,7 @@ import { targets } from './helpers/target'
 import { driver, phoneHome } from './helpers/phone'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { exerciseTrustedWindow } from './helpers/syncTrustedConnection'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
 import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
@@ -12,7 +12,7 @@ import {
   decodeAccessToken,
   V2CommitRequestSchema,
   V2CommitResponseSchema,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 import { rawManifest } from '../helpers/rawManifest'
 import { fixtureFetch } from './helpers/syncServer'
 targets('phone')

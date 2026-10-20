@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { ChangeItem } from '@abele/sync-protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import { codePluginIds, pluginCodeNames } from '@/sync/stagedPluginCode'
 import type { App } from 'obsidian'
-import type { EngineClient } from '@abele/sync-core'
-import { sha256 } from '@abele/sync-core'
+import type { EngineClient } from '@abele/sync-sdk/core'
+import { sha256 } from '@abele/sync-sdk/core'
 
 const change = (path: string, prev_path: string | null = null): ChangeItem =>
   ({ path, prev_path, op: 'modify' }) as ChangeItem

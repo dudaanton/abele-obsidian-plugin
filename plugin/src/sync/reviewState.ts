@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { StateStore } from '@abele/sync-core'
-import { validatePath, serverUrlProblem } from '@abele/sync-protocol'
+import type { StateStore } from '@abele/sync-sdk/core'
+import { validatePath, serverUrlProblem } from '@abele/sync-sdk/protocol'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 
 export type ReviewState = Pick<StateStore, 'getMeta' | 'setMeta' | 'transaction'>

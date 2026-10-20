@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import type { App } from 'obsidian'
 import { ScriptService } from '@/scripting/ScriptService'
 import { AbeleConfig } from '@/services/AbeleConfig'

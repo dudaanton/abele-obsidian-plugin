@@ -189,7 +189,7 @@ export interface ConnectionActivity {
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
   transfer?: import('./transferProgress').TransferSnapshot
-  reconciliation?: import('@abele/sync-core').ReconciliationState | null
+  reconciliation?: import('@abele/sync-sdk/core').ReconciliationState | null
   pull?: { stage: string; completed: number; total: number }
   comparison?: { completed: number; total: number }
   startup?: {
@@ -277,24 +277,24 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   /** Stable local identities already recorded by the engine, never derived from a path. */
   opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]>
   publishAttachment?(fileId: string): Promise<void>
-  updateSelective?(selective: import('@abele/sync-core').SelectiveSettings): Promise<void>
-  historyClient?: import('@abele/sync-core').V2EngineClient
+  updateSelective?(selective: import('@abele/sync-sdk/core').SelectiveSettings): Promise<void>
+  historyClient?: import('@abele/sync-sdk/core').V2EngineClient
   /** Whether this connection syncs the vault file: in its scope and not kept out by its rules. */
   acceptsLocal?(path: string, size: number): boolean
-  entryFor?(path: string): Promise<import('@abele/sync-core').StateEntry | null>
-  heldDeletes?(): Promise<import('@abele/sync-core').HeldDelete[]>
+  entryFor?(path: string): Promise<import('@abele/sync-sdk/core').StateEntry | null>
+  heldDeletes?(): Promise<import('@abele/sync-sdk/core').HeldDelete[]>
   decideDeletes?(
     kind: 'confirm' | 'restore',
     ids: readonly string[]
   ): Promise<{ decided: number; applied: boolean; completed?: number } | null>
-  deferred?(): Promise<import('@abele/sync-protocol').ChangeItem[]>
+  deferred?(): Promise<import('@abele/sync-sdk/protocol').ChangeItem[]>
   applyDeferred?(
     ids: readonly string[]
   ): Promise<import('./stagedSettings').DeferredSettingsBatch | null>
   keepLocal?(
     paths: string[] | undefined,
     ids: readonly string[]
-  ): Promise<import('@abele/sync-core').DeferredKept | null>
+  ): Promise<import('@abele/sync-sdk/core').DeferredKept | null>
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 const noConnectionHost = async () => {}
@@ -696,7 +696,7 @@ export class TokenUi {
     patch: {
       address?: string
       paused?: boolean
-      selective?: import('@abele/sync-core').SelectiveSettings
+      selective?: import('@abele/sync-sdk/core').SelectiveSettings
     }
   ): Promise<void> {
     if (patch.address !== undefined) {

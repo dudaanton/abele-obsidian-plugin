@@ -1,6 +1,6 @@
 import { verifyBoundedAttachmentRead } from './helpers/boundedAttachmentRead'
-import { decodeAccessToken } from '@abele/sync-protocol'
-import { AccessClient, sha256 } from '@abele/sync-core'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
+import { AccessClient, sha256 } from '@abele/sync-sdk/core'
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
 import { fixtureFetch } from './helpers/syncServer'

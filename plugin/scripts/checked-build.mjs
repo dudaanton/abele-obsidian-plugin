@@ -52,7 +52,7 @@ if (action === 'types') {
   const mode = process.argv[3] ?? 'production'
   if (!['production', 'sharing-test'].includes(mode)) throw new Error('Unknown build mode')
   requireTypes(root)
-  run(resolve(plugin, 'scripts/verify-sync-inputs.mjs'))
+  run(resolve(plugin, 'scripts/verify-sync-sdk.mjs'))
   run(resolve(dirname(require.resolve('vite/package.json')), 'bin/vite.js'), [
     'build',
     '--mode',

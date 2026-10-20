@@ -1,1 +1,1 @@
-export { parseFrontmatter as default } from '@abele/notes'
+export { parseFrontmatter as default } from '@abele/sync-sdk/notes'

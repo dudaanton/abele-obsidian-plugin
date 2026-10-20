@@ -31,29 +31,29 @@ function resolveWith(plugin: { resolveId: unknown }, source: string, importer?: 
   return { result, calls }
 }
 
-describe('single zod 3 for the vendored packages', () => {
+describe('single zod 3 for SDK and node packages', () => {
   it('finds every nested copy', () => {
-    fakeRoot({ 'sync-core': '3.25.76', 'node-protocol': '3.25.76' })
+    fakeRoot({ 'sync-sdk': '3.25.76', 'node-protocol': '3.25.76' })
     expect(nestedZodCopies(root)).toEqual([
       join(root, 'node_modules/@abele/node-protocol/node_modules/zod'),
-      join(root, 'node_modules/@abele/sync-core/node_modules/zod'),
+      join(root, 'node_modules/@abele/sync-sdk/node_modules/zod'),
     ])
   })
 
   it('refuses copies of different versions instead of merging them', () => {
-    fakeRoot({ 'sync-core': '3.25.76', 'node-protocol': '3.24.0' })
+    fakeRoot({ 'sync-sdk': '3.25.76', 'node-protocol': '3.24.0' })
     expect(() => singleZodV3Plugin(root)).toThrow(/differ/)
   })
 
-  it('sends every vendored import of zod, subpaths included, to the first copy', async () => {
-    fakeRoot({ 'sync-core': '3.25.76', 'node-protocol': '3.25.76' })
+  it('sends every shared package import of zod, subpaths included, to the first copy', async () => {
+    fakeRoot({ 'sync-sdk': '3.25.76', 'node-protocol': '3.25.76' })
     const plugin = singleZodV3Plugin(root)
     const canonical = join(root, 'node_modules/@abele/node-protocol/node_modules/zod/package.json')
     for (const source of ['zod', 'zod/v3']) {
       const { result, calls } = resolveWith(
         plugin,
         source,
-        join(root, 'node_modules/@abele/sync-core/dist/index.js')
+        join(root, 'node_modules/@abele/sync-sdk/dist/internal/core/index.js')
       )
       await result
       expect(calls).toEqual([[source, canonical]])
@@ -61,12 +61,12 @@ describe('single zod 3 for the vendored packages', () => {
   })
 
   it('leaves the plugin’s own zod 4 and unrelated imports alone', async () => {
-    fakeRoot({ 'sync-core': '3.25.76' })
+    fakeRoot({ 'sync-sdk': '3.25.76' })
     const plugin = singleZodV3Plugin(root)
     for (const [source, importer] of [
       ['zod', join(root, 'src/comments/model.ts')],
-      ['zod-extra', join(root, 'node_modules/@abele/sync-core/dist/index.js')],
-      ['yaml', join(root, 'node_modules/@abele/sync-core/dist/index.js')],
+      ['zod-extra', join(root, 'node_modules/@abele/sync-sdk/dist/internal/core/index.js')],
+      ['yaml', join(root, 'node_modules/@abele/sync-sdk/dist/internal/core/index.js')],
       ['zod', undefined],
     ] as const) {
       const { result, calls } = resolveWith(plugin, source, importer)

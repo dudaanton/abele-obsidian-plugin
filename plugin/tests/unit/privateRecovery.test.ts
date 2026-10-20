@@ -3,7 +3,7 @@ import { Notice, type App } from 'obsidian'
 import { preservePrivateArtifacts, showPrivateRecoveryNotice } from '@/sync/privateRecovery'
 import { makeParents } from '@/sync/vaultFolders'
 import { buildFakeVault } from '../helpers/fakeVault'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 
 it('announces a changed displaced routine copy even after an earlier notice', async () => {
   const app = buildFakeVault([]) as unknown as App

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DeferredApplied, DeferredKept } from '@abele/sync-core'
-import type { ChangeItem } from '@abele/sync-protocol'
+import type { DeferredApplied, DeferredKept } from '@abele/sync-sdk/core'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import {
   StagedSettingsPrompt,
   appliedNotice,

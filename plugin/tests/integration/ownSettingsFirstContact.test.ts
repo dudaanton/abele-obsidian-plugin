@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { App } from 'obsidian'
-import type { FileInfo, StateEntry } from '@abele/sync-core'
+import type { FileInfo, StateEntry } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { OwnSettingsWatch } from '@/sync/ownSettings'
 import { buildFakeVault } from '../helpers/fakeVault'

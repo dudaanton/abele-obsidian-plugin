@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBDatabase as FakeIDBDatabase, IDBFactory } from 'fake-indexeddb'
-import type { Journal, StateEntry } from '@abele/sync-core'
+import type { Journal, StateEntry } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 
 /**

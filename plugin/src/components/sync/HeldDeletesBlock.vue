@@ -76,7 +76,7 @@ import { t } from '@/i18n'
  */
 import { computed, ref } from 'vue'
 import { Notice } from 'obsidian'
-import type { HeldDelete } from '@abele/sync-core'
+import type { HeldDelete } from '@abele/sync-sdk/core'
 import Button from '../obsidian/Button.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import TreeItem from '../obsidian/TreeItem.vue'

@@ -7,8 +7,8 @@ import {
   type DeferredApplied,
   type DeferredKept,
   type SyncReport,
-} from '@abele/sync-core'
-import type { ChangeItem } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import type { SyncStatus } from './status'
 
 const APPLIED_SLOT = Symbol.for('abele.sync.settings-applied')

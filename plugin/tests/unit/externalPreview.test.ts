@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { externalPreview, saveExternalPreview } from '@/sync/external/preview'
 import { buildFakeVault } from '../helpers/fakeVault'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 
 it('bounds the browser-generated image to 512 pixels and releases its object URL', async () => {
   const app = buildFakeVault([{ path: 'Media/sample.png', content: 'sample image' }])

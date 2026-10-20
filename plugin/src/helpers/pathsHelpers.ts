@@ -21,4 +21,4 @@ export {
   cleanNoteName,
   resolvePath,
   escapeRegExp,
-} from '@abele/notes'
+} from '@abele/sync-sdk/notes'

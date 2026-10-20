@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-core'
+import { MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'

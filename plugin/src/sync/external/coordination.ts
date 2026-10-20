@@ -1,4 +1,4 @@
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { ExternalFilePortError } from './filesystem'
 import { OwnedArtifactSchema } from './records'
 

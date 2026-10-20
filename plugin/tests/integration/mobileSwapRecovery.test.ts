@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
 import { buildFakeVault } from '../helpers/fakeVault'

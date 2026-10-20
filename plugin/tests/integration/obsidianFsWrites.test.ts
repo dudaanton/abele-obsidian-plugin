@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
-import { EngineError, MemoryStateStore, readReconciliation, type FileInfo } from '@abele/sync-core'
+import { EngineError, MemoryStateStore, readReconciliation, type FileInfo } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
 import { RuntimeFence } from '@/sync/external/recovery'
@@ -69,7 +69,7 @@ it.each(['ordinary fingerprint', 'pull after generation retirement'])(
     await stage.append(0, text('before'))
     await stage.seal({
       size: 6,
-      sha: await import('@abele/sync-core').then((core) => core.sha256(text('before'))),
+      sha: await import('@abele/sync-sdk/core').then((core) => core.sha256(text('before'))),
     })
     await stage.commit()
     const before = await app.vault.adapter.stat('sample.bin')
@@ -85,7 +85,7 @@ it.each(['ordinary fingerprint', 'pull after generation retirement'])(
         ? await fs.fingerprint('sample.bin')
         : await fs[Symbol.for('abele.sync.fingerprint-pull-v1')]('sample.bin')
     expect(identity.sha).toBe(
-      await import('@abele/sync-core').then((core) => core.sha256(text('after!')))
+      await import('@abele/sync-sdk/core').then((core) => core.sha256(text('after!')))
     )
   }
 )

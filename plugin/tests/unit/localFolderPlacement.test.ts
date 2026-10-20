@@ -1,7 +1,7 @@
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem } from '@abele/sync-core'
+import { MemoryFileSystem } from '@abele/sync-sdk/core'
 import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacement'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
@@ -73,7 +73,7 @@ it('maps bounded representation reads to the placed file', async () => {
 
 it('assigns a placement policy to every filesystem interface method', () => {
   const methods = ['fs', 'streaming'].flatMap((file) => {
-    const text = readFileSync(`node_modules/@abele/sync-core/dist/${file}.d.ts`, 'utf8')
+    const text = readFileSync(`node_modules/@abele/sync-sdk/dist/internal/core/${file}.d.ts`, 'utf8')
     const ast = ts.createSourceFile(file, text, ts.ScriptTarget.Latest)
     return ast.statements.flatMap((node) =>
       ts.isInterfaceDeclaration(node) &&

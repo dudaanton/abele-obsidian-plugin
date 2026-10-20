@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import type { SyncFailure } from '@abele/sync-core'
+import type { SyncFailure } from '@abele/sync-sdk/core'
 import { messageOf } from './messages'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 

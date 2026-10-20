@@ -1,4 +1,4 @@
-import type { SyncReport } from '@abele/sync-core'
+import type { SyncReport } from '@abele/sync-sdk/core'
 
 /** What the sync log says about a failure and about a sync that got through. */
 

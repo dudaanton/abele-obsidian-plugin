@@ -20,7 +20,7 @@ import { stagingDirectory, stagingPathReserved } from '../stagingDirectory'
 import { adapterWriteInFlight } from '../vaultWrites'
 import { pathCoordinatorOf } from '../pathCoordinator'
 
-import { CommitOpSchema } from '@abele/sync-protocol'
+import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 import { z } from 'zod'
 import { TokenConnectionRegistry } from '../tokenConnectionRegistry'
 import type { DeviceConnection } from '../connection'

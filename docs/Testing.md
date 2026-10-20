@@ -1081,10 +1081,15 @@ desktop pools in `OBSIDIAN_TEST_VAULT` and `ABELE_SYNC_PEER_VAULT`. Both need th
 A pool containing a live connection or pending executable/attachment review fails before
 its settings are changed. Do not run two batches against either pool concurrently.
 
-`ABELE_SYNC_DIR` must name the built, provenance-checked clean-archive fixture at
-`695f4e7e070879bb33ed09ee7c502228d87a062d`, prepared using
-`node scripts/vendor-sync.mjs <server-repository> 695f4e7 fixture` from the plugin root.
-No mutable sibling build is accepted. See [pinned sync inputs](Sync%20build%20inputs%20proposal.md).
+Shared protocol, core and note parsing code comes from the exact npm SDK release, using
+only its browser-safe `/core`, `/protocol` and `/notes` entry points.
+The real server source is separate: `ABELE_SYNC_REPOSITORY` defaults to `~/projects/abele-sync`.
+Set it explicitly when the checkout lives elsewhere; a missing server checkout is a setup error.
+`ABELE_SYNC_DIR` must name a built, provenance-checked clean-archive server fixture at the
+revision selected in `scripts/server-test-fixtures.mjs`. Prepare it with
+`node scripts/prepare-sync-fixture.mjs <server-repository> <exact-server-revision>` from
+the plugin root, or let `npm run test:server` prepare it from `ABELE_SYNC_REPOSITORY`.
+No mutable server build supplies shared plugin code or replaces a pinned server fixture.
 Each case starts an isolated real server and runs its `user create` CLI for a root token.
 Folder/group access is issued over v2, through the real Share dialog or fixture API.
 Multi-server cases start a second isolated server; the plugin still runs its production engines.

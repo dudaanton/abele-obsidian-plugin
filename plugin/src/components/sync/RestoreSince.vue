@@ -59,7 +59,7 @@ import { t } from '@/i18n'
  */
 import { computed, ref, useTemplateRef } from 'vue'
 import { Notice } from 'obsidian'
-import { TRASH_RESTORE_MAX, type CommitOpResult, type TrashItem } from '@abele/sync-protocol'
+import { TRASH_RESTORE_MAX, type CommitOpResult, type TrashItem } from '@abele/sync-sdk/protocol'
 import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Input from '../obsidian/Input.vue'

@@ -1,4 +1,4 @@
-import type { StateStore } from '@abele/sync-core'
+import type { StateStore } from '@abele/sync-sdk/core'
 import type { LedgerId, LocalStorage } from './ledgerId'
 import { SCOPE_KEY } from './scope'
 import {

@@ -1,5 +1,5 @@
 import { Platform } from 'obsidian'
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import type { RequestUrlFn } from './transport'
 import { fetchViaRequestUrl } from './transport'
 import { sessionAwareNet, type SessionFetch, type SessionNet } from './desktopNet'

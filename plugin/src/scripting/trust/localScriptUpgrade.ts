@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TRUST_KEY } from '../ScriptTrust'
 import { trustStateFrom, verdictOf } from '../trustState'

@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { normalizePath, type App } from 'obsidian'
-import { EngineError, type FileInfo } from '@abele/sync-core'
+import { EngineError, type FileInfo } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault, type FakeApp, type FakeFileSpec } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'

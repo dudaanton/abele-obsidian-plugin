@@ -4,7 +4,7 @@ import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { withinSyncPath } from './scope'
-import { LocalPaths } from '@abele/sync-core'
+import { LocalPaths } from '@abele/sync-sdk/core'
 import { ServerFolderPaths } from './serverFolderPaths'
 import { vaultRootFailure } from './vaultPathLinks'
 import { sha256 } from './external/hash'
@@ -33,7 +33,7 @@ import {
   type EngineStatus,
   type SelectiveSettings,
   type PathMatcher,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { ExchangeTrace } from './exchangeTrace'
 import { connectStage, connectionError } from './tokenUi'
 import {
@@ -50,7 +50,7 @@ import {
   type V2Change,
   type V2Connection,
   type ChangeItem,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 import type { ConnectionRuntime } from './connectionEngines'
 import type { TokenUiRuntime, DeviceReviews } from './tokenUi'
 import type { ExecutableCandidate } from './executableReview'

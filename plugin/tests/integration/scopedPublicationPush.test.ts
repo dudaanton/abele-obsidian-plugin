@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { tokenPublicationFixture } from '../helpers/tokenPublicationFixture'
 import { deferred } from '../helpers/deferred'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 let one: Awaited<ReturnType<typeof tokenPublicationFixture>> | undefined
 it('published rename eligibility survives restart but cannot follow an unrelated replacement', async () => {
   one = await tokenPublicationFixture()

@@ -149,8 +149,8 @@ function hostVaultName(): string {
  * What is wrong with `build/` for this suite, or null when it can be installed as it is.
  *
  * The suite installs what is in `build/`, so a stale bundle would be a test of last week's
- * plugin. Three ways it can be stale: older than `src/`; older than the sibling's `core` or
- * `protocol` `dist`, which the bundle inlines; or a production build, which shares the output
+ * plugin. Three ways it can be stale: older than `src/`; older than the pinned SDK inputs
+ * which the bundle inlines; or a production build, which shares the output
  * folder and has no test API — installed, it looks exactly like a plugin that never loaded.
  * Nothing is built here: a build takes minutes, and a test worker silent for one is killed.
  */
@@ -166,7 +166,8 @@ export function buildProblem(): string | null {
   const built = statSync(main).mtimeMs
   const newest = Math.max(
     newestMs(join(PLUGIN_DIR, 'src')),
-    newestMs(join(PLUGIN_DIR, 'vendor/sync'))
+    statSync(join(PLUGIN_DIR, 'package-lock.json')).mtimeMs,
+    newestMs(join(PLUGIN_DIR, 'node_modules/@abele/sync-sdk/dist'))
   )
   if (built < newest) return `${main} is older than the source it is built from; ${fix}`
   if (!readFileSync(main, 'utf8').includes('__abeleTest'))

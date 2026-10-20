@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { parseScriptHeader, extractScriptBody } from '../ScriptParser'
 import {
   scriptTrustFor,

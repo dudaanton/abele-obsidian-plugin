@@ -2,7 +2,7 @@ import {
   decodeAccessToken,
   V2CommitRequestSchema,
   V2CommitResponseSchema,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 import { rawManifest } from '../../helpers/rawManifest'
 import { fixtureFetch } from './syncServer'
 import { expect } from 'vitest'

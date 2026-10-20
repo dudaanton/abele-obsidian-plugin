@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'

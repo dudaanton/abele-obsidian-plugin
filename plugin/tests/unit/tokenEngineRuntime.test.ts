@@ -5,8 +5,8 @@ import {
   MemoryFileSystem,
   MemoryStateStore,
   sha256,
-} from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
 import type { TransferSnapshot } from '@/sync/transferProgress'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'

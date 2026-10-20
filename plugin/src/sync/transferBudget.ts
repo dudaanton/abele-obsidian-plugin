@@ -1,5 +1,5 @@
 import { connectionHost } from './connectionPaths'
-import { TransferBudget } from '@abele/sync-core'
+import { TransferBudget } from '@abele/sync-sdk/core'
 const SLOT = Symbol.for('abele.sync.transfer-budget-v1')
 /** Connections, explicit hydration and forwarding share the vault's transfer slots. */
 export function transferBudgetOf(vault: object): TransferBudget {

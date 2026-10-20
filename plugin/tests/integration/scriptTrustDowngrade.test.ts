@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { useVault } from '../helpers/testEnv'
 import { setScriptConnection } from '../helpers/scriptConnection'
 import { activateScriptProvenance, scriptTrustFor } from '@/scripting/trust/scriptTrustStorage'

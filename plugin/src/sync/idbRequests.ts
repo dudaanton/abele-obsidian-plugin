@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 
 /** IndexedDB's callbacks as promises, and its failures as the engine's `io` errors. */
 

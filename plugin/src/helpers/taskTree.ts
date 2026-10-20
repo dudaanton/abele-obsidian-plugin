@@ -4,5 +4,5 @@ export {
   progressOf,
   parentsClosedBy,
   parentsReopenedBy,
-} from '@abele/notes'
-export type { TreeNode, TaskTree } from '@abele/notes'
+} from '@abele/sync-sdk/notes'
+export type { TreeNode, TaskTree } from '@abele/sync-sdk/notes'

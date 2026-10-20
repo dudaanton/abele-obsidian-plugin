@@ -1,139 +1,88 @@
 // @vitest-environment node
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  cpSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs'
-import { createHash } from 'node:crypto'
+import { mkdtempSync, writeFileSync, readFileSync, cpSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { verifySyncInputs, verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
+import { SDK_INPUT, verifySyncSdkInputs } from '../../scripts/verify-sync-sdk.mjs'
+import { verifySyncFixture } from '../../scripts/sync-server-fixture.mjs'
 
 const temporary: string[] = []
-const sha = (text: string) => createHash('sha256').update(text).digest('hex')
 function sample() {
-  const root = mkdtempSync(join(tmpdir(), 'sample-sync-inputs-'))
+  const root = mkdtempSync(join(tmpdir(), 'sample-sdk-inputs-'))
   temporary.push(root)
-  const name = '@abele/sync-core',
-    archive = 'sample-core.tgz',
-    payload = 'sample archive'
-  const installed = join(root, 'node_modules', name)
-  mkdirSync(installed, { recursive: true })
-  mkdirSync(join(root, 'vendor/sync'), { recursive: true })
-  writeFileSync(join(root, 'vendor/sync', archive), payload)
-  writeFileSync(join(installed, 'package.json'), '{}')
-  writeFileSync(
-    join(root, 'vendor/sync/provenance.json'),
-    JSON.stringify({
-      commit: 'b'.repeat(40),
-      lockSha256: 'c'.repeat(64),
-      packages: {
-        [name]: {
-          version: '0.4.0',
-          commit: 'b'.repeat(40),
-          lockSha256: 'c'.repeat(64),
-          tree: 'd'.repeat(40),
-          archive,
-          sha256: sha(payload),
-          integrity: 'sample-integrity',
-          files: { 'package.json': sha('{}') },
-        },
-      },
-    })
-  )
-  writeFileSync(
-    join(root, 'package.json'),
-    JSON.stringify({ dependencies: { [name]: 'file:vendor/sync/' + archive } })
-  )
-  writeFileSync(
-    join(root, 'package-lock.json'),
-    JSON.stringify({
-      packages: {
-        ['node_modules/' + name]: {
-          resolved: 'file:vendor/sync/' + archive,
-          integrity: 'sample-integrity',
-        },
-      },
-    })
-  )
-  // Both inputs and all exported entry files exist in a valid fixture. Individual tests
-  // corrupt one part without relaxing the provenance contract.
-  const protocol = '@abele/sync-protocol'
-  const protocolInstalled = join(root, 'node_modules', protocol)
-  mkdirSync(join(installed, 'dist'))
-  writeFileSync(join(installed, 'dist/index.js'), 'sample runtime')
-  writeFileSync(join(installed, 'dist/index.d.ts'), 'sample types')
-  cpSync(installed, protocolInstalled, { recursive: true })
-  const provenancePath = join(root, 'vendor/sync/provenance.json')
-  const provenance = JSON.parse(readFileSync(provenancePath, 'utf8'))
-  provenance.packages[name].files['dist/index.js'] = sha('sample runtime')
-  provenance.packages[name].files['dist/index.d.ts'] = sha('sample types')
-  provenance.packages[protocol] = provenance.packages[name]
-  const notes = '@abele/notes'
-  cpSync(installed, join(root, 'node_modules', notes), { recursive: true })
-  provenance.packages[notes] = provenance.packages[name]
-  writeFileSync(provenancePath, JSON.stringify(provenance))
-  const manifestPath = join(root, 'package.json')
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  manifest.dependencies[protocol] = manifest.dependencies[name]
-  manifest.dependencies[notes] = manifest.dependencies[name]
-  writeFileSync(manifestPath, JSON.stringify(manifest))
-  const lockPath = join(root, 'package-lock.json')
-  const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
-  lock.packages['node_modules/' + protocol] = lock.packages['node_modules/' + name]
-  lock.packages['node_modules/' + notes] = lock.packages['node_modules/' + name]
-  writeFileSync(lockPath, JSON.stringify(lock))
-  return { root, installed, archive }
+  const source = resolve('node_modules/@abele/sync-sdk')
+  const installed = join(root, 'node_modules/@abele/sync-sdk')
+  cpSync(source, installed, {
+    recursive: true,
+    filter: (file) => !file.startsWith(join(source, 'node_modules')),
+  })
+  for (const file of ['package.json', 'package-lock.json']) cpSync(resolve(file), join(root, file))
+  return { root, installed }
 }
 afterEach(() => {
-  for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true })
+  for (const root of temporary.splice(0)) rmSync(root, { recursive: true, force: true })
 })
-
-describe('sync input provenance preflight', () => {
-  it('verifies the real committed payload and installed packages', () => {
-    const inputs = verifySyncInputs()
-    expect(inputs.packages['@abele/sync-core'].version).toBe('0.4.0')
-    expect(inputs.packages['@abele/sync-protocol'].version).toBe('0.4.0')
-    expect(inputs.packages['@abele/notes'].version).toBe('0.1.0')
+describe('npm sync SDK input preflight', () => {
+  it('verifies the audited npm version, integrity and installed package bytes', () => {
+    const input = verifySyncSdkInputs()
+    expect(input.version).toBe('0.1.1')
+    expect(input.integrity).toBe(
+      'sha512-xuIPmmDwAMMqmsIeq/ecWfLxyyfgRtnUH12oCMBqMZ6aBFtACcVTjsf+0JwaSBmGX1HrHLq/dToZWkQsGGCexQ=='
+    )
   })
-  it('refuses provenance that omits one of the pinned inputs', () => {
-    const { root } = sample()
-    const path = join(root, 'vendor/sync/provenance.json')
-    const value = JSON.parse(readFileSync(path, 'utf8'))
-    delete value.packages['@abele/sync-protocol']
-    writeFileSync(path, JSON.stringify(value))
-    expect(() => verifySyncInputs(root)).toThrow(/incomplete/i)
+  it('refuses a manifest that omits the pinned SDK input', () => {
+    const { root } = sample(),
+      file = join(root, 'package.json'),
+      value = JSON.parse(readFileSync(file, 'utf8'))
+    delete value.dependencies['@abele/sync-sdk']
+    writeFileSync(file, JSON.stringify(value))
+    expect(() => verifySyncSdkInputs(root)).toThrow(/Unpinned/)
   })
-  it('refuses an empty exported-file checksum inventory', () => {
-    const { root } = sample()
-    const path = join(root, 'vendor/sync/provenance.json')
-    const value = JSON.parse(readFileSync(path, 'utf8'))
-    value.packages['@abele/sync-core'].files = {}
-    writeFileSync(path, JSON.stringify(value))
-    expect(() => verifySyncInputs(root)).toThrow(/incomplete/i)
+  it('refuses an incomplete exported-file inventory', () => {
+    const saved = SDK_INPUT.files
+    try {
+      SDK_INPUT.files = {}
+      expect(() => verifySyncSdkInputs()).toThrow(/Incomplete/)
+    } finally {
+      SDK_INPUT.files = saved
+    }
   })
-  it('refuses tampered archive bytes', () => {
-    const { root, archive } = sample()
-    writeFileSync(join(root, 'vendor/sync', archive), 'changed')
-    expect(() => verifySyncInputs(root)).toThrow(/checksum/)
+  it.each(['version', 'integrity', 'resolved', 'link'])('refuses changed npm lock %s', (key) => {
+    const { root } = sample(),
+      file = join(root, 'package-lock.json'),
+      value = JSON.parse(readFileSync(file, 'utf8'))
+    value.packages['node_modules/@abele/sync-sdk'][key] = key === 'link' ? true : 'changed'
+    writeFileSync(file, JSON.stringify(value))
+    expect(() => verifySyncSdkInputs(root)).toThrow(/Unpinned/)
   })
-  it('refuses installed bytes different from the pinned package', () => {
+  it('refuses retired packages even in a nested lock entry', () => {
+    const { root } = sample(),
+      file = join(root, 'package-lock.json'),
+      value = JSON.parse(readFileSync(file, 'utf8'))
+    value.packages['node_modules/sample/node_modules/@abele/sync-core'] = { version: '0.4.0' }
+    writeFileSync(file, JSON.stringify(value))
+    expect(() => verifySyncSdkInputs(root)).toThrow(/Retired/)
+  })
+  it('refuses modified installed bytes', () => {
     const { root, installed } = sample()
-    writeFileSync(join(installed, 'package.json'), '{"changed":true}')
-    expect(() => verifySyncInputs(root)).toThrow(/input mismatch/)
+    writeFileSync(join(installed, 'dist/notes/index.js'), 'changed')
+    expect(() => verifySyncSdkInputs(root)).toThrow(/input mismatch/)
+  })
+  it('refuses an incorrect installed package revision', () => {
+    const { root, installed } = sample()
+    writeFileSync(
+      join(installed, 'package.json'),
+      JSON.stringify({ name: '@abele/sync-sdk', version: '0.0.0' })
+    )
+    expect(() => verifySyncSdkInputs(root)).toThrow(/revision mismatch/)
   })
   it('refuses an installed sibling link even when payload bytes match', () => {
-    const { root, installed } = sample()
-    const external = join(root, 'external-package')
+    const { root, installed } = sample(),
+      external = join(root, 'external-package')
     cpSync(installed, external, { recursive: true })
     rmSync(installed, { recursive: true })
     symlinkSync(external, installed)
-    expect(() => verifySyncInputs(root)).toThrow(/Linked/)
+    expect(() => verifySyncSdkInputs(root)).toThrow(/Linked/)
   })
   it('does not allow an implicit, unproven or wrong-revision server fixture', () => {
     expect(() => verifySyncFixture(undefined)).toThrow(/ABELE_SYNC_DIR/)

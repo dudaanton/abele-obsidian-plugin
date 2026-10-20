@@ -5,5 +5,5 @@ import type {} from 'dayjs/plugin/isoWeek'
 import type {} from 'dayjs/plugin/updateLocale'
 import type {} from 'dayjs/plugin/weekday'
 
-export { dayjs as default } from '@abele/notes'
-export type { Dayjs } from '@abele/notes'
+export { dayjs as default } from '@abele/sync-sdk/notes'
+export type { Dayjs } from '@abele/sync-sdk/notes'

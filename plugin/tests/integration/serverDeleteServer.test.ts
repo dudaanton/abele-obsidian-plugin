@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { AccessClient } from '@abele/sync-core'
+import { AccessClient } from '@abele/sync-sdk/core'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { V2SyncClient } from '@abele/sync-server/tests/helpers/v2SyncClient.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'

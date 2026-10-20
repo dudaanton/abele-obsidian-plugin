@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryStateStore, sha256 } from '@abele/sync-core'
+import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { TokenUi, tokenUi } from '@/sync/tokenUi'
 import { tokenView, tokenValue, writeToken } from '@/ai/tools/settingsTokenConnection'

@@ -1,6 +1,6 @@
 import { preservePrivateArtifacts } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { TokenEngines } from '../sync/tokenEngines'
 import type { TokenUi } from '../sync/tokenUi'
 import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'

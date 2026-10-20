@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { V2Client } from '@/sync/v2/client'
 
 const token = {

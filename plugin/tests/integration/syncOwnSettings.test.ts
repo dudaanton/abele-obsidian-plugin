@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Notice, Platform } from 'obsidian'
-import { V2EngineClient, AccessClient } from '@abele/sync-core'
+import { V2EngineClient, AccessClient } from '@abele/sync-sdk/core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'

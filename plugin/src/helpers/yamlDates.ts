@@ -3,4 +3,4 @@ export {
   timestampTextSchema,
   loadCalendarYaml,
   dumpCalendarYaml,
-} from '@abele/notes'
+} from '@abele/sync-sdk/notes'

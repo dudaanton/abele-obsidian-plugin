@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore } from '@abele/sync-sdk/core'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 
 const source = {

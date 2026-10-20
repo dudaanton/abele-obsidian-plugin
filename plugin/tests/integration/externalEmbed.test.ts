@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { Component, MarkdownRenderer } from 'obsidian'
 import { externalFileFixture } from './externalFileFollowupFixture'
 import {

@@ -1,5 +1,5 @@
 import { expect } from 'vitest'
-import { AccessClient } from '@abele/sync-core'
+import { AccessClient } from '@abele/sync-sdk/core'
 import { fixtureFetch } from './helpers/syncServer'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import {
@@ -402,7 +402,7 @@ liveCase(
     expect((await s.items(own)).some((one) => one.path === s.root + '/owner-private.md')).toBe(
       false
     )
-    const leftView = await new (await import('@abele/sync-core')).V2EngineClient(leftToken, {
+    const leftView = await new (await import('@abele/sync-sdk/core')).V2EngineClient(leftToken, {
       fetch: fixtureFetch,
     }).manifest(null)
     expect(
@@ -410,7 +410,7 @@ liveCase(
         (one) => one.path.startsWith(right + '/') || one.path === s.root + '/group-member.md'
       )
     ).toBe(false)
-    const groupView = await new (await import('@abele/sync-core')).V2EngineClient(groupToken, {
+    const groupView = await new (await import('@abele/sync-sdk/core')).V2EngineClient(groupToken, {
       fetch: fixtureFetch,
     }).manifest(null)
     expect(

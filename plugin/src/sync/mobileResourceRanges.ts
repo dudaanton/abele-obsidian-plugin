@@ -1,5 +1,5 @@
 import type { DataAdapter } from 'obsidian'
-import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-core'
+import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
 import type { ProbeEvent } from './mobileSequentialSource'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'

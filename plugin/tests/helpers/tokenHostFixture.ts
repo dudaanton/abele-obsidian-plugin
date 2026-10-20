@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore } from '@abele/sync-sdk/core'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { TokenUi } from '@/sync/tokenUi'
 import { TokenEngines } from '@/sync/tokenEngines'

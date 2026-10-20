@@ -7,4 +7,4 @@ export {
   parseDateTimeOrNull,
   applyTimeToDate,
   compactDate,
-} from '@abele/notes'
+} from '@abele/sync-sdk/notes'

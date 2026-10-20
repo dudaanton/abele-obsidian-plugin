@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { desktopFsPort } from '../helpers/desktopRequire'
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { JOURNAL_KEY } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'

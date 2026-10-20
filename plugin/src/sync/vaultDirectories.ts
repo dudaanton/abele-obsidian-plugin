@@ -2,7 +2,7 @@ import { assertPhysicalPath } from './external/projection'
 import { withinSyncPath } from './scope'
 import { crossesSymlink } from './symlinkChain'
 import { z } from 'zod'
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import type { LocalStorage } from './ledgerId'
 
 import { assertNoLinkedAncestors } from './vaultPathLinks'

@@ -1,4 +1,4 @@
-import { groupLinkKey } from '@abele/sync-protocol'
+import { groupLinkKey } from '@abele/sync-sdk/protocol'
 
 /** Cached membership proposes discovery only; core still validates the actual note bytes. */
 export function localGroupCandidates(

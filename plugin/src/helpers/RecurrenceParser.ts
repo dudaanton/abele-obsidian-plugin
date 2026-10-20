@@ -1,1 +1,1 @@
-export { RecurrenceParser } from '@abele/notes'
+export { RecurrenceParser } from '@abele/sync-sdk/notes'

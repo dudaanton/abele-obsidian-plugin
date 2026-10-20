@@ -1,5 +1,5 @@
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
-import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-core'
+import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
 import { assertPhysicalPath } from './external/projection'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'

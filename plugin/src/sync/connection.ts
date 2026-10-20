@@ -16,8 +16,8 @@
  * What this device syncs is here too, the size cap with it: two devices on one vault may each
  * take a different half of it, which is how the cap on a phone came to be at all.
  */
-import { selectiveDefaults, type SelectiveSettings } from '@abele/sync-core'
-import { serverUrlProblem } from '@abele/sync-protocol'
+import { selectiveDefaults, type SelectiveSettings } from '@abele/sync-sdk/core'
+import { serverUrlProblem } from '@abele/sync-sdk/protocol'
 import { DEVICE_SECRET_PREFIX, isDeviceSecretId } from '@/secrets/deviceSecret'
 import { readLedgerId, type LocalStorage } from './ledgerId'
 import { joinFrom, type JoinState } from './joinState'

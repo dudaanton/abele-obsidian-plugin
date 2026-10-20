@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { IgnoreRules } from '@abele/sync-core'
+import { IgnoreRules } from '@abele/sync-sdk/core'
 import { syncFixtureRules } from '../e2e/helpers/syncFixtureRules'
 
 it.each(['.obsidian/plugins/abele/sample-review.js', '.obsidian/hotkeys.json'])(

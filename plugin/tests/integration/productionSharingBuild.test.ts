@@ -1,5 +1,5 @@
 import { beforeAll, afterEach, expect, it } from 'vitest'
-import { AccessClient, V2EngineClient } from '@abele/sync-core'
+import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { create, seed } from '@abele/sync-test-seed'

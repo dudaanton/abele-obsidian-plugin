@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import * as protocol from '@abele/sync-protocol'
+import * as protocol from '@abele/sync-sdk/protocol'
 import { assertPhysicalPath } from '@/sync/external/projection'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
-vi.mock('@abele/sync-protocol', async (original) => {
-  const actual = await original<typeof import('@abele/sync-protocol')>()
+vi.mock('@abele/sync-sdk/protocol', async (original) => {
+  const actual = await original<typeof import('@abele/sync-sdk/protocol')>()
   return { ...actual, validatePath: vi.fn(actual.validatePath) }
 })
 

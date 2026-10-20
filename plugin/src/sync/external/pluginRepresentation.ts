@@ -1,7 +1,7 @@
 import { nativeChunkPort } from '../vaultPathLinks'
 import { vaultDisk } from '../vaultPathLinks'
 import type { App } from 'obsidian'
-import type { FileSystem, StateStore } from '@abele/sync-core'
+import type { FileSystem, StateStore } from '@abele/sync-sdk/core'
 import { ExternalState } from './state'
 import { ExternalRepresentation, type RepresentationOptions } from './representation'
 import { ExternalFileHost } from './ObsidianExternalFileHost'

@@ -1,6 +1,6 @@
 import { t } from '@/i18n'
 import { ref, type Ref } from 'vue'
-import type { HeldDelete } from '@abele/sync-core'
+import type { HeldDelete } from '@abele/sync-sdk/core'
 import type { SyncStatus } from './status'
 
 /**

@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 
 export function devicePins(app: Pick<App, 'loadLocalStorage'>): string[] {
   const saved: unknown = app.loadLocalStorage('abele-external-pins-v1') ?? []

@@ -1,4 +1,4 @@
-import { validatePath } from '@abele/sync-protocol'
+import { validatePath } from '@abele/sync-sdk/protocol'
 import { LocalFolderPlacement, FolderScopeError } from './localFolderPlacement'
 
 /** Project wire names onto the connection's unchanged saved namespace, never onto a new local root. */

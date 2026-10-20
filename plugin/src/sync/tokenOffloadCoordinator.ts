@@ -6,8 +6,8 @@ import {
   type StateStore,
   type StateEntry,
   type ChunkSource,
-} from '@abele/sync-core'
-import { caseKey } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import type { PathCoordinator } from './pathCoordinator'
 import type { Projection } from './external/projection'
 

@@ -1,4 +1,4 @@
-import type { ErrorBody } from '@abele/sync-protocol'
+import type { ErrorBody } from '@abele/sync-sdk/protocol'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
 /**

@@ -4,8 +4,8 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
-import { ExpectedWrites, MemoryStateStore, sha256 } from '@abele/sync-core'
-import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.js'
+import { ExpectedWrites, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
+import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 
 const absent = Symbol.for('abele.sync.index-absent-v1')
 const pass = Symbol.for('abele.sync.inventory-pass-v1')

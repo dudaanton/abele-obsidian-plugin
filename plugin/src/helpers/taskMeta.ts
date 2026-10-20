@@ -8,5 +8,5 @@ export {
   parseLabels,
   labelColor,
   sortByPriority,
-} from '@abele/notes'
-export type { TaskPriority, LabelColor } from '@abele/notes'
+} from '@abele/sync-sdk/notes'
+export type { TaskPriority, LabelColor } from '@abele/sync-sdk/notes'

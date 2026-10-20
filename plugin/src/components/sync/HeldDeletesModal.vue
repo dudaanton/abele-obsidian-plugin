@@ -19,7 +19,7 @@
  * found, on a phone when the app is next in front. Putting it off keeps the files held; the same
  * question stays on the Sync tab for as long as they are.
  */
-import type { HeldDelete } from '@abele/sync-core'
+import type { HeldDelete } from '@abele/sync-sdk/core'
 import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'

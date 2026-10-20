@@ -3,7 +3,7 @@ import { nativeChunkPort } from './vaultPathLinks'
 import type { DataAdapter } from 'obsidian'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
-import { EngineError, MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-core'
+import { EngineError, MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-sdk/core'
 
 export interface MobilePath {
   path: string

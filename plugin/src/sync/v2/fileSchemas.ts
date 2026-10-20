@@ -6,5 +6,5 @@ export {
   CommitOpSchema,
   CommitRequestSchema,
   CommitOpResultSchema,
-} from '@abele/sync-protocol'
-export type { JoinPrefer, CommitOp, CommitRequest, CommitOpResult } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
+export type { JoinPrefer, CommitOp, CommitRequest, CommitOpResult } from '@abele/sync-sdk/protocol'

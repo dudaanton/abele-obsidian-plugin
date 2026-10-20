@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { tokenOffloadsOf } from '../tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../pathCoordinator'
 

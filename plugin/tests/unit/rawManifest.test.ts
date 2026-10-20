@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { rawManifest } from '../helpers/rawManifest'
 
 it('retains directory identities across raw manifest pages', async () => {

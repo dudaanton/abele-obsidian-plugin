@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore } from '@abele/sync-sdk/core'
 import {
   authorizeLedgerBootstrap,
   requireLedger,

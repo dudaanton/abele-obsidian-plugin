@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore, ExpectedWrites, sha256 } from '@abele/sync-core'
-import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.js'
+import { MemoryFileSystem, MemoryStateStore, ExpectedWrites, sha256 } from '@abele/sync-sdk/core'
+import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
-import type { ChangeItem } from '@abele/sync-protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import { EditCopies } from '@/sync/editCopies'
 
 const encode = (s: string) => new TextEncoder().encode(s)

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { configurationPath, executablePath, type ExecutablePaths } from './stagedPluginCode'
 import {
   ReviewDocuments,

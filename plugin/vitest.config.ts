@@ -1,7 +1,7 @@
 import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
-import { verifySyncFixture } from './scripts/verify-sync-inputs.mjs'
+import { verifySyncFixture } from './scripts/sync-server-fixture.mjs'
 import { missingServerTests } from './scripts/server-test-fixtures.mjs'
 import FastSequencer from './scripts/fast-sequencer.mjs'
 import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
@@ -68,7 +68,7 @@ export default defineConfig({
   test: {
     // Inlined so the build's transforms apply: tests run the same sync core and the same
     // HyperFormula, without its function catalogue, that the plugin ships.
-    server: { deps: { inline: [/@abele\/sync-core/, /hyperformula/] } },
+    server: { deps: { inline: [/@abele\/sync-sdk/, /hyperformula/] } },
     globals: true,
     // Standalone and paired shard pools have different scheduling pressure. The CLI can
     // override these bounded defaults for a different measured runner quota.

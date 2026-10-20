@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
-import { MemoryStateStore, scan, sha256 } from '@abele/sync-core'
+import { MemoryStateStore, scan, sha256 } from '@abele/sync-sdk/core'
 
 it('rehashes restored bytes with unchanged metadata instead of trusting a live receipt', async () => {
   const app = buildFakeVault([])

@@ -6,9 +6,9 @@ import {
   MemoryStateStore,
   recoverPendingPullWrites,
   sha256,
-} from '@abele/sync-core'
-import type { AtomicStage, EngineClient } from '@abele/sync-core'
-import type { ChangeItem } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import type { AtomicStage, EngineClient } from '@abele/sync-sdk/core'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'

@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
-import { AccessClient } from '@abele/sync-core'
-import { decodeAccessToken } from '@abele/sync-protocol'
+import { AccessClient } from '@abele/sync-sdk/core'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 import { fixtureFetch } from './helpers/syncServer'
 const fixture = liveSuite()
 liveCase(

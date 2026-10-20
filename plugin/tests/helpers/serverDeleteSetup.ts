@@ -1,4 +1,4 @@
-import { AccessClient } from '@abele/sync-core'
+import { AccessClient } from '@abele/sync-sdk/core'
 import { rawManifest } from './rawManifest'
 
 /** Real server setup shared by deletion screenshots and their fast integration proof. */

@@ -1,5 +1,5 @@
 import { sha256 } from './external/hash'
-import { type StateStore } from '@abele/sync-core'
+import { type StateStore } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from './IndexedDbStateStore'
 import type { EditCopies } from './editCopies'
 

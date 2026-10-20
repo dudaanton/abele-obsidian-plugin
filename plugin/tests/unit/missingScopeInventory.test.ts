@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 

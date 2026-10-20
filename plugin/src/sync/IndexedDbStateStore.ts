@@ -9,7 +9,7 @@ import {
   type Journal,
   type StateEntry,
   type StateStore,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
 import {
   initializeDatabaseIdentity,

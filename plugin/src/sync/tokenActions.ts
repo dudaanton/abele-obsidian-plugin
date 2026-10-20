@@ -4,8 +4,8 @@ import {
   type StateStore,
   type EngineClient,
   type DeleteDecision,
-} from '@abele/sync-core'
-import { caseKey, type ChangeItem, type CommitOp, type CommitOpResult } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { caseKey, type ChangeItem, type CommitOp, type CommitOpResult } from '@abele/sync-sdk/protocol'
 import type { DeferredSettingsBatch } from './stagedSettings'
 /** Reports exact receipts rather than inferring success from absent ledger entries. */
 export class TokenActions {

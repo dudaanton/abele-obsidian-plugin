@@ -100,7 +100,7 @@ export class TokenSettingsPort {
     )
     this.settingsPrompt.restoreAppliedWaiting()
   }
-  updateConnection(patch: { selective: import('@abele/sync-core').SelectiveSettings }) {
+  updateConnection(patch: { selective: import('@abele/sync-sdk/core').SelectiveSettings }) {
     return this.ui.updateConnection(this.id, patch)
   }
   decideDeletes(kind: 'confirm' | 'restore', ids: readonly string[]) {
@@ -116,8 +116,8 @@ export class TokenSettingsPort {
     return this.settingsPrompt.reloadApplied()
   }
   async noticed(
-    status: import('@abele/sync-core').EngineStatus,
-    report?: import('@abele/sync-core').SyncReport
+    status: import('@abele/sync-sdk/core').EngineStatus,
+    report?: import('@abele/sync-sdk/core').SyncReport
   ): Promise<void> {
     await this.heldPrompt.noticed(statusOf(status))
     await this.settingsPrompt.noticed(statusOf(status))

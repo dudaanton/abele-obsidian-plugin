@@ -10,10 +10,10 @@ import {
   V2EngineClient,
   receiveToStage,
   sha256,
-} from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
-import type { ChangeItem } from '@abele/sync-protocol'
-import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.js'
+} from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
+import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { JOURNAL_KEY } from '@/sync/writeJournal'

@@ -24,8 +24,8 @@ import {
   MemoryStateStore,
   sha256,
   type EngineClient,
-} from '@abele/sync-core'
-import { CommitOpSchema } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 
 it('drops disconnected vault guard caches without reviving a retired guard', async () => {
   const base = await fs.mkdtemp(join(tmpdir(), 'sample-guard-lifecycle-'))

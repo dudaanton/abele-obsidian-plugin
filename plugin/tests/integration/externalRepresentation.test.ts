@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { scan, sha256, SyncEngine, MemoryStateStore, RecoveryBarrier } from '@abele/sync-core'
+import { scan, sha256, SyncEngine, MemoryStateStore, RecoveryBarrier } from '@abele/sync-sdk/core'
 import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'

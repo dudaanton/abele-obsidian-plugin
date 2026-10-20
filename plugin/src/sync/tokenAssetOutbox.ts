@@ -1,7 +1,7 @@
 import { sha256 } from './external/hash'
 import { z } from 'zod'
-import { type StateStore, type ChunkSource, fingerprintSource } from '@abele/sync-core'
-import { V2CommitResponseSchema, normalisePath, validatePath } from '@abele/sync-protocol'
+import { type StateStore, type ChunkSource, fingerprintSource } from '@abele/sync-sdk/core'
+import { V2CommitResponseSchema, normalisePath, validatePath } from '@abele/sync-sdk/protocol'
 
 const candidate = z
   .object({

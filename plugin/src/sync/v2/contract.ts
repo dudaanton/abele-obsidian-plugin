@@ -18,7 +18,7 @@ export {
   V2CommitOpSchema,
   V2CommitRequestSchema,
   V2CommitResponseSchema,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 export type {
   V2Selector,
   V2Scope,
@@ -35,10 +35,10 @@ export type {
   V2CommitOp,
   V2CommitRequest,
   V2CommitResponse,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 
-import { decodeAccessToken as decodeSharedAccessToken } from '@abele/sync-protocol'
-import type { V2AccessToken } from '@abele/sync-protocol'
+import { decodeAccessToken as decodeSharedAccessToken } from '@abele/sync-sdk/protocol'
+import type { V2AccessToken } from '@abele/sync-sdk/protocol'
 
 /** Preserve pasted token normalization before the shared decoder's length check. */
 export function decodeAccessToken(text: string): V2AccessToken {

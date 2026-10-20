@@ -1,6 +1,6 @@
 import { Notice } from 'obsidian'
-import type { StateEntry } from '@abele/sync-core'
-import { caseKey } from '@abele/sync-protocol'
+import type { StateEntry } from '@abele/sync-sdk/core'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import type AbelePlugin from '@/main'
 import { canonicalJson } from '@/services/settingsFile'
 import { messageOf, SETTINGS_REPLACED } from './messages'

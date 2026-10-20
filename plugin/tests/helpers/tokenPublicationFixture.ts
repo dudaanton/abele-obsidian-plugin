@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
@@ -79,7 +79,7 @@ export async function tokenPublicationFixture(allow = true) {
           file_id: 'file-' + path,
           version_id: 'version-' + path,
           path,
-          sha: await (await import('@abele/sync-core')).sha256(bytes),
+          sha: await (await import('@abele/sync-sdk/core')).sha256(bytes),
           size: bytes.length,
           mtime,
           seq: 1,

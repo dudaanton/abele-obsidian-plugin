@@ -1,16 +1,22 @@
-import { execFileSync } from 'node:child_process'
-import { dirname, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
-/** Locate the sibling source checkout through Git's common directory, not worktree depth. */
-export function syncRepositoryFrom(pluginDirectory, commonDirectory) {
-  const checkout = resolve(pluginDirectory, '..')
-  return resolve(dirname(resolve(checkout, commonDirectory)), '..', 'abele-sync')
-}
-
-export function locateSyncRepository(pluginDirectory) {
-  const common = execFileSync('git', ['rev-parse', '--git-common-dir'], {
-    cwd: resolve(pluginDirectory, '..'),
-    encoding: 'utf8',
-  }).trim()
-  return syncRepositoryFrom(pluginDirectory, common)
+/** Server test source only: ABELE_SYNC_REPOSITORY defaults to ~/projects/abele-sync.
+ * Shared plugin code always comes from the pinned npm SDK, never from this checkout. */
+export function locateSyncRepository({ env = process.env, home = homedir() } = {}) {
+  const configured = env.ABELE_SYNC_REPOSITORY
+  const directory = configured === undefined ? join(home, 'projects/abele-sync') : configured
+  const source = directory.startsWith('~/') ? join(home, directory.slice(2)) : resolve(directory)
+  if (
+    !directory.trim() ||
+    !existsSync(join(source, 'packages/server/package.json')) ||
+    !existsSync(join(source, 'package-lock.json'))
+  )
+    throw new Error(
+      'Set ABELE_SYNC_REPOSITORY to an existing abele-sync server checkout; expected ' +
+        source +
+        ' (default: ~/projects/abele-sync). Shared code is supplied by the npm SDK.'
+    )
+  return source
 }

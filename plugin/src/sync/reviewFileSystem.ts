@@ -1,4 +1,4 @@
-import type { AtomicStage, FileSystem } from '@abele/sync-core'
+import type { AtomicStage, FileSystem } from '@abele/sync-sdk/core'
 import { PLACEMENT } from './pathCoordinator'
 
 /** An approval can be revoked while core waits on reads, placement, or stage verification. */

@@ -11,6 +11,7 @@ import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 import { assertNoTestingModules } from './scripts/production-test-guard.mjs'
 import { buildArtifactPlugin } from './scripts/build-artifact.mjs'
 import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
+import { syncSdkBrowserPlugin } from './scripts/sync-sdk-browser.mjs'
 import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
 import { hyperFormulaCataloguePlugin } from './scripts/hyperformula-catalogue.mjs'
 import { i18nAssetsPlugin } from './scripts/i18n-assets.mjs'
@@ -103,6 +104,7 @@ export default defineConfig(async ({ mode }) => {
     plugins: [
       i18nAssetsPlugin(__dirname),
       syncPlacementPlugin(),
+      syncSdkBrowserPlugin(),
       singleZodV3Plugin(__dirname),
       hyperFormulaCataloguePlugin(),
       buildArtifactPlugin(path.resolve(__dirname, '..'), mode),

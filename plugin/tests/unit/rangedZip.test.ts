@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { zipSync } from 'fflate'
 import { openRangedZip } from '@/reader/rangedZip'
-import { MAX_CHUNK_BYTES } from '@abele/sync-core'
+import { MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
 import { sourceFile } from '@/reader/sourceFile'
 import { pdfSource } from '@/reader/pdfSource'
 import { vi } from 'vitest'

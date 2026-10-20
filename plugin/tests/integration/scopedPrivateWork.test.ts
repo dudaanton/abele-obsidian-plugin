@@ -8,8 +8,8 @@ import {
   push,
   type EngineClient,
   sha256 as digest,
-} from '@abele/sync-core'
-import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.js'
+} from '@abele/sync-sdk/core'
+import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { connectionAdapter } from '@/sync/connectionScope'
 import { connectionPrivateRoot } from '@/sync/connectionPaths'

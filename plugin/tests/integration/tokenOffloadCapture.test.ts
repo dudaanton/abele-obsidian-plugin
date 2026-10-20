@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { MemoryStateStore, sha256 } from '@abele/sync-core'
+import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { tokenOffloadConnection } from '@/sync/tokenOffloadConnection'
 import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'

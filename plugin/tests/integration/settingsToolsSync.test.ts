@@ -7,7 +7,7 @@ import { tokenUi } from '@/sync/tokenUi'
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Platform } from 'obsidian'
-import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+import { PLAIN_HTTP_REFUSED } from '@abele/sync-sdk/protocol'
 import {
   createReadSettingsTool,
   createWriteSettingsTool,

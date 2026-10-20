@@ -2,7 +2,7 @@ import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from
 import { connectionPrivateRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
-import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
+import { caseKey, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import {
   V2EngineClient,
   GENERATION_KEY,
@@ -10,7 +10,7 @@ import {
   fenceRestoredJournal,
   type EngineStatus,
   type SyncReport,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { RESTORE_HEADER, fenceHostGeneration, assertResponseGeneration } from './restoreFence'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'

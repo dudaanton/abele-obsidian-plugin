@@ -1,5 +1,5 @@
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
-import { EngineError, type FileSystem, type AtomicStage } from '@abele/sync-core'
+import { EngineError, type FileSystem, type AtomicStage } from '@abele/sync-sdk/core'
 import { PLACEMENT } from './pathCoordinator'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'

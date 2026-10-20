@@ -1,6 +1,6 @@
 import { connectionHost } from './connectionPaths'
-import { caseKey } from '@abele/sync-protocol'
-import type { FileSystem } from '@abele/sync-core'
+import { caseKey } from '@abele/sync-sdk/protocol'
+import type { FileSystem } from '@abele/sync-sdk/core'
 
 export const PLACEMENT = Symbol.for('abele.sync.placement-v1')
 const overlaps = (a: string, b: string) =>

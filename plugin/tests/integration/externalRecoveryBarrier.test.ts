@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SyncEngine } from '@abele/sync-core'
+import { SyncEngine } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'

@@ -7,8 +7,8 @@ import {
   settingsCategory,
   type PathMatcher,
   type SelectiveSettings,
-} from '@abele/sync-core'
-import { caseKey } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { messageOf } from './messages'
 
 /**

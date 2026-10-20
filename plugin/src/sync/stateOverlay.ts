@@ -1,4 +1,4 @@
-import type { Journal, StateEntry } from '@abele/sync-core'
+import type { Journal, StateEntry } from '@abele/sync-sdk/core'
 
 /**
  * The in-memory overlay a `transaction` of `IndexedDbStateStore` writes into, and the copies

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import type { VersionInfo } from '@abele/sync-protocol'
+import type { VersionInfo } from '@abele/sync-sdk/protocol'
 import type { SyncState } from './status'
 import { currentLocale, relativeFormatter, t } from '@/i18n'
 

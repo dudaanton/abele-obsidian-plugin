@@ -1,5 +1,5 @@
 import { expect } from 'vitest'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { targets } from './helpers/target'
 import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { fixtureFetch } from './helpers/syncServer'

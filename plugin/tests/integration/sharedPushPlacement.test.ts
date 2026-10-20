@@ -5,7 +5,7 @@ import {
   ExpectedWrites,
   resumeJournal,
   sha256,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
 

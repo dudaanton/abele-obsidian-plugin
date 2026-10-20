@@ -1,4 +1,4 @@
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 
 /** Single-runtime path fence shared by every provenance connection for a physical vault. */
 export class ScriptRevision {

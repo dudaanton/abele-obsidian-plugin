@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { ExchangeTrace } from './exchangeTrace'

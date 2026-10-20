@@ -5,7 +5,7 @@ import { Platform } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
 import type { Vault } from 'obsidian'
 import type { DataAdapter } from 'obsidian'
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 
 /** Probe from the vault boundary: lstat of a leaf alone follows linked parents. */
 export async function assertNoLinkedAncestors(

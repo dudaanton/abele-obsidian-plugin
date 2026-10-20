@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { V2EngineClient } from '@abele/sync-core'
+import { V2EngineClient } from '@abele/sync-sdk/core'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { create, seed, shaOf } from '@abele/sync-test-seed'

@@ -1,4 +1,4 @@
-import { EngineError, type FileSystem } from '@abele/sync-core'
+import { EngineError, type FileSystem } from '@abele/sync-sdk/core'
 
 export const PRIVATE_PLACEMENT_STAGES = Symbol.for('abele.sync.private-placement-stages-v1')
 

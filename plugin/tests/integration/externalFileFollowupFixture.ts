@@ -1,5 +1,5 @@
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { tokenOffloadConnection } from '@/sync/tokenOffloadConnection'
 import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'

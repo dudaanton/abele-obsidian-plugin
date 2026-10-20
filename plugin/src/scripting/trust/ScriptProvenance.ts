@@ -1,4 +1,4 @@
-import { caseKey } from '@abele/sync-protocol'
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { ScriptRevision } from './ScriptRevision'
 
 export interface ScriptBinding {

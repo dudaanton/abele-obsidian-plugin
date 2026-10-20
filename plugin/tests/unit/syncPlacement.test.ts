@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { syncPlacementPlugin } from '../../scripts/sync-placement.mjs'
 
-const root = resolve('node_modules/@abele/sync-core')
+const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
 afterEach(() => {
@@ -14,14 +14,14 @@ afterEach(() => {
 function sample(installedVersion = version, module = 'cycle.js') {
   const temp = mkdtempSync(join(tmpdir(), 'sample-placement-'))
   paths.push(temp)
-  const pkg = join(temp, 'node_modules/sample/node_modules/@abele/sync-core')
-  mkdirSync(join(pkg, 'dist'), { recursive: true })
-  const id = join(pkg, 'dist', module)
+  const pkg = join(temp, 'node_modules/sample/node_modules/@abele/sync-sdk')
+  mkdirSync(join(pkg, 'dist/internal/core'), { recursive: true })
+  const id = join(pkg, 'dist/internal/core', module)
   writeFileSync(
     join(pkg, 'package.json'),
-    JSON.stringify({ name: '@abele/sync-core', version: installedVersion })
+    JSON.stringify({ name: '@abele/sync-sdk', version: installedVersion })
   )
-  const input = readFileSync(join(root, 'dist', module), 'utf8')
+  const input = readFileSync(join(root, 'dist/internal/core', module), 'utf8')
   writeFileSync(id, input)
   return { id, input, temp, pkg }
 }
@@ -43,16 +43,18 @@ it.each([
 })
 it('handles a symlinked installation without sharing transform state', () => {
   const { id, input, temp, pkg } = sample()
-  const alias = join(temp, 'alias/node_modules/@abele/sync-core')
+  const alias = join(temp, 'alias/node_modules/@abele/sync-sdk')
   mkdirSync(join(temp, 'alias/node_modules/@abele'), { recursive: true })
   symlinkSync(pkg, alias)
   const plugin = syncPlacementPlugin()
-  expect(plugin.transform(input, join(alias, 'dist/cycle.js'))).toEqual(plugin.transform(input, id))
+  expect(plugin.transform(input, join(alias, 'dist/internal/core/cycle.js'))).toEqual(
+    plugin.transform(input, id)
+  )
 })
 it('reports a stale nested installation before trying placement boundaries', () => {
   const { id } = sample('0.0.0-stale')
   expect(() => syncPlacementPlugin().transform('', id)).toThrow(
-    `installed @abele/sync-core 0.0.0-stale does not match the pinned ${version}; run npm ci`
+    `installed @abele/sync-sdk 0.0.0-stale does not match the pinned ${version}; run npm ci`
   )
 })
 it.each([0, 2])('fails closed with the file, boundary and count %i', (count) => {

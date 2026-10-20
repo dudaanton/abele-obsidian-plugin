@@ -1,8 +1,8 @@
 import { vaultDisk } from './vaultPathLinks'
 import { sha256 } from './external/hash'
 import type { App } from 'obsidian'
-import { settingsCategory, type EngineClient } from '@abele/sync-core'
-import { caseKey, type ChangeItem } from '@abele/sync-protocol'
+import { settingsCategory, type EngineClient } from '@abele/sync-sdk/core'
+import { caseKey, type ChangeItem } from '@abele/sync-sdk/protocol'
 import type { StagedHost } from './stagedSettings'
 
 /** Shared by legacy staging views and immutable token candidates; unseen items stay pending. */

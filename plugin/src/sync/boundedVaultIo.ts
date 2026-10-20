@@ -9,7 +9,7 @@ import {
   type ChunkSource,
   type SourceStamp,
   type ContentIdentity,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'

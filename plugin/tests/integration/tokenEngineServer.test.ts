@@ -2,7 +2,7 @@
 import { beforeAll, expect, it, vi } from 'vitest'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
-import { AccessClient, MemoryStateStore, V2EngineClient, sha256 } from '@abele/sync-core'
+import { AccessClient, MemoryStateStore, V2EngineClient, sha256 } from '@abele/sync-sdk/core'
 import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -26,7 +26,7 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { V2SyncClient } from '@abele/sync-server/tests/helpers/v2SyncClient.js'
 import { createDb } from '@abele/sync-server/src/db/connect.js'
 import { bumpGeneration } from '@abele/sync-server/src/restoreGeneration.js'
-import { GENERATION_KEY, readReconciliation } from '@abele/sync-core'
+import { GENERATION_KEY, readReconciliation } from '@abele/sync-sdk/core'
 import { JOURNAL_KEY } from '@/sync/writeJournal'
 import { holdTokenDownload } from '@/testing/holdTokenDownload'
 
@@ -133,7 +133,7 @@ it.each(['server-generation', 'local-backup'] as const)(
         server.address
       )
       const owner = new V2SyncClient(user.token)
-      const statuses: import('@abele/sync-core').EngineStatus[] = []
+      const statuses: import('@abele/sync-sdk/core').EngineStatus[] = []
       const make = () => {
         const metadata = new MemoryStateStore()
         return new TokenEngineRuntime({

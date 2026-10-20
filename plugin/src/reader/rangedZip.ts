@@ -1,5 +1,5 @@
 import { Inflate, strFromU8 } from 'fflate'
-import { MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-core'
+import { MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-sdk/core'
 import { ArchiveError, MAX_ENTRY_BYTES, type ZipEntry } from './zipLoader'
 
 interface Entry extends ZipEntry {

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-core'
+import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
 import { vi } from 'vitest'
 import { EditCopies, EDIT_COPIES_KEY } from '@/sync/editCopies'
 

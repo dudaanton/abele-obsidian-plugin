@@ -24,7 +24,7 @@
  * while any wait. Later leaves them staged; the Sync tab keeps the same answers for as long as
  * they do.
  */
-import type { ChangeItem } from '@abele/sync-protocol'
+import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'

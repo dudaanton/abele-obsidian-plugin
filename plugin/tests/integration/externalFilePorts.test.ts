@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { ExternalFilePortError } from '@/sync/external/filesystem'

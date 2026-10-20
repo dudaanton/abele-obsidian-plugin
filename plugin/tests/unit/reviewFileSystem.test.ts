@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem } from '@abele/sync-core'
+import { MemoryFileSystem } from '@abele/sync-sdk/core'
 import { reviewFileSystem } from '@/sync/reviewFileSystem'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 

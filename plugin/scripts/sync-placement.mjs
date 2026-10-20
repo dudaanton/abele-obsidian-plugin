@@ -1,7 +1,7 @@
 /**
- * Plugin-only integration at the pinned core's placement boundaries. Archive bytes and
- * provenance remain unchanged. Fail closed on changed upstream boundaries; tests and the
- * production bundle use the same transform. The core has no placement hook in this pin.
+ * Plugin-only integration at the SDK core's placement boundaries. Installed bytes remain
+ * unchanged. Fail closed on changed upstream boundaries; tests and the production bundle
+ * use the same transform. These plugin integration hooks are not exported by the SDK.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url'
 
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file) => JSON.parse(readFileSync(file, 'utf8'))
-const provenance = read(join(pluginRoot, 'vendor/sync/provenance.json'))
-const pinnedVersion = provenance.packages['@abele/sync-core'].version
-const pinnedFiles = provenance.packages['@abele/sync-core'].files
+const input = read(join(pluginRoot, 'scripts/sync-sdk-inputs.json'))
+const pinnedVersion = input.version
+const pinnedFiles = input.files
 const digest = (code) => createHash('sha256').update(code).digest('hex')
 const marker = '// abele-sync-placement-v1:'
 
@@ -47,16 +47,16 @@ export function syncPlacementPlugin() {
     enforce: 'pre',
     transform(input, id) {
       const file = id.split('?')[0]
-      if (!file.includes('/node_modules/@abele/sync-core/dist/')) return null
+      if (!file.includes('/node_modules/@abele/sync-sdk/dist/internal/core/')) return null
       const packageRoot = file.slice(0, file.lastIndexOf('/dist/'))
       const installed = read(join(packageRoot, 'package.json'))
-      if (installed.name !== '@abele/sync-core' || installed.version !== pinnedVersion)
+      if (installed.name !== '@abele/sync-sdk' || installed.version !== pinnedVersion)
         throw new Error(
-          `installed @abele/sync-core ${installed.version} does not match the pinned ${pinnedVersion}; run npm ci (${id})`
+          `installed @abele/sync-sdk ${installed.version} does not match the pinned ${pinnedVersion}; run npm ci (${id})`
         )
       const relative = file.slice(packageRoot.length + 1)
       if (!pinnedFiles[relative] || digest(readFileSync(file)) !== pinnedFiles[relative])
-        throw new Error(`Installed @abele/sync-core integrity mismatch in ${id}; run npm ci`)
+        throw new Error(`Installed @abele/sync-sdk/core integrity mismatch in ${id}; run npm ci`)
       if (input.startsWith(marker)) {
         const end = input.indexOf('\n')
         const body = input.slice(end + 1)

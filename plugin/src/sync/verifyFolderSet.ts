@@ -1,4 +1,4 @@
-import type { FileSystem, StateStore } from '@abele/sync-core'
+import type { FileSystem, StateStore } from '@abele/sync-sdk/core'
 import { EXTERNAL_STATE_KEY } from './external/state'
 import { ExternalDocumentSchema } from './external/records'
 import { parseProjection, MAX_PROJECTION_BYTES } from './external/projection'

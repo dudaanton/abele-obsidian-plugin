@@ -112,7 +112,7 @@ import { t } from '@/i18n'
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ExternalFileRules from './ExternalFileRules.vue'
-import type { SelectiveSettings } from '@abele/sync-core'
+import type { SelectiveSettings } from '@abele/sync-sdk/core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Checkbox from '../../obsidian/Checkbox.vue'

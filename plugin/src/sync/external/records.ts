@@ -11,4 +11,4 @@ export {
   type ExternalRecord,
   type ExternalOperation,
   type ExternalDocument,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'

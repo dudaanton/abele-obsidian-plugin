@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { SyncEngine, type FileSystem, type StateStore } from '@abele/sync-core'
+import { SyncEngine, type FileSystem, type StateStore } from '@abele/sync-sdk/core'
 import { tokenHostFixture } from './tokenHostFixture'
 import { openTokenLedger } from '@/sync/tokenLedger'
 import { TokenUi } from '@/sync/tokenUi'

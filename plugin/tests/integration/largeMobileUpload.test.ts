@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { V2EngineClient, MAX_CHUNK_BYTES } from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { V2EngineClient, MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { sha256 } from '@noble/hashes/sha2'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'

@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
-import { MemoryStateStore, sha256 } from '@abele/sync-core'
-import { Puller } from '../../node_modules/@abele/sync-core/dist/pullRun.js'
-import { V2EngineClient } from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
+import { Puller } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullRun.js'
+import { V2EngineClient } from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'

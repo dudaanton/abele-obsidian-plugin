@@ -4,8 +4,8 @@ import {
   TransferBudget,
   downloadToStage,
   fingerprintSource,
-} from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 
 const MiB = 1024 * 1024

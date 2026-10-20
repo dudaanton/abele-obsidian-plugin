@@ -1,5 +1,5 @@
 import { PHONE_FALLBACK_BYTES } from './mobileWholeRead'
-import type { ChunkSource } from '@abele/sync-core'
+import type { ChunkSource } from '@abele/sync-sdk/core'
 
 /** One large mobile allocation/transfer at a time, across connections and vault adapters. */
 export class MobileLargeFileGate {

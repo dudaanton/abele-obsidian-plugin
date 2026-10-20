@@ -1,5 +1,5 @@
 /**
- * The vendored `@abele/*` packages each pin zod 3 and npm nests one copy per package, because
+ * The SDK and vendored `@abele/*` packages pin zod 3 and npm nests one copy per package, because
  * the plugin's own zod 4 holds the top-level slot. Rollup keeps modules apart by path, so four
  * byte-identical copies would ship. Resolve every `@abele/*` import of zod to one of them.
  * The lockfile and the archives stay as they are; the build refuses copies that differ.

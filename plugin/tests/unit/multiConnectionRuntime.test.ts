@@ -9,8 +9,8 @@ import {
   MemoryFileSystem,
   MemoryStateStore,
   selectiveDefaults,
-} from '@abele/sync-core'
-import { encodeAccessToken } from '@abele/sync-protocol'
+} from '@abele/sync-sdk/core'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 
 it('runs two token authorities over one host without a slow connection blocking the other', async () => {
   const data = new Map<string, unknown>(),

@@ -6,7 +6,7 @@ import {
   V2EngineClient,
   recoverPendingPullWrites,
   sha256,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'

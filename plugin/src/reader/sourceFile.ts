@@ -1,4 +1,4 @@
-import { MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-core'
+import { MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-sdk/core'
 
 /** The Blob slice surface used by the format engines, backed by bounded disk reads. */
 export function sourceFile(source: ChunkSource) {

@@ -15,7 +15,7 @@ it('builds the guarded filesystem without a bundled or shimmed Node filesystem',
         formats: ['cjs'],
         fileName: () => 'main.js',
       },
-      rollupOptions: { external: ['obsidian', '@abele/sync-core', '@noble/hashes/sha2'] },
+      rollupOptions: { external: ['obsidian', '@abele/sync-sdk/core', '@noble/hashes/sha2'] },
     },
   })
   const outputs = Array.isArray(result) ? result : [result]

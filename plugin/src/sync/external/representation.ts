@@ -6,7 +6,7 @@ import {
   type StateStore,
   type StateEntry,
   type EngineClient,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import {
   caseKey,
   kindOf,
@@ -14,7 +14,7 @@ import {
   type ExternalVerifyRequest,
   type ChangeItem,
   type CommitOp,
-} from '@abele/sync-protocol'
+} from '@abele/sync-sdk/protocol'
 import type { ExternalState } from './state'
 import {
   ExternalDocumentSchema,

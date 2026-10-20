@@ -12,7 +12,7 @@ import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { App } from 'obsidian'
-import { applyStaged, ExpectedWrites, MemoryStateStore, sha256 } from '@abele/sync-core'
+import { applyStaged, ExpectedWrites, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { holdTokenDownload } from '@/testing/holdTokenDownload'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -314,7 +314,7 @@ it('holds a native streaming hydration before placement and preserves a concurre
   try {
     const stage = await f.fs.beginAtomicWrite('sample.bin', 1000, null)
     const opening = client.openVersion().then(async (source) => {
-      const { downloadToStage, TransferBudget } = await import('@abele/sync-core')
+      const { downloadToStage, TransferBudget } = await import('@abele/sync-sdk/core')
       return downloadToStage(source, stage, { size: bytes.length, sha }, new TransferBudget()).then(
         () => 'installed',
         (error) => error

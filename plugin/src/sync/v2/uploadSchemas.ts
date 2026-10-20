@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { UploadBeginRequestSchema as SharedUploadBeginRequestSchema } from '@abele/sync-protocol'
+import { UploadBeginRequestSchema as SharedUploadBeginRequestSchema } from '@abele/sync-sdk/protocol'
 
-export { UploadBeginResponseSchema } from '@abele/sync-protocol'
-export type { UploadBeginResponse } from '@abele/sync-protocol'
+export { UploadBeginResponseSchema } from '@abele/sync-sdk/protocol'
+export type { UploadBeginResponse } from '@abele/sync-sdk/protocol'
 
 // Optional upstream upload fields remain unknown fields for the plugin's v2 request.
 export const UploadBeginRequestSchema = SharedUploadBeginRequestSchema.pick({ size: true })

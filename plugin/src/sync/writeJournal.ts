@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import type { LocalStorage } from './ledgerId'
 
 export const JOURNAL_KEY = 'abele-sync-writes'

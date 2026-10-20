@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { HeldDelete } from '@abele/sync-core'
+import type { HeldDelete } from '@abele/sync-sdk/core'
 import { HeldDeletesPrompt } from '@/sync/heldDeletes'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 

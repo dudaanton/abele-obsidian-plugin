@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import { completion, wait } from './idbRequests'
 
 const META = 'meta'

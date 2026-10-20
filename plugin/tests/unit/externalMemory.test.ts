@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { sha256 as reference } from '@abele/sync-core'
+import { sha256 as reference } from '@abele/sync-sdk/core'
 import { sha256 } from '@/sync/external/hash'
 import { binaryResponse } from '@/sync/binaryResponse'
 import { rangedBinaryTransport } from '@/sync/rangedBinaryTransport'

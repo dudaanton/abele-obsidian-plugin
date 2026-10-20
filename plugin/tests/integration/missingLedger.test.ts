@@ -3,7 +3,7 @@ import { tokenHostFixture } from '../helpers/tokenHostFixture'
 import { openTokenLedger } from '@/sync/tokenLedger'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
-import { EXTERNAL_STATE_KEY } from '@abele/sync-core'
+import { EXTERNAL_STATE_KEY } from '@abele/sync-sdk/core'
 
 it('requires explicit recovery before building any token sync or fabricating provenance', async () => {
   const fetcher = vi.fn(async () => {

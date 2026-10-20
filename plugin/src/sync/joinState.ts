@@ -1,4 +1,4 @@
-import type { JoinPrefer } from '@abele/sync-protocol'
+import type { JoinPrefer } from '@abele/sync-sdk/protocol'
 
 /** Legacy join metadata retained for reading saved and transferred connections. */
 export interface JoinState {

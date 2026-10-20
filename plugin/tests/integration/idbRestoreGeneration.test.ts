@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { GENERATION_KEY, reconcileGeneration } from '@abele/sync-core'
+import { GENERATION_KEY, reconcileGeneration } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 
 const row = {

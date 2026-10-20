@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { verifySyncFixture } from './verify-sync-inputs.mjs'
+import { verifySyncFixture } from './sync-server-fixture.mjs'
 import { requireRoutableOwnedPool } from './agent-stand-window.mjs'
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 if (!process.env.ABELE_AGENT_STAND_STAGE) {

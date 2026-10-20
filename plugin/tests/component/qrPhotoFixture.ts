@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import jpeg from 'jpeg-js'
 import QrCode from '@/components/obsidian/QrCode.vue'
 import type { Rect } from '@/transfer/scan'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 
 // Entirely synthetic. Punctuation in the fake scope exercises +, / and padding
 // in standard base64; the key inside the JSON is separately base64url.

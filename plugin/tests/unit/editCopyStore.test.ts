@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-core'
+import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
 import { EditCopies } from '@/sync/editCopies'
 import { registerDurableEditCopies, registerConnectionEditCopies } from '@/sync/editCopyStore'
 

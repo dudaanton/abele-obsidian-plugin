@@ -1,6 +1,6 @@
 import { guardedVaultAdapter } from './vaultPathLinks'
 import { Platform, type DataAdapter } from 'obsidian'
-import { EngineError } from '@abele/sync-core'
+import { EngineError } from '@abele/sync-sdk/core'
 import type { NativeFs } from './vaultWrites'
 
 /** Folders under the vault, made on the way to a file and tidied when the sync empties them. */

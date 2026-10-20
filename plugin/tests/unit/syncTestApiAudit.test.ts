@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 
 // One declaration graph and one pass over the finite test tree bound the export and route audit.
 it('keeps test imports on installed sync-core exports and sync request paths on v2', () => {
-  const entry = resolve('node_modules/@abele/sync-core/dist/index.d.ts')
+  const entry = resolve('node_modules/@abele/sync-sdk/dist/internal/core/index.d.ts')
   // Export names need the module graph, not ambient packages or standard-library types.
   const program = ts.createProgram([entry], { types: [], noLib: true })
   const checker = program.getTypeChecker()
@@ -22,7 +22,7 @@ it('keeps test imports on installed sync-core exports and sync request paths on 
       if (
         !ts.isImportDeclaration(node) ||
         !ts.isStringLiteral(node.moduleSpecifier) ||
-        node.moduleSpecifier.text !== '@abele/sync-core'
+        node.moduleSpecifier.text !== '@abele/sync-sdk/core'
       )
         continue
       const bindings = node.importClause?.namedBindings

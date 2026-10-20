@@ -1,4 +1,4 @@
-import type { EngineStatus } from '@abele/sync-core'
+import type { EngineStatus } from '@abele/sync-sdk/core'
 import SyncStatusItem from '@/components/sync/SyncStatusItem.vue'
 import { renderKit } from '@/components/obsidian/mount'
 import { formatWhen } from './format'

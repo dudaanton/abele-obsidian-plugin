@@ -1,4 +1,4 @@
-import type { ChunkSource } from '@abele/sync-core'
+import type { ChunkSource } from '@abele/sync-sdk/core'
 import { sourceFile } from './sourceFile'
 
 /** Serialize library requests so overlapping requests cannot multiply bridge buffers. */

@@ -1,12 +1,11 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { verifySyncSdkInputs } from '../../scripts/verify-sync-sdk.mjs'
 import { describe, expect, it } from 'vitest'
-import * as core from '@abele/sync-core'
+import * as core from '@abele/sync-sdk/core'
 import * as records from '@/sync/external/records'
 import * as state from '@/sync/external/state'
 import { SqliteExternalStateStore } from '@/sync/external/SqliteExternalStateStore'
 
-const selected = 'b0ed82060937d210f14838456d51fbe3fc055188'
 const exported = core as Record<string, any>
 describe('canonical external state inputs', () => {
   it('exports the public engine scheduler and scoped queue adapter', () => {
@@ -14,10 +13,7 @@ describe('canonical external state inputs', () => {
     expect(exported.exclusiveOperationPort).toBeTypeOf('function')
   })
   it('pins the explicit committed canonical input rather than a mutable sibling or unrelated revision', () => {
-    const provenance = JSON.parse(
-      readFileSync(new URL('../../vendor/sync/provenance.json', import.meta.url), 'utf8')
-    )
-    expect(provenance.commit).toBe(selected)
+    expect(verifySyncSdkInputs().version).toBe('0.1.1')
   })
 
   it('uses the core facade, schemas, transaction checks and error class together', () => {

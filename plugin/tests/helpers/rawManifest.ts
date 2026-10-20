@@ -1,4 +1,4 @@
-import { decodeAccessToken, V2ManifestSchema, type V2ManifestItem } from '@abele/sync-protocol'
+import { decodeAccessToken, V2ManifestSchema, type V2ManifestItem } from '@abele/sync-sdk/protocol'
 
 /** Raw protocol inventory includes directories as well as downloadable files. */
 export async function rawManifest(

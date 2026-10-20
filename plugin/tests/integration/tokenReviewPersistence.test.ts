@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'

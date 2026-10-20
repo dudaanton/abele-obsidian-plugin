@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { networkInterfaces } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { decodeAccessToken } from '@abele/sync-protocol'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 import {
   AccessClient,
   V2EngineClient,
@@ -13,7 +13,7 @@ import {
   MemoryFileSystem,
   MemoryStateStore,
   sha256,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { spawnSyncServer, fixtureFetch, syncFixtureNetwork } from '../e2e/helpers/syncServer'
 import { defaultSelective } from '@/sync/connection'
 

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { MemoryStateStore, sha256 } from '@abele/sync-core'
+import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { ExecutableReview, EXECUTABLE_REVIEW_KEY } from '@/sync/executableReview'
 import { executablePath } from '@/sync/stagedPluginCode'
 

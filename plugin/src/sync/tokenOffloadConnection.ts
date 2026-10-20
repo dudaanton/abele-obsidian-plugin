@@ -8,7 +8,7 @@ import {
   type FileSystem,
   type StateEntry,
   type V2EngineClient,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { sha256 } from './external/hash'
 import { devicePinned } from './external/devicePins'
 import { ExternalFilePortError } from './external/filesystem'

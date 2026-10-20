@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { GENERATION_KEY, EXTERNAL_STATE_KEY, MemoryStateStore } from '@abele/sync-core'
+import { GENERATION_KEY, EXTERNAL_STATE_KEY, MemoryStateStore } from '@abele/sync-sdk/core'
 import { assertResponseGeneration, fenceHostGeneration } from '@/sync/restoreFence'
 import { WriteJournal } from '@/sync/writeJournal'
 

@@ -1,4 +1,4 @@
-import { EngineError, RecoveryBarrier } from '@abele/sync-core'
+import { EngineError, RecoveryBarrier } from '@abele/sync-sdk/core'
 import type { ExternalDocument } from './records'
 
 export interface RecoveryStorage {

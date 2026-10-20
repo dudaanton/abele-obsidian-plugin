@@ -16,8 +16,8 @@
  * connection rather than the settings, and nothing in `entries.ts` writes it — the receiving
  * screen hands it to the sync service.
  */
-import type { SelectiveSettings } from '@abele/sync-core'
-import { normalizeServerUrl } from '@abele/sync-protocol'
+import type { SelectiveSettings } from '@abele/sync-sdk/core'
+import { normalizeServerUrl } from '@abele/sync-sdk/protocol'
 import { objectOf, selectiveFrom, type DeviceConnection } from '@/sync/connection'
 import type { TransferEntry } from './types'
 

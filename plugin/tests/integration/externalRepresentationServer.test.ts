@@ -9,7 +9,7 @@ import {
   RecoveryBarrier,
   MemoryFileSystem,
   sha256,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'
 import { create, blob, seed } from '@abele/sync-test-seed'
 import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'

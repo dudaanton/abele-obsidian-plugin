@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { PathCoordinator, PLACEMENT, coordinatedFileSystem } from '@/sync/pathCoordinator'
-import { MemoryFileSystem } from '@abele/sync-core'
+import { MemoryFileSystem } from '@abele/sync-sdk/core'
 import { vi } from 'vitest'
 import { deferred } from '../helpers/deferred'
 

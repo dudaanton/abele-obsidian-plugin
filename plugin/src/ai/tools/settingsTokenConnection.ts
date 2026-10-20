@@ -1,4 +1,4 @@
-import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-sdk/protocol'
 import { Platform } from 'obsidian'
 import { defaultSelective } from '@/sync/connection'
 import { tokenUi } from '@/sync/tokenUi'
@@ -53,10 +53,10 @@ export async function writeToken(path: string, value: unknown): Promise<string |
     let patch: Parameters<typeof ui.updateConnection>[1]
     if (parts[3] === 'selective') {
       const selective = (
-        tokenView()[parts[2]] as { selective: import('@abele/sync-core').SelectiveSettings }
+        tokenView()[parts[2]] as { selective: import('@abele/sync-sdk/core').SelectiveSettings }
       ).selective
       if (parts.length === 4)
-        patch = { selective: value as import('@abele/sync-core').SelectiveSettings }
+        patch = { selective: value as import('@abele/sync-sdk/core').SelectiveSettings }
       else {
         let target = selective as unknown as Record<string, unknown>
         for (const part of parts.slice(4, -1)) target = target[part] as Record<string, unknown>

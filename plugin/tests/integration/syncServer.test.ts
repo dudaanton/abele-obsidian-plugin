@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest'
-import { AccessClient, V2EngineClient, sha256 } from '@abele/sync-core'
+import { AccessClient, V2EngineClient, sha256 } from '@abele/sync-sdk/core'
 import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 

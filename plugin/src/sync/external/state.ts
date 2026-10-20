@@ -12,4 +12,4 @@ export {
   type ExternalPhaseBatch,
   type ExternalStatePort,
   type ExternalChange,
-} from '@abele/sync-core'
+} from '@abele/sync-sdk/core'

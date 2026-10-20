@@ -1,4 +1,4 @@
-import { GENERATION_KEY, EXTERNAL_STATE_KEY, EngineError, type StateStore } from '@abele/sync-core'
+import { GENERATION_KEY, EXTERNAL_STATE_KEY, EngineError, type StateStore } from '@abele/sync-sdk/core'
 
 export const RESTORE_HEADER = 'abele-restore-generation'
 const HOST_KEYS = ['token-asset-outbox', 'token-asset-identities'] as const

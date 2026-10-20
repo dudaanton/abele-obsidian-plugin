@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import * as shared from '@abele/sync-protocol'
+import * as shared from '@abele/sync-sdk/protocol'
 import * as contract from '@/sync/v2/contract'
 import * as files from '@/sync/v2/fileSchemas'
 import { UploadBeginRequestSchema, UploadReceiptSchema } from '@/sync/v2/uploadSchemas'

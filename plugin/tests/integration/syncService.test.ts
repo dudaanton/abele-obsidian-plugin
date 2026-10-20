@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Platform } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
-import { V2EngineClient, AccessClient } from '@abele/sync-core'
+import { V2EngineClient, AccessClient } from '@abele/sync-sdk/core'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { create, seed, shaOf } from '@abele/sync-test-seed'
