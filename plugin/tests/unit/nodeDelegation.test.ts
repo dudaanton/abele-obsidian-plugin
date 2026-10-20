@@ -43,6 +43,36 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it('does not repeatedly poll a finished child’s unchanged workspace', async () => {
+  const f = fixture()
+  f.client.createDelegation.mockImplementationOnce(async (request) => ({
+    ...child,
+    delegation_key: request.delegation_key,
+    workspace_id: 'sample-copy',
+  }))
+  f.client.delegationStatus.mockResolvedValue({
+    ...child,
+    workspace_id: 'sample-copy',
+    state: 'completed',
+    session_head_seq: 17,
+    mailbox_head_seq: 2,
+    pending_human_prompts: 0,
+  })
+  const workspaceStatus = vi.fn(async () => ({ entries: [], next_offset: null }))
+  Object.assign(f.client, {
+    head: async () => 0,
+    cursor: async () => 0,
+    subscribe: async () => {},
+    getWorkspace: async () => ({ branch: 'work/sample-parser' }),
+    workspaceStatus,
+  })
+  await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+  await f.controller.create('parent', task)
+  await f.controller.restore()
+  await f.controller.restore()
+  expect(workspaceStatus).toHaveBeenCalledTimes(1)
+  f.store.close()
+})
 
 it('does not rearm a stopped parent when a follow-up is accepted concurrently with Stop', async () => {
   const f = fixture()

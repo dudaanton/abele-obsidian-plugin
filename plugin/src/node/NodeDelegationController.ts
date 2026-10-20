@@ -42,7 +42,10 @@ export class NodeDelegationController {
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
   private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
-  private readonly workspaces = new Map<string, { branch?: string; files: string[] }>()
+  private readonly workspaces = new Map<
+    string,
+    { branch?: string; files: string[]; state: string; checkedAt: number }
+  >()
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
@@ -512,11 +515,23 @@ export class NodeDelegationController {
             this.subscribed.add(child.session_id)
           }
           if (child.workspace_id) {
+            const state = await this.store.transaction(
+              (s) => storage(s).tasks[child.delegation_key].status?.state ?? child.state
+            )
+            const previous = this.workspaces.get(child.workspace_id)
+            if (
+              previous?.state === state &&
+              (['completed', 'failed', 'unknown', 'cancelled'].includes(state) ||
+                Date.now() - previous.checkedAt < 5000)
+            )
+              continue
             const workspace = await this.client.getWorkspace(child.workspace_id)
             const status = await this.client.workspaceStatus(child.workspace_id, 0, 20)
             this.workspaces.set(child.workspace_id, {
               branch: workspace.branch ?? undefined,
               files: status.entries.map((entry) => entry.path),
+              state,
+              checkedAt: Date.now(),
             })
           }
         } catch {
