@@ -1,5 +1,25 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.files.attachMessage':
+    'Andere Worktrees dieses Repositorys anzeigen und Dateibearbeitung im ausgewählten Worktree erlauben? Agentenausführung erfordert weiterhin eine separate Zustimmung.',
+  'node.files.saveLocked': 'Speichern ist hier gesperrt',
+  'node.files.newFile': 'Neue Datei…',
+  'node.files.newFolder': 'Neuer Ordner…',
+  'node.files.rename': 'Umbenennen…',
+  'node.files.move': 'Verschieben…',
+  'node.files.delete': 'Löschen…',
+  'node.files.deleteConfirm': '{path} löschen? Die Datei wird aus diesem Ordner entfernt.',
+  'node.files.allowEditing':
+    'Dateien in diesem Worktree erstellen, bearbeiten, verschieben und löschen erlauben? Dies erlaubt keine Agentenausführung.',
+  'node.files.worktreeBusyTitle': 'Worktree wird verwendet',
+  'node.files.worktreeBusy':
+    'Dieser Worktree wird verwendet von: {holders}. Stoppen Sie seine Sitzungen vor dem Löschen.',
+  'node.files.unknownHolder': 'einem anderen Vorgang auf dem Knoten',
+  'node.files.stopSessions': 'Diese Sitzungen stoppen',
+  'node.files.sessionsStopped':
+    'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
+  'node.error.busy':
+    'Dieser Ordner oder Worktree wird verwendet. Stoppen Sie seine Sitzungen vor dem Löschen.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',

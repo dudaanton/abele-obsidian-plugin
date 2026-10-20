@@ -6,6 +6,8 @@ import {
   MethodSchemas,
   ResourceMethodSchemas,
   WorkspaceJobResultSchema,
+  RepositoryWriteSchema,
+  FileWriteSchema,
   type WorktreeEntry,
 } from '@abele/node-protocol'
 import { wirePathTarget } from './nodePathChat'
@@ -22,7 +24,17 @@ type IntentState = ClientState & { nodePathIntents?: Record<string, PathIntent> 
 export class NodePathMutations {
   constructor(
     readonly client: Pick<NodeClient, 'store' | 'nodePath'> &
-      Partial<Pick<NodeClient, 'removeWorkspace' | 'flush' | 'operationResult'>>
+      Partial<
+        Pick<
+          NodeClient,
+          | 'removeWorkspace'
+          | 'flush'
+          | 'operationResult'
+          | 'repository'
+          | 'writeFile'
+          | 'fileMutationResult'
+        >
+      >
   ) {}
   private async intent<T>(
     method: string,
@@ -54,12 +66,12 @@ export class NodePathMutations {
     try {
       result = await send(intent.id, intent.params)
     } catch (error) {
-      // This terminal refusal performed no mkdir. Unknown outcomes keep their original ID
-      // and parameters, even if the picker has since obtained another parent handle.
+      // A terminal stale-handle or busy refusal performed no write. Unknown outcomes keep
+      // their original identity; a later explicit action may retire only a known refusal.
       if (
-        method === 'filesystem.v1.mkdir' &&
         error instanceof ChannelError &&
-        error.code === 'stale_resource'
+        ((method === 'filesystem.v1.mkdir' && error.code === 'stale_resource') ||
+          (method === 'repository.v1.worktree.delete' && error.code === 'resource_busy'))
       )
         await this.client.store.transaction((raw) => {
           const intents = (raw as IntentState).nodePathIntents
@@ -112,6 +124,81 @@ export class NodePathMutations {
     const params = { project_id, worktree_id, listed }
     return this.intent('project.worktree_selection', params, (id) =>
       this.client.nodePath.worktreeSelection(params, id)
+    )
+  }
+  private fileTarget(target: PathTarget) {
+    return target.kind === 'worktree' ? { worktree_id: target.id } : { workspace_id: target.id }
+  }
+  private async fileIntent(
+    method: string,
+    params: unknown,
+    send: (id: string) => Promise<{ state: string }>
+  ) {
+    const result = await this.intent(method, params, async (id) => {
+      const result = await send(id)
+      if (result.state === 'outcome_unknown') throw new ChannelError('outcome_unknown')
+      return result
+    })
+    if (result.state === 'conflict') throw new ChannelError('stale_revision')
+  }
+  fileMove(target: PathTarget, from: string, to: string, expected_content_id: string) {
+    const params = { ...this.fileTarget(target), from, to, expected_content_id }
+    return this.fileIntent(
+      `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.move`,
+      params,
+      (id) => this.client.nodePath.fileMove(params, id)
+    )
+  }
+  fileRemove(target: PathTarget, path: string, expected_content_id: string) {
+    const params = { ...this.fileTarget(target), path, expected_content_id }
+    return this.fileIntent(
+      `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.remove`,
+      params,
+      (id) => this.client.nodePath.fileRemove(params, id)
+    )
+  }
+  fileMkdir(target: PathTarget, path: string) {
+    const params = { ...this.fileTarget(target), path }
+    return this.fileIntent(
+      `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.mkdir`,
+      params,
+      (id) => this.client.nodePath.fileMkdir(params, id)
+    )
+  }
+  createFile(target: PathTarget, path: string) {
+    const params = {
+      ...this.fileTarget(target),
+      path,
+      text: '',
+      expected_content_id: null as string | null,
+    }
+    return this.fileIntent(
+      target.kind === 'worktree' ? 'repository.v1.write' : 'workspace.write',
+      params,
+      async (id) => {
+        const result = await (async () => {
+          if (target.kind === 'worktree') {
+            const repository = this.client.repository
+            if (!repository) throw new ChannelError('unsupported_method')
+            await repository.write(RepositoryWriteSchema.parse(params), id)
+            return repository.mutationResult(id)
+          }
+          if (!this.client.writeFile || !this.client.fileMutationResult)
+            throw new ChannelError('unsupported_method')
+          await this.client.writeFile(FileWriteSchema.parse(params), id)
+          return this.client.fileMutationResult(id)
+        })()
+        if (!result || result.state === 'outcome_unknown') throw new ChannelError('outcome_unknown')
+        const resultTarget = 'worktree_id' in result ? result.worktree_id : result.workspace_id
+        if (
+          result.operation_id !== id ||
+          result.path !== path ||
+          resultTarget !== target.id ||
+          result.expected_content_id !== null
+        )
+          throw new UiError(uiMessage('streamBError.6077692b27'))
+        return result
+      }
     )
   }
   create(project_id: string, branch: string, base_ref: string) {
@@ -171,9 +258,12 @@ export class NodePathMutations {
     const retained = await this.client.store.transaction((state) => {
       const pending = state.outbox.find(matches)
       if (pending) return { id: pending.operation_id, pending: true }
-      const receipt = Object.entries(state.results).find(
-        ([, result]) => result.request && matches(result.request)
-      )
+      const receipt = Object.entries(state.results)
+        .reverse()
+        .find(
+          ([, result]) =>
+            result.request && matches(result.request) && result.error !== 'resource_busy'
+        )
       return receipt ? { id: receipt[0], pending: false } : undefined
     })
     if (retained) {

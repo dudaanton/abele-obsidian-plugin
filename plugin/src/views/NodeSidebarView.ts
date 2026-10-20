@@ -196,7 +196,18 @@ export class NodeSidebarView extends ItemView {
             },
             onFileMenu: (event: MouseEvent, path: string) => {
               const target = selected()
-              if (target) showNodePathFileMenu(event, { target, path })
+              const directory = (
+                entries: import('@/components/nodeWork/types').TreeEntry[]
+              ): boolean =>
+                entries.some((entry) =>
+                  entry.path === path ? entry.kind === 'folder' : directory(entry.children ?? [])
+                )
+              if (target)
+                showNodePathFileMenu(event, {
+                  target,
+                  path,
+                  directory: directory(model?.entries.value ?? []),
+                })
             },
             onCopy: (text: string) => nodePathAction(() => navigator.clipboard.writeText(text)),
           })

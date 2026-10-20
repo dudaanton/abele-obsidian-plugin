@@ -5,6 +5,7 @@ import type { NodePathModel } from '@/node/NodePathModel'
 
 const fixture = vi.hoisted(() => ({
   open: vi.fn(),
+  editing: vi.fn(async () => ({ enabled: true })),
   project: vi.fn(async () => ({ trust: 'trusted', root_path: '/sample/project' })),
   choose: undefined as unknown as (item: { id: string }) => void,
 }))
@@ -24,7 +25,11 @@ vi.mock('@/node/NodeService', () => ({
     getInstance: () => ({
       connection: () => ({
         state: { value: 'connected' },
-        client: { describe: async () => ({}), getProject: fixture.project },
+        client: {
+          describe: async () => ({}),
+          getProject: fixture.project,
+          repository: { editing: fixture.editing },
+        },
       }),
     }),
   },
@@ -78,6 +83,7 @@ it('selects an attached worktree without waiting for the catalogue refresh', asy
     { ...target, id: 'sample-external' },
     expect.objectContaining({ id: 'sample-external', branch: 'topic' })
   )
+  expect(fixture.editing).toHaveBeenCalledWith({ worktree_id: 'sample-external', enabled: true })
 })
 
 it('opens a newly created chat without waiting for the catalogue and recursive tree refresh', async () => {

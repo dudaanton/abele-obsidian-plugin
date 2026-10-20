@@ -7,6 +7,52 @@ import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
+  it('uses a new explicit deletion intent after a known busy refusal', async () => {
+    const target = {
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      projectId: 'sample-project',
+      kind: 'worktree' as const,
+      id: 'sample-tree',
+    }
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new ChannelError('resource_busy'))
+      .mockResolvedValueOnce({ worktree_id: target.id, state: 'deleted' })
+    const client = {
+      store: new MemoryClientStore(),
+      nodePath: new NodePathClient(async () => ({}), send),
+    }
+    const row = { head: 'a'.repeat(40) } as never
+    await expect(
+      new NodePathMutations(client).delete(target, row, 'first-observation')
+    ).rejects.toThrow('resource_busy')
+    await new NodePathMutations(client).delete(target, row, 'second-observation')
+    expect(send.mock.calls[1][2]).not.toBe(send.mock.calls[0][2])
+    expect(send.mock.calls[1][1].expected_observation_id).toBe('second-observation')
+  })
+  it('allows a fresh removal after a completed busy refusal without replaying the refused operation', async () => {
+    const store = new MemoryClientStore()
+    await store.transaction((state) => {
+      state.results['refused-removal'] = {
+        error: 'resource_busy',
+        request: {
+          method: 'workspace.remove',
+          params: { workspace_id: 'workspace-sample' },
+        },
+      }
+    })
+    const removeWorkspace = vi.fn(async () => ({
+      workspace_id: 'workspace-sample',
+      job_id: 'fresh-job',
+    }))
+    const mutations = new NodePathMutations({ store, nodePath: {} as never, removeWorkspace })
+    expect(await mutations.removeManaged('workspace-sample')).toEqual({
+      workspace_id: 'workspace-sample',
+      job_id: 'fresh-job',
+    })
+    expect(removeWorkspace).toHaveBeenCalledOnce()
+  })
   it.each([false, true])(
     'starts a fresh explicit Open after a terminal receipt, persisted=%s',
     async (persisted) => {

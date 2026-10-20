@@ -48,7 +48,11 @@ export class NodeFileTabActions {
         add('lock', t('streamBMeta.9df4bdb9e7'), () => this.host.act(() => this.unlock()))
       add(
         'save',
-        editing.dirty.value ? t('streamBMeta.dc0210c641') : t('streamBMeta.de2bbb30c1'),
+        editing.locked.value
+          ? t('node.files.saveLocked')
+          : editing.dirty.value
+            ? t('streamBMeta.dc0210c641')
+            : t('streamBMeta.de2bbb30c1'),
         () => this.host.act(() => editing.save()),
         editing.dirty.value
       )
@@ -89,7 +93,11 @@ export class NodeFileTabActions {
   start(): void {
     const doc = this.host.file()?.document.value,
       editing = this.host.editing()
-    if (doc && editing) this.host.act(() => editing.start(doc.path))
+    if (doc && editing)
+      this.host.act(async () => {
+        await editing.start(doc.path)
+        if (editing.locked.value) await this.unlock()
+      })
   }
   /** Back to the file, read again so what was saved shows; unsaved edits wait in the draft. */
   stop(): void {

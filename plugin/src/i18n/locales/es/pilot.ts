@@ -1,5 +1,25 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.files.attachMessage':
+    '¿Mostrar los otros árboles de trabajo del repositorio y permitir editar archivos en el que elija? La ejecución de agentes sigue necesitando una aprobación aparte.',
+  'node.files.saveLocked': 'Guardar está bloqueado aquí',
+  'node.files.newFile': 'Nuevo archivo…',
+  'node.files.newFolder': 'Nueva carpeta…',
+  'node.files.rename': 'Renombrar…',
+  'node.files.move': 'Mover…',
+  'node.files.delete': 'Eliminar…',
+  'node.files.deleteConfirm': '¿Eliminar {path}? Se eliminará el archivo de esta carpeta.',
+  'node.files.allowEditing':
+    '¿Permitir crear, editar, mover y eliminar archivos en este árbol de trabajo? Esto no permite ejecutar agentes.',
+  'node.files.worktreeBusyTitle': 'El árbol de trabajo está en uso',
+  'node.files.worktreeBusy':
+    'Este árbol de trabajo está ocupado por: {holders}. Detenga sus sesiones antes de eliminarlo.',
+  'node.files.unknownHolder': 'otra operación en el nodo',
+  'node.files.stopSessions': 'Detener estas sesiones',
+  'node.files.sessionsStopped':
+    'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
+  'node.error.busy':
+    'Esta carpeta o árbol de trabajo está en uso. Detenga sus sesiones antes de eliminarlo.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',

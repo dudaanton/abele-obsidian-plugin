@@ -1,5 +1,25 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.files.attachMessage':
+    'Показать другие рабочие деревья репозитория и разрешить редактирование файлов в выбранном? Для запуска агентов по-прежнему нужно отдельное разрешение.',
+  'node.files.saveLocked': 'Сохранение здесь заблокировано',
+  'node.files.newFile': 'Новый файл…',
+  'node.files.newFolder': 'Новая папка…',
+  'node.files.rename': 'Переименовать…',
+  'node.files.move': 'Переместить…',
+  'node.files.delete': 'Удалить…',
+  'node.files.deleteConfirm': 'Удалить {path}? Файл будет удалён из этой папки.',
+  'node.files.allowEditing':
+    'Разрешить создание, редактирование, перемещение и удаление файлов в этом рабочем дереве? Это не разрешает запуск агентов.',
+  'node.files.worktreeBusyTitle': 'Рабочее дерево занято',
+  'node.files.worktreeBusy':
+    'Рабочее дерево используют: {holders}. Перед удалением остановите его сессии.',
+  'node.files.unknownHolder': 'другая операция на узле',
+  'node.files.stopSessions': 'Остановить эти сессии',
+  'node.files.sessionsStopped':
+    'Сессии остановлены. Когда они завершат остановку, снова выберите удаление рабочего дерева.',
+  'node.error.busy':
+    'Эта папка или рабочее дерево используется. Перед удалением остановите его сессии.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',

@@ -29,9 +29,13 @@ import type { NodePathModel, PathTarget } from './NodePathModel'
 import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 import { shortRef } from './presentation'
+import { worktreeDisplayPath } from './worktreePresentation'
 import { copyIcon, copyKind } from '@/components/nodeWork/codes'
 import type { FolderSummary } from '@/components/nodeWork/types'
 import { nodePathMenuPosition as position } from './nodePathMenuPosition'
+import { nodeTreeAction, type TreeAction } from './nodeTreeActions'
+import { nodeAdvertisesMethod } from './advertisedMethods'
+import { worktreeBusy } from './worktreeBusy'
 
 const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
@@ -44,7 +48,7 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
   const context = freezeNodePathContext(raw),
     menu = new Menu(),
     owner = nodePathOwnerActions()
-  if (context.path) {
+  if (context.path && !context.directory) {
     menu.addItem((i) =>
       i
         .setTitle(t('streamB.open.ed077f'))
@@ -75,6 +79,7 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
         )
     )
   }
+  addNodeTreeActions(menu, context)
   menu.addItem((i) =>
     i
       .setTitle(t('streamB.askHere.7b4ec4'))
@@ -102,6 +107,32 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
     await addFolderDebugMenu(menu, context.target, context.path)
     menu.showAtPosition(at)
   })
+}
+function addNodeTreeActions(menu: Menu, context: NodePathContext): void {
+  if (context.revision?.kind === 'commit') return
+  const client = NodeService.getInstance().connection(context.target.registrationId).client
+  const prefix = context.target.kind === 'worktree' ? 'repository.v1' : 'workspace'
+  const actions: [TreeAction, string, string][] = [
+    ['newFile', 'file-plus', `${prefix}.write`],
+    ['newFolder', 'folder-plus', `${prefix}.file.mkdir`],
+    ...(context.path && !context.directory
+      ? ([
+          ['rename', 'pencil', `${prefix}.file.move`],
+          ['move', 'folder-input', `${prefix}.file.move`],
+          ['delete', 'trash', `${prefix}.file.remove`],
+        ] as [TreeAction, string, string][])
+      : []),
+  ]
+  for (const [action, icon, method] of actions) {
+    if (!nodeAdvertisesMethod(client, method)) continue
+    menu.addItem((item) => {
+      item
+        .setTitle(t(`node.files.${action}`))
+        .setIcon(icon)
+        .onClick(() => nodePathAction(() => nodeTreeAction(action, context)))
+      if (action === 'delete') item.setWarning(true)
+    })
+  }
 }
 /** The folder's or worktree's menu, built once the node said whether outside worktrees are open. */
 function withRowMenu(
@@ -147,6 +178,7 @@ function rowMenu(
     git = folder.git
   const menu = into ?? new Menu(),
     owner = nodePathOwnerActions()
+  addNodeTreeActions(menu, { target, directory: true })
   const add = (
     title: string,
     icon: string,
@@ -190,6 +222,23 @@ function rowMenu(
       'link',
       online && model.capabilities.value.includes('node_path_v2'),
       async () => {
+        if (
+          !(await confirmDialog({
+            title: t('streamB.attachAnExistingWorktree.52c0f9'),
+            message: t('node.files.attachMessage'),
+            confirmText: t('streamB.allowEditing.8195ed'),
+          }))
+        )
+          return
+        if (external !== true) {
+          const allowed = await changeProjectExternalBrowsing(
+            connection.client,
+            target.projectId,
+            true,
+            async () => true
+          )
+          if (!allowed) return
+        }
         const rows = await pathPages((cursor) =>
           connection.client.repository.worktrees({
             project_id: target.projectId,
@@ -204,7 +253,7 @@ function rowMenu(
             .map((w) => ({
               id: w.worktree_id,
               title: w.branch?.replace(/^refs\/heads\//, '') ?? t('streamB.detached.134385'),
-              note: w.path_label,
+              note: worktreeDisplayPath(w.path_label, w.branch),
               icon: 'git-branch',
               kind: t('streamB.pickerExistingWorktree'),
             })),
@@ -276,7 +325,7 @@ function rowMenu(
             !(await confirmDialog({
               title: t('streamB.deleteWorktree.89ba18'),
               message: t('streamB.deleteThisRemovesTheWorkingCopyNot.d7af59', {
-                v0: String(selected.path_label),
+                v0: worktreeDisplayPath(selected.path_label, selected.branch),
               }),
               confirmText: t('streamB.deleteWorktree.348a63'),
             }))
@@ -285,21 +334,42 @@ function rowMenu(
           const observation = await connection.client.repository.observe({ worktree_id: target.id })
           if (observation.revision.kind !== 'working')
             throw new UiError(uiMessage('streamB.theNodeDidNotReturnACurrent.beb9d0'))
-          if (selected.kind === 'managed' && selected.workspace_id) {
-            const reservation = await new NodePathMutations(connection.client).removeManaged(
-              selected.workspace_id
-            )
-            new Notice(
-              t('streamB.deletionAcceptedRefreshToCheckJob.de2efa', {
-                v0: String(reservation.job_id),
+          try {
+            if (selected.kind === 'managed' && selected.workspace_id) {
+              const reservation = await new NodePathMutations(connection.client).removeManaged(
+                selected.workspace_id
+              )
+              new Notice(
+                t('streamB.deletionAcceptedRefreshToCheckJob.de2efa', {
+                  v0: String(reservation.job_id),
+                })
+              )
+            } else
+              await new NodePathMutations(connection.client).delete(
+                target,
+                selected,
+                observation.revision.observation_id
+              )
+          } catch (error) {
+            const busy = worktreeBusy(error, model, target)
+            if (!busy) throw error
+            const holders = busy.labels.join(', ') || t('node.files.unknownHolder')
+            if (!busy.sessions.length) {
+              new Notice(t('node.files.worktreeBusy', { holders }))
+              return
+            }
+            if (
+              await confirmDialog({
+                title: t('node.files.worktreeBusyTitle'),
+                message: t('node.files.worktreeBusy', { holders }),
+                confirmText: t('node.files.stopSessions'),
               })
-            )
-          } else
-            await new NodePathMutations(connection.client).delete(
-              target,
-              selected,
-              observation.revision.observation_id
-            )
+            ) {
+              for (const session of busy.sessions) await connection.client.stopSession(session.id)
+              new Notice(t('node.files.sessionsStopped'))
+            }
+            return
+          }
           await model.refresh()
         }
       )
@@ -333,7 +403,7 @@ function rowMenu(
   )
   add(t('streamB.copyPath.720ff4'), 'copy', true, () =>
     navigator.clipboard.writeText(
-      folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
+      target.location?.path ?? folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
     )
   )
   const root =
@@ -474,6 +544,8 @@ export async function attachNodePathWorktree(
   if (row.project_id !== target.projectId)
     throw new UiError(uiMessage('streamB.theSelectedWorktreeBelongsToAnotherProject.09bd1b'))
   const connection = NodeService.getInstance().connection(model.registrationId)
+  if (row.kind === 'external')
+    await connection.client.repository.editing({ worktree_id: row.worktree_id, enabled: true })
   await new NodePathMutations(connection.client).selection(target.projectId, row.worktree_id, true)
   const selecting = model.selectTarget(
     { ...target, kind: 'worktree', id: row.worktree_id },
@@ -481,7 +553,7 @@ export async function attachNodePathWorktree(
       id: row.worktree_id,
       kind: row.kind === 'root' ? 'project' : row.detached ? 'detached' : 'worktree',
       branch: row.branch?.replace(/^refs\/heads\//, '') ?? t('streamB.detached.134385'),
-      path: row.path_label,
+      path: worktreeDisplayPath(row.path_label, row.branch),
       changed: 0,
     }
   )

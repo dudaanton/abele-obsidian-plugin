@@ -1,4 +1,22 @@
 export const en = {
+  'node.files.saveLocked': 'Saving is locked here',
+  'node.files.attachMessage':
+    'Browse this repository’s other worktrees and allow file editing in the worktree you choose? Agent execution still needs separate approval.',
+  'node.files.newFile': 'New file…',
+  'node.files.newFolder': 'New folder…',
+  'node.files.rename': 'Rename…',
+  'node.files.move': 'Move…',
+  'node.files.delete': 'Delete…',
+  'node.files.deleteConfirm': 'Delete {path}? This removes the file from this folder.',
+  'node.files.allowEditing':
+    'Allow creating, editing, moving and deleting files in this worktree? This does not allow agent execution.',
+  'node.files.worktreeBusyTitle': 'Worktree is in use',
+  'node.files.worktreeBusy':
+    'This worktree is held by: {holders}. Stop its sessions before deleting it.',
+  'node.files.unknownHolder': 'another operation on the node',
+  'node.files.stopSessions': 'Stop these sessions',
+  'node.files.sessionsStopped':
+    'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',
@@ -12,6 +30,7 @@ export const en = {
     'The result is unknown. Refresh and check what happened before trying again.',
   'node.error.outputLimit': 'The node returned too much output. Narrow the request or use paging.',
   'node.error.limit': 'The node reached a limit. Wait before trying again.',
+  'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
   'node.error.debugger':
     'The debugger is unavailable. Check the debug configuration and reconnect.',
   'node.error.generic':

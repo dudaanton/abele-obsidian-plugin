@@ -159,11 +159,10 @@ it('opens the real node repository in the shared tab, follows history, compares,
       const node=await nodes.add('Sample repository node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleRepositoryNode=node.id;
       const client=nodes.connection(node.id).client,project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
-      await client.setRepositorySettings({project_id:project.project_id,external_read:true,default_branch:'main'});
-      const catalogue=await client.repository.worktrees({project_id:project.project_id});
+      await client.setRepositorySettings({project_id:project.project_id,external_read:false,default_branch:'main'});
+      const catalogue=await client.repository.worktrees({project_id:project.project_id,include_selection:true});
       const workspace=catalogue.entries.find(w=>w.kind==='root');
       window.__sampleRepositoryProject=project.project_id;window.__sampleRepositoryWorkspace=workspace.worktree_id;
-      window.__sampleRepositoryExternal=catalogue.entries.find(w=>w.kind==='external').worktree_id;
       // A folder as a whole opens in the node panel, with that place chosen, not in a tab.
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
       const panel=()=>document.querySelector('.abele-node-sidebar');
@@ -185,11 +184,55 @@ it('opens the real node repository in the shared tab, follows history, compares,
       panel().querySelector('.abele-node-place > .abele-obsidian-icon').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.querySelector('.menu-item-title')?.textContent.trim()==='Attach a worktree'&&!el.classList.contains('is-disabled')));
       [...document.querySelectorAll('.menu-item')].find(el=>el.querySelector('.menu-item-title')?.textContent.trim()==='Attach a worktree').click();
+      await until(()=>document.querySelector('.modal.abele-modal')?.textContent.includes('Agent execution still needs separate approval'));
+      require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/attach-permission-desktop.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      [...document.querySelectorAll('.modal.abele-modal button')].find(button=>button.textContent.trim()==='Allow editing').click();
       await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].some(el=>el.querySelector('.suggestion-title')?.textContent==='feature'&&el.querySelector('.suggestion-note')?.textContent.includes('external-worktree')));
-      (document.querySelector('.prompt .prompt-input')??document.body).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
-      await wait(200);document.querySelector('.modal-container .modal-bg')?.click();
+      require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/attach-picker-desktop.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      [...document.querySelectorAll('.prompt .suggestion-item')].find(el=>el.querySelector('.suggestion-title')?.textContent==='feature').click();
       await until(()=>!document.querySelector('.prompt'));
+      await until(()=>panel().querySelector('.abele-node-place__name')?.textContent.trim()==='feature');
+      const connection=nodes.connection(window.__sampleRepositoryNode);
+      window.__sampleRepositoryExternal=api.NodePathService.getInstance().model(window.__sampleRepositoryNode).current.value.id;
+      if(!(await connection.client.repository.editingStatus({worktree_id:window.__sampleRepositoryExternal})).enabled)throw Error('Attaching did not enable the approved file editing');
+      require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/attached-worktree-desktop.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      await api.NodePathService.getInstance().model(window.__sampleRepositoryNode).select(window.__sampleRepositoryWorkspace);
+      await until(()=>panel().querySelector('.abele-node-place__name')?.textContent.trim()==='main');
+      // The independent save-lock scenario below starts with its approval explicitly revoked.
+      await connection.client.repository.editing({worktree_id:window.__sampleRepositoryExternal,enabled:false});
       return 'panel status';
+    })()`)
+    await evalLong(`(async()=>{${prelude}
+      const panel=()=>document.querySelector('.abele-node-sidebar');
+      const row=path=>panel().querySelector('[data-path="'+path+'"]');
+      const files=panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Files"]');files.click();
+      await until(()=>row('README.md'));
+      const operate=async(path,label,value)=>{
+        row(path).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:100,clientY:200}));
+        await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label));
+        [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label).click();
+        await until(()=>document.querySelector('.modal.abele-modal'));
+        const modal=document.querySelector('.modal.abele-modal');
+        if(value!==undefined){const input=modal.querySelector('input');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50)}
+        const submit=label.startsWith('New ')?'Create':label;
+        [...modal.querySelectorAll('button')].find(button=>button.textContent.trim()===submit).click();
+        await until(()=>!document.querySelector('.modal.abele-modal'));
+      };
+      await operate('README.md','New folder…','sample-created');
+      await until(()=>row('sample-created'));
+      row('sample-created').click();
+      const model=api.NodePathService.getInstance().model(window.__sampleRepositoryNode);
+      await until(()=>model.entries.value.find(entry=>entry.path==='sample-created')?.children!==undefined);
+      await operate('sample-created','New file…','sample-created/new-file.ts');
+      await until(()=>row('sample-created/new-file.ts'));
+      await operate('sample-created/new-file.ts','Rename…','sample-created/renamed.ts');
+      await until(()=>row('sample-created/renamed.ts')&&!row('sample-created/new-file.ts'));
+      await operate('sample-created/renamed.ts','Move…','sample-moved.ts');
+      await until(()=>row('sample-moved.ts')&&!row('sample-created/renamed.ts'));
+      await operate('sample-moved.ts','Delete…');
+      await until(()=>!row('sample-moved.ts'));
+      for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.getViewState().state?.target?.registrationId===window.__sampleRepositoryNode)leaf.detach();
+      return 'file operations applied and tree refreshed';
     })()`)
     const state = JSON.parse(
       await evalLong(`(async()=>{${prelude}
@@ -346,7 +389,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if((leaf.view.model?.sourceTarget??leaf.getViewState().state?.sourceTarget)?.source?.node===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
+        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if((leaf.view.model?.sourceTarget??leaf.getViewState().state?.sourceTarget)?.source?.node===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.getViewState().state?.target?.registrationId===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {

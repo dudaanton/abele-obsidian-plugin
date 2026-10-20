@@ -5,6 +5,11 @@ import { catalogs } from '@/i18n/catalogs'
 
 afterEach(() => initializeLocale('en'))
 
+it('explains a busy worktree separately from a rate limit', () => {
+  expect(nodeErrorWords('resource_busy')).toContain('in use')
+  expect(nodeErrorWords('resource_busy')).not.toBe(nodeErrorWords('rate_limit'))
+})
+
 it.each([
   ['trace_run_not_found', 'This run is no longer on the node.'],
   [

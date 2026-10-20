@@ -4,6 +4,7 @@ import type { PathTarget } from './NodePathModel'
 export interface NodePathContext {
   target: Readonly<PathTarget>
   path?: string
+  directory?: boolean
   revision?: RepositoryRevision
   contentId?: string | null
   text?: string
