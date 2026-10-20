@@ -139,7 +139,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-search-open')
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-file-view .abele-github-find input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!visible('.abele-file-view .abele-github-find'));const row=visible('.abele-file-view .cm-line');const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);let word;while(walker.nextNode()){if(walker.currentNode.textContent.includes('value')){word=walker.currentNode;break}}if(!word)throw Error('Code identifier missing');const range=document.createRange(),offset=word.textContent.indexOf('value');range.setStart(word,offset);range.setEnd(word,offset+5);const r=range.getBoundingClientRect();word.parentElement.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));await until(()=>menuItem('Find references to'));if(menuItem('Copy path'))throw Error('File menu replaced code navigation');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await until(()=>!visible('.menu'));return 'code navigation menu'})()`
+      `(async()=>{${prelude}visible('.abele-file-view .abele-github-find input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!visible('.abele-file-view .abele-github-find'));const row=visible('.abele-file-view .cm-line');const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);let word;while(walker.nextNode()){if(walker.currentNode.textContent.includes('value')){word=walker.currentNode;break}}if(!word)throw Error('Code identifier missing');const range=document.createRange(),offset=word.textContent.indexOf('value');range.setStart(word,offset);range.setEnd(word,offset+5);const r=range.getBoundingClientRect();word.parentElement.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));await until(()=>menuItem('Find references to'));if(menuItem('Copy path'))throw Error('File menu replaced code navigation');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));await until(()=>!visible('.menu'));return 'code navigation menu'})()`
     )
   } finally {
     await evalLong(
@@ -156,7 +156,7 @@ async function checkFileLineMenu(shell: 'desktop' | 'phone') {
     await capture(shell + '-file-line-menu')
   } finally {
     await evalLong(
-      `(async()=>{${prelude}document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await until(()=>!visible('.menu'));return 'closed line menu'})()`
+      `(async()=>{${prelude}document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));await until(()=>!visible('.menu'));return 'closed line menu'})()`
     )
   }
 }
