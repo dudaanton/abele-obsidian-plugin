@@ -348,7 +348,7 @@ it.each(['desktop', 'phone'])(
       await shot(${JSON.stringify(name)}+'-variables');
       if(!binding.connection.client.channel.channel.welcome.methods.includes('debugger.v1.exceptionBreakpoints.set'))throw Error('Exception filters not exposed');
       for(const label of ['Caught exceptions','Uncaught exceptions']){
-        press(visible('[aria-label="'+label+'"]'));
+        press(await until(()=>{const field=visible('[aria-label="'+label+'"]');return field&&field.getAttribute('aria-disabled')!=='true'?field:null},label+' ready'));
         await until(()=>binding.controller.exceptionFilters.length===(label==='Caught exceptions'?1:2),'exception filter saved');
       }
       visible('[aria-label="Caught exceptions"]').scrollIntoView({block:'center'});
@@ -358,7 +358,7 @@ it.each(['desktop', 'phone'])(
       const bpMenu=async()=>{
         const row=await until(()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent===frame.file.split('/').pop()+':'+frame.line),'breakpoint row');
         row.scrollIntoView({block:'center'});
-        press(row.querySelector('[aria-label="Breakpoint options"]'));
+        press(await until(()=>{const action=row.querySelector('[aria-label="Breakpoint options"]');return action&&!action.disabled?action:null},'breakpoint actions ready'));
         await until(()=>item('Edit condition'),'breakpoint menu');
       };
       await bpMenu();await shot(${JSON.stringify(name)}+'-breakpoint-menu');
@@ -389,7 +389,7 @@ it.each(['desktop', 'phone'])(
       await recordPoint(frame.line,['1'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
       await shot(${JSON.stringify(name)}+'-record-point');
-      const watch=visible('.abele-debug-panel__add input');
+      const watch=await until(()=>{const field=visible('.abele-debug-panel__add input');return field&&!field.disabled?field:null},'watch input ready');
       watch.value='sampleValue_'+'value'.repeat(45);watch.dispatchEvent(new Event('input',{bubbles:true}));
       watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
       const refused=await until(()=>[...document.querySelectorAll('.abele-debug-view .abele-debug-action_asked')].find(c=>c.textContent.includes('sampleValue_')),'long watch approval');
@@ -398,6 +398,7 @@ it.each(['desktop', 'phone'])(
       press([...refused.querySelectorAll('button')].find(b=>b.textContent.trim()==='Deny'));
       await until(()=>binding.controller.actions.some(a=>a.status==='denied'),'request denied');
       await shot(${JSON.stringify(name)}+'-approval-denied');
+      await until(()=>!watch.disabled,'watch input ready after denial');
       watch.value='1 < 2 && "a" < "b"';watch.dispatchEvent(new Event('input',{bubbles:true}));
       watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
       await approve('1 < 2');
