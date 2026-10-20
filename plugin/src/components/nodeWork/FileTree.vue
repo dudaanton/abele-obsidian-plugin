@@ -118,6 +118,8 @@
       </div>
       <!-- A name typed: every file that matches, flat, wherever it lies. -->
       <template v-if="query.trim()">
+        <div v-if="searchError" role="alert">{{ searchError }}</div>
+        <div v-if="searching" role="status">{{ t('streamB.stillReadingTheFiles.e4cd3c') }}</div>
         <TreeItem
           v-for="hit in found"
           :key="hit.path"
@@ -139,7 +141,10 @@
             })
           }}
         </div>
-        <div v-if="!found.length && !progress" class="search-empty-state">
+        <div
+          v-if="!found.length && !progress && !searching && !searchError"
+          class="search-empty-state"
+        >
           {{ t('streamB.noFileMatches.076cff') }}
         </div>
         <div v-if="progress" class="abele-file-tree__note">
@@ -186,7 +191,10 @@
               :where="dirName(change.path)"
               :active="selected === change.path"
               :path="change.path"
-              :class="{ 'abele-file-tree__deleted': change.kind === 'deleted' }"
+              :class="{
+                'abele-file-tree__deleted': change.kind === 'deleted',
+                'abele-file-tree__change': true,
+              }"
               @click="emit('open', change.path, group.id)"
               @contextmenu.prevent.stop="emit('menu', $event, change.path)"
             >
@@ -327,6 +335,7 @@ import { t } from '@/i18n'
 // looked at yet, a dot on a folder that holds changes. Three modes: every file, only the changed
 // ones in their folders, or only the changed ones as a list split into unstaged and staged.
 import { computed, reactive, ref, watch } from 'vue'
+import { presentUiError } from '@/i18n/streamBErrors'
 import { Menu, Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
@@ -341,6 +350,8 @@ import { changedTree as buildChangedTree } from './changedTree'
 const props = withDefaults(
   defineProps<{
     entries: TreeEntry[]
+    search?: (query: string) => Promise<TreeEntry[]>
+    searchKey?: string
     changes: FileChange[]
     mode: FileTreeMode
     /** The file open in the main area. */
@@ -370,6 +381,8 @@ const props = withDefaults(
   }>(),
   {
     selected: undefined,
+    search: undefined,
+    searchKey: undefined,
     stale: false,
     git: true,
     label: () => t('streamB.files.abc7e9'),
@@ -423,6 +436,28 @@ function modeMenu(event: MouseEvent) {
 }
 
 const query = ref('')
+const searchResults = ref<TreeEntry[]>([])
+const searching = ref(false)
+const searchError = ref('')
+watch([query, () => props.searchKey], async ([value], _previous, cleanup) => {
+  let cancelled = false
+  cleanup(() => {
+    cancelled = true
+  })
+  searchResults.value = []
+  searchError.value = ''
+  const search = props.search
+  searching.value = !!search && !!value.trim()
+  if (!search || !value.trim()) return
+  try {
+    const rows = await search(value.trim())
+    if (!cancelled) searchResults.value = rows
+  } catch (error) {
+    if (!cancelled) searchError.value = presentUiError(error)
+  } finally {
+    if (!cancelled) searching.value = false
+  }
+})
 const statusLine = computed(
   () =>
     !!props.progress &&
@@ -518,6 +553,7 @@ const files = computed(() => {
   return out
 })
 const matches = computed(() => {
+  if (props.search) return searchResults.value
   const q = query.value.trim().toLowerCase()
   const byName = files.value.filter((f) => f.name.toLowerCase().includes(q))
   const named = new Set(byName)
@@ -595,6 +631,21 @@ const found = computed(() => matches.value.slice(0, 50))
 body.is-phone .abele-file-tree .tree-item-self {
   min-height: var(--touch-size-m);
   align-items: center;
+}
+body.is-phone .abele-file-tree .abele-tree-item__text {
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+body.is-phone .abele-file-tree__change > .tree-item-self {
+  flex-wrap: wrap;
+  row-gap: var(--size-4-1);
+}
+body.is-phone .abele-file-tree__change > .tree-item-self > .abele-tree-item__inner {
+  flex-basis: 100%;
+}
+body.is-phone .abele-file-tree__change > .tree-item-self > .tree-item-flair-outer {
+  margin-inline-start: auto;
 }
 // One line over the tree, its glyph where a row's glyph stands and its words on the rows' text.
 .abele-file-tree__status {

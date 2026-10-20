@@ -35,7 +35,7 @@
         :repository="repository"
         :revision="revision"
         :line="line"
-        @menu="(event, selection) => emit('menu', event, selection)"
+        @menu="(event, selection, lines) => emit('menu', event, selection, lines)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
         @note="emit('note', $event)"
@@ -144,7 +144,7 @@ watch(
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
   reveal: [line: number]
-  menu: [event: MouseEvent, selection: string]
+  menu: [event: MouseEvent, selection: string, lines?: FileSelection]
   ask: [selection: FileSelection]
   add: [selection: FileSelection]
   note: [selection: FileSelection]

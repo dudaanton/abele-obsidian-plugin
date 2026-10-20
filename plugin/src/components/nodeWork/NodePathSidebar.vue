@@ -139,6 +139,10 @@
           v-else-if="mode === 'files' || mode === 'changes'"
           :key="`${model.current.value?.id}:${mode}`"
           :entries="model.entries.value"
+          :search-key="model.receivedAt.value"
+          :search="
+            model.port.search && ((query) => model.port.search!(model.current.value!, query))
+          "
           :cursors="model.treeCursors.value"
           :progress="model.treeProgress.value"
           :changes="model.changes.value"

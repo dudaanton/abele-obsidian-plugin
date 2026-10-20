@@ -56,6 +56,7 @@ it('opens the committed group in the existing diff view in the phone layout', as
 type States = Record<string, boolean>
 const probe = (device: string) =>
   evalAsync<States>(`(async () => {
+    const device = ${JSON.stringify(device)}
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
     const fs = require('fs'), win = require('@electron/remote').getCurrentWindow()
     // A picture is of the panel only when the panel is what is on screen: a phone's drawer that
@@ -117,6 +118,11 @@ const probe = (device: string) =>
       await shot('git-conflict')
       panel = await reopen({ many: 120 })
       seen.long = panel.querySelectorAll('.abele-file-tree__group .tree-item-self').length > 40
+      if (device === 'phone') {
+        const names = [...panel.querySelectorAll('.abele-file-tree__group .abele-tree-item__text')]
+          .filter((name) => name.closest('[data-path]'))
+        seen.readableNames = names.length > 0 && names.every((name) => name.getBoundingClientRect().width >= 130)
+      }
       await shot('changes-long')
       panel = await reopen({}, 'notes')
       // A folder without git has its files and its sessions, nothing of git.

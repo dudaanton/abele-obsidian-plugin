@@ -15,7 +15,10 @@
     :collapsible="entry.kind === 'folder'"
     :collapsed="folded.has(entry.path)"
     :active="entry.kind === 'file' && selected === entry.path"
-    :class="{ 'abele-file-tree__deleted': entry.change?.kind === 'deleted' }"
+    :class="{
+      'abele-file-tree__deleted': entry.change?.kind === 'deleted',
+      'abele-file-tree__change': !!entry.change,
+    }"
     @click="entry.kind === 'folder' ? emit('toggle', entry.path) : emit('open', entry.path)"
     @contextmenu.prevent.stop="emit('menu', $event, entry.path)"
   >

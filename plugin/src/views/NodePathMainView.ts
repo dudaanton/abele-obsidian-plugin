@@ -454,7 +454,7 @@ export class NodePathMainView extends ItemView {
                   const doc = file.document.value
                   if (doc) insertCodeSelection(this.app, doc.path, selection)
                 },
-                onMenu: (event: MouseEvent, selection: string) => {
+                onMenu: (event: MouseEvent, selection: string, lines?: FileSelection) => {
                   const doc = file.document.value
                   if (doc)
                     showNodePathFileMenu(event, {
@@ -464,6 +464,9 @@ export class NodePathMainView extends ItemView {
                       contentId: doc.contentId,
                       text: doc.text,
                       selection,
+                      ...(lines
+                        ? { lines: { start: lines.from, end: lines.to }, side: lines.side }
+                        : {}),
                     })
                 },
               }),

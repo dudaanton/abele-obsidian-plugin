@@ -126,7 +126,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   /** The context menu, with the selected text, or empty for the whole file. */
-  (e: 'menu', event: MouseEvent, selection: string): void
+  (e: 'menu', event: MouseEvent, selection: string, lines?: FileSelection): void
   /** Selected text to ask about in a new chat, or to add to the open one. */
   (e: 'ask', selection: FileSelection): void
   (e: 'add', selection: FileSelection): void
@@ -237,9 +237,11 @@ function send(action: string) {
 
 function onMenu(e: MouseEvent) {
   if (e.defaultPrevented) return
-  if (root.value && fileSelection(root.value, root.value.ownerDocument.getSelection())) return
+  const selection = root.value
+    ? fileSelection(root.value, root.value.ownerDocument.getSelection())
+    : null
   e.preventDefault()
-  emit('menu', e, '')
+  emit('menu', e, selection?.text ?? '', selection ?? undefined)
 }
 </script>
 

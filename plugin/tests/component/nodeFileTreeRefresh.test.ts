@@ -4,7 +4,7 @@
  * a line pushed in over the rows.
  */
 import { describe, it, expect } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import FileTree from '@/components/nodeWork/FileTree.vue'
 import type { TreeEntry } from '@/components/nodeWork/types'
 
@@ -26,6 +26,33 @@ const layout = (view: VueWrapper) => {
 }
 
 describe('FileTree during a background refresh', () => {
+  it('refreshes filename results after a filesystem operation', async () => {
+    let paths = ['sample-old.ts']
+    const search = async () => paths.map((path) => ({ path, name: path, kind: 'file' as const }))
+    const view = mount(FileTree, {
+      props: { entries: [], changes: [], mode: 'all', search, searchKey: 'before' },
+    })
+    await view.get('input').setValue('sample')
+    await flushPromises()
+    expect(view.text()).toContain('sample-old.ts')
+    paths = ['sample-new.ts']
+    await view.setProps({ searchKey: 'after' })
+    await flushPromises()
+    expect(view.text()).toContain('sample-new.ts')
+    expect(view.text()).not.toContain('sample-old.ts')
+    view.unmount()
+  })
+  it('searches the node for files in folders that have never been expanded', async () => {
+    const search = async () => [
+      { path: 'hidden/deep/sample.ts', name: 'sample.ts', kind: 'file' as const },
+    ]
+    const view = mount(FileTree, { props: { entries: [], changes: [], mode: 'all', search } })
+    await view.get('input').setValue('sample')
+    await flushPromises()
+    expect(view.text()).toContain('sample.ts')
+    expect(view.text()).toContain('hidden/deep')
+    view.unmount()
+  })
   for (const progress of [
     { state: 'reading' as const, count: 4 },
     { state: 'failed' as const, error: 'Sample read error' },

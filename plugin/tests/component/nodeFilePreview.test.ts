@@ -16,6 +16,38 @@ const binary = {
   removed: 0,
 }
 describe('node binary and image presentation', () => {
+  it('passes selected lines to the file context menu instead of quoting the whole file', async () => {
+    const view = mount(FileView, {
+      props: {
+        path: 'sample.ts',
+        text: 'kept\nchanged\n',
+        mode: 'diff',
+        change: {
+          path: 'sample.ts',
+          kind: 'modified',
+          before: 'kept\nbefore\n',
+          after: 'kept\nchanged\n',
+          added: 1,
+          removed: 1,
+        },
+      },
+    })
+    await flushPromises()
+    const line = view.findAll('.abele-diff__text').find((row) => row.text().includes('changed'))!
+    const range = document.createRange()
+    range.selectNodeContents(line.element)
+    const selection = document.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+    await line.trigger('contextmenu')
+    expect(view.emitted('menu')?.[0]?.[1]).toBe('changed')
+    expect(view.emitted('menu')?.[0]?.[2]).toMatchObject({ from: 2, to: 2, text: 'changed' })
+    selection.removeAllRanges()
+    await view.trigger('contextmenu')
+    expect(view.emitted('menu')?.[1]?.[1]).toBe('')
+    view.unmount()
+  })
   it('redraws only the commit file whose contents arrived, not every file of the commit', async () => {
     const file = (path: string, pending: boolean) => ({
       ...binary,
