@@ -279,7 +279,13 @@ body:not(.is-phone) .abele-list-row__inline-fold {
 /* Obsidian's whole button box, so its light on hover is the shape every glyph button has; its
    height is taken back by a margin, centred on the title's first line, so the row does not grow. */
 .abele-list-row__actions .abele-obsidian-icon.clickable-icon {
+  font: inherit;
   margin-block: calc((1lh - var(--icon-size) - 2 * var(--size-2-2)) / 2);
+}
+body.is-phone .abele-list-row__actions .abele-obsidian-icon.clickable-icon {
+  margin-block: calc(
+    (1lh - max(var(--abele-touch-min), calc(var(--icon-size) + 2 * var(--size-2-2)))) / 2
+  );
 }
 .abele-list-row__snippet,
 .abele-list-row__state {

@@ -1,16 +1,5 @@
 /** Runs in the host document; compare visible glyphs with its native clickable-icon inset. */
 export function measureGlyphBoxes(root: Element) {
-  const reference = root.ownerDocument.createElement('div')
-  reference.className = 'clickable-icon'
-  root.append(reference)
-  const native = getComputedStyle(reference)
-  const inset = [
-    native.paddingTop,
-    native.paddingRight,
-    native.paddingBottom,
-    native.paddingLeft,
-  ].map(parseFloat)
-  reference.remove()
   // A whole row can contain a decorative chevron without being a glyph action itself.
   return [
     ...root.querySelectorAll<HTMLElement>(
@@ -28,6 +17,19 @@ export function measureGlyphBoxes(root: Element) {
     ].map(parseFloat)
     const glyph = button.querySelector('svg')?.getBoundingClientRect()
     if (!glyph) return []
+    // Native settings controls have their own inset. Compare with the host in the same
+    // context, without the component classes that may override its button geometry.
+    const reference = root.ownerDocument.createElement(button.tagName.toLowerCase())
+    reference.className = 'clickable-icon'
+    button.after(reference)
+    const native = getComputedStyle(reference)
+    const inset = [
+      native.paddingTop,
+      native.paddingRight,
+      native.paddingBottom,
+      native.paddingLeft,
+    ].map(parseFloat)
+    reference.remove()
     return [
       {
         name: button.getAttribute('aria-label') || button.className,
