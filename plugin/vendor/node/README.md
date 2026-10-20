@@ -1,7 +1,9 @@
 # Node browser packages
 
 **Temporary, unreleased vendor.** These four exact `0.0.0` npm tarballs contain the built browser
-packages of AbeleNode revision `2da32f0` (after `v0.4.18`, not a release): the shared session
+packages of AbeleNode revision `42099a14332e476396e73a28bd59596a37f16a63` (unreleased): pi chat
+checkpoints and online-only preview-bound restores, canonical user messages and turn identities,
+model/account catalogs, and the shared session
 transcript (`session.update`, modelled on ACP, with `sessionUpdatesOf` and the Claude, pi and ACP
 mappers), the per-session command list (`session.commands`, `runCommand`) and ACP agents as
 sessions (`provider: "acp"` with an `agent`, the agents listed under the `acp` provider in
@@ -18,14 +20,9 @@ delegation mailboxes, versioned repository reads and the gated `debugger.v1` hum
 client. Capability checks still determine adapter availability. They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
-SHA-512 integrity and the packaged file list. The node client includes the bounded
-post-authentication welcome fix in `patches/paired-welcome.patch`; its JavaScript and
-source map were regenerated with TypeScript 5.9.3, ES2022 and ES modules. Apply that
-patch to the source revision before rebuilding to reproduce this payload. The node protocol additionally carries the folder-owner contracts from upstream
-revision `324c1ea` (`patches/folder-owner.patch`): optional conversation owners,
-folder execution targets and nullable conversation IDs in snapshots. Only
-`debugger.ts` and `debugger-control.ts` were regenerated with TypeScript 5.9.3,
-ES2022, NodeNext modules and source maps; all other payload files are unchanged.
+SHA-512 integrity and the packaged file list. This revision includes the bounded
+post-authentication welcome fix and folder-owner contracts upstream; the historical
+patches in `patches/` are no longer applied.
 The plugin negotiates this extension with a read-only folder session listing,
 since this node revision does not advertise the protocol minor in its description.
 The protocol also carries the optional breakpoint `hit_condition` and `enabled`
@@ -43,7 +40,8 @@ Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
 
 The payloads were built from a clean archive of that revision, with `npm ci --ignore-scripts`
 and `tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client`.
-Apply the folder-owner patch with `git apply --unidiff-zero` and the welcome patch normally when reproducing the payloads; the folder-owner patch changes only the two debugger protocol modules. Package exports are unchanged.
+Package exports are unchanged. Chat history actions are shown only when all three
+checkpoint methods are advertised; older nodes retain ordinary chat behavior.
 
 To refresh, build the desired released AbeleNode tag, then run from this plugin directory
 (replace `/path/to/node` with that checkout):
