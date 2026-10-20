@@ -61,12 +61,13 @@ const server = createServer((req, res) => {
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(value, null, 2))
     }
-    if (req.url.startsWith('/samples/missing')) return json(404, { error: 'No such sample' })
+    if (req.url.startsWith('/samples/missing')) return json(404, { error: 'No such sample: ' + 'sample-reference '.repeat(12) })
     if (req.method === 'POST' && req.url.startsWith('/samples')) {
       const sent = JSON.parse(body || '{}')
       created++
       return json(201, {
         id: 'sample-' + created,
+        reference: 'sample-reference-' + '0123456789'.repeat(8),
         qty: sent.qty,
         label: sent.label,
         created,
@@ -600,7 +601,10 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       await until(()=>app.workspace.leftSplit.collapsed,'drawer closed');
       await send();
       await until(()=>facts().startsWith('201'),'answered on the phone');
-      tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
+      await until(()=>{const box=tab().querySelector('.abele-http-request__facts').getBoundingClientRect();return box.top>=0&&box.top<200},'answer scrolled above the form');
+      const code=tab().querySelector('.abele-http-request__body-view .cm-content');
+      if(getComputedStyle(code).whiteSpace!=='pre-wrap')throw Error('Response values do not wrap');
+      if(code.scrollWidth>code.clientWidth+2)throw Error('Response ids overflow the phone');
       await shot('2026-10-15-http-answer-phone');
       answerTab('Headers').click();
       const header=await until(()=>tab().querySelector('.abele-http-request__header-value'),'header value');
@@ -629,6 +633,10 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
       await shot('2026-10-15-http-error-phone');
       const error=facts();
+      await api.requests.openView();
+      await openRequest('Signed sample');
+      await until(()=>tab().querySelector('.abele-http-request__why'),'missing key explained on phone');
+      await shot('http-missing-key-phone');
       return {rows,facts:f,overflow,error,compared,selection,selectable,controlSelection}
       }finally{
         // The phone's layout is saved apart from the desktop's: leave no request tab in it.
