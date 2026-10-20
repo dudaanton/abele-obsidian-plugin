@@ -51,6 +51,7 @@ export function restoreChatLetters(
       if (!saved || reply === undefined) continue
       recovered.push({
         role: 'toolResult',
+        isError: false,
         toolCallId: call.id,
         toolName: call.name,
         content: [{ type: 'text', text: reply }],

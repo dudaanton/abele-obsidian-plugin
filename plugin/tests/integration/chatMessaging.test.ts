@@ -197,6 +197,7 @@ it('recovers a saved reply when reload happens before its tool result is committ
     .getMessagesForModel()
     .find((m) => m.role === 'toolResult' && m.toolCallId === 'answered-letter')
   expect(result?.content).toEqual([{ type: 'text', text: 'Retained answer' }])
+  expect(result?.role === 'toolResult' && result.isError).toBe(false)
   expect(reopened.messages.value.find((m) => m.id === 'answered-call')?.toolResult).toBe(
     'Retained answer'
   )
