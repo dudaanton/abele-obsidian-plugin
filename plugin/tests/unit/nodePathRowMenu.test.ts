@@ -13,6 +13,7 @@ const f = vi.hoisted(() => ({
   settings: vi.fn(async () => ({})),
   refresh: vi.fn(async () => {}),
   describe: vi.fn(async (): Promise<unknown> => ({ capabilities: { capabilities: {} } })),
+  remove: vi.fn(),
 }))
 vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ app: {} }) } }))
 vi.mock('@/node/NodeService', () => ({
@@ -26,6 +27,7 @@ vi.mock('@/node/NodeService', () => ({
           url: 'ws://127.0.0.1:7777/channel',
         },
       ]),
+      remove: f.remove,
       connection: () => ({
         state: ref('connected'),
         client: {
@@ -94,6 +96,21 @@ async function opened(): Promise<Shown> {
 }
 const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
+
+it('routes node-header Disconnect through the selected registration client', async () => {
+  const description = {
+    capabilities: { capabilities: { device_disconnect: { status: 'supported' } } },
+  }
+  f.describe.mockResolvedValueOnce(description).mockResolvedValueOnce(description)
+  f.request.mockResolvedValueOnce({ disconnected: true })
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  showNodePathNodeMenu(model(), new MouseEvent('click'))
+  await vi.waitFor(() => expect(show).toHaveBeenCalled())
+  const menu = show.mock.instances[0] as unknown as Shown
+  menu.items.find((i) => i.title === 'Disconnect this device…')!.handler!()
+  await vi.waitFor(() => expect(f.request).toHaveBeenCalledWith('node.disconnect', {}))
+  expect(f.remove).toHaveBeenCalledWith('sample-registration')
+})
 
 it('offers folder rename, move and delete when the node advertises directory manifests', async () => {
   f.methods = [

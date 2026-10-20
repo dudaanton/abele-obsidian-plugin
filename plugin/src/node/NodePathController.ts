@@ -534,7 +534,7 @@ async function nodeItems(
         .onClick(() =>
           nodePathAction(async () => {
             await disconnectNodeDevice(
-              connection.client,
+              service.connection(model.registrationId).client,
               async (revokes) =>
                 confirmDialog({
                   title: t('streamB.disconnectNode.c336da'),
