@@ -52,13 +52,13 @@ async function checkTools(shell: string, entry: string) {
         file().querySelector('[aria-label="Toggle line blame"]').click();await until(()=>file()?.querySelector('.abele-github-blame-range'),'Line blame');return 'blame'})()`)
   await capture(`${shell}-${entry}-blame`)
   await evalLong(`(async()=>{${prelude}
-        file().querySelector('[aria-label="Toggle line blame"]').click();
-        const leaves=app.workspace.getLeavesOfType('abele-node-file'),repos=app.workspace.getLeavesOfType('abele-github').length,leaf=leaves.find(l=>l.view.contentEl.contains(file()));const row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect(),point={bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2};
+        file().querySelector('[aria-label="Toggle line blame"]').click();await until(()=>file()&&!file().querySelector('.abele-github-blame-range'),'Line blame closes');
+        const leaves=app.workspace.getLeavesOfType('abele-node-file'),repos=app.workspace.getLeavesOfType('abele-github').length,leaf=leaves.find(l=>l.view.contentEl.contains(file()));const row=file().querySelectorAll('.cm-line')[1],position=el=>{const range=document.createRange();range.selectNodeContents(el);const box=range.getBoundingClientRect();return {bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}},point=position(row);
         row.dispatchEvent(new MouseEvent('mousedown',{...point,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin',button:0}));
         await until(()=>leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Modifier-click definition');
         if(app.workspace.getLeavesOfType('abele-node-file').length!==leaves.length||app.workspace.getLeavesOfType('abele-github').length!==repos)throw Error('Same-file definition opened another tab');
         if(file().closest('.abele-node-main').querySelector('[role=alert]'))throw Error('Unchanged file became stale');
-        file().querySelectorAll('.cm-line')[1].dispatchEvent(new MouseEvent('contextmenu',point));
+        const menuRow=file().querySelectorAll('.cm-line')[1];menuRow.dispatchEvent(new MouseEvent('contextmenu',position(menuRow)));
         await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target, .abele-debug-source__line_here')&&leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Definition destination');return 'definition'})()`)
   await capture(`${shell}-${entry}-definition`)
 }
