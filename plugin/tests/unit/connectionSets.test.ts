@@ -344,6 +344,7 @@ describe('connection item sets', () => {
     expect(registry.records()).toHaveLength(1)
     expect(keys.size).toBe(1)
     secrets.set = saveSecret
+    ui.setTrusted(ui.rows.value[0].id, true)
     expect(await ui.itemSets.refresh(ui.rows.value[0].id)).toBe(true)
     expect(ui.itemSets.items(ui.rows.value[0].id)?.map((item) => item.state.kind)).toEqual([
       'detached',
@@ -352,6 +353,9 @@ describe('connection item sets', () => {
     expect(ui.rows.value).toHaveLength(1)
     expect(registry.records()).toHaveLength(2)
     expect(keys.size).toBe(2)
+    expect(registry.records().every((record) => record.trusted)).toBe(true)
+    ui.setTrusted(ui.rows.value[0].id, false)
+    expect(registry.records().every((record) => !record.trusted)).toBe(true)
     registry.beginForget(ui.rows.value[0].id)
     registry.finishForgotten(secrets)
     ui.refresh()

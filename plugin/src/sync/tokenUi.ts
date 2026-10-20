@@ -405,7 +405,10 @@ export class TokenUi {
       })
   }
   setTrusted(id: string, trusted: boolean): void {
-    this.registry.setTrusted(id, trusted)
+    const items = this.itemSets.store.get(id)?.items
+    if (items) {
+      for (const item of items) if (item.recordId) this.registry.setTrusted(item.recordId, trusted)
+    } else this.registry.setTrusted(id, trusted)
     this.refresh()
   }
   private trusted(source: ReviewSource): boolean {
