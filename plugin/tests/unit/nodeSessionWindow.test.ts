@@ -50,6 +50,35 @@ function fixture(options: { head?: boolean; stored?: JournalEvent[] } = {}) {
 
 afterEach(() => vi.restoreAllMocks())
 
+it('keeps visible turns when the device event window advances between refreshes', async () => {
+  const f = fixture()
+  const p = new NodeChatPresenter(
+    {
+      kind: 'node-session',
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      sessionId: SID,
+      title: 'Sample',
+    },
+    { client: f.client, state: ref('offline'), error: ref('') } as unknown as NodeConnection
+  )
+  try {
+    await f.store.transaction((s) => {
+      s.events[SID] = journal.slice(0, 100)
+    })
+    await p.refresh()
+    const shown = p.messages.value.map((m) => ({ ...m }))
+    await f.store.transaction((s) => {
+      s.events[SID] = journal.slice(90, 200)
+    })
+    await p.refresh()
+    for (const message of shown) expect(p.messages.value).toContainEqual(message)
+    expect(p.hasOlder.value).toBe(false)
+  } finally {
+    p.destroy()
+  }
+})
+
 describe('trimWindows', () => {
   it('keeps only the latest events of a windowed stream, and nothing of others', () => {
     const state = {

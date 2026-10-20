@@ -91,12 +91,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
   /** The title the node has now: a rename on any device shows here. */
   readonly label = computed(() => this.projection.value.session?.title || this.reference.title)
-  readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
+  readonly provider = computed(() => this.projection.value.session?.provider ?? '')
   /** The session as the node describes it: its record, when its first events are not held here. */
   private readonly sessionRecord =
     shallowRef<NonNullable<ReturnType<typeof reduceTranscript>['session']>>()
   /** Earlier events read from the node page by page as the person scrolls back; never stored. */
   private readonly older = shallowRef<JournalEvent[]>([])
+  /** Events already drawn stay visible while the durable device window advances. */
+  private readonly visibleEvents = new Map<number, JournalEvent>()
+  private visibleHead = 0
   /** The first event this device keeps for the session; earlier ones are on the node. */
   private readonly firstKept = ref(1)
   readonly olderState = ref<'idle' | 'loading' | 'failed'>('idle')
@@ -318,8 +321,35 @@ export class NodeChatPresenter implements ChatPresentationSession {
           { outbox: pending, results: receipts },
           this.reference.sessionId
         )
-        const hydrated = []
+        const latest = this.visibleHead
+        const first = firstKept
+        // A burst can overtake a device window between draws. Read the missing interval
+        // before joining it, so a partial tool call cannot swallow an intervening turn.
+        if (latest && first > latest + 1 && client.connected) {
+          let after = latest
+          while (after < first - 1) {
+            const page = (await client.request('stream.read', {
+              stream_id: this.reference.sessionId,
+              after_seq: after,
+              limit: Math.min(256, first - after - 1),
+            })) as JournalEvent[]
+            if (
+              !Array.isArray(page) ||
+              !page.length ||
+              page.some((e, i) => e.seq !== after + i + 1)
+            )
+              throw new UiError(uiMessage('streamB.couldNotReadEarlierMessages.5f0162'))
+            for (const event of page) this.visibleEvents.set(event.seq, event)
+            after = page.at(-1)!.seq
+          }
+        }
         for (const event of history) {
+          this.visibleEvents.set(event.seq, event)
+          this.visibleHead = Math.max(this.visibleHead, event.seq)
+        }
+        const visible = [...this.visibleEvents.values()].sort((a, b) => a.seq - b.seq)
+        const hydrated = []
+        for (const event of visible) {
           const data = event.data as Record<string, unknown>
           const id = data?.artifact_id
           // A record the node mapped is shown through its updates: nothing to read back.
@@ -351,7 +381,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
           hydrated.push(event)
         }
         if (this.destroyed) return
-        this.firstKept.value = firstKept
+        this.firstKept.value = visible[0]?.seq ?? firstKept
         const projection = reduceTranscript(hydrated)
         projection.session ??= this.sessionRecord.value
         projection.children = this.stable.children(projection.children)
@@ -942,5 +972,6 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.stopEvent()
     this.stopWatch()
     this.stopDraftWatch()
+    this.visibleEvents.clear()
   }
 }
