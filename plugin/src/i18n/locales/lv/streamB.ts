@@ -725,8 +725,9 @@ export const streamB = {
   'streamB.savedTheNodeConfirmedThisVersionExternal.f4f869':
     'Saglabāts · mezgls apstiprināja šo versiju. Pēc tam ārējie redaktori to var mainīt.',
   'streamB.unsentEditStoredOnlyOnThisDevice.49091f':
-    'Nenosūtīts labojums · saglabāts tikai šajā ierīcē. Saglabāt izmanto versiju, no kuras sākāt.',
-  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Saglabāt kvīti un saglabāto priekšteci',
+    'Nesaglabāts labojums · glabājas tikai šajā ierīcē.',
+  'streamB.saveReceiptAndRetainedPredecessor.25d4a8':
+    'Saglabāšanas informācija un iepriekšējā versija',
   'streamB.operation.0b54e5': 'Darbība ·',
   'streamB.outcome.06f8c4': 'Rezultāts ·',
   'streamB.predecessor.ebb96d': 'Priekštecis ·',

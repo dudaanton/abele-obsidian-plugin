@@ -732,8 +732,8 @@ export const streamB = {
   'streamB.savedTheNodeConfirmedThisVersionExternal.f4f869':
     'Guardado · el nodo confirmó esta versión. Los editores externos pueden cambiarlo posteriormente.',
   'streamB.unsentEditStoredOnlyOnThisDevice.49091f':
-    'Edición no enviada · almacenada solo en este dispositivo. Guardar utiliza la versión desde la que empezó.',
-  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Guardar recibo y predecesor retenido',
+    'Cambio sin guardar · almacenado solo en este dispositivo.',
+  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Detalles del guardado y versión anterior',
   'streamB.operation.0b54e5': 'Operación ·',
   'streamB.outcome.06f8c4': 'Resultado ·',
   'streamB.predecessor.ebb96d': 'Predecesor ·',

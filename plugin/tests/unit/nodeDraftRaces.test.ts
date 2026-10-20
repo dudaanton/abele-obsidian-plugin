@@ -3,6 +3,55 @@ import { flushPromises } from '@vue/test-utils'
 import { nodeFilesFixture } from '@/testing/nodeFilesFixture'
 import { NodeFilesModel } from '@/node/NodeFilesModel'
 
+it('coalesces permission events entering the same editor concurrently', async () => {
+  const { model, initialPath } = await nodeFilesFixture('files')
+  await model.openFile(initialPath!)
+  await Promise.all([model.beginEditing(), model.beginEditing(), model.beginEditing()])
+  await model.editText('retained after permission events')
+  expect(model.draftText.value).toBe('retained after permission events')
+  expect(model.draftError.value).toBe('')
+})
+
+it('entering edit mode waits for a local keystroke already being persisted', async () => {
+  const { model, initialPath } = await nodeFilesFixture('files')
+  await model.openFile(initialPath!)
+  const typing = model.editText('typed before unlocking')
+  const unlocking = model.beginEditing()
+  await Promise.all([typing, unlocking])
+  expect(model.draftText.value).toBe('typed before unlocking')
+  expect(model.draftError.value).toBe('')
+})
+
+it('a confirmed save becomes the baseline for later edits and discard', async () => {
+  const { model, initialPath } = await nodeFilesFixture('edit')
+  const path = initialPath!
+  const savedText = model.draftText.value
+  await model.saveFile()
+  const pending = model.draft.value!.pending!
+  await model.client.store.transaction((state) => {
+    state.outbox = []
+    state.results[pending.operationId] = {
+      result: {
+        operation_id: pending.operationId,
+        workspace_id: model.workspaceId,
+        path,
+        state: 'saved',
+        expected_content_id: pending.params.expected_content_id,
+        content_id: 'b'.repeat(64),
+        predecessor_content_id: pending.params.expected_content_id,
+        recovery_path: null,
+      },
+    }
+  })
+  await model.checkSave()
+  await model.editText(savedText + 'extra')
+  await model.editText(savedText)
+  expect(model.draftDirty.value).toBe(false)
+  await model.discardDraft()
+  expect(model.draftText.value).toBe(savedText)
+  expect(model.document.value?.contentId).toBe('b'.repeat(64))
+})
+
 it('reload cannot restore a draft snapshot older than text typed while the read was pending', async () => {
   const s = await nodeFilesFixture('edit'),
     model = s.model,

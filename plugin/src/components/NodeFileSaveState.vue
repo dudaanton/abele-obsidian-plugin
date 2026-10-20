@@ -99,7 +99,7 @@
       role="status"
       >{{ t('streamB.savedTheNodeConfirmedThisVersionExternal.f4f869') }}</span
     >
-    <span v-else-if="model.editing.value && model.draft.value" role="status">{{
+    <span v-else-if="model.editing.value && model.draftDirty.value" role="status">{{
       t('streamB.unsentEditStoredOnlyOnThisDevice.49091f')
     }}</span>
     <details v-if="model.draft.value?.result">

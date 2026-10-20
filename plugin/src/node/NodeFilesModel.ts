@@ -471,6 +471,7 @@ export class NodeFilesModel {
   readonly draftError = ref('')
   readonly predecessorText = ref<string>()
   private persistingEdit: Promise<unknown> = Promise.resolve()
+  private startingEdit?: Promise<void>
   private editGeneration = 0
   readonly canReloadDraft = computed(
     () => !this.draftError.value || this.draftError.value === draftConflict
@@ -613,7 +614,15 @@ export class NodeFilesModel {
         ? { start: range.start, end: Math.min(range.end, lines) }
         : undefined
   }
-  async beginEditing() {
+  beginEditing(): Promise<void> {
+    return (this.startingEdit ??= this.beginEditingOnce().finally(() => {
+      this.startingEdit = undefined
+    }))
+  }
+  private async beginEditingOnce() {
+    const selectedGeneration = this.fileGeneration
+    await this.persistingEdit
+    if (selectedGeneration !== this.fileGeneration) return
     const path = this.filePath.value,
       doc = this.document.value,
       generation = this.fileGeneration
@@ -688,6 +697,14 @@ export class NodeFilesModel {
       throw new UiError(uiMessage('streamBError.4d299e3ab0'))
     }
     this.draft.value = draft
+    if (draft?.status === 'saved' && this.document.value) {
+      this.document.value = {
+        ...this.document.value,
+        text: draft.baseText,
+        contentId: draft.baseContentId,
+        size: new TextEncoder().encode(draft.baseText).length,
+      }
+    }
   }
   async saveFile() {
     if (this.saving.value) return

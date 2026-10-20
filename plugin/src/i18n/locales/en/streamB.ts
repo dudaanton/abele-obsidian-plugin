@@ -709,9 +709,8 @@ export const streamB = {
   'streamB.yourLocalDraftIsRetained.49b72f': '. Your local draft is retained.',
   'streamB.savedTheNodeConfirmedThisVersionExternal.f4f869':
     'Saved · the node confirmed this version. External editors may change it afterwards.',
-  'streamB.unsentEditStoredOnlyOnThisDevice.49091f':
-    'Unsent edit · stored only on this device. Save uses the version you started from.',
-  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Save receipt and retained predecessor',
+  'streamB.unsentEditStoredOnlyOnThisDevice.49091f': 'Unsent edit · stored only on this device.',
+  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Save details and previous version',
   'streamB.operation.0b54e5': 'Operation ·',
   'streamB.outcome.06f8c4': 'Outcome ·',
   'streamB.predecessor.ebb96d': 'Predecessor ·',

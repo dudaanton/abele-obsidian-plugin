@@ -751,8 +751,8 @@ export const streamB = {
   'streamB.savedTheNodeConfirmedThisVersionExternal.f4f869':
     'Gespeichert · Der Knoten hat diese Version bestätigt. Externe Redakteure können es nachträglich ändern.',
   'streamB.unsentEditStoredOnlyOnThisDevice.49091f':
-    'Nicht gesendete Bearbeitung · nur auf diesem Gerät gespeichert. Beim Speichern wird die Version verwendet, mit der Sie begonnen haben.',
-  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Beleg speichern und Vorgänger beibehalten',
+    'Ungespeicherte Änderung · nur auf diesem Gerät gespeichert.',
+  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Speicherdetails und vorherige Version',
   'streamB.operation.0b54e5': 'Vorgang ·',
   'streamB.outcome.06f8c4': 'Ergebnis ·',
   'streamB.predecessor.ebb96d': 'Vorgänger ·',

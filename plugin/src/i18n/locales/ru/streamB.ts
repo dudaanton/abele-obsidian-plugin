@@ -721,9 +721,8 @@ export const streamB = {
   'streamB.savedTheNodeConfirmedThisVersionExternal.f4f869':
     'Сохранено · нода подтвердила эту версию. Внешние редакторы могут изменить её позже.',
   'streamB.unsentEditStoredOnlyOnThisDevice.49091f':
-    'Неотправленное редактирование · хранится только на этом устройстве. При сохранении используется версия, с которой вы начали.',
-  'streamB.saveReceiptAndRetainedPredecessor.25d4a8':
-    'Сохранить квитанцию и сохранить предшественника',
+    'Несохранённая правка · хранится только на этом устройстве.',
+  'streamB.saveReceiptAndRetainedPredecessor.25d4a8': 'Подробности сохранения и предыдущая версия',
   'streamB.operation.0b54e5': 'Операция ·',
   'streamB.outcome.06f8c4': 'Результат ·',
   'streamB.predecessor.ebb96d': 'Предшественник ·',
