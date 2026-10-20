@@ -203,6 +203,7 @@ it('answers a developer prompt through AiToolApproval in the parent card', async
       },
     })
     expect(wrapper.find('.abele-tool-approval__actions').exists()).toBe(false)
+    expect(wrapper.find('.abele-tool-approval [role="status"]').text()).toContain('Allow')
     const stop = wrapper.findAll('button').find((button) => button.text() === 'Stop')
     expect(stop).toBeDefined()
     await stop!.trigger('click')

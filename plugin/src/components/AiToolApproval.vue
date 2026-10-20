@@ -53,7 +53,19 @@
         :aria-label="t('streamB.questionAnswer.e9700c')"
       />
       <div v-if="answerState" role="status">
-        {{ t('streamB.waitingForConfirmation.bc8582') }} {{ answerState.error }}
+        {{
+          t('streamBMeta.7c3c58a4a0', {
+            p0:
+              answerState.choice === 'allow' ? t('streamB.allow.e213c1') : t('streamB.deny.05a2d7'),
+          })
+        }}
+        <template v-if="answerState.value !== undefined"> · {{ answerState.value }}</template>
+        <template v-if="answerState.state === 'pending'">{{
+          t('streamB.waitingForConfirmation.bc8582')
+        }}</template>
+        <template v-if="answerState.error"
+          >{{ t('streamB.notAccepted.0f11a8') }} {{ answerState.error }}</template
+        >
       </div>
     </template>
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
