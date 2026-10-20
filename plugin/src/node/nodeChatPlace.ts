@@ -66,7 +66,8 @@ export function nodeChatPlace(
         sessionId,
         (id) =>
           model.folders.value.flatMap((f) => f.copies).find((c) => c.id === id)?.branch ??
-          'Unavailable worktree'
+          'Unavailable worktree',
+        presenter.hasRestoredHistory
       ),
     }
   })

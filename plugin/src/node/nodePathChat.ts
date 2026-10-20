@@ -28,13 +28,14 @@ export function nodeChatSwitches(
   events: readonly JournalEvent[],
   identity: PathTarget,
   sessionId: string,
-  label: (id: string) => string
+  label: (id: string) => string,
+  inherited = false
 ): NodeChatSwitch[] {
   const seen = new Set<number>(),
     switches: NodeChatSwitch[] = []
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (
-      event.stream_id !== sessionId ||
+      (!inherited && event.stream_id !== sessionId) ||
       event.type !== 'session.worktree.changed' ||
       seen.has(event.seq)
     )
@@ -43,7 +44,7 @@ export function nodeChatSwitches(
     const parsed = SessionTargetChangedSchema.safeParse(event.data)
     if (
       !parsed.success ||
-      parsed.data.session_id !== sessionId ||
+      parsed.data.session_id !== event.stream_id ||
       parsed.data.project_id !== identity.projectId
     )
       continue

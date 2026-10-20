@@ -108,6 +108,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private historyDirty = true
   private readonly inheritedPrefixes = new Map<string, Promise<JournalEvent[]>>()
   private readonly restoredPrefixComplete = ref(false)
+  get hasRestoredHistory(): boolean {
+    return this.restoredPrefixComplete.value
+  }
   readonly projection = ref(reduceTranscript([]))
   readonly messages = computed(() => this.projection.value.messages)
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
