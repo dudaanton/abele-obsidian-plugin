@@ -89,7 +89,7 @@ it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uplo
     const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
     const box=modal('Share access');${SHARE_SET_PICKER}await pickShareItem(box,${JSON.stringify('Folder: ' + folder)});
     const input=box.querySelector('.abele-share-picker input');typeInto(input,${JSON.stringify(folder + '/Nested')});let choice;
-    await poll(()=>choice=[...box.ownerDocument.querySelectorAll('.suggestion-item')].find(one=>one.querySelector('svg.lucide-folder')&&one.textContent.includes('Nested')));
+    await poll(()=>choice=[...box.ownerDocument.querySelectorAll('.suggestion-item')].find(one=>one.dataset.shareKind==='folder'&&one.textContent.includes('Nested')));
     if(choice.getAttribute('aria-disabled')!=='true'||!choice.textContent.includes('In Collection'))throw new Error('Covered folder must be refused');choice.click();
     if(box.querySelectorAll('.multi-select-pill').length!==1)throw new Error('Covered folder was selected');await press(box,'Close');await closeSettings();return true
   `

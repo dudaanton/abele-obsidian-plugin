@@ -50,6 +50,33 @@ describe('connection item sets', () => {
     await ui.itemSets.shares('sample')
     expect(choices.value).toEqual([{ kind: 'folder', id: 'flowers', path: 'Garden/Flowers' }])
   })
+  it('deduplicates source paths within a sharing kind while keeping group and file scopes distinct', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const ui = new TokenUi(
+      TokenConnectionRegistry.open(storage),
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('Use the inventory port')
+      }
+    )
+    vi.spyOn(ui, 'choices').mockResolvedValue([
+      { kind: 'folder', id: 'folder-a', path: 'Garden' },
+      { kind: 'folder', id: 'folder-b', path: 'Garden' },
+      { kind: 'file', id: 'note-a', path: 'Garden/Flowers.md' },
+      { kind: 'file', id: 'note-b', path: 'Garden/Flowers.md' },
+      { kind: 'group', id: 'note-a', path: 'Garden/Flowers.md' },
+    ])
+    vi.spyOn(ui.itemSets, 'client').mockReturnValue({
+      tokens: async () => ({ items: [] }),
+    } as unknown as ReturnType<TokenUi['client']>)
+    await ui.itemSets.shares('sample')
+    expect(ui.itemSets.choices('sample')).toEqual([
+      { kind: 'folder', id: 'folder-a', path: 'Garden' },
+      { kind: 'file', id: 'note-a', path: 'Garden/Flowers.md' },
+      { kind: 'group', id: 'note-a', path: 'Garden/Flowers.md' },
+    ])
+  })
   it('keeps confirmed deletion facts until the confirmation has finished closing', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)

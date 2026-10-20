@@ -533,11 +533,17 @@ export class TokenItemSets implements ShareSetSource {
     const scopes = await this.ui.choices(connectionId)
     this.choiceCache.set(
       connectionId,
-      scopes.map((scope) => ({
-        kind: scope.kind === 'folder' && scope.path === '/' ? 'vault' : scope.kind,
-        id: scope.id,
-        path: scope.path,
-      }))
+      scopes
+        .filter(
+          (scope, index) =>
+            scopes.findIndex((other) => other.kind === scope.kind && other.path === scope.path) ===
+            index
+        )
+        .map((scope) => ({
+          kind: scope.kind === 'folder' && scope.path === '/' ? 'vault' : scope.kind,
+          id: scope.id,
+          path: scope.path,
+        }))
     )
     this.changed()
     const tokens = (await client.tokens()).items

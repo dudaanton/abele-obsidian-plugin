@@ -18,9 +18,13 @@ const syncSnapshot = () => {
   driverWaiting:window.__abeleSyncWaiting||null,
   sharePickers:docs.flatMap(doc=>[...doc.querySelectorAll('.modal')].filter(box=>box.querySelector('.abele-share-picker')).map(box=>{
    const picker=box.querySelector('.abele-share-picker');
+   const view=doc.defaultView, viewport=view?.visualViewport;
+   const keyboard=parseFloat(view?.getComputedStyle(doc.documentElement).getPropertyValue('--keyboard-height')||'0')||0;
+   const keyboardTop=Math.min((view?.innerHeight||0)-keyboard,viewport?viewport.offsetTop+viewport.height:(view?.innerHeight||0));
    return {sheetHtml:box.outerHTML,mode:picker.dataset.sharePickerMode||null,
     flags:{appMobile:!!app.isMobile,bodyMobile:doc.body.classList.contains('is-mobile'),bodyPhone:doc.body.classList.contains('is-phone'),platformMobile:picker.dataset.platformMobile??null,platformPhone:picker.dataset.platformPhone??null},
     query:picker.querySelector('input')?.value||'',inlineRows:picker.querySelectorAll('.abele-share-picker__results .suggestion-item').length,
+    inlineRowDetails:[...picker.querySelectorAll('.abele-share-picker__results .suggestion-item')].map(row=>{const rect=row.getBoundingClientRect();return {text:row.textContent?.trim()||'',kind:row.dataset.shareKind||null,box:{top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right,width:rect.width,height:rect.height},keyboardTop,fullyAboveKeyboard:rect.height>0&&rect.top>=(viewport?.offsetTop||0)&&rect.bottom<=keyboardTop}}),
     source:{count:Number(picker.dataset.sourceCount||0),firstPaths:JSON.parse(picker.dataset.sourcePaths||'[]'),matchingPaths:JSON.parse(picker.dataset.sourceMatches||'[]')}};
   })),
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},

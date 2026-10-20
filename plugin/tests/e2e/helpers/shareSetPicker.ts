@@ -9,7 +9,7 @@ const pickShareItem = async (box, label, waitForChip = true) => {
     legacy.dispatchEvent(new legacy.ownerDocument.defaultView.Event('change', { bubbles: true }));
     return;
   }
-  const kind = label === 'Whole vault' ? 'vault' : label.startsWith('Folder: ') ? 'folder' : label.startsWith('Group: ') ? 'group' : 'file-text';
+  const kind = label === 'Whole vault' ? 'vault' : label.startsWith('Folder: ') ? 'folder' : label.startsWith('Group: ') ? 'group' : 'file';
   const query = label === 'Whole vault' ? 'Whole vault' : label.replace(/^(Folder|Group|File): /, '');
   const name = query.split('/').pop().replace(/\\.md$/i, '');
   let input;
@@ -20,7 +20,7 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   await poll(() => {
     const inline = box.querySelector('.abele-share-picker__results');
     choice = [...(inline || box.ownerDocument).querySelectorAll('.suggestion-item')].find(one =>
-      one.querySelector('svg.lucide-' + kind) && one.textContent.includes(name) && one.getAttribute('aria-disabled') !== 'true');
+      one.dataset.shareKind === kind && one.textContent.includes(name) && one.getAttribute('aria-disabled') !== 'true');
     return !!choice;
   }, undefined, 'Share picker: matching suggestion row');
   await poll(() => {

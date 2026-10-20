@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { captureSyncFailure, SYNC_SNAPSHOT } from '../e2e/helpers/syncDiagnostics'
+import { SHARE_SET_PICKER } from '../e2e/helpers/shareSetPicker'
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>()
   const mkdirSync = vi.fn(),
@@ -14,6 +15,47 @@ vi.mock('node:fs', async (original) => {
 })
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
+
+it('selects a folder by its scope kind even when the host renders an open-folder icon', async () => {
+  const box = document.createElement('div')
+  box.className = 'abele-share-picker'
+  const input = document.createElement('input')
+  const list = document.createElement('div')
+  list.className = 'abele-share-picker__results'
+  const row = document.createElement('div')
+  row.className = 'suggestion-item'
+  row.dataset.shareKind = 'folder'
+  row.textContent = 'Flowers'
+  const icon = document.createElement('span')
+  icon.className = 'lucide-folder-open'
+  row.append(icon)
+  list.append(row)
+  box.append(input, list)
+  document.body.append(box)
+  vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+    top: 200,
+    bottom: 240,
+    height: 40,
+  } as DOMRect)
+  const clicked = vi.fn()
+  row.addEventListener('click', clicked)
+  const poll = async (fn: () => boolean) => {
+    if (!(await fn())) throw new Error('Picker condition failed')
+  }
+  try {
+    await new Function(
+      'box',
+      'poll',
+      'typeInto',
+      SHARE_SET_PICKER + ';return pickShareItem(box, "Folder: Garden/Flowers", false)'
+    )(box, poll, (field: HTMLInputElement, value: string) => {
+      field.value = value
+    })
+    expect(clicked).toHaveBeenCalledOnce()
+  } finally {
+    box.remove()
+  }
+})
 
 it('captures the Share sheet HTML, rendering flags and typed query during a picker wait', () => {
   const sheet = document.createElement('div')
@@ -60,6 +102,15 @@ it('captures the Share sheet HTML, rendering flags and typed query during a pick
         },
         query: 'Garden/Flowers',
         inlineRows: 1,
+        inlineRowDetails: [
+          {
+            text: 'Flowers',
+            kind: null,
+            box: { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 },
+            keyboardTop: window.innerHeight,
+            fullyAboveKeyboard: false,
+          },
+        ],
         source: { count: 1, firstPaths: ['Garden/Flowers'], matchingPaths: ['Garden/Flowers'] },
       },
     ])

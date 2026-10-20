@@ -19,7 +19,7 @@
     <div v-if="modelValue.length" class="abele-share-picker__picked">
       <div
         v-for="item in modelValue"
-        :key="item.id"
+        :key="item.kind + ':' + item.id"
         class="multi-select-pill abele-share-picker__pill"
         :data-path="item.path"
       >
@@ -70,8 +70,9 @@
       />
       <div
         v-for="item in results"
-        :key="item.id"
+        :key="item.kind + ':' + item.id"
         class="suggestion-item mod-complex"
+        :data-share-kind="item.kind"
         role="option"
         :aria-selected="false"
         :aria-disabled="!!coveredBy(item, taken())"
