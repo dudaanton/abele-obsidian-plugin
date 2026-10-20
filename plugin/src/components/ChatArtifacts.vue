@@ -6,13 +6,24 @@
     <div class="abele-chat-artifacts">
       <section v-if="changes.length" class="abele-chat-artifacts__changes">
         <ListSectionHeader :text="t('streamB.chatChanges')" :count="changes.length" />
-        <Disclosure
+        <TreeItem
           v-for="(change, index) in changes"
           :key="index"
-          :model-value="openChanges[index] ?? false"
-          :label="change.movedFrom ? `${change.movedFrom} → ${change.path}` : change.path"
-          @update:model-value="openChanges[index] = $event"
+          class="abele-chat-artifacts__change"
+          :text="title(change.path)"
+          :where="
+            change.path.includes('/')
+              ? change.path.slice(0, change.path.lastIndexOf('/'))
+              : undefined
+          "
+          :path="change.path"
+          :label="change.path"
+          icon="file-diff"
+          collapsible
+          :collapsed="!openChanges[index]"
+          @click="openChanges[index] = !openChanges[index]"
         >
+          <div v-if="change.movedFrom">{{ change.movedFrom }} → {{ change.path }}</div>
           <Diff
             v-if="change.old !== change.new"
             :text-left="change.old"
@@ -20,7 +31,7 @@
             :path="change.path"
           />
           <TreeItem v-else :text="change.path" icon="file-text" @click="open(change.path)" />
-        </Disclosure>
+        </TreeItem>
       </section>
       <EmptyState
         v-if="!changes.length && !sections.some((section) => section.items.length)"
@@ -130,7 +141,6 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import Disclosure from './obsidian/Disclosure.vue'
 import Diff from './Diff.vue'
 import { chatChanges } from '@/ai/chatChanges'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -408,12 +418,11 @@ onUnmounted(() => {
 }
 .abele-chat-artifacts__changes {
   min-width: 0;
-  padding-inline: var(--size-2-3);
-
-  .abele-disclosure__control {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-  }
+}
+.abele-chat-artifacts__change .abele-tree-item__text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .abele-chat-artifacts__codes {
   display: inline-flex;

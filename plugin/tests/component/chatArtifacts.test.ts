@@ -78,6 +78,26 @@ const menuOf = async (target: ReturnType<VueWrapper['find']>, how: 'more' | 'con
 const item = (items: Awaited<ReturnType<typeof menuOf>>, title: string) =>
   items.find((i) => i.title === title)
 describe('chat artifacts dialog', () => {
+  it('opens saved diffs from compact native file rows', async () => {
+    session.allMessages.value.push({
+      id: 'change-row',
+      role: 'tool-call',
+      content: '',
+      timestamp: 2,
+      toolName: 'edit',
+      toolStatus: 'approved',
+      toolParams: { path: 'Notes/sample.md' },
+      toolResult: 'Edited',
+      toolDiff: { old: 'Before', new: 'After' },
+    })
+    mountView()
+    const change = view!.find('.abele-chat-artifacts__changes [data-path="Notes/sample.md"]')
+    expect(change.exists()).toBe(true)
+    expect(change.find('.abele-tree-item__where').text()).toBe('Notes')
+    await change.trigger('click')
+    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('Before')
+    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('After')
+  })
   it('keeps created hidden files visible while they exist on disk', async () => {
     await app.vault.adapter.write('Notes/.sample-config', 'Sample')
     session.touched.value.push({ path: 'Notes/.sample-config', at: '2025-01-01' })
@@ -95,7 +115,9 @@ describe('chat artifacts dialog', () => {
     mountView()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(view!.text()).toContain('.sample-config')
-    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('Notes/.sample-config')
+    expect(
+      view!.find('.abele-chat-artifacts__changes [data-path="Notes/.sample-config"]').exists()
+    ).toBe(true)
   })
   it('shows actual changes and drops a missing file created by this chat', async () => {
     session.touched.value.push({ path: 'Notes/gone.md', at: '2025-01-01' })
@@ -123,8 +145,12 @@ describe('chat artifacts dialog', () => {
     })
     mountView()
     await nextTick()
-    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('Notes/sample.md')
-    expect(view!.find('.abele-chat-artifacts__changes').text()).not.toContain('Notes/gone.md')
+    expect(
+      view!.find('.abele-chat-artifacts__changes [data-path="Notes/sample.md"]').exists()
+    ).toBe(true)
+    expect(view!.find('.abele-chat-artifacts__changes [data-path="Notes/gone.md"]').exists()).toBe(
+      false
+    )
     expect(
       view!.findAll('.abele-chat-artifacts__row').some((row) => row.text().includes('gone'))
     ).toBe(false)
