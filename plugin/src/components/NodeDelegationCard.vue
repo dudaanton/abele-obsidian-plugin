@@ -30,8 +30,8 @@
       <p v-if="card.activity?.tool" class="abele-node-delegation__metadata">
         {{ card.activity.tool }}
       </p>
-      <p v-if="card.activity?.message" class="abele-node-delegation__report">
-        {{ card.activity.message }}
+      <p v-if="activityPreview" class="abele-node-delegation__report">
+        {{ activityPreview }}
       </p>
       <ul v-if="card.activity?.files.length">
         <li v-for="file in card.activity.files" :key="file">
@@ -63,6 +63,11 @@ import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
 const props = defineProps<{ card: DelegationCard; nodeLabel: string }>()
+const activityPreview = computed(() => {
+  const text = props.card.activity?.message ?? ''
+  const characters = Array.from(text)
+  return characters.length > 320 ? `…${characters.slice(-320).join('')}` : text
+})
 const finished = computed(() =>
   ['completed', 'failed', 'cancelled', 'unknown', 'grant revoked'].includes(props.card.state)
 )
@@ -70,6 +75,7 @@ const stateLabel = computed(() => {
   const state = props.card.state
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'failed') return t('streamB.failed.031a8f')
+  if (state === 'cancelled') return t('streamBMeta.8b47045eb7')
   if (state === 'grant revoked') return t('streamB.revoked.f6f738')
   if (state === 'running') return t('node.delegation.working')
   if (state === 'unknown' || state === 'outcome unknown') return t('node.delegation.unknown')

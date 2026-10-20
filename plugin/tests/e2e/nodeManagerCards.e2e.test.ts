@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { evalLong, evalRaw, enterPhone, reloadApp } from './helpers/obsidianCli'
+import { evalLong, enterPhone, reloadApp } from './helpers/obsidianCli'
 import { targets, onPhone } from './helpers/target'
 import { columnShot } from './helpers/columnShots'
 import { shotDir } from './helpers/shots'
@@ -26,7 +26,15 @@ async function inspectCards(label: string) {
       expect(report.text).toContain('work/sample-parser-boundaries')
       columnShot(`${shots}/${label}-${state}.png`)
     } finally {
-      evalRaw(`document.querySelector('.modal-close-button')?.click()`)
+      await evalLong(`(async () => {
+        const card=document.querySelector('.abele-node-delegation');
+        card?.closest('.modal')?.querySelector('.modal-close-button')?.click();
+        for(let i=0;i<100;i++) {
+          if(!card?.isConnected)return true;
+          await new Promise(r=>setTimeout(r,50));
+        }
+        throw Error('The previous delegation card did not unmount');
+      })()`)
     }
   }
 }

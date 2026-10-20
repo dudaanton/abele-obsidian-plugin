@@ -1,5 +1,8 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
+import { initializeLocale } from '@/i18n'
+import { english } from '@/i18n/catalogs'
+import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import {
@@ -7,6 +10,37 @@ import {
   nodeDelegationCardFixture,
 } from '@/testing/nodeDelegationFixture'
 const shell = { Modal: { template: '<div><slot /></div>' } }
+it('localizes a cancelled developer state', () => {
+  initializeLocale('ru', { ...english, ...russian })
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: { ...nodeDelegationCardFixture(), state: 'cancelled', pendingHumanPrompts: 0 },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('отменено')
+  } finally {
+    wrapper.unmount()
+    initializeLocale('en')
+  }
+})
+it('keeps a long activity message compact while retaining its latest text', () => {
+  const message = 'Earlier sample progress. '.repeat(100) + 'Latest sample action'
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: { ...nodeDelegationCardFixture(), activity: { message, files: [] } },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Latest sample action')
+    expect(wrapper.text()).not.toContain(message)
+    expect(wrapper.get('button').text()).toContain('Open child chat')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('collapses finished reports and keeps pending prompts one press away', async () => {
   const card = {
     ...nodeDelegationCardFixture(),
