@@ -30,7 +30,8 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, shallowRef, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ChannelError } from '@abele/channel-protocol'
 import { EditorView } from '@codemirror/view'
 import { Compartment, StateEffect } from '@codemirror/state'
 import { blameGutter, type BlameHost } from '@/github/blameGutter'
@@ -50,6 +51,7 @@ const props = defineProps<{
   context: DebugSourceContext
   repository?: RepositorySource
   revision?: string
+  refresh?: () => Promise<void>
 }>()
 const emit = defineEmits<{
   reveal: [line: number]
@@ -70,10 +72,27 @@ async function toggleBlame() {
   blaming.value = !blaming.value
   blameError.value = ''
   try {
-    const ranges =
-      blaming.value && props.repository && props.revision
-        ? await props.repository.blame(props.revision, props.context.path)
-        : []
+    let ranges
+    try {
+      ranges =
+        blaming.value && props.repository && props.revision
+          ? await props.repository.blame(props.revision, props.context.path)
+          : []
+    } catch (error) {
+      if (
+        !(error instanceof ChannelError) ||
+        error.code !== 'stale_revision' ||
+        !props.revision?.startsWith('working-') ||
+        !props.refresh ||
+        request !== serial
+      )
+        throw error
+      console.debug('[debugger] Refreshing expired source before blame', props.context.path)
+      await props.refresh()
+      await nextTick()
+      if (request !== serial || !props.repository || !props.revision) return
+      ranges = await props.repository.blame(props.revision, props.context.path)
+    }
     if (request !== serial || !host.value) return
     const element = host.value.querySelector<HTMLElement>('.cm-editor')
     const editor = element && EditorView.findFromDOM(element)

@@ -1158,7 +1158,8 @@ export class NodePathModel {
     path: string,
     stage?: PathFileStage,
     revision?: RepositoryRevision,
-    publish: (document: PathDocument) => boolean = () => true
+    publish: (document: PathDocument) => boolean = () => true,
+    fresh = false
   ): Promise<PathDocument> {
     target = Object.freeze({ ...target })
     const cacheKey = JSON.stringify([pathTargetKey(target), path, stage, revision])
@@ -1175,7 +1176,7 @@ export class NodePathModel {
       )
     }
     const key = pathTargetKey(target)
-    let known = revision ? undefined : this.knownRead(target)
+    let known = revision || fresh ? undefined : this.knownRead(target)
     let epoch = this.revisionEpochs.get(key) ?? 0
     let file: PathDocument
     try {
@@ -1324,7 +1325,11 @@ export class NodePathFileModel {
       }
     )
   }
-  async open(path: string, stage?: PathFileStage): Promise<void> {
+  async refresh(): Promise<void> {
+    const doc = this.document.value
+    if (doc) await this.open(doc.path, this.stage, true)
+  }
+  async open(path: string, stage?: PathFileStage, fresh = false): Promise<void> {
     const generation = ++this.generation
     this.busy.value = true
     try {
@@ -1333,7 +1338,8 @@ export class NodePathFileModel {
         path,
         stage,
         undefined,
-        () => generation === this.generation
+        () => generation === this.generation,
+        fresh
       )
       if (generation !== this.generation) return
       this.document.value = file

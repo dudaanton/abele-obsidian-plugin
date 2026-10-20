@@ -40,6 +40,7 @@
         :context="{ ...effectiveDebug, ...(line ? { line } : {}), text: model.document.value.text }"
         :repository="repository"
         :revision="revision"
+        :refresh="() => model.refresh()"
         @reveal="revealSource"
         @selection="debugSelection"
       />
