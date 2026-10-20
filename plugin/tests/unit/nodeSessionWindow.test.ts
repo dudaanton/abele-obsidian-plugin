@@ -230,6 +230,25 @@ describe('a giant session in its chat', () => {
       } as unknown as NodeConnection
     )
 
+  it('starts a newly opened stale device at the tail without backfilling the entire session', async () => {
+    const f = fixture()
+    await f.store.transaction((s) => {
+      s.node_id = 'sample-node'
+      s.cursors[SID] = 20
+      s.events[SID] = journal.slice(0, 20)
+    })
+    const p = presenter(f)
+    try {
+      await p.load()
+      const reads = f.requests.filter((r) => r.method === 'stream.read')
+      expect(reads.every((r) => Number(r.params.after_seq) >= HEAD - SESSION_WINDOW)).toBe(true)
+      expect(p.hasOlder.value).toBe(true)
+      expect(p.messages.value.at(-1)?.content).toContain('Answer 300.')
+    } finally {
+      p.destroy()
+    }
+  })
+
   it('opens at its end with the session known, and loads earlier pages as asked', async () => {
     const f = fixture()
     await f.store.transaction((s) => {

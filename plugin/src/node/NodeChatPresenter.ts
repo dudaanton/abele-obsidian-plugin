@@ -101,6 +101,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   /** Events already drawn stay visible while the durable device window advances. */
   private readonly visibleEvents = new Map<number, JournalEvent>()
   private visibleHead = 0
+  private subscribedOnce = false
   /** The first event this device keeps for the session; earlier ones are on the node. */
   private readonly firstKept = ref(1)
   readonly olderState = ref<'idle' | 'loading' | 'failed'>('idle')
@@ -713,7 +714,18 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private async subscribe(): Promise<void> {
     const client = this.connection.client
     const id = this.reference.sessionId
+    const opening = !this.subscribedOnce
+    const adoptWindow = (window: Awaited<ReturnType<typeof openWindow>>) => {
+      // A new view may first show a stale device cache. The initial jump still opens at
+      // the tail; it must not turn that old cache into a request for the entire journal.
+      // Later reconnects preserve what the person has already been reading in this view.
+      if (!opening || !window?.jumped) return
+      this.visibleEvents.clear()
+      this.visibleHead = 0
+      this.older.value = []
+    }
     let window = await openWindow(client, id)
+    adoptWindow(window)
     // The window comes in pages, kept at once; the subscription then starts near the head.
     if (window) await catchUp(client, id, window.head).catch((e: unknown) => this.report(e))
     const answer = (await client.subscribe(id)) as { head_seq?: unknown } | undefined
@@ -721,11 +733,13 @@ export class NodeChatPresenter implements ChatPresentationSession {
     // device far behind starts again at the window, before much of the journal has come.
     if (!window && Number.isSafeInteger(answer?.head_seq)) {
       window = await windowAt(client, id, answer!.head_seq as number)
+      adoptWindow(window)
       if (window.jumped) {
         await catchUp(client, id, window.head).catch((e: unknown) => this.report(e))
         await client.subscribe(id)
       }
     }
+    this.subscribedOnce = true
     if (window && window.from > 1 && !this.sessionRecord.value)
       try {
         this.sessionRecord.value = await client.getSession(id)
