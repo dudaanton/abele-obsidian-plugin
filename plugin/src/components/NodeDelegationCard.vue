@@ -3,7 +3,7 @@
     <Setting
       :name="card.title"
       :desc="
-        [nodeLabel, providerLabel(card.provider), card.branch, stateLabel]
+        [nodeLabel, providerLabel(card.provider), delegationBranchLabel(card.branch), stateLabel]
           .filter(Boolean)
           .join(' · ')
       "
@@ -59,6 +59,7 @@
 import { t } from '@/i18n'
 import { computed } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
+import { delegationBranchLabel } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'

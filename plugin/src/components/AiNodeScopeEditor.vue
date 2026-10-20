@@ -114,6 +114,7 @@ import {
 } from '@/ai/tools/node/scopeNames'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
 import type { ChatSession } from '@/ai/ChatSession'
+import { delegationBranchLabel } from '@/node/delegation'
 import {
   NodeScopeEntriesSchema,
   nodeScopeKey,
@@ -257,21 +258,29 @@ async function chooseProject(value: string) {
         : { entries: await connection.client.listWorkspaces(value, cursor), cursor: null }
       if (generation !== version) return
       targets.value.push(
-        ...result.entries.map((entry) =>
-          'worktree_id' in entry
-            ? {
-                value: entry.worktree_id,
-                display: entry.branch
+        ...result.entries.map((entry) => {
+          if ('worktree_id' in entry) {
+            const parent = props.session.delegationParentId
+            const title =
+              parent && entry.workspace_id
+                ? connection.childTitle?.(parent, entry.workspace_id)
+                : undefined
+            return {
+              value: entry.worktree_id,
+              display: title
+                ? [title, delegationBranchLabel(entry.branch)].filter(Boolean).join(' · ')
+                : entry.branch
                   ? `${shortBranch(entry.branch)} · ${entry.path_label}`
                   : entry.path_label,
-                identity: { kind: 'worktree' as const, worktree_id: entry.worktree_id },
-              }
-            : {
-                value: entry.workspace_id,
-                display: entry.path,
-                identity: { kind: 'workspace' as const, workspace_id: entry.workspace_id },
-              }
-        )
+              identity: { kind: 'worktree' as const, worktree_id: entry.worktree_id },
+            }
+          }
+          return {
+            value: entry.workspace_id,
+            display: entry.path,
+            identity: { kind: 'workspace' as const, workspace_id: entry.workspace_id },
+          }
+        })
       )
       if (!result.cursor) return
       if (cursor === result.cursor) throw new Error(t('streamB.invalidWorktreeCursor.cb1bdb'))

@@ -58,6 +58,13 @@ export const DelegationStorageSchema = z
   })
   .strict()
 export type DelegationStorage = z.infer<typeof DelegationStorageSchema>
+/** Older nodes allocate opaque branch names; the task title is their human label. */
+export function delegationBranchLabel(branch?: string | null): string | undefined {
+  const name = branch?.replace(/^refs\/heads\//, '')
+  return name && !/^abele\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(name)
+    ? name
+    : undefined
+}
 export interface DelegationCard {
   delegationId?: string
   sessionId?: string

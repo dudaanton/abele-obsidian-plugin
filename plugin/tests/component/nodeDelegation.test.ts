@@ -10,6 +10,23 @@ import {
   nodeDelegationCardFixture,
 } from '@/testing/nodeDelegationFixture'
 const shell = { Modal: { template: '<div><slot /></div>' } }
+it('keeps generated branch identifiers out of the developer card label', () => {
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: {
+        ...nodeDelegationCardFixture(),
+        branch: 'abele/11111111-1111-4111-8111-111111111111',
+      },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Review a sample parser')
+    expect(wrapper.text()).not.toContain('11111111-1111-4111-8111-111111111111')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('localizes a cancelled developer state', () => {
   initializeLocale('ru', { ...english, ...russian })
   const wrapper = mount(NodeDelegationCard, {

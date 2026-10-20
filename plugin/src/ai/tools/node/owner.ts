@@ -68,6 +68,9 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
     const connection = service.connection(id)
     return {
       client: connection.client,
+      childTitle: (parent, workspace) =>
+        connection.delegationCards.value[parent]?.find((card) => card.workspaceId === workspace)
+          ?.title,
       principal: () => nodeRegistrationPrincipal(service.registry, id),
       get authorizationGeneration() {
         return connection.authorizationGeneration

@@ -51,6 +51,7 @@ export const NODE_AGENT_TOOL_NAMES = [
 ]
 export interface NodeAgentConnection {
   client: NodeClient
+  childTitle?(parent: string, workspace: string): string | undefined
   /** Durable registration authority and installation/pin, never a display label. */
   principal(): string
   /** Process-local reauthorization fence; never persisted in approvals or mutation records. */

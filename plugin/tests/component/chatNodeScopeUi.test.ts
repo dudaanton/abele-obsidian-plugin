@@ -27,6 +27,55 @@ function setup() {
   return session
 }
 describe('node scope beside vault scope and in the header', () => {
+  it.each(['work/sample-parser', 'abele/11111111-1111-4111-8111-111111111111'])(
+    'names a developer worktree by its parent task and meaningful branch (%s)',
+    async (branch) => {
+      const session = setup()
+      Object.assign(session, { delegationParentId: 'sample-parent' })
+      mocks.host.mockResolvedValue({
+        nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
+        connection: () => ({
+          childTitle: (parent: string, workspace: string) =>
+            parent === 'sample-parent' && workspace === 'sample-copy'
+              ? 'Review sample parser'
+              : undefined,
+          client: {
+            connected: true,
+            listProjects: async () => [
+              { project_id: 'sample-project', root_path: '/sample', repository_path: '/sample' },
+            ],
+            repository: {
+              worktrees: async () => ({
+                entries: [
+                  {
+                    worktree_id: 'sample-tree',
+                    workspace_id: 'sample-copy',
+                    branch,
+                    path_label: '/sample-copy',
+                  },
+                ],
+                cursor: null,
+              }),
+            },
+          },
+        }),
+      })
+      pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'sample-project' }
+      const view = mount(AiNodeScopeEditor, { props: { session } })
+      try {
+        await flushPromises()
+        const option = view
+          .findAllComponents(Dropdown)
+          .flatMap((dropdown) => dropdown.props('options'))
+          .find((option: { value: string }) => option.value === 'sample-tree')
+        expect(option.display).toContain('Review sample parser')
+        expect(option.display).not.toContain('11111111-1111-4111-8111-111111111111')
+        if (branch.startsWith('work/')) expect(option.display).toContain(branch)
+      } finally {
+        view.unmount()
+      }
+    }
+  )
   it('explains whole-node future access, keeps it separate from vault access, and approves loaded settings locally', async () => {
     const session = setup()
     const view = mount(AiNodeScopeEditor, { props: { session } })
