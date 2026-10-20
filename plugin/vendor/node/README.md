@@ -1,13 +1,13 @@
 # Node browser packages
 
-**Temporary, unreleased vendor.** These four exact `0.0.0` npm tarballs contain the built browser
-packages of AbeleNode revision `19fc651d5f2021cd7610d22c1d781b2938ef072f` (v0.4.37): durable approved manager command/integration APIs, resumable delegation deadlines, retained reports after extension warnings, and pi chat
+**Released source, vendored browser packages.** These four exact `0.0.0` npm tarballs contain the built browser
+packages of AbeleNode revision `bed6ddf19935b8527e1fa339c63ad2e556687869` (v0.4.38): delegation through installation authority (delegation_without_grant), debugger frame source paths, exception text, stop on entry, exit codes and attach breakpoint restoration, device disconnect and node.disconnect, plus durable approved manager command/integration APIs, resumable delegation deadlines, retained reports after extension warnings, and pi chat
 checkpoints and online-only preview-bound restores, canonical user messages and turn identities,
 model/account catalogs, and the shared session
 transcript (`session.update`, modelled on ACP, with `sessionUpdatesOf` and the Claude, pi and ACP
 mappers), the per-session command list (`session.commands`, `runCommand`) and ACP agents as
 sessions (`provider: "acp"` with an `agent`, the agents listed under the `acp` provider in
-`node.describe`). They are replaced by the next released node. Everything listed for `v0.4.18`
+`node.describe`). They are refreshed from released node tags. Everything listed for `v0.4.18`
 (`0959374`) below is included: where a stream ends (`stream.head`,
 `NodeClient.head`) and ingesting a burst of events in one store write, long-lived sessions (`session.configure`, `session.compact`, `session.stop`, `session.state`, messages between sessions), attaching the debugger to
 a running program (`debugger.v1.programs`, `debugger.v1.attachProgram`), the owner git writes
@@ -37,7 +37,7 @@ The channel client also carries `patches/lsp-install-deadline.patch`: only expli
 `lsp.v1.install` requests have a ten-minute deadline so downloads can finish; ordinary
 request deadlines are unchanged. Regenerate only `index.js` and its source map with
 TypeScript 5.9.3, ES2022 and ES modules. Declarations are unchanged.
-The node protocol also carries the minimal delegation-without-grant.patch: only the create-request runtime schema and declarations allow optional grant_id and parent_id. This keeps durable enqueue/replay validation compatible with nodes advertising delegation_without_grant, without importing an unreleased node build. The plugin requires the capability before sending this shape. Other packages are unmodified. The released channel client now includes the opt-in host
+Grant-free delegation is included upstream; the local delegation compatibility patch is no longer applied. Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
