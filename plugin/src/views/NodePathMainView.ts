@@ -52,6 +52,10 @@ export class NodePathMainView extends ItemView {
   private presenter?: NodeChatPresenter
   private chatLoad?: Promise<void>
   private editing?: NodePathFileEditing
+  /** Keep local edits reachable when a tree action changes their remote path. */
+  hasUnsentNodeFileEdit(): boolean {
+    return !!this.editing?.dirty.value
+  }
   /** The file tab's header actions and editing, kept apart from the binding. */
   private readonly fileTab = new NodeFileTabActions({
     addAction: (icon, title, run) => this.addAction(icon, title, run),

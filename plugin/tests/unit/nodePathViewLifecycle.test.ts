@@ -3,6 +3,15 @@ import { shallowRef } from 'vue'
 import { Platform, type WorkspaceLeaf } from 'obsidian'
 import { NodePathMainView } from '@/views/NodePathMainView'
 
+it('reports retained local edits to file tree actions', () => {
+  const view = Object.create(NodePathMainView.prototype) as NodePathMainView
+  const dirty = shallowRef(true)
+  Object.assign(view, { editing: { dirty } })
+  expect(view.hasUnsentNodeFileEdit()).toBe(true)
+  dirty.value = false
+  expect(view.hasUnsentNodeFileEdit()).toBe(false)
+})
+
 const fixture = vi.hoisted(() => ({
   connect: vi.fn(),
   ready: vi.fn(),

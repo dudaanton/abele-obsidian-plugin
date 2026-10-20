@@ -133,6 +133,10 @@ export async function updateNodeFileTabs(
         (state.path !== path && !state.path.startsWith(`${path}/`))
       )
         continue
+      // A retained draft belongs to its original path. Never rebind or close its editor
+      // as a side effect of a separate tree action.
+      const editor = leaf.view as typeof leaf.view & { hasUnsentNodeFileEdit?: () => boolean }
+      if (editor?.hasUnsentNodeFileEdit?.()) continue
       if (destination === undefined) leaf.detach()
       else
         await leaf.setViewState({
