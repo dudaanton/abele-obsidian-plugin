@@ -88,13 +88,19 @@ export async function attachToProgram(
   if (!target) throw new Error('This chat has no folder')
   const { workspace } = GlobalStore.getInstance().app
   const open = openFilesOf(workspace, target)
+  const service = DebuggerService.instance
+  const attachmentKey = JSON.stringify([program.pid, program.port, program.script])
+  const previous = service.forAttachment(presenter, attachmentKey)
+  const carry = (previous?.retainedBreakpoints ?? []).filter(
+    (point) => point.file && point.file !== point.sourceId
+  )
   const started = StartResultSchema.parse(
     await presenter.connection.client.request('debugger.v1.attachProgram', {
       operation_id: crypto.randomUUID(),
       ...debugOwnerParams(presenter),
       pid: program.pid,
       port: program.port,
-      sources: open,
+      sources: [...new Set([...open, ...carry.map((point) => point.file)])],
       outside_folder: outsideFolder,
     })
   )
@@ -102,17 +108,50 @@ export async function attachToProgram(
   const snapshot = await registerSources(presenter, started, target)
   // Nothing to restart: the node did not start it, and Detach leaves it running.
   const binding = DebuggerService.instance.binding(presenter, started.debug_session_id)
+  binding.attachmentKey = attachmentKey
   binding.rerun = undefined
   binding.reattach = () => askAndAttachProgram(presenter, show)
-  await show(started.debug_session_id)
-  // The program's own file opens with its margin; with none in the chat's folder, the files open.
+  // Prefer mapped source. Check the ordinary file API before opening an adapter-provided
+  // path: ignored build outputs can be admitted for debugging but refused by file browsing.
+  const main =
+    started.sources.find((source) => /\.[cm]?tsx?$/.test(source.path)) ?? started.sources[0]
+  const readable = new Set(open)
+  if (main && !readable.has(main.path)) {
+    try {
+      const client = presenter.connection.client
+      const blob =
+        target.kind === 'workspace'
+          ? await client.readFile(target.id, main.path)
+          : await client.repository.blob({
+              worktree_id: target.id,
+              revision: (await client.repository.observe({ worktree_id: target.id })).revision,
+              path: main.path,
+            })
+      if (blob.content_id && !blob.binary) readable.add(main.path)
+    } catch (error) {
+      console.debug('[debugger] Attach entry is not a readable source', main.path, error)
+    }
+  }
+  // Only navigate to files already readable in the folder. An adapter's entry can be an
+  // ignored build output; source admission alone does not make it a readable file tab.
   await openSources(
     presenter,
-    started,
+    { ...started, sources: started.sources.filter((source) => readable.has(source.path)) },
     snapshot.incarnation,
     target,
-    started.sources.find((s) => s.source_id === 's1')?.path ?? chatPath(program, open)
+    main && readable.has(main.path) ? main.path : chatPath(program, open)
   )
+  await show(started.debug_session_id)
+  for (const point of carry) {
+    const source = started.sources.find((source) => source.path === point.file)
+    if (source)
+      await binding.controller.setBreakpoint(
+        crypto.randomUUID(),
+        source.source_id,
+        point.requestedLine,
+        point.condition
+      )
+  }
   return started.debug_session_id
 }
 

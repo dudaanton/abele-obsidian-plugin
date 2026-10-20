@@ -17,6 +17,7 @@ import type { PathTarget } from '@/node/NodePathModel'
 
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => false) }))
 import { confirmDialog } from '@/components/obsidian/dialogs'
+import { debuggerSnapshot } from '../fixtures/debugger'
 
 const target: PathTarget = {
   nodeId: 'node-a',
@@ -95,7 +96,17 @@ function fakePresenter(programs: WaitingProgram[] = []) {
     throw new Error(`unexpected ${method}`)
   })
   const presenter = {
-    connection: { client: { request }, connect: async () => {}, state: ref('connected') },
+    connection: {
+      client: {
+        request,
+        readFile: vi.fn(async (_id: string, path: string) => {
+          if (path.startsWith('dist/')) throw new Error('unsafe_path')
+          return { content_id: 'sample-content', binary: false }
+        }),
+      },
+      connect: async () => {},
+      state: ref('connected'),
+    },
     reference: { sessionId: 'chat-a', registrationId: 'reg-a', nodeId: 'node-a' },
   } as unknown as NodeChatPresenter
   return { presenter, calls }
@@ -115,6 +126,65 @@ afterEach(() => {
 })
 
 describe('attaching the debugger to a running program', () => {
+  it('carries breakpoints by path when attaching to the same process again', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter([inFolder])
+    const show = vi.fn(async () => {})
+    await attachToProgram(presenter, inFolder, show)
+    const binding = DebuggerService.instance.binding(presenter)
+    binding.controller.observe({
+      observation: 'current',
+      snapshot: debuggerSnapshot({
+        debug_session_id: 'child-9',
+        breakpoints: [
+          {
+            breakpoint_id: 'sample-point',
+            source_id: 's1',
+            line: 5,
+            status: 'verified',
+            resolved_line: 5,
+            resolved_column: null,
+            message: null,
+          },
+        ],
+      }),
+    })
+    binding.controller.registerSource('s1', 'src/server.js')
+    binding.controller.observe({
+      observation: 'current',
+      snapshot: debuggerSnapshot({
+        debug_session_id: 'child-9',
+        lifecycle: 'detached',
+        breakpoints: [],
+        event_seq: 9,
+      }),
+    })
+    const set = vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue(undefined)
+    await attachToProgram(presenter, inFolder, show)
+    expect(
+      calls.filter(([method]) => method === 'debugger.v1.attachProgram').at(-1)?.[1].sources
+    ).toContain('src/server.js')
+    expect(set).toHaveBeenCalledWith(expect.any(String), 's1', 5, undefined)
+  })
+  it('does not open an ignored built entry and finishes by showing Debug', async () => {
+    const { opened } = fakeWorkspace()
+    const { presenter } = fakePresenter([inFolder])
+    const request = vi.mocked(presenter.connection.client.request)
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (method, params) =>
+      method === 'debugger.v1.attachProgram'
+        ? { debug_session_id: 'child-9', sources: [{ source_id: 's1', path: 'dist/server.js' }] }
+        : (original(method, params) as never)
+    )
+    const show = vi.fn(async () => {})
+    await attachToProgram(
+      presenter,
+      { ...inFolder, script: '/work/sample-app/dist/server.js' },
+      show
+    )
+    expect(opened).toEqual([])
+    expect(show).toHaveBeenCalledWith('child-9')
+  })
   it('lists each program by its command, where it runs, its process and its port', () => {
     expect(programSuggestions([inFolder, elsewhere])).toEqual([
       {
@@ -154,7 +224,7 @@ describe('attaching the debugger to a running program', () => {
     expect(NOTHING_WAITS).toContain('node --inspect app.js')
   })
 
-  it('attaches with the files open from the folder and opens the program’s own file', async () => {
+  it('attaches with the files open from the folder and opens the program’s own readable file', async () => {
     const routes = fileLeaf('src/routes.js')
     fakeWorkspace([routes])
     const { presenter, calls } = fakePresenter([inFolder])
@@ -171,7 +241,7 @@ describe('attaching the debugger to a running program', () => {
     expect(show).toHaveBeenCalledWith('child-9')
     // Nothing to restart: the node did not start it.
     expect(DebuggerService.instance.binding(presenter).rerun).toBeUndefined()
-    // The one file tab of the folder shows the program's own file, with its margin.
+    // The program's own file was checked through the ordinary file API before navigation.
     expect(routes.getViewState().state).toMatchObject({
       path: 'src/server.js',
       debug: { sourceId: 's1', debugSessionId: 'child-9', incarnation: 'i-9' },

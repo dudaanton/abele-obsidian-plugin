@@ -140,4 +140,10 @@ it('keeps folder sessions independent and uses the selected session for file mar
   expect(service.active.value).toBeNull()
   service.selectFolder(owner.target)
   expect(service.active.value).toBe(first)
+  service.select(second)
+  service.selectFolder({ ...owner.target, id: 'sample-other-tree' })
+  service.selectFolder(owner.target)
+  expect(service.active.value).toBe(second)
+  first.attachmentKey = second.attachmentKey = 'sample-program'
+  expect(service.forAttachment(owner, 'sample-program')).toBe(second)
 })

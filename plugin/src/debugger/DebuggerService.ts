@@ -307,6 +307,10 @@ export class DebuggerService {
   static readonly instance = new DebuggerService()
   readonly sourceRevision = shallowRef(0)
   private readonly folders = new Map<DebuggerBinding, { sessionId: string; target: PathTarget }>()
+  private readonly selectedFolders = new Map<string, DebuggerBinding>()
+  private folderKey(target: PathTarget) {
+    return JSON.stringify([target.registrationId, target.nodeId, target.kind, target.id])
+  }
   private readonly admissions = new Map<string, Promise<SourceAdmission>>()
   observeFolder(binding: DebuggerBinding, sessionId: string) {
     const folder = this.folders.get(binding)
@@ -335,7 +339,7 @@ export class DebuggerService {
   folderBinding(target: PathTarget | null | undefined) {
     void this.sourceRevision.value
     if (!target) return undefined
-    const selected = this.active.value
+    const selected = this.selectedFolders.get(this.folderKey(target)) ?? this.active.value
     const entries = [...this.folders].sort(
       ([a], [b]) => Number(b === selected) - Number(a === selected)
     )
@@ -434,7 +438,7 @@ export class DebuggerService {
   }
   forAttachment(owner: DebugOwner, key: string) {
     const identity = debugIdentity(owner)
-    return [...this.bindings.values()].find((binding) => {
+    return [...this.bindings.values()].reverse().find((binding) => {
       if (binding.registrationId !== identity.registrationId || binding.attachmentKey !== key)
         return false
       const folder = this.folder(binding)
@@ -583,6 +587,8 @@ export class DebuggerService {
   }
   select(binding: DebuggerBinding) {
     this.active.value = binding
+    const target = this.folder(binding)
+    if (target) this.selectedFolders.set(this.folderKey(target), binding)
     ++this.sourceRevision.value
   }
   selectFolder(target: PathTarget) {
@@ -753,6 +759,7 @@ export class DebuggerService {
     this.bindings.clear()
     this.sources.clear()
     this.folders.clear()
+    this.selectedFolders.clear()
     this.admissions.clear()
     this.revealers.clear()
     this.active.value = null
