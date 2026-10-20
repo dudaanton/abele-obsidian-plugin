@@ -7,30 +7,33 @@ import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
-  it('starts a new managed removal when the accepted job ended busy', async () => {
-    const store = new MemoryClientStore()
-    await store.transaction((state) => {
-      state.results['sample-removal'] = {
-        request: { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } },
-        result: { workspace_id: 'sample-workspace', job_id: 'sample-busy-job' },
-      }
-    })
-    const removeWorkspace = vi.fn(async () => ({
-      workspace_id: 'sample-workspace',
-      job_id: 'sample-new-job',
-    }))
-    const mutations = new NodePathMutations({
-      store,
-      nodePath: {} as never,
-      removeWorkspace,
-      getJob: vi.fn(async () => ({ state: 'failed', error: 'resource_busy' })) as never,
-      operationResult: (id) => store.transaction((state) => state.results[id]),
-    })
-    expect(await mutations.removeManaged('sample-workspace')).toMatchObject({
-      job_id: 'sample-new-job',
-    })
-    expect(removeWorkspace).toHaveBeenCalledExactlyOnceWith('sample-workspace')
-  })
+  it.each(['failed', 'needs_attention'])(
+    'starts a new managed removal when the accepted job is %s with a busy refusal',
+    async (jobState) => {
+      const store = new MemoryClientStore()
+      await store.transaction((state) => {
+        state.results['sample-removal'] = {
+          request: { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } },
+          result: { workspace_id: 'sample-workspace', job_id: 'sample-busy-job' },
+        }
+      })
+      const removeWorkspace = vi.fn(async () => ({
+        workspace_id: 'sample-workspace',
+        job_id: 'sample-new-job',
+      }))
+      const mutations = new NodePathMutations({
+        store,
+        nodePath: {} as never,
+        removeWorkspace,
+        getJob: vi.fn(async () => ({ state: jobState, error: 'resource_busy' })) as never,
+        operationResult: (id) => store.transaction((state) => state.results[id]),
+      })
+      expect(await mutations.removeManaged('sample-workspace')).toMatchObject({
+        job_id: 'sample-new-job',
+      })
+      expect(removeWorkspace).toHaveBeenCalledExactlyOnceWith('sample-workspace')
+    }
+  )
   it('uses a new explicit deletion intent after a known busy refusal', async () => {
     const target = {
       nodeId: 'sample-node',
