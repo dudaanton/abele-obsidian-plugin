@@ -105,7 +105,6 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       const rows=await client.repository.worktrees({project_id:project.project_id});
       const root=rows.entries.find(w=>w.kind==='root');
       await client.nodePath.execution({project_id:project.project_id,target:{kind:'worktree',worktree_id:root.worktree_id},enabled:true});
-      await client.repository.editing({worktree_id:root.worktree_id,enabled:true});
       const session=await client.nodePath.createSession({title:'Source links',provider:'fake',target:{kind:'worktree',worktree_id:root.worktree_id}});
       return JSON.stringify({project:project.project_id,root:root.worktree_id,session:session.session_id})})()`)
     ) as { project: string; root: string; session: string }
