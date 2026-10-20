@@ -12,7 +12,7 @@ afterEach(() => {
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
 })
-it.each(['running', 'detached'] as const)(
+it.each(['running', 'detached', 'exited'] as const)(
   'lists distinct folder sessions with paused and %s state and a working switch',
   async (state) => {
     const service = DebuggerService.instance
@@ -35,13 +35,14 @@ it.each(['running', 'detached'] as const)(
     const secondSnapshot = debuggerSnapshot({
       debug_session_id: 'sample-second',
       execution: 'running',
-      lifecycle: state === 'detached' ? 'detached' : 'active',
+      lifecycle: state === 'exited' ? 'terminated' : state === 'detached' ? 'detached' : 'active',
     })
-    secondSnapshot.target.process_ownership = 'external'
+    secondSnapshot.target.process_ownership = state === 'exited' ? 'owned' : 'external'
     second.controller.observe({
       observation: 'current',
       snapshot: secondSnapshot,
     })
+    if (state === 'exited') second.controller.session.exitCode = 7
     service.select(first)
     const view = mount(DebuggerView, { global: { stubs: { DebugPanel: true } } })
     try {
@@ -50,7 +51,9 @@ it.each(['running', 'detached'] as const)(
       expect(options).toHaveLength(2)
       expect(options[0].text()).toContain('Paused')
       expect((switcher.element as HTMLSelectElement).value).toBe('sample-first')
-      expect(options[1].text()).toContain(state === 'detached' ? 'Detached' : 'Running')
+      expect(options[1].text()).toContain(
+        state === 'exited' ? 'Exit code 7' : state === 'detached' ? 'Detached' : 'Running'
+      )
       await switcher.setValue('sample-second')
       await vi.waitFor(() => expect(showSession).toHaveBeenCalledWith(owner, 'sample-second'))
     } finally {

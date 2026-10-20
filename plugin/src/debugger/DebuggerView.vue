@@ -95,7 +95,9 @@ function peerState(peer: DebuggerBinding) {
         : session.status === 'exited'
           ? session.detached && session.attached
             ? t('streamC.4fc04649a9497a39')
-            : t('streamC.a35ec6a4c0b7f680')
+            : session.exitCode === undefined
+              ? t('streamC.a35ec6a4c0b7f680')
+              : t('streamC.c0d03c6c706a16bc', { v1: String(session.exitCode) })
           : t('streamC.24b289c6dcaf78b5', { v1: session.seen ?? '' })
 }
 const peers = computed(() => {
