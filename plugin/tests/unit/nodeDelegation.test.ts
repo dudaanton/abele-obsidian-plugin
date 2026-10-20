@@ -10,7 +10,6 @@ import { chatMovedNotice } from '@/node/expectedTarget'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeDelegationController } from '@/node/NodeDelegationController'
 import { deferred } from '../helpers/deferred'
-import { ChannelError } from '@abele/channel-protocol'
 
 const grant: DelegationGrant = {
   grant_id: 'grant',
@@ -44,11 +43,19 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
-it('explains an older protocol refusal without requesting or creating a grant', async () => {
+it('refuses an older node before reserving a task or creating a grant', async () => {
   const f = fixture()
-  f.client.createDelegation.mockRejectedValueOnce(new ChannelError('invalid_params'))
-  await expect(f.controller.create('parent', task)).rejects.toThrow(/need an update/i)
+  f.client.describe.mockResolvedValueOnce({
+    providers: [{ provider: 'pi', available: true }],
+    version: undefined,
+    capabilities: { capabilities: {} },
+  })
+  await expect(f.controller.create('parent', task)).rejects.toThrow(
+    'This node needs an update to take tasks from chats'
+  )
   expect(f.client.approveDelegationGrant).not.toHaveBeenCalled()
+  expect(f.client.createDelegation).not.toHaveBeenCalled()
+  expect(await f.controller.cards('parent')).toEqual([])
   f.store.close()
 })
 it('does not repeatedly poll a finished child’s unchanged workspace', async () => {
@@ -202,6 +209,12 @@ function fixture() {
       })),
     },
     describe: vi.fn(async () => ({
+      capabilities: {
+        capabilities: { delegation_without_grant: { status: 'supported' } } as Record<
+          string,
+          { status: string }
+        >,
+      },
       version: undefined as string | undefined,
       providers: [
         { provider: 'pi', available: true },
@@ -237,6 +250,7 @@ describe('trusted node delegation controller', () => {
   it('offers Codex when available without a delegation grant', async () => {
     const f = fixture()
     f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
       version: undefined,
       providers: [{ provider: 'codex', available: true }],
     })
@@ -245,6 +259,7 @@ describe('trusted node delegation controller', () => {
 
     expect((await f.controller.destinations('parent'))[0].providers).toEqual(['codex'])
     f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
       version: undefined,
       providers: [{ provider: 'codex', available: false }],
     })
@@ -252,6 +267,7 @@ describe('trusted node delegation controller', () => {
     await expect(f.controller.create('parent', input)).rejects.toThrow(/unavailable/i)
     expect(f.client.createDelegation).not.toHaveBeenCalled()
     f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
       version: undefined,
       providers: [{ provider: 'codex', available: true }],
     })

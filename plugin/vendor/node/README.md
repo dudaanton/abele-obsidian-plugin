@@ -37,7 +37,7 @@ The channel client also carries `patches/lsp-install-deadline.patch`: only expli
 `lsp.v1.install` requests have a ten-minute deadline so downloads can finish; ordinary
 request deadlines are unchanged. Regenerate only `index.js` and its source map with
 TypeScript 5.9.3, ES2022 and ES modules. Declarations are unchanged.
-Other packages are unmodified. The released channel client now includes the opt-in host
+The node protocol also carries the minimal delegation-without-grant.patch: only the create-request runtime schema and declarations allow optional grant_id and parent_id. This keeps durable enqueue/replay validation compatible with nodes advertising delegation_without_grant, without importing an unreleased node build. The plugin requires the capability before sending this shape. Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.

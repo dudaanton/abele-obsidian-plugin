@@ -27088,5 +27088,15 @@
       "es",
       "de"
     ]
+  },
+  "node.delegation.updateRequired": {
+    "englishHash": "e4b489a5120ce77bb92c9a1edabba3fac4c8ede43ddec56c435d165033e4df4b",
+    "context": "Older node refusal for chat delegation and manager tools",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

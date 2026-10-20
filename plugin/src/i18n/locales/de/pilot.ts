@@ -29,6 +29,8 @@ export const de = {
     'Die gespeicherte Verbindung dieses Geräts entfernen? Der Schlüssel auf dem Knoten bleibt gültig. Widerrufe den Geräteschlüssel in der Token-Liste des Knotens, um weiteren Zugriff damit zu verhindern.',
   'node.error.requestMissing': 'Diese Anfrage ist nicht mehr auf dem Knoten vorhanden.',
   'debug.frameSourceUnavailable': 'Für diesen Frame ist in diesem Ordner kein Quellcode verfügbar.',
+  'node.delegation.updateRequired':
+    'Dieser Node benötigt ein Update, um Aufgaben aus Chats anzunehmen',
   'node.files.directoryDeleteSummary': 'Ordner {path} mit {files} in {folders} löschen?',
   'node.files.directoryMoveSummary':
     'Ordner {path} mit {files} in {folders} nach {destination} verschieben?',

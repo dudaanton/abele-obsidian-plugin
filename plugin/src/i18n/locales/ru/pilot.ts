@@ -29,6 +29,8 @@ export const ru = {
     'Удалить сохранённое подключение этого устройства? Его ключ на ноде останется действующим. Чтобы запретить доступ с этим ключом, отзовите ключ устройства в списке токенов ноды.',
   'node.error.requestMissing': 'Этого запроса больше нет на ноде.',
   'debug.frameSourceUnavailable': 'Для этого кадра нет доступного исходного кода в этой папке.',
+  'node.delegation.updateRequired':
+    'Эту ноду нужно обновить, чтобы она могла принимать задачи из чатов',
   'node.files.directoryDeleteSummary': 'Удалить папку {path}: {files}, {folders}?',
   'node.files.directoryMoveSummary':
     'Переместить папку {path} ({files}, {folders}) в {destination}?',

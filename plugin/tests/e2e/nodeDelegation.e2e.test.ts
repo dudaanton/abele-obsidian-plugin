@@ -33,8 +33,7 @@ function reloadDelegationPlugin() {
   })()`)
 }
 
-// BUG: Delegation creation still requires a grant in the node protocol.
-it.fails('a normal plugin agent delegates through node chips to both fake providers, survives offline completion and opens the child normally', async () => {
+it('a normal plugin agent delegates through node chips to both fake providers, survives offline completion and opens the child normally', async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to a built daemon CLI for delegation acceptance')
   mkdirSync('../.scratch', { recursive: true })
@@ -144,6 +143,23 @@ it.fails('a normal plugin agent delegates through node chips to both fake provid
     registration = setup.registration
     parentId = setup.parent
     agentId = setup.agent
+    const description = (await human.describe()) as {
+      capabilities?: { capabilities?: Record<string, { status: string }> }
+    }
+    if (description.capabilities?.capabilities?.delegation_without_grant?.status !== 'supported') {
+      const refused = evalAsync<string>(`(async () => {
+        ${PRELUDE}
+        const parent = chats.getSessionByFile(${JSON.stringify(path)});
+        const tool = parent.getTools().find(tool => tool.name === 'node_delegate');
+        if (!tool) throw Error('Delegate tool missing for an in-scope chat');
+        try {
+          await tool.execute('sample-call', {node:${JSON.stringify(registration)},task_key:'sample-task',project_id:${JSON.stringify(project.project_id)},provider:'pi',title:'Sample task',text:'Review parser'});
+          throw Error('Older node unexpectedly accepted delegation');
+        } catch (error) { return JSON.stringify(String(error.message || error)) }
+      })()`)
+      expect(refused).toContain('This node needs an update to take tasks from chats')
+      return
+    }
     const children = evalAsync<
       { sessionId: string; delegationId: string; mailbox: string }[]
     >(`(async () => {

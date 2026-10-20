@@ -11,7 +11,7 @@ import {
   chatMovedNotice,
 } from './expectedTarget'
 import type { NodeClientStore, NodeClientState } from './NodeClientStore'
-import { ChannelError } from '@abele/channel-protocol'
+import { requireGrantFreeDelegation } from './delegationCapability'
 import {
   DelegationTaskInputSchema,
   type DelegationTaskInput,
@@ -101,6 +101,8 @@ export class NodeDelegationController {
   }
   async create(parent: string, raw: DelegationTaskInput, signal?: AbortSignal) {
     const input = DelegationTaskInputSchema.parse(raw)
+    const description = await this.client.describe()
+    requireGrantFreeDelegation(description)
     const key = await taskKey(parent, input.task_key)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
     const request = await this.store.transaction((s) => {
@@ -148,25 +150,13 @@ export class NodeDelegationController {
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
       if (signal?.aborted) throw new Error('Delegation call cancelled')
-      const available = nodeProviders(await this.client.describe()).some(
+      const available = nodeProviders(description).some(
         (p) => p.provider === input.provider && delegatable(p) && providerAvailable(p)
       )
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       if (!available) throw new Error('Provider unavailable on this node')
       // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
-      // The legacy SDK type still requires grant_id; send no legacy grant.
-      // Nodes which require it refuse rather than creating hidden authority.
-      try {
-        child = await this.client.createDelegation(
-          request as unknown as Parameters<NodeClient['createDelegation']>[0]
-        )
-      } catch (error) {
-        if (error instanceof ChannelError && error.code === 'invalid_params')
-          throw new Error(
-            'The node and its plugin client need an update to support delegation through chat node access. No separate delegation permission can be configured.'
-          )
-        throw error
-      }
+      child = await this.client.createDelegation(request)
       await this.store.transaction((s) => {
         const task = storage(s).tasks[key]
         if (!task.cancelSettled) task.child = child

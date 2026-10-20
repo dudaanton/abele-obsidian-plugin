@@ -1,3 +1,4 @@
+import { requireGrantFreeDelegation } from '@/node/delegationCapability'
 import { requireDelegationScope } from './node/delegationScope'
 import { nodeScopeEntries } from '../nodeScope'
 import { t } from '@/i18n'
@@ -94,6 +95,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         requireDelegationScope(parent, nodeId)
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
+      requireGrantFreeDelegation(await connection.client.describe())
       const guards: (() => void)[] = []
       const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
       if (entries.some((entry) => entry.kind === 'node')) {

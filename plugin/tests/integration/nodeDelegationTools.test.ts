@@ -28,7 +28,16 @@ it('uses project scope for every child action and rechecks it after connecting',
   const connect = vi.fn(async () => {})
   vi.spyOn(NodeService, 'getInstance').mockReturnValue({
     nodes: { value: [{ id: 'sample-alias', expectedNodeId: 'sample-node' }] },
-    connection: () => ({ connect, delegation, refreshDelegations: async () => {} }),
+    connection: () => ({
+      client: {
+        describe: async () => ({
+          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        }),
+      },
+      connect,
+      delegation,
+      refreshDelegations: async () => {},
+    }),
   } as never)
   const tools = createNodeDelegationTools(owner)
   const args = {
@@ -70,7 +79,16 @@ it('lists stable IDs and resolves them for all child operations', async () => {
     status: vi.fn(async () => ({})),
     cancel: vi.fn(async () => ({})),
   }
-  const connection = { connect: async () => {}, refreshDelegations: async () => {}, delegation }
+  const connection = {
+    client: {
+      describe: async () => ({
+        capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+      }),
+    },
+    connect: async () => {},
+    refreshDelegations: async () => {},
+    delegation,
+  }
   const service = {
     nodes: { value: [{ id: 'alias', expectedNodeId: 'stable', label: 'Sample' }] },
     connection: vi.fn((id: string) => {
@@ -127,6 +145,11 @@ it('never creates after Stop while connecting, and cancels a child accepted conc
   const service = {
     nodes: { value: [] },
     connection: () => ({
+      client: {
+        describe: async () => ({
+          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        }),
+      },
       connect: () => gate,
       delegation: { create: created, cancel },
       refreshDelegations: async () => {},
@@ -179,7 +202,10 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
   const client = {
     connected: true,
     listProjects: async () => [],
-    describe: async () => ({ providers: [{ provider: 'pi', available: true }] }),
+    describe: async () => ({
+      capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+      providers: [{ provider: 'pi', available: true }],
+    }),
     approveDelegationGrant: vi.fn(async () => grant),
     createDelegation: vi.fn(async (request) => ({
       ...request,
@@ -200,6 +226,11 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
   const service = {
     nodes: { value: [{ id: 'registration', label: 'Sample node' }] },
     connection: () => ({
+      client: {
+        describe: async () => ({
+          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        }),
+      },
       connect: async () => {},
       refreshDelegations: async () => {},
       delegation: controller,

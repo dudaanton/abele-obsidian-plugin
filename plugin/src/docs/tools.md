@@ -962,8 +962,8 @@ A normal plugin agent can assign a bounded task to Claude Code or pi on an Abele
 The chat's node chips are the only delegation access gate: add the node or project there.
 There is no separate delegation permission in Settings. Tool permission modes still apply.
 Models cannot access credentials, send generic node requests or answer child human prompts.
-Nodes using the older grant-backed delegation protocol refuse creation until the node supports
-chat-scoped delegation; do not ask for a grant or create one automatically.
+Nodes must advertise delegation_without_grant. Older nodes say they need an update to take tasks
+from chats; do not ask for a grant or create one automatically.
 
 - `node_delegations` lists in-scope destinations/providers, project IDs and full
   node-side paths, and this parent's retained children. Projects outside the chat scope are not returned.

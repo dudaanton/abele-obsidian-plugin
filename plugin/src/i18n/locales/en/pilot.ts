@@ -27,6 +27,7 @@ export const en = {
     'Remove this device’s saved connection? This does not revoke its key on the node. Revoke that device key in the node’s token list to prevent further access with it.',
   'node.error.requestMissing': 'This request is no longer on the node.',
   'debug.frameSourceUnavailable': 'This frame has no source available in this folder.',
+  'node.delegation.updateRequired': 'This node needs an update to take tasks from chats',
   'node.files.directoryDeleteSummary': 'Delete folder {path} with {files} in {folders}?',
   'node.files.directoryMoveSummary':
     'Move folder {path} with {files} in {folders} to {destination}?',

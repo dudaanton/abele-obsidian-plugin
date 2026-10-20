@@ -5,6 +5,33 @@ import { NodeService } from '@/node/NodeService'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('refuses every manager operation on an older node without sending a mutation', async () => {
+  const mutate = vi.fn(),
+    status = vi.fn()
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      client: { describe: async () => ({ capabilities: { capabilities: {} } }) },
+      manager: { mutate, status },
+    }),
+  } as never)
+  const tools = createNodeManagerTools({
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as ChatSession)
+  for (const tool of tools)
+    await expect(
+      tool.execute('sample-call', {
+        node: 'sample-node',
+        session_id: 'sample-session',
+        operation_id: 'sample-operation',
+        run_id: 'sample-run',
+      })
+    ).rejects.toThrow('This node needs an update to take tasks from chats')
+  expect(mutate).not.toHaveBeenCalled()
+  expect(status).not.toHaveBeenCalled()
+})
 it('refuses a command for a project outside the chat node chips', async () => {
   const mutate = vi.fn()
   vi.spyOn(NodeService, 'getInstance').mockReturnValue({
@@ -13,6 +40,9 @@ it('refuses a command for a project outside the chat node chips', async () => {
       connect: async () => {},
       manager: { mutate },
       client: {
+        describe: async () => ({
+          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        }),
         getSession: async () => ({ workspace_id: 'sample-workspace' }),
         getWorkspace: async () => ({ project_id: 'sample-project' }),
         nodePath: {
@@ -48,6 +78,11 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
   const status = vi.fn(async () => ({ run_id: 'sample-run', state: 'exited', exit_code: 0 }))
   const refresh = vi.fn(async () => {})
   const connection = {
+    client: {
+      describe: async () => ({
+        capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+      }),
+    },
     connect: async () => {},
     manager: { mutate, status },
     refreshDelegations: refresh,

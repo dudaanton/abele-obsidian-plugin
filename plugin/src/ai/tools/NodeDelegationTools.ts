@@ -1,3 +1,5 @@
+import { UiError } from '@/i18n/streamBErrors'
+import { requireGrantFreeDelegation } from '@/node/delegationCapability'
 import { requireDelegationScope } from './node/delegationScope'
 import { nodeScopeEntries } from '../nodeScope'
 import { z } from 'zod'
@@ -155,6 +157,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
           const connection = service.connection(n.id)
           try {
             await connection.connect()
+            requireGrantFreeDelegation(await connection.client.describe())
             await connection.refreshDelegations()
             const approved = await connection.delegation.destinations(parent)
             if (approved.length) {
@@ -185,7 +188,8 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
                 children,
               })
             }
-          } catch {
+          } catch (error) {
+            if (error instanceof UiError) throw error
             destinations.push({
               node: n.expectedNodeId ?? n.id,
               label: n.label,
@@ -222,6 +226,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         const connection = connectionFor(service, node)
         await connection.connect()
         guard?.()
+        requireGrantFreeDelegation(await connection.client.describe())
         checkCancelled(signal)
         try {
           const child = await connection.delegation.create(parent, input, signal)
@@ -249,6 +254,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         const connection = connectionFor(service, input.node)
         await connection.connect()
         guard?.()
+        requireGrantFreeDelegation(await connection.client.describe())
         checkCancelled(signal)
         return connection.delegation.send(parent, input.delegation_id, input.text, signal)
       }
@@ -263,6 +269,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         const connection = connectionFor(service, input.node)
         await connection.connect()
         guard?.()
+        requireGrantFreeDelegation(await connection.client.describe())
         const status = await connection.delegation.status(parent, input.delegation_id)
         await connection.refreshDelegations()
         return status
@@ -278,6 +285,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         const connection = connectionFor(service, input.node)
         await connection.connect()
         guard?.()
+        requireGrantFreeDelegation(await connection.client.describe())
         const result = await connection.delegation.cancel(parent, input.delegation_id)
         await connection.refreshDelegations()
         return result

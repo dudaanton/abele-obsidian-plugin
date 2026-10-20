@@ -17,8 +17,7 @@ async function until<T>(fn: () => Promise<T>): Promise<NonNullable<T>> {
   throw new Error('Delegation fixture did not converge')
 }
 for (const provider of ['claude', 'pi'] as const)
-  // BUG: The node protocol still requires a separate delegation grant.
-  it.fails(`delegates to fake ${provider} through the real daemon, completes offline and restores one durable result`, async () => {
+  it(`delegates to fake ${provider} through the real daemon, completes offline and restores one durable result`, async () => {
     if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
     mkdirSync('../.scratch', { recursive: true })
     const dir = mkdtempSync(resolve('../.scratch/d-'))
@@ -51,10 +50,14 @@ for (const provider of ['claude', 'pi'] as const)
       'sample'
     )
     const token = (label: string) => {
-      const r = spawnSync(process.execPath, [cli, 'token', 'create', label, '--state-dir', dir, '--json'], {
-        encoding: 'utf8',
-        env,
-      })
+      const r = spawnSync(
+        process.execPath,
+        [cli, 'token', 'create', label, '--state-dir', dir, '--json'],
+        {
+          encoding: 'utf8',
+          env,
+        }
+      )
       expect(r.status, r.stderr).toBe(0)
       return JSON.parse(r.stdout).token as string
     }
@@ -109,6 +112,17 @@ for (const provider of ['claude', 'pi'] as const)
         provider,
         title: 'Sample task',
         text: 'Sample offline task',
+      }
+      const description = (await parent.describe()) as {
+        capabilities?: { capabilities?: Record<string, { status: string }> }
+      }
+      if (
+        description.capabilities?.capabilities?.delegation_without_grant?.status !== 'supported'
+      ) {
+        await expect(controller.create('parent-chat', request)).rejects.toThrow(
+          'This node needs an update to take tasks from chats'
+        )
+        return
       }
       const child = await controller.create('parent-chat', request)
       await parent.disconnect()
@@ -217,7 +231,9 @@ for (const provider of ['claude', 'pi'] as const)
           ...request,
           task_key: 'revoke-task',
         })
-        await parent.revokeDelegationGrant((await parent.delegationStatus(revocable.delegation_id)).grant_id)
+        await parent.revokeDelegationGrant(
+          (await parent.delegationStatus(revocable.delegation_id)).grant_id
+        )
         await expect(controller.status('parent-chat', revocable.delegation_id)).rejects.toThrow(
           /grant/
         )

@@ -28,6 +28,8 @@ export const lv = {
     'Noņemt šīs ierīces saglabāto savienojumu? Tās atslēga mezglā paliks aktīva. Lai liegtu turpmāku piekļuvi ar šo atslēgu, atsauciet ierīces atslēgu mezgla tokenu sarakstā.',
   'node.error.requestMissing': 'Šī pieprasījuma mezglā vairs nav.',
   'debug.frameSourceUnavailable': 'Šim kadram šajā mapē nav pieejams pirmkods.',
+  'node.delegation.updateRequired':
+    'Šis mezgls jāatjaunina, lai tas varētu pieņemt uzdevumus no tērzētavām',
   'node.files.directoryDeleteSummary': 'Dzēst mapi {path} ar {files} un {folders}?',
   'node.files.directoryMoveSummary':
     'Pārvietot mapi {path} ar {files} un {folders} uz {destination}?',

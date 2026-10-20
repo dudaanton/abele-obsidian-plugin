@@ -30,6 +30,8 @@ export const es = {
   'node.error.requestMissing': 'Esta solicitud ya no está en el nodo.',
   'debug.frameSourceUnavailable':
     'No hay código fuente disponible para este marco en esta carpeta.',
+  'node.delegation.updateRequired':
+    'Este nodo necesita una actualización para aceptar tareas de los chats',
   'node.files.directoryDeleteSummary': '¿Eliminar la carpeta {path} con {files} en {folders}?',
   'node.files.directoryMoveSummary':
     '¿Mover la carpeta {path} con {files} en {folders} a {destination}?',
