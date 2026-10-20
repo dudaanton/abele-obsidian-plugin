@@ -1,4 +1,8 @@
 export const streamC = {
+  'debug.httpIncoming': 'Incoming',
+  'debug.httpOutgoing': 'Outgoing',
+  'debug.httpOpenRecorded': 'Open recorded request',
+
   'debug.requestsBrowserOnly':
     'Requests are recorded from a connected browser. HTTP requests served or made by this program are not captured by this node.',
   'debug.referencesTextFallback': 'Find references to {name} (text search fallback)',

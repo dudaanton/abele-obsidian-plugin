@@ -86,7 +86,7 @@ const SERVER = [
   "const http = require('http')",
   "const fs = require('fs')",
   "const path = require('path')",
-  'const server = http.createServer((req, res) => {',
+  "const server = http.createServer((req, res) => { if (req.url === '/health') { res.writeHead(200); res.end('ok'); return }",
   "  let body = ''",
   "  req.on('data', (c) => (body += c))",
   "  req.on('end', () => {",
@@ -232,6 +232,7 @@ async function serviceListening() {
       '',
     ].join('\n')
   )
+  at('Orders/Health.http', '# @name Health\nGET {{base}}/health\n')
   at(
     'env/local.json',
     JSON.stringify({
@@ -315,7 +316,20 @@ const SEND_INTO = (shots: string, paused = false) => `
   app.workspace.setActiveLeaf(runLeaf,{focus:true});
   await app.workspace.revealLeaf(runLeaf);
   await until(()=>app.workspace.activeLeaf===runLeaf,'run values visible');
-  await shot(${JSON.stringify(shots + '-flow-values')});`
+  await shot(${JSON.stringify(shots + '-flow-values')});
+  // A confirmed request can be recorded without ever hitting a code record point.
+  await api.requests.openView();
+  const health=await until(()=>row('Health'),'health request listed');
+  (health.querySelector('.tree-item-self')??health).click();
+  await until(()=>tab()?.textContent.includes('/health'),'health request open');
+  tab().querySelector('.abele-http-request__send').click();
+  await until(()=>facts().startsWith('200'),'health answered',600);
+  const healthLink=await until(()=>tab().querySelector('.abele-http-request__steps'),'recorded request link');
+  if(healthLink.textContent.trim()!=='Open recorded request')throw Error('Expected request link without code steps: '+healthLink.textContent);
+  await shot(${JSON.stringify(shots + '-recorded-no-code')});
+  healthLink.click();
+  await until(()=>document.querySelector('.abele-trace-step__title')?.textContent.includes('GET /health'),'recorded request selected',400);
+  await shot(${JSON.stringify(shots + '-recorded-request')});`
 
 /** Stops the program, so the next one is the only service listening. */
 const STOP = `

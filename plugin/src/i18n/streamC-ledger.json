@@ -288,5 +288,20 @@
     "englishHash": "c8da9faef6116250d61ccba7731e5086212148ab0f32c087cfde6b87c6f89d35",
     "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.httpIncoming": {
+    "englishHash": "5969249a2d773856c5cf1f5525f4df2912b20d7650dd8cb2447ea478e1a44a3d",
+    "context": "Recorded program HTTP request metadata and navigation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.httpOutgoing": {
+    "englishHash": "5536cb84630c5c4ecdd8ec90a597d248e483443fe1bbde8187357f355a233889",
+    "context": "Recorded program HTTP request metadata and navigation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.httpOpenRecorded": {
+    "englishHash": "4896d12422bcc2119c8f6fa54e15fd913ddf3a08accfe65ad152d15a1326be73",
+    "context": "Recorded program HTTP request metadata and navigation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

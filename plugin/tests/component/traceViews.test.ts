@@ -240,3 +240,24 @@ it('draws a record point as a diamond and names what it takes', () => {
   expect(w.classes()).toContain('abele-breakpoint-mark_record')
   expect(w.attributes('aria-label')).toBe('Record point: takes sample and goes on')
 })
+
+it('shows direction, status and duration of program requests', () => {
+  const w = mount(TraceRunView, {
+    props: {
+      run: {
+        ...run,
+        steps: [
+          { ...run.steps[0], direction: 'incoming', durationMs: 0, host: 'localhost:4000' },
+          { ...run.steps[0], id: 'out', chain: 'b', direction: 'outgoing', durationMs: 25 },
+        ],
+      },
+    },
+  })
+  expect(w.text()).toContain('localhost:4000')
+  expect(w.text()).toContain('Incoming')
+  expect(w.text()).toContain('Outgoing')
+  expect(w.text()).toContain('200')
+  expect(w.text()).toContain('0 ms')
+  expect(w.text()).toContain('25 ms')
+  w.unmount()
+})

@@ -1,4 +1,8 @@
 export const streamC = {
+  'debug.httpIncoming': 'Eingehend',
+  'debug.httpOutgoing': 'Ausgehend',
+  'debug.httpOpenRecorded': 'Aufgezeichnete Anfrage öffnen',
+
   'debug.requestsBrowserOnly':
     'Anfragen werden von einem verbundenen Browser aufgezeichnet. Dieser Knoten erfasst keine HTTP-Anfragen, die das Programm empfängt oder sendet.',
   'debug.referencesTextFallback': 'Verweise auf {name} suchen (Textsuche als Ersatz)',

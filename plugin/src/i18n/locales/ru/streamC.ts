@@ -1,4 +1,8 @@
 export const streamC = {
+  'debug.httpIncoming': 'Входящий',
+  'debug.httpOutgoing': 'Исходящий',
+  'debug.httpOpenRecorded': 'Открыть записанный запрос',
+
   'debug.requestsBrowserOnly':
     'Запросы записываются из подключённого браузера. Этот узел не записывает HTTP-запросы, которые программа принимает или отправляет.',
   'debug.referencesTextFallback': 'Найти ссылки на {name} (резервный текстовый поиск)',

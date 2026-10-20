@@ -419,3 +419,31 @@ describe('selectable read-only text in the shared kit', () => {
     )
   })
 })
+
+it('links a confirmed recorded request even without code steps', async () => {
+  const view = mount(RequestView, {
+    props: {
+      request: request(),
+      environment: 'local',
+      vars,
+      recorded: true,
+      outcome: {
+        kind: 'answered',
+        response: {
+          status: 200,
+          reason: 'OK',
+          ms: 2,
+          bytes: 0,
+          headers: [],
+          body: '',
+          steps: 0,
+        },
+      },
+    },
+  })
+  await view.get('.abele-http-request__steps').trigger('click')
+  expect(view.emitted('open-run')).toEqual([[]])
+  await view.setProps({ recorded: false })
+  expect(view.find('.abele-http-request__steps').exists()).toBe(false)
+  view.unmount()
+})

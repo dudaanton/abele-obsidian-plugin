@@ -1,4 +1,8 @@
 export const streamC = {
+  'debug.httpIncoming': 'Entrante',
+  'debug.httpOutgoing': 'Saliente',
+  'debug.httpOpenRecorded': 'Abrir solicitud grabada',
+
   'debug.requestsBrowserOnly':
     'Las solicitudes se graban desde un navegador conectado. Este nodo no captura las solicitudes HTTP que el programa recibe o envía.',
   'debug.referencesTextFallback': 'Buscar referencias a {name} (búsqueda de texto alternativa)',

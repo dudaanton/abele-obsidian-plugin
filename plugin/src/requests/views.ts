@@ -384,6 +384,7 @@ export class RequestTab extends ItemView {
               collection: collectionOf(s.id),
               vars: shownVars(model),
               outcome,
+              recorded: entry.runs.has(entry.shown ?? entry.history[0]?.id ?? ''),
               history: entry.history,
               shownSend: entry.shown,
               compareWith: entry.compare,

@@ -231,14 +231,16 @@
             <span class="abele-http-request__fact">{{ bytes(outcome.response.bytes) }}</span>
             <span v-if="shownAt" class="abele-http-request__fact">{{ shownAt }}</span>
             <a
-              v-if="outcome.response.steps"
+              v-if="recorded || outcome.response.steps"
               class="abele-http-request__steps"
               role="button"
               tabindex="0"
               @click="emit('open-run')"
               @keydown.enter="emit('open-run')"
               ><Icon icon="list-video" size="xs" no-hover />{{
-                stepsInCode(outcome.response.steps)
+                outcome.response.steps
+                  ? stepsInCode(outcome.response.steps)
+                  : t('debug.httpOpenRecorded')
               }}</a
             >
           </div>
@@ -431,6 +433,7 @@ import type {
 
 const props = withDefaults(
   defineProps<{
+    recorded?: boolean
     request: HttpRequest
     environment: string
     collection?: string

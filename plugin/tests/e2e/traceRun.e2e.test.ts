@@ -84,6 +84,67 @@ function writeRun(root: string) {
       values: [],
     },
   ]
+  // A newer recorder's HTTP fields must survive the plugin's wire boundary.
+  const httpDir = join(root, '.abele', 'runs', 'sample-http-run')
+  mkdirSync(httpDir, { recursive: true })
+  const httpSteps = [
+    {
+      id: 't0001',
+      kind: 'probe',
+      ts: '2026-01-02T03:04:05.020Z',
+      at: 20,
+      label: 'Handle sample',
+      chain: 'n1',
+      by_time: true,
+      values: [],
+    },
+    {
+      id: 't0002',
+      kind: 'http',
+      ts: '2026-01-02T03:04:05.010Z',
+      at: 10,
+      label: 'GET /api/sample',
+      host: 'localhost:4000',
+      direction: 'incoming',
+      duration_ms: 50,
+      status: 200,
+      chain: 'n1',
+      values: [],
+    },
+    {
+      id: 't0003',
+      kind: 'http',
+      ts: '2026-01-02T03:04:05.030Z',
+      at: 30,
+      label: 'POST /worker/sample',
+      host: 'localhost:4001',
+      direction: 'outgoing',
+      duration_ms: 12,
+      status: 503,
+      chain: 'n2',
+      values: [],
+    },
+  ]
+  writeFileSync(
+    join(httpDir, 'timeline.jsonl'),
+    httpSteps.map((s) => JSON.stringify(s)).join('\n') + '\n'
+  )
+  writeFileSync(
+    join(httpDir, 'run.json'),
+    JSON.stringify({
+      version: 1,
+      session: 'sample-session',
+      id: 'sample-http-run',
+      name: 'Sample program requests',
+      debug_session_id: 'sample-session',
+      started_at: '2026-01-02T03:04:05.000Z',
+      length_ms: 100,
+      state: 'done',
+      steps: 3,
+      bytes: 0,
+      points: [],
+    })
+  )
   writeFileSync(
     join(runDir, 'timeline.jsonl'),
     steps.map((s) => JSON.stringify(s)).join('\n') + '\n'
@@ -372,5 +433,47 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
     expect(seen.steps).toBeGreaterThanOrEqual(2)
     expect(seen.detail).toBe(true)
     expect(seen.overflow).toBeLessThanOrEqual(1)
+  })
+}, 180000)
+
+it('shows incoming and outgoing program requests with correlated code on desktop and phone', async () => {
+  const check = (device: string) => {
+    connect()
+    const seen = evalAsync<{
+      text: string
+      children: number
+      overflow: number
+    }>(`(async()=>{${prelude}
+      // Older fixture daemons omit the additive HTTP metadata on read. Supply those two
+      // recorded fixture fields at the transport boundary to exercise the newer wire contract.
+      const client=nodes.connection(${JSON.stringify(registration)}).client,request=client.request;
+      client.request=async function(method,params,...rest){
+        const result=await request.call(this,method,params,...rest);
+        if(method!=='trace.v1.run'||params.run_id!=='sample-http-run')return result;
+        return {...result,steps:result.steps.map(s=>s.kind!=='http'?s:{...s,direction:s.id==='t0002'?'incoming':'outgoing',duration_ms:s.id==='t0002'?50:12})};
+      };
+      try {
+        await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:'sample-http-run'});
+        await until(()=>document.querySelector('.abele-trace-run')?.textContent.includes('Outgoing'),'program HTTP metadata');
+      } finally { client.request=request }
+
+      document.querySelector('[aria-label="Only the requests"]').click();
+      await until(()=>document.querySelector('.tree-item-children')?.textContent.includes('Handle sample'),'correlated handler');
+      const root=document.querySelector('.abele-trace-run');
+      await shot('trace-program-http-${device}');
+      return {text:root.textContent,children:root.querySelectorAll('.tree-item-children .abele-trace-run__step').length,overflow:root.scrollWidth-root.clientWidth};
+    })()`)
+    expect(seen.text).toContain('Incoming')
+    expect(seen.text).toContain('Outgoing')
+    expect(seen.text).toContain('200')
+    expect(seen.text).toContain('503')
+    expect(seen.text).toContain('50 ms')
+    expect(seen.text).toContain('12 ms')
+    expect(seen.children).toBe(1)
+    expect(seen.overflow).toBeLessThanOrEqual(1)
+  }
+  check('desktop')
+  await withEmulatedPhone(async () => {
+    check('phone')
   })
 }, 180000)

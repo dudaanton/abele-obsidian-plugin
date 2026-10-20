@@ -52,6 +52,7 @@
                 'abele-trace-run__step_on-trail': onTrail.has(row.step.id),
               }"
               :text="stepLabel(row.step)"
+              :where="row.step.kind === 'http' ? row.step.host : undefined"
               :active="row.step.id === picked"
               :collapsible="row.children.length > 0"
               :collapsed="folded.has(row.step.id)"
@@ -286,6 +287,15 @@ const StepEnd = defineComponent({
       p.step.marked
         ? h(Icon, { icon: 'flag', size: 'xs', noHover: true, class: 'abele-trace-run__flag' })
         : null,
+      p.step.direction
+        ? h(
+            'span',
+            {},
+            t(p.step.direction === 'incoming' ? 'debug.httpIncoming' : 'debug.httpOutgoing')
+          )
+        : null,
+      p.step.status !== undefined ? h('span', {}, String(p.step.status)) : null,
+      p.step.durationMs !== undefined ? h('span', {}, `${p.step.durationMs} ms`) : null,
       h('span', { class: 'abele-trace-run__size' }, same ? '=' : size ? bytes(size) : ''),
       h('span', { class: 'abele-trace-run__time' }, since(p.step.at)),
     ])
