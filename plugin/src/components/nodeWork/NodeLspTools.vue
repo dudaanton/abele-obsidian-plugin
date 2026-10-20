@@ -22,16 +22,18 @@
     </div>
     <div v-else-if="missing" class="abele-lsp-status" role="status">
       {{ t('node.lsp.missing') }} <code>{{ installCommand }}</code>
-      <Button plain :text="t('node.lsp.copy')" @click="copyCommand" />
-      <Button plain :disabled="busy" :text="t('node.lsp.retry')" @click="retry" />
-      <Button
-        v-if="canInstall"
-        plain
-        :disabled="busy"
-        :text="t('node.lsp.install')"
-        :loading="installing"
-        @click="install"
-      />
+      <div class="abele-lsp-actions">
+        <Button plain :text="t('node.lsp.copy')" @click="copyCommand" />
+        <Button plain :disabled="busy" :text="t('node.lsp.retry')" @click="retry" />
+        <Button
+          v-if="canInstall"
+          plain
+          :disabled="busy"
+          :text="t('node.lsp.install')"
+          :loading="installing"
+          @click="install"
+        />
+      </div>
     </div>
     <div
       v-if="
@@ -300,6 +302,11 @@ onBeforeUnmount(() => {
 })
 </script>
 <style scoped>
+.abele-lsp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
 .abele-lsp-status {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
