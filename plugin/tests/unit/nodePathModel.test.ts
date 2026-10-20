@@ -592,6 +592,19 @@ describe('bound node file tabs', () => {
   })
 })
 
+it('refreshes a file without reusing its expired working observation', async () => {
+  const { model, port } = fake()
+  model.online.value = true
+  const tab = new NodePathFileModel(model, target())
+  await tab.open('sample.ts', 'unstaged')
+  await tab.open('sample.ts', 'unstaged')
+  expect(vi.mocked(port.file).mock.calls.at(-1)?.[4]).toBeDefined()
+  await tab.refresh()
+  expect(vi.mocked(port.file).mock.calls.at(-1)?.[4]).toBeUndefined()
+  expect(vi.mocked(port.file).mock.calls.at(-1)?.[2]).toBe('unstaged')
+  tab.destroy()
+  model.destroy()
+})
 it('localizes offline file errors without changing their original message', async () => {
   const { model } = fake()
   model.online.value = false
