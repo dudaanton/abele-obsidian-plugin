@@ -2895,3 +2895,6 @@ These records are never vault notes and do not travel with transferred settings.
 Delegation follow-ups retain their accepted child sequence locally. Receipt recovery
 re-arms the existing child after a lost response, without sending the input again or
 reviving a later cancellation or an already delivered result.
+
+An unconfirmed cancellation and the parent's Stop remain durable fences during
+follow-up receipt recovery. A fresh input never silently discards an outstanding Stop.

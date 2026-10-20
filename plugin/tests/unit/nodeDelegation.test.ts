@@ -930,3 +930,37 @@ it.each(['completed', 'cancelled'] as const)(
     f.store.close()
   }
 )
+
+it('retains an outstanding cancellation while recovering an accepted follow-up', async () => {
+  const f = fixture()
+  await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+  await f.controller.create('parent', task)
+  await f.store.transaction((s) => {
+    const local = Object.values(s.delegation!.tasks)[0]
+    local.status = {
+      ...local.child!,
+      state: 'completed',
+      session_head_seq: 17,
+      mailbox_head_seq: 0,
+      pending_human_prompts: 0,
+    }
+    local.cancelled = true
+    local.cancelSettled = false
+    local.awaitingResult = false
+    s.results['sample-followup'] = {
+      request: {
+        method: 'delegation.send',
+        params: { delegation_id: 'delegation', text: 'Sample follow-up', observed_seq: 17 },
+      },
+      result: { input_id: 'sample-input', accepted_seq: 18 },
+    }
+  })
+  await f.controller.restore()
+  expect(f.client.cancelDelegation).toHaveBeenCalledWith('delegation')
+  expect(f.client.sendDelegation).not.toHaveBeenCalled()
+  expect((await f.controller.cards('parent'))[0].state).toBe('cancelled')
+  expect(
+    await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].awaitingResult)
+  ).toBe(false)
+  f.store.close()
+})

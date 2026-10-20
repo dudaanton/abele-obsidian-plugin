@@ -478,9 +478,13 @@ export class NodeDelegationController {
                 task.status?.mailbox_head_seq ?? task.followupMailboxSeq ?? 0
               delete task.status
               task.child.state = 'running'
-              task.cancelled = false
+              // An unconfirmed Stop still has to reach the node. Only an older,
+              // already settled cancellation is superseded by the accepted input.
+              const cancelPending = task.cancelled === true && task.cancelSettled !== true
+              task.cancelled = cancelPending
               task.cancelSettled = false
-              task.awaitingResult = !task.parentStopped && !this.stoppedParents.has(task.parentId)
+              task.awaitingResult =
+                !cancelPending && !task.parentStopped && !this.stoppedParents.has(task.parentId)
             }
           }
         }
