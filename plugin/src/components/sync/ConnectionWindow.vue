@@ -21,6 +21,15 @@
       </p>
       <p v-if="failure" class="abele-sync-window__error mod-warning" role="alert">{{ failure }}</p>
 
+      <ConnectionItems
+        v-if="setItems"
+        :items="setItems"
+        @pause="(item, paused) => act(() => sets!.pauseItem(connectionId, item.id, paused))"
+        @follow="(item) => act(() => sets!.followItem(connectionId, item.id))"
+        @reveal="(item) => emit('reveal', item.path)"
+        @remove-copy="(item) => (removingCopy = item)"
+      />
+
       <Section v-if="refused.length" :title="t('sync.window.notSent')">
         <Setting v-for="item in refused" :key="item.path" :name="item.path" :desc="item.reason" />
       </Section>
@@ -84,6 +93,13 @@
       />
     </template>
   </Modal>
+  <RemoveCopyModal
+    v-if="removingCopy && sets"
+    :item="removingCopy"
+    :remove="() => sets!.removeCopy(connectionId, removingCopy!.id)"
+    @close="removingCopy = null"
+    @done="removingCopy = null"
+  />
 </template>
 
 <script setup lang="ts">
@@ -106,6 +122,9 @@ import HeldDeletesBlock from './HeldDeletesBlock.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 import SelectiveSync from '../settings/sync/SelectiveSync.vue'
 import ConnectionEvents from './ConnectionEvents.vue'
+import ConnectionItems from './ConnectionItems.vue'
+import RemoveCopyModal from './RemoveCopyModal.vue'
+import { setTitle, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
 import { connectionName, type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
@@ -123,7 +142,21 @@ const emit = defineEmits<{
   share: []
   disconnect: []
   open: [path: string]
+  reveal: [path: string]
 }>()
+
+/** A token for several: its items, each with its own state, and the copy being removed. */
+const sets = computed(() => shareSetSource.value)
+const setItems = computed(() => sets.value?.items(props.connectionId) ?? null)
+const removingCopy = ref<ConnectionItem | null>(null)
+async function act(action: () => Promise<void>): Promise<void> {
+  trustError.value = ''
+  try {
+    await action()
+  } catch {
+    trustError.value = 'The action could not finish. Try again when the server is available.'
+  }
+}
 
 const row = computed(() => props.ui.rows.value.find((one) => one.id === props.connectionId))
 const trustError = ref('')
@@ -161,7 +194,11 @@ watch(liveActivity, (next) => {
 })
 onBeforeUnmount(() => window.clearTimeout(redraw))
 const name = computed(() =>
-  row.value ? connectionName(row.value, settingsSyncText).split(' · ')[0] : ''
+  setItems.value
+    ? setTitle(setItems.value, sets.value?.label(props.connectionId))
+    : row.value
+      ? connectionName(row.value, settingsSyncText).split(' · ')[0]
+      : ''
 )
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() =>

@@ -18,7 +18,22 @@
         <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
         <dd>{{ preview.address }}</dd>
         <dt>{{ t('streamC.21a71f3e3356eeab') }}</dt>
-        <dd>{{ scopeName(preview.scope) }}</dd>
+        <dd v-if="setPreview">
+          <ul class="abele-token-dialog__items">
+            <li v-for="item in setPreview.items" :key="item.id">
+              <Icon :icon="itemGlyph(item)" no-hover class="abele-token-dialog__glyph" />
+              <span>{{ itemName(item) }}</span>
+              <span v-if="itemPlace(item)" class="abele-token-dialog__place">{{
+                itemPlace(item)
+              }}</span>
+            </li>
+          </ul>
+        </dd>
+        <dd v-else>{{ scopeName(preview.scope) }}</dd>
+        <template v-if="setPreview?.readOnly">
+          <dt>Access</dt>
+          <dd>Read only</dd>
+        </template>
       </dl>
     </Section>
     <template v-if="mode === 'share'">
@@ -237,6 +252,7 @@ import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
 import type { V2Scope, V2TokenInfo } from '@/sync/v2/contract'
 import { decodeAccessToken } from '@/sync/v2/client'
+import { itemGlyph, itemName, itemPlace, shareSetSource } from '@/sync/shareSets'
 const props = defineProps<{
   ui: TokenUi
   mode: 'connect' | 'share' | 'review' | 'attachment' | 'disconnect'
@@ -304,6 +320,9 @@ const preview = computed(() => {
     return null
   }
 })
+const setPreview = computed(() =>
+  preview.value ? (shareSetSource.value?.preview(text.value) ?? null) : null
+)
 const time = (value: number) =>
   new Date(value).toLocaleString(
     currentLocale().language === 'en' ? undefined : currentLocale().format
@@ -415,6 +434,28 @@ watch(
 )
 </script>
 <style>
+.abele-token-dialog__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.abele-token-dialog__items li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--size-4-2);
+}
+.abele-token-dialog__glyph {
+  --icon-size: var(--icon-s);
+  color: var(--text-muted);
+}
+.abele-token-dialog__place {
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+}
 .token-sync-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

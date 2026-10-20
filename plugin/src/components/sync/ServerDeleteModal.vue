@@ -6,6 +6,13 @@
     phone-sheet
     @close="close"
   >
+    <Setting v-if="choices?.length" name="What to delete">
+      <Dropdown
+        :model-value="choice ?? ''"
+        :options="choices.map((one) => ({ value: one.value, display: one.label }))"
+        @update:model-value="emit('choose', $event)"
+      />
+    </Setting>
     <dl class="abele-server-delete__facts">
       <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
       <dd>{{ host }}</dd>
@@ -23,7 +30,15 @@
         </ul>
       </dd>
     </dl>
-    <p class="abele-server-delete__note">{{ t('streamC.ad151a07bc5a6fa5') }}</p>
+    <p
+      v-for="one in facts.also ?? []"
+      :key="one.path"
+      class="abele-server-delete__also mod-warning"
+    >
+      {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared in group {{ one.group }}.
+      Deleted here, it leaves the server for that group too.
+    </p>
+    <p class="abele-server-delete__note">{{ note || t('streamC.ad151a07bc5a6fa5') }}</p>
     <p v-if="failure" class="abele-server-delete__error" role="alert">{{ failure }}</p>
     <template #footer>
       <Button :text="t('kit.cancel')" :tooltip="t('kit.cancelTooltip')" @click="close" />
@@ -54,15 +69,20 @@ import { t, currentLocale } from '@/i18n'
 import { ref } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import Setting from '../obsidian/Setting.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
 import { folderSize, serverDeleteFailure, type ServerDeleteFacts } from './serverDelete'
 
 const props = defineProps<{
   name: string
   host: string
-  facts: ServerDeleteFacts
+  facts: ServerDeleteFacts & { also?: { path: string; group: string }[] }
   remove: () => Promise<void>
+  choices?: { value: string; label: string }[]
+  choice?: string
+  note?: string
 }>()
-const emit = defineEmits<{ close: []; done: [] }>()
+const emit = defineEmits<{ close: []; done: []; choose: [value: string] }>()
 
 const busy = ref(false)
 const failure = ref('')
@@ -122,6 +142,10 @@ async function confirm(): Promise<void> {
 .abele-server-delete__note {
   margin: 0;
   color: var(--text-muted);
+}
+.abele-server-delete__also {
+  margin: 0 0 var(--size-4-2);
+  color: var(--text-warning);
 }
 .abele-server-delete__error {
   margin: var(--size-4-2) 0 0;

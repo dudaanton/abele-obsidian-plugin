@@ -50,7 +50,7 @@
       <Setting
         v-for="row in rows"
         :key="row.id"
-        :name="scopeName(row.scope)"
+        :name="rowName(row)"
         role="button"
         tabindex="0"
         class="abele-sync-row"
@@ -107,6 +107,7 @@
       :error="errors[opened]"
       @close="opened = null"
       @open="openFile"
+      @reveal="reveal"
       @share="dialog = { mode: 'share', connectionId: opened! }"
       @disconnect="dialog = { mode: 'disconnect', connectionId: opened! }"
     />
@@ -119,8 +120,15 @@
       @close="deleting = null"
       @done="deleted"
     />
+    <ShareDialog
+      v-if="dialog?.mode === 'share' && sets?.several(dialog.connectionId)"
+      :source="sets"
+      :connection-id="dialog.connectionId"
+      :host="shareHost"
+      @close="closeDialog"
+    />
     <TokenDialogs
-      v-if="dialog"
+      v-else-if="dialog"
       :key="
         dialog.mode + (dialog.connectionId ?? dialog.candidate?.id ?? dialog.question?.id ?? '')
       "
@@ -144,6 +152,8 @@ import StatusDot from '../obsidian/StatusDot.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
 import ConnectionWindow from '../sync/ConnectionWindow.vue'
 import ServerDeleteModal from '../sync/ServerDeleteModal.vue'
+import ShareDialog from '../sync/ShareDialog.vue'
+import { setLine, setTitle, setTone, shareSetSource } from '@/sync/shareSets'
 import {
   READ_ONLY,
   serverDeleteSource as designDeleteSource,
@@ -192,11 +202,41 @@ const dialog = ref<{
 } | null>(null)
 const host = (address: string) => new URL(address).host
 const when = (at: number) => settingsSyncWhen(new Date(at).toISOString())
-const tone = (row: TokenConnectionRecord) =>
-  errors.value[row.id] ? 'red' : connectionTone(row, activity.value[row.id])
-const line = (row: TokenConnectionRecord) =>
-  errors.value[row.id] ??
-  connectionLine(row, activity.value[row.id], settingsSyncText, settingsSyncWhen)
+const sets = computed(() => shareSetSource.value)
+const itemsOf = (row: TokenConnectionRecord) => sets.value?.items(row.id) ?? null
+const rowName = (row: TokenConnectionRecord) => {
+  const items = itemsOf(row)
+  return items ? setTitle(items, sets.value?.label(row.id)) : scopeName(row.scope)
+}
+const RANK = ['faint', 'green', 'accent', 'orange', 'red']
+const tone = (row: TokenConnectionRecord) => {
+  if (errors.value[row.id]) return 'red'
+  const own = connectionTone(row, activity.value[row.id])
+  const items = itemsOf(row)
+  if (!items) return own
+  const worst = setTone(items)
+  return RANK.indexOf(worst) > RANK.indexOf(own) ? worst : own
+}
+const line = (row: TokenConnectionRecord) => {
+  if (errors.value[row.id]) return errors.value[row.id]
+  const own = connectionLine(row, activity.value[row.id], settingsSyncText, settingsSyncWhen)
+  const items = itemsOf(row)
+  return items ? setLine(items, own) : own
+}
+const shareHost = computed(() => {
+  const row = rows.value.find((one) => one.id === dialog.value?.connectionId) ?? rows.value[0]
+  return row ? host(row.address) : ''
+})
+function reveal(path: string) {
+  const app = GlobalStore.getInstance().app as unknown as {
+    vault: { getAbstractFileByPath(path: string): unknown }
+    internalPlugins?: {
+      getPluginById(id: string): { instance?: { revealInFolder?(file: unknown): void } } | null
+    }
+  }
+  const file = app.vault.getAbstractFileByPath(path)
+  if (file) app.internalPlugins?.getPluginById('file-explorer')?.instance?.revealInFolder?.(file)
+}
 const scopeName = (scope: Parameters<typeof syncScopeName>[0]) =>
   syncScopeName(scope, settingsSyncText)
 function closeDialog() {
