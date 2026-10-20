@@ -16,6 +16,12 @@ const syncSnapshot = () => {
  const docs=[...new Set([document,app.setting.activeTab?.containerEl.ownerDocument].filter(Boolean))];
  return {
   driverWaiting:window.__abeleSyncWaiting||null,
+  sharePickers:docs.flatMap(doc=>[...doc.querySelectorAll('.modal')].filter(box=>box.querySelector('.abele-share-picker')).map(box=>{
+   const picker=box.querySelector('.abele-share-picker');
+   return {sheetHtml:box.outerHTML,mode:picker.dataset.sharePickerMode||null,
+    flags:{appMobile:!!app.isMobile,bodyMobile:doc.body.classList.contains('is-mobile'),bodyPhone:doc.body.classList.contains('is-phone'),platformMobile:picker.dataset.platformMobile??null,platformPhone:picker.dataset.platformPhone??null},
+    query:picker.querySelector('input')?.value||'',inlineRows:picker.querySelectorAll('.abele-share-picker__results .suggestion-item').length};
+  })),
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},
   tokenHostReady:!!host,
   tokenHostStartup:app.plugins.plugins.abele?.tokenHostStartup||null,

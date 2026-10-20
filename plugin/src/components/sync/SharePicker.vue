@@ -1,5 +1,11 @@
 <template>
-  <div ref="root" class="abele-share-picker">
+  <div
+    ref="root"
+    class="abele-share-picker"
+    :data-share-picker-mode="phone ? 'inline' : 'native'"
+    :data-platform-phone="Platform.isPhone"
+    :data-platform-mobile="Platform.isMobile"
+  >
     <div v-if="modelValue.length" class="abele-share-picker__picked">
       <div
         v-for="item in modelValue"
@@ -40,13 +46,18 @@
     />
     <!-- Keep phone results in the sheet's scrollable body, never in a second native drawer. -->
     <div
-      v-if="phone && focused && !full && !disabled && results.length"
+      v-if="phone && focused && !full && !disabled"
       ref="list"
       class="suggestion abele-share-picker__results"
       role="listbox"
       aria-label="Folders, groups and files"
       data-keeps-focus
     >
+      <EmptyState
+        v-if="!results.length"
+        variant="no-matches"
+        text="No matching folders, groups or files."
+      />
       <div
         v-for="item in results"
         :key="item.id"
@@ -92,6 +103,7 @@ import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import SuggestionRow from '../obsidian/SuggestionRow.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ShareItemSuggest, matchingShareItems } from '@/helpers/suggesters/ShareItemSuggest'
 import { KEYBOARD_EVENTS, fullHeight, keyboardVar } from '@/modal/keyboard'
@@ -118,7 +130,12 @@ const emit = defineEmits<{ 'update:modelValue': [items: ShareItem[]] }>()
 
 const taken = () => [...(props.inShare ?? []), ...props.modelValue]
 const full = computed(() => taken().length >= SHARE_LIMIT)
-const phone = Platform.isPhone
+// Use the host's mobile layout as well as its narrower phone flag, like the dialog shell.
+const phone =
+  Platform.isPhone ||
+  Platform.isMobile ||
+  document.body.classList.contains('is-mobile') ||
+  document.body.classList.contains('is-phone')
 const query = ref('')
 const focused = ref(false)
 const list = ref<HTMLElement>()

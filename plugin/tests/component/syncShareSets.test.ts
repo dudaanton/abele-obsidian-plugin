@@ -69,56 +69,68 @@ describe('shared item screens', () => {
       platform.isPhone = wasPhone
     }
   })
-  it('keeps phone search results inside the sheet without a native popup', async () => {
-    const platform = Platform as { isPhone: boolean }
-    const wasPhone = platform.isPhone
-    platform.isPhone = true
-    const sheet = document.createElement('div')
-    sheet.className = 'modal-content'
-    document.body.append(sheet)
-    const wrapper = mount(SharePicker, {
-      attachTo: sheet,
-      props: {
-        modelValue: [],
-        choices: [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
-      },
-    })
-    try {
-      const input = wrapper.get('input')
-      await input.trigger('focusin')
-      await input.setValue('Flowers')
-      const result = wrapper.get('.suggestion-item')
-      expect(result.text()).toContain('Flowers')
-      expect(result.element.closest('.abele-share-picker')).toBe(wrapper.element)
-      const native = AbstractInputSuggest as unknown as { attachedTo: WeakMap<Element, unknown> }
-      expect(native.attachedTo.get(input.element)).toBeUndefined()
-      vi.spyOn(sheet, 'getBoundingClientRect').mockReturnValue({ top: 50, bottom: 800 } as DOMRect)
-      vi.spyOn(input.element, 'getBoundingClientRect').mockReturnValue({
-        top: 300,
-        bottom: 340,
-      } as DOMRect)
-      vi.spyOn(result.element, 'getBoundingClientRect').mockReturnValue({
-        top: 550,
-        bottom: 600,
-      } as DOMRect)
-      document.documentElement.style.setProperty(
-        '--keyboard-height',
-        `${window.innerHeight - 450}px`
-      )
-      window.dispatchEvent(new Event('keyboardDidShow'))
-      await flushPromises()
-      expect(sheet.scrollTop).toBeGreaterThan(0)
-      await result.trigger('click')
-      expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([
-        [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
-      ])
-    } finally {
-      wrapper.unmount()
-      sheet.remove()
-      document.documentElement.style.removeProperty('--keyboard-height')
-      platform.isPhone = wasPhone
+  it.each(['platform', 'body'] as const)(
+    'keeps phone search results inside the sheet without a native popup (%s)',
+    async (flag) => {
+      const platform = Platform as { isPhone: boolean }
+      const wasPhone = platform.isPhone
+      platform.isPhone = flag === 'platform'
+      const bodyClass = document.body.className
+      if (flag === 'body') document.body.classList.add('is-mobile', 'is-phone')
+      const sheet = document.createElement('div')
+      sheet.className = 'modal-content'
+      document.body.append(sheet)
+      const wrapper = mount(SharePicker, {
+        attachTo: sheet,
+        props: {
+          modelValue: [],
+          choices: [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
+        },
+      })
+      try {
+        const input = wrapper.get('input')
+        await input.trigger('focusin')
+        await input.setValue('Garden/Flowers')
+        const result = wrapper.get('.suggestion-item')
+        expect(result.text()).toContain('Flowers')
+        expect(result.element.closest('.abele-share-picker')).toBe(wrapper.element)
+        const native = AbstractInputSuggest as unknown as { attachedTo: WeakMap<Element, unknown> }
+        expect(native.attachedTo.get(input.element)).toBeUndefined()
+        vi.spyOn(sheet, 'getBoundingClientRect').mockReturnValue({
+          top: 50,
+          bottom: 800,
+        } as DOMRect)
+        vi.spyOn(input.element, 'getBoundingClientRect').mockReturnValue({
+          top: 300,
+          bottom: 340,
+        } as DOMRect)
+        vi.spyOn(result.element, 'getBoundingClientRect').mockReturnValue({
+          top: 550,
+          bottom: 600,
+        } as DOMRect)
+        document.documentElement.style.setProperty(
+          '--keyboard-height',
+          `${window.innerHeight - 450}px`
+        )
+        window.dispatchEvent(new Event('keyboardDidShow'))
+        await flushPromises()
+        expect(sheet.scrollTop).toBeGreaterThan(0)
+        await result.trigger('click')
+        expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([
+          [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
+        ])
+        await input.setValue('Missing/Example')
+        expect(wrapper.findAll('.suggestion-item')).toHaveLength(0)
+        expect(wrapper.text()).toContain('No matching folders, groups or files.')
+      } finally {
+        wrapper.unmount()
+        sheet.remove()
+        document.documentElement.style.removeProperty('--keyboard-height')
+        platform.isPhone = wasPhone
+        document.body.className = bodyClass
+      }
     }
-  })
+  )
   it('shows each overlapping group and discloses capped preview details', () => {
     const wrapper = mount(ServerDeleteModal, {
       props: {

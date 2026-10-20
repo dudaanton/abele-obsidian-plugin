@@ -15,6 +15,56 @@ vi.mock('node:fs', async (original) => {
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
 
+it('captures the Share sheet HTML, rendering flags and typed query during a picker wait', () => {
+  const sheet = document.createElement('div')
+  sheet.className = 'modal'
+  const picker = document.createElement('div')
+  picker.className = 'abele-share-picker'
+  Object.assign(picker.dataset, {
+    sharePickerMode: 'inline',
+    platformPhone: 'false',
+    platformMobile: 'true',
+  })
+  const input = document.createElement('input')
+  input.value = 'Garden/Flowers'
+  const results = document.createElement('div')
+  results.className = 'abele-share-picker__results'
+  const row = document.createElement('div')
+  row.className = 'suggestion-item'
+  row.textContent = 'Flowers'
+  results.append(row)
+  picker.append(input, results)
+  sheet.append(picker)
+  document.body.append(sheet)
+  const bodyClass = document.body.className
+  document.body.classList.add('is-mobile', 'is-phone')
+  try {
+    const app = { isMobile: true, plugins: { plugins: {} }, setting: {} }
+    const snapshot = new Function('app', 'document', SYNC_SNAPSHOT + ';return syncSnapshot()')(
+      app,
+      document
+    )
+    expect(snapshot.sharePickers).toEqual([
+      {
+        sheetHtml: sheet.outerHTML,
+        mode: 'inline',
+        flags: {
+          appMobile: true,
+          bodyMobile: true,
+          bodyPhone: true,
+          platformMobile: 'true',
+          platformPhone: 'false',
+        },
+        query: 'Garden/Flowers',
+        inlineRows: 1,
+      },
+    ])
+  } finally {
+    sheet.remove()
+    document.body.className = bodyClass
+  }
+})
+
 it('records inspection stage, counters and timings rather than hiding them behind Connecting', () => {
   const startup = {
     stage: 'Checking the vault',
