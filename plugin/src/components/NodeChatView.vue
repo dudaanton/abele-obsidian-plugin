@@ -330,6 +330,7 @@ import type { SlashItem } from './ChatSlashSuggest.vue'
 import WorktreeSwitchLine from './nodeWork/WorktreeSwitchLine.vue'
 import { nodeChatSegments, type NodeChatSwitch } from '@/node/nodePathChat'
 import type { PathTarget } from '@/node/NodePathModel'
+import { nodeChatResource } from '@/node/nodeChatPlace'
 import type { CopySummary } from './nodeWork/types'
 const props = withDefaults(
   defineProps<{
@@ -539,7 +540,9 @@ const resourceOpener = (target?: PathTarget) => {
   const key = JSON.stringify(target ?? null)
   let open = resourceContexts.get(key)
   if (!open) {
-    open = (path) => openResource(path, target)
+    open = Object.assign((path: string) => openResource(path, target), {
+      canOpen: (path: string) => !target || !!nodeChatResource(path, target),
+    })
     resourceContexts.set(key, open)
   }
   return open

@@ -44,6 +44,7 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 /** Thin ItemView adapter; every callback is bound to this tab, not the sidebar selection. */
 export class NodePathMainView extends ItemView {
   private readonly navigationLine = shallowRef<number>()
+  private readonly navigationEndLine = shallowRef<number>()
   private ui?: KitMount
   private stops: WatchStopHandle[] = []
   private file?: NodePathFileModel
@@ -151,6 +152,7 @@ export class NodePathMainView extends ItemView {
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const parsed = NodePathTabSchema.parse(raw)
     this.navigationLine.value = parsed.kind === 'file' ? parsed.line : undefined
+    this.navigationEndLine.value = parsed.kind === 'file' ? parsed.endLine : undefined
     if (nodePathViewType(parsed) !== this.viewType)
       throw new UiError(uiMessage('streamBMeta.40ea2d02b7'))
     if (parsed.kind === 'editor') {
@@ -190,10 +192,11 @@ export class NodePathMainView extends ItemView {
         ? { ...parsed, edit: true }
         : parsed
     if (!same) this.startBinding(parsed)
-    else if (parsed.kind === 'file' && parsed.edit && !this.editing?.active.value)
+    if (same && parsed.kind === 'file' && parsed.line && this.file) this.file.mode.value = 'file'
+    if (same && parsed.kind === 'file' && parsed.edit && !this.editing?.active.value)
       this.act(() => this.editing?.start(parsed.path))
     // The same history tab, asked for another commit from the panel: it opens that one.
-    else if (parsed.kind === 'history' && parsed.commit && this.history) {
+    else if (same && parsed.kind === 'history' && parsed.commit && this.history) {
       const commit = parsed.commit
       this.act(() => this.history?.open(commit))
     }
@@ -390,6 +393,7 @@ export class NodePathMainView extends ItemView {
             : h(NodePathFilePane, {
                 model: file,
                 line: this.navigationLine.value,
+                endLine: this.navigationEndLine.value,
                 offline: offline(),
                 debug: this.debugOf(state, file),
                 repository: repository.value,
@@ -486,7 +490,7 @@ export class NodePathMainView extends ItemView {
         await connection.connect().catch(() => {})
       if (lifetime === this.lifetime) {
         await file.open(state.path, state.stage).catch(() => {})
-        if (state.debug) file.mode.value = 'file'
+        if (state.debug || state.line) file.mode.value = 'file'
       }
       if (lifetime === this.lifetime && state.edit)
         await editing.start(state.path).catch((error: unknown) => {

@@ -97,6 +97,22 @@ const target = {
 }
 const views: NodePathMainView[] = []
 
+it('reveals a cited range in the whole file even when the existing tab shows a diff', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  views.push(view)
+  view.app = { workspace: {} } as any
+  const state = { kind: 'file', target, path: 'sample.ts' }
+  ;(view as any).saved = state
+  ;(view as any).ui = { unmount: vi.fn() }
+  const file = { mode: shallowRef('diff'), destroy: vi.fn() }
+  ;(view as any).file = file
+  await view.setState({ ...state, line: 3, endLine: 7 }, {})
+  expect(file.mode.value).toBe('file')
+  expect((view as any).navigationEndLine.value).toBe(7)
+  await view.setState({ ...state, line: 3, endLine: 9 }, {})
+  expect((view as any).navigationEndLine.value).toBe(9)
+})
+
 it('keeps the mounted file editor across same-file reveals but rebinds another file or target', async () => {
   const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
   views.push(view)

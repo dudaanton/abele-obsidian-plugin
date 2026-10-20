@@ -53,7 +53,7 @@
         :file="repositoryFile"
         :glyph-host="glyphHost"
         plain
-        :range="line ? { start: line, end: line } : undefined"
+        :range="line ? { start: line, end: endLine ?? line } : undefined"
         @open="openRepositoryLink"
       />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
@@ -69,7 +69,9 @@
       :scope="root"
       within=".cm-content, .abele-diff__text"
       under=".abele-file-view__header, .abele-diff__header"
-      :actions="[ASK, ADD, NOTE]"
+      :actions="
+        codeTarget && (mode === 'file' || !change) ? [ASK, ADD, NOTE, LINK] : [ASK, ADD, NOTE]
+      "
       @pick="send"
     />
   </div>
@@ -77,6 +79,9 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import type { PathTarget } from '@/node/NodePathModel'
+import { nodeCodeLink } from '@/node/codeLinks'
+import { pinIntoView, LINE_CONTEXT } from '@/github/scrollTo'
 // A file of the node in the main area. A changed file opens on its comparison, the way a commit
 // page does; the whole file is one switch away in the view's header, beside opening it in the
 // code editor and the arrows to the previous and next changed file. Selected text — in the
@@ -94,7 +99,7 @@ import { fileSelection, type FileSelection } from './fileSelection'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import Diff from '../Diff.vue'
 import SelectionBar from '../obsidian/SelectionBar.vue'
-import { ADD, ASK, NOTE } from '../obsidian/selectionActions'
+import { ADD, ASK, NOTE, LINK } from '../obsidian/selectionActions'
 import ChangeCodes from './ChangeCodes.vue'
 import Image from '../obsidian/Image.vue'
 import { plural } from './codes'
@@ -112,6 +117,8 @@ const props = withDefaults(
     repository?: RepositorySource
     revision?: string
     line?: number
+    endLine?: number
+    codeTarget?: PathTarget
   }>(),
   {
     change: undefined,
@@ -121,6 +128,8 @@ const props = withDefaults(
     repository: undefined,
     revision: undefined,
     line: undefined,
+    endLine: undefined,
+    codeTarget: undefined,
   }
 )
 
@@ -173,21 +182,28 @@ function openRepositoryLink(url: string) {
 }
 const code = ref<HTMLElement>()
 let viewer: CodeViewer | undefined
+let unpin: (() => void) | undefined
 let stopped = false
 
 async function draw() {
   lastSelection = null
   await nextTick()
   if (stopped) return
+  unpin?.()
   viewer?.destroy()
   viewer = undefined
-  if (code.value)
+  if (code.value) {
     viewer = mountCode(
       code.value,
       props.text,
       props.path,
-      props.line ? { start: props.line, end: props.line } : undefined
+      props.line ? { start: props.line, end: props.endLine ?? props.line } : undefined
     )
+    if (props.line) {
+      const drawn = viewer
+      unpin = pinIntoView(code.value, () => drawn.targetTop(), LINE_CONTEXT)
+    }
+  }
 }
 onMounted(draw)
 watch(
@@ -200,6 +216,7 @@ watch(
     props.repository,
     props.revision,
     props.line,
+    props.endLine,
   ],
   draw
 )
@@ -219,6 +236,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   selectionDocument?.removeEventListener('selectionchange', rememberSelection)
   stopped = true
+  unpin?.()
   releaseImage()
   viewer?.destroy()
 })
@@ -230,6 +248,14 @@ function send(action: string) {
     lastSelection
   lastSelection = null
   if (!selection) return
+  if (action === 'link' && props.codeTarget) {
+    void navigator.clipboard
+      .writeText(
+        nodeCodeLink(props.codeTarget, props.path, { start: selection.from, end: selection.to })
+      )
+      .catch((error) => console.debug('[node] Copy code link unavailable', error))
+    return
+  }
   if (action === 'ask') emit('ask', selection)
   else if (action === 'add') emit('add', selection)
   else if (action === 'note') emit('note', selection)

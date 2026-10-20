@@ -48,6 +48,7 @@ export const es = {
     'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
   'node.error.busy':
     'Esta carpeta o árbol de trabajo está en uso. Detenga sus sesiones antes de eliminarlo.',
+  'node.codeLineUnavailable': 'Las líneas enlazadas ya no existen en este archivo.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',

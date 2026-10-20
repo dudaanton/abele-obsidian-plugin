@@ -94,7 +94,7 @@ export async function resolveNodeTarget(
 }
 
 const PLACE =
-  'Name the place with node (from node_nodes), project and workspace (from node_folders): a Git folder takes its worktree_id with target_kind worktree, a plain folder its workspace_id with target_kind workspace. Omit all three when this chat was given exactly one folder or worktree, or after node_worktree_switch. Paths are relative to that place.'
+  'Name the place with node (from node_nodes), project and workspace (from node_folders): a Git folder takes its worktree_id with target_kind worktree, a plain folder its workspace_id with target_kind workspace. Omit all three when this chat was given exactly one folder or worktree, or after node_worktree_switch. Paths are relative to that place. When discussing code, always cite clickable Markdown links such as [src/sample.ts:42-48](src/sample.ts:42-48). These open current working-tree content, including uncommitted edits; no GitHub upload is needed. With multiple places, use abele-node-code: followed by URI-encoded JSON {"scope":[node_id,project_id,"worktree",worktree_id],"path":"src/sample.ts","line":42,"endLine":48}; use "workspace" and workspace_id for a plain folder. Never cite a place outside this chat’s access.'
 const NODE_TOOL_DOING: Record<string, string> = {
   node_nodes:
     'Start here. Lists the nodes (computers running AbeleNode) this chat has node access to: node ID, label, whether connected. Next: node_folders.',

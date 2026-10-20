@@ -37,6 +37,7 @@ export const lv = {
   'node.files.sessionsStopped':
     'Sesijas apturētas. Kad apturēšana pabeigta, vēlreiz izvēlieties darba koka dzēšanu.',
   'node.error.busy': 'Šī mape vai darba koks tiek izmantots. Pirms dzēšanas apturiet tā sesijas.',
+  'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',

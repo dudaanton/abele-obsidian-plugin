@@ -49,6 +49,7 @@ export const ru = {
     'Сессии остановлены. Когда они завершат остановку, снова выберите удаление рабочего дерева.',
   'node.error.busy':
     'Эта папка или рабочее дерево используется. Перед удалением остановите его сессии.',
+  'node.codeLineUnavailable': 'Строки, на которые ведёт ссылка, больше не существуют в этом файле.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',

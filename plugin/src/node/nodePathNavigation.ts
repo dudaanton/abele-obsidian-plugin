@@ -44,6 +44,7 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
       debug: NodePathDebugMappingSchema.optional(),
       line: z.number().int().positive().optional(),
       /** Being edited in this tab. */
+      endLine: z.number().int().positive().optional(),
       edit: z.boolean().optional(),
     })
     .strict(),

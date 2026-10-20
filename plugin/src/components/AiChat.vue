@@ -492,6 +492,8 @@
 import ChatWritePermission from './chat/ChatWritePermission.vue'
 import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
+import { NODE_CODE_LINK_OPENER } from '@/node/codeLinkContext'
+import { chatCodeLinkTarget, openChatCodeLink } from '@/node/openChatCodeLink'
 import { streamBAgentDescription } from '@/i18n/streamBLabels'
 import { ASK_EVENT } from '@/views/agentView'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
@@ -1164,6 +1166,20 @@ const nodeAccess = computed(() => {
   const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
   return parsed.success ? parsed.data : []
 })
+provide(
+  NODE_CODE_LINK_OPENER,
+  Object.assign(
+    (resource: string) => {
+      void openChatCodeLink(resource, nodeAccess.value).catch((error) =>
+        console.debug('[node] Code link unavailable', error)
+      )
+    },
+    {
+      active: () => nodeAccess.value.length > 0,
+      canOpen: (resource: string) => !!chatCodeLinkTarget(resource, nodeAccess.value),
+    }
+  )
+)
 /** Nodes whose access was approved here from a refused call's line, in this window's life. */
 const approvedHere = ref<ReadonlySet<string>>(new Set())
 /** Whether what a refused call lacked has since been given: access there, or approval here. */

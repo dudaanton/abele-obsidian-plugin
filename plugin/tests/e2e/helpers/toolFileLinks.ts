@@ -25,6 +25,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         {id:'single-answer-'+i,role:'assistant',timestamp:11+i*2,content:'Sample operation complete.'}
       ])
       messages.unshift(...singles);paths.unshift(...singlePaths);expandedPaths.unshift(...singlePaths)
+      if(node)messages.push({id:'sample-code-citation',role:'assistant',timestamp:30,content:'See [src/sample.ts:3-7](src/sample.ts:3-7), \`src/other.ts:9\`, and [the web revision](https://example.test/code).',toolName:undefined})
       const opened=[]
       const presenter={id:'sample-file-links-node',reference:{kind:'node-session',nodeId:'sample-node',registrationId:'sample-registration',sessionId:'sample-session',title:'Sample file calls'},label:{value:'Sample file calls'},provider:{value:'claude'},state:{value:'idle'},isStreaming:{value:false},connection:{state:{value:'connected'},error:{value:''}},error:{value:''},draft:{value:{text:'',attachments:[]}},queued:{value:[]},rejected:{value:[]},messages:{value:messages},projection:{value:{activeRuns:[],queuedInputs:[],children:{},artifacts:[],unknown:[],prompts:[]}},send:async()=>{},answer:async()=>{},cancelInput:async()=>{},interrupt:async()=>{},openResource:path=>opened.push(path),destroy:()=>{}}
       const root=()=>owned.view.containerEl
@@ -35,6 +36,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         else {tab=chats.createTab();session=chats.getSession(tab);await session.addUserNote('Sample file operations');for(const message of messages)session.appendChatMessage(message);session.updateVisibleMessages()}
         await owned.setViewState({type:'abele-ai-sidebar-view',active:true})
         await until(()=>links().length===paths.length)
+        if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);link.click()}await shot('code-citations')}
         const folded=links().map(el=>el.textContent)
         const singleGeometry=()=>singlePaths.map(path=>{
           const el=links().find(el=>el.title===path),row=el?.closest('.tree-item-self'),name=row?.querySelector('.abele-tree-item__text')
@@ -81,7 +83,8 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
     expect(result.cramped).toEqual([])
     expect(result.squeezed).toEqual([])
     expect(result.cutNames).toEqual([])
-    if (node) expect(result.opened).toEqual([result.paths[0]])
+    if (node)
+      expect(result.opened).toEqual(['src/sample.ts:3-7', 'src/other.ts:9', result.paths[0]])
   }
   if (phone) await withEmulatedPhone(run)
   else await run()

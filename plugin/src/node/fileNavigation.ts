@@ -23,5 +23,8 @@ export function fileNavigation(target: PathTarget, url: string): NodePathTabStat
     target,
     path: link.location.path,
     ...(link.location.lines ? { line: link.location.lines.from } : {}),
+    ...(link.location.lines && link.location.lines.to !== link.location.lines.from
+      ? { endLine: link.location.lines.to }
+      : {}),
   }
 }

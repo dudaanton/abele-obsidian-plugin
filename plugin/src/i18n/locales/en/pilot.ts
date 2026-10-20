@@ -38,6 +38,7 @@ export const en = {
   'node.files.sessionsStopped':
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
   'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
+  'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',

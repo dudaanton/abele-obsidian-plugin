@@ -32,6 +32,15 @@ it('keeps a definition destination in a node file tab at its line', () => {
     line: 8,
   })
 })
+it('keeps the full working-file range from a repository citation', () => {
+  const url = nodeRepositoryLink(source, {
+    kind: 'file',
+    ref: 'working-sample',
+    path: 'src/sample.ts',
+    lines: { from: 3, to: 7 },
+  })
+  expect(fileNavigation(target, url)).toMatchObject({ line: 3, endLine: 7 })
+})
 it('leaves historical and other workspace links in the repository viewer', () => {
   expect(
     fileNavigation(

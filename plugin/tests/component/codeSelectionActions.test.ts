@@ -10,7 +10,41 @@ import NodePathDebugFile from '@/components/nodeWork/NodePathDebugFile.vue'
 import { LINKER } from '@/github/linking'
 import { ref } from 'vue'
 import { vi } from 'vitest'
+import { resolveNodeCodeLink } from '@/node/codeLinks'
 let view: VueWrapper | undefined
+it('copies a working-tree link with the exact selected line range', async () => {
+  useVault([])
+  const target = {
+    nodeId: 'node',
+    registrationId: 'registration',
+    projectId: 'project',
+    kind: 'worktree' as const,
+    id: 'tree',
+  }
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  try {
+    view = mount(FileView, {
+      attachTo: document.body,
+      props: { path: 'sample.ts', text: 'const sample = 1', mode: 'file', codeTarget: target },
+    })
+    await flushPromises()
+    const range = document.createRange()
+    range.selectNodeContents(view.get('.cm-line').element)
+    window.getSelection()!.addRange(range)
+    view.getComponent(SelectionBar).vm.$emit('pick', 'link')
+    expect(writeText).toHaveBeenCalledOnce()
+    expect(resolveNodeCodeLink(writeText.mock.calls[0][0], target)).toEqual({
+      path: 'sample.ts',
+      line: 1,
+      endLine: 1,
+    })
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+  }
+})
 afterEach(() => {
   view?.unmount()
   window.getSelection()?.removeAllRanges()

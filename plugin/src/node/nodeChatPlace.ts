@@ -3,7 +3,8 @@ import { Platform } from 'obsidian'
 import type { NodeChatPresenter } from './NodeChatPresenter'
 import type { NodePathModel, PathTarget } from './NodePathModel'
 import { bindPathTarget, nodeChatSwitches, type NodeChatSwitch } from './nodePathChat'
-import { nodeResourceTarget } from './NodeFilesModel'
+import { resolveNodeCodeLink } from './codeLinks'
+import { NodePathService } from './NodePathService'
 import type { CopySummary } from '@/components/nodeWork/types'
 
 /** Where a node chat's agent works and the levers on it, as the chat view takes them. */
@@ -74,12 +75,24 @@ export function nodeChatPlace(
 }
 
 /** A file the agent named, opened from the chat in a node file tab of the same place. */
+export function nodeChatResource(resource: string, target: PathTarget) {
+  const model = NodePathService.getInstance().model(target.registrationId)
+  const root =
+    model.copy(target)?.path ??
+    (target.kind === 'workspace'
+      ? model.folders.value.find((folder) => folder.id === target.projectId)?.path
+      : undefined)
+  return resolveNodeCodeLink(resource, target, root)
+}
 export async function openNodeChatResource(resource: string, target: PathTarget): Promise<void> {
-  const { openNodePathTab } = await import('./nodePathNavigation')
+  const destination = nodeChatResource(resource, target)
+  if (!destination) return
+  const { openNodePathTab, closeNodePathDrawers } = await import('./nodePathNavigation')
   const { GlobalStore } = await import('@/stores/GlobalStore')
   await openNodePathTab(
     GlobalStore.getInstance().app.workspace,
-    { kind: 'file', target, path: nodeResourceTarget(resource).path },
+    { kind: 'file', target, ...destination },
     Platform.isMobile
   )
+  closeNodePathDrawers(GlobalStore.getInstance().app.workspace, Platform.isMobile)
 }

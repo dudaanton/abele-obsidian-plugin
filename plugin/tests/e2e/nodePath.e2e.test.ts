@@ -23,6 +23,24 @@ async function capture(name: string) {
   )
 }
 
+async function checkCodeCitation(shell: 'desktop' | 'phone') {
+  const reveal = async (line: number, endLine: number) =>
+    evalLong(
+      `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view')));const state={...leaf.view.getState(),line:${line},endLine:${endLine}};await leaf.setViewState({type:'abele-node-file',active:true,state});await app.workspace.revealLeaf(leaf);await until(()=>visible('.abele-file-view .cm-line'));if(leaf.view.file.mode.value!=='file')throw Error('Code citation opened a diff');return 'revealed citation'})()`
+    )
+  await reveal(1, 1)
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-github-code__line_target'));if(!visible('.abele-file-view').textContent.includes('value = 3'))throw Error('Working-tree content missing');return 'working line marked'})()`
+  )
+  await capture(shell + '-code-link-range')
+  await reveal(99999, 99999)
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible('.abele-node-main')?.textContent.includes('The linked lines no longer exist'));return 'missing lines explained'})()`
+  )
+  await capture(shell + '-code-link-missing-lines')
+  await reveal(1, 1)
+}
+
 /** The comparison of a code file is coloured the way the code view colours the file. */
 async function checkDiffColours() {
   await evalLong(
@@ -414,6 +432,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.external)});await view.file.step(1);if(view.file.target.id!==${JSON.stringify(ids.root)})throw Error('File arrows followed the sidebar');await view.file.open('src/sample.ts');view.file.mode.value='file';return 'bound navigation'})()`
     )
     await capture('desktop-whole')
+    await checkCodeCitation('desktop')
     await checkCodeGeometry()
     await checkFileRepositoryTools('desktop', registration)
     await checkFileLineMenu('desktop')
@@ -623,6 +642,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await checkCodeGeometry()
     await checkFileRepositoryTools('phone', registration)
+    await checkCodeCitation('phone')
     await checkFileLineMenu('phone')
     await selectText('.abele-file-view .cm-line')
     await capture('phone-file-selection')

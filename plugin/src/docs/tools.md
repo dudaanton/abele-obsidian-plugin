@@ -1273,3 +1273,16 @@ recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tre
 
 Large reads return a chat/tool-bound `cursor` (same tool, cursor alone), expire after ten minutes,
 and recheck scope, principal, selection, conversation and branch before publishing retained bytes.
+
+## Links to node code
+
+When discussing code on a node, cite the relevant lines without waiting for a commit or upload.
+In a chat bound to one worktree, use `[src/sample.ts:42-48](src/sample.ts:42-48)`.
+The destination opens current working-tree content, including uncommitted changes.
+Node chats also recognise plain `src/sample.ts:42`, absolute paths beneath their worktree,
+and `file:///...#L42-L48`. Relative paths are rooted at the chat's worktree, never the vault.
+For an unambiguous link to paste into another chat, use the file selection's copy-link action.
+The link is `abele-node-code:` followed by URI-encoded JSON with `scope` equal to
+`[node_id, project_id, "worktree", worktree_id]`, `path`, `line`, and `endLine`.
+For plain folders use `"workspace"` and its workspace ID. Links only open within the receiving
+chat's node access. GitHub links continue to address their original revisions.

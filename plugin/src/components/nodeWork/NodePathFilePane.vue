@@ -4,6 +4,12 @@
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
     <template v-if="model.document.value">
+      <div
+        v-if="line && (endLine ?? line) > model.document.value.text.split('\n').length"
+        role="status"
+      >
+        {{ t('node.codeLineUnavailable') }}
+      </div>
       <div v-if="admissionReason" role="status" :title="admissionCode || undefined">
         {{ admissionReason }}
       </div>
@@ -11,7 +17,7 @@
         {{ presentUiField(model.document.value, 'note') }}
       </div>
       <NodePathDebugFile
-        v-if="effectiveDebug"
+        v-if="effectiveDebug && !endLine"
         v-show="model.mode.value === 'file'"
         :key="
           JSON.stringify([
@@ -26,7 +32,7 @@
         @selection="debugSelection"
       />
       <FileView
-        v-if="!effectiveDebug || model.mode.value !== 'file'"
+        v-if="!effectiveDebug || endLine || model.mode.value !== 'file'"
         :path="model.document.value.path"
         :text="model.document.value.text"
         :image="model.document.value.image"
@@ -35,6 +41,8 @@
         :repository="repository"
         :revision="revision"
         :line="line"
+        :end-line="endLine"
+        :code-target="model.target"
         @menu="(event, selection, lines) => emit('menu', event, selection, lines)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
@@ -66,8 +74,16 @@ const props = withDefaults(
     repository?: RepositorySource
     revision?: string
     line?: number
+    endLine?: number
   }>(),
-  { offline: false, debug: undefined, repository: undefined, revision: undefined, line: undefined }
+  {
+    offline: false,
+    debug: undefined,
+    repository: undefined,
+    revision: undefined,
+    line: undefined,
+    endLine: undefined,
+  }
 )
 const service = DebuggerService.instance
 provide(FILE_NAVIGATION, (url) => {

@@ -10,6 +10,9 @@
 <script setup lang="ts">
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeMarkdownClick, nodeMarkdownPolicy } from '@/node/markdown'
+import { prepareNodeCodeLinks } from '@/node/markdown'
+import { NODE_CODE_LINK_OPENER, type CodeLinkOpener } from '@/node/codeLinkContext'
+import { inject } from 'vue'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { markUntrusted, renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
@@ -43,11 +46,43 @@ const props = defineProps<{
 }>()
 
 let component: Component | null = null
+const codeOpener = inject(NODE_CODE_LINK_OPENER, undefined)
+const codePolicy = codeOpener
+  ? { before: (root: HTMLElement) => prepareNodeCodeLinks(root, true) }
+  : undefined
+const resourcePolicy = () => {
+  if (!props.resourceOpener && !codeOpener?.active?.()) return undefined
+  const policy = props.resourceOpener ? nodeMarkdownPolicy : codePolicy
+  if (!policy) return undefined
+  return {
+    ...policy,
+    before(root: HTMLElement) {
+      policy.before?.(root)
+      const opener = (props.resourceOpener ?? codeOpener) as CodeLinkOpener
+      if (!opener.canOpen) return
+      for (const link of Array.from(root.querySelectorAll('a[data-node-resource]'))) {
+        let allowed = false
+        try {
+          allowed = opener.canOpen(link.getAttribute('data-node-resource') ?? '')
+        } catch {
+          /* Unavailable context stays text. */
+        }
+        if (!allowed) link.replaceWith(root.ownerDocument.createTextNode(link.textContent ?? ''))
+      }
+    },
+  }
+}
 
 const target = ref<HTMLElement>()
 
 const handleClick = (event: MouseEvent) => {
   if (props.resourceOpener && nodeMarkdownClick(event, props.resourceOpener)) return
+  if (
+    codeOpener &&
+    (event.target as Element | null)?.closest?.('a[data-node-resource]') &&
+    nodeMarkdownClick(event, codeOpener)
+  )
+    return
   const el = (event.target as HTMLElement).closest('a.internal-link')
   if (el) {
     event.preventDefault()
@@ -134,14 +169,7 @@ const renderContent = async () => {
   try {
     if (props.trusted)
       await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
-    else
-      await renderUntrustedMarkdown(
-        next,
-        text,
-        own,
-        path,
-        resourceOpener ? nodeMarkdownPolicy : undefined
-      )
+    else await renderUntrustedMarkdown(next, text, own, path, resourcePolicy())
   } catch (error) {
     own.unload()
     throw error
@@ -218,7 +246,15 @@ const renderContent = async () => {
 const adopt = (): boolean => {
   const el = target.value
   // The handoff cache belongs to local replies, not node resource contexts.
-  if (!el || props.trusted || props.resourceOpener || props.streaming || !props.text) return false
+  if (
+    !el ||
+    props.trusted ||
+    props.resourceOpener ||
+    codeOpener?.active?.() ||
+    props.streaming ||
+    !props.text
+  )
+    return false
   const offered = take(props.text, el.doc)
   if (!offered) return false
   parts = offered.parts
@@ -273,7 +309,7 @@ const renderQueue = createRenderQueue(renderContent, {
 })
 
 watch(
-  () => [props.text, props.filePath, props.streaming, props.resourceOpener],
+  () => [props.text, props.filePath, props.streaming, props.resourceOpener, codeOpener?.active?.()],
   () => renderQueue.request(!!props.streaming),
   { deep: true }
 )
@@ -287,6 +323,7 @@ onBeforeUnmount(() => {
   if (
     props.trusted ||
     props.resourceOpener ||
+    codeOpener?.active?.() ||
     !props.streaming ||
     !parts.length ||
     !shownText ||
