@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
-import { DebuggerService } from '@/debugger/DebuggerService'
+import { DebuggerService, sourceRefusal } from '@/debugger/DebuggerService'
 import type { FolderDebugOwner } from '@/debugger/owner'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import { programFiles } from '@/debugger/programFiles'
@@ -17,6 +17,35 @@ const target = {
   id: 'sample-folder',
 }
 afterEach(() => DebuggerService.instance.destroy())
+it('explains declaration files before asking the node to admit them', async () => {
+  const { service, request } = fixture()
+  expect((await service.admitFile(target, 'lib/sample.d.ts')).message).toMatch(
+    /declaration.*no.*code/i
+  )
+  expect(request).not.toHaveBeenCalled()
+})
+it.each([
+  ['debugger_source_no_map', /source map/i],
+  ['debugger_source_changed', /program started/i],
+  ['debugger_source_test', /test/i],
+  ['debugger_source_declaration', /declaration.*no.*code/i],
+  ['debugger_source_generated', /built.*source/i],
+])('explains %s in words', (code, words) => {
+  expect(sourceRefusal(code).message).toMatch(words)
+})
+it('rechecks a changed refusal when the file is opened again', async () => {
+  const { service, request } = fixture(true, [
+    { path: 'lib/helper.ts', code: 'debugger_source_changed' },
+  ])
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toMatch(/changed since/i)
+  request.mockResolvedValueOnce({
+    incarnation: 'sample-incarnation',
+    sources: [{ source_id: 'sample-restored', path: 'lib/helper.ts' }],
+    refused: [],
+  })
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toBe('')
+  expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-restored')
+})
 it('reads the negotiated welcome from the installed SDK and forgets it on disconnect', async () => {
   const client = new NodeClient({} as never, {} as never)
   expect(nodeAdvertisesMethod(client, 'debugger.v1.addSources')).toBe(false)

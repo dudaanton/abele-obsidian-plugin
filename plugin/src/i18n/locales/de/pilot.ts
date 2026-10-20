@@ -3526,8 +3526,10 @@ export const de = {
   'debug.outsideMessage':
     '{command} läuft in {path}, außerhalb des ausgewählten Ordners. Der Debugger kann es anhalten und seine Werte lesen. Nach dem Trennen läuft es weiter.',
   'debug.sourceUpdate': 'Aktualisiere den Knoten, um Haltepunkte in dieser Datei zu setzen',
-  'debug.sourceMap': 'Erstelle einen Build mit Source Maps, um diese Datei zu debuggen',
-  'debug.sourceChanged': 'Die Datei wurde seit dem Verbinden des Debuggers geändert',
+  'debug.sourceMap':
+    'Der Knoten hat keine Quellzuordnung gefunden, die diese Datei mit dem laufenden Programm verknüpft. Erstellen Sie das Projekt mit Source Maps, starten Sie es neu und verbinden Sie den Debugger erneut.',
+  'debug.sourceChanged':
+    'Diese Datei wurde seit dem Programmstart geändert. Stellen Sie den damaligen Inhalt wieder her oder erstellen und starten Sie das Programm neu.',
   'debug.sourceOutside': 'Die Datei liegt außerhalb des Debug-Ordners',
   'debug.sourceUnavailable': 'Die Datei konnte nicht zum Debugger hinzugefügt werden',
   'debug.entryPlaceholder':
@@ -3552,4 +3554,10 @@ export const de = {
     'Das Programm wurde beendet, bevor der Debugger sich verbinden konnte.',
   'debug.launchFailedPlain':
     'Das Programm konnte nicht gestartet werden. Weitere Informationen finden Sie unter Details.',
+  'debug.sourceDeclaration':
+    'Diese Deklarationsdatei enthält keinen ausführbaren Code. Öffnen Sie die Implementierung, um einen Haltepunkt zu setzen.',
+  'debug.sourceTest':
+    'Das laufende Programm lädt diese Testdatei nicht. Starten Sie die Tests mit Debugger, um hier anzuhalten.',
+  'debug.sourceGenerated':
+    'Diese erstellte Datei ist hier nicht verfügbar. Öffnen Sie die ursprüngliche Quelldatei zum Debuggen.',
 } satisfies TranslationCatalog

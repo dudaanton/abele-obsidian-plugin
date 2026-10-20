@@ -25940,8 +25940,8 @@
     ]
   },
   "debug.sourceMap": {
-    "englishHash": "d5eb620b7a848816246c23e0940ea2e54a2fe9ffab215b785c1c53175765033f",
-    "context": "Debugger source admission refusal or node update explanation",
+    "englishHash": "88431e77e4948ad7ae3445894a610e7da08d552f6d065018372d35778b880441",
+    "context": "Debugger breakpoint controls and source refusal explanation",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -25950,8 +25950,8 @@
     ]
   },
   "debug.sourceChanged": {
-    "englishHash": "12b354205c877fa8c902de65f0637399f7c9586690fd28e20bb83424f530d3eb",
-    "context": "Debugger source admission refusal or node update explanation",
+    "englishHash": "1d6158392ee0acabdc3e90bd046dae674fa4a999fe11b23fb55eb17df76e37cf",
+    "context": "Debugger breakpoint controls and source refusal explanation",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -26112,6 +26112,36 @@
   "debug.launchFailedPlain": {
     "englishHash": "63d64ba3a7c9e2874541fe4fc1ace4f14298507c72529e884447e5e3f1e0fb59",
     "context": "Debugger launch failure explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceTest": {
+    "englishHash": "046342a6a0d12db7a6a66acad9f9f1eaf59783eee311b3172c105c700e0966c5",
+    "context": "Debugger breakpoint controls and source refusal explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceDeclaration": {
+    "englishHash": "ac89b91d92542b6298fcd045e1be1041dd90a89e2112ff115d9c2bc7d272d14f",
+    "context": "Debugger breakpoint controls and source refusal explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceGenerated": {
+    "englishHash": "ad3cb547c8fff9fbffc7eff84c6b1953abd222a6afff2a96b1a5378142a4e7d1",
+    "context": "Debugger breakpoint controls and source refusal explanation",
     "reviewedLocales": [
       "ru",
       "lv",

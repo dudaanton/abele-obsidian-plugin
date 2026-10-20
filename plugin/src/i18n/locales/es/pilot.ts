@@ -3550,8 +3550,10 @@ export const es = {
   'debug.outsideMessage':
     '{command} se ejecuta en {path}, fuera de la carpeta seleccionada. El depurador puede pausarlo y leer sus valores. Al desconectarlo, el programa sigue ejecutándose.',
   'debug.sourceUpdate': 'Actualiza el nodo para poner puntos de interrupción en este archivo',
-  'debug.sourceMap': 'Compila con mapas de código fuente para depurar este archivo',
-  'debug.sourceChanged': 'El archivo cambió desde que se conectó el depurador',
+  'debug.sourceMap':
+    'El nodo no encontró un mapa de fuentes que vincule este archivo con el programa en ejecución. Compile con mapas de fuentes, reinicie el programa y vuelva a conectar el depurador.',
+  'debug.sourceChanged':
+    'Este archivo cambió desde que se inició el programa. Restaure ese contenido o vuelva a compilar y reiniciar el programa.',
   'debug.sourceOutside': 'El archivo está fuera de la carpeta de depuración',
   'debug.sourceUnavailable': 'No se pudo añadir el archivo al depurador',
   'debug.entryPlaceholder':
@@ -3573,4 +3575,10 @@ export const es = {
   'debug.launchExitedEarly': 'El programa terminó antes de que el depurador pudiera conectarse.',
   'debug.launchFailedPlain':
     'No se pudo iniciar el programa. Abra Detalles para obtener más información.',
+  'debug.sourceDeclaration':
+    'Este archivo de declaraciones no contiene código ejecutable. Abra la implementación para añadir un punto de interrupción.',
+  'debug.sourceTest':
+    'El programa en ejecución no carga este archivo de pruebas. Inicie las pruebas con depuración para detenerse aquí.',
+  'debug.sourceGenerated':
+    'Este archivo compilado no está disponible aquí. Abra su código fuente original para depurarlo.',
 } satisfies TranslationCatalog

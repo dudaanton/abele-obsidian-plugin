@@ -3493,8 +3493,10 @@ export const lv = {
   'debug.outsideMessage':
     '{command} darbojas mapē {path}, nevis atlasītajā mapē. Atkļūdotājs var to apturēt un nolasīt vērtības. Pēc atvienošanas programma turpinās darboties.',
   'debug.sourceUpdate': 'Atjauniniet mezglu, lai šajā failā iestatītu pārtraukumpunktus',
-  'debug.sourceMap': 'Lai atkļūdotu šo failu, izveidojiet būvējumu ar pirmkoda kartēm',
-  'debug.sourceChanged': 'Fails ir mainīts kopš atkļūdotāja pievienošanas',
+  'debug.sourceMap':
+    'Mezgls neatrada avota karti, kas saista šo failu ar palaisto programmu. Izveidojiet projektu ar avota kartēm, tad pārstartējiet programmu un pievienojiet atkļūdotāju.',
+  'debug.sourceChanged':
+    'Fails mainījās pēc programmas palaišanas. Atjaunojiet iepriekšējo saturu vai izveidojiet un palaidiet programmu no jauna.',
   'debug.sourceOutside': 'Fails atrodas ārpus atkļūdošanas mapes',
   'debug.sourceUnavailable': 'Failu neizdevās pievienot atkļūdotājam',
   'debug.entryPlaceholder':
@@ -3515,4 +3517,10 @@ export const lv = {
   'debug.launchExitedEarly': 'Programma beidza darbu, pirms atkļūdotājs varēja pievienoties.',
   'debug.launchFailedPlain':
     'Programmu neizdevās palaist. Atveriet sadaļu “Sīkāka informācija”, lai uzzinātu vairāk.',
+  'debug.sourceDeclaration':
+    'Deklarāciju failā nav izpildāma koda. Atveriet realizāciju, lai pievienotu pārtraukumpunktu.',
+  'debug.sourceTest':
+    'Palaistā programma neielādē šo testa failu. Palaidiet testus ar atkļūdošanu, lai šeit apstātos.',
+  'debug.sourceGenerated':
+    'Šis izveidotais fails šeit nav pieejams. Atkļūdošanai atveriet sākotnējo avota failu.',
 } satisfies TranslationCatalog

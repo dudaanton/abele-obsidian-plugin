@@ -376,6 +376,7 @@ export class DebuggerService {
     const binding = this.folderBinding(target)
     if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) || this.debugFor(target, path))
       return { message: '' }
+    if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
     const sessionId = binding.sessionId
     const incarnation = binding.controller.snapshot?.incarnation
     if (!sessionId || !incarnation) return { message: '' }
@@ -397,12 +398,10 @@ export class DebuggerService {
       binding.connection.client === client &&
       binding.sessionId === sessionId &&
       binding.controller.snapshot?.incarnation === incarnation
-    let retained = false
     const attempt = (async () => {
       try {
         if (!current()) return { message: '' }
         if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources')) {
-          retained = true
           return { message: t('debug.sourceUpdate') }
         }
         const result = z
@@ -431,7 +430,6 @@ export class DebuggerService {
             target
           )
         const refusal = result.refused.find((r) => r.path === path)
-        retained = true
         if (refusal) return sourceRefusal(refusal.code)
         return {
           message: result.sources.some((s) => s.path === path) ? '' : t('debug.sourceUnavailable'),
@@ -443,8 +441,9 @@ export class DebuggerService {
       }
     })()
     this.admissions.set(key, attempt)
-    void attempt.then(() => {
-      if (!retained && this.admissions.get(key) === attempt) this.admissions.delete(key)
+    // Coalesce requests in flight; a refusal must be rechecked after a file is restored/rebuilt.
+    void attempt.finally(() => {
+      if (this.admissions.get(key) === attempt) this.admissions.delete(key)
     })
     return attempt
   }
@@ -897,6 +896,9 @@ export class DebuggerService {
 export function sourceRefusal(code: string): SourceAdmission {
   if (code === 'debugger_source_no_map') return { message: t('debug.sourceMap') }
   if (code === 'debugger_source_changed') return { message: t('debug.sourceChanged') }
+  if (code === 'debugger_source_test') return { message: t('debug.sourceTest') }
+  if (code === 'debugger_source_declaration') return { message: t('debug.sourceDeclaration') }
+  if (code === 'debugger_source_generated') return { message: t('debug.sourceGenerated') }
   if (code === 'debugger_source_outside_folder') return { message: t('debug.sourceOutside') }
   if (code === 'debugger_source_conflict') return { message: t('debug.sourceConflict') }
   if (code === 'debugger_source_limit') return { message: t('debug.sourceLimit') }

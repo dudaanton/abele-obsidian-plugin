@@ -3392,8 +3392,10 @@ export const en = {
   'debug.outsideMessage':
     '{command} runs from {path}, not from the selected folder. The debugger can pause it and read its values. Detaching later leaves it running.',
   'debug.sourceUpdate': 'Update the node to set breakpoints in this file',
-  'debug.sourceMap': 'Build with source maps to debug this file',
-  'debug.sourceChanged': 'This file changed since the debugger attached',
+  'debug.sourceMap':
+    'The node could not find a source map linking this file to the running program. Build with source maps, then restart the program and attach again.',
+  'debug.sourceChanged':
+    'This file changed since the program started. Restore that content, or rebuild and restart the program.',
   'debug.sourceOutside': 'This file is outside the debug folder',
   'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
   'debug.entryPlaceholder':
@@ -3413,4 +3415,10 @@ export const en = {
   'debug.launchFailed': 'The program could not start: {detail}',
   'debug.launchExitedEarly': 'The program exited before the debugger could attach.',
   'debug.launchFailedPlain': 'The program could not start. Open Details for more information.',
+  'debug.sourceTest':
+    'This test file is not loaded by the running program. Start the test runner with debugging to stop here.',
+  'debug.sourceDeclaration':
+    'This declaration file contains no executable code. Open the implementation to set a breakpoint.',
+  'debug.sourceGenerated':
+    'This built file is not available here. Open its original source file to debug it.',
 } as const
