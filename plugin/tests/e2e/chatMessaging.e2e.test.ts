@@ -49,6 +49,11 @@ it.each(onPhone() ? [true] : [false, true])(
         chats.switchTab(target.id);await until(()=>root().querySelector('.abele-chat-msg__from'));
         const incoming=root().querySelector('.abele-chat-msg__from').textContent;
         await shot('incoming');
+        const targetApproval={id:'target-approval',role:'tool-call',content:'',timestamp:Date.now(),toolCallId:'target-action',toolName:'eval_js',toolStatus:'pending',toolParams:{code:'return 2 + 2'}};
+        target.appendChatMessage(targetApproval);target.updateVisibleMessages();target.isStreaming.value=false;
+        target.pendingToolCalls.value=[{type:'toolCall',id:'target-action',name:'eval_js',arguments:targetApproval.toolParams}];
+        await until(()=>root().querySelector('.abele-tool-approval'));await shot('target-approval');
+        target.pendingToolCalls.value=[];target.updateChatMessage(m=>m.id==='target-approval',m=>({...m,toolStatus:'rejected',toolResult:'Sample action declined'}));target.isStreaming.value=true;
         target.inheritToolSections(['delegation']);
         const reverse=target.getTools().find(t=>t.name==='send_message_to_chat');
         const cycle={...call,id:'cycle',toolCallId:'cycle',toolParams:{chat_id:caller.id,message:'Sample circular request'}};
@@ -66,7 +71,15 @@ it.each(onPhone() ? [true] : [false, true])(
         try{await send.execute('refusal',refused.toolParams)}catch{}
         await until(()=>root().querySelector('.abele-chat-msg__letter-refusal'));await shot('refused');
         const reply=caller.messages.value.find(m=>m.id==='letter').chatLetter.reply,refusal=caller.messages.value.find(m=>m.id==='refused').chatLetter.refusal;
-        caller.appendChatMessage({...call,id:'interrupted',toolCallId:'interrupted',toolStatus:'approved',chatLetter:{to:{id:target.id,title:target.chatTitle.value,path:target.currentChatFile.value.path}}});caller.updateVisibleMessages();await caller.save();
+        const targetPath=target.currentChatFile.value.path;
+        for(const [id,chatId] of [['unknown','missing-chat'],['closed',target.id]]){
+          if(id==='closed')await chats.closeTab(target.id);
+          const unavailable={...call,id,toolCallId:id,toolParams:{chat_id:chatId,message:'Sample unavailable request'}};
+          caller.appendChatMessage(unavailable);caller.updateVisibleMessages();try{await send.execute(id,unavailable.toolParams)}catch{}
+          await until(()=>root().querySelector('[data-message-id="'+id+'"] .abele-chat-msg__letter-refusal'));
+          root().querySelector('[data-message-id="'+id+'"]').scrollIntoView({block:'center'});await shot(id+'-refused');
+        }
+        caller.appendChatMessage({...call,id:'interrupted',toolCallId:'interrupted',toolStatus:'approved',chatLetter:{to:{id:target.id,title:target.chatTitle.value,path:targetPath}}});caller.updateVisibleMessages();await caller.save();
         const saved=caller.currentChatFile.value;await chats.closeTab(caller.id);await chats.openChatFile(saved);
         const reopened=chats.getSessionByFile(saved.path);ids.push(reopened.id);
         await until(()=>root().textContent.includes('interrupted by a reload'));root().querySelector('[data-message-id="interrupted"]')?.scrollIntoView({block:'center'});await shot('interrupted-reload');
