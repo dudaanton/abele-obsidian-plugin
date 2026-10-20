@@ -1,5 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createServerFolder } from '../e2e/helpers/syncServerFolder'
+import { rawManifest } from '../helpers/rawManifest'
+vi.mock('../helpers/rawManifest', () => ({ rawManifest: vi.fn() }))
 
 vi.mock('../e2e/helpers/syncVault', () => ({
   waitFor: async (_label: string, ready: () => Promise<boolean>) => {
@@ -17,17 +19,25 @@ it('creates an explicit directory and waits for its manifest identity instead of
     version_id: 'version-a',
     mtime: 1,
   }
-  const items = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([directory])
+  vi.mocked(rawManifest)
+    .mockImplementationOnce(async () => {
+      events.push('manifest')
+      return []
+    })
+    .mockImplementationOnce(async () => {
+      events.push('manifest')
+      return [directory]
+    })
   const fixture = {
     commit: vi.fn(async () => {
       events.push('mkdir')
     }),
-    items: async () => {
-      events.push('manifest')
-      return items()
-    },
+    server: { rootToken: 'synthetic-root-key' },
+    items: vi.fn(async () => []),
   }
   expect(await createServerFolder(fixture, directory.path)).toEqual(directory)
   expect(fixture.commit).toHaveBeenCalledWith([{ op: 'mkdir', path: directory.path }])
   expect(events).toEqual(['mkdir', 'manifest', 'manifest'])
+  expect(fixture.items).not.toHaveBeenCalled()
+  expect(rawManifest).toHaveBeenCalledWith(fixture.server.rootToken, globalThis.fetch)
 })

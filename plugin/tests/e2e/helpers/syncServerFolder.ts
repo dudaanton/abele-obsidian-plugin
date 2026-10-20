@@ -1,21 +1,23 @@
 import type { V2ManifestItem, V2CommitOp } from '../../../src/sync/v2/contract'
 import { waitFor } from './syncVault'
+import { rawManifest } from '../../helpers/rawManifest'
 
 interface FolderFixture {
   commit(ops: V2CommitOp[]): Promise<void>
-  items(): Promise<V2ManifestItem[]>
+  server: { rootToken: string }
 }
 
 export async function createServerFolder(
   fixture: FolderFixture,
-  path: string
+  path: string,
+  transport: typeof fetch = globalThis.fetch
 ): Promise<V2ManifestItem> {
   await fixture.commit([{ op: 'mkdir', path }])
   let directory: V2ManifestItem | undefined
   await waitFor(
     'explicit folder identity in server inventory',
     async () => {
-      directory = (await fixture.items()).find(
+      directory = (await rawManifest(fixture.server.rootToken, transport)).find(
         (item) => item.kind === 'directory' && item.path === path
       )
       return directory !== undefined

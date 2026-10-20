@@ -43,7 +43,7 @@ it('multi-scope S7: scan three items, pick up an addition on foreground and reta
   const owner = new V2Client(decodeAccessToken(s.server.rootToken), fixtureFetch)
   const tokenId = (await api.connection()).token_id
   const initial = (await api.itemClient().items()).items
-  const addedFolder = await createServerFolder(s, s.root + '/Added while away')
+  const addedFolder = await createServerFolder(s, s.root + '/Added while away', fixtureFetch)
   const addedPath = addedFolder.path + '/arrived.md'
   await s.put(addedPath, 'arrived on foreground')
   try {
