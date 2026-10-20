@@ -232,10 +232,10 @@ it('retains independent folder sessions across switching and reload on desktop a
     inApp<{ restored: boolean; overflow: number }>(`(async()=>{${prelude}
     const service=api.DebuggerService.instance,ids=${JSON.stringify(ids)};
     await until(()=>service.active.value?.sessionId===ids[0]&&service.active.value.controller.current,'restored selected session; saved='+JSON.stringify(app.workspace.getLeavesOfType('abele-debug-view').map(l=>l.getViewState())),600);
-    await until(()=>ids.every(id=>document.querySelector('select[aria-label="Select a debug session"] option[value="'+id+'"]')),'restored session switcher',600);
     const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
     const split=leaf.getRoot()===app.workspace.rightSplit?app.workspace.rightSplit:app.workspace.leftSplit;
     split.collapse();await wait(300);split.expand();await wait(700);
+    await until(()=>ids.every(id=>document.querySelector('select[aria-label="Select a debug session"] option[value="'+id+'"]')),'restored session switcher',600);
     await shot('folder-sessions-paused-phone');
     const panel=document.querySelector('.abele-debug-panel');
     const result={restored:service.active.value.controller.session.status==='paused',overflow:panel.scrollWidth-panel.clientWidth};
