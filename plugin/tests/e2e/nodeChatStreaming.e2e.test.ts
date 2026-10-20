@@ -34,7 +34,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
       else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(shots)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
     };
     try {
-      await window.__abeleTest.openNodeSessionFixture('working');
+      await window.__abeleTest.openNodeSessionFixture('empty');
       const p=chats.getNodeSession(chats.activeTabId.value),root=()=>document.querySelector('.abele-node-chat');
       const session=p.reference.sessionId,store=p.connection.client.store;
       const events=[await store.transaction(s=>s.events[session][0])];
