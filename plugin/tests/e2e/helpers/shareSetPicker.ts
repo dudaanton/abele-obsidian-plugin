@@ -1,6 +1,6 @@
 /** Native suggestion selection shared by the live single-item and set-sharing cases. */
 export const SHARE_SET_PICKER = `
-const pickShareItem = async (box, label) => {
+const pickShareItem = async (box, label, waitForChip = true) => {
   const legacy = box.querySelector('select');
   if (legacy) {
     let option;
@@ -23,6 +23,6 @@ const pickShareItem = async (box, label) => {
     return !!choice;
   });
   choice.click();
-  await poll(() => [...box.querySelectorAll('.multi-select-pill-content')].some(one => one.textContent.includes(name)));
+  if (waitForChip) await poll(() => [...box.querySelectorAll('.multi-select-pill-content')].some(one => one.textContent.includes(name)));
 };
 `

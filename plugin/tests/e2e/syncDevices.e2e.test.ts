@@ -13,6 +13,7 @@ import {
   expectDeviceLocalTrust,
 } from './helpers/syncTrustedConnection'
 import { closeSyncScreens, captureSyncScreen } from './helpers/syncScreens'
+import { SHARE_SET_PICKER } from './helpers/shareSetPicker'
 const fixture = liveSuite()
 it('multi-scope S6: deleting one file item leaves the other item connected', async () => {
   const s = fixture(),
@@ -70,6 +71,7 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
     shared = s.root + '/Common note.md'
   const memberships = `---\ngroups: ["[[${groupA.replace(/\.md$/, '')}]]", "[[${groupB.replace(/\.md$/, '')}]]"]\n---\n`
   owner.create(folder + '/clean.md', 'unchanged copy')
+  owner.create(folder + '/Nested/other.md', 'nested unchanged copy')
   owner.create(folder + '/edited.md', 'original copy')
   owner.create(groupA, 'first group')
   owner.create(groupB, 'second group')
@@ -81,6 +83,17 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
     'item capability to load',
     `await poll(()=>svc.itemSets.several(${JSON.stringify(ownerId)}));return true`
   )
+  await owner.long(
+    'refuse a folder already covered by the selected folder',
+    `
+    const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
+    const box=modal('Share access');${SHARE_SET_PICKER}await pickShareItem(box,${JSON.stringify('Folder: ' + folder)});
+    const input=box.querySelector('.abele-share-picker input');typeInto(input,${JSON.stringify(folder + '/Nested')});let choice;
+    await poll(()=>choice=[...box.ownerDocument.querySelectorAll('.suggestion-item')].find(one=>one.querySelector('svg.lucide-folder')&&one.textContent.includes('Nested')));
+    if(choice.getAttribute('aria-disabled')!=='true'||!choice.textContent.includes('In Collection'))throw new Error('Covered folder must be refused');choice.click();
+    if(box.querySelectorAll('.multi-select-pill').length!==1)throw new Error('Covered folder was selected');await press(box,'Close');await closeSettings();return true
+  `
+  )
   const issued = await owner.shareSet(ownerId, [
     'Folder: ' + folder,
     'Group: First group',
@@ -91,8 +104,6 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
   if (token.v !== 2) throw new Error('Expected an item-set key')
   expect(token.items).toHaveLength(3)
   const keyApi = new V2Client(token, fixtureFetch)
-  const ownerApi = new V2Client(decodeAccessToken(s.server.rootToken), fixtureFetch)
-  const tokenId = (await keyApi.connection()).token_id
   const inventory = (await keyApi.itemClient().items()).items
   const folderItem = inventory.find((item) => item.scope.kind === 'folder')!
   const receiverId = await s.connect(receiver, issued.token)
@@ -100,10 +111,21 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
   expect(receiver.read(single)).toBe('one file')
   expect(receiver.read(shared)).toContain('shared by both groups')
   expect(receiver.exists(s.root + '/Private.md')).toBe(false)
-  const secondGroup = (await s.items()).find((item) => item.path === groupB)!
-  const added = await ownerApi
-    .itemClient()
-    .addItem(tokenId, { kind: 'group', id: secondGroup.file_id })
+  await owner.long(
+    'add a group through share detail',
+    `
+    const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
+    const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample item set'));row.click();await poll(()=>modal('Sample item set'));
+    const detail=modal('Sample item set');${SHARE_SET_PICKER}
+    await pickShareItem(detail,'Group: Second group',false);
+    await poll(()=>[...detail.querySelectorAll('.abele-share-detail__item')].some(one=>one.textContent.includes('Second group')));
+    await press(detail,'Close');await press(box,'Close');await closeSettings();return true
+  `
+  )
+  const added = (await keyApi.itemClient().items()).items.find(
+    (one) => one.scope.path === groupB && one.removed_at === null
+  )!
+  expect(added).toBeDefined()
   await waitFor(
     'added group to be ready',
     async () => (await new V2Client(token, fixtureFetch, added.id).connection()).status === 'active'
@@ -127,10 +149,22 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
   }
   await receiver.long(
     'pause one item',
-    `await svc.itemSets.pauseItem(${JSON.stringify(receiverId)},${JSON.stringify(folderItem.id)},true);return true`
+    `const root=await openSyncTab();connectionRow(root,${JSON.stringify(receiverId)}).click();let row;await poll(()=>row=[...settingsDoc().querySelectorAll('.abele-connection-items__item'),...document.querySelectorAll('.abele-connection-items__item')].find(one=>one.textContent.includes('Collection')));icon(row,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Pause on this device'));action.click();await poll(()=>svc.itemSets.items(${JSON.stringify(receiverId)}).some(one=>one.id===${JSON.stringify(folderItem.id)}&&one.state.kind==='paused'));return true`
   )
+  closeSyncScreens(receiver)
   receiver.create(folder + '/edited.md', 'unsent local edit')
-  await ownerApi.itemClient().removeItem(tokenId, folderItem.id)
+  await owner.long(
+    'remove an item through share detail',
+    `
+    const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
+    const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample item set'));row.click();await poll(()=>modal('Sample item set'));
+    const detail=modal('Sample item set');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('Collection')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Remove from this share…'));action.click();await press(detail,'Remove');await poll(()=>![...detail.querySelectorAll('.abele-share-detail__item')].some(one=>one.textContent.includes('Collection')));
+    await press(detail,'Close');await press(box,'Close');await closeSettings();return true
+  `
+  )
+  expect(
+    (await keyApi.itemClient().items()).items.find((one) => one.id === folderItem.id)?.removed_at
+  ).not.toBeNull()
   await receiver.syncNow(receiverId)
   expect(receiver.read(folder + '/clean.md')).toBe('unchanged copy')
   expect(receiver.read(folder + '/edited.md')).toBe('unsent local edit')
@@ -155,10 +189,11 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
   )
   expect(confirmation.over).toEqual([])
   receiver.run(
-    `await press(modal('Remove your copy of Collection?'),'Remove 1 file');await poll(()=>!modal('Remove your copy of Collection?'));return true`
+    `await press(modal('Remove your copy of Collection?'),'Remove 2 files');await poll(()=>!modal('Remove your copy of Collection?'));return true`
   )
   closeSyncScreens(receiver)
   expect(receiver.exists(folder + '/clean.md')).toBe(false)
+  expect(receiver.exists(folder + '/Nested/other.md')).toBe(false)
   expect(receiver.read(folder + '/edited.md')).toBe('unsent local edit')
   expect(owner.read(folder + '/clean.md')).toBe('unchanged copy')
   await receiver.disconnect(receiverId)
