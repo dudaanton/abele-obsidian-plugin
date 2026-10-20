@@ -444,6 +444,8 @@ it('shows incoming and outgoing program requests with correlated code on desktop
       children: number
       overflow: number
     }>(`(async()=>{${prelude}
+      // Keep a main tab group when closing the final fixture leaves.
+      await app.workspace.getLeaf('tab').setViewState({type:'empty',active:true});
       for(const leaf of app.workspace.getLeavesOfType('abele-trace-run').concat(app.workspace.getLeavesOfType('abele-trace-value')))leaf.detach();
       // Older fixture daemons omit the additive HTTP metadata on read. Supply those two
       // recorded fixture fields at the transport boundary to exercise the newer wire contract.
