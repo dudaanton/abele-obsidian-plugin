@@ -92,8 +92,23 @@ const probe = (label: string) => `(async () => {
     const modal = document.querySelector('.abele-folder-access')
     const bounds = modal.getBoundingClientRect()
     const overflow = modal.scrollWidth - modal.clientWidth
-    document.querySelector('.modal-close-button').click()
-    return { closedTogether: !service.tabOrder.value.includes(second), inherited: reopened.toolModes.value.web_search, overflow, width: bounds.width, viewport: innerWidth, pictures: 10 }
+    const inherited = reopened.toolModes.value.web_search, ownMode = reopened.ownToolModes.value.web_search
+    modal.querySelector('.modal-close-button').click()
+    await until(() => !document.querySelector('.abele-folder-access'))
+    const row = document.querySelector('[data-chat="' + reopened.id + '"]')
+    const more = row.querySelector('[aria-label="Sample navigation chat: more"]')
+    if (more) more.click()
+    else {
+      const r = row.getBoundingClientRect()
+      row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
+    }
+    await until(() => document.querySelector('.menu'))
+    ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.includes('Move to…')).click()
+    await until(() => document.querySelector('.prompt-input'))
+    await shot('move-to')
+    ;[...document.querySelectorAll('.suggestion-item')].find(item => item.textContent.includes('Chats (top)')).click()
+    await until(() => files.every(file => file.path.slice(0, file.path.lastIndexOf('/')) === service.folders.root.value))
+    return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, pictures: 11 }
   } finally {
     for (const id of created) {
       const session = service.getSession(id)
@@ -112,9 +127,11 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     const result = JSON.parse(await evalLong(probe(onPhone() ? 'phone' : 'desktop'), 120_000))
     expect(result.closedTogether).toBe(true)
     expect(result.inherited).toBe('auto')
+    expect(result.dropped).toBe(true)
+    expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(10)
+    expect(result.pictures).toBe(11)
   }, 180_000)
 
   it.skipIf(onPhone())(
