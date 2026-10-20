@@ -16,10 +16,10 @@ import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { openChat, openSelectionLink } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
 import type { Plugin } from 'obsidian'
-import { registerDebugger } from '@/debugger/register'
+import { registerDebugger, DEBUG_VIEW_TYPE } from '@/debugger/register'
 import { registerRequests } from '@/requests/views'
 import { NodeSidebarView } from '@/views/NodeSidebarView'
-import { revealSidebarView } from '@/views/revealSidebarView'
+import { revealSidebarView, loadDeferredSidebarViews } from '@/views/revealSidebarView'
 import { NodePathMainView } from '@/views/NodePathMainView'
 import { NodePathService } from '@/node/NodePathService'
 import { createNodePathObsidianActions } from '@/node/NodePathObsidianActions'
@@ -68,6 +68,12 @@ export function registerViews(plugin: Plugin) {
     TIMELINE_SIDEBAR_VIEW_TYPE,
     (leaf) => new TimelineSidebarView(leaf, plugin.app)
   )
+  plugin.app.workspace.onLayoutReady(() => {
+    void loadDeferredSidebarViews(plugin.app.workspace, [
+      TIMELINE_SIDEBAR_VIEW_TYPE,
+      DEBUG_VIEW_TYPE,
+    ])
+  })
   plugin.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, plugin.app))
   plugin.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, plugin.app))
   plugin.registerView(

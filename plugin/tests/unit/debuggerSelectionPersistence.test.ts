@@ -5,6 +5,36 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import { registerDebuggerSelection } from '@/debugger/selection'
 
 const cleanups: (() => void)[] = []
+it('loads a deferred Debug leaf before deciding whether a second restoration is needed', async () => {
+  const service = DebuggerService.instance
+  const binding = service.binding({
+    reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+    connection: { state: ref('connected'), client: {} },
+  } as never)
+  const ready: (() => Promise<void>)[] = []
+  const leaf = {
+    setViewState: vi.fn(async () => {}),
+    loadIfDeferred: vi.fn(async () => {
+      service.active.value = binding
+    }),
+  }
+  const plugin = {
+    app: {
+      loadLocalStorage: () => ({ sessionId: 'sample-debug' }),
+      saveLocalStorage: vi.fn(),
+      workspace: {
+        onLayoutReady: (callback: () => Promise<void>) => ready.push(callback),
+        getLeavesOfType: () => [leaf],
+        getRightLeaf: vi.fn(),
+      },
+    },
+    register: (stop: () => void) => cleanups.push(stop),
+  } as unknown as Plugin
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  await ready[0]()
+  expect(leaf.loadIfDeferred).toHaveBeenCalledOnce()
+  expect(leaf.setViewState).not.toHaveBeenCalled()
+})
 afterEach(() => {
   for (const stop of cleanups.splice(0)) stop()
   DebuggerService.instance.destroy()

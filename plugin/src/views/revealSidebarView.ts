@@ -1,4 +1,29 @@
-import { Platform, type App, type WorkspaceLeaf, type WorkspaceSidedock } from 'obsidian'
+import {
+  Platform,
+  type App,
+  type Workspace,
+  type WorkspaceLeaf,
+  type WorkspaceSidedock,
+} from 'obsidian'
+
+/** Deferred sidebar leaves need their view loaded to restore its title and retained state. */
+export async function loadDeferredSidebarViews(
+  workspace: Workspace,
+  types: readonly string[]
+): Promise<void> {
+  const leaves = new Set(types.flatMap((type) => workspace.getLeavesOfType(type)))
+  await Promise.all(
+    [...leaves].map(async (leaf) => {
+      const root = leaf.getRoot()
+      if (root !== workspace.leftSplit && root !== workspace.rightSplit) return
+      try {
+        await leaf.loadIfDeferred?.()
+      } catch (error) {
+        console.debug('[Abele] Deferred sidebar unavailable', error)
+      }
+    })
+  )
+}
 
 /** How long a phone's drawer takes to finish closing, and so how long a reveal waits to settle. */
 const DRAWER_SETTLE_MS = 500
