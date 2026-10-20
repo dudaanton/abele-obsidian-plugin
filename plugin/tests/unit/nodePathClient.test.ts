@@ -226,6 +226,24 @@ describe('validated node path reads', () => {
       })
     }
   )
+  it('retains an unavailable repository when listing its workspaces fails before worktree enumeration', async () => {
+    const { client, port } = fake()
+    await port.catalogue()
+    client.listProjects.mockResolvedValueOnce([
+      project,
+      { ...project, project_id: 'other-project', repository_path: null },
+    ])
+    client.listWorkspaces.mockRejectedValueOnce(new ChannelError('repository_unavailable'))
+    const catalogue = await port.catalogue()
+    expect(catalogue.folders).toHaveLength(2)
+    expect(catalogue.folders[0]).toMatchObject({ id: project.project_id, missing: true })
+    expect(catalogue.targets[0]).toMatchObject({
+      projectId: project.project_id,
+      kind: 'workspace',
+      id: workspace.workspace_id,
+    })
+    expect(catalogue.folders[1].missing).not.toBe(true)
+  })
   it('lists the root first, does not attach external worktrees implicitly, and binds legacy chats by workspace', async () => {
     const { port } = fake()
     const data = await port.catalogue()

@@ -235,6 +235,10 @@ export class NodePathClientPort implements NodePathPort {
         throw error
       }))
   }
+  private readonly workspaceCatalogues = new Map<
+    string,
+    Awaited<ReturnType<ReadClient['listWorkspaces']>>
+  >()
   async catalogue(): Promise<PathCatalogue> {
     const description = await this.describe(true)
     const guarded = supportsExpectedTarget(description)
@@ -253,34 +257,50 @@ export class NodePathClientPort implements NodePathPort {
       workspaceTargets = new Map<string, PathTarget>()
     const folders: PathCatalogue['folders'] = []
     for (const project of projects) {
+      let unavailable = false
       const workspaces = await nodePages(
         (after) => this.client.listWorkspaces(project.project_id, after),
         (w) => w.workspace_id
-      )
+      ).catch((error: unknown) => {
+        if (
+          !project.repository_path ||
+          !(error instanceof ChannelError) ||
+          !['repository_unavailable', 'stale_resource'].includes(error.code)
+        )
+          throw error
+        console.debug('[Abele] node path: registered workspace unavailable', project.project_id)
+        unavailable = true
+        return this.workspaceCatalogues.get(project.project_id) ?? []
+      })
+      if (!unavailable) this.workspaceCatalogues.set(project.project_id, workspaces)
       if (project.repository_path) {
-        let unavailable = false
-        const rows = await pathPages((cursor) =>
-          this.client.repository.worktrees({
-            project_id: project.project_id,
-            cursor,
-            ...(enriched ? { include_selection: true } : {}),
-            ...(nodeAdvertisesMethod(this.client, 'repository.v1.file.directory')
-              ? { include_identity: true }
-              : {}),
-          })
-        ).catch((error: unknown): WorktreeEntry[] => {
-          // The project's fingerprint is checked before filesystem availability. A
-          // removed .git can therefore refuse the entire catalogue as stale_resource.
-          // This is not an obsolete worktree ID: choosing another row cannot repair it.
-          if (
-            !(error instanceof ChannelError) ||
-            !['repository_unavailable', 'stale_resource'].includes(error.code)
-          )
-            throw error
-          console.debug('[Abele] node path: registered repository unavailable', project.project_id)
-          unavailable = true
-          return []
-        })
+        const rows = unavailable
+          ? []
+          : await pathPages((cursor) =>
+              this.client.repository.worktrees({
+                project_id: project.project_id,
+                cursor,
+                ...(enriched ? { include_selection: true } : {}),
+                ...(nodeAdvertisesMethod(this.client, 'repository.v1.file.directory')
+                  ? { include_identity: true }
+                  : {}),
+              })
+            ).catch((error: unknown): WorktreeEntry[] => {
+              // The project's fingerprint is checked before filesystem availability. A
+              // removed .git can therefore refuse the entire catalogue as stale_resource.
+              // This is not an obsolete worktree ID: choosing another row cannot repair it.
+              if (
+                !(error instanceof ChannelError) ||
+                !['repository_unavailable', 'stale_resource'].includes(error.code)
+              )
+                throw error
+              console.debug(
+                '[Abele] node path: registered repository unavailable',
+                project.project_id
+              )
+              unavailable = true
+              return []
+            })
         if (unavailable) {
           const root = workspaces.find((w) => w.kind === 'root' && w.state !== 'removed')
           if (root) targets.push(this.binding(project.project_id, 'workspace', root.workspace_id))
