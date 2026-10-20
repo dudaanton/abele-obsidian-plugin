@@ -53,8 +53,9 @@ it('renames within the current folder while Move accepts a full relative destina
   await nodeTreeAction('rename', { target, path: 'src/old-name.ts' })
   expect(f.prompt).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'old-name.ts' }))
   const validate = f.prompt.mock.lastCall?.[0].validate
-  expect(validate?.('nested/new-name.ts')).toBe('Enter a file name without folders.')
-  expect(validate?.('new-name.ts')).toBe('')
+  expect(() => validate?.('nested/new-name.ts')).toThrow('Enter a file name without folders.')
+  expect(() => validate?.('')).toThrow('Enter a file name without folders.')
+  expect(validate?.('new-name.ts')).toBe('new-name.ts')
   expect(f.move).toHaveBeenLastCalledWith(
     target,
     'src/old-name.ts',

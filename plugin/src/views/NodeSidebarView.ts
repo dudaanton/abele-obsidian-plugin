@@ -5,14 +5,22 @@ import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
-import { NodePathModel, type PathFileStage } from '@/node/NodePathModel'
+import { NodePathModel, pathTargetKey, type PathFileStage } from '@/node/NodePathModel'
+import { nodeResourceTarget } from '@/node/NodeFilesModel'
 import {
   createLocalNodeDiscovery,
   localNodeRegistrationUrl,
   type LocalNode,
 } from '@/node/localDiscovery'
 import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
-import { NODE_SIDEBAR_VIEW, openNodePathTab } from '@/node/nodePathNavigation'
+import {
+  NODE_SIDEBAR_VIEW,
+  NODE_FILE_VIEW,
+  NODE_EDITOR_VIEW,
+  NodePathTabSchema,
+  openNodePathTab,
+  type NodePathTabState,
+} from '@/node/nodePathNavigation'
 import {
   nodePathAction,
   openFolderForNode,
@@ -34,6 +42,7 @@ export class NodeSidebarView extends ItemView {
   private ui?: KitMount
   private stop?: WatchStopHandle
   private readonly registrationId = shallowRef('')
+  private readonly activeFile = shallowRef<Extract<NodePathTabState, { kind: 'file' | 'editor' }>>()
   private readonly local = shallowRef<LocalNode>()
   private readonly localPhase = shallowRef<
     'looking' | 'found' | 'connecting' | 'not-found' | 'remote'
@@ -67,6 +76,20 @@ export class NodeSidebarView extends ItemView {
   }
   async onOpen(): Promise<void> {
     this.contentEl.addClass('abele-node-sidebar')
+    const workspace = this.app.workspace
+    const updateFile = () => {
+      const state = workspace.getMostRecentLeaf(workspace.rootSplit)?.getViewState()
+      const parsed =
+        state && [NODE_FILE_VIEW, NODE_EDITOR_VIEW].includes(state.type)
+          ? NodePathTabSchema.safeParse(state.state)
+          : undefined
+      const file = parsed?.success ? parsed.data : undefined
+      this.activeFile.value =
+        file && (file.kind === 'file' || file.kind === 'editor') ? file : undefined
+    }
+    this.registerEvent(workspace.on('active-leaf-change', updateFile))
+    this.registerEvent(workspace.on('layout-change', updateFile))
+    updateFile()
     const service = NodeService.getInstance()
     this.stop = watch(
       service.nodes,
@@ -85,6 +108,14 @@ export class NodeSidebarView extends ItemView {
             ? NodePathService.getInstance().model(node.id)
             : undefined
           const connection = node ? service.connection(node.id) : undefined
+          const file = this.activeFile.value
+          const current = model?.current.value
+          const fileHere =
+            file &&
+            current &&
+            file.target.registrationId === current.registrationId &&
+            file.target.projectId === current.projectId &&
+            pathTargetKey(file.target) === pathTargetKey(current)
           const selected = () => model?.current.value
           // A chat chosen in the place search opens in its tab, as its row in the panel did.
           const openChat = (id: string) => {
@@ -107,6 +138,7 @@ export class NodeSidebarView extends ItemView {
           }
           return h(NodePathSidebar, {
             model,
+            file: fileHere ? nodeResourceTarget(file.path).path : undefined,
             phase: node ? 'ready' : this.localPhase.value,
             error: this.localError.value || undefined,
             onConnect: () => this.connectLocal(),

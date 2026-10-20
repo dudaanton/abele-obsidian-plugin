@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { ChannelError } from '@abele/channel-protocol'
 import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 import { NodeService } from './NodeService'
@@ -71,8 +72,11 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
       value: renaming ? path.split('/').pop() : path,
       submitText: t(renaming ? 'node.files.rename' : 'node.files.move'),
       validate: renaming
-        ? (name) =>
-            /[\\/]/.test(name) || ['.', '..'].includes(name) ? t('node.files.nameOnly') : ''
+        ? (name) => {
+            if (!name || /[\\/]/.test(name) || ['.', '..'].includes(name))
+              throw new UiError(uiMessage('node.files.nameOnly'))
+            return name
+          }
         : undefined,
     })
     if (!value) return

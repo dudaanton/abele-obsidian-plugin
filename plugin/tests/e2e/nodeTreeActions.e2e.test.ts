@@ -37,7 +37,10 @@ const probe = (device: string) =>
         input.dispatchEvent(new Event('input', { bubbles: true }))
         await wait(100)
       }
-      if (name === 'Rename…' && !modal.textContent.includes('Enter a file name without folders.')) throw Error('Rename did not explain the filename constraint')
+      if (name === 'Rename…') {
+        [...modal.querySelectorAll('button')].find(button => button.textContent.trim() === name).click()
+        await until(() => modal.textContent.includes('Enter a file name without folders.'))
+      }
       const box = modal.getBoundingClientRect()
       fits = fits && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + device + '-' + suffix + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
