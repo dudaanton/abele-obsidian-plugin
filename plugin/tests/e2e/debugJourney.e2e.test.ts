@@ -837,10 +837,10 @@ it.each(['desktop', 'phone'] as const)(
         press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch git program'));
         await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','git program paused',500);
         binding=api.DebuggerService.instance.active.value;
-        const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/app.cjs'&&l.containerEl.querySelector('.abele-debug-source__point')),'debug git source');
+        const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().target?.projectId===project.project_id&&l.view.getState().path==='src/app.cjs'&&l.containerEl.querySelector('.abele-debug-source__point')),'debug git source');
         await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
         const toggle=await until(()=>leaf.view.contentEl.querySelector('[aria-label="Toggle line blame"]'),'debug source blame control');
-        toggle.click();await until(()=>leaf.view.contentEl.querySelector('.abele-github-blame-range'),'debug source blame range');
+        toggle.click();await until(()=>{const error=leaf.view.contentEl.querySelector('[role="alert"]');if(error)throw Error('Debug blame: '+error.textContent);return leaf.view.contentEl.querySelector('.abele-github-blame-range')},'debug source blame range');
         await shot('git-${device}-debug-blame');
         toggle.click();await until(()=>!leaf.view.contentEl.querySelector('.abele-github-blame-range'),'blame hidden');
         const symbol=await until(()=>[...leaf.view.contentEl.querySelectorAll('.cm-line span')].find(el=>el.textContent==='inspectItem'),'source symbol'),rect=symbol.getBoundingClientRect();
