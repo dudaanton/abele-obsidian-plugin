@@ -36,6 +36,7 @@ import type { FolderSummary } from '@/components/nodeWork/types'
 import { nodePathMenuPosition as position } from './nodePathMenuPosition'
 import { nodeTreeAction, type TreeAction } from './nodeTreeActions'
 import { nodeAdvertisesMethod } from './advertisedMethods'
+import { disconnectNodeDevice } from './disconnectNodeDevice'
 import { worktreeBusy } from './worktreeBusy'
 
 const app = () => GlobalStore.getInstance().app
@@ -532,14 +533,18 @@ async function nodeItems(
         .setIcon('unplug')
         .onClick(() =>
           nodePathAction(async () => {
-            if (
-              await confirmDialog({
-                title: t('streamB.disconnectNode.c336da'),
-                message: t('node.disconnectTokenNotice'),
-                confirmText: t('streamB.disconnect.acfc5b'),
-              })
+            await disconnectNodeDevice(
+              connection.client,
+              async (revokes) =>
+                confirmDialog({
+                  title: t('streamB.disconnectNode.c336da'),
+                  message: t(
+                    revokes ? 'node.disconnectRevokeNotice' : 'node.disconnectTokenNotice'
+                  ),
+                  confirmText: t('streamB.disconnect.acfc5b'),
+                }),
+              () => service.remove(model.registrationId)
             )
-              service.remove(model.registrationId)
           })
         )
     )
