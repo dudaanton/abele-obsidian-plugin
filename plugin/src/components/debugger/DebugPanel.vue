@@ -23,6 +23,7 @@
         :pulse="session.status === 'running' || session.status === 'starting'"
       />
       <span class="abele-debug-panel__name">{{ session.program }}</span>
+      <span class="abele-debug-panel__state">{{ stateLabel }}</span>
       <a
         v-if="top && session.status !== 'exited'"
         class="abele-debug-panel__where"
@@ -411,7 +412,9 @@ const stateLabel = computed(() => {
   const s = props.session
   return s.status === 'paused'
     ? s.reason
-      ? t('streamC.4e9fcd27b044c57c', { v1: s.reason })
+      ? /^paused\b/i.test(s.reason)
+        ? s.reason
+        : t('streamC.4e9fcd27b044c57c', { v1: s.reason })
       : t('streamC.e159b06187d369a0')
     : s.status === 'running'
       ? t('streamC.f4ccae29e1bb0c20')
@@ -542,11 +545,16 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
 }
 .abele-debug-panel__program {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-3) var(--size-4-1);
   color: var(--text-normal);
   font-size: var(--font-ui-small);
+}
+.abele-debug-panel__state {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .abele-debug-panel__name {
   min-width: 0;

@@ -725,8 +725,13 @@ export class DebuggerController {
       for (const e of page.events) {
         if (e.event_seq <= this.outputAfter) continue
         if (e.kind === 'output') {
-          const data = z.object({ text: z.string() }).loose().parse(e.data)
-          this.session.output = (this.session.output + data.text).slice(-65536)
+          const data = z
+            .object({ text: z.string(), category: z.string().optional() })
+            .loose()
+            .parse(e.data)
+          // DAP telemetry describes adapter operations, not the program's console.
+          if (data.category !== 'telemetry')
+            this.session.output = (this.session.output + data.text).slice(-65536)
         }
         this.outputAfter = e.event_seq
       }

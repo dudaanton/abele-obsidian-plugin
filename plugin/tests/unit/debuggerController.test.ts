@@ -28,6 +28,40 @@ it('accepts a fresh output snapshot without reporting missing earlier output', a
   expect(model.error).toBe('')
 })
 
+it('keeps adapter telemetry out of program output while retaining stdout and stderr', async () => {
+  const { model, rpc } = fixture()
+  rpc.mockResolvedValueOnce({
+    kind: 'events',
+    cursor: { debug_session_id: 'sample-debug', incarnation: 'sample-incarnation', event_seq: 3 },
+    events: ['telemetry', 'stdout', 'stderr'].map((category, i) => ({
+      version: 'debugger.v1',
+      debug_session_id: 'sample-debug',
+      incarnation: 'sample-incarnation',
+      event_seq: i + 1,
+      state_revision: 4,
+      breakpoint_revision: 2,
+      stop_epoch: 3,
+      observed_at: '2025-01-01T00:00:00.000Z',
+      kind: 'output',
+      truncated: false,
+      data: {
+        category,
+        text: category === 'telemetry' ? 'js-debug/dap/operation' : `${category}\n`,
+      },
+    })),
+  } as never)
+  await model.refreshOutput()
+  expect(model.session.output).toBe('stdout\nstderr\n')
+})
+
+it('shows the pause reason as visible text without repeating the paused state', () => {
+  const { model } = fixture()
+  model.session.reason = 'Paused'
+  const panel = mount(DebugPanel, { props: { session: model.session } })
+  expect(panel.get('.abele-debug-panel__state').text()).toBe('Paused')
+  expect(panel.text()).not.toContain('Paused — Paused')
+})
+
 it.each([false, true])(
   'keeps inspected scope children when completion is delayed: %s',
   async (delayed) => {
