@@ -98,6 +98,7 @@ describe('node sidebar layout state', () => {
     const nodes = shallowRef([{ id: 'first-registration' }, { id: 'second-registration' }])
     vi.mocked(NodeService.getInstance).mockReturnValue({ nodes } as never)
     const view = new NodeSidebarView({} as WorkspaceLeaf)
+    Object.assign(view, { app: { loadLocalStorage: () => undefined } })
     await view.setState({ registrationId: 'second-registration' }, {})
     expect(view.getState()).toEqual({ registrationId: 'second-registration' })
     await view.setState({ registrationId: 'removed-registration' }, {})
