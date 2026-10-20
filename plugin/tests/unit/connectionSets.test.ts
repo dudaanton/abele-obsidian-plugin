@@ -12,6 +12,7 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { reviewSourceSchema } from '@/sync/reviewState'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
 function setup() {
@@ -530,6 +531,37 @@ describe('connection item sets', () => {
     expect(await fs.stat('Garden/edited.md')).not.toBe(null)
     expect(await fs.stat('Garden/covered.md')).not.toBe(null)
     expect(await state.get('Garden/edited.md')).not.toBe(null)
+  })
+  it('leases the physical location when removing a relocated detached copy', async () => {
+    const disk = new MemoryFileSystem(),
+      state = new MemoryStateStore()
+    const placement = new LocalFolderPlacement('Shared', 'Device copy')
+    const bytes = new TextEncoder().encode('unchanged sample')
+    await disk.writeAtomic('Device copy/sample.md', bytes, 1000)
+    await state.put({
+      path: 'Shared/sample.md',
+      fileId: 'sample',
+      versionId: 'version-a',
+      sha: await sha256(bytes),
+      size: bytes.length,
+      mtime: 1000,
+    })
+    const lease = vi.fn(async (path: string, work: () => Promise<void>) => {
+      expect(path).toBe('Device copy/sample.md')
+      await work()
+    })
+    expect(
+      await removeDetachedCopies({
+        fs: placement.fileSystem(disk),
+        state,
+        detached: () => true,
+        covered: () => false,
+        localPath: (path) => placement.toLocal(path),
+        lease,
+      })
+    ).toEqual({ removed: 1, kept: 0 })
+    expect(lease).toHaveBeenCalledOnce()
+    expect(await disk.stat('Device copy/sample.md')).toBeNull()
   })
   it('refuses local copy deletion for a live item', async () => {
     await expect(

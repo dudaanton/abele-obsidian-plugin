@@ -1356,6 +1356,7 @@ export class TokenEngines {
           state: copies,
           detached: () => !!this.ui.itemSets.store.forRecord(id)?.item.detached,
           covered,
+          localPath: (path) => placement?.toLocal(path) ?? path,
           lease: (path, work) =>
             pathCoordinatorOf(this.app.vault).run([path], work, () => fence.assertReady()),
         })

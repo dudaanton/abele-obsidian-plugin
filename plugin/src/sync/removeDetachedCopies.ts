@@ -6,6 +6,8 @@ export interface DetachedCopyPort {
   state: StateStore
   detached(): boolean
   covered(path: string): boolean
+  /** Resolve ledger paths to device paths before acquiring the shared path lease. */
+  localPath?(path: string): string
   /** The host holds its path coordinator and runtime fence throughout the callback. */
   lease<T>(path: string, work: () => Promise<T>): Promise<T>
 }
@@ -18,7 +20,7 @@ export async function removeDetachedCopies(
   let removed = 0,
     kept = 0
   for await (const entry of port.state.all()) {
-    await port.lease(entry.path, async () => {
+    await port.lease(port.localPath?.(entry.path) ?? entry.path, async () => {
       if (!port.detached()) throw new Error('The item is shared again; local removal stopped')
       if (port.covered(entry.path)) {
         kept++
