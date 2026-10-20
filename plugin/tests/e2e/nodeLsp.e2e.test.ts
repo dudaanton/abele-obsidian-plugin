@@ -39,7 +39,9 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await shot(state);
           if (state === 'errors') {
             phase = 'diagnostic-tap';
-            document.querySelector('.modal.abele-modal .abele-lsp-gutter .cm-gutterElement').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+            const dot = document.querySelector('.modal.abele-modal .abele-lsp-gutter span[title]');
+            const dotBox = dot.getBoundingClientRect();
+            dot.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:dotBox.left+dotBox.width/2,clientY:dotBox.top+dotBox.height/2}));
             await until(() => document.querySelector('.abele-lsp-menu-message'));
             const message = document.querySelector('.abele-lsp-menu-message');
             if(!message.textContent.includes('typescript') || !message.textContent.includes('eslint') || getComputedStyle(message.parentElement).whiteSpace === 'nowrap') throw Error('Diagnostic messages are truncated');

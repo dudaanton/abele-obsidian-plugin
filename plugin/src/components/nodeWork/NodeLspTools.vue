@@ -23,12 +23,14 @@
       <span>{{ t('node.lsp.untrusted') }}</span>
       <Button plain :disabled="busy" :text="t('node.lsp.trust')" @click="trust" />
     </div>
-    <div v-else-if="missing" class="abele-lsp-status abele-lsp-notice" role="status">
-      <span
-        >{{ t('node.lsp.missing') }} <code>{{ installCommand }}</code></span
-      >
-      <div class="abele-lsp-actions">
+    <div v-else-if="missing" class="abele-lsp-status" role="status">
+      <div class="abele-lsp-notice">
+        <span
+          >{{ t('node.lsp.missing') }} <code>{{ installCommand }}</code></span
+        >
         <Button plain :text="t('node.lsp.copy')" @click="copyCommand" />
+      </div>
+      <div class="abele-lsp-actions">
         <Button plain :disabled="busy" :text="t('node.lsp.retry')" @click="retry" />
         <Button
           v-if="canInstall"
