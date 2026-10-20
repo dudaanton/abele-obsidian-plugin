@@ -133,8 +133,12 @@ export function runSummary(calls: readonly ChatMessage[]): string {
           )
           continue
         }
+        // Older default refusals have the standard result but no execution marker.
+        const denied =
+          call.toolExecution === 'not-run' ||
+          (call.toolExecution === undefined && call.toolResult === 'User rejected this action')
         parts.push(
-          t(call.toolExecution === 'not-run' ? 'streamB.actionDenied' : 'streamB.actionFailed', {
+          t(denied ? 'streamB.actionDenied' : 'streamB.actionFailed', {
             action: readableToolName(call.toolName),
             reason: truncate(call.toolResult ?? '', 160),
           })

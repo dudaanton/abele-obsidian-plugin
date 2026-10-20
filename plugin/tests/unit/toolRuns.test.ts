@@ -13,6 +13,11 @@ it('uses human names for short vault tool identifiers', () => {
 })
 
 let n = 0
+it('recognizes saved default denials from before execution markers were recorded', () => {
+  expect(
+    runSummary([call('mv', { toolStatus: 'rejected', toolResult: 'User rejected this action' })])
+  ).toMatch(/^Denied:/)
+})
 it('does not describe interrupted or unstarted calls as tool failures', () => {
   expect(
     runSummary([
