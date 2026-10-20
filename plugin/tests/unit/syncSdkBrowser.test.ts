@@ -13,6 +13,7 @@ it.each([
   '<script setup lang="ts">import sdk from "@abele/sync-sdk"</script>',
   'import sdk from "@abele/sync-sdk/node"',
   'import sdk from "@abele/sync-core"',
+  'import sdk from "@abele/sync-core/dist/index.js"',
 ])('rejects a non-browser SDK source import: %s', (source) => {
   expect(() => assertSdkSourceImports(source, 'Sample.vue')).toThrow(/sync SDK import/)
 })
@@ -71,4 +72,30 @@ it('allows SDK browser modules and unrelated desktop host imports', () => {
       importedIds: ['node:fs'],
     }))
   ).not.toThrow()
+})
+
+it('distinguishes browser dependencies nested under the SDK from SDK entry points', () => {
+  expect(() =>
+    assertSdkBrowserBundle(
+      bundle('/sample/node_modules/@abele/sync-sdk/node_modules/yaml/browser/dist/index.js'),
+      () => ({ importedIds: [] })
+    )
+  ).not.toThrow()
+})
+
+it('refuses dynamic Node imports in the SDK dependency graph', () => {
+  expect(() =>
+    assertSdkBrowserBundle(bundle(sdk + 'internal/core/index.js'), () => ({
+      importedIds: [],
+      dynamicallyImportedIds: ['node:fs'],
+    }))
+  ).toThrow(/SDK browser bundle/)
+})
+
+it('refuses transitive Node imports reached through an SDK dependency', () => {
+  expect(() =>
+    assertSdkBrowserBundle(bundle(sdk + 'internal/core/index.js'), (id) => ({
+      importedIds: id.startsWith(sdk) ? ['/sample/node_modules/sample/index.js'] : ['node:fs'],
+    }))
+  ).toThrow(/SDK browser bundle/)
 })
