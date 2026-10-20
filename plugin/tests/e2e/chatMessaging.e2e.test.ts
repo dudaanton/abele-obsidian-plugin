@@ -31,7 +31,7 @@ it.each(onPhone() ? [true] : [false, true])(
         if(!list||!send)throw Error('Messaging tools are missing');
         const listed=await list.execute('listing',{});
         caller.appendChatMessage({id:'listed',role:'tool-call',content:'',timestamp:Date.now(),toolName:'list_chats',toolStatus:'approved',toolResult:listed.content[0].text});
-        const call={id:'letter',role:'tool-call',content:'',timestamp:Date.now(),toolCallId:'ask',toolName:'send_message_to_chat',toolStatus:'pending',toolParams:{chat_id:target.id,message:'Explain the sample behavior.\nInclude the recovery steps.'}};
+        const call={id:'letter',role:'tool-call',content:'',timestamp:Date.now(),toolCallId:'ask',toolName:'send_message_to_chat',toolStatus:'pending',toolParams:{chat_id:target.id,message:'Explain the sample behavior.\\nInclude the recovery steps.'}};
         caller.appendChatMessage(call);caller.updateVisibleMessages();
         caller.pendingToolCalls.value=[{type:'toolCall',id:'ask',name:call.toolName,arguments:call.toolParams}];
         chats.switchTab(caller.id);await leaf.setViewState({type:'abele-ai-sidebar-view',active:true});
