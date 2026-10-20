@@ -19,11 +19,13 @@ does not travel through settings transfer.
 
 Per-item engine records use `abele-sync-item-connections-v1` separately from the legacy
 registry, including file selectors. Each has its own device-secret reference and ledger;
-the grouping records their local record IDs. A downgrade ignores both new keys and can
-still read the original registry. Departure baselines are retained in the item ledger at
-`plugin:retained-share-copies-v1`, after their active entries leave the feed. Explicit copy
-removal compares current bytes with those baselines and preserves edited or otherwise
-covered files. It never sends server deletes.
+the grouping records their local record IDs. The selected item record uses the separate
+`abele-sync-item-selection-v1` key, preserving the legacy registry's selection for a downgrade.
+A downgrade ignores the new keys and can still read the original registry. Departure
+baselines are retained in the item ledger at the `plugin:retained-share-copies-v1:` metadata
+prefix, after their active entries leave the feed. Explicit copy removal compares current
+bytes with those baselines and preserves edited or otherwise covered files. It never sends
+server deletes.
 
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.

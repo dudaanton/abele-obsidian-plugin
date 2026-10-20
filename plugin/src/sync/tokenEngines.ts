@@ -804,20 +804,12 @@ export class TokenEngines {
           item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
           retainedChanged: (items) => this.ui.itemSets.retainedChanged(record.id, items),
           uploadAllowed: (path) => {
-            const binding = this.ui.itemSets.store.forRecord(record.id)
-            if (!binding) return true
             const physical = externalPlacement?.toLocal(path) ?? path
-            const owner = this.ui.itemSets.store.uploader(
-              binding.connection.id,
-              physical,
-              (itemId, candidate) => {
-                const item = binding.connection.items.find((one) => one.id === itemId)
-                return item?.recordId === record.id
-                  ? (runtime?.covers(candidate) ?? false)
-                  : !!item?.recordId && !!this.live.get(item.recordId)?.covers(candidate)
-              }
-            )
-            return owner === binding.item.id
+            return this.ui.itemSets.mayUpload(record.id, physical, (id, candidate) => {
+              return id === record.id
+                ? (runtime?.covers(candidate) ?? false)
+                : !!this.live.get(id)?.covers(candidate)
+            })
           },
           discoveryCandidates: (paths) => {
             for (const path of paths) groupCandidates.add(path.normalize('NFC'))

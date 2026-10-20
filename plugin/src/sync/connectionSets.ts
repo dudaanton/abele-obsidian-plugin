@@ -26,6 +26,21 @@ export type StoredSetItem = z.infer<typeof itemSchema>
 export type SetItem = Omit<StoredSetItem, 'detached' | 'paused' | 'recordId'>
 export type ConnectionSet = z.infer<typeof connectionSchema>
 const clone = <T>(value: T): T => structuredClone(value)
+export function itemUploader(
+  items: readonly StoredSetItem[],
+  path: string,
+  covers: (itemId: string, path: string) => boolean
+): string | null {
+  const candidates = items.filter((one) => !one.detached && !one.paused && covers(one.id, path))
+  const rank = (item: StoredSetItem) =>
+    item.kind === 'file'
+      ? Number.MAX_SAFE_INTEGER
+      : item.kind === 'folder'
+        ? item.path.split('/').length
+        : 0
+  candidates.sort((a, b) => rank(b) - rank(a))
+  return candidates[0]?.id ?? null
+}
 
 /** Refuse both orders of nested folders; groups may overlap dynamically. */
 export function assertItemSet(items: SetItem[]): void {
@@ -107,6 +122,25 @@ export class ConnectionSets {
     doc.connections = doc.connections.filter((one) => one.id !== connectionId)
     this.save(doc)
   }
+  recoverLeader(connectionId: string, present: ReadonlySet<string>): string {
+    const doc = this.read(),
+      connection = doc.connections.find((one) => one.id === connectionId)
+    if (!connection) throw new Error('Unknown connection set')
+    const next = connection.items.find(
+      (item) => item.recordId && present.has(item.recordId)
+    )?.recordId
+    if (!next) throw new Error('Connection set has no remaining records')
+    connection.id = next
+    for (const item of connection.items) {
+      item.paused = true
+      if (item.recordId && !present.has(item.recordId)) {
+        delete item.recordId
+        item.detached = true
+      }
+    }
+    this.save(doc)
+    return next
+  }
   create(
     connectionId: string,
     label: string,
@@ -186,17 +220,6 @@ export class ConnectionSets {
     path: string,
     covers: (itemId: string, path: string) => boolean
   ): string | null {
-    const items =
-      this.get(connectionId)?.items.filter(
-        (one) => !one.detached && !one.paused && covers(one.id, path)
-      ) ?? []
-    const rank = (item: StoredSetItem) =>
-      item.kind === 'file'
-        ? Number.MAX_SAFE_INTEGER
-        : item.kind === 'folder'
-          ? item.path.split('/').length
-          : 0
-    items.sort((a, b) => rank(b) - rank(a))
-    return items[0]?.id ?? null
+    return itemUploader(this.get(connectionId)?.items ?? [], path, covers)
   }
 }

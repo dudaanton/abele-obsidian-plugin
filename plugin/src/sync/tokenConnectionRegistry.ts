@@ -11,6 +11,7 @@ import { LocalPlacementError } from './localFolderPlacement'
 
 export const TOKEN_REGISTRY_KEY = 'abele-sync-connections-v2'
 export const ITEM_REGISTRY_KEY = 'abele-sync-item-connections-v1'
+const ITEM_SELECTION_KEY = 'abele-sync-item-selection-v1'
 const secretPrefix = DEVICE_SECRET_PREFIX + 'token-'
 const id = z.string().min(1).max(200)
 const localRootSchema = z
@@ -173,7 +174,8 @@ export class TokenConnectionRegistry {
       validatedDocuments.delete(this.local)
       const doc = documentSchema.parse(value)
       const prior = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
-      const items = prior == null ? { records: [], cleanup: [], selectedId: '' } : this.check(prior)
+      const items: Pick<Document, 'records' | 'cleanup' | 'selectedId'> =
+        prior == null ? { records: [], cleanup: [], selectedId: '' } : this.check(prior)
       const itemIds = new Set([
         ...items.records.map((one) => one.id),
         ...(items.cleanup ?? []).map((one) => one.id),
@@ -211,6 +213,11 @@ export class TokenConnectionRegistry {
         this.local.saveLocalStorage(target, clone(data))
         if (!same(this.local.loadLocalStorage(target), data)) throw recovery()
       }
+      const selection = itemIds.has(doc.selectedId) ? doc.selectedId : null
+      if ((this.local.loadLocalStorage(ITEM_SELECTION_KEY) ?? null) !== selection) {
+        this.local.saveLocalStorage(ITEM_SELECTION_KEY, selection)
+        if (this.local.loadLocalStorage(ITEM_SELECTION_KEY) !== selection) throw recovery()
+      }
       return
     }
     this.local.saveLocalStorage(key, clone(value))
@@ -224,7 +231,8 @@ export class TokenConnectionRegistry {
   private validated(): Document {
     const raw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
     const itemRaw = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
-    const text = JSON.stringify([raw, itemRaw])
+    const selection = this.local.loadLocalStorage(ITEM_SELECTION_KEY)
+    const text = JSON.stringify([raw, itemRaw, selection])
     const known = validatedDocuments.get(this.local)
     if (known && known.text === text) return known.doc
     const base = this.check(raw)
@@ -232,7 +240,10 @@ export class TokenConnectionRegistry {
     const doc = clone(
       this.check({
         ...base,
-        selectedId: base.selectedId || items?.selectedId || '',
+        selectedId:
+          typeof selection === 'string' && items?.records.some((one) => one.id === selection)
+            ? selection
+            : base.selectedId || items?.selectedId || '',
         records: [...base.records, ...(items?.records ?? [])],
         cleanup: [...(base.cleanup ?? []), ...(items?.cleanup ?? [])],
       })

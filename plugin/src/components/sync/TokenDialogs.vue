@@ -429,7 +429,7 @@ function loadShare(reloadChoices = true) {
       if (reloadChoices) {
         const available = await props.ui.choices(id)
         if (!alive || epoch !== generation) return
-        choices.value = available
+        choices.value = available.filter((scope) => scope.kind !== 'file')
       }
       const listed = await props.ui.issued(id)
       if (alive && epoch === generation) tokens.value = listed

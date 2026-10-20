@@ -1,6 +1,13 @@
 import { triggerRef } from 'vue'
 import { encodeAccessToken, type V2AccessToken } from '@abele/sync-sdk/protocol'
-import { ConnectionSets, assertItemSet, type SetItem } from './connectionSets'
+import {
+  ConnectionSets,
+  assertItemSet,
+  itemUploader,
+  type SetItem,
+  type ConnectionSet,
+  type StoredSetItem,
+} from './connectionSets'
 import { V2Client, decodeAccessToken, type ScopeItem } from './v2/client'
 import type { TokenUi } from './tokenUi'
 import type { DeviceTokenSecrets, TokenConnectionRecord } from './tokenConnectionRegistry'
@@ -45,6 +52,30 @@ export class TokenItemSets implements ShareSetSource {
     })
   private readonly counts = new Map<string, { files: number; edited: number; kept?: number }>()
   private readonly departed = new Map<string, ConnectionItem[]>()
+  private readonly uploadBindings = new Map<
+    string,
+    { connection: ConnectionSet; item: StoredSetItem }
+  >()
+  private refreshUploadBindings(): void {
+    this.uploadBindings.clear()
+    for (const connection of this.store.all())
+      for (const item of connection.items)
+        if (item.recordId) this.uploadBindings.set(item.recordId, { connection, item })
+  }
+  mayUpload(
+    recordId: string,
+    path: string,
+    covers: (recordId: string, path: string) => boolean
+  ): boolean {
+    const binding = this.uploadBindings.get(recordId)
+    if (!binding) return true
+    return (
+      itemUploader(binding.connection.items, path, (itemId, candidate) => {
+        const item = binding.connection.items.find((one) => one.id === itemId)
+        return !!item?.recordId && covers(item.recordId, candidate)
+      }) === binding.item.id
+    )
+  }
   retainedChanged(recordId: string, items: ConnectionItem[]): void {
     if (JSON.stringify(this.departed.get(recordId) ?? []) === JSON.stringify(items)) return
     this.departed.set(recordId, items)
@@ -56,6 +87,7 @@ export class TokenItemSets implements ShareSetSource {
     private readonly transport: typeof fetch
   ) {
     this.store = new ConnectionSets(ui.registry.localStorage)
+    this.refreshUploadBindings()
   }
   install(): void {
     this.epoch++
@@ -119,12 +151,15 @@ export class TokenItemSets implements ShareSetSource {
     )
   }
   client(id: string): V2Client {
-    const record = this.ui.registry.records().find((one) => one.id === id)
+    const connection = this.store.get(id)
+    const selected =
+      connection?.items.find((item) => !item.detached && item.recordId)?.recordId ?? id
+    const record = this.ui.registry.records().find((one) => one.id === selected)
     if (!record) throw new Error('Connection is unavailable')
     return new V2Client(
       decodeAccessToken(this.encoded(record)),
       this.transport,
-      this.store.forRecord(id)?.item.id
+      this.store.forRecord(selected)?.item.id
     )
   }
   several = (id?: string): boolean => {
@@ -217,7 +252,7 @@ export class TokenItemSets implements ShareSetSource {
     const inventory = await new V2Client(token, fetcher).itemClient().items()
     const items = inventory.items.filter(visible)
     if (!items.length) throw new Error('This key currently shares no items. Local files are kept.')
-    const authorities = []
+    const authorities: Awaited<ReturnType<V2Client['connection']>>[] = []
     for (const item of items) {
       if (signal?.aborted) throw new Error('Connection cancelled')
       await this.ui.connectionChangeGuard(
@@ -362,6 +397,7 @@ export class TokenItemSets implements ShareSetSource {
           this.secrets
         )
         this.store.bind(id, item.id, added)
+        this.ui.registry.setPaused(added, item.paused)
         changed = true
       } else if (changes.added.includes(item.id)) {
         await this.ui.disconnectRuntime(item.recordId)
@@ -416,13 +452,22 @@ export class TokenItemSets implements ShareSetSource {
   }
   prune(): void {
     const records = this.ui.registry.records()
-    for (const connection of this.store.all())
+    for (const connection of this.store.all()) {
       if (
         !connection.items.some(
           (item) => item.recordId && records.some((record) => record.id === item.recordId)
         )
       )
         this.store.forget(connection.id)
+      else if (!records.some((record) => record.id === connection.id)) {
+        const next = this.store.recoverLeader(
+          connection.id,
+          new Set(records.map((record) => record.id))
+        )
+        for (const item of this.store.get(next).items)
+          if (item.recordId) this.ui.registry.setPaused(item.recordId, true)
+      }
+    }
     for (const id of this.capabilities.keys())
       if (!records.some((record) => record.id === id)) {
         this.capabilities.delete(id)
@@ -431,6 +476,7 @@ export class TokenItemSets implements ShareSetSource {
       }
     for (const [id, entry] of this.issued)
       if (!records.some((record) => record.id === entry.connectionId)) this.issued.delete(id)
+    this.refreshUploadBindings()
   }
   async pauseItem(id: string, itemId: string, paused: boolean): Promise<void> {
     if (itemId === 'scope:' + id) {
@@ -619,10 +665,26 @@ export class TokenItemSets implements ShareSetSource {
       )
       next = page.next
     } while (next !== null)
+    const affected = (await this.client(issued.connectionId).tokens()).items.filter(
+      (token) =>
+        token.revoked_at === null &&
+        (token.id === shareId
+          ? itemId === null
+          : items.some((item) =>
+              item.scope.kind === 'folder'
+                ? item.scope.path === '/' ||
+                  token.scope.path === item.scope.path ||
+                  token.scope.path.startsWith(item.scope.path + '/')
+                : token.scope.kind === 'file' && token.scope.id === item.scope.id
+            ))
+    )
     return {
       files: files.length,
       bytes: files.reduce((n, one) => n + ('size' in one ? one.size : 0), 0),
-      access: [],
+      access: affected.map((token) => ({
+        label: token.label || token.scope.path,
+        scope: token.scope.path,
+      })),
       canWrite: !(await this.client(issued.connectionId).connection()).read_only,
     }
   }

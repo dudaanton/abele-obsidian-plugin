@@ -26,6 +26,57 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it.fails(
+    'BUG: owner group deletion needs authoritative membership counts and overlap facts',
+    async () => {
+      const { storage, data } = setup()
+      data.delete(TOKEN_REGISTRY_KEY)
+      const registry = TokenConnectionRegistry.open(storage),
+        key = 'a'.repeat(43)
+      const secrets = { get: () => key, set: () => {}, remove: () => {} }
+      const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+      const id = registry.add()
+      registry.attach(
+        id,
+        { v: 1, address: 'https://sync.example', key, scope },
+        { protocol: 2, token_id: 'owner', space_id: 'space-a', scope, status: 'active' },
+        secrets
+      )
+      const group = { kind: 'group', id: 'group-a', path: 'Sample group.md' }
+      const fetcher: typeof fetch = async (input) => {
+        const path = new URL(String(input)).pathname
+        if (path.endsWith('/manifest')) return Response.json({ items: [], cursor: 0, next: null })
+        if (path.endsWith('/tokens'))
+          return Response.json({
+            items: [
+              {
+                id: 'issued',
+                scope: group,
+                label: 'Sample group share',
+                issued_by_token_id: 'owner',
+                created_at: '2025-01-01T00:00:00Z',
+                revoked_at: null,
+              },
+            ],
+          })
+        return Response.json({
+          items: [
+            {
+              id: 'group-item',
+              scope_id: 'scope-group',
+              scope: group,
+              added_at: '2025-01-01T00:00:00Z',
+              removed_at: null,
+            },
+          ],
+        })
+      }
+      const ui = new TokenUi(registry, secrets, fetcher)
+      await ui.itemSets.shares(id)
+      await vi.waitFor(() => expect(ui.itemSets.deleteFacts('issued', 'group-item')).not.toBe(null))
+      expect(ui.itemSets.deleteFacts('issued', 'group-item')?.canWrite).toBe(true)
+    }
+  )
   it('retains the baseline of a departed file after its active ledger entry is dropped', async () => {
     const state = new MemoryStateStore(),
       retained = new RetainedShareCopies(state)
@@ -276,6 +327,11 @@ describe('connection item sets', () => {
     expect(ui.rows.value[0].scope?.path).toBe('Current')
     expect(requests).toContain('/v2/connection:current-item')
     expect(data.get(TOKEN_REGISTRY_KEY)).toEqual(before)
+    const reads = vi.spyOn(storage, 'loadLocalStorage')
+    for (let index = 0; index < 10; index++)
+      expect(ui.itemSets.mayUpload(ui.rows.value[0].id, 'Current/sample.md', () => true)).toBe(true)
+    expect(reads).not.toHaveBeenCalled()
+    reads.mockRestore()
     currentScope = { kind: 'folder', id: 'scope-added', path: 'Added' }
     currentItem = 'added-item'
     expect(await ui.itemSets.refresh(ui.rows.value[0].id)).toBe(true)
@@ -286,6 +342,11 @@ describe('connection item sets', () => {
     expect(ui.rows.value).toHaveLength(1)
     expect(registry.records()).toHaveLength(2)
     expect(keys.size).toBe(2)
+    registry.beginForget(ui.rows.value[0].id)
+    registry.finishForgotten(secrets)
+    ui.refresh()
+    expect(ui.rows.value).toHaveLength(1)
+    expect(ui.rows.value[0].paused).toBe(true)
     await ui.disconnect(ui.rows.value[0].id)
     expect(registry.records()).toHaveLength(0)
     expect(keys.size).toBe(0)
@@ -320,6 +381,18 @@ describe('connection item sets', () => {
     registry.finishForgotten(secrets)
     expect(keys.size).toBe(0)
     expect(data.get(TOKEN_REGISTRY_KEY)).toEqual(legacy)
+  })
+  it('selects an item record without changing the legacy registry selection', () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      legacy = registry.add(),
+      item = registry.add(true)
+    registry.select(item)
+    expect(TokenConnectionRegistry.open(storage).selectedId).toBe(item)
+    expect((data.get(TOKEN_REGISTRY_KEY) as { selectedId: string }).selectedId).toBe(legacy)
+    registry.select(legacy)
+    expect(TokenConnectionRegistry.open(storage).selectedId).toBe(legacy)
   })
   it('keeps other items syncing when one item fails', async () => {
     const { sets } = setup()

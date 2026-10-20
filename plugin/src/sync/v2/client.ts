@@ -69,8 +69,9 @@ export class V2Client {
   }
   itemClient() {
     // Management is key-level; a detached content item must not select its authority.
-    const client = new V2Client(this.token, this.transport)
-    const items = () => client.request('connection/items', V2ScopeItemsResponseSchema)
+    const client = new V2Client(this.token, this.transport, this.item)
+    const inventory = new V2Client(this.token, this.transport)
+    const items = () => inventory.request('connection/items', V2ScopeItemsResponseSchema)
     return {
       items,
       supportsItems: async () => {
