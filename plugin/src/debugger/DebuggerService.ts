@@ -307,7 +307,7 @@ export class DebuggerService {
     }
   }
   trackFolder(owner: DebugOwner, sessionId: string, target: PathTarget) {
-    this.folders.set(this.binding(owner), { sessionId, target: { ...target } })
+    this.folders.set(this.binding(owner, sessionId), { sessionId, target: { ...target } })
     ++this.sourceRevision.value
   }
   takenFiles(binding: DebuggerBinding): string[] {
@@ -326,7 +326,11 @@ export class DebuggerService {
   folderBinding(target: PathTarget | null | undefined) {
     void this.sourceRevision.value
     if (!target) return undefined
-    for (const [binding, folder] of this.folders) {
+    const selected = this.active.value
+    const entries = [...this.folders].sort(
+      ([a], [b]) => Number(b === selected) - Number(a === selected)
+    )
+    for (const [binding, folder] of entries) {
       void binding.revision.value
       if (
         folder.target.registrationId === target.registrationId &&
@@ -417,8 +421,19 @@ export class DebuggerService {
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
   }
-  binding(presenter: DebugOwner) {
+  binding(presenter: DebugOwner, sessionId?: string) {
     const identity = debugIdentity(presenter)
+    if (isFolderOwner(presenter)) {
+      if (!sessionId) {
+        const selected = this.active.value
+        if (
+          selected &&
+          this.folders.get(selected)?.target.id === presenter.target.id &&
+          selected.registrationId === identity.registrationId
+        )
+          return selected
+      } else identity.key += `:session:${sessionId}`
+    }
     const key = this.key(identity.registrationId, identity.key)
     let binding = this.bindings.get(key)
     if (!binding) {
@@ -441,10 +456,14 @@ export class DebuggerService {
     const result = await presenter.connection.client.request('debugger.v1.sessions', {
       ...debugOwnerParams(presenter),
     })
-    return z.array(z.unknown().transform((raw) => DebuggerSnapshotSchema.parse(raw))).parse(result)
+    const sessions = z
+      .array(z.unknown().transform((raw) => DebuggerSnapshotSchema.parse(raw)))
+      .parse(result)
+    return [...new Map(sessions.map((s) => [s.debug_session_id, s])).values()]
   }
   select(binding: DebuggerBinding) {
     this.active.value = binding
+    ++this.sourceRevision.value
   }
   /** A run belongs to one session on one node, even when another debugger is active. */
   forRun(registrationId: string, projectId: string, sessionId: string) {
@@ -504,6 +523,7 @@ export class DebuggerService {
       const [registrationId, conversationId] = JSON.parse(key) as [string, string]
       if (registrationId !== target.registrationId) continue
       const binding = this.forSource(registrationId, conversationId)
+      if (binding !== this.folderBinding(target)) continue
       for (const [sourceId, m] of sources)
         if (
           m.path === path &&

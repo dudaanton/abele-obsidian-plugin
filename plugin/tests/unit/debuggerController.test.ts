@@ -8,6 +8,26 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 
+it('treats an active external session with unknown execution as running on older nodes', () => {
+  const { model } = fixture()
+  const s = snapshot({ execution: 'unknown', threads: [], selected_thread_id: null })
+  s.target.process_ownership = 'external'
+  model.observe({ observation: 'current', snapshot: s })
+  expect(model.session.status).toBe('running')
+})
+
+it('accepts a fresh output snapshot without reporting missing earlier output', async () => {
+  const { model, rpc } = fixture()
+  rpc.mockResolvedValueOnce({
+    kind: 'fresh_snapshot_required',
+    reason: 'gap',
+    cursor: { debug_session_id: 'sample-debug', incarnation: 'sample-incarnation', event_seq: 8 },
+    snapshot: snapshot(),
+  } as never)
+  await model.refreshOutput()
+  expect(model.error).toBe('')
+})
+
 it.each([false, true])(
   'keeps inspected scope children when completion is delayed: %s',
   async (delayed) => {

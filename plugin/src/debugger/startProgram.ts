@@ -126,7 +126,7 @@ export async function registerSources(
   for (const s of started.sources)
     DebuggerService.instance.registerSource(
       debugIdentity(presenter).registrationId,
-      debugIdentity(presenter).key,
+      DebuggerService.instance.binding(presenter, started.debug_session_id).conversationId,
       s.source_id,
       s.path,
       started.debug_session_id,
@@ -146,7 +146,8 @@ export async function openSources(
   main?: string
 ) {
   const debugOf = (sourceId: string) => ({
-    conversationId: debugIdentity(presenter).key,
+    conversationId: DebuggerService.instance.binding(presenter, started.debug_session_id)
+      .conversationId,
     sourceId,
     debugSessionId: started.debug_session_id,
     incarnation,
@@ -205,7 +206,7 @@ export async function startProgram(
   const service = DebuggerService.instance
   // The node has no restart of its own: Restart in the panel stops the program still going and
   // starts the same one again, with the points it had.
-  const binding = service.binding(presenter)
+  const binding = service.binding(presenter, sessionId)
   binding.reattach = undefined
   binding.rerun = async () => {
     await presenter.connection.connect()

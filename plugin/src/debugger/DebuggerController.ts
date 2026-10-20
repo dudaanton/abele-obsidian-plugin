@@ -181,7 +181,11 @@ export class DebuggerController {
         ? 'exited'
         : s.execution === 'stopped'
           ? 'paused'
-          : s.execution === 'running'
+          : s.execution === 'running' ||
+              (s.lifecycle === 'active' &&
+                s.execution === 'unknown' &&
+                s.target.process_ownership === 'external' &&
+                !s.threads.some((thread) => thread.status === 'stopped'))
             ? 'running'
             : 'starting'
     this.session.program = s.target.launch_configuration_id
@@ -714,8 +718,8 @@ export class DebuggerController {
     )
     if (!this.current || generation !== this.serial) return
     if (page.kind === 'fresh_snapshot_required') {
+      if (this.outputAfter > 0) this.error = t('streamC.77d9d5f541c31209')
       this.outputAfter = page.cursor.event_seq
-      this.error = t('streamC.77d9d5f541c31209')
       this.observe({ observation: 'current', snapshot: page.snapshot })
     } else {
       for (const e of page.events) {

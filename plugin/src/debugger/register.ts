@@ -82,7 +82,7 @@ class SessionPicker extends SuggestModal<DebuggerSnapshot> {
 }
 export async function showSession(presenter: DebugOwner, sessionId: string) {
   const service = DebuggerService.instance,
-    binding = service.binding(presenter)
+    binding = service.binding(presenter, sessionId)
   service.select(binding)
   // Opening the session may reveal its paused source and close a phone drawer.
   // Show Debug after that navigation, so the controls stay on screen.

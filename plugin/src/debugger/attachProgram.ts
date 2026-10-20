@@ -101,7 +101,7 @@ export async function attachToProgram(
   console.debug('[debugger] Attached', program.pid, program.port, started.debug_session_id)
   const snapshot = await registerSources(presenter, started, target)
   // Nothing to restart: the node did not start it, and Detach leaves it running.
-  const binding = DebuggerService.instance.binding(presenter)
+  const binding = DebuggerService.instance.binding(presenter, started.debug_session_id)
   binding.rerun = undefined
   binding.reattach = () => askAndAttachProgram(presenter, show)
   await show(started.debug_session_id)
