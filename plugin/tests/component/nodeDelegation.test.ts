@@ -211,3 +211,39 @@ it('answers a developer prompt through AiToolApproval in the parent card', async
     wrapper.unmount()
   }
 })
+
+it('never reads a same-named vault file to preview a node write prompt', async () => {
+  const { useVault } = await import('../helpers/testEnv')
+  const app = useVault([{ path: 'sample.txt', content: 'Private local content' }])
+  const read = vi.spyOn(app.vault, 'read')
+  const prompt = {
+    kind: 'permission' as const,
+    prompt_id: 'sample-write',
+    session_id: 'sample-child',
+    run_id: 'sample-run',
+    revision: 1 as const,
+    action_digest: 'a'.repeat(64),
+    expires_at: Number.MAX_SAFE_INTEGER,
+    state: 'pending' as const,
+    choice: null,
+    installation_id: null,
+    delivered: false,
+    tool_name: 'write',
+    input: { path: 'sample.txt', content: 'Remote content' },
+  }
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      nodeLabel: 'Sample node',
+      card: { ...nodeDelegationCardFixture(), state: 'running', prompts: [prompt] },
+    },
+  })
+  try {
+    await flushPromises()
+    expect(read).not.toHaveBeenCalled()
+    expect(wrapper.find('.abele-tool-approval').text()).toContain('Remote content')
+    expect(wrapper.text()).not.toContain('Private local content')
+  } finally {
+    wrapper.unmount()
+    read.mockRestore()
+  }
+})

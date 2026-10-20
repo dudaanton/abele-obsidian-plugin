@@ -325,7 +325,9 @@ const props = defineProps<{
 const emit = defineEmits<{ answer: [choice: 'allow' | 'deny', value?: string]; stop: [] }>()
 const nodeValue = ref('')
 
-const session = computed(() => ChatService.getInstance().activeSession.value)
+const session = computed(() =>
+  props.nodePrompt ? undefined : ChatService.getInstance().activeSession.value
+)
 const isEditing = ref(false)
 const originalOpen = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
@@ -351,6 +353,7 @@ const effectiveParams = computed(() => {
 // The summary and action share the same unresolved snapshot. Unsaved MCP edits must
 // not silently replace the request the person saw before clicking trust.
 const resolvedKeyRequest = computed(() => {
+  if (props.nodePrompt) return null
   void keyRevision.value
   void AbeleConfig.getInstance().version.value
   return secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
@@ -533,7 +536,7 @@ watch(
   () => [props.message.toolName, params.value.path] as const,
   ([toolName, path]) => {
     currentContent.value = null
-    if (toolName !== 'write' || typeof path !== 'string' || !path) return
+    if (props.nodePrompt || toolName !== 'write' || typeof path !== 'string' || !path) return
 
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(path)
@@ -562,7 +565,8 @@ watch(
     const version = ++wordPreviewVersion
     wordPreview.value = null
     wordPreviewError.value = ''
-    if (!['docx_edit', 'xlsx_write'].includes(props.message.toolName ?? '')) return
+    if (props.nodePrompt || !['docx_edit', 'xlsx_write'].includes(props.message.toolName ?? ''))
+      return
     try {
       const path = String(params.value.path || '')
       if (!session.value?.scopeResolver.isInScope(path))
@@ -609,7 +613,7 @@ watch(
     deckPreview.value = null
     deckPreviewError.value = ''
     const name = props.message.toolName
-    if (name !== 'deck_create' && name !== 'deck_edit') return
+    if (props.nodePrompt || (name !== 'deck_create' && name !== 'deck_edit')) return
     try {
       const p = effectiveParams.value
       let old = ''
@@ -635,7 +639,7 @@ watch(
  * card cannot show one value and the tool report another. Null for any other tool.
  */
 const settingsWrite = computed(() => {
-  if (props.message.toolName !== 'write_settings') return null
+  if (props.nodePrompt || props.message.toolName !== 'write_settings') return null
   const { path, value } = params.value
   if (typeof path !== 'string') return null
   return describeSettingsWrite(path, typeof value === 'string' ? value : JSON.stringify(value))
