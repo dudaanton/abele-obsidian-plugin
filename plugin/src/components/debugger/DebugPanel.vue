@@ -178,7 +178,7 @@
           v-for="b in session.breakpoints"
           :key="`${b.file}:${b.line}`"
           :text="`${fileName(b.file)}:${b.line}`"
-          :note="b.kind === 'record' ? b.note : undefined"
+          :note="b.kind === 'record' ? b.note : b.condition"
           @click="emit('reveal', b.file, b.line)"
           @contextmenu.prevent="(e: MouseEvent) => emit('breakpoint-menu', b.file, b.line, e)"
         >

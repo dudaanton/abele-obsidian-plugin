@@ -103,6 +103,7 @@ class Mark extends GutterMarker {
       o.point?.kind === this.point?.kind &&
       o.point?.logMessage === this.point?.logMessage &&
       o.point?.reason === this.point?.reason &&
+      o.point?.condition === this.point?.condition &&
       o.here === this.here &&
       o.locked === this.locked
     )
@@ -125,7 +126,7 @@ class Mark extends GutterMarker {
     const said = this.point
       ? log && this.point.state === 'set'
         ? t('debug.logPoint', { message: this.point.logMessage ?? '' })
-        : `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}`
+        : `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}${this.point.condition ? ` · ${this.point.condition}` : ''}`
       : ''
     const label = this.point
       ? t('streamC.38b9d675845ab96b', { v1: String(said) })

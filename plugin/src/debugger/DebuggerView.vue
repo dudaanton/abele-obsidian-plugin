@@ -93,12 +93,20 @@ function peerState(peer: DebuggerBinding) {
       : session.status === 'starting'
         ? t('streamC.bbe5fc3b9ef39f99')
         : session.status === 'exited'
-          ? t('streamC.a35ec6a4c0b7f680')
+          ? session.detached && session.attached
+            ? t('streamC.4fc04649a9497a39')
+            : t('streamC.a35ec6a4c0b7f680')
           : t('streamC.24b289c6dcaf78b5', { v1: session.seen ?? '' })
 }
 const peers = computed(() => {
   if (!binding.value) return []
-  const peers = service.peers(binding.value)
+  const peers = service
+    .peers(binding.value)
+    .sort(
+      (a, b) =>
+        Number(a.controller.session.status === 'exited') -
+        Number(b.controller.session.status === 'exited')
+    )
   for (const peer of peers) void peer.revision.value
   return peers.length > 1 ? peers : []
 })

@@ -24,6 +24,7 @@ export interface DebugFrame {
 }
 
 export interface DebugBreakpoint {
+  condition?: string
   file: string
   line: number
   /** set: the adapter took it; pending: not confirmed yet; rejected: it cannot stop there. */

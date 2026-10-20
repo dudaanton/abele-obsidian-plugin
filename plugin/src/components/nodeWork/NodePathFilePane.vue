@@ -38,6 +38,8 @@
           ])
         "
         :context="{ ...effectiveDebug, ...(line ? { line } : {}), text: model.document.value.text }"
+        :repository="repository"
+        :revision="revision"
         @reveal="revealSource"
         @selection="debugSelection"
       />
