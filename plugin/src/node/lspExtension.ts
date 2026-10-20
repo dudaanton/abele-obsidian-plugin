@@ -169,6 +169,15 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
         textDecoration: 'underline wavy var(--text-warning)',
         textUnderlineOffset: '3px',
       },
+      '.cm-tooltip-hover:has(.abele-lsp-message)': {
+        width: 'max-content',
+        height: 'max-content',
+        maxWidth: 'min(60ch, 85vw)',
+        right: 'auto',
+        bottom: 'auto',
+        borderColor: 'var(--background-modifier-border)',
+        backgroundColor: 'var(--background-primary)',
+      },
       '.abele-lsp-message': {
         whiteSpace: 'pre-wrap',
         padding: 'var(--size-4-2)',

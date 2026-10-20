@@ -71,6 +71,8 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             const hoverBox = document.querySelector('.cm-tooltip-hover').getBoundingClientRect();
             const hoverBottom = document.elementFromPoint(hoverBox.left+hoverBox.width/2,hoverBox.bottom-3);
             if (!hoverBottom?.closest('.cm-tooltip-hover')) throw Error('Hover content is clipped or covered');
+            const messageBox = document.querySelector('.cm-tooltip-hover .abele-lsp-message').getBoundingClientRect();
+            if (hoverBox.bottom > messageBox.bottom + 4 || hoverBox.width > innerWidth) throw Error('Hover box stretches beyond its content: ' + JSON.stringify({inline:document.querySelector('.cm-tooltip-hover').style.cssText,height:getComputedStyle(document.querySelector('.cm-tooltip-hover')).height,bottom:getComputedStyle(document.querySelector('.cm-tooltip-hover')).bottom,right:getComputedStyle(document.querySelector('.cm-tooltip-hover')).right}));
             p.target.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true,clientX:0,clientY:0}));
             if (${mobile}) {
               phase = 'long-press';
