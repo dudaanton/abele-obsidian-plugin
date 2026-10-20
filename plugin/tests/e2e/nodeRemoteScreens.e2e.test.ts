@@ -1,12 +1,12 @@
 import { expect, it } from 'vitest'
-import { evalLong, reloadPlugin } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import { evalLong, reloadPlugin, enterPhone, reloadApp } from './helpers/obsidianCli'
+import { targets, onPhone } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { NODE_PANEL, NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 
 targets('desktop', 'phone')
 const shots = shotDir('abele-node-remote')
-it.each([
+const dialogs = [
   'node-pairing',
   'node-pairing-waiting',
   'node-pairing-recovery',
@@ -15,12 +15,12 @@ it.each([
   'node-question-input',
   'node-settings-access',
   'node-delegation-card',
-])(
-  '%s fits a real screen with readable identity and usable controls',
-  async (name) => {
-    const result = JSON.parse(
-      await evalLong(
-        `(async () => {
+]
+
+async function inspectDialog(name: string, picture = name) {
+  const result = JSON.parse(
+    await evalLong(
+      `(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     if (document.querySelector('.modal')) throw Error('Another dialog is open');
     window.__abeleTest.openDialog(${JSON.stringify(name)});
@@ -37,15 +37,16 @@ it.each([
       }
       const text = modal.textContent;
       if (${JSON.stringify(name)} === 'node-settings-access') {
-        modal.querySelector('[aria-label="Pairing, debugger access, remove"]').click();
+        const action=modal.querySelector('[aria-label="Pairing, debugger access, remove"]'), box=action.getBoundingClientRect();
+        action.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:box.x+box.width/2,clientY:box.y+box.height/2}));
         await wait(150);
         const menu = [...document.querySelectorAll('.menu-item-title')].map(el => el.textContent);
         if (menu.includes('Delegation grants')) throw Error('Separate delegation permission is still offered');
         if (!menu.includes('Remove')) throw Error('Node row menu did not open');
       }
       let shot;
-      if (window.__e2eHost) shot = await window.__e2eHost.shot(${JSON.stringify(shots + '/' + name + '.png')});
-      else { require('fs').writeFileSync(${JSON.stringify(shots + '/' + name + '.png')}, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); shot = 'saved' }
+      if (window.__e2eHost) shot = await window.__e2eHost.shot(${JSON.stringify(shots + '/' + picture + '.png')});
+      else { require('fs').writeFileSync(${JSON.stringify(shots + '/' + picture + '.png')}, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); shot = 'saved' }
       if (${JSON.stringify(name)} === 'node-settings-access') {
         document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
         await wait(100);
@@ -57,27 +58,44 @@ it.each([
       if (document.querySelector('.modal')) throw Error('Node dialog did not close');
     }
   })()`,
-        60000
-      )
-    ) as { outside: string[]; text: string; shot: string; controls: number }
-    expect(result.outside).toEqual([])
-    expect(result.controls).toBeGreaterThan(0)
-    expect(result.shot).not.toMatch(/^no picture:/)
-    if (name === 'node-pairing-waiting') {
-      expect(result.text).toContain('Waiting for owner confirmation')
-      expect(result.text).toContain('c'.repeat(64))
-    }
-    if (name === 'node-pairing-recovery') {
-      expect(result.text).toContain('d'.repeat(64))
-      expect(result.text).toContain('a'.repeat(64))
-    }
-    if (name === 'node-pairing-endpoint') {
-      expect(result.text).toContain('wss://previous.example.ts.net:9443/channel')
-      expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
-    }
-    if (name === 'node-delegation-card') {
-      expect(result.text).toContain('Open child chat')
-      expect(result.text).toContain('Result')
+      60000
+    )
+  ) as { outside: string[]; text: string; shot: string; controls: number }
+  expect(result.outside).toEqual([])
+  expect(result.controls).toBeGreaterThan(0)
+  expect(result.shot).not.toMatch(/^no picture:/)
+  if (name === 'node-pairing-waiting') {
+    expect(result.text).toContain('Waiting for owner confirmation')
+    expect(result.text).toContain('c'.repeat(64))
+  }
+  if (name === 'node-pairing-recovery') {
+    expect(result.text).toContain('d'.repeat(64))
+    expect(result.text).toContain('a'.repeat(64))
+  }
+  if (name === 'node-pairing-endpoint') {
+    expect(result.text).toContain('wss://previous.example.ts.net:9443/channel')
+    expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
+  }
+  if (name === 'node-delegation-card') {
+    expect(result.text).toContain('Open child chat')
+    expect(result.text).toContain('Result')
+  }
+}
+
+it.each(dialogs)(
+  '%s fits a real screen with readable identity and usable controls',
+  async (name) => inspectDialog(name),
+  90000
+)
+
+it.skipIf(onPhone())(
+  'node settings access fits a phone screen',
+  async () => {
+    try {
+      await enterPhone()
+      await inspectDialog('node-settings-access', 'node-settings-access-phone')
+    } finally {
+      await reloadApp('app.emulateMobile(false)')
     }
   },
   90000
