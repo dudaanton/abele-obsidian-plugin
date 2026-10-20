@@ -1,13 +1,9 @@
-import {
-  createAgent,
-  normaliseChecks,
-  normaliseContextDepth,
-  type AgentDefinition,
-} from './types'
+import { createAgent, normaliseChecks, normaliseContextDepth, type AgentDefinition } from './types'
 import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import { LEGACY_INTERCEPTOR_KEYS, legacyFields, normaliseEntries } from '../interceptor/entries'
 import {
   BOOK_TOOL_MODES,
+  CHAT_MESSAGING_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
   CANVAS_TOOL_MODES,
@@ -405,9 +401,18 @@ export function migrateAgents(ai: AiSettings): boolean {
   const analytics = enableAnalyticsTools(ai)
   const location = enableLocationTool(ai)
   const interceptors = normaliseInterceptors(ai)
+  let messaging = false
+  for (const agent of ai.agents ?? []) {
+    for (const [tool, mode] of Object.entries(CHAT_MESSAGING_TOOL_MODES)) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = mode
+      messaging = true
+    }
+  }
 
   return (
     legacy ||
+    messaging ||
     comment ||
     maps ||
     memory ||

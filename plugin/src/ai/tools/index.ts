@@ -34,6 +34,7 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
+import { createChatMessagingTools } from './ChatMessagingTools'
 import { createNodeManagerTools } from './NodeManagerTools'
 import { createNodeDelegationTools } from './NodeDelegationTools'
 import { createScriptTools, createAnswerFormTool } from './ScriptTool'
@@ -150,6 +151,8 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     eval_js: { label: 'Eval JS', category: 'App view' },
     questions: { label: 'Questions', category: 'Basics' },
     delegate: { label: 'Delegate', category: 'Delegation' },
+    list_chats: { label: 'List chats', category: 'Delegation' },
+    send_message_to_chat: { label: 'Send message to chat', category: 'Delegation' },
     remember: { label: 'Remember', category: 'Memory' },
     forget: { label: 'Forget', category: 'Memory' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
@@ -327,6 +330,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createDownloadImageTool(),
     createDownloadFileTool(),
     createDelegateTool(options.session),
+    ...createChatMessagingTools(options.session),
     ...createNodeDelegationTools(options.session),
     ...createNodeManagerTools(options.session),
     createReplaceTool(),

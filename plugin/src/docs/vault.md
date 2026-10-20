@@ -3025,3 +3025,7 @@ follow-up receipt recovery. A fresh input never silently discards an outstanding
 Node action tool overrides for a chat are device-local browser storage, keyed by chat identity
 and agent identity. They are not authority in a chat file or a folder permission floor.
 The agent’s ordinary tool modes remain in plugin settings; unset node action modes are Off.
+
+# Messages between chats
+
+Chat records retain the target reference, reply or refusal on a cross-chat tool call (`chatLetter`), the source reference on an incoming message (`fromSession`), and the destination reference on the answering message (`sentTo`). References include the saved chat path so links can reopen chats after a reload. An interrupted request is not automatically replayed.

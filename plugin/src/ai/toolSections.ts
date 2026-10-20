@@ -190,7 +190,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
     description:
       'Handing work to other agents: running sub-agents on many items in parallel, each with a fresh context. Open this for batch work over many notes or items. Not for a coding agent on a node — that is in Nodes.',
     howTo:
-      '`delegate` gives each item to a sub-agent and returns their answers. Write each task so it stands on its own: the sub-agent does not see this chat.',
+      '`delegate` gives each item to a sub-agent and returns their answers. Write each task so it stands on its own: the sub-agent does not see this chat. `list_chats` lists other open chats; `send_message_to_chat` asks one and returns its answer. The receiving chat uses its own permissions.',
   },
   {
     id: 'app_view',

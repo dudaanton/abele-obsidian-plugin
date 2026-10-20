@@ -8,6 +8,7 @@ import { NODE_COMMAND_TOOLS } from './tools/NodeManagerTools'
 import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
+import type { ChatLetter, LetterChat } from '@/chats/chatLetters'
 import {
   computed,
   effectScope,
@@ -2666,7 +2667,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     content: string,
     attachments?: string[],
     delegationWake?: DelegationWakeFence,
-    replyTo?: ChatReplyTo[]
+    replyTo?: ChatReplyTo[],
+    fromChat?: LetterChat
   ): Promise<void> {
     const isCurrent = delegationWake
       ? () => this.isDelegationWakeCurrent(delegationWake)
@@ -2698,7 +2700,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // The interceptor looks first, when there is one and the message is its kind. Never in a
     // run, where nobody is there to send a draft on.
-    if (!isCurrent && this.interceptorHolds(content)) {
+    if (!isCurrent && !fromChat && this.interceptorHolds(content)) {
       this.errorPresentation.value = null
       this.error.value = null
       return sendThroughChain(this.scriptSendHost(), content, attachments, replyTo)
@@ -2711,7 +2713,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.wroteThisTurn = false
     this.turnPolicy.clear()
 
-    const message = await this.userMessage(content, attachments, !isCurrent, replyTo)
+    const message = await this.userMessage(
+      content,
+      attachments,
+      !isCurrent && !fromChat,
+      replyTo,
+      fromChat
+    )
     // Stop may arrive while attachments/message preparation is awaiting I/O.
     if (isCurrent && !isCurrent()) return
     this.rememberInternal(message)
@@ -2930,11 +2938,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     content: string,
     attachments?: string[],
     review = true,
-    replyTo?: ChatReplyTo[]
+    replyTo?: ChatReplyTo[],
+    fromChat?: LetterChat
   ): Promise<Message> {
     const userMsg: ChatMessage = {
       id: nanoid(),
       role: 'user',
+      ...(fromChat ? { fromSession: fromChat } : {}),
       content,
       attachments: attachments?.length ? attachments : undefined,
       ...(replyTo?.length ? { replyTo: replyTo.map((to) => ({ ...to })) } : {}),
@@ -4511,6 +4521,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     options: { keepLeaf?: string | null; readOnly?: boolean } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
+    // Runtime waiters cannot cross reloads. Never replay a letter that may already be delivered.
+    this.allChatMessages = this.allChatMessages.map((m) =>
+      m.chatLetter && m.chatLetter.reply === undefined && !m.chatLetter.refusal
+        ? {
+            ...m,
+            chatLetter: { ...m.chatLetter, refusal: t('chat.letterInterrupted') },
+            toolStatus: 'rejected',
+            toolExecution: 'interrupted',
+          }
+        : m
+    )
     this.allInternalMessages = result.internalMessages || []
     // Normal opens repair the main file before adopting it; reconciliation accepts only an
     // intact main-file snapshot. An older format needs a rewrite on save to migrate to a log.
@@ -4604,6 +4625,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (result.metadata?.pendingToolCalls?.length) {
       const settled = settledAttention(this.attention.value)
       this.pendingToolCalls.value = result.metadata.pendingToolCalls
+        .filter(
+          (tc) => !this.allChatMessages.some((m) => m.toolCallId === tc.id && m.chatLetter?.refusal)
+        )
         .filter((tc) => !settled.has(tc.id) && !this.attention.value.tools?.[tc.id])
         .map((tc) => ({
           type: 'toolCall' as const,
@@ -4789,6 +4813,65 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   // ── Delegate support ──────────────────────────────────────────
+
+  attachChatLetter(toolCallId: string, letter: ChatLetter): void {
+    this.updateChatMessage(
+      (m) => m.toolCallId === toolCallId && m.role === 'tool-call',
+      (m) => ({ ...m, chatLetter: letter })
+    )
+    this.markDirty()
+  }
+
+  /** A letter uses this conversation's own tools, agent and approval queue. */
+  async receiveChatLetter(
+    content: string,
+    from: LetterChat,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const version = this.conversationVersion.value
+    const waitUntilIdle = () =>
+      new Promise<void>((resolve, reject) => {
+        const check = () => {
+          if (signal?.aborted || this.destroyed || this.conversationVersion.value !== version) {
+            cleanup()
+            reject(new Error('The message was cancelled or the target chat closed'))
+          } else if (!this.isBusy && !this.isMidTurn) {
+            cleanup()
+            resolve()
+          }
+        }
+        const cleanup = () => {
+          window.clearInterval(timer)
+          signal?.removeEventListener('abort', check)
+        }
+        const timer = window.setInterval(check, 100)
+        signal?.addEventListener('abort', check, { once: true })
+        check()
+      })
+    await waitUntilIdle()
+    if (signal?.aborted || this.destroyed || this.conversationVersion.value !== version)
+      throw new Error('The message was cancelled or the target chat closed')
+    console.debug('[Abele chat message]', { from: from.id, to: this.id, phase: 'received' })
+    const before = new Set(this.messages.value.map((m) => m.id))
+    const generation = this.generation
+    await this.sendMessage(content, undefined, undefined, undefined, from)
+    // A model turn may return at an approval; the answer belongs to the continuation.
+    await waitUntilIdle()
+    if (this.generation !== generation || this.error.value) {
+      throw new Error(this.error.value || 'The target chat stopped before answering')
+    }
+    const answer = this.messages.value.findLast(
+      (m) => !before.has(m.id) && m.role === 'assistant' && m.content
+    )
+    if (!answer) throw new Error('The target chat ended without an answer')
+    this.updateChatMessage(
+      (m) => m.id === answer.id,
+      (m) => ({ ...m, sentTo: from })
+    )
+    await this.save()
+    console.debug('[Abele chat message]', { from: from.id, to: this.id, phase: 'answered' })
+    return answer.content
+  }
 
   updateDelegateProgress(status: string): void {
     this.updateChatMessage(

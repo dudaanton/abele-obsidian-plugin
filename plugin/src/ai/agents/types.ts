@@ -5,6 +5,7 @@ import type { SectionOpening } from '../toolSections'
 import {
   NODE_ACTION_DEFAULTS,
   BOOK_TOOL_MODES,
+  CHAT_MESSAGING_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
   CANVAS_TOOL_MODES,
@@ -235,6 +236,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     // The GitHub tools only read, and only exist while the integration is on. The book tools read
     // on their own and ask before they mark a book.
     toolModes: {
+      ...CHAT_MESSAGING_TOOL_MODES,
       remember: 'ask',
       forget: 'ask',
       ...GITHUB_TOOL_MODES,

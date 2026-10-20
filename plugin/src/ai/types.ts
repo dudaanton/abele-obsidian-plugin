@@ -89,6 +89,11 @@ export interface AiPrompts {
 export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
 export type ToolMode = 'off' | 'ask' | 'auto'
 
+export const CHAT_MESSAGING_TOOL_MODES: Record<string, ToolMode> = {
+  list_chats: 'auto',
+  send_message_to_chat: 'ask',
+}
+
 /**
  * A note a chat wrote to, and when it last did.
  *
@@ -557,6 +562,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   backgroundAlways: false,
   permissionMode: 'confirm-all',
   toolModes: {
+    list_chats: 'auto',
+    send_message_to_chat: 'ask',
     web_search: 'auto',
     chart_docs: 'auto',
     script_api_docs: 'auto',
@@ -761,6 +768,8 @@ export interface ChatMessage {
    */
   answerCheck?: { by: string; at?: number; of?: number }
   subAgentRun?: SubAgentRunRef
+  chatLetter?: import('@/chats/chatLetters').ChatLetter
+  sentTo?: import('@/chats/chatLetters').LetterChat
   /** Owner annotations and accepted versions travel with this message record. */
   highlights?: ReplyHighlight[]
   revisions?: ReplyRevision[]
@@ -776,7 +785,7 @@ export interface ChatMessage {
    */
   nodeAccessRefusal?: NodeAccessRefusal
   /** A message another session on the node wrote to this one: who, and the way to its chat. */
-  fromSession?: { id: string; title: string; agent?: string }
+  fromSession?: { id: string; title: string; agent?: string; path?: string }
   /** A line a node session draws itself: compacting, compacted, woken by a background task. */
   sessionMark?: SessionMark
   /** The plan an agent keeps while it works, as it stands now: drawn where it first appeared. */
