@@ -12,7 +12,7 @@
     </div>
     <!-- What the call would change, as the agent showed it: open while the question waits. -->
     <Diff
-      v-for="(diff, i) in prompt.state === 'pending' ? (diffs ?? []) : []"
+      v-for="(diff, i) in diffs ?? []"
       :key="i"
       class="abele-node-permission__diff"
       :text-left="diff.old"

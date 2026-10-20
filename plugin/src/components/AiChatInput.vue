@@ -88,6 +88,7 @@
       <div class="abele-chat-input__toolbar" @mousedown.prevent>
         <!-- What goes along with the message: files, and what the agent may reach. -->
         <div class="abele-chat-input__toolbar-left">
+          <slot name="attach" />
           <Icon
             v-if="!textOnly && !isBusy && !importing"
             icon="paperclip"

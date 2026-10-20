@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { t } from '@/i18n'
 
 const Capability = z.union([
   z.object({ status: z.literal('supported'), evidence: z.string() }),
@@ -21,6 +22,7 @@ const Provider = z.object({
   configuration: z
     .object({
       model: z.string().optional(),
+      models: z.array(z.string()).optional(),
       profile: z.string().optional(),
       /** Long-lived sessions: what a session can be set to on this node. */
       live_sessions: z.boolean().optional(),
@@ -50,7 +52,12 @@ const LABEL: Record<string, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   acp: 'ACP agent',
-  fake: 'Fake (non-executing)',
+  get fake() {
+    return t('streamB.nodeTestAgent')
+  },
+  get ['']() {
+    return t('streamB.agent.11b39c')
+  },
 }
 export const providerLabel = (name: string): string => LABEL[name] ?? name
 export const providerAvailable = (p: NodeProvider): boolean =>

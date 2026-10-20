@@ -2839,6 +2839,13 @@ the server receipt in that connection's state before disconnecting. An uncertain
 stopped across restart and retries the same request; it never removes local files. A server
 `scope_deleted` refusal likewise persists a stopped marker until explicit disconnect.
 
+## Node chat drafts and preferences
+
+The node chat agent picker remembers the last successfully started agent per node in device
+local storage. It also uses the latest session or a configured provider when there is no saved
+choice. Chosen text attachments are quoted into the node chat draft; sending includes their
+content in the ordinary message, without creating a vault attachment or uploading a device path.
+
 ## Zen preferences
 
 Plugin settings store `zen.width` (the shared page width, default 700 pixels) and

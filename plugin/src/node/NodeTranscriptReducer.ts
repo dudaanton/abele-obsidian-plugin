@@ -1,5 +1,11 @@
 import type { JournalEvent } from '@abele/channel-protocol'
-import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
+import {
+  PromptSchema,
+  SessionSchema,
+  providerSessionUpdates,
+  type Prompt,
+} from '@abele/node-protocol'
+import { t } from '@/i18n'
 import type { ChatMessage } from '@/ai/types'
 import { readAgentReplyText } from '@/ai/replyLinks'
 import { piFailure } from './piFailure'
@@ -30,6 +36,8 @@ export interface NodeTranscript {
   agent: UpdateProjection
   /** The changes a pending permission question asks about, by prompt. */
   promptDiffs: Record<string, { path: string; old: string; new: string }[]>
+  /** Resolved questions shown with the tool they belonged to. */
+  toolPrompts: Record<string, Prompt[]>
 }
 
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
@@ -41,6 +49,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   const inputs = new Map<string, string>()
   const runs = new Set<string>()
   const runInputs = new Map<string, string>()
+  const messageRuns = new Map<string, string>()
+  const turnStarts = new Map<string, number>()
+  const interruptions: { run: string; from: number; to: number }[] = []
   const artifacts: NodeTranscript['artifacts'] = []
   const unknown: JournalEvent[] = []
   const seen = new Set<number>()
@@ -58,6 +69,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       messages.set(id, current)
       messageSequences[id] = sequence
     }
+    if (currentRun) messageRuns.set(id, currentRun)
     if (role === 'tool-call' && currentRun) {
       toolRuns.set(id, currentRun)
       touchedTools.push(id)
@@ -148,21 +160,12 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       if (block?.type !== 'toolCall' || typeof block.id !== 'string' || !block.id) return
       if (agent.hasTool(agent.toolId(provider, run, block.id))) return
       const name = typeof block.name === 'string' ? block.name : 'Tool'
-      agent.apply(
-        {
-          kind: 'tool_call_update',
-          tool_call_id: block.id,
-          title: name,
-          name,
-          raw_input:
-            block.arguments && typeof block.arguments === 'object'
-              ? (block.arguments as Record<string, unknown>)
-              : {},
-        },
-        provider,
-        run,
-        0
-      )
+      for (const update of providerSessionUpdates('pi', 'pi.tool.call', {
+        tool_use_id: block.id,
+        name,
+        input: block.arguments,
+      }))
+        agent.apply(update, provider, run, 0)
     })
     // An empty snapshot of a stopped answer does not take back what was already streamed.
     if (!final || (snapshot.stopReason === 'aborted' && !content.length)) return
@@ -191,6 +194,49 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     at = Date.parse(event.at)
     currentRun = text('run_id')
     touchedTools = []
+    if (event.type === 'turn.started' || event.type === 'run.started') {
+      turnStarts.set(currentRun, sequence)
+      const ids = Array.isArray(data.input_ids) ? data.input_ids.map(String) : []
+      for (const id of ids) inputs.set(id, 'delivered')
+      const input =
+        ids[0] ||
+        text('input_id') ||
+        [...inputs].findLast(([, state]) => ['accepted', 'queued'].includes(state))?.[0]
+      if (input) {
+        runInputs.set(currentRun, input)
+        inputs.set(input, 'delivered')
+      }
+    }
+    if (event.type === 'turn.completed' || event.type === 'run.interrupted') {
+      if (data.outcome === 'interrupted' || event.type === 'run.interrupted') {
+        const from = turnStarts.get(currentRun) ?? 0
+        interruptions.push({ run: currentRun, from, to: sequence })
+        for (const [id, run] of toolRuns) {
+          if (run !== currentRun || completedTools.has(id) || messageSequences[id] < from) continue
+          const tool = messages.get(id)!
+          tool.toolExecution = startedTools.has(id) ? 'interrupted' : 'not-run'
+          tool.toolStatus = 'rejected'
+        }
+        const line = message(`stopped:${event.seq}`, 'system')
+        line.sessionMark = { kind: 'notice', level: 'info', text: t('streamB.nodeStopped') }
+      }
+    }
+    if (
+      event.type === 'session.process' &&
+      data.state === 'exited' &&
+      /failed|error|crash|unexpected/.test(text('reason'))
+    ) {
+      const pending = [...inputs].filter(([, state]) =>
+        ['accepted', 'queued', 'delivered'].includes(state)
+      )
+      for (const [id] of pending) inputs.set(id, 'failed')
+      const line = message(`start-failed:${event.seq}`, 'assistant')
+      line.error = t('streamB.nodeStartFailed', {
+        reason: text('error') || text('reason').replaceAll('_', ' '),
+      })
+      if (pending[0]) line.retryInputId = `input:${pending[0][0]}`
+      failed = true
+    }
     if (event.type === 'session.created' || event.type === 'session.updated') {
       const parsed = SessionSchema.safeParse(data)
       if (parsed.success) session = parsed.data
@@ -215,6 +261,23 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       continue
     }
     let updates = updatesOf(event)
+    if (event.type === 'pi.extension.error') {
+      const extension = text('extension') || text('extension_path') || text('extension_id')
+      const reason = text('error') || text('message')
+      updates = [
+        {
+          kind: 'notice',
+          level: 'error',
+          text:
+            extension || reason
+              ? t('streamB.nodeExtensionFailed', {
+                  extension: extension || t('streamB.nodeUnknownExtension'),
+                  reason: reason || t('streamB.nodeMissingDiagnostic'),
+                })
+              : t('streamB.nodeExtensionMissingDiagnostic'),
+        },
+      ]
+    }
     const piError = event.type === 'pi.message.final' ? piFailure(data) : ''
     // pi's failure is said on the answer it belongs to, with the way to send it again.
     if (piError) updates = updates.filter((u) => u.kind !== 'notice')
@@ -346,15 +409,41 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
           ? 'accepted'
           : 'idle'
   const promptDiffs: NodeTranscript['promptDiffs'] = {}
+  const toolPrompts: NodeTranscript['toolPrompts'] = {}
   for (const prompt of prompts.values()) {
-    if (prompt.state !== 'pending' || !prompt.tool_use_id) continue
-    const id = agent.toolByNativeId(prompt.tool_use_id)
+    if (!prompt.tool_use_id) continue
+    const id = agent.toolByNativeId(prompt.tool_use_id, prompt.run_id)
     const tool = id ? messages.get(id) : undefined
     // The call waits for you: its line says so, and the question shows what it would change.
-    if (tool && tool.toolResult === undefined) tool.toolStatus = 'pending'
+    if (tool && prompt.state === 'pending' && tool.toolResult === undefined)
+      tool.toolStatus = 'pending'
     if (id) promptDiffs[prompt.prompt_id] = agent.pendingDiffs(id)
+    if (id && prompt.state !== 'pending') {
+      ;(toolPrompts[id] ??= []).push(prompt)
+      if (tool && prompt.choice === 'deny' && tool.toolResult === undefined) {
+        tool.toolStatus = 'rejected'
+        tool.toolExecution = 'not-run'
+      }
+    }
   }
   const children: NodeTranscript['children'] = {}
+  // Some runtimes report an empty model error immediately before the interruption receipt.
+  // The committed outcome is authoritative; keep partial text, remove that false diagnosis.
+  for (const m of messages.values()) {
+    if (
+      !interruptions.some(
+        (turn) =>
+          turn.run === messageRuns.get(m.id) &&
+          messageSequences[m.id] >= turn.from &&
+          messageSequences[m.id] <= turn.to
+      )
+    )
+      continue
+    delete m.error
+    delete m.retryInputId
+    if (m.sessionMark?.kind === 'notice' && m.sessionMark.text === 'The model request failed')
+      messages.delete(m.id)
+  }
   for (const m of messages.values())
     if (m.parentId && messages.has(m.parentId)) (children[m.parentId] ??= []).push(m)
   return {
@@ -373,6 +462,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     live: live.projection(),
     agent: agent.projection(),
     promptDiffs,
+    toolPrompts,
   }
 }
 

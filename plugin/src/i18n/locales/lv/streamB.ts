@@ -6,6 +6,20 @@ export const streamB = {
   'streamB.stoppedByYou': 'Jūs apturējāt izpildi. Uzdevums var būt nepabeigts.',
   'streamB.writesWithoutAsking': 'Rakstīšana bez jautāšanas · Vienmēr jautāt',
   'streamB.chatChanges': 'Šīs sarunas izmaiņas',
+  'streamB.nodeStopped': 'Jūs apturējāt',
+  'streamB.nodeStartFailed': 'Aģentu neizdevās palaist: {reason}.',
+  'streamB.nodeTestAgent': 'Testa aģents',
+  'streamB.nodeDefaultAccount': 'Mezgla noklusējuma konts',
+  'streamB.nodeExtensionFailed': 'Paplašinājuma {extension} kļūda: {reason}',
+  'streamB.nodeUnknownExtension': 'mezgls nav norādījis',
+  'streamB.nodeMissingDiagnostic': 'Mezgls nav norādījis iemeslu.',
+  'streamB.nodeExtensionMissingDiagnostic':
+    'Pi paplašinājuma kļūda. Šis mezgls nav norādījis paplašinājuma nosaukumu un iemeslu.',
+  'streamB.nodeAttachTextFile': 'Pievienot teksta failu no šīs ierīces',
+  'streamB.nodeAttachmentTooLarge':
+    'Šis fails ir pārāk liels vienam ziņojumam. Izvēlieties teksta failu līdz 48 KB.',
+  'streamB.nodeAttachmentTextOnly':
+    'Šis mezgls pieņem teksta failus ziņojumos. Izvēlieties UTF-8 teksta failu.',
   'streamB.editorMessagePlaceholder': 'Ziņojums…',
   'streamB.runSummary.start.done': 'Palaists',
   'streamB.runSummary.start.running': 'Palaiž',

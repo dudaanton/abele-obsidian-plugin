@@ -48,6 +48,105 @@ const event = (seq: number, type: string, data: unknown): JournalEvent => ({
   at: '2025-01-01T00:00:00.000Z',
   data,
 })
+
+it('retains the edit diff when the call first appears in an assistant snapshot', () => {
+  const scope = { run_id: 'sample-run', runtime_generation: 1 }
+  const p = reduceTranscript([
+    event(1, 'pi.message.final', {
+      ...scope,
+      message_id: '1',
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            type: 'toolCall',
+            id: 'edit-1',
+            name: 'edit',
+            arguments: { path: 'sample.txt', oldText: 'before', newText: 'after' },
+          },
+        ],
+      },
+    }),
+    event(2, 'pi.tool.result', { ...scope, tool_use_id: 'edit-1', result: 'Changed' }),
+  ])
+  expect(p.messages.find((m) => m.role === 'tool-call')?.toolDiff).toEqual({
+    old: 'before',
+    new: 'after',
+  })
+})
+
+it('shows an interrupted turn as stopped and closes its unfinished tools', () => {
+  const scope = { run_id: 'sample-run', runtime_generation: 1 }
+  const p = reduceTranscript([
+    event(1, 'input.accepted', { input_id: 'sample-input', text: 'Read the sample' }),
+    event(2, 'turn.started', { run_id: 'sample-run', input_ids: ['sample-input'] }),
+    event(3, 'pi.tool.call', {
+      ...scope,
+      tool_use_id: 'read-1',
+      name: 'read',
+      input: { path: 'sample.txt' },
+    }),
+    event(4, 'pi.message.final', {
+      ...scope,
+      message_id: '1',
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'error',
+        errorMessage: 'provider_error',
+      },
+    }),
+    event(5, 'turn.completed', {
+      run_id: 'sample-run',
+      outcome: 'interrupted',
+      input_ids: ['sample-input'],
+    }),
+  ])
+  expect(p.messages.some((m) => m.error)).toBe(false)
+  expect(p.messages.some((m) => m.sessionMark?.text === 'Stopped by you')).toBe(true)
+  expect(p.messages.find((m) => m.role === 'tool-call')?.toolExecution).toBe('interrupted')
+  expect(p.queuedInputs).toEqual([])
+})
+
+it('surfaces startup failure and ends the queued state with a retry target', () => {
+  const p = reduceTranscript([
+    event(1, 'input.accepted', { input_id: 'sample-input', text: 'Sample question' }),
+    event(2, 'session.process', { run_id: 'sample-run', state: 'starting' }),
+    event(3, 'session.process', {
+      run_id: 'sample-run',
+      state: 'exited',
+      reason: 'pi_host_failed',
+      error: 'Sample tool configuration is invalid',
+    }),
+  ])
+  expect(p.state).toBe('needs-attention')
+  expect(p.queuedInputs).toEqual([])
+  expect(p.messages.at(-1)).toMatchObject({
+    retryInputId: 'input:sample-input',
+    error: expect.stringContaining('Sample tool configuration is invalid'),
+  })
+})
+
+it('does not erase an earlier model failure when a later turn in the same process is stopped', () => {
+  const scope = { run_id: 'sample-process', runtime_generation: 1 }
+  const p = reduceTranscript([
+    event(1, 'turn.started', { run_id: scope.run_id }),
+    event(2, 'pi.message.final', {
+      ...scope,
+      message_id: '1',
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'error',
+        errorMessage: 'Sample earlier failure',
+      },
+    }),
+    event(3, 'turn.completed', { run_id: scope.run_id, outcome: 'error' }),
+    event(4, 'turn.started', { run_id: scope.run_id }),
+    event(5, 'turn.completed', { run_id: scope.run_id, outcome: 'interrupted' }),
+  ])
+  expect(p.messages.find((m) => m.error)?.error).toContain('Sample earlier failure')
+})
 it.each([
   ['', 'the model service returned an error'],
   ['Connection closed\nSample diagnostic detail', 'Connection closed'],

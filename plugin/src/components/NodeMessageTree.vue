@@ -28,6 +28,8 @@
             :open-resource="openResource"
             :queue-states="queueStates"
             :offline="offline"
+            :tool-prompts="toolPrompts"
+            :prompt-diffs="promptDiffs"
             v-on="handlers"
           />
         </div>
@@ -48,6 +50,7 @@
 <script setup lang="ts">
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { QueueState } from '@/node/presentation'
+import type { Prompt } from '@abele/node-client'
 import { computed, reactive } from 'vue'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
 import ChatToolRun from './ChatToolRun.vue'
@@ -62,8 +65,10 @@ const props = withDefaults(
     offline?: boolean
     /** The agent's answers here can be replied to from the composer; nested work cannot. */
     canReply?: boolean
+    toolPrompts?: Record<string, Prompt[]>
+    promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
   }>(),
-  { depth: 0, queueStates: () => ({}) }
+  { depth: 0, queueStates: () => ({}), toolPrompts: () => ({}), promptDiffs: () => ({}) }
 )
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
@@ -85,6 +90,8 @@ const messageProps = (message: ChatMessage) => ({
   queueState: props.queueStates[message.id],
   offline: props.offline,
   canReply: props.canReply && props.depth === 0,
+  prompts: props.toolPrompts?.[message.id],
+  promptDiffs: props.promptDiffs,
 })
 const handlers = {
   cancel: (id: string) => emit('cancel', id),

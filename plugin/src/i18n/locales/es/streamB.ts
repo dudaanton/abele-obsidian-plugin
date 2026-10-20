@@ -6,6 +6,20 @@ export const streamB = {
   'streamB.stoppedByYou': 'Lo has detenido. La tarea puede estar sin terminar.',
   'streamB.writesWithoutAsking': 'Escritura sin preguntar · Preguntar siempre',
   'streamB.chatChanges': 'Cambios de este chat',
+  'streamB.nodeStopped': 'Detenido por ti',
+  'streamB.nodeStartFailed': 'El agente no pudo iniciarse: {reason}.',
+  'streamB.nodeTestAgent': 'Agente de prueba',
+  'streamB.nodeDefaultAccount': 'Cuenta predeterminada del nodo',
+  'streamB.nodeExtensionFailed': 'La extensión {extension} falló: {reason}',
+  'streamB.nodeUnknownExtension': 'no identificada por el nodo',
+  'streamB.nodeMissingDiagnostic': 'El nodo no incluyó el motivo.',
+  'streamB.nodeExtensionMissingDiagnostic':
+    'Una extensión de pi falló. Este nodo no incluyó el nombre de la extensión ni el motivo.',
+  'streamB.nodeAttachTextFile': 'Adjuntar un archivo de texto de este dispositivo',
+  'streamB.nodeAttachmentTooLarge':
+    'Este archivo es demasiado grande para un mensaje. Elige un archivo de texto de hasta 48 KB.',
+  'streamB.nodeAttachmentTextOnly':
+    'Este nodo acepta archivos de texto en los mensajes. Elige un archivo de texto UTF-8.',
   'streamB.editorMessagePlaceholder': 'Mensaje…',
   'streamB.runSummary.start.done': 'Iniciado',
   'streamB.runSummary.start.running': 'Iniciando',

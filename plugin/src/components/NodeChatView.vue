@@ -118,6 +118,8 @@
           :children="presenter.projection.value.children || {}"
           :queue-states="presentation.states"
           :offline="offline"
+          :tool-prompts="presenter.projection.value.toolPrompts"
+          :prompt-diffs="presenter.projection.value.promptDiffs"
           :open-resource="resourceOpener(segment.target)"
           can-reply
           @cancel="presenter.cancelInput($event)"
@@ -145,7 +147,7 @@
         :presenter="presenter"
       />
       <NodePermissionCard
-        v-for="prompt in presenter.projection.value.prompts"
+        v-for="prompt in standalonePrompts"
         :key="prompt.prompt_id"
         :prompt="prompt"
         :location="[nodeLabel, folder, worktree?.branch].filter(Boolean).join(' · ')"
@@ -196,6 +198,13 @@
       @stop="(id) => live?.stopTask?.(id)"
       @open="(id) => live?.open(id)"
     />
+    <input
+      ref="attachmentInput"
+      type="file"
+      hidden
+      :aria-label="t('streamB.attachAFile.21298c')"
+      @change="attachFile"
+    />
     <AiChatInput
       ref="chatInput"
       :key="presenter.id"
@@ -218,6 +227,15 @@
       @show-reply="showReply"
       @focus="onInputFocus"
     >
+      <template #attach>
+        <Icon
+          icon="paperclip"
+          :label="t('streamB.attachAFile.21298c')"
+          :tooltip="t('streamB.nodeAttachTextFile')"
+          :disabled="attaching || sending"
+          @click="!attaching && !sending && attachmentInput?.click()"
+        />
+      </template>
       <template v-if="live" #settings>
         <SessionSettings
           ref="settingsControl"
@@ -279,6 +297,7 @@ import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
+import { nodeAttachmentText } from '@/node/nodeChatAttachments'
 import { NodeService } from '@/node/NodeService'
 import { openNodePanel } from '@/node/openSession'
 import { openNodeFiles } from '@/node/openFiles'
@@ -372,7 +391,7 @@ const sessionAgent = () =>
   (props.presenter.projection.value.session as { agent?: string } | undefined)?.agent
 /** The agent this chat runs, by the name people know it: an ACP agent by its own. */
 const agentName = computed(() => {
-  const provider = props.presenter.provider?.value ?? 'fake'
+  const provider = props.presenter.provider?.value ?? ''
   const agent = sessionAgent()
   if (provider === 'acp' && agent)
     return (
@@ -405,6 +424,15 @@ const chooseAgent = () => {
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
 const offline = computed(() => props.presenter.connection.state.value !== 'connected')
+const standalonePrompts = computed(() => {
+  const projection = props.presenter.projection.value
+  const nested = new Set(
+    Object.values(projection.toolPrompts ?? {})
+      .flat()
+      .map((p) => p.prompt_id)
+  )
+  return projection.prompts.filter((p) => !nested.has(p.prompt_id))
+})
 /** A long-lived session: how it runs, what it keeps running; null for any other. */
 const live = computed(() => props.presenter.live?.value ?? null)
 /** Something runs now that Stop ends: an answer, a turn the session woke for, a compaction. */
@@ -632,6 +660,34 @@ const send = async (text: string, _files: string[] = [], replyTo?: ChatReplyTo[]
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
 }
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
+const attachmentInput = ref<HTMLInputElement | null>(null)
+const attaching = ref(false)
+let disposed = false
+onUnmounted(() => {
+  disposed = true
+})
+const attachFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || attaching.value) return
+  const presenter = props.presenter
+  attaching.value = true
+  try {
+    const quote = await nodeAttachmentText(file)
+    if (disposed || props.presenter !== presenter) return
+    const text = [presenter.draft.value.text, quote].filter(Boolean).join('\n\n')
+    if (new TextEncoder().encode(text).length > 60 * 1024)
+      throw new Error(t('streamB.nodeAttachmentTooLarge'))
+    presenter.draft.value.text = text
+  } catch (error) {
+    if (!disposed && props.presenter === presenter)
+      presenter.error.value =
+        error instanceof Error ? error.message : t('streamB.nodeAttachmentTextOnly')
+  } finally {
+    attaching.value = false
+  }
+}
 /** Back to the words a place replies to: its message brought into view, the words flashed. */
 const showReply = (to: ChatReplyTo) => {
   const el = scroller.value?.querySelector<HTMLElement>(

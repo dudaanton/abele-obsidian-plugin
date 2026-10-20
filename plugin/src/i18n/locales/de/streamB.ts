@@ -6,6 +6,20 @@ export const streamB = {
   'streamB.stoppedByYou': 'Von dir gestoppt. Die Aufgabe ist möglicherweise unvollständig.',
   'streamB.writesWithoutAsking': 'Schreiben ohne Nachfrage · Jedes Mal fragen',
   'streamB.chatChanges': 'Änderungen aus diesem Chat',
+  'streamB.nodeStopped': 'Von dir gestoppt',
+  'streamB.nodeStartFailed': 'Der Agent konnte nicht starten: {reason}.',
+  'streamB.nodeTestAgent': 'Testagent',
+  'streamB.nodeDefaultAccount': 'Standardkonto des Knotens',
+  'streamB.nodeExtensionFailed': 'Erweiterung {extension} ist fehlgeschlagen: {reason}',
+  'streamB.nodeUnknownExtension': 'vom Knoten nicht benannt',
+  'streamB.nodeMissingDiagnostic': 'Der Knoten hat keinen Grund übermittelt.',
+  'streamB.nodeExtensionMissingDiagnostic':
+    'Eine pi-Erweiterung ist fehlgeschlagen. Dieser Knoten hat weder den Namen noch den Grund übermittelt.',
+  'streamB.nodeAttachTextFile': 'Eine Textdatei von diesem Gerät anhängen',
+  'streamB.nodeAttachmentTooLarge':
+    'Diese Datei ist zu groß für eine Nachricht. Wähle eine Textdatei bis 48 KB.',
+  'streamB.nodeAttachmentTextOnly':
+    'Dieser Knoten nimmt Textdateien in Nachrichten an. Wähle eine UTF-8-Textdatei.',
   'streamB.editorMessagePlaceholder': 'Nachricht…',
   'streamB.runSummary.start.done': 'Gestartet',
   'streamB.runSummary.start.running': 'Wird gestartet',

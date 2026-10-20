@@ -14,6 +14,7 @@ import {
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { agentChoices, nodeProviders, type AgentChoice } from './providers'
+import { preferredAgentChoices, lastNodeAgent, rememberNodeAgent } from './agentPreference'
 import { bindPathTarget } from './nodePathChat'
 import { NodePathMutations } from './NodePathMutations'
 import { pathPages } from './NodePathClientPort'
@@ -517,7 +518,16 @@ export async function newNodePathChat(
     throw new UiError(uiMessage('streamB.updateThisNodeToEnableChatsBound.ad6e82'))
   const bound = Object.freeze({ ...target }),
     connection = NodeService.getInstance().connection(model.registrationId)
-  const choices = agentChoices(nodeProviders(await connection.client.describe()))
+  const providers = nodeProviders(await connection.client.describe())
+  const recent = [...(model.sessions?.value ?? [])].sort((a, b) =>
+    b.session.created_at.localeCompare(a.session.created_at)
+  )[0]?.session
+  const choices = preferredAgentChoices(
+    agentChoices(providers),
+    providers,
+    lastNodeAgent(model.nodeId, app()) ??
+      (recent?.agent ? `${recent.provider}:${recent.agent}` : recent?.provider)
+  )
   new NodeSuggestModal(
     app(),
     agentSuggestions(choices),
@@ -550,6 +560,7 @@ export function startNodePathChat(
       choice.provider,
       ...(choice.agent ? [choice.agent] : [])
     )
+    rememberNodeAgent(model.nodeId, choice, app())
     // The returned session already carries this exact target. Refresh drawer metadata
     // in the background; recursively listing its files is not part of opening a chat.
     void model.refresh().catch((error: unknown) => model.report(error))

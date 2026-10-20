@@ -12,8 +12,8 @@
     @show-reply="emit('show-reply', $event)"
     @open-session="emit('open-session', $event)"
   >
-    <template #tool-note
-      ><span
+    <template #tool-note>
+      <span
         v-if="message.toolResult || message.content"
         class="abele-node-message-note"
         :title="message.toolResult ? undefined : message.content"
@@ -25,8 +25,15 @@
               ? t('streamB.claudeSettings.5f3600')
               : nodeErrorWords(message.content)
         }}</span
-      ></template
-    >
+      >
+      <NodePermissionCard
+        v-for="prompt in prompts ?? []"
+        :key="prompt.prompt_id"
+        :prompt="prompt"
+        :disabled="true"
+        :diffs="promptDiffs?.[prompt.prompt_id]"
+      />
+    </template>
     <template #metadata>
       <div v-if="message.error" class="abele-ai-chat__error" role="alert">
         <div class="abele-ai-chat__error-line">
@@ -64,6 +71,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import NodePermissionCard from '@/components/NodePermissionCard.vue'
+import type { Prompt } from '@abele/node-client'
 import { nodeErrorWords } from '@/node/errorWords'
 import { t } from '@/i18n'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
@@ -77,6 +86,8 @@ defineProps<{
   queueState?: QueueState
   offline?: boolean
   canReply?: boolean
+  prompts?: Prompt[]
+  promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
 }>()
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void

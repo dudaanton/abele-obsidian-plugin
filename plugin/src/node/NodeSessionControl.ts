@@ -194,6 +194,7 @@ export class NodeSessionControl {
     if (!state?.live) return null
     const configuration = (provider?.configuration ?? {}) as {
       accounts?: string[]
+      models?: string[]
       efforts?: string[]
       permission_modes?: string[]
     }
@@ -210,7 +211,10 @@ export class NodeSessionControl {
     }
     const models = [
       ...new Set(
-        [...(name === 'claude' ? MODEL_ALIASES : offered), settings.model].filter(Boolean)
+        [
+          ...(name === 'claude' ? MODEL_ALIASES : [...(configuration.models ?? []), ...offered]),
+          settings.model,
+        ].filter(Boolean)
       ),
     ]
     const choice = (id: string, label: string): SessionChoice => ({ id, label })
@@ -227,7 +231,14 @@ export class NodeSessionControl {
           choice(e, EFFORT_LABEL[e] ?? e)
         ),
         accounts: [...new Set([...(configuration.accounts ?? []), settings.account])].map((a) =>
-          choice(a, accountLabel(a))
+          choice(
+            a,
+            name === 'claude'
+              ? accountLabel(a)
+              : a === 'default'
+                ? t('streamB.nodeDefaultAccount')
+                : a
+          )
         ),
         bypassAllowed: modes.includes('bypassPermissions'),
         // Claude Code takes every mode; any other agent asks every time or runs without asking,

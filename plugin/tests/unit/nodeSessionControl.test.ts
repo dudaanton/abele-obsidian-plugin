@@ -58,6 +58,21 @@ const provider = (modes = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk']):
   },
 })
 const journal: LiveProjection = { live: true, tasks: [], context: null, compacting: false }
+it('uses node models and avoids calling a pi account a subscription', async () => {
+  const c = client(
+    state({ settings: { ...state().settings, model: 'sample/a', account: 'default' } })
+  )
+  const { control: k } = control(c)
+  await k.read()
+  const p = {
+    provider: 'pi',
+    capabilities: {},
+    configuration: { models: ['sample/a', 'sample/b'], accounts: ['default'] },
+  } as NodeProvider
+  const live = k.view(p, journal, undefined, 'pi')!
+  expect(live.choices.models.map((m) => m.id)).toEqual(['sample/a', 'sample/b'])
+  expect(live.choices.accounts[0].label).not.toBe('Main subscription')
+})
 const control = (c = client()) => {
   const report = vi.fn()
   const open = vi.fn()

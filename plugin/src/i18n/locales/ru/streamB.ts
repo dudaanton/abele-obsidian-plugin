@@ -6,6 +6,20 @@ export const streamB = {
   'streamB.stoppedByYou': 'Остановлено вами. Задача может быть не завершена.',
   'streamB.writesWithoutAsking': 'Запись без запроса · Спрашивать каждый раз',
   'streamB.chatChanges': 'Изменения из этого чата',
+  'streamB.nodeStopped': 'Остановлено вами',
+  'streamB.nodeStartFailed': 'Не удалось запустить агента: {reason}.',
+  'streamB.nodeTestAgent': 'Тестовый агент',
+  'streamB.nodeDefaultAccount': 'Аккаунт узла по умолчанию',
+  'streamB.nodeExtensionFailed': 'Расширение {extension} завершилось с ошибкой: {reason}',
+  'streamB.nodeUnknownExtension': 'не указано узлом',
+  'streamB.nodeMissingDiagnostic': 'Узел не передал причину.',
+  'streamB.nodeExtensionMissingDiagnostic':
+    'Ошибка расширения pi. Узел не передал название расширения и причину.',
+  'streamB.nodeAttachTextFile': 'Прикрепить текстовый файл с этого устройства',
+  'streamB.nodeAttachmentTooLarge':
+    'Файл слишком большой для одного сообщения. Выберите текстовый файл размером до 48 КБ.',
+  'streamB.nodeAttachmentTextOnly':
+    'Этот узел принимает текстовые файлы в сообщениях. Выберите текстовый файл в UTF-8.',
   'streamB.editorMessagePlaceholder': 'Сообщение…',
   'streamB.runSummary.start.done': 'Запущено',
   'streamB.runSummary.start.running': 'Запускается',

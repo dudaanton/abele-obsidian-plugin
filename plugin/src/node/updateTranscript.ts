@@ -281,10 +281,10 @@ export class UpdateTranscript {
   }
 
   /** The tool call a node prompt asks about, by the agent's own id. */
-  toolByNativeId(nativeId: string): string | undefined {
+  toolByNativeId(nativeId: string, run?: string): string | undefined {
     for (const id of this.tools.keys()) {
       const parts = JSON.parse(id) as string[]
-      if (parts[2] === nativeId) return id
+      if (parts[2] === nativeId && (!run || parts[1] === run)) return id
     }
     return undefined
   }
