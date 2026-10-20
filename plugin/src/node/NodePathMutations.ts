@@ -141,16 +141,33 @@ export class NodePathMutations {
     })
     if (result.state === 'conflict') throw new ChannelError('stale_revision')
   }
-  fileMove(target: PathTarget, from: string, to: string, expected_content_id: string) {
-    const params = { ...this.fileTarget(target), from, to, expected_content_id }
+  fileMove(
+    target: PathTarget,
+    from: string,
+    to: string,
+    expected_content_id: string,
+    directory = false
+  ) {
+    const params = {
+      ...this.fileTarget(target),
+      from,
+      to,
+      expected_content_id,
+      ...(directory ? { directory: true } : {}),
+    }
     return this.fileIntent(
       `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.move`,
       params,
       (id) => this.client.nodePath.fileMove(params, id)
     )
   }
-  fileRemove(target: PathTarget, path: string, expected_content_id: string) {
-    const params = { ...this.fileTarget(target), path, expected_content_id }
+  fileRemove(target: PathTarget, path: string, expected_content_id: string, directory = false) {
+    const params = {
+      ...this.fileTarget(target),
+      path,
+      expected_content_id,
+      ...(directory ? { directory: true } : {}),
+    }
     return this.fileIntent(
       `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.remove`,
       params,

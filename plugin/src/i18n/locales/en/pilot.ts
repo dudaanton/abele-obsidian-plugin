@@ -1,4 +1,12 @@
 export const en = {
+  'node.files.renameAction': 'Rename',
+  'node.files.moveAction': 'Move',
+  'node.files.directoryConfirm':
+    'Delete folder {path}? These are all the entries that will be removed:',
+  'node.files.directoryMoveConfirm':
+    'Move folder {path} to {destination}? These are all the entries that will move:',
+  'node.files.gitLock': 'Git worktree lock',
+  'node.localRunning': 'AbeleNode is running on this computer',
   'node.files.nameOnly': 'Enter a file name without folders.',
   'node.files.saveLocked': 'Saving is locked here',
   'node.files.attachMessage':

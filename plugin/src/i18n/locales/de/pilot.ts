@@ -1,5 +1,13 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.files.renameAction': 'Umbenennen',
+  'node.files.moveAction': 'Verschieben',
+  'node.files.directoryConfirm':
+    'Ordner {path} löschen? Alle aufgeführten Einträge werden entfernt:',
+  'node.files.directoryMoveConfirm':
+    'Ordner {path} nach {destination} verschieben? Alle aufgeführten Einträge werden verschoben:',
+  'node.files.gitLock': 'Git-Arbeitsbaum-Sperre',
+  'node.localRunning': 'AbeleNode läuft auf diesem Computer',
   'node.files.nameOnly': 'Geben Sie einen Dateinamen ohne Ordner ein.',
   'node.files.attachMessage':
     'Andere Worktrees dieses Repositorys anzeigen und Dateibearbeitung im ausgewählten Worktree erlauben? Agentenausführung erfordert weiterhin eine separate Zustimmung.',

@@ -28,4 +28,21 @@ it('identifies the sessions and other holders of the selected worktree only', ()
   expect(
     worktreeBusy(new ChannelError('rate_limit'), model as never, target as never)
   ).toBeUndefined()
+  expect(
+    worktreeBusy(
+      new ChannelError('resource_busy', 'resource_busy', {
+        holder: 'execution',
+        session_id: 'remote-session',
+        title: 'Build chat',
+      }),
+      model as never,
+      target as never
+    )
+  ).toEqual({
+    sessions: [
+      { id: 'sample-session', title: 'Sample chat' },
+      { id: 'remote-session', title: 'Build chat' },
+    ],
+    labels: ['Sample chat', 'Build chat'],
+  })
 })

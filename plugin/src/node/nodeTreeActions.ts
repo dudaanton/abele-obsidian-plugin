@@ -9,6 +9,7 @@ import { openNodePathTab } from './nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import type { NodePathContext } from './NodePathOwnerActions'
+import { nodeAdvertisesMethod } from './advertisedMethods'
 
 export type TreeAction = 'newFile' | 'newFolder' | 'rename' | 'move' | 'delete'
 export async function nodeTreeAction(action: TreeAction, context: NodePathContext): Promise<void> {
@@ -32,11 +33,11 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
   const model = NodePathService.getInstance().model(target.registrationId)
   const mutations = new NodePathMutations(connection.client)
   const path = context.path ?? ''
-  const parent = context.directory ? path : path.slice(0, Math.max(0, path.lastIndexOf('/')))
+  const parent = path.slice(0, Math.max(0, path.lastIndexOf('/')))
   if (action === 'newFile' || action === 'newFolder') {
     const destination = await promptDialog({
       title: t(action === 'newFile' ? 'node.files.newFile' : 'node.files.newFolder'),
-      value: parent ? `${parent}/` : '',
+      value: (context.directory ? path : parent) ? `${context.directory ? path : parent}/` : '',
       submitText: t('streamB.create.475949'),
     })
     if (!destination) return
@@ -51,26 +52,55 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
       )
     return
   }
-  const file = context.contentId
-    ? context
-    : await model.port.file(target, path, undefined, context.revision)
+  const directory = context.directory === true
+  if (
+    directory &&
+    !nodeAdvertisesMethod(
+      connection.client,
+      `${target.kind === 'worktree' ? 'repository.v1' : 'workspace'}.file.directory`
+    )
+  )
+    throw new ChannelError('unsupported_method')
+  const manifest = directory
+    ? await connection.client.nodePath.fileDirectory({
+        ...(target.kind === 'worktree' ? { worktree_id: target.id } : { workspace_id: target.id }),
+        path,
+      })
+    : undefined
+  const file = manifest
+    ? { contentId: manifest.content_id }
+    : context.contentId
+      ? context
+      : await model.port.file(target, path, undefined, context.revision)
   if (!file.contentId) throw new ChannelError('unsupported_method')
   if (action === 'delete') {
     if (
       !(await confirmDialog({
         title: t('node.files.delete'),
         message: t('node.files.deleteConfirm', { path }),
-        confirmText: t('node.files.delete'),
+        confirmText: t('kit.delete'),
+        ...(manifest
+          ? {
+              size: 'tall' as const,
+              message:
+                t('node.files.directoryConfirm', { path }) +
+                '\n' +
+                manifest.entries
+                  .map((entry) => `${entry.path}${entry.kind === 'directory' ? '/' : ''}`)
+                  .join('\n'),
+            }
+          : {}),
       }))
     )
       return
-    await mutations.fileRemove(target, path, file.contentId)
+    if (directory) await mutations.fileRemove(target, path, file.contentId, true)
+    else await mutations.fileRemove(target, path, file.contentId)
   } else {
     const renaming = action === 'rename'
     const value = await promptDialog({
       title: t(renaming ? 'node.files.rename' : 'node.files.move'),
       value: renaming ? path.split('/').pop() : path,
-      submitText: t(renaming ? 'node.files.rename' : 'node.files.move'),
+      submitText: t(renaming ? 'node.files.renameAction' : 'node.files.moveAction'),
       validate: renaming
         ? (name) => {
             if (!name || /[\\/]/.test(name) || ['.', '..'].includes(name))
@@ -82,7 +112,23 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
     if (!value) return
     const destination = renaming && parent ? `${parent}/${value}` : value
     if (destination === path) return
-    await mutations.fileMove(target, path, destination, file.contentId)
+    if (manifest) {
+      if (
+        !(await confirmDialog({
+          title: t(renaming ? 'node.files.rename' : 'node.files.move'),
+          size: 'tall',
+          message:
+            t('node.files.directoryMoveConfirm', { path, destination }) +
+            '\n' +
+            manifest.entries
+              .map((entry) => `${entry.path}${entry.kind === 'directory' ? '/' : ''}`)
+              .join('\n'),
+          confirmText: t(renaming ? 'node.files.renameAction' : 'node.files.moveAction'),
+        }))
+      )
+        return
+      await mutations.fileMove(target, path, destination, file.contentId, true)
+    } else await mutations.fileMove(target, path, destination, file.contentId)
   }
   await model.reloadTarget(target)
 }

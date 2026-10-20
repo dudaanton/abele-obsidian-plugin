@@ -115,7 +115,8 @@ function addNodeTreeActions(menu: Menu, context: NodePathContext): void {
   const actions: [TreeAction, string, string][] = [
     ['newFile', 'file-plus', `${prefix}.write`],
     ['newFolder', 'folder-plus', `${prefix}.file.mkdir`],
-    ...(context.path && !context.directory
+    ...(context.path &&
+    (!context.directory || nodeAdvertisesMethod(client, `${prefix}.file.directory`))
       ? ([
           ['rename', 'pencil', `${prefix}.file.move`],
           ['move', 'folder-input', `${prefix}.file.move`],

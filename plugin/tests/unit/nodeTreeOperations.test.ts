@@ -75,6 +75,24 @@ it('moves and removes only the version shown, and creates directories through th
     ],
     ['repository.v1.file.mkdir', { worktree_id: target.id, path: 'src/new-folder' }],
   ])
+  await mutations.fileMove(target, 'src', 'other', 'b'.repeat(64), true)
+  expect(send).toHaveBeenLastCalledWith(
+    'repository.v1.file.move',
+    {
+      worktree_id: target.id,
+      from: 'src',
+      to: 'other',
+      expected_content_id: 'b'.repeat(64),
+      directory: true,
+    },
+    expect.any(String)
+  )
+  await mutations.fileRemove(target, 'other', 'b'.repeat(64), true)
+  expect(send).toHaveBeenLastCalledWith(
+    'repository.v1.file.remove',
+    { worktree_id: target.id, path: 'other', expected_content_id: 'b'.repeat(64), directory: true },
+    expect.any(String)
+  )
 })
 it('keeps the same operation id after a lost file-operation result', async () => {
   const send = vi.fn(async (_method, _params, operation_id) => ({

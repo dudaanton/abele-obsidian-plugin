@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.files.renameAction': 'Pārdēvēt',
+  'node.files.moveAction': 'Pārvietot',
+  'node.files.directoryConfirm': 'Dzēst mapi {path}? Tiks dzēsti visi tālāk norādītie ieraksti:',
+  'node.files.directoryMoveConfirm':
+    'Pārvietot mapi {path} uz {destination}? Tiks pārvietoti visi tālāk norādītie ieraksti:',
+  'node.files.gitLock': 'Git darba koka bloķējums',
+  'node.localRunning': 'AbeleNode darbojas šajā datorā',
   'node.files.nameOnly': 'Ievadiet faila nosaukumu bez mapēm.',
   'node.files.attachMessage':
     'Parādīt pārējos repozitorija darba kokus un atļaut failu rediģēšanu izvēlētajā kokā? Aģentu palaišanai joprojām vajadzīga atsevišķa atļauja.',

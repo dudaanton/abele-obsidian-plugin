@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.files.renameAction': 'Переименовать',
+  'node.files.moveAction': 'Переместить',
+  'node.files.directoryConfirm': 'Удалить папку {path}? Будут удалены все перечисленные элементы:',
+  'node.files.directoryMoveConfirm':
+    'Переместить папку {path} в {destination}? Будут перемещены все перечисленные элементы:',
+  'node.files.gitLock': 'Блокировка рабочего дерева Git',
+  'node.localRunning': 'AbeleNode работает на этом компьютере',
   'node.files.nameOnly': 'Введите имя файла без папок.',
   'node.files.attachMessage':
     'Показать другие рабочие деревья репозитория и разрешить редактирование файлов в выбранном? Для запуска агентов по-прежнему нужно отдельное разрешение.',

@@ -95,23 +95,38 @@ async function opened(): Promise<Shown> {
 const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
 
-it.fails(
-  'BUG: folder rename, move and delete need a node directory-version precondition',
-  async () => {
-    f.methods = ['repository.v1.file.move', 'repository.v1.file.remove']
-    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
-    showNodePathFileMenu(new MouseEvent('contextmenu'), {
-      target,
-      path: 'sample-folder',
-      directory: true,
-    })
-    await vi.waitFor(() => expect(show).toHaveBeenCalled())
-    const menu = show.mock.instances[0] as unknown as Shown
-    expect(menu.items.map((item) => item.title)).toEqual(
-      expect.arrayContaining(['Rename…', 'Move…', 'Delete…'])
-    )
-  }
-)
+it('offers folder rename, move and delete when the node advertises directory manifests', async () => {
+  f.methods = [
+    'repository.v1.file.directory',
+    'repository.v1.file.move',
+    'repository.v1.file.remove',
+  ]
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  showNodePathFileMenu(new MouseEvent('contextmenu'), {
+    target,
+    path: 'sample-folder',
+    directory: true,
+  })
+  await vi.waitFor(() => expect(show).toHaveBeenCalled())
+  const menu = show.mock.instances[0] as unknown as Shown
+  expect(menu.items.map((item) => item.title)).toEqual(
+    expect.arrayContaining(['Rename…', 'Move…', 'Delete…'])
+  )
+})
+
+it('keeps file mutations available on older nodes without offering unsafe folder actions', async () => {
+  f.methods = ['repository.v1.file.move', 'repository.v1.file.remove']
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  showNodePathFileMenu(new MouseEvent('contextmenu'), {
+    target,
+    path: 'sample-folder',
+    directory: true,
+  })
+  await vi.waitFor(() => expect(show).toHaveBeenCalled())
+  expect((show.mock.instances[0] as unknown as Shown).items.map((item) => item.title)).not.toEqual(
+    expect.arrayContaining(['Rename…', 'Move…', 'Delete…'])
+  )
+})
 
 it('offers debugger actions in the node header menu', async () => {
   f.describe.mockResolvedValueOnce({

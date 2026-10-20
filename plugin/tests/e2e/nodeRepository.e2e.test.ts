@@ -207,16 +207,17 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       const row=path=>panel().querySelector('[data-path="'+path+'"]');
       const files=panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Files"]');files.click();
       await until(()=>row('README.md'));
-      const operate=async(path,label,value)=>{
+      const operate=async(path,label,value,preview=false)=>{
         row(path).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:100,clientY:200}));
         await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label));
         [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label).click();
         await until(()=>document.querySelector('.modal.abele-modal'));
         const modal=document.querySelector('.modal.abele-modal');
         if(value!==undefined){const input=modal.querySelector('input');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50)}
-        const submit=label.startsWith('New ')?'Create':label;
+        if(preview&&label==='Delete…')return;
+        const submit=label.startsWith('New ')?'Create':label.replace(/…$/, '');
         [...modal.querySelectorAll('button')].find(button=>button.textContent.trim()===submit).click();
-        await until(()=>!document.querySelector('.modal.abele-modal'));
+        if(!preview)await until(()=>!document.querySelector('.modal.abele-modal'));
       };
       await operate('README.md','New folder…','sample-created');
       await until(()=>require('fs').existsSync(${JSON.stringify(projectPath)}+'/sample-created'));
@@ -228,6 +229,26 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       await until(()=>row('sample-created/new-file.ts'));
       await operate('sample-created/new-file.ts','Rename…','renamed.ts');
       await until(()=>row('sample-created/renamed.ts')&&!row('sample-created/new-file.ts'));
+      const advertised=nodes.connection(window.__sampleRepositoryNode).client.channel?.channel?.welcome?.methods??[];
+      if(advertised.includes('repository.v1.file.directory')){
+        const folderAction=async(path,label,destination)=>{
+          await operate(path,label,destination,true);
+          await until(()=>document.querySelector('.modal.abele-modal')?.textContent.includes('renamed.ts'));
+          const modal=document.querySelector('.modal.abele-modal');
+          require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/folder-'+label.replace(/…$/,'').toLowerCase()+'.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+          [...modal.querySelectorAll('button')].find(button=>button.textContent.trim()===label.replace(/…$/,'')).click();
+          await until(()=>!document.querySelector('.modal.abele-modal'));
+        };
+        await folderAction('sample-created','Rename…','sample-renamed');
+        await until(()=>row('sample-renamed')&&!row('sample-created'));
+        await folderAction('sample-renamed','Move…','sample-moved-folder');
+        await until(()=>row('sample-moved-folder')&&!row('sample-renamed'));
+        await folderAction('sample-moved-folder','Delete…');
+        await until(()=>!row('sample-moved-folder'));
+        await operate('README.md','New folder…','sample-created');
+        await operate('README.md','New file…','sample-created/renamed.ts');
+        await until(()=>row('sample-created/renamed.ts'));
+      }
       await operate('sample-created/renamed.ts','Move…','sample-moved.ts');
       await until(()=>row('sample-moved.ts')&&!row('sample-created/renamed.ts'));
       await operate('sample-moved.ts','Delete…');

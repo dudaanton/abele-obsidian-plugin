@@ -1,5 +1,13 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.files.renameAction': 'Renombrar',
+  'node.files.moveAction': 'Mover',
+  'node.files.directoryConfirm':
+    '¿Eliminar la carpeta {path}? Se eliminarán todos los elementos siguientes:',
+  'node.files.directoryMoveConfirm':
+    '¿Mover la carpeta {path} a {destination}? Se moverán todos los elementos siguientes:',
+  'node.files.gitLock': 'Bloqueo del árbol de trabajo Git',
+  'node.localRunning': 'AbeleNode se está ejecutando en este equipo',
   'node.files.nameOnly': 'Introduzca un nombre de archivo sin carpetas.',
   'node.files.attachMessage':
     '¿Mostrar los otros árboles de trabajo del repositorio y permitir editar archivos en el que elija? La ejecución de agentes sigue necesitando una aprobación aparte.',
