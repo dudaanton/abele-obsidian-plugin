@@ -817,9 +817,8 @@ it.each(['desktop', 'phone'] as const)(
       openChat()
       const result = await inAppLong<{ blame: boolean; symbols: boolean }>(`(async()=>{${prelude}
       const registration=${JSON.stringify(registration)},client=nodes.connection(registration).client;
-      // This legacy-token fixture supplies only the device-local cache namespace; authority
-      // continues to come from its existing authenticated connection to the disposable node.
-      await client.store.transaction(state=>{state.installation_id='sample-debugger-installation'});
+      const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.offsetParent);
+      if(!await client.store.transaction(state=>state.installation_id))throw Error('Authenticated installation identity is missing');
       const project=await client.registerProject(${JSON.stringify(gitPath)},'trusted');
       let binding;
       try {
