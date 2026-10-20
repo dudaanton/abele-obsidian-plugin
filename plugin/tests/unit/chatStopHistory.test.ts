@@ -196,7 +196,12 @@ describe('durable stopped turns', () => {
       'Saved one',
       'Saved two',
     ])
-    expect(session.messages.value.at(-1)?.content).toBe('Already saved both notes.')
+    // The streamed text stays, and the stop is named after it.
+    expect(session.messages.value.at(-2)?.content).toBe('Already saved both notes.')
+    expect(session.messages.value.at(-1)).toMatchObject({
+      role: 'system',
+      content: 'Stopped by you. The task may be unfinished.',
+    })
     const opened = await reopen()
     const next = await continueWithRealClient(opened)
     expect(next).toContainEqual(

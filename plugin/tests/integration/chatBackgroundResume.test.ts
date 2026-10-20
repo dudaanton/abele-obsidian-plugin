@@ -130,6 +130,8 @@ it('leaves a stopped waiting turn stopped when the app returns', async () => {
   expect(session.messages.value.map(({ role, content }) => ({ role, content }))).toEqual([
     { role: 'user', content: 'Sample question' },
     { role: 'assistant', content: 'unfinished response' },
+    // The stop is named after the text it cut short.
+    { role: 'system', content: 'Stopped by you. The task may be unfinished.' },
   ])
   expect(session.reconnecting.value).toBeNull()
 })

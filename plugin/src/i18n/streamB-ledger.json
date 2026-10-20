@@ -5347,5 +5347,75 @@
       "es",
       "de"
     ]
+  },
+  "streamB.actionDenied": {
+    "englishHash": "7160e285ba82af91e693c87a224ab522180cc9988fe5ee0192a32b36f27cc7a1",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.actionFailed": {
+    "englishHash": "0ea99fb0528e1e65eb52d8842f57e3609da5a7ff589c4651bc4708aee2d64d3a",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.listFiles": {
+    "englishHash": "bdac8f78d3b00f1e3fdd620aa88a398c6b19b68963a945c466b5ad0c2db8631b",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.editContent": {
+    "englishHash": "c07564b967482dcd0bfbfd6c7215541500eec34b24328b5da4a89ada1bfc9651",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.stoppedByYou": {
+    "englishHash": "2db217086a2c4d95baee4f05dca090c140b7e8a3df4ecc533ba742364ab4c38a",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.writesWithoutAsking": {
+    "englishHash": "305d9230a1bc69ba86f32e43e530b1c2ac20888fdb0285b7c609d20d22b7d011",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.chatChanges": {
+    "englishHash": "46423d55ab9e50ab84d86ed973fad6f5ffe391c755dd04f7d07cfd0a2a0cda4a",
+    "context": "Chat, node and Git hosting presentation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

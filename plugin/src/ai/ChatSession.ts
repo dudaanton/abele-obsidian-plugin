@@ -310,6 +310,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private agentLoop: AgentLoop | null = null
   private turnAbortController: AbortController | null = null
   private turnAborted = false
+  /** Stop pressed during a streamed reply: its mark follows the partial text the loop keeps. */
+  private stopMarkPending = false
   private delegationWakeStopped = false
   private delegationStopEpoch = 0
   private unsubscribe: (() => void) | null = null
@@ -2147,7 +2149,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.unsubscribe?.()
       this.unsubscribe = null
       this.agentLoop = null
+      if (this.stopMarkPending) {
+        this.stopMarkPending = false
+        if (!this.destroyed) this.appendStopMark()
+      }
     }
+  }
+
+  private appendStopMark() {
+    this.appendChatMessage({
+      id: nanoid(),
+      role: 'system',
+      content: t('streamB.stoppedByYou'),
+      timestamp: Date.now(),
+    })
+    this.updateVisibleMessages()
+    this.markDirty()
   }
 
   // ── Pending tool calls processing ──────────────────────────────
@@ -2433,11 +2450,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
 
     const modelContent = [...toolResult.content]
-    if (JSON.stringify(args) !== JSON.stringify(tc.arguments))
-      modelContent.push({
-        type: 'text',
-        text: `The user edited the approved action. Actual arguments executed: ${JSON.stringify(args)}. Describe the actual result, using these values rather than the original proposal.`,
-      })
+    if (JSON.stringify(args) !== JSON.stringify(tc.arguments)) {
+      // Guidance for the model, never shown to the person, so it stays in English.
+      const editedNote = `The user edited the approved action. Actual arguments executed: ${JSON.stringify(args)}. Describe the actual result, using these values rather than the original proposal.`
+      modelContent.push({ type: 'text', text: editedNote })
+    }
 
     const toolChatMsg = this.allChatMessages.find(
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id
@@ -3228,14 +3245,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.isExecutingTool.value ||
         this.pendingToolCalls.value.length > 0)
     if (wasRunning) {
-      this.appendChatMessage({
-        id: nanoid(),
-        role: 'system',
-        content: t('streamB.stoppedByYou'),
-        timestamp: Date.now(),
-      })
-      this.updateVisibleMessages()
-      this.markDirty()
+      if (this.agentLoop) this.stopMarkPending = true
+      else this.appendStopMark()
     }
     this.delegationWakeStopped = true
     ++this.delegationStopEpoch
