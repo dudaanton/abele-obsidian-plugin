@@ -191,6 +191,17 @@ watchEffect(
     overflow-wrap: anywhere;
   }
 }
+.abele-chat-run_failed.abele-chat-run_inline-file > .tree-item-self {
+  align-items: flex-start;
+
+  .tree-item-inner {
+    flex: 1 1 0;
+  }
+  .tree-item-flair-outer {
+    flex-basis: 100%;
+    margin-inline-start: calc(2 * (var(--icon-xs) + var(--size-4-1)));
+  }
+}
 @keyframes abele-chat-run-spin {
   to {
     transform: rotate(360deg);

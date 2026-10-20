@@ -85,6 +85,7 @@ const probe = (screen: string) => `(async () => {
     const run = document.querySelector('.abele-chat-run > .tree-item-self')
     const edge = document.querySelector('.abele-ai-chat').getBoundingClientRect().right
     report.runFits = run.scrollWidth <= run.clientWidth + 1 && [...run.querySelectorAll('.abele-tree-item__text')].every(el => el.getBoundingClientRect().right <= edge + 1)
+    report.runFits = report.runFits && Math.abs(run.querySelector('.collapse-icon').getBoundingClientRect().top - run.querySelector('.tree-item-inner').getBoundingClientRect().top) <= 4
     await shot('failed-action')
     await pending('sample-create-hidden', 'create', { path: root + '/.sample.md', content: 'Hidden sample' })
     await session.approveToolCall()
