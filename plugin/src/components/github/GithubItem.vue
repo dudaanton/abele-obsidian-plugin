@@ -97,11 +97,7 @@
           @search="tabSearch.openSearch"
         >
           <template v-if="source?.identity.provider === 'node'" #controls>
-            <slot
-              name="repository-controls"
-              :file="blob"
-              :version="(main.data.value as { ref?: string } | null)?.ref"
-            >
+            <slot name="repository-controls" :file="blob" :version="nodeContentVersion">
               <span>{{ target.repo }}</span>
             </slot>
           </template>
@@ -141,7 +137,7 @@
             sourceLocation &&
             'ref' in sourceLocation &&
             sourceLocation.ref === 'Working tree'
-              ? (main.data.value as { url?: string } | null)?.url
+              ? nodeContentUrl
               : undefined
           "
           :has-changes="tabSearch.hasChanges.value"
@@ -471,6 +467,15 @@ const {
   openCommit,
   reload,
 } = useGithubItem(props)
+
+const nodeContentVersion = computed(() => {
+  const data = main.data.value
+  return data && 'ref' in data ? data.ref : undefined
+})
+const nodeContentUrl = computed(() => {
+  const data = main.data.value
+  return data && 'url' in data ? data.url : undefined
+})
 
 /** Remote repository files, folders and home can be compared against a pinned version. */
 const canPinBase = computed(
