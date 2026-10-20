@@ -76,14 +76,14 @@ const rows = computed(() => {
     const boundary = asyncBoundary(frame.name)
     const last = result[result.length - 1]
     if (boundary !== undefined) result.push({ kind: 'async', at, label: boundary })
-    else if (frame.file && !frame.file.startsWith('node:'))
-      result.push({ kind: 'frame', at, frame })
+    else if (!frame.file.startsWith('node:')) result.push({ kind: 'frame', at, frame })
     else if (last?.kind === 'internals') last.frames.push(frame)
     else result.push({ kind: 'internals', at, frames: [frame] })
   })
   return result
 })
-const location = (frame: DebugFrame) => `${frame.file.split(/[\\/]/).pop()}:${frame.line}`
+const location = (frame: DebugFrame) =>
+  frame.file ? `${frame.file.split(/[\\/]/).pop()}:${frame.line}` : ''
 </script>
 
 <style lang="scss">

@@ -35,7 +35,7 @@ export async function savePoint(
   try {
     await askFolderOnce(binding)
     const result = await trace.savePoint(sourceId, line, edit)
-    if (result.pending) new Notice(t('debug.approvalPending'))
+    if (result.pending) new Notice(t('node.error.unknownOutcome'))
   } catch (e) {
     if (e instanceof RecordPointSaveError)
       new Notice(t('debug.recordPointRefused', { reason: receiptMessage(e.code) }))
@@ -138,7 +138,11 @@ export function marginMenu(
           () => void binding.controller.setBreakpointEnabled(known.id, !known.enabled).catch(fail)
         )
     )
-  menu.showAtMouseEvent(event)
+  const anchor = event.currentTarget instanceof Element ? event.currentTarget : event.target
+  if (!event.clientX && !event.clientY && anchor instanceof Element) {
+    const rect = anchor.getBoundingClientRect()
+    menu.showAtPosition({ x: rect.left, y: rect.bottom })
+  } else menu.showAtMouseEvent(event)
 }
 
 /** Opens a run in its tab; given a record point, at the last step that point gave. */
