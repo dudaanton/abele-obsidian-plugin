@@ -1054,7 +1054,12 @@ export class NodeRepositorySource implements RepositorySource {
     this.watching = true
     this.stopEvents = this.client.onEvent((event) => {
       const data = event.data as
-        | { project_id?: string; external_read?: boolean; refresh_required?: boolean }
+        | {
+            project_id?: string
+            worktree_id?: string
+            external_read?: boolean
+            refresh_required?: boolean
+          }
         | undefined
       if (
         event.type === 'stream.redacted' &&
@@ -1092,6 +1097,17 @@ export class NodeRepositorySource implements RepositorySource {
           batch.data.worktree_id === this.identity.workspace
         )
           this.changed(batch.data)
+        else if (
+          !batch.success &&
+          data?.project_id === this.identity.project &&
+          data.worktree_id === this.identity.workspace
+        ) {
+          console.debug(
+            '[Abele] node repository: unreadable batch; rereading the files',
+            batch.error
+          )
+          this.reread(this.cursor)
+        }
         return
       }
       if (event.type !== 'repository.invalidated') return

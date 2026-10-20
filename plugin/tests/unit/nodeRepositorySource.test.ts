@@ -15,6 +15,25 @@ const fixture = () => {
   }
 }
 describe('node repository source through the validated client contract', () => {
+  it('invalidates mutable observations when a same-repository batch cannot be decoded', async () => {
+    const { source, event } = fixture()
+    await source.startWatching()
+    const first = await source.resolve(WORKING_TREE),
+      listener = vi.fn()
+    source.subscribe(listener)
+    const invalid = {
+      project_id: identity.project,
+      worktree_id: identity.workspace,
+      complete: true,
+      entries: [{ change: 'unknown' }],
+    }
+    event('repository.changed', { ...invalid, worktree_id: 'another-worktree' })
+    expect(listener).not.toHaveBeenCalled()
+    event('repository.changed', invalid)
+    expect(listener).toHaveBeenCalledWith({ kind: 'workspace' })
+    expect(await source.resolve(WORKING_TREE)).not.toBe(first)
+    source.dispose()
+  })
   it('fills committed blame dates and full messages once per distinct commit', async () => {
     const { source, client } = fixture()
     vi.spyOn(client.repository, 'blame').mockResolvedValue({
