@@ -13,6 +13,43 @@ afterEach(() => {
   service.destroy()
   vi.restoreAllMocks()
 })
+it('does not reuse an old chat observation while it is opening a different session', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  let finish!: (value: unknown) => void
+  const response = new Promise((resolve) => {
+    finish = resolve
+  })
+  const connection = {
+    state: ref('connected'),
+    client: { debugger: { status: vi.fn(() => response) } },
+  }
+  const chat = {
+    reference: { registrationId: target.registrationId, sessionId: 'sample-chat' },
+    connection,
+  } as never
+  const binding = service.binding(chat)
+  binding.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({ debug_session_id: 'sample-old' }),
+  })
+  service.trackFolder(chat, 'sample-old', target)
+  const opening = binding.open('sample-new')
+  try {
+    expect(
+      service.binding({ kind: 'folder-debug', target, connection } as never, 'sample-old')
+    ).not.toBe(binding)
+  } finally {
+    binding.destroy()
+    finish({ snapshot: debuggerSnapshot({ debug_session_id: 'sample-new' }) })
+    await opening
+  }
+})
 it('restores source identities and attachment keys for every primary session', async () => {
   const target = {
     registrationId: 'sample-registration',

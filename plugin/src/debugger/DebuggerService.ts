@@ -46,6 +46,7 @@ export class DebuggerBinding {
   private stopConnection: WatchStopHandle
   private disposed = false
   private refreshing?: Promise<void>
+  private openingSessionId?: string
   private loadedEpoch?: number
   private grantGeneration = 0
   constructor(
@@ -82,6 +83,9 @@ export class DebuggerBinding {
   get sessionId() {
     return this.controller.snapshot?.debug_session_id
   }
+  get observationId() {
+    return this.controller.current ? this.sessionId : (this.openingSessionId ?? this.sessionId)
+  }
   async open(sessionId: string) {
     console.debug(
       '[debugger] Opening observation',
@@ -90,6 +94,7 @@ export class DebuggerBinding {
       this.connection.state.value
     )
     if (this.disposed) return
+    this.openingSessionId = sessionId
     this.stopWatch()
     this.controller.invalidate()
     this.controller.clearGrant('Live agent grant is being loaded')
@@ -642,7 +647,8 @@ export class DebuggerService {
       if (sessionId) {
         const existing = [...this.bindings.values()].find(
           (binding) =>
-            binding.registrationId === identity.registrationId && binding.sessionId === sessionId
+            binding.registrationId === identity.registrationId &&
+            binding.observationId === sessionId
         )
         if (existing) {
           this.owners.set(existing, presenter)
