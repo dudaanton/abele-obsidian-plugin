@@ -11,6 +11,9 @@ exact text, including leading zeros, matters.
 
 ## Device-local connection trust
 
+The node panel keeps comparison-base refs per worktree in its device-local presentation
+snapshot. These choices survive panel reloads and do not grant chat access or change Git.
+
 Connection trust is an optional, default-off `trusted` flag in the device-local
 `abele-sync-connections-v2` registry. Only the connection window changes it; settings
 tools and transfers do not expose it. Trusted connections automatically approve incoming

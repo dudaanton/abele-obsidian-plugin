@@ -931,6 +931,22 @@ describe('a branch as a pull request would see it', () => {
       'refs/remotes/origin/trunk',
     ])
   })
+  it('uses an available default ref when automatic base detection returns no base', async () => {
+    const { port, divergence } = branchFake(false)
+    divergence.mockImplementation(
+      async (params) =>
+        ({
+          base_ref: params.base_ref ?? null,
+          base_commit: params.base_ref ? BASE : null,
+          head_commit: HEAD,
+          ahead: 0,
+          behind: 0,
+          reason: params.base_ref ? 'ok' : 'default_branch_required',
+        }) as never
+    )
+    await port.catalogue()
+    expect((await port.branch(target)).state.base).toBe('origin/trunk')
+  })
   it('has no upstream before the first push, and counts against a chosen base', async () => {
     const { port, divergence } = branchFake(false)
     await port.catalogue()

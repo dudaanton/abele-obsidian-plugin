@@ -8,6 +8,7 @@ export const GIT_WRITE_CAPABILITY = 'repository_git_write_v1'
 
 /** Where a worktree's branch is, as the node reads it from git. */
 export interface PathGitInfo {
+  hasRemote?: boolean
   head: string | null
   /** `main`, not `refs/heads/main`; null when detached. */
   branch: string | null
@@ -158,6 +159,7 @@ export function nodePathGit(git: NodeGitClient): PathGit {
         raw.remotes.find((r) => r.name === 'origin') ??
         (raw.remotes.length === 1 ? raw.remotes[0] : undefined)
       return {
+        hasRemote: raw.remotes.length > 0,
         head: raw.head,
         branch: raw.branch?.replace(/^refs\/heads\//, '') ?? null,
         operation: raw.operation

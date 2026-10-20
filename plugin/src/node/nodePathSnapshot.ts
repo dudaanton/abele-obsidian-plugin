@@ -89,6 +89,7 @@ export const NodePathSnapshotSchema = z
     registrationId: id,
     receivedAt: z.string().datetime(),
     selected: text,
+    comparisonBases: z.record(id, text).optional(),
     panelMode: z.enum(['files', 'changes', 'history', 'pulls', 'sessions']).optional(),
     folders: z.array(folder).max(256),
     targets: z.array(target).max(1024),

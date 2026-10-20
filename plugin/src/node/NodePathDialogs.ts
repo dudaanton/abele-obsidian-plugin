@@ -1,4 +1,5 @@
 import { nodeErrorNotice } from './errorNotice'
+import { waitForWorktreeJob } from './worktreePresentation'
 import { nodeErrorWords } from './errorWords'
 import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
@@ -301,7 +302,9 @@ export async function openNodeWorktreeDialog(
           void mutations
             .create(target.projectId, branch, from)
             .then(async (reservation) => {
-              const job = await connection.client.getJob(reservation.job_id)
+              const job = await waitForWorktreeJob(() =>
+                connection.client.getJob(reservation.job_id)
+              )
               await model.refresh()
               if (job.state !== 'succeeded')
                 nodeErrorNotice(
@@ -312,7 +315,7 @@ export async function openNodeWorktreeDialog(
               else {
                 const selected = model.targets.value.find(
                   (translationItem) =>
-                    model.copy(translationItem)?.branch === branch &&
+                    model.copy(translationItem)?.branch?.replace(/^refs\/heads\//, '') === branch &&
                     translationItem.projectId === target.projectId
                 )
                 if (selected) await model.select(selected.id)

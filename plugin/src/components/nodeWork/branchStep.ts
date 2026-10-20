@@ -30,7 +30,7 @@ export function nextStep(
     }
   if (s.stopped) return null
   if (!s.base) return null
-  if (!s.upstream && s.ahead)
+  if (!s.upstream && s.ahead && s.hasRemote !== false)
     return {
       id: 'publish' as const,
       text: t('streamB.publishBranch.e1f596'),
@@ -60,7 +60,7 @@ export function nextStep(
         v1: String(s.base),
       }),
     }
-  if (s.ahead && !s.pr)
+  if (s.ahead && !s.pr && s.hasRemote !== false)
     return {
       id: 'create-pr' as const,
       text: t('streamB.createPullRequest.71e2bc'),

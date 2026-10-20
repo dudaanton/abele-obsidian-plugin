@@ -1,6 +1,6 @@
 import { uiFields, uiField, uiErrorMessage, uiMessage, UiError } from '@/i18n/streamBErrors'
 
-import { computed, ref, shallowRef, markRaw } from 'vue'
+import { computed, ref, shallowRef, markRaw, watch } from 'vue'
 import type { SessionActivity } from './sessionActivity'
 import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
@@ -98,6 +98,7 @@ export interface PathCatalogue {
 }
 /** Transport-independent product port. Wire validation belongs to the node client. */
 export interface NodePathPort {
+  search?(target: PathTarget, query: string): Promise<TreeEntry[]>
   invalidate?(target?: PathTarget): void
   catalogue(): Promise<PathCatalogue>
   inspect(
@@ -202,7 +203,9 @@ export class NodePathModel {
   readonly panelPulls = shallowRef<PathPulls>()
   /** The branch the selected worktree is compared with, when not its default; full ref. */
   readonly panelBase = ref('')
+  private comparisonBases: Record<string, string> = {}
   readonly panelBranch = shallowRef<PathBranch>()
+  readonly fileRefresh = shallowRef<Record<string, number>>({})
   private branchGeneration = 0
   /** The git action under way in the panel, one at a time: `stage`, `commit`, `push`… */
   readonly gitBusy = ref('')
@@ -282,6 +285,8 @@ export class NodePathModel {
     }))
     this.targets.value = value.targets
     this.selected.value = value.selected
+    this.comparisonBases = value.comparisonBases ?? {}
+    this.panelBase.value = this.comparisonBases[value.selected] ?? ''
     if (value.panelMode) this.panelMode.value = value.panelMode
     this.receivedAt.value = value.receivedAt
     const selected = this.current.value
@@ -303,6 +308,10 @@ export class NodePathModel {
       receivedAt: this.receivedAt.value,
       selected: this.selected.value,
       panelMode: this.panelMode.value,
+      comparisonBases: {
+        ...this.comparisonBases,
+        ...(this.selected.value ? { [this.selected.value]: this.panelBase.value } : {}),
+      },
       folders: this.folders.value,
       targets: this.targets.value,
       ...(inspection
@@ -548,6 +557,7 @@ export class NodePathModel {
       return await run(git, target, seen)
     } finally {
       this.gitBusy.value = ''
+      this.invalidateRevision(target)
       await this.reloadTarget(target, false).catch((error) => this.report(error))
       void this.loadPanelBranch().catch((error) => this.report(error))
     }
@@ -699,7 +709,8 @@ export class NodePathModel {
     const next = target.kind === 'workspace' ? target.projectId : target.id
     if (next !== this.selected.value) {
       // Another place: its own base and branch, not the last one's.
-      this.panelBase.value = ''
+      if (this.selected.value) this.comparisonBases[this.selected.value] = this.panelBase.value
+      this.panelBase.value = this.comparisonBases[next] ?? ''
       this.panelBranch.value = undefined
       ++this.branchGeneration
     }
@@ -754,7 +765,12 @@ export class NodePathModel {
       this.report(new ChannelError('repository_unavailable'))
       return
     }
-    return this.recoverRead(target, () => this.reloadTargetOnce(target, files))
+    await this.recoverRead(target, () => this.reloadTargetOnce(target, files))
+    const key = pathTargetKey(target)
+    this.fileRefresh.value = {
+      ...this.fileRefresh.value,
+      [key]: (this.fileRefresh.value[key] ?? 0) + 1,
+    }
   }
   private async reloadTargetOnce(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
@@ -1292,12 +1308,21 @@ export class NodePathFileModel {
   readonly error = ref('')
   private generation = 0
   private stage?: PathFileStage
+  private stopRefresh: () => void
   constructor(
     readonly pathModel: NodePathModel,
     readonly target: PathTarget
   ) {
     this.target = Object.freeze({ ...target })
     markRaw(this)
+    this.stopRefresh = watch(
+      () => pathModel.fileRefresh.value[pathTargetKey(this.target)],
+      () => {
+        const doc = this.document.value
+        if (!doc || doc.revision?.kind === 'commit' || typeof this.stage === 'object') return
+        void this.open(doc.path, this.stage).catch(() => {})
+      }
+    )
   }
   async open(path: string, stage?: PathFileStage): Promise<void> {
     const generation = ++this.generation
@@ -1334,6 +1359,7 @@ export class NodePathFileModel {
     if (next) await this.open(next.path, this.stage)
   }
   destroy(): void {
+    this.stopRefresh()
     ++this.generation
   }
 }

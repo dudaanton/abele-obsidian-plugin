@@ -2,6 +2,7 @@ import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import type { NodeClient } from '@abele/node-client'
 import { sessionActivity } from './sessionActivity'
+import { worktreeDisplayPath } from './worktreePresentation'
 import { ChannelError } from '@abele/channel-protocol'
 import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
@@ -316,7 +317,7 @@ export class NodePathClientPort implements NodePathPort {
             id: w.worktree_id,
             kind: w.kind === 'root' ? 'project' : w.detached ? 'detached' : 'worktree',
             branch: branchName(w.branch),
-            path: w.path_label,
+            path: worktreeDisplayPath(w.path_label, w.branch),
             changed: 0,
             missing: w.availability !== 'available',
           })),
@@ -418,7 +419,7 @@ export class NodePathClientPort implements NodePathPort {
       throw new UiError(uiMessage('streamBError.d4a2fc884b'))
     const own = this.worktrees.get(target.id)?.branch ?? null
     const name = own ? branchName(own) : null
-    const [divergence, refs] = await Promise.all([
+    let [divergence, refs] = await Promise.all([
       this.client.nodePath.divergence({
         worktree_id: target.id,
         ...(base ? { base_ref: base } : {}),
@@ -433,6 +434,25 @@ export class NodePathClientPort implements NodePathPort {
     // The node's git names the real upstream and a rebase that stopped; without it, the remote
     // branch of the same name stands in for the upstream.
     const info = await this.git?.info(target)
+    if (!base && !divergence.base_ref && divergence.reason === 'default_branch_required') {
+      const rootBranch = [...this.worktrees.values()].find(
+        (row) => row.project_id === target.projectId && row.kind === 'root'
+      )?.branch
+      const candidates = [
+        info?.defaultBranch,
+        refs.find((ref) => ref.name === 'refs/remotes/origin/HEAD')?.symbolic,
+        rootBranch && rootBranch !== own ? `refs/heads/${branchName(rootBranch)}` : undefined,
+        ...['main', 'master', 'trunk'].map((name) => `refs/heads/${name}`),
+      ]
+      const fallback = candidates.find(
+        (candidate) => candidate && candidate !== own && refs.some((ref) => ref.name === candidate)
+      )
+      if (fallback)
+        divergence = await this.client.nodePath.divergence({
+          worktree_id: target.id,
+          base_ref: fallback,
+        })
+    }
     const pr =
       info?.forge && info.branch && this.forge
         ? (await this.readPulls(info.forge).catch((): undefined => undefined))?.pulls.find(
@@ -468,6 +488,7 @@ export class NodePathClientPort implements NodePathPort {
           )
         : []
     const state: BranchState = {
+      ...(info ? { hasRemote: info.hasRemote } : {}),
       base: divergence.base_ref ? shortRef(divergence.base_ref) : null,
       ...(divergence.base_ref ? { baseRef: divergence.base_ref } : {}),
       ahead,
@@ -500,6 +521,40 @@ export class NodePathClientPort implements NodePathPort {
         .filter((r) => !r.symbolic && r.name !== own && !r.name.endsWith('/HEAD'))
         .map((r) => r.name),
     }
+  }
+  async search(target: PathTarget, query: string): Promise<TreeEntry[]> {
+    const rows =
+      target.kind === 'worktree'
+        ? await (async () => {
+            const { revision } = await this.client.repository.observe({ worktree_id: target.id })
+            return pathPages((cursor) =>
+              this.client.repository.search({
+                worktree_id: target.id,
+                revision,
+                query,
+                mode: 'filename',
+                scope: 'repository',
+                case_sensitive: false,
+                limit: 100,
+                cursor,
+              })
+            )
+          })()
+        : await pathPages((cursor) =>
+            this.client.nodePath.search({
+              workspace_id: target.id,
+              query,
+              mode: 'filename',
+              case_sensitive: false,
+              limit: 100,
+              cursor,
+            })
+          )
+    return [...new Set(rows.map((row) => row.path))].map((path) => ({
+      path,
+      name: path.split('/').pop()!,
+      kind: 'file',
+    }))
   }
   protected status(target: PathTarget, revision: RepositoryRevision) {
     const key = JSON.stringify([target.nodeId, target.id, revision])

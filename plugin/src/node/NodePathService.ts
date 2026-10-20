@@ -76,7 +76,14 @@ export class NodePathService {
     this.cacheStops.set(
       registrationId,
       watch(
-        [model.folders, model.targets, model.inspections, model.selected, model.receivedAt],
+        [
+          model.folders,
+          model.targets,
+          model.inspections,
+          model.selected,
+          model.receivedAt,
+          model.panelBase,
+        ],
         () => {
           const parsed = NodePathSnapshotSchema.safeParse(model.snapshot())
           if (parsed.success && JSON.stringify(parsed.data).length <= 1024 * 1024)

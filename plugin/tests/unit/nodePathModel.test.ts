@@ -2,6 +2,7 @@ import { catalogs as testCatalogs } from '@/i18n/catalogs'
 import { initializeLocale } from '@/i18n'
 import { presentUiError, presentUiField } from '@/i18n/streamBErrors'
 import { describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { ProjectSchema, WorktreePageSchema, SessionSchema } from '@abele/node-protocol'
 import {
   NodePathModel,
@@ -140,6 +141,63 @@ function fake() {
 }
 
 describe('node path model', () => {
+  it('metadata refresh after a git write observes disk instead of reusing the pre-write revision', async () => {
+    const { model, port } = fake()
+    port.git = { discard: vi.fn(async () => {}) } as never
+    const inspect = port.inspect
+    port.inspect = vi.fn(async (...args) => ({
+      ...(await inspect(...args)),
+      revision: {
+        kind: 'working' as const,
+        observation_id: 'before-write',
+        head: 'a'.repeat(40),
+        observed_at: '2025-01-01T00:00:00Z',
+      },
+    }))
+    await model.refresh()
+    await model.select('one')
+    await model.openFile(target(), 'sample.ts')
+    await model.discard(['sample.ts'])
+    expect(vi.mocked(port.inspect).mock.calls.at(-1)?.[2]).toBeUndefined()
+    model.destroy()
+  })
+  it('refreshes an open working file when the changes are discarded', async () => {
+    const { model, port } = fake()
+    await model.refresh()
+    await model.select('one')
+    const file = new NodePathFileModel(model, target())
+    await file.open('sample.ts')
+    vi.mocked(port.file).mockResolvedValue({
+      target: target(),
+      path: 'sample.ts',
+      text: 'restored',
+    })
+    await model.reloadTarget(target(), false)
+    await flushPromises()
+    expect(file.document.value?.text).toBe('restored')
+    expect(file.document.value?.change).toBeUndefined()
+    file.destroy()
+    model.destroy()
+  })
+  it('remembers comparison bases per worktree across switching and snapshot restoration', async () => {
+    const { model, port } = fake()
+    await model.refresh()
+    await model.select('one')
+    model.panelBase.value = 'refs/heads/trunk'
+    await model.select('two')
+    expect(model.panelBase.value).toBe('')
+    model.panelBase.value = 'refs/heads/release'
+    await model.select('one')
+    expect(model.panelBase.value).toBe('refs/heads/trunk')
+    const restored = fake().model
+    restored.restoreSnapshot(model.snapshot())
+    expect(restored.panelBase.value).toBe('refs/heads/trunk')
+    await restored.select('two')
+    expect(restored.panelBase.value).toBe('refs/heads/release')
+    model.destroy()
+    restored.destroy()
+    void port
+  })
   it('coalesces repeated full listings into one in-flight read and one trailing refresh', async () => {
     const { model, port } = fake()
     let first!: (value: Awaited<ReturnType<NodePathPort['inspect']>>) => void
