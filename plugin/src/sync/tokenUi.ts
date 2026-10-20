@@ -762,22 +762,24 @@ export class TokenUi {
       selective?: import('@abele/sync-sdk/core').SelectiveSettings
     }
   ): Promise<void> {
+    const ids = this.itemSets.store.get(id)?.items.flatMap((item) => item.recordId ?? []) ?? [id]
     if (patch.address !== undefined) {
       await this.connectionChangeGuard(
         undefined,
         undefined,
         this.registry.records().find((one) => one.id === id)?.scope ?? undefined
       )
-      this.registry.setAddress(id, patch.address)
+      for (const recordId of ids) this.registry.setAddress(recordId, patch.address)
     }
     if (patch.paused !== undefined) await this.pause(id, patch.paused)
     if (patch.selective !== undefined) {
-      this.registry.setSelective(id, patch.selective)
+      for (const recordId of ids) this.registry.setSelective(recordId, patch.selective)
     }
     this.refresh()
     try {
       if (patch.selective !== undefined)
-        await this.runtimes.get(id)?.updateSelective?.(patch.selective)
+        for (const recordId of ids)
+          await this.runtimes.get(recordId)?.updateSelective?.(patch.selective)
       await this.connectionsChanged()
     } catch (error) {
       this.registry.setStatus(id, 'error')

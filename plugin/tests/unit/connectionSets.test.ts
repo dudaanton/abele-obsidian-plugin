@@ -345,6 +345,9 @@ describe('connection item sets', () => {
     expect(keys.size).toBe(1)
     secrets.set = saveSecret
     ui.setTrusted(ui.rows.value[0].id, true)
+    await ui.updateConnection(ui.rows.value[0].id, {
+      selective: { ...registry.records()[0].selective, images: false },
+    })
     expect(await ui.itemSets.refresh(ui.rows.value[0].id)).toBe(true)
     expect(ui.itemSets.items(ui.rows.value[0].id)?.map((item) => item.state.kind)).toEqual([
       'detached',
@@ -354,6 +357,11 @@ describe('connection item sets', () => {
     expect(registry.records()).toHaveLength(2)
     expect(keys.size).toBe(2)
     expect(registry.records().every((record) => record.trusted)).toBe(true)
+    expect(registry.records().every((record) => !record.selective.images)).toBe(true)
+    await ui.updateConnection(ui.rows.value[0].id, {
+      selective: { ...registry.records()[0].selective, images: true },
+    })
+    expect(registry.records().every((record) => record.selective.images)).toBe(true)
     ui.setTrusted(ui.rows.value[0].id, false)
     expect(registry.records().every((record) => !record.trusted)).toBe(true)
     registry.beginForget(ui.rows.value[0].id)

@@ -310,7 +310,11 @@ export class TokenItemSets implements ShareSetSource {
         items.map(toItem),
         Object.fromEntries(items.map((item, index) => [item.id, records[index]]))
       )
-      if (existing?.trusted) for (const id of records) this.ui.registry.setTrusted(id, true)
+      if (existing)
+        for (const id of records) {
+          this.ui.registry.setSelective(id, existing.selective)
+          if (existing.trusted) this.ui.registry.setTrusted(id, true)
+        }
     } catch (error) {
       for (const id of provisional) this.ui.registry.beginForget(id)
       this.ui.registry.finishForgotten(this.secrets)
@@ -405,6 +409,7 @@ export class TokenItemSets implements ShareSetSource {
           throw error
         }
         this.ui.registry.setPaused(added, item.paused)
+        this.ui.registry.setSelective(added, record.selective)
         if (record.trusted) this.ui.registry.setTrusted(added, true)
         changed = true
       } else if (changes.added.includes(item.id)) {
