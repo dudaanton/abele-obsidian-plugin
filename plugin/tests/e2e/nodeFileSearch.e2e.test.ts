@@ -181,6 +181,9 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         await until(()=>[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')),'Project search continuation');return 'first project page'})()`)
       await capture(`${shell}-project-content-page`)
       await evalLong(`(async()=>{${prelude}
+        const search=visible('.abele-github-search'),more=[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more'));more.scrollIntoView({block:'nearest'});await wait(150);const r=more.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);if(!hit||!more.contains(hit))throw Error('Project paging control is clipped or covered');
+        if(!document.body.classList.contains('is-phone')){const bar=visible('.abele-file-tree__bar'),pane=bar.closest('.view-content');if(pane&&bar.getBoundingClientRect().top<pane.getBoundingClientRect().top-1)throw Error('Paging scrolls the fixed file search out of view')}return 'paging reachable'})()`)
+      await evalLong(`(async()=>{${prelude}
         const search=visible('.abele-github-search');[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')).click();
         await until(()=>search.querySelectorAll('.abele-github-search__line').length===106,'All project search pages');
         if(!search.textContent.includes('Some files or matches were omitted'))throw Error('Missing plain search-limit explanation');return 'all project matches'})()`)
