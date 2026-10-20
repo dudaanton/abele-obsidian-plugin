@@ -185,6 +185,22 @@ describe('the path sidebar port on the change stream', () => {
     unsubscribe()
     stop()
   })
+  it('keeps diagnostic pushes out of catalogue refreshes so opening a file cannot reopen it in a loop', async () => {
+    const { port, event, stop } = await start()
+    const catalogue = vi.fn()
+    const unsubscribe = await port.subscribe(catalogue)
+    event('lsp.diagnostics', {
+      worktree_id: identity.workspace,
+      path: 'sample.ts',
+      diagnostics: [],
+    })
+    event('lsp.status', { workspace_id: identity.workspace, message: 'Sample server stopped' })
+    expect(catalogue).not.toHaveBeenCalled()
+    event('project.trust.changed', { project_id: identity.project, trust: 'trusted' })
+    expect(catalogue).toHaveBeenCalledOnce()
+    unsubscribe()
+    stop()
+  })
   it('follows a plain folder on its own stream', async () => {
     const { port, folderBatch, calls, stop } = await start()
     stop()

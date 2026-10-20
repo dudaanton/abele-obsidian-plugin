@@ -1130,6 +1130,7 @@ export class NodePathClientPort implements NodePathPort {
   async subscribe(notify: () => void): Promise<() => void> {
     const stop = this.client.onEvent((event) => {
       // A batch that only moves files changes no folder, copy or branch; the watch applies it.
+      if (event.type === 'lsp.diagnostics' || event.type === 'lsp.status') return
       const data = record(event.data)
       if (event.type === 'repository.changed' && data.complete === true && data.git === null) return
       if (event.type === 'workspace.files_changed' && data.complete === true) return

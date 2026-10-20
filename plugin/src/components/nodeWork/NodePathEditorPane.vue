@@ -1,5 +1,14 @@
 <template>
   <div ref="root" class="abele-node-main">
+    <NodeLspTools
+      v-if="target"
+      :root="root"
+      :glyph-host="glyphHost"
+      :target="target"
+      :path="model.filePath.value"
+      :text="model.draftText.value"
+      :offline="offline"
+    />
     <div ref="glyphHost" class="abele-file-view__tools" />
     <NodeFileTools
       :key="repository?.cacheNamespace ?? ''"
@@ -34,19 +43,29 @@ import { t } from '@/i18n'
 import { ref } from 'vue'
 import type { RepositorySource } from '@/repository/source'
 import NodeFileTools from './NodeFileTools.vue'
+import NodeLspTools from './NodeLspTools.vue'
+import type { PathTarget } from '@/node/NodePathModel'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import GithubCode from '../github/GithubCode.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
 withDefaults(
   defineProps<{
     model: NodeFilesModel
+    target?: PathTarget
     error?: string
     offline?: boolean
     locked?: boolean
     repository?: RepositorySource
     revision?: string
   }>(),
-  { error: '', offline: false, locked: false, repository: undefined, revision: undefined }
+  {
+    error: '',
+    offline: false,
+    locked: false,
+    repository: undefined,
+    revision: undefined,
+    target: undefined,
+  }
 )
 const root = ref<HTMLElement>()
 const glyphHost = ref<HTMLElement>()

@@ -1,5 +1,14 @@
 <template>
   <div ref="root" class="abele-file-view" @contextmenu="onMenu">
+    <NodeLspTools
+      v-if="codeTarget && !repository && !image && !metadataNote && (mode === 'file' || !change)"
+      :root="root"
+      :glyph-host="glyphHost"
+      :target="codeTarget"
+      :path="path"
+      :text="text"
+      :offline="offline"
+    />
     <NodeFileTools
       v-if="!image && !metadataNote && (mode === 'file' || !change)"
       :key="repository?.cacheNamespace ?? ''"
@@ -53,6 +62,7 @@
         :file="repositoryFile"
         :glyph-host="glyphHost"
         plain
+        :offline="offline"
         :range="linkedRange"
         @open="openRepositoryLink"
       />
@@ -94,6 +104,7 @@ import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
 import { openNodeRepositoryTarget } from '@/node/openRepository'
 import { GlobalStore } from '@/stores/GlobalStore'
 import NodeFileTools from './NodeFileTools.vue'
+import NodeLspTools from './NodeLspTools.vue'
 import GithubBlob from '../github/GithubBlob.vue'
 import { fileSelection, type FileSelection } from './fileSelection'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
@@ -119,6 +130,7 @@ const props = withDefaults(
     line?: number
     endLine?: number
     codeTarget?: PathTarget
+    offline?: boolean
   }>(),
   {
     change: undefined,
@@ -130,6 +142,7 @@ const props = withDefaults(
     line: undefined,
     endLine: undefined,
     codeTarget: undefined,
+    offline: false,
   }
 )
 

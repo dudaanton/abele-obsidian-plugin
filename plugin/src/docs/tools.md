@@ -1300,6 +1300,15 @@ the provider may continue processing a request already submitted.
 
 ## Links to node code
 
+Current node file views use the node's `lsp_v1` capability automatically: TypeScript and
+ESLint diagnostics appear together in code, with their sources, and the header count opens
+the diagnostic list. Hover shows language information; Cmd/Ctrl-click or the phone's
+long-press menu offers definitions and references. Empty or unavailable LSP navigation falls
+back to the existing pattern search. Historical revisions are not analyzed as current files.
+Project-code servers require the folder's existing explicit trust. The view offers Trust folder
+when needed, and the command `abele-node lsp install --popular` when a server is missing.
+Installing a language server does not install or configure ESLint in the project.
+
 When discussing code on a node, cite the relevant lines without waiting for a commit or upload.
 In a chat bound to one worktree, use `[src/sample.ts:42-48](src/sample.ts:42-48)`.
 The destination opens current working-tree content, including uncommitted changes.

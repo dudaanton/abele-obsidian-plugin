@@ -392,6 +392,7 @@ export class NodePathMainView extends ItemView {
         render: () =>
           editing.active.value && editing.editor.value
             ? h(NodePathEditorPane, {
+                target: state.target,
                 model: editing.editor.value as NodeFilesModel,
                 offline: offline(),
                 error: this.error.value,

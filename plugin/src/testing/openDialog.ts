@@ -12,6 +12,7 @@ import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
+import NodeLspFixture from './NodeLspFixture.vue'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
@@ -452,6 +453,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-syntax-diff': () => mountAlone(NodeSyntaxFixture, { kind: 'diff' }),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
+  'node-lsp-missing': () => mountAlone(NodeLspFixture, { state: 'missing' }, 'node-lsp-missing'),
+  'node-lsp-untrusted': () =>
+    mountAlone(NodeLspFixture, { state: 'untrusted' }, 'node-lsp-untrusted'),
+  'node-lsp-loading': () => mountAlone(NodeLspFixture, { state: 'loading' }, 'node-lsp-loading'),
+  'node-lsp-errors': () => mountAlone(NodeLspFixture, { state: 'errors' }, 'node-lsp-errors'),
+  'node-lsp-eslint': () => mountAlone(NodeLspFixture, { state: 'eslint' }, 'node-lsp-eslint'),
   'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),
   'node-edit-conflict': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),

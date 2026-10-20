@@ -1,5 +1,14 @@
 <template>
   <div ref="blobRoot" class="abele-github-blob">
+    <NodeLspTools
+      v-if="lspTarget"
+      :root="blobRoot"
+      :glyph-host="glyphHost"
+      :target="lspTarget"
+      :path="file.path"
+      :text="visibleText"
+      :offline="offline"
+    />
     <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
       <!-- Who last changed each line, as a glyph lit while it is on. -->
       <Icon
@@ -55,7 +64,9 @@
       </details>
     </template>
     <div v-if="editorError" role="alert">{{ editorError }}</div>
-    <div v-if="blaming && blameBusy" role="status">{{ t('streamB.loadingLineBlame.b1680c') }}</div>
+    <div v-if="blaming && blameBusy" role="status" data-repository-blame-status>
+      {{ t('streamB.loadingLineBlame.b1680c') }}
+    </div>
     <GithubNotice
       v-if="blaming && blameError"
       :text="blameError"
@@ -162,6 +173,9 @@ import { LINE_CONTEXT } from '@/github/scrollTo'
 import { blobMode, isMarkdownPath, linesLabel, type BlobMode } from '@/github/markdownPreview'
 import { githubSettings } from '@/github/GithubService'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import NodeLspTools from '../nodeWork/NodeLspTools.vue'
+import type { PathTarget } from '@/node/NodePathModel'
+import { NodeService } from '@/node/NodeService'
 
 /**
  * A file at a ref. Markdown opens rendered or as its source, as the settings say, with a switch
@@ -300,6 +314,23 @@ const source = useRepositorySource(
   () => props.client,
   () => props.file
 )
+const lspTarget = computed<PathTarget | undefined>(() => {
+  const identity = source.value?.identity
+  if (
+    identity?.provider !== 'node' ||
+    !(props.file.ref === 'Working tree' || props.file.ref.startsWith('working-'))
+  )
+    return undefined
+  const nodeId = NodeService.connectionIfKnown?.(identity.node)?.client.target?.expected_node_id
+  if (!nodeId) return undefined
+  return {
+    nodeId,
+    registrationId: identity.node,
+    projectId: identity.project,
+    kind: 'worktree',
+    id: identity.workspace,
+  }
+})
 const blaming = ref(false)
 const blameBusy = ref(false)
 const blameError = ref('')

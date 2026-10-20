@@ -123,7 +123,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-blame-off')
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-file-view [aria-label="Toggle line blame"]').click();await until(()=>visible('.abele-file-view [role="status"]')?.textContent.includes('Loading line blame'));return 'blame loading'})()`
+      `(async()=>{${prelude}visible('.abele-file-view [aria-label="Toggle line blame"]').click();await until(()=>visible('.abele-file-view [data-repository-blame-status]')?.textContent.includes('Loading line blame'));return 'blame loading'})()`
     )
     await capture(shell + '-file-blame-loading')
     await evalLong(
