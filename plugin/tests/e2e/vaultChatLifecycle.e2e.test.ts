@@ -109,6 +109,12 @@ const probe = (screen: string) => `(async () => {
     await until(() => document.querySelector('.abele-chat-artifacts'))
     report.changes = !!document.querySelector('.abele-chat-artifacts__changes')
     await shot('files')
+    document.querySelector('.abele-chat-artifacts__changes [data-path="' + root + '/New/Nested/sample.md"]').click()
+    await until(() => {
+      const diff = document.querySelector('.abele-chat-artifacts__changes .abele-diff')
+      return diff?.textContent.includes('Before') && diff.textContent.includes('Revised')
+    }, 'saved file diff')
+    await shot('files-diff')
     await closeModal()
     await until(() => !document.querySelector('.abele-chat-artifacts'), 'files closed')
     session.scopeResolver.setFullVaultAccess(false)
@@ -161,7 +167,7 @@ describe('vault chat file lifecycle', () => {
       ])
         expect(report[key], key).toBe(true)
       expect(report.quoteWidth).toBeGreaterThan(180)
-      expect(report.shots).toHaveLength(9)
+      expect(report.shots).toHaveLength(10)
     },
     240_000
   )
