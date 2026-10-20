@@ -390,13 +390,19 @@ export class TokenItemSets implements ShareSetSource {
         ).connection()
         if (!currentRecord()) return false
         const added = this.ui.registry.add(true)
-        this.ui.registry.attach(
-          added,
-          { v: 1, address: record.address, key: this.secrets.get(record.secretReference), scope },
-          authority,
-          this.secrets
-        )
-        this.store.bind(id, item.id, added)
+        try {
+          this.ui.registry.attach(
+            added,
+            { v: 1, address: record.address, key: this.secrets.get(record.secretReference), scope },
+            authority,
+            this.secrets
+          )
+          this.store.bind(id, item.id, added)
+        } catch (error) {
+          this.ui.registry.beginForget(added)
+          this.ui.registry.finishForgotten(this.secrets)
+          throw error
+        }
         this.ui.registry.setPaused(added, item.paused)
         changed = true
       } else if (changes.added.includes(item.id)) {

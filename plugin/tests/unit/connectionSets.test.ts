@@ -334,6 +334,16 @@ describe('connection item sets', () => {
     reads.mockRestore()
     currentScope = { kind: 'folder', id: 'scope-added', path: 'Added' }
     currentItem = 'added-item'
+    const saveSecret = secrets.set
+    secrets.set = () => {
+      throw new Error('keychain unavailable during refresh')
+    }
+    await expect(ui.itemSets.refresh(ui.rows.value[0].id)).rejects.toThrow(
+      'keychain unavailable during refresh'
+    )
+    expect(registry.records()).toHaveLength(1)
+    expect(keys.size).toBe(1)
+    secrets.set = saveSecret
     expect(await ui.itemSets.refresh(ui.rows.value[0].id)).toBe(true)
     expect(ui.itemSets.items(ui.rows.value[0].id)?.map((item) => item.state.kind)).toEqual([
       'detached',
