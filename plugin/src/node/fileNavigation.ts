@@ -6,7 +6,10 @@ export const FILE_NAVIGATION: InjectionKey<(url: string) => boolean> =
   Symbol('node-file-navigation')
 
 /** Working-file navigation stays in the file surface; historical links keep their revision. */
-export function fileNavigation(target: PathTarget, url: string): NodePathTabState | undefined {
+export function fileNavigation(
+  target: PathTarget,
+  url: string
+): Extract<NodePathTabState, { kind: 'file' }> | undefined {
   const link = parseNodeRepositoryLink(url)
   if (
     !link ||
@@ -15,7 +18,11 @@ export function fileNavigation(target: PathTarget, url: string): NodePathTabStat
     link.source.project !== target.projectId ||
     link.source.workspace !== target.id ||
     link.location.kind !== 'file' ||
-    !link.location.ref.startsWith('working-')
+    !(
+      link.revision?.kind === 'working-tree' ||
+      link.location.ref.startsWith('working-') ||
+      link.location.ref === 'WORKTREE'
+    )
   )
     return
   return {

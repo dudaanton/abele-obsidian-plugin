@@ -13,10 +13,10 @@ import { useVault } from '../helpers/testEnv'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
 import { openNodeRepositoryTarget } from '@/node/openRepository'
 import { mountCode } from '@/github/codeViewer'
-import { openNodePathTab } from '@/node/nodePathNavigation'
+import { openNodeFileDestination } from '@/node/nodePathNavigation'
 vi.mock('@/node/nodePathNavigation', async (original) => ({
   ...(await original<typeof import('@/node/nodePathNavigation')>()),
-  openNodePathTab: vi.fn(async () => {}),
+  openNodeFileDestination: vi.fn(async () => {}),
 }))
 vi.mock('@/node/openRepository', () => ({ openNodeRepositoryTarget: vi.fn(async () => {}) }))
 vi.mock('@/github/codeViewer', () => ({
@@ -102,7 +102,7 @@ describe('node file repository tools', () => {
     views.push(view)
     await flushPromises()
     await navFor(view.get('.abele-file-view').element)!.goToDefinition('sample', 'sample.ts')
-    expect(openNodePathTab).toHaveBeenCalledWith(
+    expect(openNodeFileDestination).toHaveBeenCalledWith(
       expect.anything(),
       { kind: 'file', target, path: 'sample.ts', line: 1 },
       expect.any(Boolean)

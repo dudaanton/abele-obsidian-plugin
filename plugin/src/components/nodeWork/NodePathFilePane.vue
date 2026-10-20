@@ -77,7 +77,7 @@ import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, provide, ref, watch } from 'vue'
 import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
-import { openNodePathTab } from '@/node/nodePathNavigation'
+import { openNodeFileDestination } from '@/node/nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import { DebuggerService } from '@/debugger/DebuggerService'
@@ -106,9 +106,11 @@ const root = ref<HTMLElement>()
 provide(FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false
-  void openNodePathTab(GlobalStore.getInstance().app.workspace, state, Platform.isMobile).catch(
-    (e) => console.debug('[node] File navigation unavailable', e)
-  )
+  void openNodeFileDestination(
+    GlobalStore.getInstance().app.workspace,
+    state,
+    Platform.isMobile
+  ).catch((e) => console.debug('[node] File navigation unavailable', e))
   return true
 })
 const admissionReason = ref('')

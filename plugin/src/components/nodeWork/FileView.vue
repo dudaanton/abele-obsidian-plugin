@@ -99,7 +99,8 @@ import { pinIntoView, LINE_CONTEXT } from '@/github/scrollTo'
 // code editor and the arrows to the previous and next changed file. Selected text — in the
 // comparison or in the file — gets a small bar over it to ask the agent about it or add it to the
 // chat or insert it into a note, on a phone as on a computer.
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { FILE_NAVIGATION } from '@/node/fileNavigation'
 import type { RepositorySource } from '@/repository/source'
 import { REPOSITORY_SOURCE } from '@/repository/context'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
@@ -199,7 +200,9 @@ const repositoryFile = computed(() => ({
   ref: props.revision ?? '',
   path: props.path,
 }))
+const fileNavigation = inject(FILE_NAVIGATION, undefined)
 function openRepositoryLink(url: string) {
+  if (fileNavigation?.(url)) return
   const target = parseNodeRepositoryLink(url)
   if (target) void openNodeRepositoryTarget(GlobalStore.getInstance().app, target, false)
 }

@@ -174,6 +174,54 @@ export async function openNodePathTab(
   if (mobile) workspace.leftSplit.collapse()
 }
 
+/** Source navigation retains an existing document instead of replacing an unrelated file tab. */
+export async function openNodeFileDestination(
+  workspace: Workspace,
+  destination: Extract<NodePathTabState, { kind: 'file' }>,
+  mobile: boolean
+): Promise<void> {
+  const state = NodePathTabSchema.parse(destination) as typeof destination
+  const sameTarget = (a: PathTarget, b: PathTarget) =>
+    a.registrationId === b.registrationId &&
+    a.nodeId === b.nodeId &&
+    a.projectId === b.projectId &&
+    a.kind === b.kind &&
+    a.id === b.id
+  let retained: typeof state | undefined
+  const leaves = workspace.getLeavesOfType(NODE_FILE_VIEW)
+  const active = workspace.getMostRecentLeaf()
+  const existing = [...leaves]
+    .sort((a, b) => Number(b === active) - Number(a === active))
+    .find((leaf) => {
+      const old = NodePathTabSchema.safeParse(leaf.getViewState().state)
+      if (
+        !old.success ||
+        old.data.kind !== 'file' ||
+        typeof old.data.stage === 'object' ||
+        old.data.path !== state.path ||
+        !sameTarget(old.data.target, state.target)
+      )
+        return false
+      retained = old.data
+      return true
+    })
+  const leaf = existing ?? workspace.getLeaf('tab')
+  await leaf.setViewState({
+    type: NODE_FILE_VIEW,
+    active: true,
+    state: {
+      ...state,
+      ...(retained ? { target: retained.target } : {}),
+      ...(retained?.stage ? { stage: retained.stage } : {}),
+      ...(retained?.debug
+        ? { debug: { ...retained.debug, ...(state.line ? { line: state.line } : {}) } }
+        : {}),
+    },
+  })
+  await workspace.revealLeaf(leaf)
+  closeNodePathDrawers(workspace, mobile)
+}
+
 /**
  * Opens a node session as a tab of the sidebar chat, where every chat lives, and shows it there.
  * `text`, when given, is added to its draft once the chat has loaded, never sent.

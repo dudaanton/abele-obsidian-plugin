@@ -41,6 +41,19 @@ it('keeps the full working-file range from a repository citation', () => {
   })
   expect(fileNavigation(target, url)).toMatchObject({ line: 3, endLine: 7 })
 })
+it('recognizes a working observation carried with a resolved ref', () => {
+  const url = nodeRepositoryLink(
+    source,
+    { kind: 'file', ref: 'a'.repeat(40), path: 'sample.ts' },
+    {
+      kind: 'working-tree',
+      head: 'a'.repeat(40),
+      observation: 'sample-observation',
+      observedAt: '2026-01-01T00:00:00Z',
+    }
+  )
+  expect(fileNavigation(target, url)).toMatchObject({ kind: 'file', path: 'sample.ts', target })
+})
 it('leaves historical and other workspace links in the repository viewer', () => {
   expect(
     fileNavigation(
