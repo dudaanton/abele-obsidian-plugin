@@ -183,6 +183,7 @@ const more = async () => {
   if (!previous?.next || loadingMore.value) return
   const key = queryKey()
   loadingMore.value = true
+  error.value = ''
   try {
     const next = await previous.next()
     if (results.value === previous && queryKey() === key) results.value = next

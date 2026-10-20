@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { searchNodePathCode } from '@/node/NodePathSearch'
 import { resolveNodeCodeLink } from '@/node/codeLinks'
+import type { RepositoryRevision } from '@abele/node-protocol'
 
 const target = {
   nodeId: 'sample-node',
@@ -10,7 +11,12 @@ const target = {
   id: 'sample-tree',
 }
 const query = { text: 'needle', caseSensitive: false, regex: false, wholeWord: false }
-const revision = { kind: 'working-tree', observation: 'sample-observation', head: 'a'.repeat(40) }
+const revision = {
+  kind: 'working',
+  observation_id: 'sample-observation',
+  observed_at: '2026-01-01T00:00:00Z',
+  head: 'a'.repeat(40),
+} satisfies RepositoryRevision
 const row = (path: string, line: number) => ({
   path,
   line,

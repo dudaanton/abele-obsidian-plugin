@@ -25,6 +25,14 @@ it('loads another page without losing matches and keeps them visible if the next
   expect(next).toHaveBeenCalledTimes(1)
   expect(w.get('.abele-github-search__path').text()).toContain('sample.ts')
   expect(w.get('.abele-github-search__error').text()).toContain('Sample page unavailable')
+  next.mockResolvedValueOnce({ files: [file], total: 1, capped: false } as never)
+  await w
+    .findAll('button')
+    .find((b) => b.text().includes('Load more'))!
+    .trigger('click')
+  await flushPromises()
+  expect(w.find('.abele-github-search__error').exists()).toBe(false)
+  expect(w.get('.abele-github-search__path').text()).toContain('sample.ts')
   w.unmount()
 })
 
