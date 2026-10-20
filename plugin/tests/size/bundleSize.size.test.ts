@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 import { writeFileSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
 
 interface Budget {
   mainJsBytes: number
@@ -43,7 +44,10 @@ describe('bundle size', () => {
       { cwd: root, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, NODE_ENV: 'production' } }
     )
     report = JSON.parse(stdout) as Report
-    writeFileSync('/tmp/abele-bundle-size.json', JSON.stringify({ ...report, budget }, null, 2))
+    writeFileSync(
+      path.join(tmpdir(), 'abele-bundle-size.json'),
+      JSON.stringify({ ...report, budget }, null, 2)
+    )
 
     const kb = (n: number) => `${(n / 1024).toFixed(0).padStart(6)} KB`
     console.info(
