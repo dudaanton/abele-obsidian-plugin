@@ -3,6 +3,7 @@ import { t } from '@/i18n'
 import { nodePages } from '@/node/nodePages'
 import type { JournalEvent } from '@abele/channel-protocol'
 import type { AttentionReason, AttentionRow } from './attention'
+import type { DelegationCard } from '@/node/delegation'
 
 /** What the agents list needs from a node: the session list, each one's state, its open prompts. */
 export interface NodeAttentionPort {
@@ -43,6 +44,51 @@ const AGENTS: Record<string, string> = {
 }
 /** Enough to keep a busy list moving, few enough not to crowd the node's channel. */
 const PARALLEL = 6
+
+/** Finite developers need not have a long-lived process or turn in session.state. */
+export function delegationAttentionRows(
+  cards: DelegationCard[],
+  node: NodeAttentionTarget
+): AttentionRow[] {
+  return cards
+    .filter((card) => card.sessionId)
+    .map((card) => {
+      const kind: AttentionReason['kind'] = card.pendingHumanPrompts
+        ? 'approval'
+        : card.state === 'running'
+          ? 'running'
+          : card.state === 'completed'
+            ? 'done'
+            : ['failed', 'unknown', 'cancelled'].includes(card.state)
+              ? 'interrupted'
+              : 'delivery'
+      return {
+        key: `node:${node.id}:${card.sessionId}`,
+        reference: {
+          kind: 'node',
+          registrationId: node.id,
+          nodeId: node.expectedNodeId,
+          sessionId: card.sessionId!,
+        },
+        title: card.title,
+        agent: AGENTS[card.provider] ?? card.provider,
+        source: t('streamB.node.01630d', { v0: node.label }),
+        folder: card.branch,
+        reasons: [
+          {
+            kind,
+            id: `delegation:${card.delegationId}`,
+            at: 0,
+            text: card.pendingHumanPrompts
+              ? t('streamBMeta.1f8e74f453', { p0: String(card.pendingHumanPrompts) })
+              : kind === 'done'
+                ? t('node.delegation.done')
+                : card.activity?.tool,
+          },
+        ],
+      }
+    })
+}
 
 /**
  * One row per session that waits for the owner or works. A session that cannot be read is

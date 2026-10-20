@@ -2,40 +2,79 @@
   <section class="abele-node-delegation" :aria-label="t('streamB.nodeDelegation.f2834f')">
     <Setting
       :name="card.title"
-      :desc="`${nodeLabel} · ${providerLabel(card.provider)} · ${card.state}`"
+      :desc="
+        [nodeLabel, providerLabel(card.provider), card.branch, stateLabel]
+          .filter(Boolean)
+          .join(' · ')
+      "
     >
       <Button
         v-if="card.sessionId"
         :text="t('streamB.openChildChat.8ed00f')"
+        plain
+        icon="message-square"
         @click="emit('open')"
       />
     </Setting>
-    <p v-if="card.pendingHumanPrompts">
-      {{ t('streamBMeta.1f8e74f453', { p0: String(card.pendingHumanPrompts) }) }}
-    </p>
-    <template v-for="report in card.reports" :key="report.seq">
-      <details v-if="report.kind === 'progress'">
-        <summary>{{ t('streamB.progress.466482') }}</summary>
-        <p class="abele-node-delegation__report">{{ report.text }}</p>
-      </details>
-      <div v-else :data-mailbox-seq="report.seq">
-        <strong>{{
-          report.kind === 'result'
-            ? t('streamB.result.6e7d50')
-            : t('streamB.workerQuestionInformational.12931f')
-        }}</strong>
-        <p class="abele-node-delegation__report">{{ report.text }}</p>
-      </div>
-    </template>
+    <Button
+      v-if="card.pendingHumanPrompts"
+      data-pending-prompts
+      plain
+      wrap
+      icon="message-circle-question"
+      :text="t('streamBMeta.1f8e74f453', { p0: String(card.pendingHumanPrompts) })"
+      @click="emit('open')"
+    />
+    <details class="abele-node-delegation__details" :open="!finished || !!card.pendingHumanPrompts">
+      <summary>{{ t('node.delegation.activity') }}</summary>
+      <p v-if="card.activity?.tool" class="abele-node-delegation__metadata">
+        {{ card.activity.tool }}
+      </p>
+      <p v-if="card.activity?.message" class="abele-node-delegation__report">
+        {{ card.activity.message }}
+      </p>
+      <ul v-if="card.activity?.files.length">
+        <li v-for="file in card.activity.files" :key="file">
+          <code>{{ file }}</code>
+        </li>
+      </ul>
+      <template v-for="report in card.reports" :key="report.seq">
+        <details v-if="report.kind === 'progress'">
+          <summary>{{ t('streamB.progress.466482') }}</summary>
+          <p class="abele-node-delegation__report">{{ report.text }}</p>
+        </details>
+        <div v-else :data-mailbox-seq="report.seq">
+          <strong>{{
+            report.kind === 'result'
+              ? t('streamB.result.6e7d50')
+              : t('streamB.workerQuestionInformational.12931f')
+          }}</strong>
+          <p class="abele-node-delegation__report">{{ report.text }}</p>
+        </div>
+      </template>
+    </details>
   </section>
 </template>
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { computed } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
-defineProps<{ card: DelegationCard; nodeLabel: string }>()
+const props = defineProps<{ card: DelegationCard; nodeLabel: string }>()
+const finished = computed(() =>
+  ['completed', 'failed', 'cancelled', 'unknown', 'grant revoked'].includes(props.card.state)
+)
+const stateLabel = computed(() => {
+  const state = props.card.state
+  if (state === 'completed') return t('node.delegation.done')
+  if (state === 'failed') return t('streamB.failed.031a8f')
+  if (state === 'grant revoked') return t('streamB.revoked.f6f738')
+  if (state === 'running') return t('node.delegation.working')
+  if (state === 'unknown' || state === 'outcome unknown') return t('node.delegation.unknown')
+  return state
+})
 const emit = defineEmits<{ open: [] }>()
 </script>
 <style scoped>
@@ -49,5 +88,9 @@ const emit = defineEmits<{ open: [] }>()
 }
 .abele-node-delegation__report {
   white-space: pre-wrap;
+}
+.abele-node-delegation__metadata {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
 }
 </style>

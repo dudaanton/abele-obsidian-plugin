@@ -54,8 +54,10 @@ export function nodeDelegationGrantsFixture() {
     initialParentId: 'sample-parent',
   }
 }
-export function nodeDelegationCardFixture(): DelegationCard {
-  return {
+export function nodeDelegationCardFixture(
+  state?: 'working' | 'done' | 'failed' | 'empty'
+): DelegationCard {
+  const card: DelegationCard = {
     delegationId: 'sample-delegation',
     sessionId: 'sample-child',
     nodeId: 'sample-node',
@@ -76,4 +78,25 @@ export function nodeDelegationCardFixture(): DelegationCard {
       },
     ],
   }
+  if (!state) return card
+  card.branch = 'work/sample-parser-boundaries'
+  card.pendingHumanPrompts = state === 'working' ? 2 : 0
+  card.state =
+    state === 'done'
+      ? 'completed'
+      : state === 'empty'
+        ? 'outcome unknown'
+        : state === 'failed'
+          ? 'failed'
+          : 'running'
+  card.activity =
+    state === 'empty'
+      ? undefined
+      : {
+          message: 'Checking parser boundaries and validating the sample input. '.repeat(12),
+          tool: state === 'working' ? 'Run tests' : undefined,
+          files: ['src/parser.ts', 'tests/parser-boundaries.test.ts'],
+        }
+  if (state === 'empty') card.reports = []
+  return card
 }

@@ -15,6 +15,8 @@ import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
 import { AttentionReader } from './AttentionReader'
 import { NodeAttentionWatch } from './NodeAttentionWatch'
+import { delegationAttentionRows, type NodeAttentionTarget } from './nodeAttention'
+import type { DelegationCard } from '@/node/delegation'
 import { chatCopyPath } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
@@ -97,6 +99,13 @@ export class AgentsService {
   private savedIndex = ''
   private savedRevisions = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
+  private delegationNodes: NodeAttentionTarget[] = []
+  private readonly nodeDelegations = new Map<string, Record<string, DelegationCard[]>>()
+
+  setDelegations(node: string, cards: Record<string, DelegationCard[]>): void {
+    this.nodeDelegations.set(node, cards)
+    this.publish()
+  }
   private startedAt?: number
   private started = false
   private disposed = false
@@ -358,6 +367,17 @@ export class AgentsService {
       row.key = `live:${session.id}`
       row.reference = { kind: 'local', path: '', sessionId: session.id }
     }
+    const children = session.delegationParentId
+      ? [...this.nodeDelegations.values()].flatMap(
+          (parents) => parents[session.delegationParentId!] ?? []
+        )
+      : []
+    if (!row.reasons.length && children.length)
+      row.reasons.push({
+        kind: children.some((child) => child.state === 'running') ? 'running' : 'done',
+        id: 'node-developers',
+        at: 0,
+      })
     return row
   }
   private publish(): void {
@@ -372,6 +392,12 @@ export class AgentsService {
     }
     const rows = new Map(this.files)
     for (const row of this.nodeWatch.rows()) rows.set(row.key, row)
+    for (const node of this.delegationNodes) {
+      const parents = this.nodeDelegations.get(node.expectedNodeId)
+      if (parents)
+        for (const row of delegationAttentionRows(Object.values(parents).flat(), node))
+          rows.set(row.key, row)
+    }
     for (const session of this.live.keys()) {
       const row = liveRows.get(session.currentChatFile.value?.path ?? `live:${session.id}`)
       if (!row) continue
@@ -691,6 +717,9 @@ export class AgentsService {
 
   setNodes(nodes: { id: string; label: string; expectedNodeId: string }[]): void {
     if (this.disposed) return
+    this.delegationNodes = nodes
+    for (const node of this.nodeDelegations.keys())
+      if (!nodes.some((entry) => entry.expectedNodeId === node)) this.nodeDelegations.delete(node)
     this.nodeWatch.set(nodes)
     this.nodesIncomplete.value = this.nodeWatch.incomplete
     this.publish()

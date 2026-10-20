@@ -7,6 +7,27 @@ import {
   nodeDelegationCardFixture,
 } from '@/testing/nodeDelegationFixture'
 const shell = { Modal: { template: '<div><slot /></div>' } }
+it('collapses finished reports and keeps pending prompts one press away', async () => {
+  const card = {
+    ...nodeDelegationCardFixture(),
+    pendingHumanPrompts: 0,
+    branch: 'work/sample-parser',
+    activity: { message: 'Checking boundary cases', tool: 'Test', files: ['src/parser.ts'] },
+  }
+  const wrapper = mount(NodeDelegationCard, { props: { card, nodeLabel: 'Sample node' } })
+  try {
+    expect(wrapper.get('details.abele-node-delegation__details').attributes('open')).toBeUndefined()
+    expect(wrapper.text()).toContain('work/sample-parser')
+    await wrapper.setProps({ card: { ...card, state: 'running', pendingHumanPrompts: 2 } })
+    expect(wrapper.get('details.abele-node-delegation__details').attributes('open')).toBeDefined()
+    expect(wrapper.text()).toContain('Checking boundary cases')
+    expect(wrapper.text()).toContain('src/parser.ts')
+    await wrapper.get('[data-pending-prompts]').trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('requires explicit action/fake confirmation, resets it when the selected authority changes, and revokes only through owner UI', async () => {
   const props = nodeDelegationGrantsFixture()
   const approve = vi.spyOn(props.controller, 'approve')

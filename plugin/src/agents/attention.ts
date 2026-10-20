@@ -20,7 +20,7 @@ export interface LocalAttention {
   tools?: Record<string, 'executing' | 'interrupted' | 'done'>
 }
 export interface AttentionReason {
-  kind: 'approval' | 'question' | 'error' | 'interrupted' | 'running' | 'delivery'
+  kind: 'approval' | 'question' | 'error' | 'interrupted' | 'running' | 'delivery' | 'done'
   id: string
   at: number
   target?: string
@@ -240,6 +240,8 @@ export function restoreIndexedErrors(
 export function reasonLabel(reason: AttentionReason): string {
   if (reason.uncertain) return t('streamB.requestStatusIsUncertainOpenTheConversation.81df1b')
   switch (reason.kind) {
+    case 'done':
+      return t('node.delegation.done')
     case 'approval':
       return t('streamBMeta.9db301c8a1', { v0: presentUiError(reason.text ?? '') })
     case 'question':

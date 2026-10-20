@@ -20,6 +20,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
+  delegationState?: 'working' | 'done' | 'failed' | 'empty'
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
   agentsState?: import('./agentsFixture').AgentsFixtureState
@@ -397,7 +398,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-folder-picker-refused': () => void nodeFolderPickerFixture(false, true),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
-  'node-delegation-card': () =>
+  'node-delegation-card': (options) =>
     mountAlone(
       defineComponent({
         emits: ['close'],
@@ -406,11 +407,11 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
           () =>
             h(
               Modal,
-              { title: 'Node delegation', onClose: () => emit('close') },
+              { title: 'Node delegation', size: 'tall', onClose: () => emit('close') },
               {
                 default: () =>
                   h(NodeDelegationCard, {
-                    card: nodeDelegationCardFixture(),
+                    card: nodeDelegationCardFixture(options?.delegationState),
                     nodeLabel: 'Sample node',
                   }),
               }

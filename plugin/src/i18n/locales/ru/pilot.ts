@@ -56,6 +56,10 @@ export const ru = {
   'image.timeLimit.error':
     'Запрос изображения достиг лимита {minutes} мин. Измените его в Настройки → ИИ → Модели → Лимит времени генерации изображений.',
 
+  'node.delegation.activity': 'Ход работы и отчёты',
+  'node.delegation.done': 'Готово',
+  'node.delegation.working': 'Работает',
+  'node.delegation.unknown': 'Остановлен; результат неизвестен',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',

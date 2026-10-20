@@ -126,7 +126,9 @@ const sections = computed(() => {
       .includes(query.value.toLocaleLowerCase())
   )
   const rest = rows.filter(
-    (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
+    (r) =>
+      !r.reasons.some(needsAttention) &&
+      !r.reasons.some((s) => s.kind === 'running' || s.kind === 'done')
   )
   return [
     {
@@ -140,6 +142,15 @@ const sections = computed(() => {
       ),
     },
     { title: t('streamB.offline.a17947'), rows: rest.filter((r) => r.offline) },
+    {
+      title: t('node.delegation.done'),
+      rows: rows.filter(
+        (r) =>
+          !r.reasons.some(needsAttention) &&
+          !r.reasons.some((s) => s.kind === 'running') &&
+          r.reasons.some((s) => s.kind === 'done')
+      ),
+    },
     // Connected, but not confirmed: a node whose list failed, a decision still being saved.
     { title: t('streamB.notChecked.d16948'), rows: rest.filter((r) => !r.offline) },
   ]
@@ -154,7 +165,7 @@ const tone = (row: AttentionRow) => {
   if (reason.uncertain || reason.interrupted || reason.kind === 'interrupted') return 'faint'
   if (reason.kind === 'error') return 'red'
   if (reason.kind === 'running') return 'accent'
-  if (reason.kind === 'delivery') return 'faint'
+  if (reason.kind === 'delivery' || reason.kind === 'done') return 'faint'
   return 'orange'
 }
 /** What it waits on, in one line: the question itself, the action asked for, what failed. */

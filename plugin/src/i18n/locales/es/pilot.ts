@@ -55,6 +55,10 @@ export const es = {
   'image.timeLimit.error':
     'La solicitud de imagen alcanzó el límite de {minutes} minutos. Cámbielo en Ajustes → IA → Modelos → Límite de tiempo de generación de imágenes.',
 
+  'node.delegation.activity': 'Actividad e informes',
+  'node.delegation.done': 'Terminado',
+  'node.delegation.working': 'Trabajando',
+  'node.delegation.unknown': 'Detenido; resultado incierto',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',

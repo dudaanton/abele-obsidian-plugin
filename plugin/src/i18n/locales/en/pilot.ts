@@ -45,6 +45,10 @@ export const en = {
   'image.timeLimit.error':
     'Image request reached the {minutes}-minute limit. Change it in Settings → AI → Models → Image generation time limit.',
 
+  'node.delegation.activity': 'Activity and reports',
+  'node.delegation.done': 'Done',
+  'node.delegation.working': 'Working',
+  'node.delegation.unknown': 'Stopped; outcome uncertain',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',

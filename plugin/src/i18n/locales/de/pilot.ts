@@ -47,6 +47,10 @@ export const de = {
   'image.timeLimit.error':
     'Die Bildanfrage hat das Limit von {minutes} Minuten erreicht. Ändern Sie es unter Einstellungen → KI → Modelle → Zeitlimit für die Bilderzeugung.',
 
+  'node.delegation.activity': 'Aktivität und Berichte',
+  'node.delegation.done': 'Fertig',
+  'node.delegation.working': 'Arbeitet',
+  'node.delegation.unknown': 'Angehalten; Ergebnis ungewiss',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',

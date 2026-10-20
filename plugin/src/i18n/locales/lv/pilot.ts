@@ -44,6 +44,10 @@ export const lv = {
   'image.timeLimit.error':
     'Attēla pieprasījums sasniedza {minutes} minūšu ierobežojumu. Mainiet to sadaļā Iestatījumi → MI → Modeļi → Attēlu ģenerēšanas laika ierobežojums.',
 
+  'node.delegation.activity': 'Darbība un pārskati',
+  'node.delegation.done': 'Pabeigts',
+  'node.delegation.working': 'Strādā',
+  'node.delegation.unknown': 'Apturēts; rezultāts nav zināms',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',
