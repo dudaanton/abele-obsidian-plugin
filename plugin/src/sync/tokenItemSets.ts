@@ -724,6 +724,5 @@ export class TokenItemSets implements ShareSetSource {
       await client.itemClient().deleteItem(item.id, requestId)
     }
     if (itemId === null) await client.revoke(shareId)
-    this.facts.clear()
   }
 }

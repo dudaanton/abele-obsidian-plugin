@@ -27,6 +27,61 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('keeps confirmed deletion facts until the confirmation has finished closing', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      key = 'a'.repeat(43)
+    const secrets = { get: () => key, set: () => {}, remove: () => {} }
+    const scope = { kind: 'folder' as const, id: 'root-a', path: '/' },
+      id = registry.add()
+    registry.attach(
+      id,
+      { v: 1, address: 'https://sync.example', key, scope },
+      { protocol: 2, token_id: 'owner-a', space_id: 'space-a', scope, status: 'active' },
+      secrets
+    )
+    const ui = new TokenUi(registry, secrets, async () => {
+      throw new Error('Use the item port')
+    })
+    const item = {
+      id: 'item-a',
+      scope_id: 'scope-a',
+      scope: { kind: 'file', id: 'file-a', path: 'Sample.md' },
+      removed_at: null,
+    }
+    const remove = vi.fn(async () => {})
+    vi.spyOn(ui.itemSets, 'client').mockReturnValue({
+      tokens: async () => ({
+        items: [
+          {
+            id: 'share-a',
+            scope: item.scope,
+            label: 'Sample share',
+            read_only: false,
+            created_at: '2025-01-01T00:00:00Z',
+            revoked_at: null,
+          },
+        ],
+      }),
+      ownedItems: async () => ({ items: [item] }),
+      manifest: async () => ({
+        items: [{ kind: 'note', file_id: 'file-a', path: 'Sample.md', size: 10 }],
+        next: null,
+      }),
+      connection: async () => ({ read_only: false }),
+      itemClient: () => ({ deleteItem: remove }),
+    } as unknown as ReturnType<TokenUi['client']>)
+    await ui.itemSets.shares(id)
+    await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')?.files).toBe(1))
+    const facts = ui.itemSets.deleteFacts('share-a', 'item-a')
+    await ui.itemSets.deleteFromServer('share-a', 'item-a')
+    expect(remove).toHaveBeenCalledOnce()
+    expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(facts)
+    ui.itemSets.closeDeletePreview('share-a')
+    expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(null)
+    await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')).not.toBe(null))
+  })
   it('keeps the selected item on direct rename confirmation requests', async () => {
     const scope = { kind: 'folder' as const, id: 'folder-a', path: 'Shared' }
     const state = new MemoryStateStore(),
