@@ -2735,33 +2735,33 @@ change to the private download stage. Corrupt stage and network bytes are tested
 bounded readers reject a corrupted retained stage; append-only recovery discards only its
 private bytes and verifies a fresh stream. Neither publishes bytes that fail the version hash.
 
-| Crash window                                                      | Operation      | Bounded, unchanged | Bounded, edited | Append-only, unchanged | Append-only, edited |
-| ----------------------------------------------------------------- | -------------- | ------------------ | --------------- | ---------------------- | ------------------- |
-| Before stage/intent                                               | New            | N                  | H               | N                      | H                   |
-| Before stage/intent                                               | Replace        | N                  | H               | H¹                     | H                   |
-| Before stage/intent                                               | Move           | N                  | H               | H¹                     | H                   |
-| Before stage/intent                                               | Case-only move | N                  | H               | H¹                     | H                   |
-| Partial stage                                                     | New            | R                  | R               | R                      | R                   |
-| Partial stage                                                     | Replace        | R                  | R               | R                      | R                   |
-| Partial stage                                                     | Move           | P                  | H               | P                      | H                   |
-| Partial stage                                                     | Case-only move | R                  | R               | R                      | R                   |
-| Complete, before move                                             | New            | R                  | R               | R                      | R                   |
-| Complete, before move                                             | Replace        | R                  | R               | R                      | R                   |
-| Complete, before move                                             | Move           | P                  | H               | P                      | H                   |
-| Complete, before move                                             | Case-only move | R                  | R               | R                      | R                   |
-| Complete, after move                                              | New            | R                  | R               | R                      | R                   |
-| Complete, after move                                              | Replace        | R                  | R               | R                      | R                   |
-| Complete, after move                                              | Move           | R                  | R               | R                      | R                   |
-| Complete, after move                                              | Case-only move | R                  | R               | R                      | R                   |
-| Published, before ledger                                          | New            | A                  | R               | R²                     | R                   |
-| Published, before ledger                                          | Replace        | A                  | R               | R²                     | R                   |
-| Published, before ledger                                          | Move           | A                  | R               | R²                     | R                   |
-| Published move, destination deleted and distinct source recreated | Move           | P                  | P               | P                      | P                   |
-| Published, before ledger                                          | Case-only move | R                  | R               | R                      | R                   |
-| Ledger committed                                                  | New            | S                  | S               | S                      | S                   |
-| Ledger committed                                                  | Replace        | S                  | S               | S                      | S                   |
-| Ledger committed                                                  | Move           | S                  | S               | S                      | S                   |
-| Ledger committed                                                  | Case-only move | S                  | S               | S                      | S                   |
+| Crash window | Operation | Bounded, unchanged | Bounded, edited | Append-only, unchanged | Append-only, edited |
+| --- | --- | --- | --- | --- | --- |
+| Before stage/intent | New | N | H | N | H |
+| Before stage/intent | Replace | N | H | H¹ | H |
+| Before stage/intent | Move | N | H | H¹ | H |
+| Before stage/intent | Case-only move | N | H | H¹ | H |
+| Partial stage | New | R | R | R | R |
+| Partial stage | Replace | R | R | R | R |
+| Partial stage | Move | P | H | P | H |
+| Partial stage | Case-only move | R | R | R | R |
+| Complete, before move | New | R | R | R | R |
+| Complete, before move | Replace | R | R | R | R |
+| Complete, before move | Move | P | H | P | H |
+| Complete, before move | Case-only move | R | R | R | R |
+| Complete, after move | New | R | R | R | R |
+| Complete, after move | Replace | R | R | R | R |
+| Complete, after move | Move | R | R | R | R |
+| Complete, after move | Case-only move | R | R | R | R |
+| Published, before ledger | New | A | R | R² | R |
+| Published, before ledger | Replace | A | R | R² | R |
+| Published, before ledger | Move | A | R | R² | R |
+| Published move, destination deleted and distinct source recreated | Move | P | P | P | P |
+| Published, before ledger | Case-only move | R | R | R | R |
+| Ledger committed | New | S | S | S | S |
+| Ledger committed | Replace | S | S | S | S |
+| Ledger committed | Move | S | S | S | S |
+| Ledger committed | Case-only move | S | S | S | S |
 
 ¹ With no durable intent and no bounded local reader, a multi-chunk existing file cannot be
 authenticated. Preserve it. One-chunk files can use the same **N** path as a bounded host.

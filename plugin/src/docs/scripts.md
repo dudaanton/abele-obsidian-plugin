@@ -194,70 +194,34 @@ was closed. Results are detached, read-only snapshots, not setters.
 ```js
 // @name Reader shelf
 const v = view({ title: 'Reader shelf' })
-let items = [],
-  busy = false,
-  again = false,
-  query = ''
-const card = (b) =>
-  new Card({
-    title: b.title || b.path.split('/').pop(),
-    subtitle: b.author || 'Author unavailable',
-    description:
-      b.progress === null
-        ? 'No saved position'
-        : (b.finished ? 'Finished' : Math.round(b.progress * 100) + '% read') +
-          (b.currentPage
-            ? ` · ${b.pageUnit === 'locations' ? 'Location' : 'Page'} ${b.currentPage} of ${b.pageCount}`
-            : ''),
-    actions: [
-      new Button({
-        text: b.position && !b.finished ? 'Continue' : 'Read',
-        onClick: () => books.open(b.path),
-      }),
-    ],
-  })
+let items = [], busy = false, again = false, query = ''
+const card = (b) => new Card({
+  title: b.title || b.path.split('/').pop(),
+  subtitle: b.author || 'Author unavailable',
+  description: b.progress === null ? 'No saved position' :
+    (b.finished ? 'Finished' : Math.round(b.progress * 100) + '% read') +
+    (b.currentPage ? ` · ${b.pageUnit === 'locations' ? 'Location' : 'Page'} ${b.currentPage} of ${b.pageCount}` : ''),
+  actions: [new Button({ text: b.position && !b.finished ? 'Continue' : 'Read',
+    onClick: () => books.open(b.path) })],
+})
 function draw() {
-  const reading = items.filter((b) => b.progress !== null && !b.finished)
+  const reading = items.filter(b => b.progress !== null && !b.finished)
   const latest = [...reading].sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0))[0]
-  const visible = items.filter(
-    (b) =>
-      (b.title || b.path).toLowerCase().includes(query) ||
-      (b.author || '').toLowerCase().includes(query)
-  )
-  v.body = [
-    new Text(
-      `${items.length} files · ${reading.length} reading · ${items.filter((b) => b.finished).length} finished`
-    ),
-    new Search({
-      placeholder: 'Search title, author or path',
-      value: query,
-      onChange: (value) => {
-        query = String(value).toLowerCase()
-        draw()
-      },
-    }),
+  const visible = items.filter(b => (b.title || b.path).toLowerCase().includes(query) ||
+    (b.author || '').toLowerCase().includes(query))
+  v.body = [new Text(`${items.length} files · ${reading.length} reading · ${items.filter(b => b.finished).length} finished`),
+    new Search({ placeholder: 'Search title, author or path', value: query,
+      onChange: value => { query = String(value).toLowerCase(); draw() } }),
     ...(latest ? [new Text('Continue reading'), card(latest)] : []),
-    new Grid(visible.map(card)),
-    new Button({ text: 'Refresh', onClick: refresh }),
-  ]
+    new Grid(visible.map(card)), new Button({ text: 'Refresh', onClick: refresh })]
 }
 async function refresh() {
-  if (busy) {
-    again = true
-    return
-  }
+  if (busy) { again = true; return }
   busy = true
-  try {
-    do {
-      again = false
-      const next = await books.list()
-      if (v.signal.aborted) return
-      items = next
-      draw()
-    } while (again)
-  } finally {
-    busy = false
-  }
+  try { do { again = false; const next = await books.list()
+    if (v.signal.aborted) return
+    items = next; draw()
+  } while (again) } finally { busy = false }
 }
 books.onChange(() => v.run(refresh), { signal: v.signal })
 v.on('focus', () => v.run(refresh))
