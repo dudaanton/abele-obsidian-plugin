@@ -97,7 +97,7 @@ const probe = (label: string) => `(async () => {
     const bounds = modal.getBoundingClientRect()
     const overflow = modal.scrollWidth - modal.clientWidth
     const inherited = reopened.toolModes.value.web_search, ownMode = reopened.ownToolModes.value.web_search
-    const dismiss = await until(() => modal.closest('.modal-container').querySelector('.modal-close-button'))
+    const dismiss = await until(() => modal.closest('.modal-container').querySelector('.modal-close-button, .modal-header-button'))
     dismiss.click()
     await until(() => !document.querySelector('.abele-folder-access'))
     if (!document.querySelector('.abele-chat-tree')) current().click()

@@ -55,7 +55,15 @@ describe.skipIf(!available)('chat files control and linked-note counts', () => {
       throw new Error('Artifacts UI did not settle: ' + fn.toString() + '; menu=' + [...document.querySelectorAll('.menu-item')].map(el => el.textContent.trim()).join('|'))
     }
     let root
+    const fixtureFolder = 'ScaleTest/sample-artifact-count-' + Date.now()
     try {
+      await app.vault.createFolder(fixtureFolder)
+      const fixturePaths = []
+      for (let i = 0; i < 999; i++) {
+        const path = fixtureFolder + '/sample-' + i + '.md'
+        await app.vault.create(path, '')
+        fixturePaths.push(path)
+      }
       await chats.revealSidebar()
       // "Files from this chat" is an item of the header's overflow menu, its last control.
       const control = await until(() => [...document.querySelectorAll('.abele-ai-chat__header-actions .abele-ai-chat__overflow [aria-haspopup="menu"]')].find(el => el.getClientRects().length))
@@ -76,8 +84,8 @@ describe.skipIf(!available)('chat files control and linked-note counts', () => {
       const results = []
       for (const count of [1, 11, 999]) {
         // Exercise the real projection and rendered count in an unsaved, disposable session.
-        // Missing synthetic resources still have membership; no vault files are written.
-        session.touched.value = Array.from({ length: count }, (_, i) => ({ path: 'Sample count note ' + i + '.md' }))
+        // Retained artifacts refer to files in this disposable fixture directory.
+        session.touched.value = fixturePaths.slice(0, count).map(path => ({ path }))
         const expected = 'Notes (' + count + ')'
         const said = (el) => el.querySelector('.abele-fold-heading__text')?.textContent.trim() + ' (' + el.querySelector('.abele-fold-heading__count')?.textContent.trim() + ')'
         const heading = await until(() => {
@@ -101,9 +109,11 @@ describe.skipIf(!available)('chat files control and linked-note counts', () => {
       }
       return results
     } finally {
-      if (root?.isConnected) document.querySelector('.modal-close-button')?.click()
+      if (root?.isConnected) root.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button')?.click()
       session.touched.value = []
       await chats.closeTab(tab)
+      const directory = app.vault.getAbstractFileByPath(fixtureFolder)
+      if (directory) await app.vault.delete(directory, true)
       if (priorTab) chats.switchTab(priorTab)
     }
   })()`,

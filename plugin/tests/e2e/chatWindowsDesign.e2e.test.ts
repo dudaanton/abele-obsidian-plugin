@@ -37,7 +37,7 @@ const probe = (screen: string) => `(async () => {
     const walk = node => {
       const style=getComputedStyle(node), box=node.getBoundingClientRect()
       if (!box.width || style.display === 'none' || style.visibility === 'hidden') return
-      if (box.left < Math.max(0,bounds.left)-1 || box.right > Math.min(innerWidth,bounds.right)+1) report.overflow.push(name+':'+node.className)
+      if (box.left < Math.max(0,bounds.left)-1 || box.right > Math.min(innerWidth,bounds.right)+1) report.overflow.push(name+':'+node.tagName+':'+node.className+':'+Math.round(box.left)+'..'+Math.round(box.right)+':'+node.textContent.slice(0,80))
       if (style.overflowX === 'auto' || style.overflowX === 'scroll') return
       for (const child of node.children) walk(child)
     }
