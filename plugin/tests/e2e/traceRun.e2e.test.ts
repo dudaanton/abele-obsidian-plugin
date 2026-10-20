@@ -475,6 +475,14 @@ it('shows incoming and outgoing program requests with correlated code on desktop
   }
   check('desktop')
   await withEmulatedPhone(async () => {
-    check('phone')
+    try {
+      check('phone')
+    } finally {
+      evalAsync(`(async()=>{
+        for(const leaf of app.workspace.getLeavesOfType('abele-trace-run').concat(app.workspace.getLeavesOfType('abele-trace-value')))leaf.detach();
+        await app.workspace.requestSaveLayout.run();
+        return true;
+      })()`)
+    }
   })
 }, 180000)
