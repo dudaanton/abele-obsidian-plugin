@@ -52,7 +52,7 @@ it.each(['running', 'detached', 'exited'] as const)(
       expect(options[0].text()).toContain('Paused')
       expect((switcher.element as HTMLSelectElement).value).toBe('sample-first')
       expect(options[1].text()).toContain(
-        state === 'exited' ? 'Exit code 7' : state === 'detached' ? 'Detached' : 'Running'
+        state === 'exited' ? 'Ended with code 7' : state === 'detached' ? 'Detached' : 'Running'
       )
       await switcher.setValue('sample-second')
       await vi.waitFor(() => expect(showSession).toHaveBeenCalledWith(owner, 'sample-second'))
