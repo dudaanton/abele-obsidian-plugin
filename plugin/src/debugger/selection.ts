@@ -9,6 +9,7 @@ const SELECTION_KEY = 'abele-debug-selection'
 export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
   const service = DebuggerService.instance
   let previous: string | undefined
+  let established = false
   plugin.register(
     watch(
       () => [
@@ -19,6 +20,8 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
       () => {
         const selection = service.selectionState()
         if (selection === undefined) return
+        if ('sessionId' in selection) established = true
+        else if (!established) return
         const serialized = JSON.stringify(selection)
         if (serialized === previous) return
         previous = serialized

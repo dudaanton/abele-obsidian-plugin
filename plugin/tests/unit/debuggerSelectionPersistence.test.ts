@@ -10,6 +10,23 @@ afterEach(() => {
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
 })
+it('does not erase remembered selection when unrelated startup bindings publish metadata', async () => {
+  const service = DebuggerService.instance
+  const save = vi.fn()
+  const plugin = {
+    app: {
+      loadLocalStorage: () => ({ sessionId: 'sample-debug' }),
+      saveLocalStorage: save,
+      workspace: { onLayoutReady: vi.fn() },
+    },
+    register: (stop: () => void) => cleanups.push(stop),
+  } as unknown as Plugin
+  vi.spyOn(service, 'selectionState').mockReturnValue({})
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  service.sourceRevision.value++
+  await nextTick()
+  expect(save).not.toHaveBeenCalled()
+})
 it('restores a remembered session even when the mobile layout omits the Debug leaf', async () => {
   const saved = { sessionId: 'sample-debug', target: {}, sessions: ['sample-debug'], sources: [] }
   const ready: (() => Promise<void>)[] = []
@@ -52,8 +69,12 @@ it('saves bounded selection metadata and preserves it during service teardown', 
   service.active.value = { revision: ref(0) } as never
   await nextTick()
   expect(save).toHaveBeenLastCalledWith('abele-debug-selection', saved)
-  selection.mockReturnValue(undefined)
+  selection.mockReturnValue({})
   service.active.value = null
   await nextTick()
-  expect(save).toHaveBeenCalledTimes(1)
+  expect(save).toHaveBeenLastCalledWith('abele-debug-selection', null)
+  selection.mockReturnValue(undefined)
+  service.sourceRevision.value++
+  await nextTick()
+  expect(save).toHaveBeenCalledTimes(2)
 })
