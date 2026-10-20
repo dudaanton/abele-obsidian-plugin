@@ -854,6 +854,8 @@ it.each(['desktop', 'phone'] as const)(
         if(binding?.controller.current&&binding.controller.session.status!=='exited')await binding.controller.command('stop');
         for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.projectId===project.project_id)leaf.detach();
         await client.removeProject(project.project_id);
+        const model=api.NodePathService.getInstance().model(registration);await model.refresh();
+        const previous=model.targets.value.find(t=>t.projectId===${JSON.stringify(folder.projectId)});if(previous)await model.selectTarget(previous);
       }
     })()`)
       expect(result).toEqual({ blame: true, symbols: true })
