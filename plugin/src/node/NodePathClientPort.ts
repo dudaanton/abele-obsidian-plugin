@@ -3,6 +3,7 @@ import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { NodeClient } from '@abele/node-client'
 import { sessionActivity } from './sessionActivity'
 import { worktreeDisplayPath } from './worktreePresentation'
+import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ChannelError } from '@abele/channel-protocol'
 import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
@@ -263,6 +264,9 @@ export class NodePathClientPort implements NodePathPort {
             project_id: project.project_id,
             cursor,
             ...(enriched ? { include_selection: true } : {}),
+            ...(nodeAdvertisesMethod(this.client, 'repository.v1.file.directory')
+              ? { include_identity: true }
+              : {}),
           })
         ).catch((error: unknown): WorktreeEntry[] => {
           // The project's fingerprint is checked before filesystem availability. A
@@ -301,7 +305,9 @@ export class NodePathClientPort implements NodePathPort {
           const path =
             row.kind === 'root'
               ? project.root_path
-              : (workspace?.path ?? (row.path_label.startsWith('/') ? row.path_label : undefined))
+              : (row.identity?.canonical_path ??
+                workspace?.path ??
+                (row.path_label.startsWith('/') ? row.path_label : undefined))
           if (path?.startsWith('/'))
             target.location = {
               root: project.root_path,

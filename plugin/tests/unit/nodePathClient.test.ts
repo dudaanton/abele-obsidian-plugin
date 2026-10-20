@@ -60,6 +60,44 @@ function fake() {
   return { ...f, client, port }
 }
 describe('validated node path reads', () => {
+  it('requests canonical worktree identities from new nodes while displaying the branch-named physical folder', async () => {
+    const { port, client } = fake()
+    Object.assign(client, {
+      channel: { channel: { welcome: { methods: ['repository.v1.file.directory'] } } },
+    })
+    client.describe.mockResolvedValue({
+      capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+    })
+    const worktrees = vi
+      .spyOn(client.repository, 'worktrees')
+      .mockResolvedValue({
+        entries: [
+          {
+            worktree_id: 'sample-external',
+            project_id: project.project_id,
+            workspace_id: null,
+            kind: 'external',
+            path_label: 'repo-topic',
+            identity: { canonical_path: '/sample/repo-topic', fingerprint: 'a'.repeat(64) },
+            branch: 'refs/heads/topic',
+            detached: false,
+            head: HEAD,
+            availability: 'available',
+            locked: false,
+            prunable: false,
+            dirty: false,
+            listed: true,
+          },
+        ],
+        cursor: null,
+        incomplete: false,
+        omissions: [],
+      })
+    const catalogue = await port.catalogue()
+    expect(worktrees).toHaveBeenCalledWith(expect.objectContaining({ include_identity: true }))
+    expect(catalogue.folders[0].copies[0].path).toBe('repo-topic')
+    expect(catalogue.targets[0].location?.path).toBe('/sample/repo-topic')
+  })
   it('retains an external worktree absolute path for recovery and Copy path separately from its display name', async () => {
     const { port, client } = fake()
     client.describe.mockResolvedValue({

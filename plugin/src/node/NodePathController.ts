@@ -244,6 +244,9 @@ function rowMenu(
           connection.client.repository.worktrees({
             project_id: target.projectId,
             include_selection: true,
+            ...(nodeAdvertisesMethod(connection.client, 'repository.v1.file.directory')
+              ? { include_identity: true }
+              : {}),
             cursor,
           })
         )
@@ -551,10 +554,8 @@ export async function attachNodePathWorktree(
   const root =
     target.location?.root ??
     model.folders?.value.find((folder) => folder.id === target.projectId)?.path
-  const copyLocation =
-    root && row.path_label.startsWith('/')
-      ? { root, path: row.path_label, kind: row.kind }
-      : undefined
+  const path = row.identity?.canonical_path ?? row.path_label
+  const copyLocation = root && path.startsWith('/') ? { root, path, kind: row.kind } : undefined
   const selecting = model.selectTarget(
     {
       nodeId: target.nodeId,
