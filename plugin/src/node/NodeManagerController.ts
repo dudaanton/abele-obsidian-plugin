@@ -199,7 +199,10 @@ export class NodeManagerController {
                   : 'git.v1.integrate',
             run,
             prompts: transcript.prompts.filter(
-              (p) => p.prompt_id === run.prompt_id && p.state === 'pending'
+              (p) =>
+                run.state === 'pending_approval' &&
+                p.prompt_id === run.prompt_id &&
+                p.state === 'pending'
             ),
             answers: promptAnswerStates(s, run.session_id),
           },

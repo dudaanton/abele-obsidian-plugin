@@ -197,3 +197,45 @@ it('bounds live output by the requested byte capacity without splitting Unicode'
   expect(run.stdout).not.toContain('�')
   f.store.close()
 })
+
+it('does not offer an obsolete approval after a final unknown outcome', async () => {
+  const f = fixture()
+  await f.controller.mutate(
+    'sample-parent',
+    'command.v1.run',
+    { session_id: 'sample-session', project_id: 'sample-project', command: 'pwd' },
+    'sample-operation'
+  )
+  await f.store.transaction((s) => {
+    const event = {
+      kind: 'event' as const,
+      node_id: 'sample-node',
+      stream_id: 'sample-session',
+      actor: { kind: 'node' as const },
+      at: '2028-01-01T00:00:00Z',
+    }
+    s.events['sample-session'] = [
+      {
+        ...event,
+        seq: 1,
+        type: 'prompt.opened',
+        data: {
+          kind: 'permission',
+          prompt_id: 'sample-prompt',
+          session_id: 'sample-session',
+          run_id: 'sample-run',
+          revision: 1,
+          action_digest: 'a'.repeat(64),
+          expires_at: Number.MAX_SAFE_INTEGER,
+          state: 'pending',
+          choice: null,
+          installation_id: null,
+          delivered: false,
+        },
+      },
+      { ...event, seq: 2, type: 'command.updated', data: { ...receipt, state: 'outcome_unknown' } },
+    ]
+  })
+  expect((await f.controller.cards('sample-parent'))[0].prompts).toEqual([])
+  f.store.close()
+})
