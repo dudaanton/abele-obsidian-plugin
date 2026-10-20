@@ -19,7 +19,7 @@ async function inAppLong<T>(script: string): Promise<T> {
     return JSON.parse(await evalLong(script, 150_000)) as T
   } catch (error) {
     throw new Error(
-      `node: ${daemonExit || 'running'}\n${daemonErrors}\n${error instanceof Error ? error.message : String(error)}`
+      `${error instanceof Error ? error.message : String(error)}\nnode: ${daemonExit || 'running'}\n${daemonErrors.slice(-1200)}`
     )
   }
 }
@@ -331,6 +331,69 @@ it.each(['desktop', 'phone'])(
       const binding=api.DebuggerService.instance.active.value;
       await shot(${JSON.stringify(name + '-debugger-no-chat')});
       await until(()=>visible('.abele-debug-panel'),'visible folder debugger');
+      await until(()=>binding.controller.session.variables.length,'automatic frame scopes');
+      const approve=async (what,label=what)=>{
+        const card=await until(()=>[...document.querySelectorAll('.abele-debug-view .abele-debug-action_asked')].find(c=>c.textContent.toLowerCase().includes(what.toLowerCase())),'inline approval '+what);
+        await shot(${JSON.stringify(name)}+'-approval-'+label.replace(/[^a-z0-9]+/gi,'-'));
+        press([...card.querySelectorAll('button')].find(b=>b.textContent.trim()==='Allow'));
+        await until(()=>!binding.controller.actions.some(a=>a.status==='asked'&&!a.awaitingResult),'approval completed');
+      };
+      const scope=await until(()=>visible('.abele-debug-value_row .tree-item-self'),'scope row');
+      press(scope);
+      await approve('variables');
+      await until(()=>binding.controller.session.variables.some(v=>v.children),'scope values loaded');
+      await shot(${JSON.stringify(name)}+'-variables');
+      if(!binding.connection.client.channel.channel.welcome.methods.includes('debugger.v1.exceptionBreakpoints.set'))throw Error('Exception filters not exposed');
+      for(const label of ['Caught exceptions','Uncaught exceptions']){
+        press(visible('[aria-label="'+label+'"]'));
+        await until(()=>binding.controller.exceptionFilters.length===(label==='Caught exceptions'?1:2),'exception filter saved');
+      }
+      await shot(${JSON.stringify(name)}+'-exceptions');
+      const frame=binding.controller.session.frames[binding.controller.session.frame],sourceId=api.DebuggerService.instance.debugFor(target,'src/journey.cjs').sourceId;
+      await binding.controller.setBreakpoint('sample-controls',sourceId,frame.line);
+      const bpMenu=async()=>{
+        const row=await until(()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent===frame.file.split('/').pop()+':'+frame.line),'breakpoint row');
+        press(row.querySelector('[aria-label="Breakpoint options"]'));
+        await until(()=>item('Edit condition'),'breakpoint menu');
+      };
+      await bpMenu();await shot(${JSON.stringify(name)}+'-breakpoint-menu');
+      press(item('Edit condition'));
+      const condition=await until(()=>document.querySelector('.modal input'),'condition editor');
+      condition.value='1 < 2 && "a" < "b"';condition.dispatchEvent(new Event('input',{bubbles:true}));
+      await shot(${JSON.stringify(name)}+'-condition');
+      condition.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await approve('breakpoint');
+      await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.condition==='1 < 2 && "a" < "b"'),'condition saved verbatim');
+      await bpMenu();press(item('Log message'));
+      const logMessage=await until(()=>document.querySelector('.modal input'),'log message editor');
+      logMessage.value='sample {1 < 2 && "a" < "b"}';logMessage.dispatchEvent(new Event('input',{bubbles:true}));
+      await shot(${JSON.stringify(name)}+'-log-message');
+      logMessage.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await approve('breakpoint','log-point');
+      await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.log_message==='sample {1 < 2 && "a" < "b"}'),'log message saved verbatim');
+      await bpMenu();press(item('Disable breakpoint'));
+      await until(()=>binding.controller.knownBreakpoints().some(b=>b.id==='sample-controls'&&!b.enabled),'disabled breakpoint');
+      await shot(${JSON.stringify(name)}+'-disabled');
+      press(visible('[aria-label="Remove all breakpoints"]'));
+      await until(()=>!binding.controller.knownBreakpoints().length,'all breakpoints removed');
+      await shot(${JSON.stringify(name)}+'-breakpoints-empty');
+      await binding.trace.savePoint(sourceId,frame.line,{take:['1'],when:'1 < 2 && "a" < "b"'});
+      await approve('breakpoint','record-point');
+      await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
+      await shot(${JSON.stringify(name)}+'-record-point');
+      const watch=visible('.abele-debug-panel__add input');
+      watch.value='sampleValue_'+'value'.repeat(45);watch.dispatchEvent(new Event('input',{bubbles:true}));
+      watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      const refused=await until(()=>[...document.querySelectorAll('.abele-debug-view .abele-debug-action_asked')].find(c=>c.textContent.includes('sampleValue_')),'long watch approval');
+      await shot(${JSON.stringify(name)}+'-approval-long');
+      press([...refused.querySelectorAll('button')].find(b=>b.textContent.trim()==='Deny'));
+      await until(()=>binding.controller.actions.some(a=>a.status==='denied'),'request denied');
+      await shot(${JSON.stringify(name)}+'-approval-denied');
+      watch.value='1 < 2 && "a" < "b"';watch.dispatchEvent(new Event('input',{bubbles:true}));
+      watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await approve('1 < 2');
+      await until(()=>binding.controller.session.watches.some(w=>w.value==='true'),'approved watch value');
+      await shot(${JSON.stringify(name)}+'-watch');
       const snapshot=binding.controller.snapshot;
       const result={conversation:snapshot.target.conversation_id,chats:chats.tabOrder.value.filter(id=>id.startsWith('node:')).length,sessions:(await client.listSessions()).length};
       await binding.controller.command('stop');
@@ -430,7 +493,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
       const row=await until(()=>rowNamed(name),'variable '+name);
       press(row.querySelector(':scope > .tree-item-self'));
       // Inspection follows the same explicit approval path as other debugger requests.
-      await until(()=>row.querySelector('.abele-debug-value_row')||row.textContent.includes('Waiting for approval in chat'),'inspection result or approval request');
+      await until(()=>row.querySelector('.abele-debug-value_row')||row.textContent.includes('Waiting for approval in Debug'),'inspection result or approval request');
       if(!row.querySelector('.abele-debug-value_row')){
         if(name==='Local')await shot('journey-waiting-approval');
         await chats.revealSidebar({focus:false});
