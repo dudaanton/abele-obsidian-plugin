@@ -29,6 +29,48 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it.each(['settings', 'window'] as const)(
+    'does not label an offline set as synced after its first item detaches (%s)',
+    async (screen) => {
+      const ui = tokenUiFixture()
+      ui.rows.value = ui.rows.value.map((row) => ({ ...row, status: 'offline' }))
+      const source = {
+        items: () => [
+          detached,
+          { ...detached, id: 'active', state: { kind: 'error', reason: 'Offline' } },
+        ],
+        label: () => null,
+        several: () => true,
+        owner: () => false,
+      } as unknown as ShareSetSource
+      const before = shareSetSource.value
+      shareSetSource.value = source
+      const wrapper =
+        screen === 'settings'
+          ? mount(SyncSettings, { props: { model: ui } })
+          : mount(ConnectionWindow, {
+              props: { ui, connectionId: ui.rows.value[0].id },
+              global: {
+                stubs: {
+                  Modal: { template: '<div><slot /><slot name="footer" /></div>' },
+                  SelectiveSync: true,
+                },
+              },
+            })
+      try {
+        await flushPromises()
+        const line =
+          screen === 'settings'
+            ? wrapper.get('.abele-sync-row').text()
+            : wrapper.get('.abele-sync-window__line').text()
+        expect(line).not.toContain('Synced')
+        expect(line).toContain('1 of 2 needs attention')
+      } finally {
+        wrapper.unmount()
+        shareSetSource.value = before
+      }
+    }
+  )
   it('invalidates a failed deletion preview when its confirmation closes', async () => {
     const item = { id: 'file-a', kind: 'file' as const, path: 'Sample.md' }
     const closeDeletePreview = vi.fn()
