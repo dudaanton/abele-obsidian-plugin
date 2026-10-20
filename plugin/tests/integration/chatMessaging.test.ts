@@ -163,6 +163,45 @@ it('registers a read-only listing and an approval-required send tool', () => {
   expect(DEFAULT_AI_SETTINGS.toolModes.send_message_to_chat).toBe('ask')
 })
 
+it('recovers a saved reply when reload happens before its tool result is committed', async () => {
+  const session = new ChatSession(ChatService.getInstance())
+  await session.addUserNote('Source')
+  const host = session as unknown as {
+    appendChatMessage(message: unknown): void
+    rememberInternal(message: unknown): void
+  }
+  host.appendChatMessage({
+    id: 'answered-call',
+    role: 'tool-call',
+    toolCallId: 'answered-letter',
+    toolName: 'send_message_to_chat',
+    toolStatus: 'approved',
+    content: '',
+    timestamp: 1,
+    chatLetter: { to: { id: 'target', title: 'Target' }, reply: 'Retained answer' },
+  })
+  host.rememberInternal({
+    role: 'assistant',
+    content: [
+      { type: 'toolCall', id: 'answered-letter', name: 'send_message_to_chat', arguments: {} },
+    ],
+    timestamp: 1,
+    chatMessageId: 'answered-call',
+  })
+  session.updateVisibleMessages()
+  await session.save()
+  const reopened = new ChatSession(ChatService.getInstance())
+  await reopened.load(session.currentChatFile.value!)
+  const model = reopened as unknown as { getMessagesForModel(): Message[] }
+  const result = model
+    .getMessagesForModel()
+    .find((m) => m.role === 'toolResult' && m.toolCallId === 'answered-letter')
+  expect(result?.content).toEqual([{ type: 'text', text: 'Retained answer' }])
+  expect(reopened.messages.value.find((m) => m.id === 'answered-call')?.toolResult).toBe(
+    'Retained answer'
+  )
+})
+
 it('keeps a real target tool approval in the receiving chat until it is answered', async () => {
   const service = ChatService.getInstance()
   const a = service.getSession(service.createTab())!

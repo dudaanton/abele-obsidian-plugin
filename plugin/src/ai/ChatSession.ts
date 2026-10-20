@@ -9,6 +9,7 @@ import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/strea
 
 import { t } from '@/i18n'
 import type { ChatLetter, LetterChat } from '@/chats/chatLetters'
+import { restoreChatLetters } from './chatLetterRecovery'
 import {
   computed,
   effectScope,
@@ -4520,19 +4521,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     result: ParsedChat,
     options: { keepLeaf?: string | null; readOnly?: boolean } = {}
   ): Promise<void> {
-    this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
-    // Runtime waiters cannot cross reloads. Never replay a letter that may already be delivered.
-    this.allChatMessages = this.allChatMessages.map((m) =>
-      m.chatLetter && m.chatLetter.reply === undefined && !m.chatLetter.refusal
-        ? {
-            ...m,
-            chatLetter: { ...m.chatLetter, refusal: t('chat.letterInterrupted') },
-            toolStatus: 'rejected',
-            toolExecution: 'interrupted',
-          }
-        : m
+    const letters = restoreChatLetters(
+      result.messages,
+      result.internalMessages || [],
+      t('chat.letterInterrupted')
     )
-    this.allInternalMessages = result.internalMessages || []
+    this.allChatMessages = letters.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
+    this.allInternalMessages = letters.history
     // Normal opens repair the main file before adopting it; reconciliation accepts only an
     // intact main-file snapshot. An older format needs a rewrite on save to migrate to a log.
     this.log.adopt(result)
