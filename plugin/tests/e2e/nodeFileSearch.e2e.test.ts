@@ -130,8 +130,8 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
     const scenario = async (shell: 'desktop' | 'phone') => {
       const sidebar = async (mode: 'Changes' | 'Files') => {
         await evalLong(`(async()=>{${prelude}
-          const model=api.NodePathService.getInstance().model(${JSON.stringify(node.registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(node.registration)});await model.refresh();await model.select(${JSON.stringify(ids.root)});
-          const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(node.registration)}}});await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();
+          const model=api.NodePathService.getInstance().model(${JSON.stringify(node.registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(node.registration)});if(model.current.value?.id!==${JSON.stringify(ids.root)}){await model.refresh();await model.select(${JSON.stringify(ids.root)})}
+          let leaf=app.workspace.getLeavesOfType('abele-node-sidebar').find(l=>l.view.getState().registrationId===${JSON.stringify(node.registration)});if(!leaf){leaf=app.workspace.getLeftLeaf(false);await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(node.registration)}}})}await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();
           await until(()=>visible('.abele-node-modes [role=tab][aria-label^="${mode}"]'),'The node mode');visible('.abele-node-modes [role=tab][aria-label^="${mode}"]').click();return 'node mode'})()`)
       }
       const closeFile = async () => {
