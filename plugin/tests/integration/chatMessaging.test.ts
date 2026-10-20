@@ -82,6 +82,26 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+it('keeps the caller title on a refused self-addressed letter', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  caller.chatTitle.value = 'Sample caller'
+  const attach = vi.spyOn(caller, 'attachChatLetter')
+  const send = createChatMessagingTools(caller).find(
+    (tool) => tool.name === 'send_message_to_chat'
+  )!
+  await expect(
+    send.execute('self-call', { chat_id: caller.id, message: 'Sample self request' })
+  ).rejects.toThrow('own chat')
+  expect(attach).toHaveBeenLastCalledWith(
+    'self-call',
+    expect.objectContaining({
+      to: expect.objectContaining({ id: caller.id, title: 'Sample caller' }),
+      refusal: expect.stringContaining('own chat'),
+    })
+  )
+})
+
 it('delivers and persists both ends using the receiving session permissions', async () => {
   const service = ChatService.getInstance()
   const a = service.getSession(service.createTab())!

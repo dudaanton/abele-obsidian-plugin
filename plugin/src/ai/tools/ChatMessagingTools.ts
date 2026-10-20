@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
-import { chatMessaging } from '../chatMessaging'
+import { chatMessaging, openMessagingChats } from '../chatMessaging'
 import type { LetterChat } from '@/chats/chatLetters'
 
 export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
@@ -35,12 +35,10 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
         if (!session) throw new Error('No active chat')
         if (typeof params.chat_id !== 'string' || typeof params.message !== 'string')
           throw new Error('chat_id and message must be strings')
-        const to: LetterChat = chatMessaging
-          .list(session.id)
-          .find((chat) => chat.id === params.chat_id) ?? {
-          id: params.chat_id,
-          title: params.chat_id,
-        }
+        const target = openMessagingChats().find((chat) => chat.id === params.chat_id)
+        const to: LetterChat = target
+          ? { id: target.id, title: target.title, folder: target.folder, path: target.path }
+          : { id: params.chat_id, title: params.chat_id }
         session.attachChatLetter(id, { to })
         await session.save()
         try {
