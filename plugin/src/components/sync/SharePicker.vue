@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-share-picker">
+  <div ref="root" class="abele-share-picker">
     <div v-if="modelValue.length" class="abele-share-picker__picked">
       <div
         v-for="item in modelValue"
@@ -28,13 +28,56 @@
       </div>
     </div>
     <Search
-      :model-value="''"
+      :model-value="phone ? query : ''"
       :placeholder="full ? `A share holds up to ${SHARE_LIMIT} items` : placeholder"
-      :make-suggest="makeSuggest"
+      :make-suggest="phone ? undefined : makeSuggest"
       :disabled="full || disabled"
       :autofocus="autofocus"
       label="Find a folder, group or file"
+      @update:model-value="query = $event"
+      @focusin="focused = true"
+      @focusout="focused = false"
     />
+    <!-- Keep phone results in the sheet's scrollable body, never in a second native drawer. -->
+    <div
+      v-if="phone && focused && !full && !disabled && results.length"
+      ref="list"
+      class="suggestion abele-share-picker__results"
+      role="listbox"
+      aria-label="Folders, groups and files"
+      data-keeps-focus
+    >
+      <div
+        v-for="item in results"
+        :key="item.id"
+        class="suggestion-item mod-complex"
+        role="option"
+        :aria-selected="false"
+        :aria-disabled="!!coveredBy(item, taken())"
+        :class="{ 'is-disabled': !!coveredBy(item, taken()) }"
+        tabindex="0"
+        @mousedown.prevent
+        @click="pick(item)"
+        @keydown.enter.prevent="pick(item)"
+      >
+        <SuggestionRow
+          :icon="itemGlyph(item)"
+          :title="itemName(item)"
+          :note="item.kind === 'vault' ? 'For your own devices' : itemPlace(item)"
+          :title-class="coveredBy(item, taken()) ? 'abele-share-pick__covered' : undefined"
+          :aux="
+            coveredBy(item, taken())
+              ? [
+                  {
+                    flair: 'In ' + itemName(coveredBy(item, taken())!),
+                    cls: 'abele-share-pick__in',
+                  },
+                ]
+              : undefined
+          "
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -44,12 +87,23 @@
  * name and where it lies, with a way to take it out; the field finds more by typing. Full at
  * `SHARE_LIMIT`, the field goes quiet and says why.
  */
-import { computed } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
+import SuggestionRow from '../obsidian/SuggestionRow.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ShareItemSuggest } from '@/helpers/suggesters/ShareItemSuggest'
-import { SHARE_LIMIT, itemGlyph, itemName, itemPlace, type ShareItem } from '@/sync/shareSets'
+import { ShareItemSuggest, matchingShareItems } from '@/helpers/suggesters/ShareItemSuggest'
+import { KEYBOARD_EVENTS, fullHeight, keyboardVar } from '@/modal/keyboard'
+import { revealDelta, KEYBOARD_GAP } from '@/modal/keyboardLift'
+import {
+  SHARE_LIMIT,
+  coveredBy,
+  itemGlyph,
+  itemName,
+  itemPlace,
+  type ShareItem,
+} from '@/sync/shareSets'
 
 const props = defineProps<{
   modelValue: ShareItem[]
@@ -64,18 +118,65 @@ const emit = defineEmits<{ 'update:modelValue': [items: ShareItem[]] }>()
 
 const taken = () => [...(props.inShare ?? []), ...props.modelValue]
 const full = computed(() => taken().length >= SHARE_LIMIT)
+const phone = Platform.isPhone
+const query = ref('')
+const focused = ref(false)
+const list = ref<HTMLElement>()
+const root = ref<HTMLElement>()
+const results = computed(() => matchingShareItems(props.choices, taken(), query.value))
+const pick = (item: ShareItem) => {
+  if (props.disabled || full.value || coveredBy(item, taken())) return
+  emit(
+    'update:modelValue',
+    item.kind === 'vault'
+      ? [item]
+      : [...props.modelValue.filter((one) => one.kind !== 'vault'), item]
+  )
+  query.value = ''
+}
+// Use the sheet's existing keyboard scroll room, including when the keyboard finishes opening.
+const reveal = () => {
+  void nextTick(() => {
+    const row = list.value?.firstElementChild
+    const field = root.value?.querySelector('input')
+    const box = root.value?.closest('.modal-content')
+    const view = root.value?.ownerDocument.defaultView
+    if (!row || !field || !box || !view) return
+    row.scrollIntoView({ block: 'nearest' })
+    const bounds = box.getBoundingClientRect()
+    const viewport = view.visualViewport
+    const floor = Math.min(
+      bounds.bottom,
+      fullHeight(view) - keyboardVar(field.ownerDocument),
+      viewport ? viewport.offsetTop + viewport.height : view.innerHeight
+    )
+    const delta = revealDelta(
+      { top: field.getBoundingClientRect().top, bottom: row.getBoundingClientRect().bottom },
+      Math.max(bounds.top, viewport?.offsetTop ?? 0) + KEYBOARD_GAP,
+      floor - KEYBOARD_GAP
+    )
+    box.scrollTop += delta
+  })
+}
+watch([results, focused], reveal)
+let win: Window | null = null
+onMounted(() => {
+  if (!phone) return
+  win = root.value?.ownerDocument.defaultView ?? null
+  if (!win) return
+  for (const event of KEYBOARD_EVENTS) win.addEventListener(event, reveal)
+  win.visualViewport?.addEventListener('resize', reveal)
+})
+onBeforeUnmount(() => {
+  for (const event of KEYBOARD_EVENTS) win?.removeEventListener(event, reveal)
+  win?.visualViewport?.removeEventListener('resize', reveal)
+})
 
 const makeSuggest = (inputEl: HTMLInputElement) =>
   new ShareItemSuggest(GlobalStore.getInstance().app, inputEl, {
     choices: () => props.choices,
     taken,
-    onPick: (item) =>
-      emit(
-        'update:modelValue',
-        item.kind === 'vault'
-          ? [item]
-          : [...props.modelValue.filter((one) => one.kind !== 'vault'), item]
-      ),
+    onPick: pick,
   })
 </script>
 
@@ -91,6 +192,12 @@ const makeSuggest = (inputEl: HTMLInputElement) =>
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-4-1);
+}
+
+.abele-share-picker__results {
+  max-height: var(--popover-max-height);
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 // A pill holds a name and where it lies; long paths wrap inside it rather than past the field.

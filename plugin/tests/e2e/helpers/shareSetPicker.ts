@@ -13,15 +13,16 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   const query = label === 'Whole vault' ? 'Whole vault' : label.replace(/^(Folder|Group|File): /, '');
   const name = query.split('/').pop().replace(/\\.md$/i, '');
   let input;
-  await poll(() => (input = box.querySelector('.abele-share-picker input')) && !input.disabled);
+  await poll(() => (input = box.querySelector('.abele-share-picker input')) && !input.disabled, undefined, 'Share picker: enabled search field');
   input.focus();
   typeInto(input, query);
   let choice;
   await poll(() => {
-    choice = [...box.ownerDocument.querySelectorAll('.suggestion-item')].find(one =>
+    const inline = box.querySelector('.abele-share-picker__results');
+    choice = [...(inline || box.ownerDocument).querySelectorAll('.suggestion-item')].find(one =>
       one.querySelector('svg.lucide-' + kind) && one.textContent.includes(name) && one.getAttribute('aria-disabled') !== 'true');
     return !!choice;
-  });
+  }, undefined, 'Share picker: matching suggestion row');
   await poll(() => {
     const win = choice.ownerDocument.defaultView;
     const viewport = win.visualViewport;
@@ -29,8 +30,8 @@ const pickShareItem = async (box, label, waitForChip = true) => {
     const bottom = Math.min(win.innerHeight - keyboard, viewport ? viewport.offsetTop + viewport.height : win.innerHeight);
     const rect = choice.getBoundingClientRect();
     return rect.height > 0 && rect.top >= (viewport?.offsetTop || 0) && rect.bottom <= bottom;
-  });
+  }, undefined, 'Share picker: suggestion fully above keyboard');
   choice.click();
-  if (waitForChip) await poll(() => [...box.querySelectorAll('.multi-select-pill-content')].some(one => one.textContent.includes(name)));
+  if (waitForChip) await poll(() => [...box.querySelectorAll('.multi-select-pill-content')].some(one => one.textContent.includes(name)), undefined, 'Share picker: selected item chip');
 };
 `

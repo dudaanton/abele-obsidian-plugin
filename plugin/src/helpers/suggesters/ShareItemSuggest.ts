@@ -11,6 +11,21 @@ export interface ShareItemSuggestOptions {
   onPick: (item: ShareItem) => void
 }
 
+/** Shared by the desktop popup and the phone's inline list. */
+export function matchingShareItems(
+  choices: ShareItem[],
+  taken: ShareItem[],
+  query: string
+): ShareItem[] {
+  const ids = new Set(taken.map((one) => one.id))
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return choices
+    .filter((one) => !ids.has(one.id))
+    .filter((one) => one.kind !== 'vault' || !taken.length)
+    .filter((one) => words.every((w) => (one.path + ' ' + itemName(one)).toLowerCase().includes(w)))
+    .slice(0, 50)
+}
+
 /**
  * The folders, groups and files of the vault to put in a share, by typing, as Obsidian's own
  * pickers list them: the kind as a glyph, the name, where it lies. One already inside a folder
@@ -28,17 +43,7 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
   }
 
   getSuggestions(query: string): ShareItem[] {
-    const taken = this.options.taken()
-    const ids = new Set(taken.map((one) => one.id))
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return this.options
-      .choices()
-      .filter((one) => !ids.has(one.id))
-      .filter((one) => one.kind !== 'vault' || !taken.length)
-      .filter((one) =>
-        words.every((w) => (one.path + ' ' + itemName(one)).toLowerCase().includes(w))
-      )
-      .slice(0, 50)
+    return matchingShareItems(this.options.choices(), this.options.taken(), query)
   }
 
   renderSuggestion(item: ShareItem, el: HTMLElement): void {

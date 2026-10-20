@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { AbstractInputSuggest, Platform } from 'obsidian'
+import SharePicker from '@/components/sync/SharePicker.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
 import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
@@ -29,6 +31,94 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('keeps the desktop picker on the native suggester', () => {
+    const wrapper = mount(SharePicker, { props: { modelValue: [], choices: [] } })
+    try {
+      const native = AbstractInputSuggest as unknown as { attachedTo: WeakMap<Element, unknown> }
+      expect(native.attachedTo.get(wrapper.get('input').element)).toBeDefined()
+      expect(wrapper.find('.abele-share-picker__results').exists()).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+  it('refuses covered phone results and hides already selected items', async () => {
+    const platform = Platform as { isPhone: boolean }
+    const wasPhone = platform.isPhone
+    platform.isPhone = true
+    const wrapper = mount(SharePicker, {
+      props: {
+        modelValue: [],
+        inShare: [{ id: 'parent', kind: 'folder', path: 'Garden' }],
+        choices: [
+          { id: 'parent', kind: 'folder', path: 'Garden' },
+          { id: 'nested', kind: 'folder', path: 'Garden/Flowers' },
+        ],
+      },
+    })
+    try {
+      await wrapper.get('input').trigger('focusin')
+      await wrapper.get('input').setValue('Garden')
+      const rows = wrapper.findAll('.suggestion-item')
+      expect(rows).toHaveLength(1)
+      expect(rows[0].attributes('aria-disabled')).toBe('true')
+      expect(rows[0].text()).toContain('In Garden')
+      await rows[0].trigger('click')
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    } finally {
+      wrapper.unmount()
+      platform.isPhone = wasPhone
+    }
+  })
+  it('keeps phone search results inside the sheet without a native popup', async () => {
+    const platform = Platform as { isPhone: boolean }
+    const wasPhone = platform.isPhone
+    platform.isPhone = true
+    const sheet = document.createElement('div')
+    sheet.className = 'modal-content'
+    document.body.append(sheet)
+    const wrapper = mount(SharePicker, {
+      attachTo: sheet,
+      props: {
+        modelValue: [],
+        choices: [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
+      },
+    })
+    try {
+      const input = wrapper.get('input')
+      await input.trigger('focusin')
+      await input.setValue('Flowers')
+      const result = wrapper.get('.suggestion-item')
+      expect(result.text()).toContain('Flowers')
+      expect(result.element.closest('.abele-share-picker')).toBe(wrapper.element)
+      const native = AbstractInputSuggest as unknown as { attachedTo: WeakMap<Element, unknown> }
+      expect(native.attachedTo.get(input.element)).toBeUndefined()
+      vi.spyOn(sheet, 'getBoundingClientRect').mockReturnValue({ top: 50, bottom: 800 } as DOMRect)
+      vi.spyOn(input.element, 'getBoundingClientRect').mockReturnValue({
+        top: 300,
+        bottom: 340,
+      } as DOMRect)
+      vi.spyOn(result.element, 'getBoundingClientRect').mockReturnValue({
+        top: 550,
+        bottom: 600,
+      } as DOMRect)
+      document.documentElement.style.setProperty(
+        '--keyboard-height',
+        `${window.innerHeight - 450}px`
+      )
+      window.dispatchEvent(new Event('keyboardDidShow'))
+      await flushPromises()
+      expect(sheet.scrollTop).toBeGreaterThan(0)
+      await result.trigger('click')
+      expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([
+        [{ id: 'sample-folder', kind: 'folder', path: 'Garden/Flowers' }],
+      ])
+    } finally {
+      wrapper.unmount()
+      sheet.remove()
+      document.documentElement.style.removeProperty('--keyboard-height')
+      platform.isPhone = wasPhone
+    }
+  })
   it('shows each overlapping group and discloses capped preview details', () => {
     const wrapper = mount(ServerDeleteModal, {
       props: {
