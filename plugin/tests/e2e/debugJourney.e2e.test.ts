@@ -834,8 +834,10 @@ it.each(['desktop', 'phone'] as const)(
         press(await until(()=>[...document.querySelectorAll('.suggestion-item')].find(el=>el.querySelector('.suggestion-title')?.textContent.trim()==='src/app.cjs'),'git program choice'));
         await until(()=>document.querySelector('.modal.abele-modal'),'launch dialog');
         const stop=document.querySelector('.modal.abele-modal [aria-label="Stop at start"]');if(stop?.getAttribute('aria-checked')==='false')press(stop);
+        const previousBinding=api.DebuggerService.instance.active.value;
         press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch git program'));
-        await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','git program paused',500);
+        await until(()=>!document.querySelector('.modal.abele-modal'),'git launch completed',500);
+        await until(()=>api.DebuggerService.instance.active.value!==previousBinding&&api.DebuggerService.instance.active.value?.controller.session.status==='paused','git program paused',500);
         binding=api.DebuggerService.instance.active.value;
         const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().target?.projectId===project.project_id&&l.view.getState().path==='src/app.cjs'&&l.containerEl.querySelector('.abele-debug-source__point')),'debug git source');
         await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
