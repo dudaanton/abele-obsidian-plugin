@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 import { TextInputSuggest } from './suggest'
+import { watchSuggestionKeyboard } from './shareSuggestionKeyboard'
 import { coveredBy, itemGlyph, itemName, itemPlace, type ShareItem } from '@/sync/shareSets'
 
 export interface ShareItemSuggestOptions {
@@ -17,6 +18,7 @@ export interface ShareItemSuggestOptions {
  * offered alone. The list stays up after a pick, for taking several in a row.
  */
 export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
+  private stopKeyboard?: () => void
   constructor(
     app: App,
     inputEl: HTMLInputElement,
@@ -40,6 +42,9 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
   }
 
   renderSuggestion(item: ShareItem, el: HTMLElement): void {
+    const popup = el.closest<HTMLElement>('.suggestion-container')
+    if (popup && !this.stopKeyboard)
+      this.stopKeyboard = watchSuggestionKeyboard(this.inputEl, popup)
     const covered = coveredBy(item, this.options.taken())
     const place = item.kind === 'vault' ? 'For your own devices' : itemPlace(item)
     this.rows.draw(el, {
@@ -60,5 +65,11 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
     this.inputEl.value = ''
     this.options.onPick(item)
     this.refresh()
+  }
+
+  close(): void {
+    this.stopKeyboard?.()
+    this.stopKeyboard = undefined
+    super.close()
   }
 }

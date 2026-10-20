@@ -22,6 +22,14 @@ const pickShareItem = async (box, label, waitForChip = true) => {
       one.querySelector('svg.lucide-' + kind) && one.textContent.includes(name) && one.getAttribute('aria-disabled') !== 'true');
     return !!choice;
   });
+  await poll(() => {
+    const win = choice.ownerDocument.defaultView;
+    const viewport = win.visualViewport;
+    const keyboard = parseFloat(win.getComputedStyle(choice.ownerDocument.documentElement).getPropertyValue('--keyboard-height')) || 0;
+    const bottom = Math.min(win.innerHeight - keyboard, viewport ? viewport.offsetTop + viewport.height : win.innerHeight);
+    const rect = choice.getBoundingClientRect();
+    return rect.height > 0 && rect.top >= (viewport?.offsetTop || 0) && rect.bottom <= bottom;
+  });
   choice.click();
   if (waitForChip) await poll(() => [...box.querySelectorAll('.multi-select-pill-content')].some(one => one.textContent.includes(name)));
 };
