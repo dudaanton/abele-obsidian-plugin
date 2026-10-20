@@ -3534,7 +3534,7 @@ export const lv = {
   'debug.disableBreakpoint': 'Atspējot pārtraukumpunktu',
   'debug.enableBreakpoint': 'Iespējot pārtraukumpunktu',
   'debug.approvalPending': 'Gaida apstiprinājumu atkļūdotājā',
-  'debug.recordPointRefused': 'Ieraksta punkts nav saglabāts: {reason}',
+  'debug.recordPointRefused': 'Neizdevās apstiprināt ieraksta punkta saglabāšanu: {reason}',
   'debug.breakpointUnbound':
     'Programma vēl nav ielādējusi šīs rindas kodu. Pārbaudiet avota karti vai gaidiet koda ielādi.',
   'debug.watchLastValue': 'Pēdējā vērtība: {value}',

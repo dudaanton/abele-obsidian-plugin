@@ -3593,7 +3593,7 @@ export const ru = {
   'debug.disableBreakpoint': 'Отключить точку остановки',
   'debug.enableBreakpoint': 'Включить точку остановки',
   'debug.approvalPending': 'Ожидает подтверждения в отладчике',
-  'debug.recordPointRefused': 'Точка записи не сохранена: {reason}',
+  'debug.recordPointRefused': 'Не удалось подтвердить сохранение точки записи: {reason}',
   'debug.breakpointUnbound':
     'Программа пока не загрузила код для этой строки. Проверьте карту исходного кода или дождитесь загрузки этого кода.',
   'debug.watchLastValue': 'Последнее значение: {value}',

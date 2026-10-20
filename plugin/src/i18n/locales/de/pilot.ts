@@ -3571,7 +3571,8 @@ export const de = {
   'debug.disableBreakpoint': 'Haltepunkt deaktivieren',
   'debug.enableBreakpoint': 'Haltepunkt aktivieren',
   'debug.approvalPending': 'Wartet auf Genehmigung im Debugger',
-  'debug.recordPointRefused': 'Aufzeichnungspunkt wurde nicht gespeichert: {reason}',
+  'debug.recordPointRefused':
+    'Das Speichern des Aufzeichnungspunkts konnte nicht bestätigt werden: {reason}',
   'debug.breakpointUnbound':
     'Das Programm hat noch keinen Code für diese Zeile geladen. Prüfen Sie die Quellzuordnung oder warten Sie, bis dieser Code geladen wird.',
   'debug.watchLastValue': 'Letzter Wert: {value}',

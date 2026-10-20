@@ -139,6 +139,23 @@ function fakeDebugger(existing: { id: string; line: number; condition?: string }
 }
 
 describe('setting up a record point', () => {
+  it('does not claim that an uncertain breakpoint save made no change', async () => {
+    const node = fakeNode(),
+      debug = fakeDebugger()
+    vi.mocked(debug.setBreakpoint).mockResolvedValueOnce({
+      outcome: 'outcome_unknown',
+      dispatch: 'possible',
+      code: 'dispatch_uncertain',
+    })
+    const trace = new TraceSession(node.rpc, debug, () => {})
+    try {
+      await expect(
+        trace.savePoint('sample-source', 4, { take: ['n'], when: 'n < 4' })
+      ).rejects.toThrow(/record point.*could not be confirmed/i)
+    } finally {
+      trace.dispose()
+    }
+  })
   it('tells the source editor when a conditional point still needs approval', async () => {
     const node = fakeNode(),
       debug = fakeDebugger()
@@ -163,7 +180,7 @@ describe('setting up a record point', () => {
     try {
       await expect(
         trace.savePoint('sample-source', 4, { take: ['n'], when: 'n > 0 && n < 4' })
-      ).rejects.toThrow(/record point.*not saved/i)
+      ).rejects.toThrow(/record point.*could not be confirmed/i)
     } finally {
       trace.dispose()
     }

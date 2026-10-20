@@ -3438,7 +3438,7 @@ export const en = {
   'debug.sourceGenerated':
     'This built file is not available here. Open its original source file to debug it.',
   'debug.approvalPending': 'Waiting for approval in Debug',
-  'debug.recordPointRefused': 'Record point was not saved: {reason}',
+  'debug.recordPointRefused': 'Record point save could not be confirmed: {reason}',
   'debug.breakpointUnbound':
     'The program has not loaded code for this line yet. Check its source map or wait for this code to load.',
   'debug.watchLastValue': 'Last value: {value}',

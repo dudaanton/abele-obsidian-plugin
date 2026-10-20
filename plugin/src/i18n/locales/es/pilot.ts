@@ -3592,7 +3592,7 @@ export const es = {
   'debug.disableBreakpoint': 'Desactivar punto de interrupción',
   'debug.enableBreakpoint': 'Activar punto de interrupción',
   'debug.approvalPending': 'Esperando aprobación en Depuración',
-  'debug.recordPointRefused': 'No se guardó el punto de registro: {reason}',
+  'debug.recordPointRefused': 'No se pudo confirmar el guardado del punto de registro: {reason}',
   'debug.breakpointUnbound':
     'El programa aún no ha cargado código para esta línea. Compruebe el mapa de fuentes o espere a que se cargue este código.',
   'debug.watchLastValue': 'Último valor: {value}',

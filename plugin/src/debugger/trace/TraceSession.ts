@@ -23,7 +23,7 @@ export interface PointEdit {
 const FOLLOW_MS = 2000
 export class RecordPointSaveError extends Error {
   constructor(readonly code: string) {
-    super('Record point was not saved')
+    super('Record point save could not be confirmed')
   }
 }
 
