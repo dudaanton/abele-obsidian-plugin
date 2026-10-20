@@ -15,7 +15,12 @@ export async function waitForWorktreeJob<T extends { state: string }>(
 /** A managed worktree's storage id is not its name. */
 export function worktreeDisplayPath(path: string, branch: string | null): string {
   const name = branch?.replace(/^refs\/heads\//, '')
-  if (name && path.split('/').pop() === encodeURIComponent(name)) return name
+  if (
+    name &&
+    name !== encodeURIComponent(name) &&
+    path.split('/').pop() === encodeURIComponent(name)
+  )
+    return name
   return /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(path.split('/').pop() ?? '')
     ? (branch?.replace(/^refs\/heads\//, '') ?? t('streamB.detached.134385'))
     : path

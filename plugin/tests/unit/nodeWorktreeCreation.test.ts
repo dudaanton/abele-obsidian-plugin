@@ -6,6 +6,7 @@ it('uses the branch for encoded managed folder names without decoding ordinary p
     worktreeDisplayPath('/sample/project.worktrees/topic%2Fdemo', 'refs/heads/topic/demo')
   ).toBe('topic/demo')
   expect(worktreeDisplayPath('/sample/literal%20folder', null)).toBe('/sample/literal%20folder')
+  expect(worktreeDisplayPath('/sample/external', 'external')).toBe('/sample/external')
 })
 
 it('follows a creation job until it completes instead of requiring a folder refresh', async () => {

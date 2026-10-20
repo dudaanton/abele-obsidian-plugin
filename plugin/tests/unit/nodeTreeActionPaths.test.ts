@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { nodeTreeAction } from '@/node/nodeTreeActions'
 
 const f = vi.hoisted(() => ({
+  tabs: vi.fn(async () => {}),
   move: vi.fn(async () => {}),
   remove: vi.fn(async () => {}),
   directory: vi.fn(async () => ({
@@ -55,7 +56,10 @@ vi.mock('@/components/obsidian/dialogs', () => ({
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: { getInstance: () => ({ app: { workspace: {} } }) },
 }))
-vi.mock('@/node/nodePathNavigation', () => ({ openNodePathTab: vi.fn() }))
+vi.mock('@/node/nodePathNavigation', () => ({
+  openNodePathTab: vi.fn(),
+  updateNodeFileTabs: f.tabs,
+}))
 
 it('renames within the current folder while Move accepts a full relative destination', async () => {
   const target = {
@@ -78,6 +82,12 @@ it('renames within the current folder while Move accepts a full relative destina
     'src/new-name.ts',
     'a'.repeat(64)
   )
+  expect(f.tabs).toHaveBeenLastCalledWith(
+    expect.anything(),
+    target,
+    'src/old-name.ts',
+    'src/new-name.ts'
+  )
   f.prompt.mockResolvedValueOnce('other/moved.ts')
   await nodeTreeAction('move', { target, path: 'src/old-name.ts' })
   expect(f.move).toHaveBeenLastCalledWith(
@@ -97,6 +107,7 @@ it('previews the complete directory manifest before move or delete, and cancella
     id: 'sample-worktree',
   }
   f.move.mockClear()
+  f.tabs.mockClear()
   f.confirm.mockResolvedValueOnce(false)
   await nodeTreeAction('rename', { target, path: 'src/old-folder', directory: true })
   expect(f.directory).toHaveBeenCalledWith({ worktree_id: target.id, path: 'src/old-folder' })
@@ -109,8 +120,10 @@ it('previews the complete directory manifest before move or delete, and cancella
     })
   )
   expect(f.move).not.toHaveBeenCalled()
+  expect(f.tabs).not.toHaveBeenCalled()
   await nodeTreeAction('delete', { target, path: 'src/old-folder', directory: true })
   expect(f.remove).toHaveBeenLastCalledWith(target, 'src/old-folder', 'b'.repeat(64), true)
+  expect(f.tabs).toHaveBeenLastCalledWith(expect.anything(), target, 'src/old-folder')
   await nodeTreeAction('move', { target, path: 'src/old-folder', directory: true })
   expect(f.move).toHaveBeenLastCalledWith(
     target,
