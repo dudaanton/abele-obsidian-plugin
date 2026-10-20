@@ -1,11 +1,14 @@
 <template>
   <template v-if="document?.supported">
     <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
-      <Button
+      <Icon
+        v-if="document.diagnostics.length && !untrusted && !missing"
         ref="diagnosticsButton"
-        plain
+        data-lsp-diagnostics
         icon="circle-alert"
-        :text="t('node.lsp.count', { count: document.diagnostics.length })"
+        :text-right="String(document.diagnostics.length)"
+        :tooltip="t('node.lsp.count', { count: document.diagnostics.length })"
+        :color="document.diagnostics.some((item) => item.severity === 1) ? 'red' : 'orange'"
         @click="showDiagnostics"
       />
     </Teleport>
@@ -16,12 +19,14 @@
       {{ t('node.lsp.error', { message: document.error }) }}
       <Button plain :text="t('node.lsp.retry')" @click="retry" />
     </div>
-    <div v-if="untrusted" class="abele-lsp-status" role="status">
-      {{ t('node.lsp.untrusted') }}
+    <div v-if="untrusted" class="abele-lsp-status abele-lsp-notice" role="status">
+      <span>{{ t('node.lsp.untrusted') }}</span>
       <Button plain :disabled="busy" :text="t('node.lsp.trust')" @click="trust" />
     </div>
-    <div v-else-if="missing" class="abele-lsp-status" role="status">
-      {{ t('node.lsp.missing') }} <code>{{ installCommand }}</code>
+    <div v-else-if="missing" class="abele-lsp-status abele-lsp-notice" role="status">
+      <span
+        >{{ t('node.lsp.missing') }} <code>{{ installCommand }}</code></span
+      >
       <div class="abele-lsp-actions">
         <Button plain :text="t('node.lsp.copy')" @click="copyCommand" />
         <Button plain :disabled="busy" :text="t('node.lsp.retry')" @click="retry" />
@@ -59,6 +64,7 @@
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Menu } from 'obsidian'
 import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import { t } from '@/i18n'
 import { NodeService } from '@/node/NodeService'
 import { NodePathMutations } from '@/node/NodePathMutations'
@@ -85,7 +91,7 @@ const injectedConnection = inject(LSP_CONNECTION, undefined)
 const connectionForTarget = () =>
   injectedConnection ?? NodeService.connectionIfKnown?.(props.target.registrationId)
 const document = shallowRef<NodeLspDocument>()
-const diagnosticsButton = ref<InstanceType<typeof Button>>()
+const diagnosticsButton = ref<InstanceType<typeof Icon>>()
 const revision = ref(0)
 const busy = ref(false)
 const installing = ref(false)
@@ -302,6 +308,16 @@ onBeforeUnmount(() => {
 })
 </script>
 <style scoped>
+.abele-lsp-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+.abele-lsp-notice > span {
+  flex: 1 1 16em;
+  min-width: 0;
+}
 .abele-lsp-actions {
   display: flex;
   flex-wrap: wrap;

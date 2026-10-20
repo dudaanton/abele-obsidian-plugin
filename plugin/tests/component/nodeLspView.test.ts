@@ -60,8 +60,8 @@ describe('node language diagnostics in the shared file viewer', () => {
     const show = vi.spyOn(Menu.prototype, 'showAtPosition')
     const view = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
     await flushPromises()
-    const button = [...document.querySelectorAll('.abele-file-view__tools button')].find((button) =>
-      button.textContent?.includes('Diagnostics:')
+    const button = [...document.querySelectorAll('.abele-file-view__tools button')].find(
+      (button) => button.getAttribute('aria-label') === 'Diagnostics: 2'
     )!
     button.click()
     await flushPromises()
@@ -154,9 +154,32 @@ describe('node language diagnostics in the shared file viewer', () => {
     expect(code).not.toBeNull()
     expect(code.querySelector('.abele-lsp-error')?.getAttribute('title')).toContain('typescript')
     expect(code.querySelector('.abele-lsp-warning')?.getAttribute('title')).toContain('eslint')
-    expect(document.body.textContent).toContain('Diagnostics: 2')
+    expect(document.querySelector('[data-lsp-diagnostics]')?.textContent).toBe('2')
+    expect(
+      document.querySelector('[data-lsp-diagnostics]')?.classList.contains('clickable-icon')
+    ).toBe(true)
+    expect(
+      document
+        .querySelector('[data-lsp-diagnostics]')
+        ?.classList.contains('abele-obsidian-icon_color-red')
+    ).toBe(true)
     const context = lspFor(code)!
     expect(context.document.listeners.size).toBeGreaterThan(0)
+    context.document.diagnostics = context.document.diagnostics.filter(
+      (item) => item.severity === 2
+    )
+    for (const listener of context.document.listeners) listener()
+    await nextTick()
+    expect(document.querySelector('[data-lsp-diagnostics]')?.textContent).toBe('1')
+    expect(
+      document
+        .querySelector('[data-lsp-diagnostics]')
+        ?.classList.contains('abele-obsidian-icon_color-orange')
+    ).toBe(true)
+    context.document.diagnostics = []
+    for (const listener of context.document.listeners) listener()
+    await nextTick()
+    expect(document.querySelector('[data-lsp-diagnostics]')).toBeNull()
     view.unmount()
     await flushPromises()
     expect(context.document.listeners.size).toBe(0)
@@ -169,6 +192,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     const view = mount(NodeLspFixture, { props: { state }, attachTo: document.body })
     await flushPromises()
     expect(document.body.textContent).toContain(message)
+    if (state !== 'eslint') expect(document.querySelector('[data-lsp-diagnostics]')).toBeNull()
     expect(document.querySelector('.cm-content')?.textContent).toContain('export const sample')
     view.unmount()
   })

@@ -30,8 +30,8 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await window.__abeleTest.openDialog('node-lsp-' + state);
           await until(() => document.querySelector('.abele-lsp-root .cm-content'));
           phase = state + '-status';
-          await until(() => document.body.textContent.includes(state === 'loading' ? 'Loading language analysis' : 'Diagnostics:'));
-          if (state === 'errors') await until(() => document.querySelector('.abele-lsp-error') && document.body.textContent.includes('Diagnostics: 2'));
+          await until(() => document.body.textContent.includes(({loading: 'Loading language analysis', missing: 'Language server missing', untrusted: 'Trust folder', eslint: 'TypeScript analysis remains available', errors: 'sample'})[state]));
+          if (state === 'errors') await until(() => document.querySelector('.abele-lsp-error') && document.querySelector('[data-lsp-diagnostics]')?.getAttribute('aria-label') === 'Diagnostics: 2');
           await wait(150);
           const modal = document.querySelector('.modal.abele-modal');
           const rect = modal.getBoundingClientRect();
@@ -47,7 +47,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
             await until(() => !document.querySelector('.abele-lsp-menu-message'));
             phase = 'diagnostic-list';
-            [...document.querySelectorAll('.modal.abele-modal .abele-file-view__tools button')].find(button => button.textContent.includes('Diagnostics:')).click();
+            document.querySelector('.modal.abele-modal [data-lsp-diagnostics]').click();
             await until(() => document.querySelectorAll('.abele-lsp-menu-message').length === 2);
             await shot('diagnostic-list');
             document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
