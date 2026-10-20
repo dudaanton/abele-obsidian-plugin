@@ -72,6 +72,24 @@ function setup(blame = vi.fn().mockResolvedValue([])) {
   return { view, source }
 }
 describe('node file repository tools', () => {
+  it('reveals a navigation destination inside the edited draft', async () => {
+    const view = mount(NodePathEditorPane, {
+      props: {
+        model: {
+          document: shallowRef({ text: 'first\nsecond\n' }),
+          filePath: ref('sample.ts'),
+          draftText: ref('first\nchanged\n'),
+          editing: ref(true),
+          saving: ref(false),
+          draft: shallowRef(null),
+        } as never,
+        line: 2,
+      },
+      global: { stubs: { NodeFileSaveState: true } },
+    })
+    views.push(view)
+    expect(view.getComponent(GithubCode).props('range')).toEqual({ start: 2, end: 2 })
+  })
   it('releases the plain viewer when a mapped surface attaches and restores it when detached', async () => {
     const mapped = ref(false)
     const view = mount({

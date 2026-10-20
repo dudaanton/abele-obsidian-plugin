@@ -30,6 +30,7 @@
       v-if="model.document.value"
       :text="visibleText"
       :path="model.filePath.value"
+      :range="range"
       :editable="
         model.editing.value && !locked && !model.saving.value && !model.draft.value?.pending
       "
@@ -57,6 +58,8 @@ const props = withDefaults(
     locked?: boolean
     repository?: RepositorySource
     revision?: string
+    line?: number
+    endLine?: number
   }>(),
   {
     error: '',
@@ -65,11 +68,20 @@ const props = withDefaults(
     repository: undefined,
     revision: undefined,
     target: undefined,
+    line: undefined,
+    endLine: undefined,
   }
 )
-const root = ref<HTMLElement>()
-const glyphHost = ref<HTMLElement>()
 const visibleText = computed(() =>
   props.model.editing.value ? props.model.draftText.value : (props.model.document.value?.text ?? '')
 )
+const range = computed(() => {
+  if (!props.line) return
+  const count = visibleText.value.split('\n').length
+  return props.line <= count
+    ? { start: props.line, end: Math.min(count, props.endLine ?? props.line) }
+    : undefined
+})
+const root = ref<HTMLElement>()
+const glyphHost = ref<HTMLElement>()
 </script>

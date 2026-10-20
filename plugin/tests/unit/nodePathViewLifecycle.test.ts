@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
 import { Platform, type WorkspaceLeaf } from 'obsidian'
 import { NodePathMainView } from '@/views/NodePathMainView'
+import { FILE_NAVIGATION } from '@/node/fileNavigation'
+import { nodeRepositoryLink } from '@/repository/nodeLinks'
 
 it('reports retained local edits to file tree actions', () => {
   const view = Object.create(NodePathMainView.prototype) as NodePathMainView
@@ -18,12 +20,14 @@ const fixture = vi.hoisted(() => ({
   model: undefined as any,
   presenter: undefined as any,
   openChat: vi.fn(async () => {}),
+  openFile: vi.fn(async () => {}),
   installation: 'sample-installation' as string | undefined,
   root: undefined as any,
 }))
 vi.mock('@/node/nodePathNavigation', async (original) => ({
   ...(await original<typeof import('@/node/nodePathNavigation')>()),
   openNodeChat: fixture.openChat,
+  openNodeFileDestination: fixture.openFile,
 }))
 vi.mock('obsidian', async (original) => {
   const api = await original<typeof import('obsidian')>()
@@ -105,6 +109,53 @@ const target = {
   id: 'sample-worktree',
 }
 const views: NodePathMainView[] = []
+
+it('provides target-bound navigation and the destination line to the edited-file surface', async () => {
+  fixture.connect.mockResolvedValue(undefined)
+  fixture.ready.mockResolvedValue(undefined)
+  fixture.model = {
+    online: shallowRef(true),
+    hasRetained: () => false,
+    openFile: vi.fn(async () => ({
+      target,
+      path: 'sample.ts',
+      text: 'first\nsecond\n',
+      contentId: 'sample-content',
+      revision: { kind: 'commit', commit: 'a'.repeat(40) },
+    })),
+  }
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  views.push(view)
+  view.app = { workspace: { requestSaveLayout() {} } } as any
+  await view.setState({ kind: 'file', target, path: 'sample.ts', line: 2 }, {})
+  await vi.waitFor(() => expect((view as any).file?.document.value).toBeDefined())
+  const navigate = fixture.root.provide?.[FILE_NAVIGATION as symbol]
+  expect(navigate).toBeTypeOf('function')
+  expect(
+    navigate(
+      nodeRepositoryLink(
+        {
+          provider: 'node',
+          installation: 'sample-installation',
+          node: target.registrationId,
+          project: target.projectId,
+          workspace: target.id,
+        },
+        { kind: 'file', ref: 'working-sample', path: 'sample.ts', lines: { from: 2, to: 2 } }
+      )
+    )
+  ).toBe(true)
+  await vi.waitFor(() =>
+    expect(fixture.openFile).toHaveBeenCalledWith(
+      view.app.workspace,
+      { kind: 'file', target, path: 'sample.ts', line: 2 },
+      expect.any(Boolean)
+    )
+  )
+  ;(view as any).editing.editor.value = { draftDirty: shallowRef(false) }
+  ;(view as any).editing.active.value = true
+  expect(fixture.root.render().props.line).toBe(2)
+})
 
 it('reveals a cited range in the whole file even when the existing tab shows a diff', async () => {
   const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')

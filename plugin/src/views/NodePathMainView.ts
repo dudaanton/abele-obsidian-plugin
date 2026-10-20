@@ -14,6 +14,7 @@ import { NodeRepositorySource } from '@/repository/node'
 import type { RepositoryRevision } from '@/repository/source'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
+import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
@@ -30,6 +31,7 @@ import {
   openNodeChat,
   revealNodeDrawer,
   closeNodePathDrawers,
+  openNodeFileDestination,
   type NodePathTabState,
 } from '@/node/nodePathNavigation'
 import { showNodePathFileMenu, newNodePathChat } from '@/node/NodePathController'
@@ -400,6 +402,16 @@ export class NodePathMainView extends ItemView {
       )
       this.fileTab.render()
       const root = {
+        provide: {
+          [FILE_NAVIGATION as symbol]: (url: string) => {
+            const destination = fileNavigation(state.target, url)
+            if (!destination) return false
+            this.act(() =>
+              openNodeFileDestination(this.app.workspace, destination, Platform.isMobile)
+            )
+            return true
+          },
+        },
         render: () =>
           editing.active.value && editing.editor.value
             ? h(NodePathEditorPane, {
@@ -410,6 +422,8 @@ export class NodePathMainView extends ItemView {
                 locked: editing.locked.value,
                 repository: repository.value,
                 revision: repositoryRef.value,
+                line: this.navigationLine.value,
+                endLine: this.navigationEndLine.value,
               })
             : h(NodePathFilePane, {
                 model: file,
