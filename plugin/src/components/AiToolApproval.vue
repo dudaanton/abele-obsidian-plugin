@@ -23,7 +23,14 @@
       <code>{{ message.toolName }}</code>
     </Disclosure>
 
-    <template v-if="nodePrompt">
+    <template v-if="message.toolName === 'send_message_to_chat'">
+      <div class="abele-tool-approval__path">
+        {{ letterTarget?.title || params.chat_id
+        }}<span v-if="letterTarget?.folder"> · {{ letterTarget.folder }}</span>
+      </div>
+      <div class="abele-tool-approval__message">{{ params.message }}</div>
+    </template>
+    <template v-else-if="nodePrompt">
       <div v-if="location" class="abele-tool-approval__path">{{ location }}</div>
       <Diff
         v-for="(diff, index) in diffs ?? []"
@@ -319,6 +326,7 @@
 <script setup lang="ts">
 import { presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
+import { openMessagingChats } from '@/ai/chatMessaging'
 import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
@@ -412,6 +420,11 @@ const isEditing = ref(false)
 const originalOpen = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const letterTarget = computed(() =>
+  props.message.toolName === 'send_message_to_chat'
+    ? openMessagingChats().find((chat) => chat.id === params.value.chat_id)
+    : undefined
+)
 const contentKey = computed(() => {
   if (props.message.toolName === 'edit') return 'new_string'
   if (['create', 'write', 'create_script'].includes(props.message.toolName ?? '')) return 'content'

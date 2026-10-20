@@ -124,6 +124,19 @@ export function runKind(calls: readonly ChatMessage[]): ToolKind {
  * The kind still under way is said as going on.
  */
 export function runSummary(calls: readonly ChatMessage[]): string {
+  if (
+    calls.length === 1 &&
+    calls[0].toolName === 'list_chats' &&
+    calls[0].toolStatus === 'approved' &&
+    calls[0].toolResult !== undefined
+  ) {
+    try {
+      const chats: unknown = JSON.parse(calls[0].toolResult)
+      if (Array.isArray(chats)) return t('chat.chatsListed', { count: chats.length })
+    } catch {
+      /* The ordinary tool line still describes malformed or failed results. */
+    }
+  }
   if (calls.some((call) => call.toolStatus === 'rejected')) {
     const parts: string[] = []
     let adjacent: ChatMessage[] = []
@@ -187,7 +200,8 @@ export function runSummary(calls: readonly ChatMessage[]): string {
 
 /** Helper transcripts and reply decisions remain visible instead of being folded into a run. */
 export const ownLine = (message: ChatMessage): boolean =>
-  message.role === 'tool-call' && !!(message.subAgentRun || message.replyProposal)
+  message.role === 'tool-call' &&
+  !!(message.subAgentRun || message.replyProposal || message.chatLetter)
 
 /** A chat's messages as drawn: each on its own, and the agent's calls in a row as one run. */
 export type ChatBlock =

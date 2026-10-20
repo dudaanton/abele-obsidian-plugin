@@ -30,6 +30,8 @@ export function settingsLabel(english: string): string {
 }
 
 export function settingsToolLabel(tool: { name: string; label: string }): string {
+  if (tool.name === 'list_chats') return t('chat.listChatsTool')
+  if (tool.name === 'send_message_to_chat') return t('chat.sendMessageTool')
   if (
     isMcpToolName(tool.name) ||
     (tool.name.startsWith('script_') && tool.name !== 'script_api_docs')

@@ -344,3 +344,18 @@ body.is-phone
     color: var(--text-normal);
   }
 }
+.abele-chat-msg__sent-to,
+.abele-chat-msg__letter-refusal {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.abele-chat-msg__sent-to {
+  margin-top: var(--size-2-2);
+  margin-bottom: 0;
+}
+
+.abele-tool-approval__message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

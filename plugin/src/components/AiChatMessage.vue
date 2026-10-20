@@ -74,14 +74,16 @@
             v0: String(message.fromSession.title || t('streamB.theSessionThatWroteThis.e9de2c')),
           })
         "
-        @click.prevent="emit('open-session', message.fromSession.id)"
+        @click.prevent="openSourceChat(message.fromSession.id)"
         ><Icon icon="bot" size="xs" :interactive="false" />{{
-          [
-            message.fromSession.agent,
-            message.fromSession.title || t('streamB.anotherSession.cc0abe'),
-          ]
-            .filter(Boolean)
-            .join(' · ')
+          message.fromSession.path
+            ? t('chat.letterFrom', { title: message.fromSession.title })
+            : [
+                message.fromSession.agent,
+                message.fromSession.title || t('streamB.anotherSession.cc0abe'),
+              ]
+                .filter(Boolean)
+                .join(' · ')
         }}</a
       >
 
@@ -180,6 +182,7 @@
         />
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
+        <ChatLetterRun v-if="message.chatLetter" :letter="message.chatLetter" />
         <TreeItem
           v-if="message.replyProposal"
           class="abele-chat-run abele-chat-msg__proposal"
@@ -285,6 +288,17 @@
         data-find-part="content"
       />
       <slot name="metadata" />
+      <a
+        v-if="message.sentTo"
+        href="#"
+        class="abele-chat-msg__from abele-chat-msg__sent-to"
+        :aria-label="t('chat.letterOpen', { title: message.sentTo.title })"
+        @click.prevent="openLocalChat(message.sentTo)"
+      >
+        <Icon icon="corner-up-right" size="xs" :interactive="false" />{{
+          t('chat.letterSent', { title: message.sentTo.title })
+        }}
+      </a>
 
       <AiReplyOriginalDialog
         v-if="originalOpen"
@@ -452,6 +466,9 @@ import type { ReplyProposal } from '@/ai/replyAnnotations'
 import AbeleMap from './AbeleMap.vue'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
+import ChatLetterRun from './chatTree/ChatLetterRun.vue'
+import { openLetterChat } from '@/ai/chatMessaging'
+import type { LetterChat } from '@/chats/chatLetters'
 import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
 import SessionPlan from './nodeSession/SessionPlan.vue'
 import GalleryViewer from './GalleryViewer.vue'
@@ -545,6 +562,16 @@ const emit = defineEmits<{
   (e: 'review-revision', messageId: string): void
   (e: 'undo-revision', messageId: string): void
 }>()
+
+function openLocalChat(chat: LetterChat) {
+  void openLetterChat(chat)
+}
+
+function openSourceChat(id: string) {
+  if (props.message.fromSession?.path || ChatService.getInstance().getSession(id)) {
+    if (props.message.fromSession) openLocalChat(props.message.fromSession)
+  } else emit('open-session', id)
+}
 
 const comments = useMessageComments(
   () => props.comments,
