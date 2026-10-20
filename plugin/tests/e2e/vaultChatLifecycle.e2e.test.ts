@@ -15,7 +15,7 @@ const probe = (screen: string) => `(async () => {
   const root = 'SampleVaultChatLifecycle'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for (let i=0; i<100; i++) { if (fn()) return; await wait(50) } throw Error('Sample chat state timed out') }
-  const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, stopped: false, permission: false, changes: false, quoteWidth: 0 }
+  const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, failed: false, stopped: false, permission: false, changes: false, scope: false, quoteWidth: 0 }
   let session
   const shot = async name => {
     await wait(150)
@@ -71,6 +71,10 @@ const probe = (screen: string) => `(async () => {
     await pending('sample-move', 'mv', { from: root + '/sample.md', to: root + '/New/Nested/sample.md' })
     await session.approveToolCall()
     report.moved = await app.vault.adapter.exists(root + '/New/Nested/sample.md')
+    await pending('sample-failed-move', 'mv', { from: root + '/New/Nested/sample.md', to: root + '/New/Nested/sample.md' })
+    await session.approveToolCall()
+    report.failed = document.querySelector('.abele-ai-chat').textContent.includes('Move file failed:')
+    await shot('failed-action')
     await pending('sample-create-hidden', 'create', { path: root + '/.sample.md', content: 'Hidden sample' })
     await session.approveToolCall()
     await pending('sample-remove-hidden', 'rm', { path: root + '/.sample.md' })
@@ -94,6 +98,18 @@ const probe = (screen: string) => `(async () => {
     report.changes = !!document.querySelector('.abele-chat-artifacts__changes')
     await shot('files')
     document.querySelector('.modal-close-button')?.click()
+    await until(() => !document.querySelector('.abele-chat-artifacts'))
+    session.scopeResolver.setFullVaultAccess(false)
+    document.querySelector('.abele-ai-chat__overflow .abele-obsidian-icon').click()
+    await until(() => [...document.querySelectorAll('.menu-item')].some(el => el.textContent.trim() === 'Access, tools and chat settings'))
+    ;[...document.querySelectorAll('.menu-item')].find(el => el.textContent.trim() === 'Access, tools and chat settings').click()
+    await until(() => document.querySelector('.abele-scope-mgr__field input'))
+    const scopeInput = document.querySelector('.abele-scope-mgr__field input')
+    scopeInput.focus(); scopeInput.value = root
+    scopeInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await until(() => [...document.querySelectorAll('.suggestion-container')].some(el => el.textContent.includes(root)))
+    report.scope = true
+    await shot('scope-suggestions')
   } catch (error) { report.error = String(error.message ?? error) }
   finally {
     document.querySelector('.modal-close-button')?.click()
@@ -120,13 +136,15 @@ describe('vault chat file lifecycle', () => {
         'moved',
         'hiddenRemoved',
         'denied',
+        'failed',
         'stopped',
         'permission',
         'changes',
+        'scope',
       ])
         expect(report[key], key).toBe(true)
       expect(report.quoteWidth).toBeGreaterThan(180)
-      expect(report.shots).toHaveLength(7)
+      expect(report.shots).toHaveLength(9)
     },
     240_000
   )
