@@ -3,12 +3,11 @@ import { t } from '@/i18n'
 // the record point editor's moves. The panel and the margin stay presentational; this is their host.
 import { Menu, Notice } from 'obsidian'
 import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
-import { GlobalStore } from '@/stores/GlobalStore'
 import type { DebuggerBinding } from '../DebuggerService'
 import { openTraceRun } from './TraceTabs'
-import type { PointEdit } from './TraceSession'
+import { RecordPointSaveError, type PointEdit } from './TraceSession'
+import { receiptMessage } from '../DebuggerController'
 
-const app = () => GlobalStore.getInstance().app
 const fail = (e: unknown) =>
   new Notice(e instanceof Error ? e.message : t('streamC.6e28a0a349894a63'))
 
@@ -35,9 +34,12 @@ export async function savePoint(
   if (!trace) return
   try {
     await askFolderOnce(binding)
-    await trace.savePoint(sourceId, line, edit)
+    const result = await trace.savePoint(sourceId, line, edit)
+    if (result.pending) new Notice(t('debug.approvalPending'))
   } catch (e) {
-    fail(e)
+    if (e instanceof RecordPointSaveError)
+      new Notice(t('debug.recordPointRefused', { reason: receiptMessage(e.code) }))
+    else fail(e)
   }
 }
 
@@ -47,7 +49,7 @@ export function marginMenu(
   sourceId: string,
   line: number,
   event: MouseEvent,
-  edit: (line: number) => void
+  edit?: (line: number) => void
 ) {
   const trace = binding.trace
   const known = binding.controller
@@ -62,7 +64,7 @@ export function marginMenu(
         .setIcon('circle')
         .onClick(() => void binding.controller.toggleBreakpoint(sourceId, line).catch(fail))
     )
-    if (trace)
+    if (trace && edit)
       menu.addItem((i) =>
         i
           .setTitle(t('settings.metadata.bf774e203130976f'))
@@ -70,12 +72,13 @@ export function marginMenu(
           .onClick(() => edit(line))
       )
   } else if (record && trace) {
-    menu.addItem((i) =>
-      i
-        .setTitle(t('settings.GithubSettings.edit.464c4ffd'))
-        .setIcon('pencil')
-        .onClick(() => edit(line))
-    )
+    if (edit)
+      menu.addItem((i) =>
+        i
+          .setTitle(t('settings.GithubSettings.edit.464c4ffd'))
+          .setIcon('pencil')
+          .onClick(() => edit(line))
+      )
     menu.addItem((i) =>
       i
         .setTitle(t('streamC.fc4e5ab706e49e20'))
@@ -89,7 +92,7 @@ export function marginMenu(
         .onClick(() => void trace.removePoint(record.id).catch(fail))
     )
   } else {
-    if (trace)
+    if (trace && edit)
       menu.addItem((i) =>
         i
           .setTitle(t('streamC.14d9f603fe59ff44'))
@@ -103,6 +106,38 @@ export function marginMenu(
         .onClick(() => void binding.controller.removeBreakpoint(known.id).catch(fail))
     )
   }
+  if (known && !record) {
+    for (const field of ['condition', 'log_message'] as const) {
+      menu.addItem((item) =>
+        item
+          .setTitle(field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'))
+          .setIcon('pencil')
+          .setDisabled(!binding.controller.current || !known.enabled)
+          .onClick(async () => {
+            const value = await promptDialog({
+              title: field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'),
+              value: known[field] ?? '',
+              label: field === 'condition' ? t('debug.editCondition') : t('debug.editLogMessage'),
+              submitText: t('settings.GithubSettings.edit.464c4ffd'),
+              validate: (value) => value,
+            })
+            if (value !== null)
+              await binding.controller.editBreakpoint(known.id, { [field]: value }).catch(fail)
+          })
+      )
+    }
+    menu.addItem((item) => item.setTitle(t('debug.hitCountUnavailable')).setDisabled(true))
+  }
+  if (known)
+    menu.addItem((item) =>
+      item
+        .setTitle(known.enabled ? t('debug.disableBreakpoint') : t('debug.enableBreakpoint'))
+        .setIcon(known.enabled ? 'circle-dashed' : 'circle')
+        .setDisabled(!binding.controller.current)
+        .onClick(
+          () => void binding.controller.setBreakpointEnabled(known.id, !known.enabled).catch(fail)
+        )
+    )
   menu.showAtMouseEvent(event)
 }
 

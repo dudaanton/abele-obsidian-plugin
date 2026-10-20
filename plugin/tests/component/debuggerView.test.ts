@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVault } from '../helpers/testEnv'
 beforeEach(() => useVault([]))
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
@@ -22,7 +22,142 @@ const session = (status: DebugSession['status']): DebugSession => ({
   mode: 'ask',
   seen: '10:00',
 })
+it('keeps refused requests readable in Debug after the decision', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  service.active.value = {
+    revision: shallowRef(1),
+    controller: {
+      session: session('paused'),
+      current: true,
+      actions: [
+        {
+          id: 'sample-denied',
+          kind: 'breakpoint',
+          at: 'sample.ts:7',
+          status: 'denied',
+          result: 'Request denied; no breakpoint was set',
+        },
+      ],
+    },
+  } as never
+  const w = mount(DebuggerView)
+  try {
+    expect(w.getComponent(DebugActionCard).text()).toContain('Request denied')
+  } finally {
+    w.unmount()
+    service.active.value = null
+  }
+})
+it('removes disabled breakpoints from the panel even though the node no longer holds them', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  const removeBreakpoint = vi.fn(async () => {})
+  service.active.value = {
+    revision: shallowRef(1),
+    refresh: vi.fn(async () => {}),
+    controller: {
+      session: session('paused'),
+      current: true,
+      actions: [],
+      snapshot: { breakpoints: [] },
+      knownBreakpoints: () => [
+        {
+          id: 'sample-disabled',
+          sourceId: 'sample-source',
+          file: 'sample.ts',
+          line: 7,
+          requestedLine: 7,
+          enabled: false,
+        },
+      ],
+      removeBreakpoint,
+    },
+  } as never
+  const w = mount(DebuggerView)
+  try {
+    w.getComponent(DebugPanel).vm.$emit('breakpoint', 'sample.ts', 7)
+    await flushPromises()
+    expect(removeBreakpoint).toHaveBeenCalledWith('sample-disabled')
+  } finally {
+    w.unmount()
+    service.active.value = null
+  }
+})
+it('renders exact approvals in the debug view without a chat', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  const decide = vi.fn(async () => {})
+  const refresh = vi.fn(async () => {})
+  service.active.value = {
+    revision: shallowRef(1),
+    controller: {
+      session: session('paused'),
+      current: true,
+      actions: [
+        {
+          id: 'sample-ask',
+          kind: 'evaluate',
+          detail: 'n > 0 && n < 4',
+          exact: 'sample exact request',
+          at: 'sample.ts:7',
+          status: 'asked',
+        },
+      ],
+      decide,
+    },
+    refresh,
+  } as never
+  const w = mount(DebuggerView)
+  try {
+    const card = w.getComponent(DebugActionCard)
+    expect(
+      w.get('.nav-header').element.compareDocumentPosition(card.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(card.text()).toContain('n > 0 && n < 4')
+    card.vm.$emit('allow')
+    await flushPromises()
+    expect(decide).toHaveBeenCalledWith('sample-ask', true)
+    expect(refresh).toHaveBeenCalledOnce()
+  } finally {
+    w.unmount()
+    service.active.value = null
+  }
+})
 describe('debugger panel', () => {
+  it('keeps an approved watch result readable as retained evidence when execution becomes unknown', () => {
+    const w = mount(DebugPanel, {
+      props: {
+        session: { ...session('starting'), watches: [{ expression: '1 < 2', value: 'true' }] },
+      },
+    })
+    expect(w.get('.abele-debug-panel__value').text()).toBe('Last value: true')
+    w.unmount()
+  })
+  it('offers breakpoint menus, remove-all and exception filter checkboxes', async () => {
+    const w = mount(DebugPanel, {
+      props: {
+        session: session('paused'),
+        exceptionFilters: ['uncaught'],
+        exceptionsAvailable: true,
+      },
+    })
+    const row = w
+      .findAll('.tree-item-self')
+      .find((r) => r.find('.abele-tree-item__text').text() === 'sample.ts:7')!
+    await row.trigger('contextmenu')
+    expect(w.emitted('breakpoint-menu')?.[0].slice(0, 2)).toEqual(['sample.ts', 7])
+    await w.get('[aria-label="Remove all breakpoints"]').trigger('click')
+    expect(w.emitted('remove-breakpoints')).toHaveLength(1)
+    const caught = w.get('[aria-label="Caught exceptions"]')
+    await caught.trigger('click')
+    expect(w.emitted('exceptions')).toEqual([[['uncaught', 'caught']]])
+    w.unmount()
+  })
   it.each(['.abele-tree-item__text', '.abele-breakpoint-mark'])(
     'opens the breakpoint source when its %s is clicked',
     async (selector) => {

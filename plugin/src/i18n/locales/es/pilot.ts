@@ -3581,4 +3581,19 @@ export const es = {
     'El programa en ejecución no carga este archivo de pruebas. Inicie las pruebas con depuración para detenerse aquí.',
   'debug.sourceGenerated':
     'Este archivo compilado no está disponible aquí. Abra su código fuente original para depurarlo.',
+  'debug.breakpointDisabled': 'Punto de interrupción desactivado',
+  'debug.removeBreakpoints': 'Eliminar todos los puntos de interrupción',
+  'debug.breakpointOptions': 'Opciones del punto de interrupción',
+  'debug.caughtExceptions': 'Excepciones capturadas',
+  'debug.uncaughtExceptions': 'Excepciones no capturadas',
+  'debug.editCondition': 'Editar condición',
+  'debug.editLogMessage': 'Mensaje de registro',
+  'debug.hitCountUnavailable': 'Este nodo no admite el contador de aciertos',
+  'debug.disableBreakpoint': 'Desactivar punto de interrupción',
+  'debug.enableBreakpoint': 'Activar punto de interrupción',
+  'debug.approvalPending': 'Esperando aprobación en Depuración',
+  'debug.recordPointRefused': 'No se guardó el punto de registro: {reason}',
+  'debug.breakpointUnbound':
+    'El programa aún no ha cargado código para esta línea. Compruebe el mapa de fuentes o espere a que se cargue este código.',
+  'debug.watchLastValue': 'Último valor: {value}',
 } satisfies TranslationCatalog

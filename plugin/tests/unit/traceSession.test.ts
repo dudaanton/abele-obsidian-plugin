@@ -139,6 +139,35 @@ function fakeDebugger(existing: { id: string; line: number; condition?: string }
 }
 
 describe('setting up a record point', () => {
+  it('tells the source editor when a conditional point still needs approval', async () => {
+    const node = fakeNode(),
+      debug = fakeDebugger()
+    vi.mocked(debug.setBreakpoint).mockResolvedValueOnce({ outcome: 'pending' })
+    const trace = new TraceSession(node.rpc, debug, () => {})
+    try {
+      await expect(
+        trace.savePoint('sample-source', 4, { take: ['n'], when: 'n < 4 && n > 0' })
+      ).resolves.toEqual({ pending: true })
+    } finally {
+      trace.dispose()
+    }
+  })
+  it('reports a refused conditional breakpoint instead of claiming the record point was saved', async () => {
+    const node = fakeNode(),
+      debug = fakeDebugger()
+    vi.mocked(debug.setBreakpoint).mockResolvedValueOnce({
+      outcome: 'rejected',
+      code: 'build_identity_unverified',
+    })
+    const trace = new TraceSession(node.rpc, debug, () => {})
+    try {
+      await expect(
+        trace.savePoint('sample-source', 4, { take: ['n'], when: 'n > 0 && n < 4' })
+      ).rejects.toThrow(/record point.*not saved/i)
+    } finally {
+      trace.dispose()
+    }
+  })
   it('sends what to take before the breakpoint, so a hit never comes first', async () => {
     const node = fakeNode()
     const debug = fakeDebugger()

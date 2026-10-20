@@ -27,7 +27,7 @@ export interface DebugBreakpoint {
   file: string
   line: number
   /** set: the adapter took it; pending: not confirmed yet; rejected: it cannot stop there. */
-  state: 'set' | 'pending' | 'rejected'
+  state: 'set' | 'pending' | 'rejected' | 'disabled'
   reason?: string
   /** stop: the program stops here; record: the values are taken and it goes on. */
   kind?: 'stop' | 'record'
@@ -49,6 +49,8 @@ export interface DebugWatch {
   /** The whole value, when the row can only show its start. */
   full?: string
   error?: string
+  /** An inert result from an earlier stop, never re-evaluated automatically. */
+  stale?: boolean
 }
 
 export interface DebugSession {

@@ -3560,4 +3560,19 @@ export const de = {
     'Das laufende Programm lädt diese Testdatei nicht. Starten Sie die Tests mit Debugger, um hier anzuhalten.',
   'debug.sourceGenerated':
     'Diese erstellte Datei ist hier nicht verfügbar. Öffnen Sie die ursprüngliche Quelldatei zum Debuggen.',
+  'debug.breakpointDisabled': 'Haltepunkt deaktiviert',
+  'debug.removeBreakpoints': 'Alle Haltepunkte entfernen',
+  'debug.breakpointOptions': 'Haltepunktoptionen',
+  'debug.caughtExceptions': 'Abgefangene Ausnahmen',
+  'debug.uncaughtExceptions': 'Nicht abgefangene Ausnahmen',
+  'debug.editCondition': 'Bedingung bearbeiten',
+  'debug.editLogMessage': 'Protokollnachricht',
+  'debug.hitCountUnavailable': 'Dieser Knoten unterstützt keinen Trefferzähler',
+  'debug.disableBreakpoint': 'Haltepunkt deaktivieren',
+  'debug.enableBreakpoint': 'Haltepunkt aktivieren',
+  'debug.approvalPending': 'Wartet auf Genehmigung im Debugger',
+  'debug.recordPointRefused': 'Aufzeichnungspunkt wurde nicht gespeichert: {reason}',
+  'debug.breakpointUnbound':
+    'Das Programm hat noch keinen Code für diese Zeile geladen. Prüfen Sie die Quellzuordnung oder warten Sie, bis dieser Code geladen wird.',
+  'debug.watchLastValue': 'Letzter Wert: {value}',
 } satisfies TranslationCatalog

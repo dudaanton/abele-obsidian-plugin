@@ -7,6 +7,194 @@ import {
   DebuggerGrantSchema,
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
+import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('explains an unbound breakpoint without adapter jargon', () => {
+  const { model } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-unbound',
+          source_id: 'sample-source',
+          line: 7,
+          status: 'rejected',
+          resolved_line: null,
+          resolved_column: null,
+          message: 'Unbound breakpoint',
+        },
+      ],
+    }),
+  })
+  expect(model.knownBreakpoints()[0].reason).toMatch(/program.*not loaded code/i)
+  expect(model.session.breakpoints[0].reason).toMatch(/program.*not loaded code/i)
+})
+
+it.fails('BUG: the node breakpoint contract must carry a native hit condition', () => {
+  expect(
+    DebuggerBreakpointRequestSchema.safeParse({
+      breakpoint_id: 'sample-bp',
+      source_id: 'sample-source',
+      line: 7,
+      hit_condition: '3',
+    }).success
+  ).toBe(true)
+})
+
+it('updates breakpoint expressions verbatim and preserves the other fields', async () => {
+  const { model, command } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-bp',
+          source_id: 'sample-source',
+          line: 7,
+          column: 2,
+          condition: 'n > 0 && n < 4',
+          log_message: 'value {n}',
+          status: 'verified',
+          resolved_line: 7,
+          resolved_column: 2,
+          message: null,
+        },
+      ],
+    }),
+  })
+  await model.editBreakpoint('sample-bp', { log_message: 'new {n}' })
+  expect(command).toHaveBeenLastCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      upsert: [
+        {
+          breakpoint_id: 'sample-bp',
+          source_id: 'sample-source',
+          line: 7,
+          column: 2,
+          condition: 'n > 0 && n < 4',
+          log_message: 'new {n}',
+        },
+      ],
+    })
+  )
+})
+
+it('retains a disabled breakpoint definition for enabling it again', async () => {
+  const { model, command } = fixture()
+  const bp = {
+    breakpoint_id: 'sample-bp',
+    source_id: 'sample-source',
+    line: 7,
+    condition: 'n < 4 && n > 0',
+    status: 'verified',
+    resolved_line: 7,
+    resolved_column: null,
+    message: null,
+  }
+  model.observe({ observation: 'current', snapshot: snapshot({ breakpoints: [bp] }) })
+  await model.setBreakpointEnabled('sample-bp', false)
+  expect(model.knownBreakpoints()).toContainEqual(
+    expect.objectContaining({ id: 'sample-bp', enabled: false, condition: bp.condition })
+  )
+  model.observe({ observation: 'current', snapshot: snapshot({ breakpoints: [] }) })
+  await model.setBreakpointEnabled('sample-bp', true)
+  expect(command).toHaveBeenLastCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      upsert: [expect.objectContaining({ breakpoint_id: 'sample-bp', condition: bp.condition })],
+    })
+  )
+})
+it('retires exact pending requests before removing a disabled breakpoint', async () => {
+  const { model, proposal, rpc } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-disabled',
+          source_id: 'sample-source',
+          line: 7,
+          status: 'verified',
+          resolved_line: 7,
+          resolved_column: null,
+          message: null,
+        },
+      ],
+    }),
+  })
+  await model.setBreakpointEnabled('sample-disabled', false)
+  model.addProposal({
+    ...proposal,
+    key: 'sample-next',
+    params: { ...proposal.params, operation_id: 'sample-next' },
+    receipt: receipt('pending', { operation_id: 'sample-next' }),
+  })
+  await model.removeBreakpoint('sample-disabled')
+  expect(model.actions.some((a) => a.status === 'asked')).toBe(false)
+  expect(rpc).toHaveBeenCalledWith(
+    'debugger.v1.approve',
+    expect.objectContaining({ operation_id: 'sample-next', decision: 'deny' })
+  )
+})
+
+it('sets caught and uncaught exception filters through the node command', async () => {
+  const { model, command } = fixture()
+  await model.setExceptionFilters(['caught', 'uncaught'])
+  expect(command).toHaveBeenLastCalledWith(
+    'exceptionBreakpoints.set',
+    expect.objectContaining({ filters: ['all', 'uncaught'] })
+  )
+  expect(model.exceptionFilters).toEqual(['caught', 'uncaught'])
+})
+it('shows a breakpoint another controller enabled instead of hiding it behind local disabled state', async () => {
+  const { model } = fixture()
+  const point = {
+    breakpoint_id: 'sample-shared',
+    source_id: 'sample-source',
+    line: 7,
+    status: 'verified',
+    resolved_line: 7,
+    resolved_column: null,
+    message: null,
+  }
+  model.observe({ observation: 'current', snapshot: snapshot({ breakpoints: [point] }) })
+  await model.setBreakpointEnabled(point.breakpoint_id, false)
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ breakpoints: [point], event_seq: 9 }),
+  })
+  expect(model.knownBreakpoints()[0].enabled).toBe(true)
+})
+
+it('makes pending conditional breakpoint approvals available immediately', async () => {
+  const { model, command, rpc } = fixture()
+  command.mockResolvedValueOnce(receipt('pending'))
+  await model.setBreakpoint('sample-bp', 'sample-source', 7, 'n < 4 && n > 0')
+  expect(rpc).toHaveBeenCalledWith('debugger.v1.approvals', expect.anything())
+  expect(model.error).toBe('')
+})
+
+it('loads selected frame scopes on pause without retiring pending approvals', async () => {
+  const { model, rpc } = fixture()
+  rpc.mockImplementation(async (method: string) => {
+    if (method === 'debugger.v1.stack')
+      return {
+        data: {
+          items: [{ handle: 'sample-frame', name: 'sample', source_id: 'sample-source', line: 7 }],
+        },
+      } as never
+    if (method === 'debugger.v1.scopes')
+      return { data: { items: [{ name: 'Local', handle: 'sample-local' }] } } as never
+    throw new Error(method)
+  })
+  await model.loadStack()
+  expect(model.session.variables).toEqual([
+    expect.objectContaining({ name: 'Local', handle: 'sample-local' }),
+  ])
+  expect(model.actions[0].status).toBe('asked')
+})
 
 it('treats an active external session with unknown execution as running on older nodes', () => {
   const { model } = fixture()
@@ -207,8 +395,8 @@ it.each([false, true])(
     await model.inspect('sample-scope')
     await panel.setProps({ session: { ...model.session } })
     if (delayed) {
-      expect(panel.text()).toContain('Waiting for approval in chat')
-      expect(model.session.variables[0].value).toBe('Waiting for approval in chat')
+      expect(panel.text()).toContain('Waiting for approval in Debug')
+      expect(model.session.variables[0].value).toBe('Waiting for approval in Debug')
       expect(model.session.variables[0].children).toBeUndefined()
       expect(
         rpc.mock.calls.some(
@@ -411,6 +599,7 @@ function grant(patch = {}) {
 }
 function fixture() {
   const rpc = vi.fn(async (method: string, params?: unknown) => {
+    if (method === 'debugger.v1.scopes') return { data: { items: [] } }
     if (method === 'debugger.v1.approve')
       return (params as { decision?: string })?.decision === 'deny'
         ? receipt('rejected', { dispatch: 'not_dispatched', code: 'denied' })

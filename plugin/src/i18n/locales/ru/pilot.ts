@@ -3582,4 +3582,19 @@ export const ru = {
     'Запущенная программа не загружает этот тестовый файл. Запустите тесты с отладкой, чтобы остановиться здесь.',
   'debug.sourceGenerated':
     'Этот собранный файл здесь недоступен. Для отладки откройте его исходный код.',
+  'debug.breakpointDisabled': 'Точка остановки отключена',
+  'debug.removeBreakpoints': 'Удалить все точки остановки',
+  'debug.breakpointOptions': 'Действия с точкой остановки',
+  'debug.caughtExceptions': 'Перехваченные исключения',
+  'debug.uncaughtExceptions': 'Неперехваченные исключения',
+  'debug.editCondition': 'Изменить условие',
+  'debug.editLogMessage': 'Сообщение журнала',
+  'debug.hitCountUnavailable': 'Этот узел не поддерживает счётчик попаданий',
+  'debug.disableBreakpoint': 'Отключить точку остановки',
+  'debug.enableBreakpoint': 'Включить точку остановки',
+  'debug.approvalPending': 'Ожидает подтверждения в отладчике',
+  'debug.recordPointRefused': 'Точка записи не сохранена: {reason}',
+  'debug.breakpointUnbound':
+    'Программа пока не загрузила код для этой строки. Проверьте карту исходного кода или дождитесь загрузки этого кода.',
+  'debug.watchLastValue': 'Последнее значение: {value}',
 } satisfies TranslationCatalog

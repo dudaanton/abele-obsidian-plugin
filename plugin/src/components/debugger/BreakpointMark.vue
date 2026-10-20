@@ -27,6 +27,7 @@ const el = ref<HTMLElement>()
 const label = computed(() => {
   const b = props.breakpoint
   const record = b.kind === 'record'
+  if (b.state === 'disabled') return t('debug.breakpointDisabled')
   if (b.state === 'pending') return t('streamC.96584d78f43835f6')
   if (b.state === 'rejected')
     return `${record ? t('streamC.6adbfde88c55906a') : t('streamC.3f1facb79cc50b40')}${b.reason ? `: ${b.reason}` : ''}`
@@ -60,6 +61,9 @@ watch(label, tip)
 }
 .abele-breakpoint-mark_pending {
   box-shadow: inset 0 0 0 var(--border-width) var(--color-red);
+}
+.abele-breakpoint-mark_disabled {
+  box-shadow: inset 0 0 0 var(--border-width) var(--text-faint);
 }
 .abele-breakpoint-mark_rejected {
   box-shadow: inset 0 0 0 var(--border-width) var(--text-faint);

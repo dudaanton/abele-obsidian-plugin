@@ -10,10 +10,12 @@ import {
   DebuggerReplayResultSchema,
   DebuggerGrantSchema,
   type DebuggerSnapshot,
+  type DebuggerBreakpointRequest,
 } from '@abele/node-protocol'
 import type { DebuggerObservationState } from '@abele/node-client'
 import type { DebugAction, DebugSession, DebugVariable } from '@/components/debugger/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
+type DebuggerReceipt = z.infer<typeof DebuggerReceiptSchema>
 
 const ProposalSchema = z
   .object({
@@ -53,6 +55,11 @@ export function receiptMessage(code: string): string {
   if (code === 'build_identity_unverified') return t('streamC.991cd1e53c5b4624')
   return code
 }
+export function breakpointMessage(message?: string | null): string | undefined {
+  return message && /^(?:unbound breakpoint|breakpoint\.provisionalBreakpoint)$/i.test(message)
+    ? t('debug.breakpointUnbound')
+    : (message ?? undefined)
+}
 const empty = (): DebugSession => ({
   program: 'Debug',
   status: 'starting',
@@ -85,6 +92,8 @@ export class DebuggerController {
   private lost = false
   private serial = 0
   private frameHandles: string[] = []
+  private disabledBreakpoints = new Map<string, DebuggerBreakpointRequest>()
+  exceptionFilters: string[] = []
   constructor(
     readonly transport: DebuggerTransport,
     private readonly changed: () => void
@@ -166,14 +175,19 @@ export class DebuggerController {
       this.outputAfter = 0
       this.sources.clear()
       this.inspections.clear()
+      this.disabledBreakpoints.clear()
+      this.exceptionFilters = []
     }
     if (moved) {
       this.expireLocal()
+      this.session.watches = this.session.watches.map((watch) => ({ ...watch, stale: true }))
       this.session.frames = []
       this.session.variables = []
       this.frameHandles = []
     }
     this.snapshot = s
+    // Current node state wins, including another window enabling the same point.
+    for (const b of s.breakpoints) this.disabledBreakpoints.delete(b.breakpoint_id)
     this.lost = s.lifecycle === 'connection-lost'
     this.session.status = this.lost
       ? 'lost'
@@ -194,17 +208,26 @@ export class DebuggerController {
     this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
     const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
     this.session.reason = stop?.description ?? stop?.reason
-    this.session.breakpoints = s.breakpoints.map((b) => ({
-      file: this.sources.get(b.source_id) ?? b.source_id,
-      line: b.resolved_line ?? b.line,
-      state:
-        b.status === 'verified' || b.status === 'relocated'
-          ? 'set'
-          : b.status === 'rejected'
-            ? 'rejected'
-            : 'pending',
-      reason: b.message ?? undefined,
-    }))
+    this.session.breakpoints = s.breakpoints
+      .filter((b) => !this.disabledBreakpoints.has(b.breakpoint_id))
+      .map((b) => ({
+        file: this.sources.get(b.source_id) ?? b.source_id,
+        line: b.resolved_line ?? b.line,
+        state:
+          b.status === 'verified' || b.status === 'relocated'
+            ? 'set'
+            : b.status === 'rejected'
+              ? 'rejected'
+              : 'pending',
+        reason: breakpointMessage(b.message),
+      }))
+    this.session.breakpoints.push(
+      ...[...this.disabledBreakpoints.values()].map((b) => ({
+        file: this.path(b.source_id) ?? b.source_id,
+        line: b.line,
+        state: 'disabled' as const,
+      }))
+    )
     if (!this.session.frames.length && stop?.location)
       this.session.frames = [
         {
@@ -276,9 +299,10 @@ export class DebuggerController {
       receipt.outcome === 'rejected' &&
       receipt.dispatch === 'not_dispatched' &&
       ['denied', 'approval_denied'].includes(receipt.code ?? '')
-    )
+    ) {
       action.status = 'denied'
-    else if (receipt.dispatch !== 'not_dispatched' || receipt.outcome === 'outcome_unknown') {
+      action.result = t('streamC.176a60da255fb23b')
+    } else if (receipt.dispatch !== 'not_dispatched' || receipt.outcome === 'outcome_unknown') {
       action.status = 'unknown'
       action.result = t('streamC.de044a672af115e3', { v1: String(receipt.code ?? receipt.outcome) })
     } else {
@@ -543,6 +567,10 @@ export class DebuggerController {
     })
   }
   toggleBreakpoint(sourceId: string, line: number) {
+    const disabled = [...this.disabledBreakpoints.values()].find(
+      (b) => b.source_id === sourceId && b.line === line
+    )
+    if (disabled) return this.removeBreakpoint(disabled.breakpoint_id)
     return this.patchBreakpoints((s) => {
       const existing = s.breakpoints.filter(
         (b) => b.source_id === sourceId && (b.resolved_line ?? b.line) === line
@@ -571,25 +599,110 @@ export class DebuggerController {
     }))
   }
   removeBreakpoint(breakpointId: string) {
+    if (this.disabledBreakpoints.has(breakpointId))
+      return this.human(async () => {
+        this.disabledBreakpoints.delete(breakpointId)
+        this.session.breakpoints = this.knownBreakpoints()
+        this.notify()
+      })
     return this.patchBreakpoints(() => ({ upsert: [], remove: [breakpointId] }))
+  }
+  editBreakpoint(id: string, edit: { condition?: string; log_message?: string }) {
+    return this.patchBreakpoints((s) => {
+      const b = s.breakpoints.find((b) => b.breakpoint_id === id)
+      if (!b) throw new Error('Breakpoint is unavailable')
+      return { upsert: [{ ...this.breakpointRequest(b), ...edit }], remove: [] }
+    })
+  }
+  private breakpointRequest(b: DebuggerBreakpointRequest): DebuggerBreakpointRequest {
+    return {
+      breakpoint_id: b.breakpoint_id,
+      source_id: b.source_id,
+      line: b.line,
+      ...(b.column !== undefined ? { column: b.column } : {}),
+      ...(b.condition ? { condition: b.condition } : {}),
+      ...(b.log_message ? { log_message: b.log_message } : {}),
+    }
+  }
+  async setBreakpointEnabled(id: string, enabled: boolean) {
+    const b = enabled
+      ? this.disabledBreakpoints.get(id)
+      : this.snapshot?.breakpoints.find((b) => b.breakpoint_id === id)
+    if (!b) return
+    const request = this.breakpointRequest(b)
+    const result = await this.patchBreakpoints(() =>
+      enabled ? { upsert: [request], remove: [] } : { upsert: [], remove: [id] }
+    )
+    if (!result) return
+    if (result.outcome !== 'completed') return
+    if (enabled) this.disabledBreakpoints.delete(id)
+    else this.disabledBreakpoints.set(id, request)
+    this.session.breakpoints = this.knownBreakpoints()
+    this.notify()
+  }
+  async removeAllBreakpoints() {
+    const result = await this.patchBreakpoints((s) => ({
+      upsert: [],
+      remove: s.breakpoints.map((b) => b.breakpoint_id),
+    }))
+    if (result?.outcome === 'completed') {
+      this.disabledBreakpoints.clear()
+      this.session.breakpoints = this.knownBreakpoints()
+      this.notify()
+    }
+  }
+  setExceptionFilters(filters: string[]) {
+    return this.human(async (invocation) => {
+      const result = DebuggerReceiptSchema.parse(
+        await this.transport.command('exceptionBreakpoints.set', {
+          ...this.precondition(invocation),
+          operation_id: crypto.randomUUID(),
+          // js-debug names its caught-exception filter "all".
+          filters: filters.map((filter) => (filter === 'caught' ? 'all' : filter)),
+        })
+      )
+      if (!this.matches(invocation)) return
+      this.observe({ observation: 'current', snapshot: result.snapshot })
+      if (result.outcome === 'completed') this.exceptionFilters = filters.slice()
+      else this.error = receiptMessage(result.code ?? result.outcome)
+      this.notify()
+    })
   }
   /** The breakpoints with the identities and conditions the node holds for them. */
   knownBreakpoints() {
-    return (this.snapshot?.breakpoints ?? []).map((b, i) => ({
-      ...this.session.breakpoints[i],
+    return [
+      ...(this.snapshot?.breakpoints ?? []).filter(
+        (b) => !this.disabledBreakpoints.has(b.breakpoint_id)
+      ),
+      ...this.disabledBreakpoints.values(),
+    ].map((b) => ({
+      file: this.path(b.source_id) ?? b.source_id,
+      line: 'resolved_line' in b ? ((b.resolved_line as number | null) ?? b.line) : b.line,
+      state: this.disabledBreakpoints.has(b.breakpoint_id)
+        ? ('disabled' as const)
+        : 'status' in b && (b.status === 'verified' || b.status === 'relocated')
+          ? ('set' as const)
+          : 'status' in b && b.status === 'rejected'
+            ? ('rejected' as const)
+            : ('pending' as const),
+      reason: breakpointMessage(
+        'message' in b && typeof b.message === 'string' ? b.message : undefined
+      ),
+      enabled: !this.disabledBreakpoints.has(b.breakpoint_id),
       id: b.breakpoint_id,
       sourceId: b.source_id,
       requestedLine: b.line,
       ...(b.condition ? { condition: b.condition } : {}),
+      ...(b.log_message ? { log_message: b.log_message } : {}),
     }))
   }
   private patchBreakpoints(
     change: (s: DebuggerSnapshot) => {
-      upsert: { breakpoint_id: string; source_id: string; line: number; condition?: string }[]
+      upsert: DebuggerBreakpointRequest[]
       remove: string[]
     },
     allowRebase = true
-  ): Promise<void> {
+  ): Promise<DebuggerReceipt | undefined> {
     return this.human(async () => {
       // Earlier queued clicks may have confirmed a new set while this click waited.
       const invocation = this.invocation()
@@ -618,16 +731,25 @@ export class DebuggerController {
       this.observe({ observation: 'current', snapshot: result.snapshot })
       if (rebase)
         return {
-          patch,
-          sessionId: s.debug_session_id,
-          incarnation: s.incarnation,
-          targetId: s.target.target_id,
-          breakpointRevision: s.breakpoint_revision,
+          rebase: {
+            patch,
+            sessionId: s.debug_session_id,
+            incarnation: s.incarnation,
+            targetId: s.target.target_id,
+            breakpointRevision: s.breakpoint_revision,
+          },
         }
-      if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
+      if (result.outcome === 'pending') {
+        this.error = ''
+        await this.refreshApprovals()
+      } else if (result.outcome !== 'completed')
+        this.error = receiptMessage(result.code ?? result.outcome)
       this.notify()
-    }).then((rebase) => {
-      if (!rebase) return
+      return { result }
+    }).then((outcome): Promise<DebuggerReceipt | undefined> | DebuggerReceipt | undefined => {
+      if (!outcome) return undefined
+      if ('result' in outcome) return outcome.result
+      const rebase = outcome.rebase
       const current = this.snapshot
       if (
         !this.current ||
@@ -637,7 +759,7 @@ export class DebuggerController {
         current.target.target_id !== rebase.targetId ||
         current.breakpoint_revision !== rebase.breakpointRevision
       )
-        return
+        return undefined
       // A rejected, non-dispatched patch had no effect. Keep its exact intent, retire fresh
       // proposals again, and rebase only its state fence once; never retry uncertain effects.
       return this.patchBreakpoints(() => rebase.patch, false)
@@ -709,8 +831,12 @@ export class DebuggerController {
       if (inspection && entry.outcome === 'completed' && data) {
         if (inspection.expression) {
           const watch = this.session.watches.find((w) => w.expression === inspection.expression)
-          if (watch)
+          if (watch) {
             watch.value = typeof data.value === 'string' ? data.value : JSON.stringify(data)
+            watch.stale =
+              this.session.status !== 'paused' ||
+              (data.observation_stop_epoch ?? entry.stop_epoch) !== this.snapshot?.stop_epoch
+          }
         } else if (inspection.handle && Array.isArray(data.items)) {
           const page = z
             .array(
@@ -808,7 +934,7 @@ export class DebuggerController {
         ...value,
         value:
           result.outcome === 'pending'
-            ? t('streamC.24cd8beaf24a1a26')
+            ? t('debug.approvalPending')
             : result.outcome === 'completed'
               ? t('streamC.ce9dc7a8bc7d98f2')
               : receiptMessage(result.code ?? result.outcome),
@@ -857,33 +983,35 @@ export class DebuggerController {
       this.session.frames.findIndex((frame) => frame.file)
     )
     this.notify()
+    await this.loadScopes(this.session.frame, this.invocation())
   }
   selectFrame(index: number) {
-    return this.human(async (invocation) => {
-      const frame_handle = invocation.frameHandles[index]
-      if (!frame_handle) return
-      const generation = this.serial,
-        epoch = this.snapshot.stop_epoch
-      const result = z
-        .object({
-          data: z
-            .object({
-              items: z.array(z.object({ name: z.string(), handle: z.string().nullable() }).loose()),
-            })
-            .loose(),
-        })
-        .loose()
-        .parse(await this.rpc('scopes', { ...this.precondition(invocation), frame_handle }))
-      if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
-      this.session.frame = index
-      // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
-      this.session.variables = result.data.items.map((s) => ({
-        name: s.name,
-        value: s.handle ? t('streamC.76eedf5e0f835b5e') : t('streamC.ca184496974204a0'),
-        handle: s.handle ?? undefined,
-      }))
-      this.notify()
-    })
+    return this.human((invocation) => this.loadScopes(index, invocation))
+  }
+  private async loadScopes(index: number, invocation: Invocation) {
+    const frame_handle = invocation.frameHandles[index]
+    if (!frame_handle) return
+    const generation = this.serial,
+      epoch = this.snapshot.stop_epoch
+    const result = z
+      .object({
+        data: z
+          .object({
+            items: z.array(z.object({ name: z.string(), handle: z.string().nullable() }).loose()),
+          })
+          .loose(),
+      })
+      .loose()
+      .parse(await this.rpc('scopes', { ...this.precondition(invocation), frame_handle }))
+    if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
+    this.session.frame = index
+    // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
+    this.session.variables = result.data.items.map((s) => ({
+      name: s.name,
+      value: s.handle ? t('streamC.76eedf5e0f835b5e') : t('streamC.ca184496974204a0'),
+      handle: s.handle ?? undefined,
+    }))
+    this.notify()
   }
   watch(expression: string) {
     return this.human(async (invocation) => {

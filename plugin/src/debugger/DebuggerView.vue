@@ -26,6 +26,8 @@
       </div>
       <DebugPanel
         :session="session!"
+        :exception-filters="binding.controller.exceptionFilters"
+        :exceptions-available="exceptionsAvailable"
         :mode-available="!!binding.controller.grantId"
         :mode-unavailable-reason="binding.controller.modeUnavailableReason"
         :busy="busy"
@@ -46,9 +48,23 @@
         @watch="run(() => binding!.controller.watch($event))"
         @unwatch="run(() => binding!.controller.unwatch($event))"
         @breakpoint="breakpoint"
+        @breakpoint-menu="breakpointMenu"
+        @remove-breakpoints="run(() => binding!.controller.removeAllBreakpoints())"
+        @exceptions="run(() => binding!.controller.setExceptionFilters($event))"
         @reveal="(file, line) => service.reveal(binding!, file, line)"
         @retry="retry"
-      />
+      >
+        <template #approvals>
+          <DebugActionCard
+            v-for="action in actions"
+            :key="action.id"
+            :action="action"
+            :disabled="!binding.controller.current || deciding.has(action.id)"
+            @allow="decide(action.id, true)"
+            @deny="decide(action.id, false)"
+          />
+        </template>
+      </DebugPanel>
     </template>
   </div>
 </template>
@@ -57,13 +73,15 @@ import NodeErrorText from '@/components/NodeErrorText.vue'
 import { t } from '@/i18n'
 
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import DebugActionCard from '@/components/debugger/DebugActionCard.vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { openDebugValue } from './DebugValueTab'
-import { browserMenu, folderMenu, openRun, runMenu } from './trace/panel'
+import { browserMenu, folderMenu, openRun, runMenu, marginMenu } from './trace/panel'
+import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 const service = DebuggerService.instance
 const binding = service.active
 function peerState(peer: DebuggerBinding) {
@@ -91,6 +109,41 @@ async function chooseSession(sessionId: string) {
   if (!owner || !peer.sessionId) return
   const { showSession } = await import('./register')
   await showSession(owner, peer.sessionId)
+}
+const exceptionsAvailable = computed(
+  () =>
+    !!binding.value &&
+    nodeAdvertisesMethod(binding.value.connection?.client, 'debugger.v1.exceptionBreakpoints.set')
+)
+function breakpointMenu(file: string, line: number, event: MouseEvent) {
+  const b = binding.value
+  const point = b?.controller.knownBreakpoints().find((p) => p.file === file && p.line === line)
+  if (b && point) marginMenu(b, point.sourceId, line, event)
+}
+const actions = computed(() => {
+  binding.value?.revision.value
+  return (binding.value?.controller.actions ?? [])
+    .filter(
+      (action, index, all) =>
+        action.status === 'asked' ||
+        action.status === 'unknown' ||
+        (action.status !== 'done' && index === all.length - 1)
+    )
+    .map((action) => ({ ...action }))
+})
+const deciding = reactive(new Set<string>())
+async function decide(id: string, allow: boolean) {
+  const b = binding.value
+  if (!b || deciding.has(id)) return
+  deciding.add(id)
+  try {
+    await b.controller.decide(id, allow)
+    await b.refresh()
+  } catch (error) {
+    b.fail(error)
+  } finally {
+    deciding.delete(id)
+  }
 }
 const session = computed(() => {
   binding.value?.revision.value
@@ -155,16 +208,12 @@ function command(action: string) {
 }
 function breakpoint(file: string, line: number) {
   const b = binding.value
-  const point = b?.controller.snapshot?.breakpoints.find(
-    (p) =>
-      (b.controller.path(p.source_id) ?? p.source_id) === file &&
-      (p.resolved_line ?? p.line) === line
-  )
+  const point = b?.controller.knownBreakpoints().find((p) => p.file === file && p.line === line)
   if (!b || !point) return
   // A record point goes with what it takes; a breakpoint is only taken off.
-  if (b.trace?.points.some((p) => p.breakpoint_id === point.breakpoint_id))
-    void run(() => b.trace?.removePoint(point.breakpoint_id) ?? Promise.resolve())
-  else void run(() => b.controller.toggleBreakpoint(point.source_id, point.line))
+  if (b.trace?.points.some((p) => p.breakpoint_id === point.id))
+    void run(() => b.trace?.removePoint(point.id) ?? Promise.resolve())
+  else void run(() => b.controller.removeBreakpoint(point.id))
 }
 function retry() {
   const b = binding.value

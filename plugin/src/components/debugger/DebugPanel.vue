@@ -56,6 +56,7 @@
       />
     </div>
 
+    <slot name="approvals" />
     <div class="abele-debug-panel__groups" :class="{ 'abele-debug-panel__groups_stale': stale }">
       <!-- While a run is recorded: how long, how many steps, where the browser's requests come
            from and where it all goes on disk. -->
@@ -141,12 +142,45 @@
         :collapsed="folded.has('breakpoints')"
         @click="toggle('breakpoints')"
       >
+        <template #actions>
+          <Icon
+            icon="trash-2"
+            size="xs"
+            :tooltip="t('debug.removeBreakpoints')"
+            :disabled="locked || !session.breakpoints.length"
+            @click.stop="emit('remove-breakpoints')"
+          />
+        </template>
+        <TreeItem
+          v-for="filter in ['caught', 'uncaught']"
+          :key="filter"
+          :text="filter === 'caught' ? t('debug.caughtExceptions') : t('debug.uncaughtExceptions')"
+        >
+          <template #end>
+            <Checkbox
+              :is-enabled="exceptionFilters.includes(filter)"
+              :disabled="locked || !exceptionsAvailable"
+              :aria-label="
+                filter === 'caught' ? t('debug.caughtExceptions') : t('debug.uncaughtExceptions')
+              "
+              @toggle="
+                emit(
+                  'exceptions',
+                  exceptionFilters.includes(filter)
+                    ? exceptionFilters.filter((f) => f !== filter)
+                    : [...exceptionFilters, filter]
+                )
+              "
+            />
+          </template>
+        </TreeItem>
         <TreeItem
           v-for="b in session.breakpoints"
           :key="`${b.file}:${b.line}`"
           :text="`${fileName(b.file)}:${b.line}`"
           :note="b.kind === 'record' ? b.note : undefined"
           @click="emit('reveal', b.file, b.line)"
+          @contextmenu.prevent="(e: MouseEvent) => emit('breakpoint-menu', b.file, b.line, e)"
         >
           <template #end>
             <span
@@ -164,6 +198,13 @@
             <BreakpointMark :breakpoint="b" />
           </template>
           <template #actions>
+            <Icon
+              icon="ellipsis"
+              size="xs"
+              :tooltip="t('debug.breakpointOptions')"
+              :disabled="locked"
+              @click.stop="(e: MouseEvent) => emit('breakpoint-menu', b.file, b.line, e)"
+            />
             <Icon
               icon="x"
               size="xs"
@@ -225,7 +266,15 @@
               class="abele-debug-panel__value"
               :class="{ 'abele-debug-panel__value_error': w.error }"
               :title="w.error || undefined"
-              >{{ live ? (w.error ? nodeErrorWords(w.error) : (w.value ?? '')) : '' }}</span
+              >{{
+                w.error
+                  ? nodeErrorWords(w.error)
+                  : w.value === undefined
+                    ? ''
+                    : !live || w.stale
+                      ? t('debug.watchLastValue', { value: w.value })
+                      : w.value
+              }}</span
             >
           </template>
           <template #actions>
@@ -278,6 +327,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Input from '../obsidian/Input.vue'
+import Checkbox from '../obsidian/Checkbox.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import BreakpointMark from './BreakpointMark.vue'
@@ -290,6 +340,8 @@ import type { TraceRecording, TraceRunSummary } from './trace/types'
 const props = withDefaults(
   defineProps<{
     session: DebugSession
+    exceptionFilters?: string[]
+    exceptionsAvailable?: boolean
     restartAvailable?: boolean
     reattachAvailable?: boolean
     modeAvailable?: boolean
@@ -304,6 +356,8 @@ const props = withDefaults(
   }>(),
   {
     restartAvailable: false,
+    exceptionFilters: () => [],
+    exceptionsAvailable: false,
     reattachAvailable: false,
     modeAvailable: false,
     modeUnavailableReason: '',
@@ -338,6 +392,9 @@ const emit = defineEmits<{
   (e: 'reveal', file: string, line: number): void
   (e: 'frame', index: number): void
   (e: 'breakpoint', file: string, line: number): void
+  (e: 'breakpoint-menu', file: string, line: number, event: MouseEvent): void
+  (e: 'remove-breakpoints'): void
+  (e: 'exceptions', filters: string[]): void
   (e: 'watch', expression: string): void
   (e: 'unwatch', expression: string): void
   (e: 'retry'): void
@@ -385,7 +442,7 @@ const paused = computed(() => props.session.status === 'paused')
 const live = computed(() => paused.value || props.session.status === 'lost')
 function openWatch(w: DebugWatch) {
   const value = wholeValue(w.value ?? '', w.full)
-  if (live.value && !w.error && value !== undefined) emit('open-value', w.expression, value)
+  if (!w.error && value !== undefined) emit('open-value', w.expression, value)
 }
 const stale = computed(() => props.session.status === 'lost')
 const top = computed(() => props.session.frames[props.session.frame] ?? props.session.frames[0])

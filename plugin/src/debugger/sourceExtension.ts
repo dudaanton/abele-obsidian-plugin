@@ -4,6 +4,7 @@ import type { CodeSelection } from '@/views/codeSelectionHost'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
 import { DebuggerService } from './DebuggerService'
+import { breakpointMessage } from './DebuggerController'
 import { marginMenu, namesOnLine, openRun, savePoint } from './trace/panel'
 
 /** The node file tab supplies identity from its source/build mapping, never a guessed path.
@@ -91,7 +92,7 @@ export function mountDebugSource(
                     : b.status === 'rejected'
                       ? 'rejected'
                       : 'pending',
-                reason: b.message ?? undefined,
+                reason: breakpointMessage(b.message),
               })) ??
             [],
           line:

@@ -21,6 +21,11 @@ export interface PointEdit {
 }
 
 const FOLLOW_MS = 2000
+export class RecordPointSaveError extends Error {
+  constructor(readonly code: string) {
+    super('Record point was not saved')
+  }
+}
 
 export class TraceSession {
   points: WirePoint[] = []
@@ -140,10 +145,37 @@ export class TraceSession {
       ],
       []
     )
-    if (!existing || (existing.condition ?? '') !== (edit.when ?? ''))
-      await this.debug.setBreakpoint(id, sourceId, existing?.requestedLine ?? line, edit.when)
+    let pending = false
+    if (!existing || (existing.condition ?? '') !== (edit.when ?? '')) {
+      const result = await this.debug.setBreakpoint(
+        id,
+        sourceId,
+        existing?.requestedLine ?? line,
+        edit.when
+      )
+      if (
+        result &&
+        typeof result === 'object' &&
+        'outcome' in result &&
+        result.outcome !== 'completed' &&
+        result.outcome !== 'pending'
+      )
+        throw new RecordPointSaveError(
+          'code' in result && typeof result.code === 'string'
+            ? result.code
+            : typeof result.outcome === 'string'
+              ? result.outcome
+              : 'not_completed'
+        )
+      pending =
+        !!result &&
+        typeof result === 'object' &&
+        'outcome' in result &&
+        result.outcome === 'pending'
+    }
     this.changed()
     await this.refresh()
+    return { pending }
   }
 
   /** It stops the program again rather than taking values. */

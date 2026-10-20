@@ -3523,4 +3523,19 @@ export const lv = {
     'Palaistā programma neielādē šo testa failu. Palaidiet testus ar atkļūdošanu, lai šeit apstātos.',
   'debug.sourceGenerated':
     'Šis izveidotais fails šeit nav pieejams. Atkļūdošanai atveriet sākotnējo avota failu.',
+  'debug.breakpointDisabled': 'Pārtraukumpunkts atspējots',
+  'debug.removeBreakpoints': 'Noņemt visus pārtraukumpunktus',
+  'debug.breakpointOptions': 'Pārtraukumpunkta darbības',
+  'debug.caughtExceptions': 'Pārtvertie izņēmumi',
+  'debug.uncaughtExceptions': 'Nepārtvertie izņēmumi',
+  'debug.editCondition': 'Rediģēt nosacījumu',
+  'debug.editLogMessage': 'Žurnāla ziņojums',
+  'debug.hitCountUnavailable': 'Šis mezgls neatbalsta trāpījumu skaitītāju',
+  'debug.disableBreakpoint': 'Atspējot pārtraukumpunktu',
+  'debug.enableBreakpoint': 'Iespējot pārtraukumpunktu',
+  'debug.approvalPending': 'Gaida apstiprinājumu atkļūdotājā',
+  'debug.recordPointRefused': 'Ieraksta punkts nav saglabāts: {reason}',
+  'debug.breakpointUnbound':
+    'Programma vēl nav ielādējusi šīs rindas kodu. Pārbaudiet avota karti vai gaidiet koda ielādi.',
+  'debug.watchLastValue': 'Pēdējā vērtība: {value}',
 } satisfies TranslationCatalog

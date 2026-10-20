@@ -3396,6 +3396,22 @@ export const en = {
     'The node could not find a source map linking this file to the running program. Build with source maps, then restart the program and attach again.',
   'debug.sourceChanged':
     'This file changed since the program started. Restore that content, or rebuild and restart the program.',
+  'debug.sourceTest':
+    'This test file is not loaded by the running program. Start the test runner with debugging to stop here.',
+  'debug.sourceDeclaration':
+    'This declaration file contains no executable code. Open the implementation to set a breakpoint.',
+  'debug.sourceGenerated':
+    'This built file is not available here. Open its original source file to debug it.',
+  'debug.breakpointDisabled': 'Breakpoint disabled',
+  'debug.removeBreakpoints': 'Remove all breakpoints',
+  'debug.breakpointOptions': 'Breakpoint options',
+  'debug.caughtExceptions': 'Caught exceptions',
+  'debug.uncaughtExceptions': 'Uncaught exceptions',
+  'debug.editCondition': 'Edit condition',
+  'debug.editLogMessage': 'Log message',
+  'debug.hitCountUnavailable': 'Hit count is not supported by this node',
+  'debug.disableBreakpoint': 'Disable breakpoint',
+  'debug.enableBreakpoint': 'Enable breakpoint',
   'debug.sourceOutside': 'This file is outside the debug folder',
   'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
   'debug.entryPlaceholder':
@@ -3421,4 +3437,9 @@ export const en = {
     'This declaration file contains no executable code. Open the implementation to set a breakpoint.',
   'debug.sourceGenerated':
     'This built file is not available here. Open its original source file to debug it.',
+  'debug.approvalPending': 'Waiting for approval in Debug',
+  'debug.recordPointRefused': 'Record point was not saved: {reason}',
+  'debug.breakpointUnbound':
+    'The program has not loaded code for this line yet. Check its source map or wait for this code to load.',
+  'debug.watchLastValue': 'Last value: {value}',
 } as const
