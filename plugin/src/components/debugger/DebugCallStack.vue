@@ -72,11 +72,16 @@ type Row =
   | { kind: 'async'; at: number; label: string }
 const rows = computed(() => {
   const result: Row[] = []
+  const own = (frame: DebugFrame) => !!frame.file && !frame.file.startsWith('node:')
+  // Frames with no file below the program's own code are Node's loader that started it; a
+  // caller with an unknown location above or without such code stays visible.
+  const lastOwn = props.frames.findLastIndex(own)
   props.frames.forEach((frame, at) => {
     const boundary = asyncBoundary(frame.name)
     const last = result[result.length - 1]
     if (boundary !== undefined) result.push({ kind: 'async', at, label: boundary })
-    else if (!frame.file.startsWith('node:')) result.push({ kind: 'frame', at, frame })
+    else if (own(frame) || (!frame.file && (lastOwn < 0 || at < lastOwn)))
+      result.push({ kind: 'frame', at, frame })
     else if (last?.kind === 'internals') last.frames.push(frame)
     else result.push({ kind: 'internals', at, frames: [frame] })
   })

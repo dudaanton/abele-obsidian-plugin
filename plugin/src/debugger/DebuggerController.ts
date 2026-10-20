@@ -15,7 +15,7 @@ import {
 import type { DebuggerObservationState } from '@abele/node-client'
 import type { DebugAction, DebugSession, DebugVariable } from '@/components/debugger/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
-type DebuggerReceipt = z.infer<typeof DebuggerReceiptSchema>
+type DebuggerReceipt = ReturnType<typeof DebuggerReceiptSchema.parse>
 
 const ProposalSchema = z
   .object({

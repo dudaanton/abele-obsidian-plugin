@@ -3396,23 +3396,6 @@ export const en = {
     'The node could not find a source map linking this file to the running program. Build with source maps, then restart the program and attach again.',
   'debug.sourceChanged':
     'This file changed since the program started. Restore that content, or rebuild and restart the program.',
-  'debug.sourceTest':
-    'This test file is not loaded by the running program. Start the test runner with debugging to stop here.',
-  'debug.sourceDeclaration':
-    'This declaration file contains no executable code. Open the implementation to set a breakpoint.',
-  'debug.sourceGenerated':
-    'This built file is not available here. Open its original source file to debug it.',
-  'debug.breakpointDisabled': 'Breakpoint disabled',
-  'debug.removeBreakpoints': 'Remove all breakpoints',
-  'debug.breakpointOptions': 'Breakpoint options',
-  'debug.caughtExceptions': 'Caught exceptions',
-  'debug.uncaughtExceptions': 'Uncaught exceptions',
-  'debug.editCondition': 'Edit condition',
-  'debug.editLogMessage': 'Log message',
-  'debug.editHitCount': 'Hit count',
-  'debug.hitCountUnavailable': 'Hit count is not supported by this node',
-  'debug.disableBreakpoint': 'Disable breakpoint',
-  'debug.enableBreakpoint': 'Enable breakpoint',
   'debug.sourceOutside': 'This file is outside the debug folder',
   'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
   'debug.entryPlaceholder':
@@ -3432,12 +3415,23 @@ export const en = {
   'debug.launchFailed': 'The program could not start: {detail}',
   'debug.launchExitedEarly': 'The program exited before the debugger could attach.',
   'debug.launchFailedPlain': 'The program could not start. Open Details for more information.',
-  'debug.sourceTest':
-    'This test file is not loaded by the running program. Start the test runner with debugging to stop here.',
   'debug.sourceDeclaration':
     'This declaration file contains no executable code. Open the implementation to set a breakpoint.',
+  'debug.sourceTest':
+    'This test file is not loaded by the running program. Start the test runner with debugging to stop here.',
   'debug.sourceGenerated':
     'This built file is not available here. Open its original source file to debug it.',
+  'debug.breakpointDisabled': 'Breakpoint disabled',
+  'debug.removeBreakpoints': 'Remove all breakpoints',
+  'debug.breakpointOptions': 'Breakpoint options',
+  'debug.caughtExceptions': 'Caught exceptions',
+  'debug.uncaughtExceptions': 'Uncaught exceptions',
+  'debug.editCondition': 'Edit condition',
+  'debug.editLogMessage': 'Log message',
+  'debug.editHitCount': 'Hit count',
+  'debug.hitCountUnavailable': 'Hit count is not supported by this node',
+  'debug.disableBreakpoint': 'Disable breakpoint',
+  'debug.enableBreakpoint': 'Enable breakpoint',
   'debug.approvalPending': 'Waiting for approval in Debug',
   'debug.recordPointRefused': 'Record point save could not be confirmed: {reason}',
   'debug.breakpointUnbound':
