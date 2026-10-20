@@ -34,6 +34,7 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
+import { createNodeManagerTools } from './NodeManagerTools'
 import { createNodeDelegationTools } from './NodeDelegationTools'
 import { createScriptTools, createAnswerFormTool } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
@@ -327,6 +328,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createDownloadFileTool(),
     createDelegateTool(options.session),
     ...createNodeDelegationTools(options.session),
+    ...createNodeManagerTools(options.session),
     createReplaceTool(),
     createWriteFileTool(),
     createOpenFileTool(),

@@ -225,3 +225,45 @@ it.each([undefined, 'stale_revision'])(
     }
   }
 )
+
+it('deduplicates simultaneous answers from parent and child cards', async () => {
+  const { answerOwnerPrompt } = await import('@/node/promptAnswers')
+  const { first } = await fixture()
+  try {
+    await Promise.all([
+      first.presenter.answer(prompt, 'allow'),
+      answerOwnerPrompt(first.client, reference.nodeId, prompt, 'deny').catch(() => {}),
+    ])
+    expect(
+      (await first.client.pending()).filter((entry) => entry.method === 'prompt.answer')
+    ).toHaveLength(1)
+  } finally {
+    first.presenter.destroy()
+    first.store.close()
+  }
+})
+
+it('cancels a manager command from its ordinary chat approval instead of interrupting an agent run', async () => {
+  const { first } = await fixture()
+  const managerPrompt = {
+    ...prompt,
+    tool_name: 'command.v1.run',
+    input: { method: 'command.v1.run' },
+  }
+  await first.store.transaction((s) => {
+    s.events[prompt.session_id][0].data = managerPrompt
+  })
+  try {
+    await first.presenter.refresh()
+    await first.presenter.stopFromApproval(managerPrompt)
+    expect(
+      (await first.client.pending()).some((entry) => entry.method === 'command.v1.cancel')
+    ).toBe(true)
+    expect(
+      (await first.client.pending()).some((entry) => entry.method === 'session.interrupt')
+    ).toBe(false)
+  } finally {
+    first.presenter.destroy()
+    first.store.close()
+  }
+})

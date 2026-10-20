@@ -66,7 +66,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
   ],
   ['node.error.outputLimit', ['output_limit']],
   ['node.error.busy', ['resource_busy']],
-  ['node.error.limit', ['rate_limit', 'rate_limited', 'quota_exceeded', 'slow_consumer']],
+  ['node.error.limit', ['rate_limit', 'rate_limited', 'quota_exceeded']],
   [
     'node.error.debugger',
     [
@@ -136,6 +136,11 @@ const explanations = new Map(
 export function nodeErrorWords(error: string | null | undefined): string {
   if (!error) return ''
   const raw = error.trim().toLowerCase()
+  const diagnostic = error.trim().match(/^([a-z][a-z0-9_]+):\s*(\S[\s\S]*)$/)
+  if (diagnostic) {
+    const key = explanations.get(diagnostic[1])
+    return `${t(key ?? 'node.error.generic')} (${error.trim()})`
+  }
   const tokens = raw.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)
   const wrapped = raw.match(/[:·]\s*([a-z][a-z0-9_-]*)(?=$|[.!;,)\s])/)?.[1]
   const code =
@@ -158,4 +163,11 @@ export function nodeErrorWords(error: string | null | undefined): string {
     })
     .join(' ')
   return `${t('node.error.generic')} (${originalCode})`
+}
+
+/** Keep protocol evidence visible on touch devices, where a title tooltip is unavailable. */
+export function nodeErrorDetails(error: string | null | undefined): string {
+  const words = nodeErrorWords(error)
+  const raw = error?.trim()
+  return raw && !words.includes(raw) ? `${words} (${raw})` : words
 }

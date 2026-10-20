@@ -7,6 +7,7 @@
       <Icon :icon="KIND_ICON[toolKind(message.toolName)]" size="xs" :interactive="false" />
       <span class="abele-tool-approval__what">{{ headerText }}</span>
       <Icon
+        v-if="!nodePrompt"
         class="abele-tool-approval__more"
         icon="more-horizontal"
         size="xs"
@@ -22,8 +23,41 @@
       <code>{{ message.toolName }}</code>
     </Disclosure>
 
+    <template v-if="nodePrompt">
+      <div v-if="location" class="abele-tool-approval__path">{{ location }}</div>
+      <Diff
+        v-for="(diff, index) in diffs ?? []"
+        :key="index"
+        :text-left="diff.old"
+        :text-right="diff.new"
+        :path="diff.path"
+      />
+      <pre
+        class="abele-tool-approval__code"
+      ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+      <Dropdown
+        v-if="nodePrompt.kind === 'select'"
+        v-model="nodeValue"
+        :disabled="disabled || !!answerState"
+        :aria-label="t('streamB.questionAnswer.e9700c')"
+        :options="[
+          { value: '', display: t('streamB.chooseAnAnswer.8cf0e3') },
+          ...(nodePrompt.options ?? []).map((value) => ({ value, display: value })),
+        ]"
+      />
+      <Input
+        v-if="nodePrompt.kind === 'input'"
+        v-model="nodeValue"
+        as-text-area
+        :disabled="disabled || !!answerState"
+        :aria-label="t('streamB.questionAnswer.e9700c')"
+      />
+      <div v-if="answerState" role="status">
+        {{ t('streamB.waitingForConfirmation.bc8582') }} {{ answerState.error }}
+      </div>
+    </template>
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
-    <template v-if="message.toolName === 'create'">
+    <template v-else-if="message.toolName === 'create'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <pre
         class="abele-tool-approval__code"
@@ -180,7 +214,11 @@
       <Button
         v-if="keyInfo.missing.length"
         :text="t('streamB.allowThisAddressForTheseKeys.b0828e')"
-        :disabled="keyApprovalBusy"
+        :disabled="
+          keyApprovalBusy ||
+          disabled ||
+          (nodePrompt?.kind === 'select' && !nodePrompt.options?.includes(nodeValue))
+        "
         @click="allowKeyAddress"
       />
     </div>
@@ -199,10 +237,11 @@
     <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">
       {{ parseError }}
     </div>
-    <div class="abele-tool-approval__actions">
+    <div v-if="!nodePrompt || !answerState" class="abele-tool-approval__actions">
       <Button
         :text="t('streamB.deny.05a2d7')"
         :tooltip="t('streamB.doNotLetTheAgentDoThis.a3a900')"
+        :disabled="disabled"
         @click="reject"
       />
       <Button
@@ -223,6 +262,7 @@
         class="abele-tool-approval__stop"
         :text="t('streamB.stop.cae7d5')"
         :tooltip="t('streamB.denyAndStopTheAgent.7e1188')"
+        :disabled="disabled"
         @click="stop"
       />
     </div>
@@ -243,6 +283,7 @@ import {
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
+import Dropdown from './obsidian/Dropdown.vue'
 import Diff from './Diff.vue'
 import RequestCard from './obsidian/RequestCard.vue'
 import Disclosure from './obsidian/Disclosure.vue'
@@ -268,7 +309,14 @@ const readHttpSend = (id: string, environment?: string) =>
 
 const props = defineProps<{
   message: ChatMessage
+  nodePrompt?: import('@abele/node-client').Prompt
+  disabled?: boolean
+  location?: string
+  answerState?: import('@/node/promptAnswers').PromptAnswerState
+  diffs?: { path: string; old: string; new: string }[]
 }>()
+const emit = defineEmits<{ answer: [choice: 'allow' | 'deny', value?: string]; stop: [] }>()
+const nodeValue = ref('')
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const isEditing = ref(false)
@@ -440,6 +488,7 @@ function moreMenu(event?: MouseEvent) {
 }
 
 const headerText = computed(() => {
+  if (props.nodePrompt) return props.nodePrompt.title || props.nodePrompt.tool_name
   switch (props.message.toolName) {
     case 'create':
       return t('streamB.createFile.6990d3')
@@ -588,6 +637,15 @@ const settingsWrite = computed(() => {
 const parseError = ref('')
 
 const approve = () => {
+  if (props.nodePrompt) {
+    if (!props.disabled && !props.answerState)
+      emit(
+        'answer',
+        'allow',
+        ['input', 'select'].includes(props.nodePrompt.kind) ? nodeValue.value : undefined
+      )
+    return
+  }
   if (keyApprovalBusy.value) return
   if (props.message.toolName?.startsWith('mcp_') && !props.message.toolCallId) {
     parseError.value = t('streamB.thisMcpCallHasNoRecordedIdentity.da54ff')
@@ -670,11 +728,19 @@ const allowAll = () => {
 }
 
 const reject = () => {
+  if (props.nodePrompt) {
+    if (!props.disabled && !props.answerState) emit('answer', 'deny')
+    return
+  }
   keyApprovalController?.abort()
   session.value?.rejectToolCall('User rejected this action')
 }
 
 const stop = () => {
+  if (props.nodePrompt) {
+    if (!props.disabled) emit('stop')
+    return
+  }
   keyApprovalController?.abort()
   session.value?.stopFromApproval(props.message.toolCallId)
 }

@@ -12,6 +12,7 @@ import { secrets } from '@/secrets/SecretStore'
 import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './NodeRegistry'
 import { NodeClientStore } from './NodeClientStore'
 import { NodeDelegationController } from './NodeDelegationController'
+import { NodeManagerController } from './NodeManagerController'
 import type { DelegationCard } from './delegation'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
@@ -21,6 +22,10 @@ export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
+  readonly manager: NodeManagerController
+  readonly managerCards = ref<Record<string, Awaited<ReturnType<NodeManagerController['cards']>>>>(
+    {}
+  )
   readonly delegation: NodeDelegationController
   readonly delegationCards = ref<Record<string, DelegationCard[]>>({})
   private refreshingDelegations?: Promise<void>
@@ -35,6 +40,7 @@ export class NodeConnection {
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {
+    this.manager = new NodeManagerController(client, store)
     this.delegation = new NodeDelegationController(client, store)
     // The SDK supplies wire deadlines. This host deadline also bounds timer grace
     // while backgrounded, and publishes failure before callers render their error.
@@ -82,9 +88,19 @@ export class NodeConnection {
     return (this.refreshingDelegations ??= (async () => {
       try {
         await this.delegation.restore()
+        await this.manager.restore()
       } finally {
+        const parents = await this.store.transaction((s) => [
+          ...new Set(Object.values(s.managerOperations ?? {}).map((e) => e.parent)),
+        ])
+        const managerCards = Object.fromEntries(
+          await Promise.all(
+            parents.map(async (parent) => [parent, await this.manager.cards(parent)])
+          )
+        )
         const cards = await this.delegation.snapshot()
         if (!this.disposed) {
+          this.managerCards.value = managerCards
           this.delegationCards.value = cards
           if (this.client.target?.expected_node_id)
             AgentsService.getInstance().setDelegations(this.client.target.expected_node_id, cards)
@@ -133,6 +149,7 @@ export class NodeConnection {
           return
         }
         this.delegation.connectionChanged()
+        this.manager.connectionChanged()
         uiField(this.error, 'value', uiErrorMessage(''))
         this.state.value = 'connected'
         console.debug('[Abele node] connected')
@@ -150,6 +167,7 @@ export class NodeConnection {
           error.code === 'unauthorized'
         ) {
           this.delegation.connectionChanged()
+          this.manager.connectionChanged()
           // NodeClient stops cursor replay on the first unauthorized stream. Probe
           // each saved cursor independently and discard only rejected subscriptions;
           // retained events stay durable. The next reconnect can then replay B.

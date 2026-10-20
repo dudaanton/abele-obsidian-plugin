@@ -139,3 +139,71 @@ it('renders one durable result and informational question without vault markup e
     wrapper.unmount()
   }
 })
+
+it('shows a deadline as resumable and retains a report beside an extension warning', () => {
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      nodeLabel: 'Sample node',
+      card: {
+        ...nodeDelegationCardFixture(),
+        state: 'stopped',
+        reason: 'time_limit',
+        warnings: ['sample extension: shutdown warning'],
+        pendingHumanPrompts: 0,
+      },
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Paused; can continue')
+    expect(wrapper.text()).toContain('sample extension: shutdown warning')
+    expect(wrapper.text()).toContain('Implemented the sample parser change')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('answers a developer prompt through AiToolApproval in the parent card', async () => {
+  const { useVault } = await import('../helpers/testEnv')
+  useVault([])
+  const prompt = {
+    kind: 'permission' as const,
+    prompt_id: 'sample-prompt',
+    session_id: 'sample-child',
+    run_id: 'sample-run',
+    revision: 1 as const,
+    action_digest: 'a'.repeat(64),
+    expires_at: Number.MAX_SAFE_INTEGER,
+    state: 'pending' as const,
+    choice: null,
+    installation_id: null,
+    delivered: false,
+    title: 'Run sample checks',
+    tool_name: 'Bash',
+    input: { command: 'npm test' },
+  }
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: { ...nodeDelegationCardFixture(), state: 'running', prompts: [prompt] },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.find('.abele-tool-approval').text()).toContain('npm test')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Allow')!
+      .trigger('click')
+    expect(wrapper.emitted('answer')?.[0]).toEqual([prompt, 'allow', undefined])
+    await wrapper.setProps({
+      card: {
+        ...nodeDelegationCardFixture(),
+        state: 'running',
+        prompts: [prompt],
+        answers: { [prompt.prompt_id]: { choice: 'allow', state: 'pending' } },
+      },
+    })
+    expect(wrapper.find('.abele-tool-approval__actions').exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})

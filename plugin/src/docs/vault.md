@@ -2883,3 +2883,11 @@ preferences do not change the project's request files.
 
 Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;
 2, 5, 10 or 30 minutes). AI general settings transfer carries it between devices.
+
+
+Manager command and integration operations also stay in the installation-local node
+client store. They retain the parent chat identity, exact request and operation ID,
+and bounded current status for reconnect recovery. The session journal carries output
+and owner prompts; delegation cards project the child's pending prompts from that same
+journal. Answers from parent and child cards share one durable prompt identity.
+These records are never vault notes and do not travel with transferred settings.

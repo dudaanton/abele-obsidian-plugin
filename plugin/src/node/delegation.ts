@@ -1,3 +1,5 @@
+import type { Prompt } from '@abele/node-client'
+import type { PromptAnswerState } from './promptAnswers'
 import { z } from 'zod'
 import {
   DelegationSchema,
@@ -76,6 +78,11 @@ export interface DelegationCard {
   title: string
   provider: string
   state: string
+  reason?: string
+  warnings?: string[]
+  prompts?: Prompt[]
+  answers?: Record<string, PromptAnswerState>
+  promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
   pendingHumanPrompts: number
   reports: { seq: number; kind: string; text: string }[]
 }

@@ -17,7 +17,7 @@
       />
     </Setting>
     <Button
-      v-if="card.pendingHumanPrompts"
+      v-if="card.pendingHumanPrompts && !card.prompts?.length"
       data-pending-prompts
       plain
       wrap
@@ -25,6 +25,24 @@
       :text="t('streamBMeta.1f8e74f453', { p0: String(card.pendingHumanPrompts) })"
       @click="emit('open')"
     />
+    <AiToolApproval
+      v-for="prompt in card.prompts ?? []"
+      :key="prompt.prompt_id"
+      :message="promptMessage(prompt)"
+      :node-prompt="prompt"
+      :disabled="disabled"
+      :answer-state="card.answers?.[prompt.prompt_id]"
+      :diffs="card.promptDiffs?.[prompt.prompt_id]"
+      @answer="(choice, value) => emit('answer', prompt, choice, value)"
+      @stop="emit('stop', prompt)"
+    />
+    <p
+      v-for="warning in card.warnings ?? []"
+      :key="warning"
+      class="abele-node-delegation__metadata"
+    >
+      {{ warning }}
+    </p>
     <details class="abele-node-delegation__details" :open="!finished || !!card.pendingHumanPrompts">
       <summary>{{ t('node.delegation.activity') }}</summary>
       <p v-if="card.activity?.tool" class="abele-node-delegation__metadata">
@@ -56,6 +74,9 @@
   </section>
 </template>
 <script setup lang="ts">
+import AiToolApproval from './AiToolApproval.vue'
+import type { Prompt } from '@abele/node-client'
+import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
 import { computed } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
@@ -63,17 +84,20 @@ import { delegationBranchLabel } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
-const props = defineProps<{ card: DelegationCard; nodeLabel: string }>()
+const props = defineProps<{ card: DelegationCard; nodeLabel: string; disabled?: boolean }>()
 const activityPreview = computed(() => {
   const text = props.card.activity?.message ?? ''
   const characters = Array.from(text)
   return characters.length > 320 ? `…${characters.slice(-320).join('')}` : text
 })
 const finished = computed(() =>
-  ['completed', 'failed', 'cancelled', 'unknown', 'grant revoked'].includes(props.card.state)
+  ['completed', 'failed', 'cancelled', 'unknown', 'stopped', 'grant revoked'].includes(
+    props.card.state
+  )
 )
 const stateLabel = computed(() => {
   const state = props.card.state
+  if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'failed') return t('streamB.failed.031a8f')
   if (state === 'cancelled') return t('streamBMeta.8b47045eb7')
@@ -82,7 +106,19 @@ const stateLabel = computed(() => {
   if (state === 'unknown' || state === 'outcome unknown') return t('node.delegation.unknown')
   return state
 })
-const emit = defineEmits<{ open: [] }>()
+const promptMessage = (prompt: Prompt): ChatMessage =>
+  ({
+    id: prompt.prompt_id,
+    role: 'tool-call',
+    content: '',
+    toolName: prompt.tool_name,
+    toolParams: prompt.input,
+  }) as ChatMessage
+const emit = defineEmits<{
+  open: []
+  answer: [prompt: Prompt, choice: 'allow' | 'deny', value?: string]
+  stop: [prompt: Prompt]
+}>()
 </script>
 <style scoped>
 .abele-node-delegation {

@@ -1,11 +1,11 @@
 <template>
   <span class="abele-node-error-words" :title="error || undefined">{{
-    nodeErrorWords(error)
+    nodeErrorDetails(error)
   }}</span>
 </template>
 
 <script setup lang="ts">
-import { nodeErrorWords } from '@/node/errorWords'
+import { nodeErrorDetails } from '@/node/errorWords'
 defineProps<{ error?: string | null }>()
 </script>
 

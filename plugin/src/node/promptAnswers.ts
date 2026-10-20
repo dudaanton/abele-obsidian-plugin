@@ -1,4 +1,5 @@
-import { PromptSchema } from '@abele/node-protocol'
+import { FrameCodec } from '@abele/channel-protocol'
+import { PromptSchema, validateParams } from '@abele/node-protocol'
 import type { ClientState } from '@abele/node-client'
 import type { NodeClientState } from './NodeClientStore'
 
@@ -73,4 +74,67 @@ export function retainPromptAnswerIdentity(
       ...(typeof p.value === 'string' ? { value: p.value } : {}),
     }
   }
+}
+
+/** Owner UI only. Both parent and child cards share the same durable answer identity. */
+export async function answerOwnerPrompt(
+  client: import('@abele/node-client').NodeClient,
+  nodeId: string,
+  raw: import('@abele/node-client').Prompt,
+  choice: 'allow' | 'deny',
+  value?: string
+): Promise<void> {
+  const prompt = PromptSchema.parse(raw)
+  if (!client.connected) throw new Error('disconnected')
+  if (prompt.state !== 'pending') return
+  const { session_id, prompt_id, run_id, revision, action_digest } = prompt
+  const params = validateParams('prompt.answer', {
+    session_id,
+    prompt_id,
+    run_id,
+    revision,
+    action_digest,
+    choice,
+    ...(choice === 'allow' && value !== undefined ? { value } : {}),
+  })
+  const operation = crypto.randomUUID()
+  FrameCodec.encode({
+    kind: 'request',
+    request_id: 'validation',
+    operation_id: operation,
+    method: 'prompt.answer',
+    params,
+  })
+  const queued = await client.store.transaction((rawState) => {
+    const state = rawState as NodeClientState
+    if (state.node_id !== nodeId) throw new Error('node_identity_mismatch')
+    if (promptAnswerStates(state, session_id)[prompt_id]) return false
+    state.outbox.push({ operation_id: operation, method: 'prompt.answer', params })
+    return true
+  })
+  if (queued) {
+    await client.flush()
+    const receipt = await client.operationResult(operation)
+    if (!receipt) throw new Error('outcome_unknown')
+    if (receipt.error) throw new Error(receipt.error)
+  }
+}
+
+/** Owner Stop for a manager effect: these are not provider runs. */
+export async function cancelOwnerManagerRun(
+  client: import('@abele/node-client').NodeClient,
+  prompt: import('@abele/node-client').Prompt
+): Promise<void> {
+  if (!client.connected) throw new Error('disconnected')
+  const params = validateParams('command.v1.cancel', {
+    session_id: prompt.session_id,
+    run_id: prompt.run_id,
+  })
+  const operation = crypto.randomUUID()
+  await client.store.transaction((state) => {
+    state.outbox.push({ operation_id: operation, method: 'command.v1.cancel', params })
+  })
+  await client.flush()
+  const receipt = await client.operationResult(operation)
+  if (receipt?.error) throw new Error(receipt.error)
 }

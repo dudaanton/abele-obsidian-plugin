@@ -751,3 +751,42 @@ describe('trusted node delegation controller', () => {
     f.store.close()
   })
 })
+
+it('clears the previous turn report when a paused child accepts a follow-up', async () => {
+  const f = fixture()
+  await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+  await f.controller.create('parent', task)
+  f.client.delegationStatus.mockResolvedValue({
+    ...child,
+    state: 'stopped',
+    reason: 'time_limit',
+    session_head_seq: 17,
+    mailbox_head_seq: 1,
+    pending_human_prompts: 0,
+  })
+  await f.store.transaction((s) => {
+    s.events.mailbox = [
+      {
+        kind: 'event',
+        node_id: 'node',
+        stream_id: 'mailbox',
+        seq: 1,
+        actor: { kind: 'node' },
+        at: '2028-01-01T00:00:00Z',
+        type: 'delegation.result',
+        data: {
+          delegation_id: 'delegation',
+          session_id: 'child',
+          report_id: 'sample-old-report',
+          text: 'Previous sample result',
+        },
+      },
+    ]
+    s.cursors.mailbox = 1
+  })
+  await f.controller.send('parent', 'delegation', 'Continue the sample task')
+  const card = (await f.controller.cards('parent'))[0]
+  expect(card.state).toBe('running')
+  expect(card.reports).toEqual([])
+  f.store.close()
+})

@@ -1310,3 +1310,27 @@ The link is `abele-node-code:` followed by URI-encoded JSON with `scope` equal t
 `[node_id, project_id, "worktree", worktree_id]`, `path`, `line`, and `endLine`.
 For plain folders use `"workspace"` and its workspace ID. Links only open within the receiving
 chat's node access. GitHub links continue to address their original revisions.
+
+
+### Manager command and integration tools
+
+`node_command_run` runs exactly one `argv` or `command` in a registered `project_id` or
+`worktree_id`. Pass `node`, an existing `session_id`, and a stable `operation_id`.
+Optional `cwd` stays inside that target; `timeout_ms` bounds execution and `output_bytes`
+sets each output tail (1024–16384 bytes). The node must advertise `command_run_v1`.
+The initial receipt is pending owner approval. Only the owner UI answers it.
+`node_command_status` reads this parent's run using `session_id` and `run_id`, including
+exit code, bounded stdout/stderr and their truncation flags. `node_command_cancel`
+cancels that run with a retained `operation_id`. Output streams live in the manager card.
+
+`node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
+`source_worktree_id`, both branch names and full `expected_target_head` and
+`expected_source_head`, plus `node`, `session_id`, `operation_id`. It creates an owner
+prompt. Default integration is fast-forward; `rebase: true` first rebases the developer
+in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
+`outcome_unknown` directly; inspect both heads before another attempt. Never retry
+blindly or clean up an uncertain integration. Older nodes keep the existing Git tools.
+
+Run → check output and diff → integrate → remove the clean developer worktree.
+Retain the same exact arguments and operation ID to recover a lost receipt.
+Manager tools never answer developer or command prompts.

@@ -21,7 +21,7 @@ import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import { type NodeClientState, readStore } from './NodeClientStore'
 import { nodeQueueView } from './presentation'
-import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
+import { cancelOwnerManagerRun, promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec, type JournalEvent } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
 
@@ -865,6 +865,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
         throw new UiError(uiMessage('streamB.reconnectBeforeStoppingARun.5e2dbd'))
       const current = this.projection.value.prompts.find((p) => p.prompt_id === prompt.prompt_id)
       if (!current || current.state !== 'pending' || current.run_id !== prompt.run_id) return
+      if (['command.v1.run', 'git.v1.integrate'].includes(String(prompt.input?.method))) {
+        await cancelOwnerManagerRun(this.connection.client, prompt)
+        await this.refresh()
+        return
+      }
       // session.interrupt atomically denies all pending prompts and interrupts the worker.
       // Sending a deny answer first would release it to take another turn before Stop.
       await this.interrupt(prompt.run_id)

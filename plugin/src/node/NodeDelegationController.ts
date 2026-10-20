@@ -21,6 +21,7 @@ import {
   type DelegationCard,
 } from './delegation'
 import { delegatable, nodeProviders, providerAvailable } from './providers'
+import { promptAnswerStates } from './promptAnswers'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { openWindow, catchUp } from './sessionWindow'
 
@@ -371,6 +372,7 @@ export class NodeDelegationController {
       activity: card?.activity,
       state: status.state === 'completed' && !delivered ? 'receiving mailbox' : status.state,
       session_head_seq: status.session_head_seq,
+      reason: status.reason,
       pending_human_prompts: status.pending_human_prompts,
       reports: card?.reports ?? [],
     }
@@ -471,7 +473,11 @@ export class NodeDelegationController {
           const current = await this.store.transaction(
             (s) => storage(s).tasks[child.delegation_key].status?.state
           )
-          if (current && ['completed', 'failed', 'cancelled', 'unknown'].includes(current)) return
+          if (
+            current &&
+            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(current)
+          )
+            return
           try {
             const status = await this.client.delegationStatus(child.delegation_id)
             await this.observeTarget(child.delegation_id, child.session_id)
@@ -521,7 +527,7 @@ export class NodeDelegationController {
             const previous = this.workspaces.get(child.workspace_id)
             if (
               previous?.state === state &&
-              (['completed', 'failed', 'unknown', 'cancelled'].includes(state) ||
+              (['completed', 'failed', 'unknown', 'cancelled', 'stopped'].includes(state) ||
                 Date.now() - previous.checkedAt < 5000)
             )
               continue
@@ -595,23 +601,32 @@ export class NodeDelegationController {
           if (
             child &&
             t.status &&
-            ['completed', 'failed', 'cancelled', 'unknown'].includes(t.status.state) &&
+            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(t.status.state) &&
             (s.cursors[child.mailbox_stream_id] ?? 0) < t.status.mailbox_head_seq
           )
             state = `${t.status.state} · receiving mailbox`
+          let reason: string | undefined = t.status?.reason
           for (const event of events) {
-            const data = event.data as { delegation_id?: string; state?: string; text?: string }
+            const data = event.data as {
+              delegation_id?: string
+              state?: string
+              text?: string
+              reason?: string
+            }
             if (data.delegation_id !== child?.delegation_id) continue
             if (
               event.type === 'delegation.terminal' &&
               data.state &&
               event.seq > (t.followupMailboxSeq ?? 0)
-            )
+            ) {
               state = data.state
+              reason = data.reason
+            }
             if (
               ['delegation.progress', 'delegation.question', 'delegation.result'].includes(
                 event.type
               ) &&
+              event.seq > (t.followupMailboxSeq ?? 0) &&
               typeof data.text === 'string' &&
               !reports.some((r) => r.seq === event.seq)
             )
@@ -650,7 +665,26 @@ export class NodeDelegationController {
                 }
               : undefined,
             state,
-            pendingHumanPrompts: ['completed', 'failed', 'cancelled', 'unknown'].includes(state)
+            reason,
+            prompts: transcript?.prompts.filter((p) => p.state === 'pending') ?? [],
+            promptDiffs: transcript?.promptDiffs,
+            answers: child ? promptAnswerStates(s, child.session_id) : {},
+            warnings: canRead
+              ? (s.events[child!.session_id] ?? [])
+                  .filter((e) => e.type === 'pi.extension.warning')
+                  .slice(-5)
+                  .map((e) => {
+                    const data = e.data as { extension?: string; event?: string; error?: string }
+                    return [data.extension, data.event, data.error].filter(Boolean).join(': ')
+                  })
+              : [],
+            pendingHumanPrompts: [
+              'completed',
+              'failed',
+              'cancelled',
+              'unknown',
+              'stopped',
+            ].includes(state)
               ? 0
               : (t.status?.pending_human_prompts ?? 0),
             reports,

@@ -1580,7 +1580,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
     if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove') return true
-    if (toolName === 'node_delegations' || toolName === 'node_delegation_status') return false
+    if (
+      [
+        'node_delegations',
+        'node_delegation_status',
+        'node_command_run',
+        'node_command_status',
+        'node_command_cancel',
+        'node_git_integrate',
+      ].includes(toolName)
+    )
+      return false
     if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
     if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'

@@ -113,7 +113,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegate',
       'Delegate to node',
-      'Assign a bounded task to an owner-approved project and available Claude Code, pi or Codex provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions remain prompts in the linked child chat. This is not a filesystem sandbox.',
+      'Assign a bounded task to an owner-approved project and available Claude Code, pi or Codex provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions appear in the parent delegation card and linked child chat; only the owner answers them. This is not a filesystem sandbox.',
       {
         type: 'object',
         properties: {
@@ -168,7 +168,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegation_status',
       'Read node task status',
-      'Read child status and bounded mailbox reports. pending_human_prompts means a human must open the child chat; mailbox questions cannot approve execution.',
+      'Read child status and bounded mailbox reports. pending_human_prompts means the owner must answer in the parent card or child chat; mailbox questions cannot approve execution.',
       { type: 'object', properties: { node, delegation_id }, required: ['node', 'delegation_id'] },
       async (parent, params, service) => {
         const input = Target.parse(params)

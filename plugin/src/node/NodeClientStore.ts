@@ -6,9 +6,11 @@ import { retainPromptAnswerIdentity } from './promptAnswers'
 import { FileDraftSchema, type FileDraft } from './fileDrafts'
 import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
+import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
 import { trimWindows } from './sessionWindow'
 
 export interface NodeClientState extends ClientState {
+  managerOperations?: Record<string, ManagerOperation>
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
   fileDrafts?: Record<string, FileDraft>
@@ -39,6 +41,7 @@ const StateSchema = z
     operationRequests: z
       .record(z.string(), z.object({ method: z.string(), params: z.unknown() }).strict())
       .optional(),
+    managerOperations: z.record(z.string(), ManagerOperationSchema).optional(),
     chatMutations: z.record(z.string(), NodeMutationRecordSchema).optional(),
     delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
