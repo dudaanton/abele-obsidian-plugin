@@ -5417,5 +5417,98 @@
       "es",
       "de"
     ]
+  },
+  "streamB.nodeHistoryFreshPreview": {
+    "englishHash": "e727af20b73300bd7dacfe7763531304070f39f2418ed51fe2fb44c577e2c680"
+  },
+  "streamB.nodeHistoryCannotRead": {
+    "englishHash": "5bd484af98797ee933e44a60e8471a9c978aa9c35477d8e1dfece802c6374947"
+  },
+  "streamB.nodeHistoryUnsupported": {
+    "englishHash": "6f75a4a3b9c1a51da2192869ff21175a28dd7896fb29de3b9425097a43b100f2"
+  },
+  "streamB.nodeHistoryOffline": {
+    "englishHash": "d8b54c5aca24829798bbd4d8453cc7899ad0a2f85d65a4b692e19dbf6d254cee"
+  },
+  "streamB.nodeHistoryLegacyTarget": {
+    "englishHash": "9de5d15c3c8e927b78027ce31a34b7db1d46d446f014a2deef54c8dd1e75a728"
+  },
+  "streamB.nodeHistoryLoadingTarget": {
+    "englishHash": "b4025641b75782eec79124f6aed3db9b30243d2ebfa2a0523357f527b8389267"
+  },
+  "streamB.nodeHistoryStopFirst": {
+    "englishHash": "608dc1419d01fa944cbcbc5d2e4b267e1c9abb5902c27c44ecd28119be563aa3"
+  },
+  "streamB.nodeHistoryBusy": {
+    "englishHash": "6a4287615acfc8b69234b64ef614c50543f393a33d75198cc7cce496ac1c801b"
+  },
+  "streamB.nodeHistoryNoCheckpoint": {
+    "englishHash": "3be9508fb01602950e889f3237c955a997da6947ce33f3ff4ddb1c5cfc9343d8"
+  },
+  "streamB.nodeHistoryEditPrompt": {
+    "englishHash": "a11f3dfc7c8d7f80b1ac7071416ceec46a53dc2c2a1367d9bc4ffef60434c7ad"
+  },
+  "streamB.nodeHistoryEditLimit": {
+    "englishHash": "1311b15e5ad7cb2bce5a8a427663eab5e380b3c28012cd18bd28aa71c2426782"
+  },
+  "streamB.nodeHistoryFilesOff": {
+    "englishHash": "ffc101fa6ecaef23fd1952a47c196684b2d5a0b8fb1b1d04ef34b9a2c779f65c"
+  },
+  "streamB.nodeHistoryFileMode": {
+    "englishHash": "96fd83f4637937a392430bc8736f5b516112576164e520ac21e66a41deab7ce8"
+  },
+  "streamB.nodeHistoryTruncated": {
+    "englishHash": "81f8b1ada2284a7a294df57e154b0673ace8358a2029404d00dc5ed437f370d0"
+  },
+  "streamB.nodeHistoryBinary": {
+    "englishHash": "24a20774ee238b82e0e367b8a40ef47bf8ac9a227a7b50c78268c1b174e157de"
+  },
+  "streamB.nodeHistoryNoReplay": {
+    "englishHash": "8bafed2a279710e84bcadab283c636484654d34ec09269e6d49d2a8bf15cdd08"
+  },
+  "streamB.nodeHistoryRefreshPreview": {
+    "englishHash": "30331ae7e515ccea290f56823831a5494fee3b122c43d423e6caaec0ece67999"
+  },
+  "streamB.nodeHistoryEditSend": {
+    "englishHash": "5914a277279b9bda0434263d27dd26bcc7e1366d336173a380af7b0ee65d429c"
+  },
+  "streamB.nodeHistoryRestored": {
+    "englishHash": "e35d2b0e396b4cea61976219b37facca9637c78a26474fb215edccf9d4cfa087"
+  },
+  "streamB.nodeHistoryFilesRestored": {
+    "englishHash": "447cd8edb4318444f2c5d844650ee3bf1087c6d400c7080f133a7f796b2793c8"
+  },
+  "streamB.nodeStopped": {
+    "englishHash": "bd1c5309d79c7f706547db5cb273b39fcb5ecdf9fe7f1eebb2dfe0d81fa1e9cf"
+  },
+  "streamB.nodeStartFailed": {
+    "englishHash": "50a254c9e94e5ce2648c3b2d8bdd1b2a301363b8e2e04043da62048fefd59312"
+  },
+  "streamB.nodeTestAgent": {
+    "englishHash": "355cc8aa37a6db102c9935de3fbe0e70c6a4fb0ad6b3abccdcf6d8a17fcb49a6"
+  },
+  "streamB.nodeDefaultAccount": {
+    "englishHash": "f25605c25acd7627d05ef4848dac8078b24f2b8b53e38f8f8f8c6a441680dd09"
+  },
+  "streamB.nodeExtensionFailed": {
+    "englishHash": "6cc72a6a86ddc75f2ab8bf1bf8d8f8c024a00b92501d830167051eba93b9bcf2"
+  },
+  "streamB.nodeUnknownExtension": {
+    "englishHash": "9b08515e2dd0d03ae97e60c124dae778d1901a8f95cfa958279d4a66e5a373d1"
+  },
+  "streamB.nodeMissingDiagnostic": {
+    "englishHash": "727e5e50c8a7c094501e895889f1367baf9b0382b86d2fe644b8be4c7f2f0e8f"
+  },
+  "streamB.nodeExtensionMissingDiagnostic": {
+    "englishHash": "57a869126861f80fc0622369185d90a1633994b39a900b0e79b260ac42e19f50"
+  },
+  "streamB.nodeAttachTextFile": {
+    "englishHash": "3e8e00acaf3764f8fd07eeca743e432ab8ad1b27b98e4b6564e93f3517b96eeb"
+  },
+  "streamB.nodeAttachmentTooLarge": {
+    "englishHash": "895351fdee4dd90677e2f84932fc100f7bf3755d9f45bf904ccbf488008ae07b"
+  },
+  "streamB.nodeAttachmentTextOnly": {
+    "englishHash": "9c886cea0ba9a00b85cbbadd6c0bd4eb50b7f22f74450cf399928738624e5cc3"
   }
 }

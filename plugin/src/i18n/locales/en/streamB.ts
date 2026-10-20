@@ -32,11 +32,7 @@ export const streamB = {
   'streamB.nodeHistoryRestored': 'Chat history restored. Files unchanged.',
   'streamB.nodeHistoryFilesRestored': 'Chat history restored with the confirmed file changes.',
   'streamB.nodeStopped': 'Stopped by you',
-  'streamB.nodeAttachTextFile': 'Attach a text file from this device',
-  'streamB.nodeAttachmentTooLarge':
-    'This file is too large to include in one message. Choose a text file up to 48 KB.',
-  'streamB.nodeAttachmentTextOnly':
-    'This node accepts text files in messages. Choose a UTF-8 text file.',
+  'streamB.nodeStartFailed': 'The agent could not start: {reason}.',
   'streamB.nodeTestAgent': 'Test agent',
   'streamB.nodeDefaultAccount': 'Node default account',
   'streamB.nodeExtensionFailed': 'Extension {extension} failed: {reason}',
@@ -44,7 +40,11 @@ export const streamB = {
   'streamB.nodeMissingDiagnostic': 'The node did not include the reason.',
   'streamB.nodeExtensionMissingDiagnostic':
     'A pi extension failed. This node did not include the extension name or reason.',
-  'streamB.nodeStartFailed': 'The agent could not start: {reason}.',
+  'streamB.nodeAttachTextFile': 'Attach a text file from this device',
+  'streamB.nodeAttachmentTooLarge':
+    'This file is too large to include in one message. Choose a text file up to 48 KB.',
+  'streamB.nodeAttachmentTextOnly':
+    'This node accepts text files in messages. Choose a UTF-8 text file.',
   'streamB.editorMessagePlaceholder': 'Message...',
   'streamB.runSummary.start.done': 'Started',
   'streamB.runSummary.start.running': 'Starting',
