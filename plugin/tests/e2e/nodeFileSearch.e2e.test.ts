@@ -73,6 +73,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       cwd: project,
     })
   try {
+    const comparisonBase = (await git('rev-parse', 'HEAD')).stdout.trim()
     mkdirSync(resolve(project, 'src'))
     mkdirSync(resolve(project, 'src/a-long-sample-directory/another-long-sample-directory'), {
       recursive: true,
@@ -226,7 +227,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       for (const comparison of [false, true]) {
         if (comparison) {
           await evalLong(`(async()=>{${prelude}
-            const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:{kind:'committed',base:'HEAD~1'}}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('[data-node-find]'),'Committed comparison');return 'comparison file'})()`)
+            const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:{kind:'committed',base:${JSON.stringify(comparisonBase)}}}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('[data-node-find]'),'Committed comparison');return 'comparison file'})()`)
         } else {
           await node.open(ids.session, 'Source links')
           await evalLong(
