@@ -6,6 +6,7 @@ import { t } from '@/i18n'
 import { h, shallowRef, watch } from 'vue'
 import { ChannelError } from '@abele/channel-protocol'
 import Modal from '@/components/obsidian/Modal.vue'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { mountKit } from '@/components/obsidian/mount'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
 import WorktreeDialog from '@/components/nodeWork/WorktreeDialog.vue'
@@ -200,6 +201,15 @@ export async function openNodeFolderPicker(
           })
         throw error
       }
+      if (
+        project.trust === 'untrusted' &&
+        (await confirmDialog({
+          title: t('node.trust.title'),
+          message: t('node.trust.message', { path: project.root_path }),
+          confirmText: t('node.trust.allow'),
+        }))
+      )
+        await mutations.trust(project.project_id)
       await model.refresh()
       const target = model.targets.value.find(
         (translationItem) => translationItem.projectId === project.project_id

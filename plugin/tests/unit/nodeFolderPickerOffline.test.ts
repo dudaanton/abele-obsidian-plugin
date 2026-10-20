@@ -6,6 +6,8 @@ import { NodePathClientPort, supportedNodePathCapabilities } from '@/node/NodePa
 import { NodePathModel } from '@/node/NodePathModel'
 import { ChannelError } from '@abele/channel-protocol'
 import { MemoryClientStore } from '@abele/node-client'
+const trustChoice = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: trustChoice }))
 
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: { getInstance: () => ({ app: { workspace: { containerEl: document.body } } }) },
@@ -204,6 +206,32 @@ function showFixture() {
   }
   return { model, connection, register }
 }
+it.each([true, false])(
+  'offers trust while registering the chosen folder, without creating a chat (allow=%s)',
+  async (allow) => {
+    const f = showFixture()
+    trustChoice.mockClear()
+    trustChoice.mockResolvedValueOnce(allow)
+    f.register.mockResolvedValueOnce({
+      project_id: 'fresh-project',
+      root_path: '/sample/repo',
+      trust: 'untrusted',
+    })
+    const trust = vi.fn(async () => ({}))
+    Object.assign(f.connection.client.nodePath, { trust })
+    f.model.refresh.mockImplementation(async () => {
+      f.model.targets.value = [{ id: 'fresh-root', projectId: 'fresh-project' }] as never
+    })
+    await openNodeFolderPicker(f.model as never, f.connection as never)
+    await typeChild('repo')
+    await press('Show')
+    expect(trustChoice).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Trust this folder for agents?' })
+    )
+    expect(trust).toHaveBeenCalledTimes(allow ? 1 : 0)
+    expect(f.model.select).toHaveBeenCalledWith('fresh-root')
+  }
+)
 it('keeps Show refusals visible with words and the protocol code', async () => {
   const f = showFixture()
   f.register.mockRejectedValue(new ChannelError('permission_denied'))

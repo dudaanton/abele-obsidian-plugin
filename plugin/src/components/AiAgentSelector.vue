@@ -101,7 +101,14 @@ const modelLabel = computed(() => {
   return model ? model.name || model.id : ''
 })
 
-const modelOverridden = computed(() => session.value?.isOverridden?.('modelId') ?? false)
+const modelOverridden = computed(() => {
+  const s = session.value
+  return (
+    !!s?.isOverridden?.('modelId') &&
+    (s.activeProviderId.value !== s.agent.value?.providerId ||
+      s.activeModelId.value !== s.agent.value?.modelId)
+  )
+})
 
 /** The agent's own model, named in the tooltip and on the way back. */
 const agentModelLabel = computed(() => {
@@ -124,7 +131,7 @@ watchEffect(() => {
       t('streamB.thisChatAnswersWithChangeOrGo.6b12b6', {
         v0: String(modelLabel.value),
         v1: String(
-          agentModelLabel.value
+          agentModelLabel.value && agentModelLabel.value !== modelLabel.value
             ? t('streamB.notS.284282', { v0: String(agent), v1: String(agentModelLabel.value) })
             : ''
         ),
