@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { addFolderDebugMenu, folderDebugReason } from '@/debugger/folderActions'
+import { addFolderDebugMenu, folderDebugReason, commandTarget } from '@/debugger/folderActions'
+import { NodePathService } from '@/node/NodePathService'
 import { NodeService } from '@/node/NodeService'
 import type { Menu } from 'obsidian'
 import { startProgram } from '@/debugger/startProgram'
@@ -23,6 +24,18 @@ vi.mock('@/node/nodePathNavigation', () => ({
 afterEach(() => {
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
+})
+
+it('resolves a folder for commands before the Node sidebar has ever opened', async () => {
+  const target = owner().target
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    ready: vi.fn(async () => {}),
+    model: () => ({ current: ref(target) }),
+  } as never)
+  expect(await commandTarget()).toEqual(target)
 })
 
 // Native menus freeze their rows at show time, ignoring subsequent item mutations.

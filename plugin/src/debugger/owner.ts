@@ -16,11 +16,11 @@ export const isFolderOwner = (owner: DebugOwner): owner is FolderDebugOwner =>
   'kind' in owner && owner.kind === 'folder-debug'
 
 /** UI lookup identity only; folder keys are never sent as conversation IDs. */
-export function debugIdentity(owner: DebugOwner) {
+export function debugIdentity(owner: DebugOwner, sessionId?: string) {
   return isFolderOwner(owner)
     ? {
         registrationId: owner.target.registrationId,
-        key: `folder:${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([owner.target.kind, owner.target.id]))))}`,
+        key: `folder:${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([owner.target.kind, owner.target.id, ...(sessionId ? [sessionId] : [])]))))}`,
       }
     : { registrationId: owner.reference.registrationId, key: owner.reference.sessionId }
 }

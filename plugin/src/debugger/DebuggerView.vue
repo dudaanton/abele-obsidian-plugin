@@ -8,6 +8,16 @@
       :text="t('debug.empty')"
     />
     <template v-else>
+      <TreeItem
+        v-for="peer in peers"
+        :key="peer.sessionId"
+        class="abele-debug-view__session"
+        :data-session-id="peer.sessionId"
+        :text="`${peer.controller.session.program} · ${peer.sessionId}`"
+        :active="peer === binding"
+        :flair="peerState(peer)"
+        @click="chooseSession(peer)"
+      />
       <div v-if="error" class="abele-debug-view__error" role="alert">
         <NodeErrorText :error="error" />
       </div>
@@ -47,11 +57,36 @@ import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
-import { DebuggerService } from './DebuggerService'
+import TreeItem from '@/components/obsidian/TreeItem.vue'
+import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { openDebugValue } from './DebugValueTab'
 import { browserMenu, folderMenu, openRun, runMenu } from './trace/panel'
 const service = DebuggerService.instance
 const binding = service.active
+function peerState(peer: DebuggerBinding) {
+  const session = peer.controller.session
+  return session.status === 'paused'
+    ? t('streamC.e159b06187d369a0')
+    : session.status === 'running'
+      ? t('streamC.f4ccae29e1bb0c20')
+      : session.status === 'starting'
+        ? t('streamC.bbe5fc3b9ef39f99')
+        : session.status === 'exited'
+          ? t('streamC.a35ec6a4c0b7f680')
+          : t('streamC.24b289c6dcaf78b5', { v1: session.seen ?? '' })
+}
+const peers = computed(() => {
+  if (!binding.value) return []
+  const peers = service.peers(binding.value)
+  for (const peer of peers) void peer.revision.value
+  return peers.length > 1 ? peers : []
+})
+async function chooseSession(peer: DebuggerBinding) {
+  const owner = service.owner(peer)
+  if (!owner || !peer.sessionId) return
+  const { showSession } = await import('./register')
+  await showSession(owner, peer.sessionId)
+}
 const session = computed(() => {
   binding.value?.revision.value
   const b = binding.value

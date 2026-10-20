@@ -21,6 +21,7 @@ export class NodePathService {
   private stops = new Map<string, WatchStopHandle>()
   private loads = new Map<string, Promise<void>>()
   private cacheStops = new Map<string, WatchStopHandle>()
+  private debugStops = new Map<string, WatchStopHandle>()
   private readonly seen = new Map<string, string>()
   private stopNodes: WatchStopHandle
   private constructor() {
@@ -39,6 +40,8 @@ export class NodePathService {
           this.loads.delete(id)
           this.cacheStops.get(id)?.()
           this.cacheStops.delete(id)
+          this.debugStops.get(id)?.()
+          this.debugStops.delete(id)
           app.saveLocalStorage(`abele-node-path-cache:${id}`, null)
         }
     })
@@ -82,6 +85,17 @@ export class NodePathService {
       )
     )
     this.models.set(registrationId, model)
+    this.debugStops.set(
+      registrationId,
+      watch(model.selected, () => {
+        const target = model.current.value
+        if (!target) return
+        void import('@/debugger/DebuggerService').then(({ DebuggerService }) => {
+          if (this.models.get(registrationId) === model && model.current.value === target)
+            DebuggerService.instance.selectFolder(target)
+        })
+      })
+    )
     this.stops.set(
       registrationId,
       watch(connection.state, (state) => {
@@ -120,10 +134,12 @@ export class NodePathService {
     this.stopNodes()
     for (const stop of this.stops.values()) stop()
     for (const stop of this.cacheStops.values()) stop()
+    for (const stop of this.debugStops.values()) stop()
     for (const model of this.models.values()) model.destroy()
     this.stops.clear()
     this.models.clear()
     this.loads.clear()
     this.cacheStops.clear()
+    this.debugStops.clear()
   }
 }

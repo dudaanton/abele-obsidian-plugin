@@ -197,6 +197,12 @@ the node's captured patch rather than working-tree bytes. Its base stays with th
 the drawer changes its comparison.
 Debug source mappings may also retain the requested line number so a source opened from a
 recorded step or breakpoint list reopens with that line highlighted.
+The Debug leaf retains its selected folder target and debug session ID, plus at most 256
+source IDs, relative paths and session incarnations in layout state. Reopening observes the
+node's retained sessions; it never starts or reattaches a program automatically. Source mappings
+are used only while their session and incarnation still match. Breakpoint locations retained
+in memory can be carried to an explicit attach to the same process and inspector port; source
+admission and normal breakpoint approval still apply.
 Selected file or comparison text can be quoted into a chat draft with its relative path, line
 range and comparison side. Ask here creates a node chat bound to that file's target; Add to
 chat uses an explicitly chosen Obsidian chat. Neither action sends a provider turn or grants

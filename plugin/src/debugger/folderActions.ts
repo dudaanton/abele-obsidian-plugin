@@ -156,7 +156,7 @@ export async function addFolderDebugMenu(
 }
 
 /** The active file's folder first, otherwise the place selected in the node panel. */
-function commandTarget(): PathTarget | undefined {
+export async function commandTarget(): Promise<PathTarget | undefined> {
   const workspace = GlobalStore.getInstance().app.workspace
   const active = workspace.getMostRecentLeaf()?.getViewState()
   if (active?.type === 'abele-node-file') {
@@ -166,13 +166,24 @@ function commandTarget(): PathTarget | undefined {
   const leaf = workspace.getLeavesOfType('abele-node-sidebar')[0]
   const registrationId = (leaf?.getViewState().state as { registrationId?: string } | undefined)
     ?.registrationId
-  return registrationId
-    ? (NodePathService.getInstance().model(registrationId).current.value ?? undefined)
-    : undefined
+  const paths = NodePathService.getInstance()
+  if (registrationId) {
+    await paths.ready(registrationId)
+    const current = paths.model(registrationId).current.value
+    if (current) return current
+  }
+  // Commands are available before the sidebar creates a path model. Restore its remembered
+  // folder and load the node's folders when this device has no remembered selection yet.
+  for (const node of NodeService.getInstance().nodes.value) {
+    await paths.ready(node.id)
+    const target = paths.model(node.id).current.value
+    if (target) return target
+  }
+  return undefined
 }
 export function registerFolderDebugCommands(plugin: Plugin): void {
-  const callback = (action: 'open' | 'run' | 'attach') => () => {
-    const target = commandTarget()
+  const callback = (action: 'open' | 'run' | 'attach') => async () => {
+    const target = await commandTarget()
     if (target) void runFolderDebug(target, action)
     else new Notice(t('debug.noFolder'))
   }

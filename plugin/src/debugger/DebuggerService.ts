@@ -34,6 +34,8 @@ const WAIT_ROUND_MS = 4000
 export class DebuggerBinding {
   readonly revision = shallowRef(0)
   readonly controller: DebuggerController
+  attachmentKey?: string
+  retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
   /** The session's recording, where the node records runs. */
   trace?: TraceSession
   /** Runs the program last started from this chat again, with the same files: Restart in the panel. */
@@ -61,6 +63,11 @@ export class DebuggerBinding {
           ),
       },
       () => {
+        if (
+          this.controller?.current &&
+          !['exited', 'lost'].includes(this.controller.session.status)
+        )
+          this.retainedBreakpoints = this.controller.knownBreakpoints()
         ++this.revision.value
       }
     )
@@ -256,7 +263,8 @@ export class DebuggerBinding {
         this.loadedEpoch = epoch
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
-        if (f) DebuggerService.instance.reveal(this, f.file, f.line)
+        if (f && DebuggerService.instance.active.value === this)
+          DebuggerService.instance.reveal(this, f.file, f.line)
       }
     })().finally(() => {
       this.refreshing = undefined
@@ -266,7 +274,8 @@ export class DebuggerBinding {
     if (this.disposed) return
     console.debug('[debugger] Request unavailable', error)
     this.controller.error = error instanceof Error ? error.message : t('streamC.e6d2c5631ed60d81')
-    this.controller.disconnected()
+    if (this.connection.state.value !== 'connected') this.controller.disconnected()
+    else ++this.revision.value
   }
   private stopWatch() {
     ++this.grantGeneration
@@ -416,14 +425,123 @@ export class DebuggerService {
   }
   readonly active = shallowRef<DebuggerBinding | null>(null)
   private readonly bindings = new Map<string, DebuggerBinding>()
+  private readonly owners = new WeakMap<DebuggerBinding, DebugOwner>()
+  owner(binding: DebuggerBinding) {
+    return this.owners.get(binding)
+  }
+  folder(binding: DebuggerBinding) {
+    return this.folders.get(binding)?.target
+  }
+  forAttachment(owner: DebugOwner, key: string) {
+    const identity = debugIdentity(owner)
+    return [...this.bindings.values()].find((binding) => {
+      if (binding.registrationId !== identity.registrationId || binding.attachmentKey !== key)
+        return false
+      const folder = this.folder(binding)
+      return isFolderOwner(owner)
+        ? folder?.kind === owner.target.kind && folder.id === owner.target.id
+        : binding.conversationId === identity.key
+    })
+  }
+  selectionState() {
+    const binding = this.active.value
+    const target = binding && this.folder(binding)
+    if (!binding?.sessionId || !target) return {}
+    return {
+      sessionId: binding.sessionId,
+      target,
+      sources: [
+        ...(this.sources.get(this.key(binding.registrationId, binding.conversationId)) ?? []),
+      ]
+        .filter(([, source]) => source.debugSessionId === binding.sessionId)
+        .slice(0, 256)
+        .map(([sourceId, source]) => ({
+          sourceId,
+          path: source.path,
+          incarnation: source.incarnation,
+        })),
+    }
+  }
+  async restoreSelection(raw: unknown, ownerOf: (target: PathTarget) => DebugOwner) {
+    const parsed = z
+      .object({
+        sessionId: z.string().min(1).max(128),
+        target: z.unknown(),
+        sources: z
+          .array(
+            z.object({
+              sourceId: z.string().max(128),
+              path: z.string().max(4096),
+              incarnation: z.string().max(128),
+            })
+          )
+          .max(256)
+          .default([]),
+      })
+      .safeParse(raw)
+    if (!parsed.success) return
+    const { NodePathTabSchema } = await import('@/node/nodePathNavigation')
+    const tab = NodePathTabSchema.safeParse({ kind: 'history', target: parsed.data.target })
+    if (!tab.success) return
+    const owner = ownerOf(tab.data.target)
+    await owner.connection.connect()
+    const binding = this.binding(owner, parsed.data.sessionId)
+    for (const source of parsed.data.sources)
+      this.registerSource(
+        binding.registrationId,
+        binding.conversationId,
+        source.sourceId,
+        source.path,
+        parsed.data.sessionId,
+        source.incarnation,
+        tab.data.target
+      )
+    this.select(binding)
+    await binding.open(parsed.data.sessionId)
+    await this.discover(owner)
+  }
+  peers(binding: DebuggerBinding) {
+    void this.sourceRevision.value
+    const target = this.folder(binding)
+    if (!target) return [binding]
+    return [...this.bindings.values()].filter((candidate) => {
+      const folder = this.folder(candidate)
+      return (
+        folder?.registrationId === target.registrationId &&
+        folder.kind === target.kind &&
+        folder.id === target.id &&
+        !!candidate.sessionId
+      )
+    })
+  }
+  async discover(owner: DebugOwner) {
+    if (!isFolderOwner(owner)) return
+    const sessions = await this.sessions(owner)
+    for (const s of new Map(sessions.map((s) => [s.debug_session_id, s])).values()) {
+      const binding = this.binding(owner, s.debug_session_id)
+      if (!binding.sessionId) await binding.open(s.debug_session_id)
+    }
+    ++this.sourceRevision.value
+  }
   private readonly revealers = new Set<(request: DebugSourceReveal) => boolean>()
   readonly sources = new Map<string, Map<string, SourceMapping>>()
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
   }
   binding(presenter: DebugOwner, sessionId?: string) {
-    const identity = debugIdentity(presenter)
+    const identity = debugIdentity(presenter, sessionId)
     if (isFolderOwner(presenter)) {
+      if (sessionId) {
+        const existing = [...this.bindings.values()].find(
+          (binding) =>
+            binding.registrationId === identity.registrationId && binding.sessionId === sessionId
+        )
+        if (existing) {
+          this.owners.set(existing, presenter)
+          this.folders.set(existing, { sessionId, target: { ...presenter.target } })
+          return existing
+        }
+      }
       if (!sessionId) {
         const selected = this.active.value
         if (
@@ -432,14 +550,16 @@ export class DebuggerService {
           selected.registrationId === identity.registrationId
         )
           return selected
-      } else identity.key += `:session:${sessionId}`
+      }
     }
     const key = this.key(identity.registrationId, identity.key)
     let binding = this.bindings.get(key)
     if (!binding) {
       binding = new DebuggerBinding(presenter.connection, identity.key, identity.registrationId)
       this.bindings.set(key, binding)
+      ++this.sourceRevision.value
     }
+    this.owners.set(binding, presenter)
     if (isFolderOwner(presenter)) {
       const tracked = this.folders.get(binding)
       if (!tracked) this.folders.set(binding, { sessionId: '', target: { ...presenter.target } })
@@ -463,6 +583,10 @@ export class DebuggerService {
   }
   select(binding: DebuggerBinding) {
     this.active.value = binding
+    ++this.sourceRevision.value
+  }
+  selectFolder(target: PathTarget) {
+    this.active.value = this.folderBinding(target) ?? null
     ++this.sourceRevision.value
   }
   /** A run belongs to one session on one node, even when another debugger is active. */

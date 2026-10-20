@@ -1,5 +1,5 @@
 import { t } from '@/i18n'
-import { ItemView, SuggestModal, Notice, type Plugin } from 'obsidian'
+import { ItemView, SuggestModal, Notice, type Plugin, type ViewStateResult } from 'obsidian'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { debugTarget, isFolderOwner, type DebugOwner } from './owner'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
@@ -13,6 +13,18 @@ import { revealSidebarView } from '@/views/revealSidebarView'
 export const DEBUG_VIEW_TYPE = 'abele-debug-view'
 export class DebugView extends ItemView {
   private vue?: KitMount
+  getState() {
+    return DebuggerService.instance.selectionState()
+  }
+  async setState(state: unknown, result: ViewStateResult) {
+    try {
+      const { folderOwner } = await import('./folderActions')
+      await DebuggerService.instance.restoreSelection(state, folderOwner)
+    } catch (error) {
+      console.debug('[debugger] Saved session unavailable', error)
+    }
+    await super.setState(state, result)
+  }
   getViewType() {
     return DEBUG_VIEW_TYPE
   }
@@ -87,6 +99,10 @@ export async function showSession(presenter: DebugOwner, sessionId: string) {
   // Opening the session may reveal its paused source and close a phone drawer.
   // Show Debug after that navigation, so the controls stay on screen.
   await binding.open(sessionId)
+  if (isFolderOwner(presenter))
+    void service
+      .discover(presenter)
+      .catch((error) => console.debug('[debugger] Other sessions unavailable', error))
   if (isFolderOwner(presenter)) {
     // The node retains the recipe, so ended sessions can restart after reopening the plugin.
     const restart = async () => {
@@ -122,6 +138,7 @@ export async function showSession(presenter: DebugOwner, sessionId: string) {
   // The shared reveal: on a phone a drawer can count as open while nothing of it is on screen,
   // and only closing and opening it again shows the panel.
   await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
+  GlobalStore.getInstance().app.workspace.requestSaveLayout?.()
 }
 /** Runs a program of the chat's folder under the debugger and shows its session. */
 export async function startNodeProgram(presenter: DebugOwner) {

@@ -5,6 +5,18 @@ import { DebuggerControlMethodSchemas } from '@abele/node-protocol'
 import { DebuggerBinding } from '@/debugger/DebuggerService'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('keeps a session request failure distinct from a lost node connection', () => {
+  const connection = { state: ref('connected') } as unknown as NodeConnection
+  const binding = new DebuggerBinding(connection, 'sample-chat', 'sample-registration')
+  try {
+    binding.controller.observe({ observation: 'current', snapshot: debuggerStatus().snapshot })
+    binding.fail(new Error('Cannot resolve sample module'))
+    expect(binding.controller.session.status).toBe('paused')
+    expect(binding.controller.error).toBe('Cannot resolve sample module')
+  } finally {
+    binding.destroy()
+  }
+})
 it('shows a native launch that terminates before its first stop without replaying any effect', async () => {
   const starting = debuggerStatus({
     lifecycle: 'configuring',
