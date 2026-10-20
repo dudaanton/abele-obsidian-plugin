@@ -38,6 +38,7 @@ const probe = (screen: string) => `(async () => {
     if (tab === prior) throw Error('No sample tab available')
     session = chats.getSession(tab)
     session.checkAnswer = async () => {}
+    session.runAgentLoop = async () => {}
     session.scopeResolver.setFullVaultAccess(true)
     session.permissionMode.value = 'confirm-all'
     session.toolModes.value = { ...session.toolModes.value, edit: 'ask', create: 'ask', mv: 'ask', rm: 'ask' }
@@ -47,6 +48,7 @@ const probe = (screen: string) => `(async () => {
     const quote = document.querySelector('.abele-chat-msg_user blockquote')
     report.quoteWidth = quote.getBoundingClientRect().width
     await shot('quote')
+    await session.getTools().find(tool => tool.name === 'read').execute('sample-read', { path: root + '/sample.md' })
     await pending('sample-edit', 'edit', { path: root + '/sample.md', old_string: 'Before', new_string: 'Proposed\\nSecond line' })
     document.querySelector('.abele-tool-approval__more').click()
     await until(() => [...document.querySelectorAll('.menu-item')].some(el => el.textContent.trim() === 'Edit before allowing'))
@@ -60,6 +62,7 @@ const probe = (screen: string) => `(async () => {
     ;[...document.querySelectorAll('.abele-tool-approval button')].find(el => el.textContent === 'Allow as edited').click()
     await until(() => !session.pendingToolCalls.value.length && !session.isExecutingTool.value)
     report.edited = await app.vault.adapter.read(root + '/sample.md') === 'Revised\\nSecond line'
+    await shot('after-edit')
     await pending('sample-denied', 'mv', { from: root + '/sample.md', to: root + '/Denied/sample.md' })
     await session.rejectToolCall()
     await wait(100)

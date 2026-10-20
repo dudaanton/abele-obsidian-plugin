@@ -303,7 +303,7 @@ const script = `(async () => {
         // Empty, populated and long-path artifact fixtures must all retain their three sections.
         if (dialogName.startsWith('chat-artifacts') && !(dialogName === 'chat-artifacts-empty'
           ? modal.querySelectorAll('.abele-chat-artifacts section').length === 0 && modal.querySelector('.abele-chat-artifacts .abele-empty-state')
-          : modal.querySelectorAll('.abele-chat-artifacts section').length === 3))
+          : modal.querySelectorAll('.abele-chat-artifacts > section:not(.abele-chat-artifacts__changes)').length === 3 && modal.querySelector('.abele-chat-artifacts__changes')))
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
         // A chat's navigation opens fork by fork, not in separate tabs.
         if (dialogName === 'chat-navigation') {

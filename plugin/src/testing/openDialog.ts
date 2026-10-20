@@ -253,9 +253,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
         },
       })
     ),
-  'chat-artifacts-empty': () => mountAlone(chatArtifactsFixture('empty')),
-  'chat-artifacts': () => mountAlone(chatArtifactsFixture('populated')),
-  'chat-artifacts-long': () => mountAlone(chatArtifactsFixture('long')),
+  'chat-artifacts-empty': async () => mountAlone(await chatArtifactsFixture('empty')),
+  'chat-artifacts': async () => mountAlone(await chatArtifactsFixture('populated')),
+  'chat-artifacts-long': async () => mountAlone(await chatArtifactsFixture('long')),
   'text-comment-create': () => mountAlone(TextCommentDialog, textCommentFixture()),
   'text-comment-list': () => mountAlone(TextCommentDialog, textCommentFixture(true)),
   'text-comment-orphan': () =>

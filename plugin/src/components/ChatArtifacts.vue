@@ -406,6 +406,15 @@ onUnmounted(() => {
 .abele-chat-artifacts__row_missing .abele-tree-item__text {
   color: var(--text-faint);
 }
+.abele-chat-artifacts__changes {
+  min-width: 0;
+  padding-inline: var(--size-2-3);
+
+  .abele-disclosure__control {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
 .abele-chat-artifacts__codes {
   display: inline-flex;
   align-items: center;
