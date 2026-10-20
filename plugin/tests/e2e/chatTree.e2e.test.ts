@@ -9,7 +9,7 @@ const SHOTS = shotDir('chat-tree')
 
 const probe = (label: string) => `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-  const until = async fn => { for (let i = 0; i < 150; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('Chat tree did not appear') }
+  const until = async fn => { for (let i = 0; i < 150; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('Chat tree did not appear: ' + fn.toString()) }
   const service = window.__abeleTest.ChatService.getInstance()
   const prior = service.activeTabId.value
   const folder = 'Synthetic navigation sample'
@@ -93,9 +93,11 @@ const probe = (label: string) => `(async () => {
     const bounds = modal.getBoundingClientRect()
     const overflow = modal.scrollWidth - modal.clientWidth
     const inherited = reopened.toolModes.value.web_search, ownMode = reopened.ownToolModes.value.web_search
-    modal.querySelector('.modal-close-button').click()
+    const dismiss = await until(() => modal.closest('.modal-container').querySelector('.modal-close-button'))
+    dismiss.click()
     await until(() => !document.querySelector('.abele-folder-access'))
-    const row = document.querySelector('[data-chat="' + reopened.id + '"]')
+    if (!document.querySelector('.abele-chat-tree')) current().click()
+    const row = await until(() => document.querySelector('[data-chat="' + reopened.id + '"]'))
     const more = row.querySelector('[aria-label="Sample navigation chat: more"]')
     if (more) more.click()
     else {

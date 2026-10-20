@@ -52,13 +52,13 @@ describe.skipIf(!available)('chat files control and linked-note counts', () => {
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     const until = async (fn) => {
       for (let i = 0; i < 80; i++) { const value = fn(); if (value) return value; await wait(100) }
-      throw new Error('Artifacts UI did not settle')
+      throw new Error('Artifacts UI did not settle: ' + fn.toString() + '; menu=' + [...document.querySelectorAll('.menu-item')].map(el => el.textContent.trim()).join('|'))
     }
     let root
     try {
       await chats.revealSidebar()
       // "Files from this chat" is an item of the header's overflow menu, its last control.
-      const control = await until(() => document.querySelector('.abele-ai-chat__header-actions .abele-ai-chat__overflow [aria-haspopup="menu"]'))
+      const control = await until(() => [...document.querySelectorAll('.abele-ai-chat__header-actions .abele-ai-chat__overflow [aria-haspopup="menu"]')].find(el => el.getClientRects().length))
       await wait(500)
       const button = control.getBoundingClientRect()
       const icon = control.querySelector('svg').getBoundingClientRect()
