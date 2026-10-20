@@ -662,6 +662,10 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{${prelude}await api.NodePathService.getInstance().model(${JSON.stringify(registration)}).select(window.__selectionTrustPlace);delete window.__selectionTrustPlace;app.workspace.leftSplit.collapse();return 'original folder restored'})()`
     )
+    await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});const previousChat=api.ChatService.getInstance().activeTabId.value;app.workspace.leftSplit.expand();(await placeMenu('New chat here')).click();await until(()=>[...document.querySelectorAll('.suggestion-title')].some(el=>el.textContent.trim()==='Test agent'));[...document.querySelectorAll('.suggestion-item')].find(el=>el.querySelector('.suggestion-title')?.textContent.trim()==='Test agent').click();await until(()=>api.ChatService.getInstance().activeTabId.value!==previousChat&&app.workspace.leftSplit.collapsed&&visible('.abele-node-chat'));const chats=api.ChatService.getInstance(),presenter=chats.getNodeSession(chats.activeTabId.value);await until(()=>presenter?.binding.value?.target.worktree_id===${JSON.stringify(ids.root)});return 'new chat revealed from phone folder'})()`
+    )
+    await capture('phone-new-chat-here')
     await open('file', {
       path: 'src/sample.ts',
       debug: {
