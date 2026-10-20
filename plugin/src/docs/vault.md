@@ -27,6 +27,10 @@ prefix, after their active entries leave the feed. Explicit copy removal compare
 bytes with those baselines and preserves edited or otherwise covered files. It never sends
 server deletes.
 
+An explicitly confirmed item deletion retains its retry identity under
+`abele-sync-item-delete:<token-id>:<item-id>` in device-local storage. Retrying the same
+deletion reuses that identity rather than creating another server operation.
+
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.
 
