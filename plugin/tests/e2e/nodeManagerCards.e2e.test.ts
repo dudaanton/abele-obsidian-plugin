@@ -58,27 +58,6 @@ async function inspectCards(label: string) {
       await closeFixture()
     }
   }
-  for (const state of ['pending_approval', 'running', 'exited', 'failed', 'outcome_unknown']) {
-    try {
-      await evalLong(
-        `window.__abeleTest.openDialog('node-manager-run', {managerRunState:${JSON.stringify(state)}})`
-      )
-      const report = JSON.parse(
-        await evalLong(`(async () => {
-        for(let i=0;i<100&&!document.querySelector('.abele-node-manager-run');i++) await new Promise(r=>setTimeout(r,50));
-        const root=document.querySelector('.abele-node-manager-run');
-        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval')});
-      })()`)
-      ) as { overflow: boolean; text: string; approval: boolean }
-      expect(report.overflow).toBe(false)
-      expect(report.approval).toBe(state === 'pending_approval')
-      if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')
-      if (state === 'outcome_unknown') expect(report.text).toContain('The result is unknown')
-      columnShot(`${shots}/${label}-command-${state}.png`)
-    } finally {
-      await closeFixture()
-    }
-  }
   try {
     await evalLong(`window.__abeleTest.openDialog('agents', {agentsState:'manager-team'})`)
     const overview = JSON.parse(
@@ -99,6 +78,44 @@ async function inspectCards(label: string) {
   }
 }
 
+async function inspectRuns(label: string) {
+  for (const state of [
+    'pending_approval',
+    'running',
+    'exited',
+    'denied',
+    'timed_out',
+    'cancelled',
+    'applied',
+    'failed',
+    'outcome_unknown',
+  ]) {
+    try {
+      await evalLong(
+        `window.__abeleTest.openDialog('node-manager-run', {managerRunState:${JSON.stringify(state)}})`
+      )
+      const report = JSON.parse(
+        await evalLong(`(async () => {
+        for(let i=0;i<100&&!document.querySelector('.abele-node-manager-run');i++) await new Promise(r=>setTimeout(r,50));
+        const root=document.querySelector('.abele-node-manager-run');
+        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval')});
+      })()`)
+      ) as { overflow: boolean; text: string; approval: boolean }
+      expect(report.overflow).toBe(false)
+      expect(report.approval).toBe(state === 'pending_approval')
+      if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')
+      if (state === 'outcome_unknown') expect(report.text).toContain('The result is unknown')
+      columnShot(`${shots}/${label}-command-${state}.png`)
+    } finally {
+      await closeFixture()
+    }
+  }
+}
+
+it('shows durable command approvals, output and every terminal outcome', async () => {
+  await inspectRuns(onPhone() ? 'phone' : 'desktop')
+}, 90000)
+
 it('shows bounded activity, prompts and collapsed terminal reports', async () => {
   await inspectCards(onPhone() ? 'phone' : 'desktop')
 }, 90000)
@@ -109,6 +126,7 @@ it.skipIf(onPhone())(
     try {
       await enterPhone()
       await inspectCards('phone-emulated')
+      await inspectRuns('phone-emulated')
     } finally {
       await reloadApp('app.emulateMobile(false)')
     }

@@ -209,7 +209,10 @@ export class NodeManagerController {
                   ? entry.params.argv
                       .filter((value): value is string => typeof value === 'string')
                       .join(' ')
-                  : 'git.v1.integrate',
+                  : typeof entry.params.source_branch === 'string' &&
+                      typeof entry.params.target_branch === 'string'
+                    ? `${entry.params.source_branch} → ${entry.params.target_branch}`
+                    : 'git.v1.integrate',
             run,
             prompts: [...prompts.values()].filter(
               (p) =>

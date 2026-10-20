@@ -25,7 +25,7 @@
       :disabled="disabled"
       @click="emit('cancel')"
     />
-    <p v-if="card.run.exit_code !== undefined">
+    <p v-if="card.run.exit_code !== undefined && card.run.exit_code !== null">
       {{ t('node.manager.exitCode', { code: String(card.run.exit_code) }) }}
     </p>
     <p v-if="card.run.state === 'outcome_unknown'">{{ t('node.error.unknownOutcome') }}</p>

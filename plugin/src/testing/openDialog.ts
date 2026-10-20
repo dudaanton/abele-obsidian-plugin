@@ -20,7 +20,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
-  managerRunState?: 'pending_approval' | 'running' | 'exited' | 'failed' | 'outcome_unknown'
+  managerRunState?: import('@abele/node-protocol').ManagerRun['state']
   delegationState?:
     | 'working'
     | 'done'
