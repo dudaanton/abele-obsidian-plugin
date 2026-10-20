@@ -48,8 +48,8 @@ it('keeps desktop node headers, approvals, queued inputs and the node panel comp
       await nodePanel.dismiss()
       const menu=await nodePanel.menu();rings(menu);await shot('desktop-node-panel-menu');await nodePanel.dismiss()
       await nodePanel.close()
-      // The chat's name is on its tab now, not in the header: it has room there and is shown whole.
-      const title=[...document.querySelectorAll('.abele-chat-tabs__chip--active .abele-chat-tabs__label')].find(l=>l.getBoundingClientRect().width>0&&l.textContent.trim()==='Sample node session')
+      // The switcher names the active node session in the same header as local chats.
+      const title=[...document.querySelectorAll('.abele-chat-switch__title')].find(l=>l.getBoundingClientRect().width>0&&l.textContent.trim()==='Sample node session')
       return {header,hostWidth:root.getBoundingClientRect().width,titleWidth:title?.getBoundingClientRect().width ?? 0,titleCut:!title||title.scrollWidth>title.clientWidth+1,queueCopies,sameActionRow,accent,cardsClipped:cuts,paths}
     } finally {
       await nodePanel.close()

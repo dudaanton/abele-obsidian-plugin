@@ -55,10 +55,12 @@ const script = `(async () => {
     app.commands.executeCommandById('abele:show-ai-sidebar')
     report.commandOpenPanel = await focusedWithin()
 
-    // ── the + in the tab bar ──
+    // ── a new chat from the navigation tree ──
     elsewhere()
     const tabBefore = svc.activeTabId.value
-    panelChat().querySelector('.abele-chat-tabs__add').click()
+    panelChat().querySelector('.abele-chat-switch__current').click()
+    for (let i = 0; i < 100 && !document.querySelector('.abele-chat-tree [aria-label="New chat"]'); i++) await wait(50)
+    document.querySelector('.abele-chat-tree [aria-label="New chat"]').click()
     report.plusNewTab = svc.activeTabId.value !== tabBefore
     report.plusFocused = await focusedWithin()
 

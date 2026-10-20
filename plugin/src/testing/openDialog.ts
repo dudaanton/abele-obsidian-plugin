@@ -10,6 +10,7 @@ import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { destinationFixture } from './destinationFixture'
 import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
+import { chatTreeFixture, chatFolderAccessFixture } from './chatTreeFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import NodeLspFixture from './NodeLspFixture.vue'
@@ -273,6 +274,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(await chatArtifactsFixture('populated'), {}, 'chat-artifacts'),
   'chat-artifacts-long': async () =>
     mountAlone(await chatArtifactsFixture('long'), {}, 'chat-artifacts-long'),
+  'chat-tree': () => mountAlone(chatTreeFixture(), {}, 'chat-tree'),
+  'chat-folder-access': () => mountAlone(chatFolderAccessFixture(), {}, 'chat-folder-access'),
   'text-comment-create': () => mountAlone(TextCommentDialog, textCommentFixture()),
   'text-comment-list': () => mountAlone(TextCommentDialog, textCommentFixture(true)),
   'text-comment-orphan': () =>

@@ -564,8 +564,10 @@ export class CommentService implements CommentInfoSource {
       const folder = chats.folders.folderOf(path)
       if (folder) return chats.folders.path(folder)
       const live = this.sessionOnFile(path)
-      if (live?.anchor.value?.note) {
-        path = live.anchor.value.note
+      if (live) {
+        const parent = live.anchor.value?.note
+        if (!parent) break
+        path = parent
         continue
       }
       const file = app.vault.getAbstractFileByPath(path)

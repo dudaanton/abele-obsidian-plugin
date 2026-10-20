@@ -8,19 +8,21 @@
   >
     <!-- The regular chat's header: the agent on the left, what is used all the time on the
          right. The chat's name is on its tab. -->
-    <div class="abele-ai-chat__header">
+    <div class="abele-ai-chat__header" :class="{ 'abele-ai-chat__header_tree': $slots.navigation }">
       <slot name="lead" />
-      <div class="abele-agent-selector">
-        <Button
-          ref="agentPicker"
-          class="abele-node-chat__agent"
-          :text="agentName"
-          trailing-icon="chevron-down"
-          aria-haspopup="menu"
-          :label="t('streamB.agentStartAChatWithAnother.42d6fb', { v0: String(agentName) })"
-          @click="chooseAgent"
-        />
-      </div>
+      <slot name="navigation">
+        <div class="abele-agent-selector">
+          <Button
+            ref="agentPicker"
+            class="abele-node-chat__agent"
+            :text="agentName"
+            trailing-icon="chevron-down"
+            aria-haspopup="menu"
+            :label="t('streamB.agentStartAChatWithAnother.42d6fb', { v0: String(agentName) })"
+            @click="chooseAgent"
+          />
+        </div>
+      </slot>
       <div class="abele-ai-chat__header-actions">
         <AgentsButton />
         <Icon
@@ -238,8 +240,17 @@
           @click="!attaching && !sending && attachmentInput?.click()"
         />
       </template>
-      <template v-if="live" #settings>
+      <template #settings>
+        <Icon
+          v-if="$slots.navigation"
+          ref="agentPicker"
+          icon="bot"
+          :text-right="phone ? undefined : agentName"
+          :label="t('streamB.agentStartAChatWithAnother.42d6fb', { v0: String(agentName) })"
+          @click="chooseAgent"
+        />
         <SessionSettings
+          v-if="live"
           ref="settingsControl"
           :live="live"
           :busy="working"
@@ -295,7 +306,7 @@ import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
 import { streamBCount } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
-import { Menu, Notice } from 'obsidian'
+import { Menu, Notice, Platform } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
@@ -407,7 +418,8 @@ const agentName = computed(() => {
   return providerLabel(provider)
 })
 /** The agents of this node, this one checked; another starts a new chat with it here. */
-const agentPicker = ref<InstanceType<typeof Button> | null>(null)
+const phone = Platform.isPhone
+const agentPicker = ref<InstanceType<typeof Button> | InstanceType<typeof Icon> | null>(null)
 const chooseAgent = () => {
   const button = agentPicker.value?.$el as HTMLElement | undefined
   if (!button) return

@@ -19,7 +19,7 @@
         :label="t('chat.allTools', { mode: sharedMode(optional).said })"
         @click="(e: MouseEvent) => modeMenu(e, optional)"
       />
-      <AgentOverrideNotice field="toolModes" compact />
+      <AgentOverrideNotice v-if="!floor" field="toolModes" compact />
     </div>
 
     <div class="abele-chat-tools__tree" role="tree" :aria-label="t('chat.tools')">
@@ -54,6 +54,13 @@
           :class="{ 'abele-chat-tools__tool_off': modeOf(tool) === 'off' }"
         >
           <template #end>
+            <Icon
+              v-if="raisedBy?.[tool.key]"
+              icon="folder"
+              size="xs"
+              :interactive="false"
+              :tooltip="t('chatTree.fromFolder', { name: raisedBy[tool.key] })"
+            />
             <Icon
               :icon="MODE[modeOf(tool)].icon"
               size="xs"
@@ -92,7 +99,7 @@
 import { t } from '@/i18n'
 import { settingsLabel, settingsToolLabel } from '@/i18n/settingsLabels'
 import { computed, reactive, ref } from 'vue'
-import { Menu } from 'obsidian'
+import { Menu, setTooltip } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Search from './obsidian/Search.vue'
 import TreeItem from './obsidian/TreeItem.vue'
@@ -101,8 +108,13 @@ import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { getToolRegistry } from '@/ai/tools'
 import { CORE_TOOLS, type ToolMode } from '@/ai/types'
 import { isMcpToolName } from '@/ai/mcp/names'
+import { below } from '@/chats/chatTree'
 
-const props = defineProps<{ toolModes: Record<string, ToolMode> }>()
+const props = defineProps<{
+  toolModes: Record<string, ToolMode>
+  floor?: Record<string, ToolMode>
+  raisedBy?: Record<string, string>
+}>()
 const emit = defineEmits<{
   /** Several tools at once — a group, or all of them: one change for the host to save. */
   updateMany: [modes: Record<string, ToolMode>]
@@ -179,15 +191,30 @@ const sharedMode = (tools: Tool[]) => MODE[shared(tools) ?? 'mixed']
 const modeMenu = (event: MouseEvent, tools: Tool[]) => {
   const current = shared(tools)
   const menu = new Menu()
+  if (props.floor && Object.keys(props.floor).length)
+    menu.addItem((item) => item.setTitle(t('chatTree.additive')).setIsLabel(true))
   for (const mode of ['ask', 'auto', 'off'] as const)
     menu.addItem((item) =>
       item
         .setTitle(MODE[mode].item)
         .setIcon(MODE[mode].icon)
         .setChecked(current === mode)
-        .onClick(() => emit('updateMany', Object.fromEntries(tools.map((t) => [t.key, mode]))))
+        .setDisabled(!!props.floor && tools.every((tool) => below(mode, props.floor?.[tool.key])))
+        .onClick(() =>
+          emit(
+            'updateMany',
+            Object.fromEntries(
+              tools.map((tool) => [
+                tool.key,
+                below(mode, props.floor?.[tool.key]) ? props.floor![tool.key] : mode,
+              ])
+            )
+          )
+        )
     )
   menu.showAtMouseEvent(event)
+  for (const item of activeDocument.querySelectorAll<HTMLElement>('.menu .menu-item.is-disabled'))
+    setTooltip(item, t('chatTree.defaultFloor'))
 }
 
 /** Groups open by hand; a search opens every group it leaves. */

@@ -216,7 +216,7 @@ describe('conversation presentation', () => {
       'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node node · sample-project · worktree sample-workspace · can read files'
     )
   })
-  it('passes background question and approval state to the tab dots', async () => {
+  it('passes background question and approval state to the tree dots', async () => {
     const active = fakeChatSession({ kind: 'chat' })
     const waiting = fakeChatSession({ kind: 'chat', overrides: { id: 'sample-waiting-tab' } })
     waiting.pendingQuestions.value = {
@@ -232,23 +232,24 @@ describe('conversation presentation', () => {
       (id) => (id === waiting.id ? waiting : active) as never
     )
     vi.spyOn(chats, 'getPresentation').mockImplementation(
-      (id) => ({ label: ref(id), isStreaming: ref(false) }) as never
+      (id) => ({ label: ref(id), isStreaming: ref(false), messages: ref([]) }) as never
     )
     try {
       const chat = await render(active)
-      const tab = () =>
+      await chat.get('.abele-chat-switch__current').trigger('click')
+      const waitingDot = () =>
         chat
-          .findComponent({ name: 'AiChatTabs' })
-          .props('tabs')
-          .find((item) => item.id === waiting.id)
-      expect(tab().waiting).toBe(true)
+          .get(`[data-chat="${waiting.id}"] .abele-chat-tree__dot`)
+          .classes()
+          .includes('abele-chat-tree__dot_waiting')
+      expect(waitingDot()).toBe(true)
       waiting.pendingQuestions.value = null
       waiting.pendingToolCalls.value = [{ id: 'sample-call' }]
       await flushPromises()
-      expect(tab().waiting).toBe(true)
+      expect(waitingDot()).toBe(true)
       waiting.pendingToolCalls.value = []
       await flushPromises()
-      expect(tab().waiting).toBe(false)
+      expect(waitingDot()).toBe(false)
     } finally {
       chats.tabOrder.value = beforeOrder
       chats.activeTabId.value = beforeId

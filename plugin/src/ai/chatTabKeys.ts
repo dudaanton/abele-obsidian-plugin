@@ -89,6 +89,10 @@ function textSelected(evt: KeyboardEvent): boolean {
 
 /** Registers every chat-tab key on `scope`. */
 export function registerChatTabKeys(scope: Scope, chats = () => ChatService.getInstance()): void {
+  scope.register(['Mod'], 'o', () => {
+    chats().treeRequest.value++
+    return false
+  })
   for (const action of Object.keys(CHAT_TAB_KEYS) as ChatTabAction[]) {
     for (const { modifiers, key } of CHAT_TAB_KEYS[action]) {
       scope.register(modifiers, key, () => {

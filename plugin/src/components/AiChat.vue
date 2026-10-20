@@ -9,6 +9,7 @@
   >
     <!-- Tabs -->
     <AiChatTabs
+      v-if="!chatTreeSource"
       :tabs="tabInfos"
       :can-create="chatService.canCreateTab"
       @select="chatService.switchTab($event)"
@@ -16,6 +17,10 @@
       @create="onNewTab"
     />
 
+    <div v-if="activeRun" class="abele-ai-chat__header abele-ai-chat__header_tree">
+      <ChatSwitcher :title="tabInfos.find((tab) => tab.isActive)?.label ?? ''" />
+      <Icon icon="plus" :tooltip="t('streamB.startANewChat.61025e')" @click="onNewTab" />
+    </div>
     <ChatAnchorHistory
       v-if="anchorHistory"
       :anchor="anchorHistory.anchor"
@@ -37,13 +42,13 @@
 
     <template v-else>
       <!-- Header -->
-      <div class="abele-ai-chat__header">
+      <div class="abele-ai-chat__header abele-ai-chat__header_tree">
         <DrawerViewSwitch
           icon="bot"
           :name="t('streamB.abeleAiChat.08f891')"
           @shown="inDrawer = $event"
         />
-        <AiAgentSelector />
+        <ChatSwitcher :title="tabInfos.find((tab) => tab.isActive)?.label ?? ''" />
         <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
              Everything else this chat is set up with is in ⋯. Other chats waiting for you show
              as a count only while they are waiting. -->
@@ -79,7 +84,7 @@
             @click="openNavigation()"
           />
           <Icon
-            v-if="!inDrawer"
+            v-if="!chatTreeSource && !inDrawer"
             icon="history"
             with-bg
             :tooltip="t('streamB.openAChatYouHaveHad.31b24c')"
@@ -426,10 +431,22 @@
         @continue="onContinue"
         @focus="onInputFocus"
         @open-scope="openSetup('scope')"
-      />
+      >
+        <template #settings>
+          <AiAgentSelector compact />
+        </template>
+      </AiChatInput>
     </template>
 
     <!-- Modals -->
+    <FolderAccessModal
+      v-if="folderAccessPath !== null"
+      :name="folderAccessPath"
+      :floor="tree.accessFloorFor(folderAccessPath)"
+      :access="chatService.folders.access.value[folderAccessPath] ?? {}"
+      @close="folderAccessPath = null"
+      @update="tree.saveAccessFor(folderAccessPath, $event)"
+    />
     <ChatArtifacts
       v-if="artifactsSession"
       :session="artifactsSession"
@@ -537,6 +554,9 @@ export type { BranchInfo } from '@/composables/useChatBranchInfo'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
+import ChatSwitcher from './chatTree/ChatSwitcher.vue'
+import FolderAccessModal from './chatTree/FolderAccessModal.vue'
+import { chatTreeSource, CHAT_TREE_SOURCE, type ChatTreeSource } from '@/chats/chatTree'
 import AiRunView from './AiRunView.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import NodeSidebarChat from './NodeSidebarChat.vue'
@@ -591,6 +611,27 @@ import { NODE_SIDEBAR_VIEW } from '@/node/nodePathNavigation'
 import type { ChatSession } from '@/ai/ChatSession'
 
 const chatService = ChatService.getInstance()
+const tree = chatService.tree
+chatTreeSource.value = tree
+const folderAccessPath = ref<string | null>(null)
+const localTreeSource: ChatTreeSource = {
+  refresh: () => tree.refresh(),
+  root: tree.root,
+  activeId: tree.activeId,
+  open: (id) => tree.open(id),
+  close: (id) => tree.close(id),
+  move: (id, folder) => tree.move(id, folder),
+  newChat: (folder) => tree.newChat(folder),
+  newFolder: (parent, name) => tree.newFolder(parent, name),
+  renameFolder: (path, name) => tree.renameFolder(path, name),
+  deleteFolder: (path) => tree.deleteFolder(path),
+  folderAccess: (path) => {
+    folderAccessPath.value = path
+  },
+  rename: (id) => tree.rename(id),
+  delete: (id) => tree.delete(id),
+}
+provide(CHAT_TREE_SOURCE, shallowRef<ChatTreeSource | null>(localTreeSource))
 chatService.ensureInitialized()
 const session = computed(() => chatService.activeSession.value)
 const nodeSession = computed(() =>
@@ -2163,9 +2204,10 @@ const onNewChatMenu = () => void handleNewChat()
 const phone = Platform.isPhone
 const inDrawer = ref(false)
 const headerOverflowActions = computed<HeaderAction[]>(() => [
+  { id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' },
   ...(phone
     ? [
-        ...(inDrawer.value
+        ...(!chatTreeSource.value && inDrawer.value
           ? [{ id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' }]
           : []),
         { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
@@ -2403,6 +2445,10 @@ body.is-phone
   margin: var(--size-4-1) var(--abele-chat-inset);
 }
 
+.abele-ai-chat__header_tree {
+  position: relative;
+  container-type: inline-size;
+}
 .abele-ai-chat__header-actions {
   display: flex;
   align-items: center;

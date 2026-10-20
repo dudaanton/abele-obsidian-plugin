@@ -67,7 +67,7 @@ const probe = (screen: string) => `(async () => {
     session.updateVisibleMessages()
   }
   const shot = async (name, selector) => {
-    await until(() => root()?.querySelector(selector))
+    await until(() => root()?.querySelector(selector) || (selector === '.abele-chat-tree' && document.querySelector(selector)))
     await wait(300)
     document.activeElement?.blur?.()
     const pane = root()
@@ -167,11 +167,14 @@ const probe = (screen: string) => `(async () => {
     working.isStreaming.value = true
     waiting.pendingQuestions.value = { questions: [{ question: 'Sample choice?', options: ['Continue', 'Wait'] }], currentIndex: 0, answers: [], resolve: () => {} }
     waiting.attention.value = { question: { id: 'sample-attention', status: 'waiting', at: time, questions: waiting.pendingQuestions.value.questions, currentIndex: 0 } }
-    await shot('tabs', '.abele-chat-msg__bar')
+    root().querySelector('.abele-chat-switch__current').click()
+    await until(() => document.querySelector('.abele-chat-tree'))
+    await shot('tree', '.abele-chat-tree')
     if (${JSON.stringify(screen)} === 'desktop') {
-      const dots = [...root().querySelectorAll('.abele-chat-tabs__dot')]
-      if (dots.length !== 2 || !dots.some(dot => dot.getAttribute('aria-label') === 'Waiting for you') || !dots.some(dot => dot.getAttribute('aria-label') === 'The agent is working')) throw Error('Missing labelled tab states')
+      const dots = [...document.querySelectorAll('.abele-chat-tree__dot[role="img"]')]
+      if (dots.length !== 2 || !dots.some(dot => dot.getAttribute('aria-label') === 'Waiting for you') || !dots.some(dot => dot.getAttribute('aria-label') === 'Working')) throw Error('Missing labelled tree states')
     }
+    document.querySelector('.abele-chat-tree').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     working.isStreaming.value = false; waiting.pendingQuestions.value = null; waiting.attention.value = {}
 
     // A chat answering with a model of its own names it beside the agent, as a button for its menu.
@@ -245,7 +248,7 @@ describe('the real agent chat design', () => {
           'approval',
           'question',
           'error',
-          'tabs',
+          'tree',
           'model',
           'access',
         ])

@@ -68,6 +68,11 @@ export const editorEditorField = StateField.define<unknown>({
  * with a menu button to mount. The choices are kept so a test can read what would be offered.
  */
 export class MenuItem {
+  isLabel = false
+  setIsLabel(isLabel: boolean): this {
+    this.isLabel = isLabel
+    return this
+  }
   title = ''
   icon = ''
   checked: boolean | null = null

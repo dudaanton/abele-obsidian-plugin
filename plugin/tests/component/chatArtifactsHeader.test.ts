@@ -49,17 +49,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 describe('the compact chat header', () => {
-  it('keeps find, outline, history and new chat direct, the rest in the overflow kit', async () => {
+  it('keeps find, outline and new chat direct, with history in the overflow kit', async () => {
     view = mountChat()
-    for (const tooltip of [
-      'Find in this chat',
-      'Outline of this chat',
-      'Open a chat you have had',
-      'Start a new chat',
-    ])
+    for (const tooltip of ['Find in this chat', 'Outline of this chat', 'Start a new chat'])
       expect(view.find(`[tooltip="${tooltip}"]`).exists()).toBe(true)
     const overflow = view.findComponent(SheetHeaderActions)
+    expect(view.find('[tooltip="Open a chat you have had"]').exists()).toBe(false)
     expect(overflow.props('actions').map((a) => [a.id, a.section ?? ''])).toEqual([
+      ['history', ''],
       ['setup', ''],
       ['artifacts', ''],
       ['agents', ''],

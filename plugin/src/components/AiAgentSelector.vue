@@ -1,7 +1,15 @@
 <template>
   <div class="abele-agent-selector">
+    <Icon
+      v-if="compact && options.length"
+      icon="bot"
+      :text-right="phone ? undefined : activeName"
+      :tooltip="activeName"
+      aria-haspopup="menu"
+      @click="agentMenu"
+    />
     <Dropdown
-      v-if="options.length > 0"
+      v-else-if="options.length > 0"
       :model-value="activeId"
       :options="options"
       @update:model-value="onSelect"
@@ -34,7 +42,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, ref, watchEffect } from 'vue'
-import { Menu, Notice, setTooltip } from 'obsidian'
+import { Menu, Notice, Platform, setTooltip } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
 import Icon from './obsidian/Icon.vue'
@@ -44,6 +52,22 @@ import { NodeService } from '@/node/NodeService'
 import { pickNodeSession } from '@/node/openSession'
 
 const NODE = 'node:'
+defineProps<{ compact?: boolean }>()
+const phone = Platform.isPhone
+const activeName = computed(
+  () => options.value.find((option) => option.value === activeId.value)?.display ?? ''
+)
+function agentMenu(event: MouseEvent) {
+  const menu = new Menu()
+  for (const option of options.value)
+    menu.addItem((item) =>
+      item
+        .setTitle(option.display)
+        .setChecked(option.value === activeId.value)
+        .onClick(() => void onSelect(option.value))
+    )
+  menu.showAtMouseEvent(event)
+}
 /** The nodes this vault is connected to; none when node connections did not load. */
 const nodes = () => {
   try {

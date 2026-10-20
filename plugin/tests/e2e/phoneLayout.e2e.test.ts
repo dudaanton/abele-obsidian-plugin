@@ -122,6 +122,8 @@ const DIALOGS = [
   'chat-artifacts-empty',
   'chat-artifacts',
   'chat-artifacts-long',
+  'chat-tree',
+  'chat-folder-access',
   'text-comment-create',
   'text-comment-list',
   'text-comment-orphan',

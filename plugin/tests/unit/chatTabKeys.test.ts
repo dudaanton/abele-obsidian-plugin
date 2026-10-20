@@ -64,6 +64,13 @@ const press = (mods: Mod[], key: string): unknown => {
 const active = () => service.activeTabId.value
 const order = () => service.tabOrder.value
 
+it('opens the chat tree with Mod+O inside the chat scope', () => {
+  const before = service.treeRequest.value
+  expect(press(['Meta'], 'o')).toBe(false)
+  expect(service.treeRequest.value).toBe(before + 1)
+  expect(parentHeard).toEqual([])
+})
+
 beforeEach(() => {
   useVault(
     Array.from({ length: 4 }, (_, i) => ({ path: chatPath(i), content: meta(`Sample ${i}`) }))

@@ -12,6 +12,7 @@
     <template #lead
       ><DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')"
     /></template>
+    <template #navigation><ChatSwitcher :title="presenter.label.value" /></template>
   </NodeChatView>
 </template>
 
@@ -21,6 +22,7 @@ import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
 import NodeChatView from './NodeChatView.vue'
+import ChatSwitcher from './chatTree/ChatSwitcher.vue'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { NodePathModel, PathTarget } from '@/node/NodePathModel'
 import { NodePathService } from '@/node/NodePathService'
