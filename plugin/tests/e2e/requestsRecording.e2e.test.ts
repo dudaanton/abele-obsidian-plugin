@@ -324,8 +324,9 @@ const SEND_INTO = (shots: string, paused = false) => `
   const health=await until(()=>row('Health'),'health request listed');
   (health.querySelector('.tree-item-self')??health).click();
   await until(()=>tab()?.textContent.includes('/health'),'health request open');
+  const healthId='Orders/Health.http',previousHealthSend=(await requestModel.rpc.history(${JSON.stringify(folder.projectId)},healthId))[0]?.id;
   tab().querySelector('.abele-http-request__send').click();
-  await until(()=>facts().startsWith('200'),'health answered',600);
+  await until(()=>facts().startsWith('200')&&requestModel.entry(healthId).history[0]?.id!==previousHealthSend&&!requestModel.state.sending.includes(healthId),'new health send answered',600);
   const healthLink=await until(()=>tab().querySelector('.abele-http-request__steps'),'recorded request link');
   if(healthLink.textContent.trim()!=='Open recorded request')throw Error('Expected request link without code steps: '+healthLink.textContent);
   await shot(${JSON.stringify(shots + '-recorded-no-code')});
