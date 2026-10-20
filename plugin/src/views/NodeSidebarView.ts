@@ -73,6 +73,7 @@ export class NodeSidebarView extends ItemView {
       ? selected
       : (nodes[0]?.id ?? '')
     await super.setState(raw, result)
+    this.refreshLocalDiscovery()
   }
   async onOpen(): Promise<void> {
     this.contentEl.addClass('abele-node-sidebar')
@@ -249,7 +250,10 @@ export class NodeSidebarView extends ItemView {
       null,
       { owner: this }
     )
-    if (!Platform.isMobile) {
+    this.refreshLocalDiscovery()
+  }
+  private refreshLocalDiscovery(): void {
+    if (!Platform.isMobile && this.localPhase.value !== 'connecting') {
       const configured: unknown = this.app.loadLocalStorage('abele-node-local-state-dir')
       this.local.value = this.discovery.discover(
         typeof configured === 'string' ? configured : undefined
