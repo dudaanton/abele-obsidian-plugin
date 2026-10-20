@@ -325,6 +325,7 @@ it.each(['desktop', 'phone'])(
       if([...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'))throw Error('Trusted folder asked for execution confirmation');
       input.value='src/journey.cjs';input.dispatchEvent(new Event('input',{bubbles:true}));
       press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(el=>el.textContent.includes('src/journey.cjs')),'program suggestion'));
+      press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','folder debugger paused',500);
       const binding=api.DebuggerService.instance.active.value;
       await shot(${JSON.stringify(name + '-debugger-no-chat')});

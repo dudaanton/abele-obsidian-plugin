@@ -17,6 +17,7 @@ import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
 import MapPlaceCard from '@/components/mapBase/MapPlaceCard.vue'
 import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
+import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -170,6 +171,15 @@ const mountNodeQuestion = (kind: 'select' | 'input') =>
   )
 
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'debugger-launch': () =>
+    mountAlone(ProgramLaunchDialog, {
+      program: 'dist/main.js',
+      launch: async () => {
+        throw Object.assign(new Error('debugger_startup_handoff_lost'), {
+          details: { stderr: 'Error: Cannot find module sample-module\n    at dist/main.js:1:1' },
+        })
+      },
+    }),
   'map-background': () => mountAlone(MapBackgroundEditor),
   'map-background-error': () => mountAlone(MapBackgroundEditor, { showErrors: true }),
   'map-background-long': () =>

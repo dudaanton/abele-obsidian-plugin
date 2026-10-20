@@ -112,6 +112,7 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'debugger-launch',
   'map-background',
   'map-background-error',
   'map-background-long',
