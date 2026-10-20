@@ -201,10 +201,13 @@ export class NodeSessionControl {
     // Some agents report the modes the node runs them in beside their configuration.
     const modes = configuration.permission_modes ?? provider?.permission_modes ?? []
     // Claude Code takes its aliases; any other agent offers the models it reported.
-    const offered =
-      agent?.options.find((o) => o.category === 'model')?.options?.map((o) => o.value) ?? []
+    const modelOption = agent?.options.find((o) => o.category === 'model')
+    const offered = modelOption?.options?.map((o) => o.value) ?? []
     const settings: SessionSettings = {
-      model: state.settings.model,
+      model:
+        state.settings.model === 'default' && name !== 'claude'
+          ? modelOption?.current_value || state.context?.model || state.settings.model
+          : state.settings.model,
       effort: state.settings.effort,
       account: state.settings.account,
       mode: modeOf(state.settings.permission_mode),
@@ -226,7 +229,9 @@ export class NodeSessionControl {
     return {
       settings,
       choices: {
-        models: models.map((m) => choice(m, modelLabel(m))),
+        models: models.map((m) =>
+          choice(m, modelOption?.options?.find((o) => o.value === m)?.name || modelLabel(m))
+        ),
         efforts: (configuration.efforts ?? Object.keys(EFFORT_LABEL)).map((e) =>
           choice(e, EFFORT_LABEL[e] ?? e)
         ),

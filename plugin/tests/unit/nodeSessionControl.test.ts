@@ -73,6 +73,34 @@ it('uses node models and avoids calling a pi account a subscription', async () =
   expect(live.choices.models.map((m) => m.id)).toEqual(['sample/a', 'sample/b'])
   expect(live.choices.accounts[0].label).not.toBe('Main subscription')
 })
+
+it('shows the actual model reported by the agent when the session uses the node default', async () => {
+  const { control: k } = control(
+    client(state({ settings: { ...state().settings, model: 'default' } }))
+  )
+  await k.read()
+  const live = k.view(
+    { provider: 'pi', capabilities: {} },
+    journal,
+    {
+      commands: null,
+      mode: null,
+      plan: [],
+      options: [
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          current_value: 'sample/actual',
+          options: [{ value: 'sample/actual', name: 'Sample actual model' }],
+        },
+      ],
+    },
+    'pi'
+  )!
+  expect(live.settings.model).toBe('sample/actual')
+  expect(live.choices.models).toContainEqual({ id: 'sample/actual', label: 'Sample actual model' })
+})
 const control = (c = client()) => {
   const report = vi.fn()
   const open = vi.fn()
