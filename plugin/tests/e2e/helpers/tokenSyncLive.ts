@@ -20,6 +20,8 @@ import { phoneRouteProbe, phoneRouteDetail, type PhoneRouteResult } from './phon
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
 import { restoreSyncActiveFile } from './syncActiveFile'
+import { V2Client } from '../../../src/sync/v2/client'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 function cleanupReason(error: unknown, depth = 0): string {
   const message = error instanceof Error ? error.message : String(error)
   return error instanceof AggregateError && depth < 3
@@ -141,7 +143,14 @@ export class TokenSyncLive {
     qrImage?: string,
     timeoutMs?: number
   ): Promise<string> {
-    const client = AccessClient.fromToken(token, { fetch: fixtureFetch })
+    const decoded = decodeAccessToken(token)
+    const item =
+      decoded.v === 2
+        ? (await new V2Client(decoded, fixtureFetch).itemClient().items()).items.find(
+            (one) => one.removed_at === null
+          )?.id
+        : undefined
+    const client = AccessClient.fromToken(token, { fetch: fixtureFetch, item })
     await waitFor(
       'new group scope to become active',
       async () => {

@@ -1,4 +1,7 @@
-import { expect } from 'vitest'
+import { expect, it } from 'vitest'
+import { V2Client } from '../../src/sync/v2/client'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
+import { waitFor } from './helpers/syncVault'
 import { AccessClient } from '@abele/sync-sdk/core'
 import { fixtureFetch } from './helpers/syncServer'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
@@ -9,8 +12,164 @@ import {
   expectTrustedRow,
   expectDeviceLocalTrust,
 } from './helpers/syncTrustedConnection'
-import { closeSyncScreens } from './helpers/syncScreens'
+import { closeSyncScreens, captureSyncScreen } from './helpers/syncScreens'
 const fixture = liveSuite()
+it('multi-scope S6: deleting one file item leaves the other item connected', async () => {
+  const s = fixture(),
+    owner = s.primary,
+    receiver = s.peer!
+  const ownerId = await s.connect(),
+    folder = s.root + '/Kept folder',
+    single = s.root + '/Delete one.md'
+  owner.create(folder + '/kept.md', 'still shared')
+  owner.create(single, 'server delete candidate')
+  await owner.syncNow(ownerId)
+  await owner.long(
+    'item capability',
+    `await poll(()=>svc.itemSets.several(${JSON.stringify(ownerId)}));return true`
+  )
+  const issued = await owner.shareSet(
+    ownerId,
+    ['Folder: ' + folder, 'File: ' + single],
+    'Sample deletion share'
+  )
+  const receiverId = await s.connect(receiver, issued.token)
+  owner.run(
+    `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample deletion share'));row.click();await poll(()=>modal('Sample deletion share'));const detail=modal('Sample deletion share');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('Delete one')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'));action.click();await poll(()=>inWindows('.abele-server-delete__facts'));return true`
+  )
+  const confirmation = await captureSyncScreen(
+    owner,
+    'multi-scope-delete-one',
+    '.abele-server-delete__facts'
+  )
+  expect(confirmation.over).toEqual([])
+  expect(confirmation.clipped).toEqual([])
+  owner.run(
+    `const box=inWindows('.abele-server-delete__facts').closest('.modal');const facts=[...box.querySelectorAll('dt')].find(one=>textOf(one)==='Files');if(textOf(facts?.nextElementSibling)!=='1')throw new Error('Expected one file in deletion preview');const button=[...box.querySelectorAll('.abele-modal__footer button')].find(one=>one.classList.contains('mod-warning'));if(!button||button.disabled)throw new Error('Explicit deletion confirmation unavailable');button.click();await poll(()=>!document.contains(box));return true`
+  )
+  closeSyncScreens(owner)
+  await receiver.syncNow(receiverId)
+  expect((await s.items()).some((item) => item.path === single)).toBe(false)
+  expect(receiver.read(single)).toBe('server delete candidate')
+  expect(receiver.read(folder + '/kept.md')).toBe('still shared')
+  expect(receiver.rows()).toHaveLength(1)
+  receiver.create(folder + '/kept.md', 'other item still writes')
+  await receiver.syncNow(receiverId)
+  await owner.syncNow(ownerId)
+  expect(owner.read(folder + '/kept.md')).toBe('other item still writes')
+}, 180000)
+it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uploader', async () => {
+  const s = fixture(),
+    owner = s.primary,
+    receiver = s.peer!
+  const ownerId = await s.connect()
+  const folder = s.root + '/Collection',
+    groupA = s.root + '/First group.md',
+    groupB = s.root + '/Second group.md'
+  const single = s.root + '/Single note.md',
+    shared = s.root + '/Common note.md'
+  const memberships = `---\ngroups: ["[[${groupA.replace(/\.md$/, '')}]]", "[[${groupB.replace(/\.md$/, '')}]]"]\n---\n`
+  owner.create(folder + '/clean.md', 'unchanged copy')
+  owner.create(folder + '/edited.md', 'original copy')
+  owner.create(groupA, 'first group')
+  owner.create(groupB, 'second group')
+  owner.create(shared, memberships + 'shared by both groups')
+  owner.create(single, 'one file')
+  owner.create(s.root + '/Private.md', 'not shared')
+  await owner.syncNow(ownerId)
+  await owner.long(
+    'item capability to load',
+    `await poll(()=>svc.itemSets.several(${JSON.stringify(ownerId)}));return true`
+  )
+  const issued = await owner.shareSet(ownerId, [
+    'Folder: ' + folder,
+    'Group: First group',
+    'File: ' + single,
+  ])
+  const token = decodeAccessToken(issued.token)
+  expect(token.v).toBe(2)
+  if (token.v !== 2) throw new Error('Expected an item-set key')
+  expect(token.items).toHaveLength(3)
+  const keyApi = new V2Client(token, fixtureFetch)
+  const ownerApi = new V2Client(decodeAccessToken(s.server.rootToken), fixtureFetch)
+  const tokenId = (await keyApi.connection()).token_id
+  const inventory = (await keyApi.itemClient().items()).items
+  const folderItem = inventory.find((item) => item.scope.kind === 'folder')!
+  const receiverId = await s.connect(receiver, issued.token)
+  expect(receiver.rows()).toHaveLength(1)
+  expect(receiver.read(single)).toBe('one file')
+  expect(receiver.read(shared)).toContain('shared by both groups')
+  expect(receiver.exists(s.root + '/Private.md')).toBe(false)
+  const secondGroup = (await s.items()).find((item) => item.path === groupB)!
+  const added = await ownerApi
+    .itemClient()
+    .addItem(tokenId, { kind: 'group', id: secondGroup.file_id })
+  await waitFor(
+    'added group to be ready',
+    async () => (await new V2Client(token, fixtureFetch, added.id).connection()).status === 'active'
+  )
+  await receiver.syncNow(receiverId)
+  expect(receiver.read(groupB)).toBe('second group')
+  receiver.run(
+    `window.__sampleCommits=0;window.__sampleObservers=svc.itemSets.store.get(${JSON.stringify(receiverId)}).items.map(item=>host.live.get(item.recordId)?.observeTransport((path,active)=>{if(active&&path==='/v2/commit')window.__sampleCommits++})).filter(Boolean);return true`
+  )
+  try {
+    receiver.create(shared, memberships + 'one local edit')
+    await receiver.syncNow(receiverId)
+    expect(receiver.run('return window.__sampleCommits')).toBe(1)
+    await owner.syncNow(ownerId)
+    expect(owner.read(shared)).toContain('one local edit')
+    expect((await s.items()).filter((item) => /conflict/i.test(item.path))).toHaveLength(0)
+  } finally {
+    receiver.run(
+      'for(const close of window.__sampleObservers||[])close();delete window.__sampleObservers;delete window.__sampleCommits;return true'
+    )
+  }
+  await receiver.long(
+    'pause one item',
+    `await svc.itemSets.pauseItem(${JSON.stringify(receiverId)},${JSON.stringify(folderItem.id)},true);return true`
+  )
+  receiver.create(folder + '/edited.md', 'unsent local edit')
+  await ownerApi.itemClient().removeItem(tokenId, folderItem.id)
+  await receiver.syncNow(receiverId)
+  expect(receiver.read(folder + '/clean.md')).toBe('unchanged copy')
+  expect(receiver.read(folder + '/edited.md')).toBe('unsent local edit')
+  expect((await s.items()).some((item) => item.path === folder + '/clean.md')).toBe(true)
+  receiver.run(
+    `const root=await openSyncTab();connectionRow(root,${JSON.stringify(receiverId)}).click();await poll(()=>inWindows('.abele-connection-items__item_detached'));return true`
+  )
+  const removed = await captureSyncScreen(
+    receiver,
+    'multi-scope-retained-copies',
+    '.abele-connection-items'
+  )
+  expect(removed.over).toEqual([])
+  expect(removed.clipped).toEqual([])
+  receiver.run(
+    `const row=inWindows('.abele-connection-items__item_detached');icon(row,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Remove your copy…'));action.click();await poll(()=>modal('Remove your copy of Collection?'));return true`
+  )
+  const confirmation = await captureSyncScreen(
+    receiver,
+    'multi-scope-remove-copy',
+    'title:Remove your copy of Collection?'
+  )
+  expect(confirmation.over).toEqual([])
+  receiver.run(
+    `await press(modal('Remove your copy of Collection?'),'Remove 1 file');await poll(()=>!modal('Remove your copy of Collection?'));return true`
+  )
+  closeSyncScreens(receiver)
+  expect(receiver.exists(folder + '/clean.md')).toBe(false)
+  expect(receiver.read(folder + '/edited.md')).toBe('unsent local edit')
+  expect(owner.read(folder + '/clean.md')).toBe('unchanged copy')
+  await receiver.disconnect(receiverId)
+  const reconnected = await s.connect(receiver, issued.token)
+  expect(receiver.rows()).toHaveLength(1)
+  const current = receiver.run<{ path: string; state: { kind: string } }[]>(
+    `return svc.itemSets.items(${JSON.stringify(reconnected)})`
+  )
+  expect(current.some((item) => item.path === groupB)).toBe(true)
+  expect(current.some((item) => item.path === folder)).toBe(false)
+}, 240000)
 liveCase(
   'syncDevices',
   'trusted folder connections persist a device-local toggle and approve only trusted incoming code',
@@ -114,7 +273,7 @@ liveCase(
     a.create(path, 'before own-device revoke')
     await s.cycle()
     a.run(
-      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='My other device'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='My other device'));if(row.querySelector('svg.lucide-ban')){icon(row,'ban');await press(box,'Revoke')}else{const title=textOf(row.querySelector('.setting-item-name'));row.click();await poll(()=>modal(title));const detail=modal(title);await press(detail,'Revoke…');await press(detail,'Revoke');await poll(()=>detail.textContent.includes('Revoked'));await press(detail,'Close')};await press(box,'Close');await closeSettings();return true`
     )
     await expect(b.syncNow()).rejects.toThrow()
     expect(b.read(path)).toBe('before own-device revoke')
@@ -150,7 +309,7 @@ liveCase(
     a.rename(folder + '/renamed.md', outside)
     await s.cycle()
     expect(a.read(outside)).toBe('shared source')
-    expect(b.exists(folder + '/renamed.md')).toBe(false)
+    expect(b.read(folder + '/renamed.md')).toBe('shared source')
     a.create(outside, 'current private edit')
     a.rename(outside, path)
     await s.cycle()
@@ -341,7 +500,7 @@ liveCase(
     await a.pause(owner, true)
     const recipient = await s.connect(a, onward)
     a.run(
-      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Issued by participant'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Issued by participant'));if(row.querySelector('svg.lucide-ban')){icon(row,'ban');await press(box,'Revoke')}else{const title=textOf(row.querySelector('.setting-item-name'));row.click();await poll(()=>modal(title));const detail=modal(title);await press(detail,'Revoke…');await press(detail,'Revoke');await poll(()=>detail.textContent.includes('Revoked'));await press(detail,'Close')};await press(box,'Close');await closeSettings();return true`
     )
     b.create(path, 'after root-owner revocation')
     await b.syncNow(participant)
@@ -436,7 +595,7 @@ liveCase(
     a.create(path, 'retained local content')
     await s.cycle()
     a.run(
-      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample revoked recipient'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample revoked recipient'));if(row.querySelector('svg.lucide-ban')){icon(row,'ban');await press(box,'Revoke')}else{const title=textOf(row.querySelector('.setting-item-name'));row.click();await poll(()=>modal(title));const detail=modal(title);await press(detail,'Revoke…');await press(detail,'Revoke');await poll(()=>detail.textContent.includes('Revoked'));await press(detail,'Close')};await press(box,'Close');await closeSettings();return true`
     )
     await expect(b.syncNow()).rejects.toThrow()
     expect(b.read(path)).toBe('retained local content')

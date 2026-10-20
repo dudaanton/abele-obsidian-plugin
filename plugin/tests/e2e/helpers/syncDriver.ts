@@ -4,6 +4,7 @@ import { captureSyncFailure, captureSyncProgress, SYNC_SNAPSHOT } from './syncDi
 import { STARTUP_WAIT, waitForStartup, startupWaitFailure } from './startupWait'
 import { onPhone } from './target'
 import { TOKEN_HOST_READY } from './tokenHostReady'
+import { SHARE_SET_PICKER } from './shareSetPicker'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
  ${STARTUP_WAIT}
@@ -327,7 +328,7 @@ export class SyncDriver {
     // The kit rebuilds its native select when choices arrive; never poll the loading node.
     return this.long(
       'issue sharing token',
-      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access'),${timeoutMs},'sharing dialog to open'); const box=modal('Share access'); let select,option; await poll(()=>{select=box.querySelector('select');option=select&&[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)});return !!option},${timeoutMs},'sharing scopes to load'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea'),${timeoutMs},'issued sharing token'); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
+      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access'),${timeoutMs},'sharing dialog to open'); const box=modal('Share access'); ${SHARE_SET_PICKER} await pickShareItem(box,${JSON.stringify(scopeLabel)}); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea'),${timeoutMs},'issued sharing token'); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
       true,
       timeoutMs
     )
@@ -337,10 +338,30 @@ export class SyncDriver {
       'render issued access QR',
       `
       const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));
-      const box=modal('Share access');await poll(()=>box.querySelector('select').options.length>0);
-      const select=box.querySelector('select'),option=[...select.options].find(one=>one.textContent.trim()==='Whole vault');if(!option)throw new Error('Root sharing unavailable');
-      select.value=option.value;select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true}));
+      const box=modal('Share access');${SHARE_SET_PICKER} await pickShareItem(box,'Whole vault');
       typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),'QR recipient');await press(box,'Create token');await poll(()=>box.querySelector('svg.abele-qr'));
+      const token=box.querySelector('textarea').value,svg=box.querySelector('svg.abele-qr').cloneNode(true);
+      svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','1024');svg.setAttribute('height','1024');svg.querySelector('rect').setAttribute('fill','white');svg.querySelector('path').setAttribute('fill','black');
+      const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));let image;
+      try{const picture=new Image();picture.src=url;await picture.decode();const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=1024;canvas.getContext('2d').drawImage(picture,0,0,1024,1024);image=canvas.toDataURL('image/png')}finally{URL.revokeObjectURL(url)}
+      await press(box,'Close');await closeSettings();return {token,image}
+    `,
+      true
+    )
+  }
+  async shareSet(
+    id: string,
+    labels: string[],
+    label = 'Sample item set'
+  ): Promise<{ token: string; image: string }> {
+    return this.long(
+      'issue a set through the native picker',
+      `
+      const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));
+      const box=modal('Share access');${SHARE_SET_PICKER}
+      for(const label of ${JSON.stringify(labels)}) await pickShareItem(box,label);
+      typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)});
+      await press(box,'Create token');await poll(()=>box.querySelector('textarea')&&box.querySelector('svg.abele-qr'));
       const token=box.querySelector('textarea').value,svg=box.querySelector('svg.abele-qr').cloneNode(true);
       svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','1024');svg.setAttribute('height','1024');svg.querySelector('rect').setAttribute('fill','white');svg.querySelector('path').setAttribute('fill','black');
       const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));let image;
