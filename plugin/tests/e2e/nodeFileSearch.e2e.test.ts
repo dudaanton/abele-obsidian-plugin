@@ -40,7 +40,7 @@ async function search(shell: string, entry: string) {
     const input=file().querySelector('[role=search] input');if(document.activeElement!==input)throw Error('Find did not focus its input');
     input.value='marker';input.dispatchEvent(new Event('input',{bubbles:true}));
     await until(()=>file()?.querySelectorAll('.abele-github-find__match').length===2,'Both file matches');
-    if(input.getBoundingClientRect().width<parseFloat(getComputedStyle(input).fontSize)*4)throw Error('Find input too narrow');return 'matches'})()`)
+    if(document.body.classList.contains('is-phone')&&input.getBoundingClientRect().width<file().querySelector('[role=search]').getBoundingClientRect().width*.75)throw Error('Find input does not get the phone width');return 'matches'})()`)
   await capture(`${shell}-${entry}-search`)
   await evalLong(
     `(async()=>{${prelude}file().querySelector('[role=search] input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!file().querySelector('[role=search]'),'Find closes');return 'closed'})()`
@@ -53,8 +53,14 @@ async function checkTools(shell: string, entry: string) {
   await capture(`${shell}-${entry}-blame`)
   await evalLong(`(async()=>{${prelude}
         file().querySelector('[aria-label="Toggle line blame"]').click();
-        const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));const row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));
+        const leaves=app.workspace.getLeavesOfType('abele-node-file'),repos=app.workspace.getLeavesOfType('abele-github').length,leaf=leaves.find(l=>l.view.contentEl.contains(file()));const row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect(),point={bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2};
+        row.dispatchEvent(new MouseEvent('mousedown',{...point,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin',button:0}));
+        await until(()=>leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Modifier-click definition');
+        if(app.workspace.getLeavesOfType('abele-node-file').length!==leaves.length||app.workspace.getLeavesOfType('abele-github').length!==repos)throw Error('Same-file definition opened another tab');
+        if(file().closest('.abele-node-main').querySelector('[role=alert]'))throw Error('Unchanged file became stale');
+        file().querySelectorAll('.cm-line')[1].dispatchEvent(new MouseEvent('contextmenu',point));
         await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target')&&leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Definition destination');return 'definition'})()`)
+  await capture(`${shell}-${entry}-definition`)
 }
 
 async function fileSearchScenario(shell: 'desktop' | 'phone') {
@@ -67,6 +73,15 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
   try {
     mkdirSync(resolve(project, 'src'))
     writeFileSync(resolve(project, 'src/sample.ts'), 'export const marker = 1\nmarker\n')
+    writeFileSync(
+      resolve(project, 'src/matches.ts'),
+      Array.from({ length: 105 }, (_, i) => `// contentNeedle ${i + 1}`).join('\n') + '\n'
+    )
+    writeFileSync(
+      resolve(project, 'src/other.ts'),
+      '// sample source\nexport const sharedValue = "contentNeedle"\n'
+    )
+    writeFileSync(resolve(project, 'sample-binary.bin'), Buffer.from('contentNeedle\u0000sample'))
     await git('add', 'src/sample.ts')
     await git(
       '-c',
@@ -79,7 +94,10 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       '-m',
       'Add sample source'
     )
-    writeFileSync(resolve(project, 'src/sample.ts'), 'export const marker = 2\nmarker\n')
+    writeFileSync(
+      resolve(project, 'src/sample.ts'),
+      'export const marker = 2\nmarker\nsharedValue\n'
+    )
     const ids = JSON.parse(
       await evalLong(`(async()=>{${prelude}
       const client=nodes.connection(${JSON.stringify(node.registration)}).client;
@@ -130,7 +148,47 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         await until(()=>visible('.abele-file-tree'),'File tree');let tree=visible('.abele-file-tree');await until(()=>[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='src'),'Source folder');const folder=[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='src');if(folder.getAttribute('aria-expanded')==='false')folder.click();await until(()=>[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='sample.ts'),'File row');[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='sample.ts').click();return 'clicked tree file'})()`)
       await search(shell, 'tree')
       await checkTools(shell, 'tree')
+      await evalLong(`(async()=>{${prelude}
+        file().querySelector('[data-node-search]').click();await until(()=>file()?.querySelector('.abele-github-search input'),'File-tab code search');
+        const input=file().querySelector('.abele-github-search input');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+        await until(()=>file()?.querySelectorAll('.abele-github-search__line').length===106&&file().querySelector('mark')?.textContent==='contentNeedle','Highlighted whole-project results in file tab');return 'file-tab content search'})()`)
+      await capture(`${shell}-file-tab-content-search`)
+      await evalLong(
+        `(async()=>{${prelude}file().querySelector('[aria-label="Close code search"]').click();await until(()=>!file()?.querySelector('.abele-github-search'),'File-tab code search closes');return 'closed code search'})()`
+      )
+      await evalLong(`(async()=>{${prelude}
+        const current=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file())),before=app.workspace.getLeavesOfType('abele-node-file').length;
+        const jump=()=>{const row=file().querySelectorAll('.cm-line')[2],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:box.left+box.width/2,clientY:box.top+box.height/2,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin'}))};jump();
+        await until(()=>file()?.textContent.includes('export const sharedValue'),'Other-file definition');
+        const destination=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));if(destination===current||app.workspace.getLeavesOfType('abele-node-file').length!==before+1)throw Error('Other-file definition did not get its own tab');if(current.view.getState().path!=='src/sample.ts')throw Error('Definition replaced the source tab');
+        await app.workspace.revealLeaf(current);await until(()=>file()?.textContent.includes('export const marker'),'Return to source');jump();await until(()=>destination.view.contentEl.contains(file()),'Reuse definition tab');if(app.workspace.getLeavesOfType('abele-node-file').length!==before+1)throw Error('Definition opened a duplicate destination');return 'cross-file definition and reuse'})()`)
+      await capture(`${shell}-other-file-definition`)
       await closeFile()
+      await sidebar('Files')
+      await evalLong(`(async()=>{${prelude}
+        await until(()=>visible('[data-node-project-search]'),'Project content search');visible('[data-node-project-search]').click();
+        await until(()=>visible('.abele-github-search__query'),'Project search field');const input=visible('.abele-github-search__query');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+        await until(()=>visible('.abele-github-search__match'),'Highlighted project matches');
+        const search=visible('.abele-github-search');if(!search.textContent.includes('src/matches.ts')||!search.querySelector('.abele-github-search__number'))throw Error('Project results lack path or line');
+        await until(()=>[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')),'Project search continuation');return 'first project page'})()`)
+      await capture(`${shell}-project-content-page`)
+      await evalLong(`(async()=>{${prelude}
+        const search=visible('.abele-github-search');[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')).click();
+        await until(()=>search.querySelectorAll('.abele-github-search__line').length===106,'All project search pages');
+        if(!search.textContent.includes('Some files or matches were omitted'))throw Error('Missing plain search-limit explanation');return 'all project matches'})()`)
+      await capture(`${shell}-project-content-all`)
+      await evalLong(`(async()=>{${prelude}
+        const result=[...visible('.abele-github-search').querySelectorAll('.abele-github-search__file')].find(el=>el.textContent.includes('src/other.ts'));result.querySelector('.abele-github-search__line').click();
+        await until(()=>file()?.textContent.includes('sharedValue'),'Content result opens ordinary file');const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));if(leaf.view.getState().line!==2)throw Error('Content result lost its line');return 'content destination'})()`)
+      await capture(`${shell}-project-content-destination`)
+      await closeFile()
+      await sidebar('Files')
+      await evalLong(`(async()=>{${prelude}
+        const search=visible('.abele-github-search'),input=search.querySelector('input');input.value='missingNeedle123';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await until(()=>search.querySelector('.abele-github-search__summary')&&!search.querySelector('.abele-github-search__line'),'Empty content search');return 'empty project search'})()`)
+      await capture(`${shell}-project-content-empty`)
+      await evalLong(`(async()=>{${prelude}
+        const search=visible('.abele-github-search');search.querySelector('[aria-label="Read the query as a regular expression"]').click();const input=search.querySelector('input');input.value='[';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await until(()=>search.querySelector('.abele-github-search__error'),'Invalid regular expression');return 'project search error'})()`)
+      await capture(`${shell}-project-content-error`)
       await node.open(ids.session, 'Source links')
       await evalLong(
         `(async()=>{${prelude}const presenter=chats.getNodeSession(chats.activeTabId.value);await until(()=>presenter.binding.value,'Chat binding');await presenter.send(${JSON.stringify(`[Source](src/sample.ts) [Lines](${citation})`)},[{kind:'hang'}]);await until(()=>chat()?.querySelector('a'),'Rendered chat links');await until(()=>presenter.projection.value.activeRuns.length,'Fake run');await presenter.interrupt(presenter.projection.value.activeRuns[0]);return 'fake source message'})()`

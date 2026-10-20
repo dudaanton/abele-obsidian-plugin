@@ -157,6 +157,19 @@ defineExpose({ focus })
   }
 }
 
+body.is-phone .abele-github-find {
+  grid-template-columns: minmax(0, 1fr) max-content;
+
+  .abele-github-find__input {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .abele-github-find__count {
+    text-align: left;
+  }
+}
+
 // The matches: in the page's own text through the Custom Highlight API, in code as decorations.
 // The current one in the theme's orange — Obsidian has no variable of its own for an active match.
 ::highlight(abele-find) {
