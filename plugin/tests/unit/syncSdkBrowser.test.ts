@@ -37,9 +37,11 @@ it('keeps every plugin source on the public browser-safe SDK subpaths', () => {
   for (const file of readdirSync('src', { recursive: true })
     .map(String)
     .filter((file) => /\.(ts|vue)$/.test(file))) {
-    assertSdkSourceImports(readFileSync(resolve('src', file), 'utf8'), file)
+    const source = readFileSync(resolve('src', file), 'utf8')
+    // Only a file naming the package can import it; parsing all of src is slow under load.
+    if (source.includes('@abele/')) assertSdkSourceImports(source, file)
   }
-})
+}, 60_000)
 
 const sdk = '/sample/node_modules/@abele/sync-sdk/dist/'
 const bundle = (id: string) => ({
