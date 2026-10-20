@@ -1,8 +1,17 @@
 import { t } from '@/i18n'
 import { ref } from 'vue'
 import type { AttentionRow } from '@/agents/attention'
+import { delegationAttentionRows } from '@/agents/nodeAttention'
+import { nodeDelegationCardFixture } from './nodeDelegationFixture'
 
-export type AgentsFixtureState = 'empty' | 'waiting' | 'many' | 'working' | 'error' | 'mixed'
+export type AgentsFixtureState =
+  | 'empty'
+  | 'waiting'
+  | 'many'
+  | 'working'
+  | 'error'
+  | 'mixed'
+  | 'manager-team'
 /** Invented states exercise the real list without opening conversations or providers. */
 export function agentsFixture(state: AgentsFixtureState = 'mixed') {
   const at = Date.now() - 15 * 60_000
@@ -81,27 +90,52 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     ],
   }
   const rows =
-    state === 'empty'
-      ? []
-      : state === 'waiting'
-        ? [waiting]
-        : state === 'working'
-          ? [working]
-          : state === 'error'
-            ? [error]
-            : state === 'many'
-              ? [
-                  approval,
-                  {
-                    ...waiting,
-                    title:
-                      'A long sample question about choosing a folder for drafts and continuing the chapter discussion',
-                    agent: 'Sample researcher with a very long name',
-                  },
-                  error,
-                  working,
-                ]
-              : [waiting, working, node]
+    state === 'manager-team'
+      ? [
+          { ...working, title: 'Sample manager' },
+          ...delegationAttentionRows(
+            [
+              {
+                ...nodeDelegationCardFixture('working'),
+                title: 'Sample parser developer',
+                sessionId: 'sample-parser',
+              },
+              {
+                ...nodeDelegationCardFixture('working'),
+                title: 'Sample test developer',
+                sessionId: 'sample-tests',
+                pendingHumanPrompts: 0,
+              },
+              {
+                ...nodeDelegationCardFixture('done'),
+                title: 'Sample docs developer',
+                sessionId: 'sample-docs',
+              },
+            ],
+            { id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }
+          ),
+        ]
+      : state === 'empty'
+        ? []
+        : state === 'waiting'
+          ? [waiting]
+          : state === 'working'
+            ? [working]
+            : state === 'error'
+              ? [error]
+              : state === 'many'
+                ? [
+                    approval,
+                    {
+                      ...waiting,
+                      title:
+                        'A long sample question about choosing a folder for drafts and continuing the chapter discussion',
+                      agent: 'Sample researcher with a very long name',
+                    },
+                    error,
+                    working,
+                  ]
+                : [waiting, working, node]
   return {
     rows: ref(rows),
     incomplete: ref(state === 'mixed'),

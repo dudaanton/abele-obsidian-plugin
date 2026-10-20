@@ -7,6 +7,20 @@ import { shotDir } from './helpers/shots'
 targets('desktop', 'phone')
 const shots = shotDir('abele-node-manager')
 
+async function closeFixture() {
+  await evalLong(`(async () => {
+    const card=document.querySelector('.abele-node-delegation,.abele-agents');
+    const close=[...(card?.closest('.modal-container')?.querySelectorAll('.modal-header-button,.modal-close-button')??[])].find(el=>el.getBoundingClientRect().width);
+    if(close)close.click();
+    else document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+    for(let i=0;i<100;i++) {
+      if(!card?.isConnected)return true;
+      await new Promise(r=>setTimeout(r,50));
+    }
+    throw Error('The previous manager fixture did not unmount');
+  })()`)
+}
+
 async function inspectCards(label: string) {
   for (const state of ['working', 'done', 'failed', 'empty']) {
     try {
@@ -26,16 +40,26 @@ async function inspectCards(label: string) {
       expect(report.text).toContain('work/sample-parser-boundaries')
       columnShot(`${shots}/${label}-${state}.png`)
     } finally {
-      await evalLong(`(async () => {
-        const card=document.querySelector('.abele-node-delegation');
-        card?.closest('.modal')?.querySelector('.modal-close-button')?.click();
-        for(let i=0;i<100;i++) {
-          if(!card?.isConnected)return true;
-          await new Promise(r=>setTimeout(r,50));
-        }
-        throw Error('The previous delegation card did not unmount');
-      })()`)
+      await closeFixture()
     }
+  }
+  try {
+    await evalLong(`window.__abeleTest.openDialog('agents', {agentsState:'manager-team'})`)
+    const overview = JSON.parse(
+      await evalLong(`(async () => {
+      for(let i=0;i<100&&!document.querySelector('.abele-agents');i++)await new Promise(r=>setTimeout(r,50));
+      const root=document.querySelector('.abele-agents');
+      return JSON.stringify({rows:root.querySelectorAll('.abele-agents__row').length,text:root.textContent,overflow:root.scrollWidth>root.clientWidth+1});
+    })()`)
+    ) as { rows: number; text: string; overflow: boolean }
+    expect(overview.rows).toBe(4)
+    expect(overview.text).toContain('Sample manager')
+    expect(overview.text).toContain('Sample parser developer')
+    expect(overview.text).toContain('Done')
+    expect(overview.overflow).toBe(false)
+    columnShot(`${shots}/${label}-overview.png`)
+  } finally {
+    await closeFixture()
   }
 }
 
