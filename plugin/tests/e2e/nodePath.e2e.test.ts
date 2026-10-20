@@ -446,7 +446,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await clearSelection()
     await selectText('.abele-file-view .cm-line')
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-selection-bar_placed').querySelector('[data-action=ask]').click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'trust ready'})()`
+      `(async()=>{${prelude}visible('.abele-selection-bar_placed').querySelector('[data-action=ask]').click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.querySelector('.suggestion-title')?.textContent.trim()==='Test agent'));[...document.querySelectorAll('.suggestion-item')].find(i=>i.querySelector('.suggestion-title')?.textContent.trim()==='Test agent').click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'trust ready'})()`
     )
     await capture('desktop-folder-trust')
     await evalLong(
@@ -456,7 +456,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await capture('desktop-node-selection-context')
     await selectText('.abele-file-view .cm-line')
     await evalLong(
-      `(async()=>{${prelude}const chats=api.ChatService.getInstance(),node=chats.getNodeSession(chats.activeTabId.value);const before=node.draft.value.text;visible('.abele-selection-bar_placed').querySelector('[data-action=add]').click();await until(()=>document.querySelector('.abele-node-suggestion_current'));document.querySelector('.abele-node-suggestion_current').click();await until(()=>node.draft.value.text.length>before.length);if(!node.draft.value.text.startsWith(before+'\\n\\n')||node.isStreaming.value)throw Error('Selection replaced the draft or sent a turn');return 'added selection to open node chat'})()`
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance(),node=chats.getNodeSession(chats.activeTabId.value);const before=node.draft.value.text;visible('.abele-selection-bar_placed').querySelector('[data-action=add]').click();await until(()=>node.draft.value.text.length>before.length);if(document.querySelector('.abele-node-suggestion_current'))throw Error('Add unnecessarily asked which node chat');if(!node.draft.value.text.startsWith(before+'\\n\\n')||node.isStreaming.value)throw Error('Selection replaced the draft or sent a turn');return 'added selection directly to open node chat'})()`
     )
     await clearSelection()
     await evalLong(
@@ -653,7 +653,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});window.__selectionTrustPlace=model.selected.value;await model.select(${JSON.stringify(ids.plain)});app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-place__name')?.textContent==='plain-folder');return 'plain folder for trust'})()`
     )
     await evalLong(
-      `(async()=>{${prelude}(await placeMenu('New chat here')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'phone trust prompt'})()`
+      `(async()=>{${prelude}(await placeMenu('New chat here')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.querySelector('.suggestion-title')?.textContent.trim()==='Test agent'));[...document.querySelectorAll('.suggestion-item')].find(i=>i.querySelector('.suggestion-title')?.textContent.trim()==='Test agent').click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'phone trust prompt'})()`
     )
     await capture('phone-folder-trust')
     await evalLong(
