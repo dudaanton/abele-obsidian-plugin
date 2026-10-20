@@ -26998,5 +26998,75 @@
       "es",
       "de"
     ]
+  },
+  "node.actionDeniedByOwner": {
+    "englishHash": "a121c33031c21445d6e8e3f9025e77dc63be607e5f104d2210d17fcdb1297cef",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.runSummary.move.done": {
+    "englishHash": "7e2ce3482af7b4b515d30da83d6cca8ec1db90b38c3ecac4ed6147566e9f3bcb",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.runSummary.move.running": {
+    "englishHash": "562d419765d3f59ee7259f997c7367cc31f81dc712d35930c3a8a36079c5e31f",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.runSummary.move.waiting": {
+    "englishHash": "1463556e7c1ba96e494696cee8e18535fc55da262a1c644a2aa2ebd0322f5b1f",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.disconnectTokenNotice": {
+    "englishHash": "1003db61558740b740b97e4aee1aeb95ef7ed6a63de7eb575b0b0da45472ef33",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.requestMissing": {
+    "englishHash": "87a9902254d1da3c05e0e4e0d1e13b3fcaeda1953e6bd3f76f4a5c5a7734325d",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.frameSourceUnavailable": {
+    "englishHash": "9f33b974e258e74ec5abd117a37faa96c7fe20e912685c046f117e0a5aaec020",
+    "context": "Node recovery or debugger action outcome",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
