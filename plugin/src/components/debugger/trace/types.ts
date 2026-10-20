@@ -64,6 +64,9 @@ export interface TraceStep {
   stack?: string[]
   /** How long the program stood while the values were taken. */
   pausedMs?: number
+  /** HTTP traffic observed in the debugged program. */
+  direction?: 'incoming' | 'outgoing'
+  durationMs?: number
   /** A request's status. */
   status?: number
   /** The host a request went to; its label keeps the method and path. */

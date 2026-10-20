@@ -47,6 +47,8 @@ export const WireStepSchema = z.object({
   place: z.object({ file: z.string(), line: z.number(), fn: z.string().optional() }).optional(),
   stack: z.array(z.string()).optional(),
   paused_ms: z.number().optional(),
+  direction: z.enum(['incoming', 'outgoing']).optional(),
+  duration_ms: z.number().nonnegative().optional(),
   status: z.number().optional(),
   host: z.string().optional(),
   chain: z.string().optional(),

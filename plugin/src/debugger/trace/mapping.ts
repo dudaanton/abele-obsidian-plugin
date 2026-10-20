@@ -95,6 +95,8 @@ export const step = (s: WireStep): TraceStep => ({
     : {}),
   ...(s.stack ? { stack: s.stack.map(frameName) } : {}),
   ...(s.paused_ms !== undefined ? { pausedMs: Math.round(s.paused_ms) } : {}),
+  ...(s.direction ? { direction: s.direction } : {}),
+  ...(s.duration_ms !== undefined ? { durationMs: s.duration_ms } : {}),
   ...(s.status !== undefined ? { status: s.status } : {}),
   ...(s.host ? { host: s.host } : {}),
   ...(s.chain ? { chain: s.chain } : {}),

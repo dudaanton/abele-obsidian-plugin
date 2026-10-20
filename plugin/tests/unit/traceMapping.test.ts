@@ -199,3 +199,30 @@ describe('whether a node records runs', () => {
     expect(nodeTraceSupported(undefined)).toBe(false)
   })
 })
+
+// Payload shape from the node recorder's program-HTTP service fixture.
+it('retains program HTTP metadata and ignores additive fields at every level', () => {
+  const parsed = WireRunSchema.parse({
+    ...wireRun,
+    future: true,
+    steps: [
+      {
+        id: 't0003',
+        kind: 'http',
+        ts: '2026-01-02T03:04:05.000Z',
+        at: 0,
+        label: 'GET /api',
+        direction: 'incoming',
+        duration_ms: 50,
+        status: 200,
+        chain: 'n1',
+        future: true,
+        values: [{ name: 'http', format: 'json', bytes: 2, brief: '{}', future: true }],
+      },
+    ],
+  })
+  expect(parsed.steps[0]).toMatchObject({ direction: 'incoming', duration_ms: 50 })
+  expect(parsed.steps[0]).not.toHaveProperty('future')
+  expect(parsed.steps[0].values[0]).not.toHaveProperty('future')
+  expect(run(parsed).steps[0]).toMatchObject({ direction: 'incoming', durationMs: 50, status: 200 })
+})
