@@ -19,6 +19,14 @@ const commit = {
   message: 'Sample change\n\nA longer sample body.',
 }
 
+it('shows only author and relative date in the row, keeping the full message in its tooltip', () => {
+  const wrapper = mount(GithubBlameRange, { props: { commit } })
+  expect(wrapper.get('.abele-github-blame-range__author').text()).toBe('Sample Author')
+  expect(wrapper.get('.abele-github-blame-range__date').text()).not.toBe('')
+  expect(wrapper.get('button').text()).not.toContain('Sample change')
+  expect(wrapper.get('button').attributes('aria-label')).toContain(commit.message)
+})
+
 it('shows the commit in a dialog and opens it from there', async () => {
   const wrapper = mount(GithubBlameRange, {
     props: { commit: commit as never },

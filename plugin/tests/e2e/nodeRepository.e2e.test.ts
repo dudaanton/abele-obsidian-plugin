@@ -30,19 +30,60 @@ const homeFills = `const homeFills=async(root,shot,wide)=>{
   }finally{for(const split of splits)split.expand()}
 };`
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<200;i++){if(f())return;await wait(50)}throw Error('Repository UI did not settle: '+f.toString())};`
+const committedBlame = `const committedBlame=async (node,project,workspace,shot)=>{
+  const open=path=>api.openNodeRepository(node,project,workspace,{path});
+  await open('history.ts');
+  await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('third = 30'));
+  const toggle=document.querySelector('[aria-label="Toggle line blame"]');
+  if(toggle.getAttribute('aria-pressed')!=='true')toggle.click();
+  await until(()=>{const names=[...document.querySelectorAll('.abele-github-blame-range__name')].map(e=>e.textContent.trim());return names.includes('Ivy')&&names.includes('Noah')});
+  await wait(300);
+  const rows=[...document.querySelectorAll('.abele-github-blame-range')];
+  const dates=new Set();
+  for(const row of rows){
+    for(const selector of ['.abele-github-blame-range__name','.abele-github-blame-range__date']){
+      const label=row.querySelector(selector);
+      if(!label.textContent.trim()||label.scrollWidth>label.clientWidth+1)throw Error('Blame attribution clipped: '+label.outerHTML);
+    }
+    dates.add(row.querySelector('.abele-github-blame-range__date').textContent.trim());
+    if(row.textContent.includes('Committed fixture details'))throw Error('Commit message is inline');
+    if(!row.querySelector('button').getAttribute('aria-label')?.includes('Committed fixture details'))throw Error('Full commit message is missing from tooltip');
+  }
+  if(dates.size<2)throw Error('Blame dates are not distinct');
+  const gutter=document.querySelector('.abele-github-blame');
+  const natural=Math.max(...rows.map(row=>row.getBoundingClientRect().width));
+  if(Math.abs(gutter.getBoundingClientRect().width-natural)>3)throw Error('Blame column does not fit its content');
+  const capture=await require('@electron/remote').getCurrentWebContents().capturePage();
+  require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+shot,capture.toPNG());
+  await open('app.ts');
+  await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('export const value'));
+};`
 it('opens the real node repository in the shared tab, follows history, compares, searches and refreshes external edits', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built node CLI')
   mkdirSync('../.scratch', { recursive: true })
   const dir = mkdtempSync(resolve('../.scratch/r-')),
     projectPath = resolve(dir, 'sample-project')
   mkdirSync(projectPath)
+  let identity = {
+    GIT_AUTHOR_NAME: 'Ivy',
+    GIT_AUTHOR_EMAIL: 'ivy@example.invalid',
+    GIT_COMMITTER_NAME: 'Ivy',
+    GIT_COMMITTER_EMAIL: 'ivy@example.invalid',
+    GIT_AUTHOR_DATE: new Date(Date.now() - 8 * 86400_000).toISOString(),
+    GIT_COMMITTER_DATE: new Date(Date.now() - 8 * 86400_000).toISOString(),
+  }
   const git = (...args: string[]) =>
     promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
       cwd: projectPath,
+      env: { ...process.env, ...identity },
     })
   await git('init', '--initial-branch=main')
   writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 1\n')
   writeFileSync(resolve(projectPath, 'README.md'), '# Sample repository\n')
+  writeFileSync(
+    resolve(projectPath, 'history.ts'),
+    'export const first = 1\nexport const second = 2\nexport const third = 3\nexport const fourth = 4\n'
+  )
   await git('add', '.')
   await git(
     '-c',
@@ -53,7 +94,27 @@ it('opens the real node repository in the shared tab, follows history, compares,
     'commit.gpgsign=false',
     'commit',
     '-m',
-    'Add sample files'
+    'Add sample files\n\nCommitted fixture details from the first author.'
+  )
+  identity = {
+    GIT_AUTHOR_NAME: 'Noah',
+    GIT_AUTHOR_EMAIL: 'noah@example.invalid',
+    GIT_COMMITTER_NAME: 'Noah',
+    GIT_COMMITTER_EMAIL: 'noah@example.invalid',
+    GIT_AUTHOR_DATE: new Date(Date.now() - 2 * 86400_000).toISOString(),
+    GIT_COMMITTER_DATE: new Date(Date.now() - 2 * 86400_000).toISOString(),
+  }
+  writeFileSync(
+    resolve(projectPath, 'history.ts'),
+    'export const first = 1\nexport const second = 2\nexport const third = 30\nexport const fourth = 40\n'
+  )
+  await git('add', 'history.ts')
+  await git(
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-m',
+    'Update sample history\n\nCommitted fixture details from the second author.'
   )
   const head = (await git('rev-parse', 'HEAD')).stdout.trim()
   await git('worktree', 'add', '-b', 'feature', resolve(dir, 'external-worktree'))
@@ -142,7 +203,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
       if(!fileRow)throw Error('Ordinary repository file navigation is missing');fileRow.click();
       await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 3'));
       document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range')?.textContent.includes('Uncommitted'));
-      await wait(300);{const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/blame-desktop.png',capture.toPNG())}
+      ${committedBlame}await committedBlame(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,'blame-committed-desktop.png');
       document.querySelector('[aria-label="Repository actions"]').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='File history'));
       [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='File history').click();await until(()=>document.querySelector('.abele-github-commits')?.textContent.includes('Add sample files'));
@@ -268,10 +329,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
         await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:{kind:'home'}});
         await until(()=>[...document.querySelectorAll('.abele-github-folder')].some(el=>el.getBoundingClientRect().width));
         await homeFills([...document.querySelectorAll('.abele-github-folder')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
-        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{path:'app.ts'});
-        await until(()=>document.querySelector('[aria-label="Toggle line blame"]'));
-        document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range'));
-        await wait(300);{const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/blame-phone.png',capture.toPNG())}
+        ${committedBlame}await committedBlame(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},'blame-committed-phone.png');
         const search=[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));search.click();
         await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));
         await until(()=>document.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));

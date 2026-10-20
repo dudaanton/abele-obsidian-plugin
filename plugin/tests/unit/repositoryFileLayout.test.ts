@@ -7,13 +7,15 @@ function css(component: string) {
   return compileString(source.match(/<style lang="scss">([\s\S]*?)<\/style>/)?.[1] ?? '').css
 }
 
-it('sizes blame against its code pane rather than the window on desktop and phone', () => {
+it('sizes blame to its author and date rather than reserving part of the pane', () => {
   const blame = css('GithubBlameRange')
   expect(blame).not.toMatch(/\b\d+vw\b/)
   for (const selector of ['.abele-github-blame', '.abele-github-blame-range']) {
     const rule = blame.match(new RegExp(`\\${selector}\\s*\\{([^}]+)\\}`))?.[1]
-    expect(rule).toContain('35cqi')
+    expect(rule).toContain('width: max-content')
   }
+  expect(blame).not.toContain('cqi')
+  expect(blame).not.toContain('max-width: 45%')
   expect(css('GithubCode')).toContain('container-type: inline-size')
 })
 

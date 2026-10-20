@@ -14,16 +14,9 @@
       @contextmenu.prevent="showDetails"
     >
       <span class="abele-github-blame-range__author">
-        <GithubUser v-if="commit.login" :login="commit.login" :avatar="commit.avatar" />
-        <template v-else
-          ><Avatar :src="commit.avatar" :name="authorLabel" /><span
-            class="abele-github-blame-range__name"
-            >{{ authorLabel }}</span
-          ></template
-        >
+        <span class="abele-github-blame-range__name">{{ authorLabel }}</span>
       </span>
       <span class="abele-github-blame-range__date">{{ relativeDate }}</span>
-      <span class="abele-github-blame-range__message">{{ messageLabel }}</span>
     </Button>
     <ObsidianModal
       v-if="detailsOpen"
@@ -50,8 +43,6 @@ import { streamBLabel } from '@/i18n/streamBLabels'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { formatDate, splitMessage } from '@/github/format'
 import type { CommitSummary } from '@/repository/model'
-import GithubUser from './GithubUser.vue'
-import Avatar from '../obsidian/Avatar.vue'
 import Button from '../obsidian/Button.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 
@@ -125,8 +116,8 @@ onBeforeUnmount(() => {
 
 <style lang="scss">
 .abele-github-blame {
-  width: min(20rem, 35cqi);
-  max-width: 35cqi;
+  width: max-content;
+  flex-shrink: 0;
   font-family: var(--font-interface);
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
@@ -140,8 +131,7 @@ onBeforeUnmount(() => {
   }
 }
 .abele-github-blame-range {
-  width: min(20rem, 35cqi);
-  max-width: 35cqi;
+  width: max-content;
   height: 1lh;
   overflow: hidden;
 
@@ -166,39 +156,20 @@ onBeforeUnmount(() => {
     display: inline-flex;
     align-items: center;
     gap: var(--size-2-2);
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
-    max-width: 45%;
     white-space: nowrap;
     overflow: hidden;
-    .abele-github-user__label {
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .abele-avatar {
-      width: 1em;
-      height: 1em;
-      flex-shrink: 0;
-    }
   }
   &__date {
     flex-shrink: 0;
   }
   &__name {
     min-width: 0;
+    max-width: 14ch;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  &__message {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-}
-.is-mobile .abele-github-blame,
-.is-mobile .abele-github-blame-range {
-  width: min(8.75rem, 35cqi);
-  max-width: 35cqi;
 }
 .abele-github-blame-detail-body {
   overflow-wrap: anywhere;
