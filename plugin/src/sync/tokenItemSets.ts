@@ -123,7 +123,7 @@ export class TokenItemSets implements ShareSetSource {
               {
                 id: binding.item.id,
                 kind: record.scope.kind,
-                scope_id: record.scope.id,
+                scope_id: binding.item.scopeId,
                 path: record.scope.path,
               },
             ],

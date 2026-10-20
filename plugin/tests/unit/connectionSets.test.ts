@@ -6,7 +6,7 @@ import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
 import { sha256 } from '@/sync/external/hash'
 import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { TokenUi } from '@/sync/tokenUi'
-import { encodeAccessToken } from '@abele/sync-sdk/protocol'
+import { encodeAccessToken, decodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
@@ -53,9 +53,10 @@ describe('connection item sets', () => {
         v: 2,
         address: 'https://sync.example',
         key: 'a'.repeat(43),
-        items: [{ id: 'item-a', kind: 'folder', scope_id: scope.id, path: scope.path }],
+        items: [{ id: 'item-a', kind: 'folder', scope_id: 'server-scope-a', path: scope.path }],
       }),
       item: 'item-a',
+      scope,
       rootIssue: { kind: 'server-renamed', from: 'Shared', to: 'Renamed' },
       fetch: fetcher,
       fs: new MemoryFileSystem(),
@@ -344,7 +345,7 @@ describe('connection item sets', () => {
               items: [
                 {
                   id: currentItem,
-                  scope_id: currentScope.id,
+                  scope_id: 'server-scope-' + currentItem,
                   scope: currentScope,
                   added_at: '2025-01-01T00:00:00Z',
                   removed_at: null,
@@ -374,6 +375,8 @@ describe('connection item sets', () => {
     )
     expect(ui.rows.value).toHaveLength(1)
     expect(ui.rows.value[0].scope?.path).toBe('Current')
+    const encoded = decodeAccessToken(ui.itemSets.encoded(registry.records()[0]))
+    expect(encoded.v === 2 && encoded.items[0].scope_id).toBe('server-scope-current-item')
     expect(requests).toContain('/v2/connection:current-item')
     expect(data.get(TOKEN_REGISTRY_KEY)).toEqual(before)
     const reads = vi.spyOn(storage, 'loadLocalStorage')

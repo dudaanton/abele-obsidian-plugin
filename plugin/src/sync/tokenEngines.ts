@@ -802,6 +802,7 @@ export class TokenEngines {
           event: (text) => this.ui.recordEvent(record.id, text),
           encoded: this.ui.itemSets.encoded(record),
           item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
+          scope: record.scope,
           retainedChanged: (items) => this.ui.itemSets.retainedChanged(record.id, items),
           uploadAllowed: (path) => {
             const physical = externalPlacement?.toLocal(path) ?? path

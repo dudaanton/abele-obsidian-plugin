@@ -76,6 +76,8 @@ export interface TokenEngineOptions {
   id: string
   encoded: string
   item?: string
+  /** Persisted server selector; v2 token previews carry scope identities, not target IDs. */
+  scope?: V2Connection['scope']
   uploadAllowed?(path: string): boolean
   retainedChanged?(items: ConnectionItem[]): void
   fs: FileSystem
@@ -303,7 +305,7 @@ export class TokenEngineRuntime
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     const decoded = decodeAccessToken(options.encoded)
-    this.token = { ...decoded, scope: tokenScope(decoded, options.item) }
+    this.token = { ...decoded, scope: options.scope ?? tokenScope(decoded, options.item) }
     if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
       options.fs = scopedFileSystem(
         options.fs,
