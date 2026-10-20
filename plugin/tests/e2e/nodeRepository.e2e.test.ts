@@ -51,10 +51,10 @@ const committedBlame = `const committedBlame=async (node,project,workspace,shot)
   }
   if(dates.size<2)throw Error('Blame dates are not distinct');
   const gutter=document.querySelector('.abele-github-blame');
-  const natural=Math.max(...rows.map(row=>row.getBoundingClientRect().width));
-  const style=getComputedStyle(gutter);
-  // The host adds gutter padding independently of the range's own row padding.
-  const chrome=['paddingLeft','paddingRight','borderLeftWidth','borderRightWidth'].reduce((sum,key)=>sum+(parseFloat(style[key])||0),0);
+  const edges=(el,margin=false)=>{const style=getComputedStyle(el);return ['paddingLeft','paddingRight','borderLeftWidth','borderRightWidth',...(margin?['marginLeft','marginRight']:[])].reduce((sum,key)=>sum+(parseFloat(style[key])||0),0)};
+  // Include the CodeMirror gutterElement and marker host, not just the Vue range header.
+  const natural=Math.max(...rows.map(row=>{let width=row.getBoundingClientRect().width;for(let el=row.parentElement;el&&el!==gutter;el=el.parentElement)width+=edges(el,true);return width}));
+  const chrome=edges(gutter);
   const capture=await require('@electron/remote').getCurrentWebContents().capturePage();
   require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+shot,capture.toPNG());
   if(Math.abs(gutter.getBoundingClientRect().width-natural-chrome)>3)throw Error('Blame column does not fit its content: '+JSON.stringify({gutter:gutter.getBoundingClientRect().width,chrome,rows:rows.map(row=>({text:row.textContent,width:row.getBoundingClientRect().width,parent:row.parentElement.getBoundingClientRect().width,button:row.querySelector('button').getBoundingClientRect().width}))}));
