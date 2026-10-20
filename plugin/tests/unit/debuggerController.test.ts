@@ -62,6 +62,8 @@ it('updates breakpoint expressions verbatim and preserves the other fields', asy
       ],
     }),
   })
+  expect(model.knownBreakpoints()[0]).toMatchObject({ kind: 'log', logMessage: 'value {n}' })
+  expect(model.session.breakpoints[0]).toMatchObject({ kind: 'log', logMessage: 'value {n}' })
   await model.editBreakpoint('sample-bp', { log_message: 'new {n}' })
   expect(command).toHaveBeenLastCalledWith(
     'breakpoints.patch',

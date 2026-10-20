@@ -26288,5 +26288,15 @@
       "es",
       "de"
     ]
+  },
+  "debug.logPoint": {
+    "englishHash": "c1399f0af0d36cf4cfbf82197660dfa3dcd1f739e07d675d2f3c807d46e9ce9c",
+    "context": "Verified adapter log-point message in the source margin and breakpoint list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

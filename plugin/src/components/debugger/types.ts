@@ -30,7 +30,8 @@ export interface DebugBreakpoint {
   state: 'set' | 'pending' | 'rejected' | 'disabled'
   reason?: string
   /** stop: the program stops here; record: the values are taken and it goes on. */
-  kind?: 'stop' | 'record'
+  kind?: 'stop' | 'record' | 'log'
+  logMessage?: string
   /** What a record point takes: names in scope or expressions; none means all of the frame's. */
   take?: string[]
   /** It only fires when this holds. */

@@ -93,6 +93,7 @@ export function mountDebugSource(
                       ? 'rejected'
                       : 'pending',
                 reason: breakpointMessage(b.message),
+                ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
               })) ??
             [],
           line:

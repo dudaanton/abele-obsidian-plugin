@@ -4,7 +4,7 @@
     class="abele-breakpoint-mark"
     :class="[
       `abele-breakpoint-mark_${breakpoint.state}`,
-      { 'abele-breakpoint-mark_record': breakpoint.kind === 'record' },
+      { 'abele-breakpoint-mark_record': breakpoint.kind === 'record' || breakpoint.kind === 'log' },
     ]"
     role="img"
     :aria-label="label"
@@ -31,6 +31,7 @@ const label = computed(() => {
   if (b.state === 'pending') return t('streamC.96584d78f43835f6')
   if (b.state === 'rejected')
     return `${record ? t('streamC.6adbfde88c55906a') : t('streamC.3f1facb79cc50b40')}${b.reason ? `: ${b.reason}` : ''}`
+  if (b.kind === 'log') return t('debug.logPoint', { message: b.logMessage ?? '' })
   if (!record) return t('streamC.e8041f01a8c14622')
   const what = b.take?.length ? b.take.join(', ') : t('streamC.3c438c10f8ef00bc')
   return t('streamC.4232225a4d26d1cc', {

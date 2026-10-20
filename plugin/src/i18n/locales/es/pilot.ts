@@ -3596,4 +3596,5 @@ export const es = {
   'debug.breakpointUnbound':
     'El programa aún no ha cargado código para esta línea. Compruebe el mapa de fuentes o espere a que se cargue este código.',
   'debug.watchLastValue': 'Último valor: {value}',
+  'debug.logPoint': 'Punto de registro: {message}',
 } satisfies TranslationCatalog

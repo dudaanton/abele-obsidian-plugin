@@ -3442,4 +3442,5 @@ export const en = {
   'debug.breakpointUnbound':
     'The program has not loaded code for this line yet. Check its source map or wait for this code to load.',
   'debug.watchLastValue': 'Last value: {value}',
+  'debug.logPoint': 'Log point: {message}',
 } as const

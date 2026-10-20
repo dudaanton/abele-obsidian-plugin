@@ -75,11 +75,13 @@ const extras = new Compartment()
 const editorHost = shallowRef<HTMLElement | null>(null)
 
 const words = {
+  disabled: t('debug.breakpointDisabled'),
   set: t('streamC.e8041f01a8c14622'),
   pending: t('streamC.96584d78f43835f6'),
   rejected: t('streamC.3f1facb79cc50b40'),
 }
 const recordWords = {
+  disabled: t('debug.breakpointDisabled'),
   set: t('streamC.06905f2ac0915241'),
   pending: t('streamC.0ea0c8ad44c38c29'),
   rejected: t('streamC.6adbfde88c55906a'),
@@ -99,6 +101,8 @@ class Mark extends GutterMarker {
       o.line === this.line &&
       o.point?.state === this.point?.state &&
       o.point?.kind === this.point?.kind &&
+      o.point?.logMessage === this.point?.logMessage &&
+      o.point?.reason === this.point?.reason &&
       o.here === this.here &&
       o.locked === this.locked
     )
@@ -112,13 +116,16 @@ class Mark extends GutterMarker {
     el.className = 'abele-debug-source__point'
     el.disabled = this.locked
     const record = this.point?.kind === 'record'
+    const log = this.point?.kind === 'log'
     const dot = el.createSpan({
-      cls: `abele-breakpoint-mark abele-breakpoint-mark_${this.point?.state ?? 'none'}${record ? ' abele-breakpoint-mark_record' : ''}`,
+      cls: `abele-breakpoint-mark abele-breakpoint-mark_${this.point?.state ?? 'none'}${record || log ? ' abele-breakpoint-mark_record' : ''}`,
     })
     dot.setAttribute('aria-hidden', 'true')
     if (this.here) el.addClass('abele-debug-source__point_here')
     const said = this.point
-      ? `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}`
+      ? log && this.point.state === 'set'
+        ? t('debug.logPoint', { message: this.point.logMessage ?? '' })
+        : `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}`
       : ''
     const label = this.point
       ? t('streamC.38b9d675845ab96b', { v1: String(said) })

@@ -3597,4 +3597,5 @@ export const ru = {
   'debug.breakpointUnbound':
     'Программа пока не загрузила код для этой строки. Проверьте карту исходного кода или дождитесь загрузки этого кода.',
   'debug.watchLastValue': 'Последнее значение: {value}',
+  'debug.logPoint': 'Точка журнала: {message}',
 } satisfies TranslationCatalog

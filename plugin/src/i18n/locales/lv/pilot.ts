@@ -3538,4 +3538,5 @@ export const lv = {
   'debug.breakpointUnbound':
     'Programma vēl nav ielādējusi šīs rindas kodu. Pārbaudiet avota karti vai gaidiet koda ielādi.',
   'debug.watchLastValue': 'Pēdējā vērtība: {value}',
+  'debug.logPoint': 'Žurnāla punkts: {message}',
 } satisfies TranslationCatalog

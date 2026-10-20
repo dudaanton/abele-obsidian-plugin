@@ -129,6 +129,20 @@ it('renders exact approvals in the debug view without a chat', async () => {
   }
 })
 describe('debugger panel', () => {
+  it('identifies a log point rather than promising to stop there', () => {
+    const w = mount(DebugPanel, {
+      props: {
+        session: {
+          ...session('paused'),
+          breakpoints: [
+            { file: 'sample.ts', line: 7, state: 'set', kind: 'log', logMessage: 'value {n}' },
+          ],
+        },
+      },
+    })
+    expect(w.get('.abele-breakpoint-mark').attributes('aria-label')).toBe('Log point: value {n}')
+    w.unmount()
+  })
   it('keeps an approved watch result readable as retained evidence when execution becomes unknown', () => {
     const w = mount(DebugPanel, {
       props: {

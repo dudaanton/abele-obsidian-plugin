@@ -220,12 +220,14 @@ export class DebuggerController {
               ? 'rejected'
               : 'pending',
         reason: breakpointMessage(b.message),
+        ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
       }))
     this.session.breakpoints.push(
       ...[...this.disabledBreakpoints.values()].map((b) => ({
         file: this.path(b.source_id) ?? b.source_id,
         line: b.line,
         state: 'disabled' as const,
+        ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
       }))
     )
     if (!this.session.frames.length && stop?.location)
@@ -694,6 +696,7 @@ export class DebuggerController {
       requestedLine: b.line,
       ...(b.condition ? { condition: b.condition } : {}),
       ...(b.log_message ? { log_message: b.log_message } : {}),
+      ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
     }))
   }
   private patchBreakpoints(

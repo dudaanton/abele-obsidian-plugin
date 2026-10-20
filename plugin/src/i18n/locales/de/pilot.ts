@@ -3576,4 +3576,5 @@ export const de = {
   'debug.breakpointUnbound':
     'Das Programm hat noch keinen Code für diese Zeile geladen. Prüfen Sie die Quellzuordnung oder warten Sie, bis dieser Code geladen wird.',
   'debug.watchLastValue': 'Letzter Wert: {value}',
+  'debug.logPoint': 'Protokollpunkt: {message}',
 } satisfies TranslationCatalog

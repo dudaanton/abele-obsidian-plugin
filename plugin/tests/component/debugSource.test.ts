@@ -13,6 +13,47 @@ vi.mock('@/github/codeViewer', () => ({
   },
 }))
 beforeEach(() => useVault([]))
+it('names disabled points instead of exposing an undefined label', async () => {
+  const w = mount(DebugSource, {
+    props: {
+      text: 'sample',
+      path: 'sample.ts',
+      breakpoints: [{ file: 'sample.ts', line: 1, state: 'disabled' }],
+    },
+  })
+  try {
+    await nextTick()
+    expect(w.get('button.abele-debug-source__point').attributes('aria-label')).toContain(
+      'Breakpoint disabled'
+    )
+  } finally {
+    w.unmount()
+  }
+})
+it('identifies log points and refreshes their message without claiming they stop execution', async () => {
+  const point = {
+    file: 'sample.ts',
+    line: 1,
+    state: 'set' as const,
+    kind: 'log' as const,
+    logMessage: 'value {n}',
+  }
+  const w = mount(DebugSource, {
+    props: { text: 'sample', path: 'sample.ts', breakpoints: [point] },
+  })
+  try {
+    await nextTick()
+    expect(w.get('button.abele-debug-source__point').attributes('aria-label')).toContain(
+      'Log point: value {n}'
+    )
+    await w.setProps({ breakpoints: [{ ...point, logMessage: 'next {n}' }] })
+    expect(w.get('button.abele-debug-source__point').attributes('aria-label')).toContain(
+      'Log point: next {n}'
+    )
+  } finally {
+    w.unmount()
+  }
+})
 
 it.each(['stop', 'record'] as const)('toggles a %s off with one mark per line', async (kind) => {
   const w = mount(DebugSource, {
