@@ -1,14 +1,33 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
+import Modal from '@/components/obsidian/Modal.vue'
+import Disclosure from '@/components/obsidian/Disclosure.vue'
+import { Platform } from 'obsidian'
 
-const modal = { template: '<div><slot /><slot name="footer" /></div>' }
+const modal = { props: ['size'], template: '<div><slot /><slot name="footer" /></div>' }
 function fixture(launch = vi.fn().mockResolvedValue(undefined)) {
   return mount(ProgramLaunchDialog, {
     props: { program: 'dist/main.js', launch },
     global: { stubs: { Modal: modal } },
   })
 }
+
+it('sizes the desktop dialog to content and keeps the phone sheet tall', () => {
+  const mobile = Platform.isMobile
+  try {
+    Platform.isMobile = false
+    const desktop = fixture()
+    expect(desktop.findComponent(Modal).props('size')).toBe('default')
+    desktop.unmount()
+    Platform.isMobile = true
+    const phone = fixture()
+    expect(phone.findComponent(Modal).props('size')).toBe('tall')
+    phone.unmount()
+  } finally {
+    Platform.isMobile = mobile
+  }
+})
 
 it('keeps arguments separate from the entry and launches them as argv', async () => {
   const launch = vi.fn().mockResolvedValue(undefined)
@@ -31,6 +50,15 @@ it('keeps launch failures and program stderr visible without closing the form', 
   await flushPromises()
   expect(w.get('[role="alert"]').text()).toContain('Cannot find module sample-module')
   expect(w.get('[role="alert"]').text()).toContain('starting sample')
+  expect(w.get('[role="alert"]').text()).toContain(
+    'The program exited before the debugger could attach.'
+  )
+  expect(w.text()).not.toContain('debugger_startup_handoff_lost')
+  const details = w.findComponent(Disclosure)
+  expect(details.props('modelValue')).toBe(false)
+  details.vm.$emit('update:modelValue', true)
+  await flushPromises()
+  expect(w.text()).toContain('debugger_startup_handoff_lost')
   expect(w.emitted('close')).toBeUndefined()
   expect(w.findAll('input')[0].element.value).toBe('dist/main.js')
   w.unmount()

@@ -28,9 +28,18 @@ async function probe(device: string) {
           [...modal.querySelectorAll('button')].find(b => b.textContent.trim() === 'Run a program').click();
           await wait(150);
           if (!modal.querySelector('[role="alert"]')?.textContent.includes('Cannot find module sample-module')) throw Error('Missing startup stderr');
+          if (!modal.querySelector('[role="alert"]')?.textContent.includes('The program exited before the debugger could attach.')) throw Error('Missing plain startup explanation');
+          if (modal.innerText.includes('debugger_startup_handoff_lost')) throw Error('Internal code visible before opening details');
+          modal.querySelector('.abele-disclosure__control').click();
+          await wait(100);
+          if (!modal.innerText.includes('debugger_startup_handoff_lost')) throw Error('Missing technical details');
+          const detailsImage = await require('@electron/remote').getCurrentWebContents().capturePage();
+          require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-details.png', detailsImage.toPNG());
+          modal.querySelector('.abele-disclosure__control').click();
         }
         await wait(200);
         const rect = modal.getBoundingClientRect();
+        if (${JSON.stringify(device)} === 'desktop' && rect.height > 500) throw Error('Short launch form is not sized to its content: '+rect.height);
         const over = [...modal.querySelectorAll('input, button, [role="alert"]')].filter(el => {
           const r = el.getBoundingClientRect(); return r.left < rect.left - 1 || r.right > rect.right + 1;
         }).map(el => el.outerHTML.slice(0,200));

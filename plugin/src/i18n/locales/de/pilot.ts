@@ -3548,4 +3548,8 @@ export const de = {
   'debug.launchArgsInvalid':
     'Schließen Sie alle Anführungszeichen und vervollständigen Sie Escape-Sequenzen in den Argumenten.',
   'debug.launchFailed': 'Das Programm konnte nicht gestartet werden: {detail}',
+  'debug.launchExitedEarly':
+    'Das Programm wurde beendet, bevor der Debugger sich verbinden konnte.',
+  'debug.launchFailedPlain':
+    'Das Programm konnte nicht gestartet werden. Weitere Informationen finden Sie unter Details.',
 } satisfies TranslationCatalog

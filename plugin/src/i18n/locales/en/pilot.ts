@@ -3411,4 +3411,6 @@ export const en = {
     'Separate arguments with spaces; quote values containing spaces. No shell expressions are evaluated.',
   'debug.launchArgsInvalid': 'Close each quote and finish each escape in the arguments.',
   'debug.launchFailed': 'The program could not start: {detail}',
+  'debug.launchExitedEarly': 'The program exited before the debugger could attach.',
+  'debug.launchFailedPlain': 'The program could not start. Open Details for more information.',
 } as const

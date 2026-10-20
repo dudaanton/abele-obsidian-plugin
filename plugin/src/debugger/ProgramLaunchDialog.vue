@@ -1,7 +1,7 @@
 <template>
   <Modal
     :title="t('debug.launchTitle')"
-    size="tall"
+    :size="Platform.isMobile ? 'tall' : 'default'"
     close-in-footer
     :can-close="() => !busy"
     @close="emit('close')"
@@ -13,7 +13,13 @@
       <Setting :name="t('debug.launchArgs')" :desc="t('debug.launchArgsHint')">
         <Input v-model="argumentsText" :disabled="busy" :aria-label="t('debug.launchArgs')" />
       </Setting>
-      <p v-if="error" role="alert" class="abele-debug-launch__error mod-warning">{{ error }}</p>
+      <div v-if="error" role="alert" class="mod-warning">
+        <p>{{ error }}</p>
+        <p v-if="output" class="abele-debug-launch__error">{{ output }}</p>
+      </div>
+      <Disclosure v-if="technical" v-model="expanded" :label="t('kit.details')">
+        <pre class="abele-debug-launch__error">{{ technical }}</pre>
+      </Disclosure>
     </Section>
     <template #footer>
       <Button :text="t('kit.cancel')" :disabled="busy" @click="emit('close')" />
@@ -24,16 +30,19 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Platform } from 'obsidian'
 import { t } from '@/i18n'
 import Modal from '@/components/obsidian/Modal.vue'
 import Section from '@/components/obsidian/Section.vue'
 import Setting from '@/components/obsidian/Setting.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Button from '@/components/obsidian/Button.vue'
+import Disclosure from '@/components/obsidian/Disclosure.vue'
 import { parseLaunchArguments } from './launchArguments'
 import { z } from 'zod'
 
 const DiagnosticsSchema = z.object({
+  code: z.string().optional(),
   details: z.object({ stdout: z.string().optional(), stderr: z.string().optional() }).optional(),
 })
 
@@ -46,9 +55,15 @@ const path = ref(props.program)
 const argumentsText = ref('')
 const busy = ref(false)
 const error = ref('')
+const output = ref('')
+const technical = ref('')
+const expanded = ref(false)
 async function run() {
   if (busy.value) return
   error.value = ''
+  output.value = ''
+  technical.value = ''
+  expanded.value = false
   let argv: string[]
   try {
     argv = parseLaunchArguments(argumentsText.value)
@@ -63,12 +78,19 @@ async function run() {
   } catch (e) {
     console.debug('[debugger] Program not started', e)
     const diagnostics = DiagnosticsSchema.safeParse(e)
-    const output = diagnostics.success ? diagnostics.data.details : undefined
-    error.value = t('debug.launchFailed', {
-      detail: [e instanceof Error ? e.message : String(e), output?.stdout, output?.stderr]
-        .filter(Boolean)
-        .join('\n'),
-    })
+    const details = diagnostics.success ? diagnostics.data.details : undefined
+    technical.value = [
+      ...new Set(
+        [
+          diagnostics.success ? diagnostics.data.code : undefined,
+          e instanceof Error ? e.message : String(e),
+        ].filter(Boolean)
+      ),
+    ].join('\n')
+    error.value = technical.value.includes('debugger_startup_handoff_lost')
+      ? t('debug.launchExitedEarly')
+      : t('debug.launchFailedPlain')
+    output.value = [details?.stdout, details?.stderr].filter(Boolean).join('\n')
   } finally {
     busy.value = false
   }

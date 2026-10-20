@@ -3512,4 +3512,7 @@ export const lv = {
     'Atdaliet argumentus ar atstarpēm; vērtības ar atstarpēm lieciet pēdiņās. Čaulas izteiksmes netiek izpildītas.',
   'debug.launchArgsInvalid': 'Aizveriet pēdiņas un pabeidziet ekranēšanu argumentos.',
   'debug.launchFailed': 'Programmu neizdevās palaist: {detail}',
+  'debug.launchExitedEarly': 'Programma beidza darbu, pirms atkļūdotājs varēja pievienoties.',
+  'debug.launchFailedPlain':
+    'Programmu neizdevās palaist. Papildinformāciju skatiet sadaļā Detaļas.',
 } satisfies TranslationCatalog

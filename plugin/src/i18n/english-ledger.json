@@ -26098,5 +26098,25 @@
       "es",
       "de"
     ]
+  },
+  "debug.launchExitedEarly": {
+    "englishHash": "7b74281eed8f81edab856356e97a9df20c9a140256bfa93139f33e4300a08259",
+    "context": "Debugger launch failure explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchFailedPlain": {
+    "englishHash": "63d64ba3a7c9e2874541fe4fc1ace4f14298507c72529e884447e5e3f1e0fb59",
+    "context": "Debugger launch failure explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

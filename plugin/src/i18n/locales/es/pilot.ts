@@ -3570,4 +3570,7 @@ export const es = {
   'debug.launchArgsInvalid':
     'Cierre las comillas y complete las secuencias de escape en los argumentos.',
   'debug.launchFailed': 'No se pudo iniciar el programa: {detail}',
+  'debug.launchExitedEarly': 'El programa terminó antes de que el depurador pudiera conectarse.',
+  'debug.launchFailedPlain':
+    'No se pudo iniciar el programa. Abra Detalles para obtener más información.',
 } satisfies TranslationCatalog
