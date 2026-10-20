@@ -11,6 +11,12 @@ exact text, including leading zeros, matters.
 
 ## Device-local connection trust
 
+Multi-item sync grouping uses the separate device-local `abele-sync-connection-sets-v1`
+key. Each connection records its label and ordered item identities, scope identities, paths,
+pause flags and detached flags. Detached entries are retained so their local copies and
+ledger identities can be kept. Grouping never changes the single-scope registry format and
+does not travel through settings transfer.
+
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.
 
