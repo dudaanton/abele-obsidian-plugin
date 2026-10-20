@@ -52,9 +52,9 @@ const committedBlame = `const committedBlame=async (node,project,workspace,shot)
   if(dates.size<2)throw Error('Blame dates are not distinct');
   const gutter=document.querySelector('.abele-github-blame');
   const natural=Math.max(...rows.map(row=>row.getBoundingClientRect().width));
-  if(Math.abs(gutter.getBoundingClientRect().width-natural)>3)throw Error('Blame column does not fit its content');
   const capture=await require('@electron/remote').getCurrentWebContents().capturePage();
   require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+shot,capture.toPNG());
+  if(Math.abs(gutter.getBoundingClientRect().width-natural)>3)throw Error('Blame column does not fit its content: '+JSON.stringify({gutter:gutter.getBoundingClientRect().width,rows:rows.map(row=>({text:row.textContent,width:row.getBoundingClientRect().width,parent:row.parentElement.getBoundingClientRect().width,button:row.querySelector('button').getBoundingClientRect().width})),style:getComputedStyle(gutter).cssText}));
   await open('app.ts');
   await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('export const value'));
 };`
