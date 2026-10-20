@@ -11,6 +11,7 @@ import {
   GutterMarker,
   gutter,
   hoverTooltip,
+  tooltips,
   ViewPlugin,
 } from '@codemirror/view'
 import type { LspDiagnostic } from '@abele/node-protocol'
@@ -54,8 +55,9 @@ class ProblemMarker extends GutterMarker {
 }
 
 /** Inert outside a node document; shared by readers and editors, including repository tabs. */
-export function nodeLspExtension(): Extension {
+export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Extension {
   return [
+    tooltips({ parent: tooltipParent }),
     diagnostics,
     EditorView.decorations.compute([diagnostics], (state) => {
       const ranges = state.field(diagnostics).flatMap((d) => {

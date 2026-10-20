@@ -134,7 +134,9 @@ function mount(
         ...extensions,
         // Go to definition, for a viewer inside a tab that knows its repository.
         codeNavAddon(),
-        nodeLspExtension(),
+        nodeLspExtension(
+          parent.closest<HTMLElement>('.modal-container') ?? parent.ownerDocument.body
+        ),
       ],
     }),
   })

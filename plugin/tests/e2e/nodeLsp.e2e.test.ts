@@ -27,7 +27,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         window.addEventListener('error', onError);
         const until = async predicate => { for (let i=0;i<100;i++) { if(predicate()) return; await wait(50) } await shot('failure-' + phase); throw Error('Language fixture did not settle: ' + phase + ' · ' + document.querySelector('.modal.abele-modal')?.textContent + ' · runtime: ' + runtimeErrors.join('; ')) };
         const close = async () => { phase += '-close'; const button = document.querySelector('[data-lsp-close]'); if(!button) throw Error('Fixture dismiss action is missing'); button.click(); await until(() => !document.querySelector('.modal.abele-modal')); };
-        const shot = async name => require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+        const shot = async name => { await wait(350); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); if (['diagnostic-tap','diagnostic-list','long-press'].includes(name)) { const label = document.querySelector('.abele-lsp-menu-message') ?? [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent.includes('Go to definition')); const box = label.getBoundingClientRect(); if (!document.elementFromPoint(box.left+box.width/2,box.top+Math.min(box.height/2,12))?.closest('.menu')) throw Error('Menu content is clipped or covered: ' + name); } require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); };
         const results = [];
         try { for (const state of ['missing','untrusted','loading','errors','eslint']) {
           phase = state + '-viewer';
@@ -68,6 +68,9 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y}));
             await until(() => document.querySelector('.cm-tooltip-hover'));
             await shot('hover');
+            const hoverBox = document.querySelector('.cm-tooltip-hover').getBoundingClientRect();
+            const hoverBottom = document.elementFromPoint(hoverBox.left+hoverBox.width/2,hoverBox.bottom-3);
+            if (!hoverBottom?.closest('.cm-tooltip-hover')) throw Error('Hover content is clipped or covered');
             p.target.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true,clientX:0,clientY:0}));
             if (${mobile}) {
               phase = 'long-press';
