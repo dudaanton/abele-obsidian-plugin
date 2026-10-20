@@ -23,7 +23,6 @@ export class SiblingUnavailableError extends Error {}
  * Only the explicit clean-archive ABELE_SYNC_DIR fixture; its provenance must match the
  * pinned plugin packages. Missing input is a failure, not sibling resolution or a skip.
  */
-export const siblingRepositoryPath = locateSyncRepository()
 const SIBLING = process.env.ABELE_SYNC_DIR ? resolved(process.env.ABELE_SYNC_DIR) : ''
 /**
  * The path with its links followed. In a worktree the sibling is reached through a symlink, and
@@ -75,7 +74,7 @@ export const siblingPath = SIBLING
 export function siblingMissing(): string | null {
   if (!SIBLING)
     throw new Error(
-      `ABELE_SYNC_DIR must name a pinned clean-archive fixture. Prepare it with npm run test:server -- ${siblingRepositoryPath}`
+      `ABELE_SYNC_DIR must name a pinned clean-archive fixture. Prepare it with npm run test:server -- ${locateSyncRepository()}`
     )
   verifySyncFixture(SIBLING)
   if (!siblingBuilt())
