@@ -46,6 +46,7 @@ export interface LocalNode {
   nodeName: string
   nodeId: string
   endpoint: string
+  nodeVersion?: string
 }
 interface Identity {
   dev: number
@@ -169,6 +170,7 @@ export class LocalDiscovery {
         nodeName,
         nodeId: value.node_id,
         endpoint: `ws://127.0.0.1:${Number(value.port)}/channel`,
+        ...(typeof value.node_version === 'string' ? { nodeVersion: value.node_version } : {}),
       },
       lockIdentity,
       socketIdentity,

@@ -153,6 +153,7 @@ export class NodeSidebarView extends ItemView {
                 : this.local.value
                   ? {
                       name: this.local.value.nodeName,
+                      version: this.local.value.nodeVersion,
                       status: 'offline',
                       address: this.local.value.endpoint,
                     }

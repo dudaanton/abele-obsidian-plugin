@@ -31,6 +31,24 @@ const folder: FolderSummary = {
 }
 
 describe('NodePanel', () => {
+  it('never invents an undefined release when local discovery has no version', () => {
+    const view = mount(NodePanel, {
+      props: { phase: 'found', node: { name: 'Sample node', status: 'offline' } },
+    })
+    expect(view.text()).toContain('AbeleNode is running on this computer')
+    expect(view.text()).not.toContain('undefined')
+    view.unmount()
+  })
+  it('shows the node release returned as node_version', () => {
+    const view = mount(NodePanel, {
+      props: {
+        phase: 'found',
+        node: { name: 'Sample node', status: 'offline', node_version: '0.4.36' },
+      },
+    })
+    expect(view.text()).toContain('AbeleNode 0.4.36 is running on this computer')
+    view.unmount()
+  })
   it('offers to connect the node found on this computer', async () => {
     const view = mount(NodePanel, { props: { phase: 'found', node } })
     await view.get('button.abele-obsidian-button').trigger('click')
@@ -112,7 +130,10 @@ describe('FileTree', () => {
     })
     const names = view.findAll('.abele-tree-item__text').map((t) => t.text())
     expect(names).toEqual(['src/sample', 'a.ts', 'b.ts'])
-    await view.findAll('.tree-item-self').find((r) => r.text().includes('b.ts'))!.trigger('click')
+    await view
+      .findAll('.tree-item-self')
+      .find((r) => r.text().includes('b.ts'))!
+      .trigger('click')
     expect(view.emitted('open')?.[0]).toEqual(['src/sample/b.ts', 'staged'])
   })
 })

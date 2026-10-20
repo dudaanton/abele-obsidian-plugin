@@ -9,6 +9,7 @@ export interface NodeSummary {
   /** When the node was last heard from, said in words ("5 min ago"); shown while offline. */
   seen?: string
   version?: string
+  node_version?: string
   /** Where the node is reached, for a remote one. */
   address?: string
 }

@@ -13,7 +13,11 @@
       <template v-else-if="phase === 'found' || phase === 'connecting'">
         <div class="abele-node-panel__intro-title">{{ node?.name }}</div>
         <div class="abele-node-panel__intro-text">
-          {{ t('streamBMeta.8dd0b9551d', { p0: String(node?.version) }) }}
+          {{
+            node?.version || node?.node_version
+              ? t('streamBMeta.8dd0b9551d', { p0: node.node_version ?? node.version ?? '' })
+              : t('node.localRunning')
+          }}
         </div>
       </template>
       <template v-else-if="phase === 'not-found'">
