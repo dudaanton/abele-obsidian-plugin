@@ -163,6 +163,8 @@ export interface FakeApp {
   workspace: {
     on(name: string, callback: (...args: unknown[]) => void): { id: string }
     offref(ref: { id: string }): void
+    /** The fake's layout is always ready, so the callback runs at once, as Obsidian does then. */
+    onLayoutReady(callback: () => unknown): void
   }
   /** Invokes the handlers registered for an event, so tests can drive incremental updates. */
   emit(scope: 'vault' | 'metadataCache' | 'workspace', name: string, ...args: unknown[]): void
@@ -918,6 +920,9 @@ export function buildFakeVault(
       getLeavesOfType: (): never[] => [],
       on: register('workspace'),
       offref,
+      onLayoutReady(callback: () => unknown) {
+        void callback()
+      },
     },
     metadataCache: {
       on: register('metadataCache'),

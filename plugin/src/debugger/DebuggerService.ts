@@ -769,7 +769,9 @@ export class DebuggerService {
       const [registrationId, conversationId] = JSON.parse(key) as [string, string]
       if (registrationId !== target.registrationId) continue
       const binding = this.forSource(registrationId, conversationId)
-      if (binding !== this.folderBinding(target)) continue
+      // Several sessions can debug one folder: only the selected one draws its margin there.
+      // A program started from a chat is not a folder session and keeps its own margin.
+      if (binding && this.folders.has(binding) && binding !== this.folderBinding(target)) continue
       for (const [sourceId, m] of sources)
         if (
           m.path === path &&

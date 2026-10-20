@@ -102,9 +102,12 @@ describe('a program held on its first line', () => {
         ] as typeof c.session.frames
       })
       const reveal = vi.spyOn(DebuggerService.instance, 'reveal').mockImplementation(() => {})
+      // Only the session the panel shows moves the editor; another folder session stays put.
+      DebuggerService.instance.active.value = binding
       await binding.refresh()
       expect(reveal).toHaveBeenCalledWith(binding, 'src/total.js', 1)
     } finally {
+      DebuggerService.instance.active.value = null
       binding.destroy()
     }
   })
