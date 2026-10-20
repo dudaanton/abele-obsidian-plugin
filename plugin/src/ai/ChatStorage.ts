@@ -542,7 +542,6 @@ export class ChatStorage {
       this.prepareDiscussionLocked(file, undefined, false)
     )
     const write = async (verified: PreparedDiscussion) => {
-      check?.()
       // Metadata append callbacks need a log, not JSON followed by an unreadable meta line.
       // This migration is computed only after identity preparation and written against the
       // original verified bytes, preserving every recognized message and metadata field.
@@ -552,6 +551,7 @@ export class ChatStorage {
           : verified.content
       const next = change(base)
       if (next === base) return
+      check?.()
       await rewriteChat(
         GlobalStore.getInstance().app,
         file,

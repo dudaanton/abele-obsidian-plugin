@@ -9,11 +9,22 @@ import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { CommentService } from '@/ai/CommentService'
+import { ChatStorage } from '@/ai/ChatStorage'
 import { chatsOf } from '@/chats/chatTree'
 
 let service: ChatService
 let folders: ChatFolders
 let app: FakeApp
+it('does not reserve a session-owned file for an unrelated no-op rename', async () => {
+  const file = app.vault.getFiles().find((file) => file.extension === 'abchat')!
+  const gate = vi.fn(() => {
+    throw new Error('A session owns this file')
+  })
+  await expect(
+    ChatStorage.getInstance().transformDiscussion(file, (content) => content, gate)
+  ).resolves.toBeUndefined()
+  expect(gate).not.toHaveBeenCalled()
+})
 beforeEach(() => {
   const content = serializeChat({
     metadata: {
