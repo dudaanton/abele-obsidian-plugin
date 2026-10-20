@@ -4,6 +4,7 @@ import { createAgent } from '@/ai/agents/types'
 import { entriesOf } from '@/ai/interceptor/entries'
 import {
   DEFAULT_AI_SETTINGS,
+  CHAT_MESSAGING_TOOL_MODES,
   EDIT_SELECTION_TOOL,
   GITHUB_TOOLS,
   BOOK_TOOL_MODES,
@@ -215,6 +216,7 @@ describe('the Comment agent', () => {
     // Both carry every current default tool mode, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
     const modes = {
+      ...CHAT_MESSAGING_TOOL_MODES,
       ...MAP_TOOL_MODES,
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,

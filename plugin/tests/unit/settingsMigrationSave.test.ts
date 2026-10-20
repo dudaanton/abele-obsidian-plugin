@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   DEFAULT_AI_SETTINGS,
+  CHAT_MESSAGING_TOOL_MODES,
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
@@ -172,6 +173,7 @@ describe('loading settings with nothing to migrate', () => {
     // Including all current default tools: an agent without them gives the migration something
     // to say about, which would make this a test of that instead.
     const toolModes = {
+      ...CHAT_MESSAGING_TOOL_MODES,
       ...MAP_TOOL_MODES,
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
