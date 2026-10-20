@@ -17,6 +17,41 @@ import { DEBUG_VIEW_TYPE, openNodeDebugger } from '@/debugger/register'
 afterEach(() => DebuggerService.instance.destroy())
 
 describe('showing a debug session', () => {
+  it('opens a newly mapped caller frame and clears its earlier unavailable-source message', async () => {
+    const service = DebuggerService.instance
+    const target = {
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      projectId: 'sample-project',
+      kind: 'workspace' as const,
+      id: 'sample-workspace',
+    }
+    const binding = service.binding(
+      {
+        kind: 'folder-debug',
+        target,
+        connection: { state: ref('connected'), client: {} },
+      } as never,
+      'sample-debug'
+    )
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    service.reveal(binding, 'src/caller.ts', 12)
+    binding.controller.registerSource('sample-caller', 'src/caller.ts')
+    const workspace = {}
+    ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = { workspace }
+    service.reveal(binding, 'src/caller.ts', 12)
+    await vi.waitFor(() =>
+      expect(openNodePathTab).toHaveBeenCalledWith(
+        workspace,
+        expect.objectContaining({
+          path: 'src/caller.ts',
+          debug: expect.objectContaining({ sourceId: 'sample-caller', line: 12 }),
+        }),
+        false
+      )
+    )
+    expect(binding.controller.error).toBe('')
+  })
   it('carries the requested line when a source tab must be opened', async () => {
     const service = DebuggerService.instance
     const binding = service.binding({

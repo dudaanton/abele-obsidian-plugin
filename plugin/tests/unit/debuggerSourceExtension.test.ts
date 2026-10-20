@@ -5,11 +5,53 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
 vi.mock('@/components/debugger/DebugSource.vue', () => ({
   default: {
-    props: ['stale', 'line'],
+    props: ['stale', 'line', 'breakpoints'],
     emits: ['selection'],
-    template: `<div :data-stale="stale" :data-line="line">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })" aria-label="Quote"></button></div>`,
+    template: `<div :data-stale="stale" :data-line="line" :data-point-state="breakpoints?.[0]?.state">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })" aria-label="Quote"></button></div>`,
   },
 }))
+it('renders a disabled breakpoint as disabled even without recording support', () => {
+  const service = DebuggerService.instance
+  const binding = service.binding({
+    reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+    connection: { state: ref('connected'), client: {} },
+  } as never)
+  binding.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-point',
+          source_id: 'sample-source',
+          line: 5,
+          enabled: false,
+          status: 'verified',
+          resolved_line: 5,
+          resolved_column: null,
+          message: null,
+        },
+      ],
+    }),
+  })
+  const host = document.createElement('div')
+  const handle = mountDebugSource(host, {
+    registrationId: 'sample-registration',
+    conversationId: 'sample-chat',
+    sourceId: 'sample-source',
+    debugSessionId: 'sample-debug',
+    incarnation: 'sample-incarnation',
+    path: 'sample.ts',
+    text: 'sample',
+  })
+  try {
+    expect(host.querySelector('[data-point-state]')?.getAttribute('data-point-state')).toBe(
+      'disabled'
+    )
+  } finally {
+    handle.destroy()
+    service.destroy()
+  }
+})
 it('highlights an explicitly revealed line even when the program is not paused there', async () => {
   const host = document.createElement('div')
   const handle = mountDebugSource(host, {

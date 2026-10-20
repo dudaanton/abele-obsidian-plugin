@@ -141,7 +141,7 @@ export function decorate(
   const ran = new Map((latest ?? []).map((p) => [p.breakpoint_id, p]))
   return breakpoints.map(({ id, condition, ...b }) => {
     const p = byId.get(id)
-    if (!p) return b
+    if (!p) return { ...b, ...(condition ? { condition } : {}) }
     const r = ran.get(id)
     return {
       ...b,

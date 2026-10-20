@@ -8,22 +8,48 @@ import { startProgram } from '@/debugger/startProgram'
 import { attachToProgram } from '@/debugger/attachProgram'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { FolderDebugOwner } from '@/debugger/owner'
+const selected = vi.hoisted(() => ({ view: null as null | { type: string; state: unknown } }))
 
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: {
     getInstance: () => ({
-      app: { workspace: { getMostRecentLeaf: () => null, getLeavesOfType: () => [] } },
+      app: {
+        workspace: {
+          getMostRecentLeaf: () => (selected.view ? { getViewState: () => selected.view } : null),
+          getLeavesOfType: () => [],
+        },
+      },
     }),
   },
 }))
 vi.mock('@/node/nodePathNavigation', () => ({
   NODE_FILE_VIEW: 'sample-file',
   openNodePathTab: vi.fn(async () => {}),
-  NodePathTabSchema: { safeParse: () => ({ success: false }) },
+  NodePathTabSchema: { safeParse: (state: unknown) => ({ success: !!state, data: state }) },
 }))
 afterEach(() => {
+  selected.view = null
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
+})
+it('falls back to the connected panel folder when a restored file belongs to a removed registration', async () => {
+  const target = owner().target
+  selected.view = {
+    type: 'abele-node-file',
+    state: {
+      kind: 'file',
+      target: { ...target, registrationId: 'sample-removed' },
+      path: 'sample.ts',
+    },
+  }
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId, expectedNodeId: target.nodeId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    ready: vi.fn(async () => {}),
+    model: () => ({ current: ref(target) }),
+  } as never)
+  expect(await commandTarget()).toEqual(target)
 })
 
 it('resolves a folder for commands before the Node sidebar has ever opened', async () => {

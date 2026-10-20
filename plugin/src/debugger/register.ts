@@ -6,6 +6,7 @@ import type { DebuggerSnapshot } from '@abele/node-protocol'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { debuggerKey } from './DebuggerController'
+import { restoreBreakpoint } from './restoreBreakpoint'
 import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
 import { registerTraceTabs } from './trace/TraceTabs'
@@ -153,22 +154,7 @@ function configureSessionActions(
       const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
       for (const point of carried) {
         const source = started.sources.find((source) => source.path === point.file)
-        if (
-          !source ||
-          next.controller.snapshot?.breakpoints.some(
-            (known) =>
-              known.source_id === source.source_id &&
-              known.line === point.requestedLine &&
-              known.condition === point.condition
-          )
-        )
-          continue
-        await next.controller.setBreakpoint(
-          crypto.randomUUID(),
-          source.source_id,
-          point.requestedLine,
-          point.condition
-        )
+        if (source) await restoreBreakpoint(next.controller, source.source_id, point)
       }
     }
     if (binding.controller.snapshot?.target.process_ownership === 'external') {

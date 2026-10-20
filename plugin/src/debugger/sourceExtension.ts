@@ -4,7 +4,6 @@ import type { CodeSelection } from '@/views/codeSelectionHost'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
 import { DebuggerService } from './DebuggerService'
-import { breakpointMessage } from './DebuggerController'
 import { marginMenu, namesOnLine, openRun, savePoint } from './trace/panel'
 
 /** The node file tab supplies identity from its source/build mapping, never a guessed path.
@@ -64,8 +63,7 @@ export function mountDebugSource(
       const matched =
         candidate?.snapshot?.debug_session_id === context.debugSessionId &&
         candidate.snapshot.incarnation === context.incarnation
-      const model = matched ? candidate : undefined,
-        snapshot = model?.snapshot
+      const model = matched ? candidate : undefined
       const frame = model?.session.frames[model.session.frame]
       const trace = matched ? binding?.trace : undefined
       const marked = trace
@@ -81,19 +79,12 @@ export function mountDebugSource(
           tails: !!trace,
           breakpoints:
             marked ??
-            snapshot?.breakpoints
-              .filter((b) => b.source_id === context.sourceId)
+            model
+              ?.knownBreakpoints()
+              .filter((b) => b.sourceId === context.sourceId)
               .map((b) => ({
+                ...b,
                 file: context.path,
-                line: b.resolved_line ?? b.line,
-                state:
-                  b.status === 'verified' || b.status === 'relocated'
-                    ? 'set'
-                    : b.status === 'rejected'
-                      ? 'rejected'
-                      : 'pending',
-                reason: breakpointMessage(b.message),
-                ...(b.log_message ? { kind: 'log' as const, logMessage: b.log_message } : {}),
               })) ??
             [],
           line:

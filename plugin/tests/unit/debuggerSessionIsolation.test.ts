@@ -9,6 +9,59 @@ vi.mock('@/stores/GlobalStore', () => ({
 }))
 
 const service = new DebuggerService()
+it('brings a newly paused peer forward only within the selected folder', () => {
+  const owner = {
+    kind: 'folder-debug',
+    target: {
+      registrationId: 'sample-registration',
+      nodeId: 'sample-node',
+      kind: 'worktree',
+      id: 'sample-tree',
+    },
+    connection: { state: ref('connected') },
+  } as unknown as FolderDebugOwner
+  const first = service.binding(owner, 'sample-first')
+  const paused = service.binding(owner, 'sample-paused')
+  service.select(first)
+  service.focusPause(paused)
+  expect(service.active.value).toBe(paused)
+  const other = service.binding(
+    { ...owner, target: { ...owner.target, id: 'sample-other-tree' } },
+    'sample-other'
+  )
+  service.focusPause(other)
+  expect(service.active.value).toBe(paused)
+})
+it('prefers a live process over its selected detached observation', async () => {
+  const owner = {
+    kind: 'folder-debug',
+    target: {
+      registrationId: 'sample-registration',
+      nodeId: 'sample-node',
+      kind: 'worktree',
+      id: 'sample-tree',
+    },
+    connection: { state: ref('connected') },
+  } as unknown as FolderDebugOwner
+  const bindings = ['sample-old', 'sample-live'].map((id, index) => {
+    const binding = service.binding(owner, id)
+    const snapshot = debuggerSnapshot({
+      debug_session_id: id,
+      lifecycle: index ? 'active' : 'detached',
+    })
+    snapshot.target.process_ownership = 'external'
+    snapshot.target.launch_configuration_id = 'sample.cjs · pid 4101'
+    binding.controller.observe({ observation: 'current', snapshot })
+    return binding
+  })
+  service.select(bindings[0])
+  expect(service.peers(bindings[0])).toEqual([bindings[1]])
+  vi.spyOn(service, 'sessions').mockResolvedValue(
+    bindings.map((binding) => binding.controller.snapshot!)
+  )
+  await service.discover(owner)
+  expect(service.active.value).toBe(bindings[1])
+})
 afterEach(() => {
   service.destroy()
   vi.restoreAllMocks()

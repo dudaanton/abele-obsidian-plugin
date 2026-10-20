@@ -8,6 +8,25 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('retains the source identity supplied with a caller frame', async () => {
+  const { model, rpc } = fixture()
+  rpc.mockResolvedValueOnce({
+    data: {
+      items: [
+        {
+          handle: 'sample-caller',
+          name: 'caller',
+          source_id: 'caller-source',
+          path: 'src/caller.ts',
+          line: 12,
+        },
+      ],
+    },
+  } as never)
+  rpc.mockResolvedValueOnce({ data: { items: [] } } as never)
+  await model.loadStack()
+  expect(model.path('caller-source')).toBe('src/caller.ts')
+})
 it('explains an unmatched owner approval instead of leaving a click waiting for permission', async () => {
   const { model, command } = fixture()
   command.mockResolvedValueOnce(receipt('pending'))
@@ -468,6 +487,24 @@ it('accepts a fresh output snapshot without reporting missing earlier output', a
   await model.refreshOutput()
   expect(model.error).toBe('')
 })
+it('keeps a replay gap in Output instead of marking a running session as failed', async () => {
+  const { model, rpc } = fixture()
+  for (const seq of [8, 16]) {
+    rpc.mockResolvedValueOnce({
+      kind: 'fresh_snapshot_required',
+      reason: 'gap',
+      cursor: {
+        debug_session_id: 'sample-debug',
+        incarnation: 'sample-incarnation',
+        event_seq: seq,
+      },
+      snapshot: snapshot({ event_seq: seq }),
+    } as never)
+    await model.refreshOutput()
+  }
+  expect(model.error).toBe('')
+  expect(model.session.output).toContain('Earlier debugger output is unavailable')
+})
 it('rebases an unchanged breakpoint intent once after a proven non-dispatched stale-state rejection', async () => {
   const { model, command } = fixture()
   command.mockResolvedValueOnce(
@@ -676,6 +713,7 @@ it.each([false, true])(
         children: [expect.objectContaining({ name: 'n', value: '3', handle: 'sample-child' })],
       }),
     ])
+    expect(model.session.variables[0].children?.[0].type).not.toMatch(/\d{4}-\d\d-\d\dT/)
     expect(panel.findAll('.abele-debug-value_row')).toHaveLength(2)
     expect(panel.text()).toContain('n')
     await panel

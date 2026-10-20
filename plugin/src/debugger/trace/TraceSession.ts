@@ -76,13 +76,14 @@ export class TraceSession {
         this.rpc.status(session),
         this.rpc.runs(project),
       ])
-      const newest = runs.runs[0]
+      const ownRuns = runs.runs.filter((run) => run.debug_session_id === session)
+      const newest = ownRuns[0]
       const latest = newest ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
       if (this.sessionId !== session) return
       const was = this.status?.recording?.run_id
       this.points = points
       this.status = status
-      this.runs = runs.runs
+      this.runs = ownRuns
       this.folder = runs.folder
       this.latest = latest
       this.changed()
@@ -137,7 +138,9 @@ export class TraceSession {
     return this.status ? recording(this.status, now) : undefined
   }
   summaries(now = Date.now()): TraceRunSummary[] {
-    return this.runs.filter((r) => r.steps > 0).map((r) => runSummary(r, now))
+    return this.runs
+      .filter((r) => r.steps > 0 && r.debug_session_id === this.sessionId)
+      .map((r) => runSummary(r, now))
   }
 
   /** Sets up a record point on a line: the point first, so a hit never comes before what to take,

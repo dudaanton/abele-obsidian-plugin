@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { decorate, lengthWords, recording, run, runSummary, trail } from '@/debugger/trace/mapping'
 import { nodeTraceSupported, WireRunSchema } from '@/debugger/trace/wire'
+it('keeps ordinary breakpoint conditions when recording support is enabled', () => {
+  expect(
+    decorate(
+      [
+        {
+          id: 'sample-point',
+          file: 'src/sample.ts',
+          line: 4,
+          state: 'set',
+          condition: 'sample.ready',
+        },
+      ],
+      []
+    )
+  ).toEqual([expect.objectContaining({ condition: 'sample.ready' })])
+})
 
 it('renders generated names in local time and keeps custom names', () => {
   const r = { ...wireRun.run, name: '2026-01-02 03:04:05' }

@@ -161,7 +161,15 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
   const active = workspace.getMostRecentLeaf()?.getViewState()
   if (active?.type === 'abele-node-file') {
     const parsed = NodePathTabSchema.safeParse(active.state)
-    if (parsed.success) return parsed.data.target
+    if (
+      parsed.success &&
+      NodeService.getInstance().nodes.value.some(
+        (node) =>
+          node.id === parsed.data.target.registrationId &&
+          node.expectedNodeId === parsed.data.target.nodeId
+      )
+    )
+      return parsed.data.target
   }
   const leaf = workspace.getLeavesOfType('abele-node-sidebar')[0]
   const registrationId = (leaf?.getViewState().state as { registrationId?: string } | undefined)

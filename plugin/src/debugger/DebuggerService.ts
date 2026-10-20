@@ -272,6 +272,7 @@ export class DebuggerBinding {
       ) {
         await this.controller.loadStack()
         this.loadedEpoch = epoch
+        DebuggerService.instance.focusPause(this)
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
         const view = Platform.isPhone
@@ -597,9 +598,25 @@ export class DebuggerService {
       (candidate) => !!candidate.sessionId && visible.has(candidate.sessionId)
     )
   }
+  private processKey(snapshot: DebuggerSnapshot) {
+    const target = snapshot.target,
+      evidence = target.process_evidence
+    const nativePid = / · pid ([1-9]\d*)$/.exec(target.launch_configuration_id)?.[1]
+    const pid = evidence?.pid ?? (nativePid ? Number(nativePid) : undefined)
+    return (evidence || target.process_ownership === 'external') && pid
+      ? JSON.stringify([
+          target.node_id,
+          target.project_id,
+          target.workspace_id,
+          target.worktree_id,
+          pid,
+        ])
+      : snapshot.debug_session_id
+  }
   private uniqueSessions(sessions: DebuggerSnapshot[]) {
     const known = new Set([...this.bindings.values()].map((binding) => binding.sessionId))
     const score = (snapshot: DebuggerSnapshot) =>
+      (['active', 'starting'].includes(snapshot.lifecycle) ? 1000000 : 0) +
       (snapshot.debug_session_id === this.active.value?.sessionId ? 100000 : 0) +
       (this.preferredSessions.has(snapshot.debug_session_id) ? 20000 : 0) +
       (known.has(snapshot.debug_session_id) ? 10000 : 0) +
@@ -608,22 +625,9 @@ export class DebuggerService {
       snapshot.breakpoints.length
     const unique = new Map<string, DebuggerSnapshot>()
     for (const snapshot of sessions) {
-      const target = snapshot.target,
-        evidence = target.process_evidence
       // Older native adapters expose both their wrapper and driver session. Prefer process
       // evidence; their PID-bearing launch identity is the compatibility fallback.
-      const nativePid = / · pid ([1-9]\d*)$/.exec(target.launch_configuration_id)?.[1]
-      const pid = evidence?.pid ?? (nativePid ? Number(nativePid) : undefined)
-      const key =
-        (evidence || target.process_ownership === 'external') && pid
-          ? JSON.stringify([
-              target.node_id,
-              target.project_id,
-              target.workspace_id,
-              target.worktree_id,
-              pid,
-            ])
-          : snapshot.debug_session_id
+      const key = this.processKey(snapshot)
       const previous = unique.get(key)
       if (!previous || score(snapshot) > score(previous)) unique.set(key, snapshot)
     }
@@ -631,6 +635,7 @@ export class DebuggerService {
   }
   async discover(owner: DebugOwner) {
     if (!isFolderOwner(owner)) return
+    const selected = this.active.value
     const sessions = await this.sessions(owner)
     const known = [...this.bindings.values()].flatMap((binding) => {
       const folder = this.folder(binding),
@@ -642,9 +647,22 @@ export class DebuggerService {
         ? [snapshot]
         : []
     })
-    for (const s of this.uniqueSessions([...known, ...sessions])) {
+    const visible = this.uniqueSessions([...known, ...sessions])
+    for (const s of visible) {
       const binding = this.binding(owner, s.debug_session_id)
       if (!binding.sessionId) await binding.open(s.debug_session_id)
+    }
+    const folder = selected && this.folder(selected)
+    if (
+      this.active.value === selected &&
+      selected?.controller.snapshot &&
+      folder &&
+      this.folderKey(folder) === this.folderKey(owner.target)
+    ) {
+      const key = this.processKey(selected.controller.snapshot)
+      const replacement = visible.find((snapshot) => this.processKey(snapshot) === key)
+      if (replacement && replacement.debug_session_id !== selected.sessionId)
+        this.select(this.binding(owner, replacement.debug_session_id))
     }
     ++this.sourceRevision.value
   }
@@ -714,6 +732,13 @@ export class DebuggerService {
     const target = this.folder(binding)
     if (target) this.selectedFolders.set(this.folderKey(target), binding)
     ++this.sourceRevision.value
+  }
+  focusPause(binding: DebuggerBinding) {
+    const active = this.active.value
+    const folder = this.folder(binding)
+    const selected = active && this.folder(active)
+    if (folder && selected && this.folderKey(folder) === this.folderKey(selected))
+      this.select(binding)
   }
   selectFolder(target: PathTarget) {
     const current = this.active.value
@@ -826,17 +851,47 @@ export class DebuggerService {
   }
   reveal(binding: DebuggerBinding, file: string, line: number) {
     console.debug('[debugger] Reveal source', file, line)
-    const sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
-    const source = [...(sources ?? [])].find(
+    let sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
+    let source = [...(sources ?? [])].find(
       ([id, mapping]) =>
         mapping.debugSessionId === binding.sessionId &&
         mapping.incarnation === binding.controller.snapshot?.incarnation &&
         (id === file || mapping.path === file)
     )
     if (!source) {
-      binding.controller.error = 'Source mapping is not available from this node'
+      const mapped = binding.controller.mappedSource(file)
+      const folder = this.folder(binding)
+      const sessionId = binding.sessionId
+      const snapshot = binding.controller.snapshot
+      if (
+        mapped &&
+        folder &&
+        sessionId &&
+        snapshot &&
+        !/^(?:\/|[a-z]+:)|(?:^|\/)\.\.(?:\/|$)/i.test(mapped[1])
+      ) {
+        this.registerSource(
+          binding.registrationId,
+          binding.conversationId,
+          mapped[0],
+          mapped[1],
+          sessionId,
+          snapshot.incarnation,
+          folder
+        )
+        sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
+        const mapping = sources?.get(mapped[0])
+        if (mapping) source = [mapped[0], mapping]
+      }
+    }
+    if (!source) {
+      binding.controller.error = t('debug.frameSourceUnavailable')
       ++binding.revision.value
       return
+    }
+    if (binding.controller.error === t('debug.frameSourceUnavailable')) {
+      binding.controller.error = ''
+      ++binding.revision.value
     }
     for (const reveal of this.revealers)
       if (

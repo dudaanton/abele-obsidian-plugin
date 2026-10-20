@@ -159,6 +159,9 @@ export class DebuggerController {
   path(sourceId: string) {
     return this.sources.get(sourceId)
   }
+  mappedSource(file: string) {
+    return [...this.sources].find(([id, path]) => id === file || path === file)
+  }
   private location() {
     const s = this.snapshot
     return s?.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop?.location
@@ -933,7 +936,9 @@ export class DebuggerController {
           const children = page.map((v) => ({
             ...v,
             handle: v.handle ?? undefined,
-            type: t('streamC.b80a82ba3f216c8d', { v1: String(entry.observed_at) }),
+            type: t('streamC.b80a82ba3f216c8d', {
+              v1: formatTimestamp(entry.observed_at, { diagnostic: true }).label,
+            }),
           }))
           this.updateVariable(inspection.handle, (value) => ({
             ...value,
@@ -962,7 +967,10 @@ export class DebuggerController {
     )
     if (!this.current || generation !== this.serial) return
     if (page.kind === 'fresh_snapshot_required') {
-      if (this.outputAfter > 0) this.error = t('streamC.77d9d5f541c31209')
+      if (this.outputAfter > 0)
+        this.session.output = `${this.session.output}\n${t('streamC.77d9d5f541c31209')}\n`.slice(
+          -65536
+        )
       this.outputAfter = page.cursor.event_seq
       this.observe({ observation: 'current', snapshot: page.snapshot })
     } else {
@@ -1063,6 +1071,8 @@ export class DebuggerController {
       .parse(raw)
     if (!this.current || generation !== this.serial || this.snapshot?.stop_epoch !== epoch) return
     this.frameHandles = result.data.items.map((f) => f.handle)
+    for (const frame of result.data.items)
+      if (frame.source_id && frame.path) this.sources.set(frame.source_id, frame.path)
     this.session.frames = result.data.items.map((f) => ({
       name: f.name,
       file: f.source_id ? (this.path(f.source_id) ?? f.path ?? f.source_id) : (f.path ?? ''),

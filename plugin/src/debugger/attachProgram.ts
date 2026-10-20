@@ -11,6 +11,7 @@ import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/Nod
 import { GlobalStore } from '@/stores/GlobalStore'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { DebuggerService } from './DebuggerService'
+import { restoreBreakpoint } from './restoreBreakpoint'
 import {
   StartResultSchema,
   chatTarget,
@@ -92,9 +93,14 @@ export async function attachToProgram(
   const open = openFilesOf(workspace, target)
   const service = DebuggerService.instance
   const attachmentKey = bytesToHex(
-    sha256(new TextEncoder().encode(JSON.stringify([program.pid, program.port, program.script])))
+    sha256(new TextEncoder().encode(JSON.stringify([program.cwd, program.port, program.script])))
   )
   const previous = service.forAttachment(presenter, attachmentKey)
+  const watches =
+    previous?.controller.session.watches.map((watch) => ({
+      expression: watch.expression,
+      stale: true,
+    })) ?? []
   const carry = (previous?.retainedBreakpoints ?? []).filter(
     (point) => point.file && point.file !== point.sourceId
   )
@@ -146,15 +152,11 @@ export async function attachToProgram(
     main && readable.has(main.path) ? main.path : chatPath(program, open)
   )
   await show(started.debug_session_id)
+  binding.controller.session.watches = watches
+  ++binding.revision.value
   for (const point of carry) {
     const source = started.sources.find((source) => source.path === point.file)
-    if (source)
-      await binding.controller.setBreakpoint(
-        crypto.randomUUID(),
-        source.source_id,
-        point.requestedLine,
-        point.condition
-      )
+    if (source) await restoreBreakpoint(binding.controller, source.source_id, point)
   }
   return started.debug_session_id
 }

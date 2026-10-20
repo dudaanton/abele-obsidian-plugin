@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+it('lists runs of the observed process only', async () => {
+  const s = new TraceSession(fakeNode().rpc, fakeDebugger(), () => {})
+  try {
+    await s.refresh()
+    s.runs.push({ ...s.runs[0], id: 'sample-other-run', debug_session_id: 'sample-other-debug' })
+    expect(s.summaries()).toHaveLength(1)
+  } finally {
+    s.dispose()
+  }
+})
 
 it('refreshes recording state after removing the final point', async () => {
   const s = new TraceSession(fakeNode().rpc, fakeDebugger(), () => {})
