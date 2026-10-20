@@ -333,6 +333,9 @@ it.each(['desktop', 'phone'])(
       if([...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'))throw Error('Trusted folder asked for execution confirmation');
       input.value='src/journey.cjs';input.dispatchEvent(new Event('input',{bubbles:true}));
       press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(el=>el.textContent.includes('src/journey.cjs')),'program suggestion'));
+      await until(()=>document.querySelector('.modal.abele-modal'),'launch options');
+      const stopAtStart=document.querySelector('.modal.abele-modal [aria-label="Stop at start"]');
+      if(stopAtStart?.getAttribute('aria-checked')==='false')press(stopAtStart);
       press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','folder debugger paused',500);
       const binding=api.DebuggerService.instance.active.value;
@@ -410,7 +413,11 @@ it.each(['desktop', 'phone'])(
       noOwnerApproval();
       await until(()=>binding.controller.session.watches.some(w=>w.value==='true'),'approved watch value');
       noOwnerApproval();
-      watch.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
+      await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();
+      await wait(600);
+      if(!app.workspace.rightSplit.containerEl.offsetWidth){app.workspace.rightSplit.collapse();await wait(500);app.workspace.rightSplit.expand()}
+      const watchField=await until(()=>visible('.abele-debug-panel__add input'),'watch visible for its picture');
+      watchField.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
       await shot(${JSON.stringify(name)}+'-watch');
       const snapshot=binding.controller.snapshot;
       const result={conversation:snapshot.target.conversation_id,chats:chats.tabOrder.value.filter(id=>id.startsWith('node:')).length,sessions:(await client.listSessions()).length};
@@ -772,6 +779,84 @@ it.each(['desktop', 'phone'])(
           'Source admission unavailable on installed node; verified update-node fallback only'
         )
       }
+    }
+    if (device === 'phone') await withEmulatedPhone(probe)
+    else await probe()
+  },
+  180000
+)
+
+it.each(['desktop', 'phone'] as const)(
+  'keeps repository blame and symbol menus while debugging on %s',
+  async (device) => {
+    const gitPath = join(dir, 'sample-git-project-' + device)
+    mkdirSync(join(gitPath, 'src'), { recursive: true })
+    writeFileSync(join(gitPath, 'src/app.cjs'), JS)
+    const git = (...args: string[]) => {
+      const result = spawnSync(
+        '/usr/bin/git',
+        ['-C', gitPath, '-c', 'core.hooksPath=/dev/null', ...args],
+        { encoding: 'utf8' }
+      )
+      if (result.status !== 0) throw Error(result.stderr)
+    }
+    git('init', '--initial-branch=main')
+    git('add', '.')
+    git(
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'Add sample program'
+    )
+    const probe = async () => {
+      openChat()
+      const result = await inAppLong<{ blame: boolean; symbols: boolean }>(`(async()=>{${prelude}
+      const registration=${JSON.stringify(registration)},client=nodes.connection(registration).client;
+      // This legacy-token fixture supplies only the device-local cache namespace; authority
+      // continues to come from its existing authenticated connection to the disposable node.
+      await client.store.transaction(state=>{state.installation_id='sample-debugger-installation'});
+      const project=await client.registerProject(${JSON.stringify(gitPath)},'trusted');
+      let binding;
+      try {
+        const trees=await client.repository.worktrees({project_id:project.project_id}),root=trees.entries.find(t=>t.kind==='root');
+        await client.nodePath.execution({project_id:project.project_id,target:{kind:'worktree',worktree_id:root.worktree_id},enabled:true},crypto.randomUUID());
+        await api.openNodeRepository(registration,project.project_id,root.worktree_id);
+        const model=api.NodePathService.getInstance().model(registration);model.panelMode.value='files';
+        press(await until(()=>visible('.abele-node-sidebar [data-path="src"]'),'git source folder'));
+        press(await until(()=>visible('.abele-node-sidebar [data-path="src/app.cjs"]'),'git program'));
+        await until(()=>visible('.abele-file-view'),'git file open');
+        app.commands.executeCommandById('abele:node-folder-debug-run');
+        const input=await until(()=>document.querySelector('.prompt input'),'program picker');input.value='src/app.cjs';input.dispatchEvent(new Event('input',{bubbles:true}));
+        press(await until(()=>[...document.querySelectorAll('.suggestion-item')].find(el=>el.querySelector('.suggestion-title')?.textContent.trim()==='src/app.cjs'),'git program choice'));
+        await until(()=>document.querySelector('.modal.abele-modal'),'launch dialog');
+        const stop=document.querySelector('.modal.abele-modal [aria-label="Stop at start"]');if(stop?.getAttribute('aria-checked')==='false')press(stop);
+        press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch git program'));
+        await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','git program paused',500);
+        binding=api.DebuggerService.instance.active.value;
+        const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/app.cjs'&&l.containerEl.querySelector('.abele-debug-source__point')),'debug git source');
+        await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
+        const toggle=await until(()=>leaf.view.contentEl.querySelector('[aria-label="Toggle line blame"]'),'debug source blame control');
+        toggle.click();await until(()=>leaf.view.contentEl.querySelector('.abele-github-blame-range'),'debug source blame range');
+        await shot('git-${device}-debug-blame');
+        toggle.click();await until(()=>!leaf.view.contentEl.querySelector('.abele-github-blame-range'),'blame hidden');
+        const symbol=await until(()=>[...leaf.view.contentEl.querySelectorAll('.cm-line span')].find(el=>el.textContent==='inspectItem'),'source symbol'),rect=symbol.getBoundingClientRect();
+        symbol.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+rect.width/2,clientY:rect.top+rect.height/2}));
+        await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('Find references to inspectItem')),'debug symbol menu');
+        await shot('git-${device}-debug-symbol-menu');
+        document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+        return {blame:true,symbols:true};
+      } finally {
+        if(binding?.controller.current&&binding.controller.session.status!=='exited')await binding.controller.command('stop');
+        for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.projectId===project.project_id)leaf.detach();
+        await client.removeProject(project.project_id);
+      }
+    })()`)
+      expect(result).toEqual({ blame: true, symbols: true })
     }
     if (device === 'phone') await withEmulatedPhone(probe)
     else await probe()
