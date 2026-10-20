@@ -3530,10 +3530,22 @@ export const de = {
   'debug.sourceChanged': 'Die Datei wurde seit dem Verbinden des Debuggers geändert',
   'debug.sourceOutside': 'Die Datei liegt außerhalb des Debug-Ordners',
   'debug.sourceUnavailable': 'Die Datei konnte nicht zum Debugger hinzugefügt werden',
-  'debug.entryPlaceholder': 'JavaScript- oder TypeScript-Einstiegsdatei suchen',
-  'debug.entryEmpty': 'Keine JavaScript- oder TypeScript-Einstiegsdateien gefunden',
+  'debug.entryPlaceholder':
+    'Einstiegsdateien oder Paketskripte suchen; oder einen kompilierten JavaScript-Pfad eingeben',
+  'debug.entryEmpty':
+    'Kein Treffer. Sie können den Pfad einer kompilierten JavaScript-Datei eingeben.',
   'debug.sourceConflict':
     'Diese Datei steht im Konflikt mit einer bereits hinzugefügten Quelldatei',
   'debug.sourceLimit': 'Das Quelldateilimit der Sitzung wurde erreicht',
   'debug.sourceUnreadable': 'Diese Datei ist nicht verfügbar oder nicht lesbar',
+  'debug.launchTitle': 'Programm ausführen',
+  'debug.launchProgram': 'Programm',
+  'debug.launchProgramHint':
+    'Pfad relativ zu diesem Ordner. Geben Sie bei kompiliertem TypeScript die JavaScript-Einstiegsdatei an (zum Beispiel dist/main.js).',
+  'debug.launchArgs': 'Argumente',
+  'debug.launchArgsHint':
+    'Trennen Sie Argumente durch Leerzeichen; setzen Sie Werte mit Leerzeichen in Anführungszeichen. Shell-Ausdrücke werden nicht ausgewertet.',
+  'debug.launchArgsInvalid':
+    'Schließen Sie alle Anführungszeichen und vervollständigen Sie Escape-Sequenzen in den Argumenten.',
+  'debug.launchFailed': 'Das Programm konnte nicht gestartet werden: {detail}',
 } satisfies TranslationCatalog

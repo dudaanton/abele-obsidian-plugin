@@ -79,7 +79,13 @@ export function pickProgram(
   empty: string,
   openLabel: string
 ): Promise<string | null> {
-  return new RunnablePicker(
+  class ProgramEntryPicker extends RunnablePicker<string> {
+    getItems(): string[] {
+      const typed = this.inputEl.value.trim()
+      return /\.[cm]?[jt]s$/.test(typed) && !paths.includes(typed) ? [typed, ...paths] : paths
+    }
+  }
+  return new ProgramEntryPicker(
     app,
     paths,
     (path) => path,

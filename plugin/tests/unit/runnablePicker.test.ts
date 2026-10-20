@@ -13,7 +13,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { App, Command, FuzzyMatch } from 'obsidian'
 import { FuzzySuggestModal } from 'obsidian'
-import { pickScript, pickCommand, listCommands } from '@/helpers/suggesters/RunnablePicker'
+import {
+  pickScript,
+  pickCommand,
+  pickProgram,
+  listCommands,
+} from '@/helpers/suggesters/RunnablePicker'
 import type { ParsedScript } from '@/scripting/types'
 
 function script(name: string, description = ''): ParsedScript {
@@ -39,6 +44,14 @@ let openSpy: ReturnType<typeof vi.spyOn>
 /** The picker that was opened last, as the modal it is. */
 const opened = () =>
   openSpy.mock.contexts[openSpy.mock.contexts.length - 1] as FuzzySuggestModal<unknown>
+
+it('offers a typed ignored build entry without interpreting arguments as search text', () => {
+  void pickProgram(app, ['src/main.ts'], [], 'entry', 'empty', 'open')
+  opened().inputEl.value = 'dist/main.js'
+  expect(opened().getItems()).toEqual(['dist/main.js', 'src/main.ts'])
+  opened().inputEl.value = 'src/main.ts'
+  expect(opened().getItems()).toEqual(['src/main.ts'])
+})
 
 beforeEach(() => {
   app = { commands: { listCommands: () => commands } } as unknown as App

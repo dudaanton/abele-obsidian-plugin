@@ -3497,9 +3497,19 @@ export const lv = {
   'debug.sourceChanged': 'Fails ir mainīts kopš atkļūdotāja pievienošanas',
   'debug.sourceOutside': 'Fails atrodas ārpus atkļūdošanas mapes',
   'debug.sourceUnavailable': 'Failu neizdevās pievienot atkļūdotājam',
-  'debug.entryPlaceholder': 'Meklēt JavaScript vai TypeScript ieejas failu',
-  'debug.entryEmpty': 'Nav atrasts neviens JavaScript vai TypeScript ieejas fails',
+  'debug.entryPlaceholder':
+    'Meklēt sākuma failus vai pakotnes skriptus; vai ievadīt kompilēta JavaScript ceļu',
+  'debug.entryEmpty': 'Nav atbilstību. Varat ievadīt kompilēta JavaScript ceļu.',
   'debug.sourceConflict': 'Fails konfliktē ar jau pievienotu pirmkoda failu',
   'debug.sourceLimit': 'Sasniegts sesijas pirmkoda failu skaita ierobežojums',
   'debug.sourceUnreadable': 'Fails nav pieejams vai nav nolasāms',
+  'debug.launchTitle': 'Palaist programmu',
+  'debug.launchProgram': 'Programma',
+  'debug.launchProgramHint':
+    'Ceļš attiecībā pret šo mapi. Kompilētam TypeScript norādiet JavaScript sākuma failu (piemēram, dist/main.js).',
+  'debug.launchArgs': 'Argumenti',
+  'debug.launchArgsHint':
+    'Atdaliet argumentus ar atstarpēm; vērtības ar atstarpēm lieciet pēdiņās. Čaulas izteiksmes netiek izpildītas.',
+  'debug.launchArgsInvalid': 'Aizveriet pēdiņas un pabeidziet ekranēšanu argumentos.',
+  'debug.launchFailed': 'Programmu neizdevās palaist: {detail}',
 } satisfies TranslationCatalog

@@ -13,6 +13,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { programFiles } from './programFiles'
 import { pickProgram } from '@/helpers/suggesters/RunnablePicker'
+import { openComponentDialog } from '@/modal/componentDialog'
+import ProgramLaunchDialog from './ProgramLaunchDialog.vue'
+import { launchTargetName, programLaunchTargets, resolveLaunchTarget } from './programLaunchTargets'
 
 const id = z.string().min(1).max(128)
 export const StartResultSchema = z.object({
@@ -179,15 +182,19 @@ export async function startProgram(
   sources: string[],
   target: PathTarget,
   show: (sessionId: string) => Promise<void>,
-  carry: CarriedPoint[] = []
+  carry: CarriedPoint[] = [],
+  argv: string[] = [],
+  options: { npmScript?: string; source?: string } = {}
 ) {
+  argv = [...argv]
   const client = presenter.connection.client
   const started = StartResultSchema.parse(
     await client.request('debugger.v1.start', {
       operation_id: crypto.randomUUID(),
       ...debugOwnerParams(presenter),
       program,
-      argv: [],
+      argv,
+      ...(options.npmScript ? { npm_script: options.npmScript } : {}),
       sources: sources.filter((s) => s !== program),
     })
   )
@@ -210,11 +217,20 @@ export async function startProgram(
     if (binding.controller.session.status !== 'exited')
       throw new Error('The previous program has not stopped; reconnect before restarting')
     const taken = [...sources, ...service.takenFiles(binding), ...carried.map((c) => c.path)]
-    return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
+    return startProgram(
+      presenter,
+      program,
+      [...new Set(taken)],
+      target,
+      show,
+      carried,
+      argv,
+      options
+    )
   }
   // Finish admitting the source before the controls become available. A late file admission
   // would otherwise replace a location the person already selected in the debugger.
-  await openSources(presenter, started, snapshot.incarnation, target, program)
+  await openSources(presenter, started, snapshot.incarnation, target, options.source ?? program)
   await show(sessionId)
   // Held on its first line, the new run takes the points before any of its code runs. The node
   // can answer the start before that stop reaches the panel, and a point sent meanwhile names
@@ -273,6 +289,28 @@ export async function askAndStartProgram(
     }
     const app = GlobalStore.getInstance().app
     const open = openFilesOf(app.workspace, target)
+    const targets = await programLaunchTargets(
+      presenter.connection.client,
+      debugOwnerParams(presenter)
+    )
+    const launch = (program: string) => {
+      openComponentDialog(() => ProgramLaunchDialog, {
+        program,
+        launch: (path: string, argv: string[]) => {
+          const selected = resolveLaunchTarget(path, targets)
+          return startProgram(
+            presenter,
+            selected.program,
+            [...new Set([...open, ...selected.sources])],
+            target,
+            show,
+            [],
+            argv,
+            { npmScript: selected.npm_script, source: selected.sources[0] }
+          )
+        },
+      })
+    }
     let paths: string[] | undefined
     try {
       paths = await programFiles(presenter.connection.client, target, open)
@@ -282,7 +320,14 @@ export async function askAndStartProgram(
         throw error
       console.debug('[debugger] Filename search unavailable; using open files', error)
     }
-    if (paths) {
+    if (paths || targets.length) {
+      paths = [
+        ...new Set([
+          ...targets.map(launchTargetName),
+          ...targets.filter((t) => !t.npm_script).map((t) => t.program),
+          ...(paths ?? []),
+        ]),
+      ]
       const selected = await pickProgram(
         app,
         paths,
@@ -291,7 +336,7 @@ export async function askAndStartProgram(
         t('debug.entryEmpty'),
         t('streamC.6b612edc8f9e8b34')
       )
-      if (selected) await startProgram(presenter, selected, open, target, show)
+      if (selected) launch(selected)
       return
     }
     const offered = open
@@ -307,7 +352,7 @@ export async function askAndStartProgram(
       app,
       offered,
       t('debug.programPlaceholder'),
-      (item) => void startProgram(presenter, item.id, open, target, show).catch(failed),
+      (item) => launch(item.id),
       t('debug.programEmpty')
     ).open()
   } catch (e) {

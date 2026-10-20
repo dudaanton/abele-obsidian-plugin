@@ -3556,9 +3556,19 @@ export const ru = {
   'debug.sourceChanged': 'Файл изменился после подключения отладчика',
   'debug.sourceOutside': 'Файл находится вне папки отладки',
   'debug.sourceUnavailable': 'Не удалось добавить файл в отладчик',
-  'debug.entryPlaceholder': 'Найти стартовый файл JavaScript или TypeScript',
-  'debug.entryEmpty': 'Стартовые файлы JavaScript или TypeScript не найдены',
+  'debug.entryPlaceholder':
+    'Найти входной файл или скрипт пакета; или ввести путь к собранному JavaScript',
+  'debug.entryEmpty': 'Ничего не найдено. Можно ввести путь к собранному JavaScript.',
   'debug.sourceConflict': 'Файл конфликтует с уже добавленным исходником',
   'debug.sourceLimit': 'Достигнут предел числа исходников в сессии',
   'debug.sourceUnreadable': 'Файл недоступен или не читается',
+  'debug.launchTitle': 'Запустить программу',
+  'debug.launchProgram': 'Программа',
+  'debug.launchProgramHint':
+    'Путь относительно этой папки. Для собранного TypeScript укажите входной файл JavaScript (например, dist/main.js).',
+  'debug.launchArgs': 'Аргументы',
+  'debug.launchArgsHint':
+    'Разделяйте аргументы пробелами; значения с пробелами заключайте в кавычки. Выражения оболочки не выполняются.',
+  'debug.launchArgsInvalid': 'Закройте кавычки и завершите экранирование в аргументах.',
+  'debug.launchFailed': 'Не удалось запустить программу: {detail}',
 } satisfies TranslationCatalog

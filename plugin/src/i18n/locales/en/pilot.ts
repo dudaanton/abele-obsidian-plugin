@@ -3396,9 +3396,19 @@ export const en = {
   'debug.sourceChanged': 'This file changed since the debugger attached',
   'debug.sourceOutside': 'This file is outside the debug folder',
   'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
-  'debug.entryPlaceholder': 'Search for a JavaScript or TypeScript entry file',
-  'debug.entryEmpty': 'No JavaScript or TypeScript entry files found',
+  'debug.entryPlaceholder':
+    'Search entry files or package scripts; or type a built JavaScript path',
+  'debug.entryEmpty': 'No matching entry. You can type a built JavaScript path.',
   'debug.sourceConflict': 'This file conflicts with an admitted source',
   'debug.sourceLimit': 'The session source limit has been reached',
   'debug.sourceUnreadable': 'This file is unavailable or unreadable',
+  'debug.launchTitle': 'Run a program',
+  'debug.launchProgram': 'Program',
+  'debug.launchProgramHint':
+    'Path relative to this folder. For a TypeScript build, enter the built JavaScript entry (for example, dist/main.js).',
+  'debug.launchArgs': 'Arguments',
+  'debug.launchArgsHint':
+    'Separate arguments with spaces; quote values containing spaces. No shell expressions are evaluated.',
+  'debug.launchArgsInvalid': 'Close each quote and finish each escape in the arguments.',
+  'debug.launchFailed': 'The program could not start: {detail}',
 } as const

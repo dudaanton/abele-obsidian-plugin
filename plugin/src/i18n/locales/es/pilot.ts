@@ -3554,9 +3554,20 @@ export const es = {
   'debug.sourceChanged': 'El archivo cambió desde que se conectó el depurador',
   'debug.sourceOutside': 'El archivo está fuera de la carpeta de depuración',
   'debug.sourceUnavailable': 'No se pudo añadir el archivo al depurador',
-  'debug.entryPlaceholder': 'Buscar un archivo de entrada JavaScript o TypeScript',
-  'debug.entryEmpty': 'No se encontraron archivos de entrada JavaScript o TypeScript',
+  'debug.entryPlaceholder':
+    'Buscar archivos de entrada o scripts del paquete; o escribir una ruta JavaScript compilada',
+  'debug.entryEmpty': 'Sin coincidencias. Puede escribir la ruta del JavaScript compilado.',
   'debug.sourceConflict': 'El archivo entra en conflicto con una fuente ya añadida',
   'debug.sourceLimit': 'Se alcanzó el límite de archivos fuente de la sesión',
   'debug.sourceUnreadable': 'El archivo no está disponible o no se puede leer',
+  'debug.launchTitle': 'Ejecutar un programa',
+  'debug.launchProgram': 'Programa',
+  'debug.launchProgramHint':
+    'Ruta relativa a esta carpeta. Para TypeScript compilado, indique el archivo JavaScript de entrada (por ejemplo, dist/main.js).',
+  'debug.launchArgs': 'Argumentos',
+  'debug.launchArgsHint':
+    'Separe los argumentos con espacios; use comillas para valores con espacios. No se evalúan expresiones del intérprete de comandos.',
+  'debug.launchArgsInvalid':
+    'Cierre las comillas y complete las secuencias de escape en los argumentos.',
+  'debug.launchFailed': 'No se pudo iniciar el programa: {detail}',
 } satisfies TranslationCatalog

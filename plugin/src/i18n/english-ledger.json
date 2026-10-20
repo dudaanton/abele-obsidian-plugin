@@ -25980,7 +25980,7 @@
     ]
   },
   "debug.entryPlaceholder": {
-    "englishHash": "4159c40afd7db868d8d079b364d59d522daeb4369909bcd76d386d36c47293a7",
+    "englishHash": "2d94cc8968b3d13809ddb2007ffd9e3b595688f52d76e5c88db77d43dad5fbce",
     "context": "Debugger program picker searches project entry files",
     "reviewedLocales": [
       "ru",
@@ -25990,7 +25990,7 @@
     ]
   },
   "debug.entryEmpty": {
-    "englishHash": "80b12f8ab9915b365025f5879aeb8dad33ed294733f473c9e13e5eeb53cfc5df",
+    "englishHash": "47d59eeb332d54177b3f9c558d5548a1033e333fb59c9f8c119bf77e97b0d878",
     "context": "Debugger program picker searches project entry files",
     "reviewedLocales": [
       "ru",
@@ -26022,6 +26022,76 @@
   "debug.sourceUnreadable": {
     "englishHash": "e2f9a74bba0c509e0b7bd06a482431dd0a5e0149df5ca8ff2a2c24ba8055a2d9",
     "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchTitle": {
+    "englishHash": "25a5a52c1714eadfdceb1993e29ad07b494cd27836366487378734845dfeb9b3",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchProgram": {
+    "englishHash": "15646f38395ba02f17f6165384151915168a5a3c902d1f02b08b37c3cffb71ae",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchProgramHint": {
+    "englishHash": "581270953645c346c3dcf770d02307120dc18ec20b5b06eeb96c130b3e1e4664",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchArgs": {
+    "englishHash": "66017e1c1c25a819f2ea3f84d9e27ae6d1b617a155e1b0ce373ac9cf9f19cb02",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchArgsHint": {
+    "englishHash": "685fe32614e41fe7a5a9103ce8f3063e33e29184ef1dc3f086f58f6640e4454f",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchArgsInvalid": {
+    "englishHash": "3b715b8b89f53873161b826ad3bfb70ed3ffe6dc1ef4b71c4d1ff267f7997533",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchFailed": {
+    "englishHash": "16bca44d8dd0629229e4b79dfa2f6b303684a52b086c4b1f06e6295af9623a68",
+    "context": "Debugger launch configuration",
     "reviewedLocales": [
       "ru",
       "lv",

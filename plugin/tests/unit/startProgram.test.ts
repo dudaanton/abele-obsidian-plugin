@@ -80,6 +80,47 @@ function fakePresenter() {
 afterEach(() => DebuggerService.instance.destroy())
 
 describe('running a program under the debugger', () => {
+  it('opens the mapped entry source rather than the ignored build file', async () => {
+    const { opened } = fakeWorkspace()
+    const { presenter } = fakePresenter()
+    await startProgram(
+      presenter,
+      'dist/service.js',
+      ['src/service.js'],
+      target,
+      async () => {},
+      [],
+      [],
+      { source: 'src/service.js' }
+    )
+    expect(opened).toEqual([
+      expect.objectContaining({
+        state: expect.objectContaining({ path: 'src/service.js' }),
+      }),
+    ])
+  })
+  it('passes arguments to the node and retains them on Restart', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    await startProgram(
+      presenter,
+      'dist/entry.js',
+      [],
+      target,
+      async () => {},
+      [],
+      ['order', '--count', '2']
+    )
+    const binding = DebuggerService.instance.binding(presenter)
+    vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
+    binding.controller.session.status = 'exited'
+    await binding.rerun!()
+    const starts = calls.filter(([method]) => method === 'debugger.v1.start')
+    expect(starts.map(([, p]) => p.argv)).toEqual([
+      ['order', '--count', '2'],
+      ['order', '--count', '2'],
+    ])
+  })
   it('includes a later-admitted file without points in the restarted program', async () => {
     fakeWorkspace()
     const { presenter, calls } = fakePresenter()
