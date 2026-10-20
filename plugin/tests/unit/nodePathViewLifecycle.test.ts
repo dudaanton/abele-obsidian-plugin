@@ -411,3 +411,19 @@ it('reopens an editor tab of an earlier version as the file tab, editing, once i
     vi.useRealTimers()
   }
 })
+
+it('routes the host current-file search command to the active file tools', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  views.push(view)
+  const action = document.createElement('button')
+  action.dataset.nodeFind = ''
+  const click = vi.fn()
+  action.onclick = click
+  view.contentEl.append(action)
+  const file = { mode: shallowRef('diff'), destroy: vi.fn() }
+  ;(view as any).file = file
+  expect(typeof (view as any).showSearch).toBe('function')
+  await (view as any).showSearch()
+  expect(file.mode.value).toBe('file')
+  expect(click).toHaveBeenCalledOnce()
+})

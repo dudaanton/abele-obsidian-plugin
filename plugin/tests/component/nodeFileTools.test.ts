@@ -195,6 +195,33 @@ describe('node file repository tools', () => {
       false
     )
   })
+  it('offers find when a changed file first opens in comparison mode', async () => {
+    const mode = ref<'diff' | 'file'>('diff')
+    const view = mount(NodePathFilePane, {
+      props: {
+        model: {
+          busy: ref(false),
+          error: ref(''),
+          mode,
+          document: shallowRef({
+            path: 'sample.ts',
+            text: 'const sample = 2',
+            change: {
+              kind: 'modified',
+              before: 'const sample = 1',
+              after: 'const sample = 2',
+            },
+          }),
+        } as never,
+      },
+    })
+    views.push(view)
+    await flushPromises()
+    await view.get('[data-node-find]').trigger('click')
+    expect(mode.value).toBe('file')
+    expect(view.find('[role=search]').exists()).toBe(true)
+  })
+
   it('keeps in-file find available without a git revision, including its keyboard shortcut', async () => {
     const view = mount(FileView, {
       props: { path: 'sample.txt', text: 'Sample text', mode: 'file' },

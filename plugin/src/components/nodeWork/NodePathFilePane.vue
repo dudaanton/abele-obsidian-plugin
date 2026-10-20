@@ -57,6 +57,7 @@
         :end-line="endLine"
         :code-target="model.target"
         :offline="offline"
+        @find="model.mode.value = 'file'"
         @menu="(event, selection, lines) => emit('menu', event, selection, lines)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"

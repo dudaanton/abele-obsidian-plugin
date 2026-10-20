@@ -10,13 +10,14 @@
       :offline="offline"
     />
     <NodeFileTools
-      v-if="!image && !metadataNote && (mode === 'file' || !change)"
+      v-if="!image && !metadataNote"
       :key="repository?.cacheNamespace ?? ''"
       :root="root"
       :glyph-host="glyphHost"
       :source="repository"
       :file="repositoryFile"
       :text="text"
+      @find="emit('find')"
     />
     <Diff
       v-if="!image && !metadataNote && mode === 'diff' && change"
@@ -33,6 +34,7 @@
             >{{ change.from ? `${change.from} → ` : '' }}{{ path }}</span
           >
           <span v-if="change.when" class="abele-file-view__when">{{ change.when }}</span>
+          <span ref="glyphHost" class="abele-file-view__tools" />
         </span>
       </template>
     </Diff>
@@ -147,6 +149,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+  (e: 'find'): void
   /** The context menu, with the selected text, or empty for the whole file. */
   (e: 'menu', event: MouseEvent, selection: string, lines?: FileSelection): void
   /** Selected text to ask about in a new chat, or to add to the open one. */

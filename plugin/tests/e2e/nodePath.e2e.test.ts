@@ -64,7 +64,7 @@ async function reopenNodePane(name: string) {
   }
   await capture(name)
 }
-async function checkFileLookup(prefix: string) {
+async function checkFileLookup(prefix: 'desktop' | 'phone') {
   await evalLong(
     `(async()=>{${prelude}await pickMode('Files');await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
   )
@@ -86,7 +86,11 @@ async function checkFileLookup(prefix: string) {
   )
   await capture(prefix + '-lookup-missing')
   await evalLong(
-    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await pickMode('Changes');return 'changes restored'})()`
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>[...visible('.abele-file-tree').querySelectorAll('.tree-item-self')].some(row=>row.querySelector('.abele-tree-item__text')?.textContent==='sample.ts'));[...visible('.abele-file-tree').querySelectorAll('.tree-item-self')].find(row=>row.querySelector('.abele-tree-item__text')?.textContent==='sample.ts').click();await until(()=>visible('.abele-file-view'));return 'opened from file tree'})()`
+  )
+  await checkFileSearch(prefix, 'tree')
+  await evalLong(
+    `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType("abele-node-file").find(l=>l.view.contentEl.contains(visible(".abele-file-view")));leaf.detach();await app.workspace.revealLeaf(app.workspace.getLeavesOfType("abele-node-sidebar")[0]);app.workspace.leftSplit.expand();await pickMode("Changes");return "changes restored"})()`
   )
 }
 async function checkMixedCommit() {
@@ -116,6 +120,24 @@ async function checkCodeGeometry() {
   )
 }
 
+async function checkFileSearch(shell: 'desktop' | 'phone', entry = 'panel') {
+  // Start where a person lands after clicking a changed file, without changing the model.
+  await evalLong(
+    `(async()=>{${prelude}const find=visible(".abele-file-view [data-node-find]");if(!find)throw Error("Ordinary changed file has no find button");find.click();await until(()=>visible(".abele-file-view .abele-github-find input"));const input=visible(".abele-file-view .abele-github-find input");input.value="value";input.dispatchEvent(new Event("input",{bubbles:true}));await until(()=>visible(".abele-file-view .abele-github-find__match"));input.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await until(()=>!visible(".abele-file-view .abele-github-find"));if(!app.commands.executeCommandById("editor:open-search"))throw Error("Host current-file search command unavailable");await until(()=>visible(".abele-file-view .abele-github-find input"));visible(".abele-file-view .abele-github-find input").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await until(()=>!visible(".abele-file-view .abele-github-find"));visible(".abele-file-view .cm-content").focus();return "button and command"})()`
+  )
+  // Native input goes through the host keymap, unlike dispatchEvent on our component root.
+  await evalLong(
+    `(()=>{const web=require("@electron/remote").getCurrentWebContents();web.sendInputEvent({type:"keyDown",keyCode:"F",modifiers:["meta"]});web.sendInputEvent({type:"keyUp",keyCode:"F",modifiers:["meta"]});return "pressed find"})()`
+  )
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible(".abele-file-view .abele-github-find input"));const input=visible(".abele-file-view .abele-github-find input");if(document.activeElement!==input)throw Error("Native find did not focus the field");input.value="value";input.dispatchEvent(new Event("input",{bubbles:true}));await until(()=>visible(".abele-file-view .abele-github-find__match"));return "native find matches"})()`
+  )
+  await capture(shell + '-' + entry + '-file-search')
+  await evalLong(
+    `(async()=>{${prelude}visible(".abele-file-view .abele-github-find input").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await until(()=>!visible(".abele-file-view .abele-github-find"));return "closed find"})()`
+  )
+}
+
 async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration: string) {
   try {
     await evalLong(
@@ -139,7 +161,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-search-open')
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-file-view .abele-github-find input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!visible('.abele-file-view .abele-github-find'));const row=visible('.abele-file-view .cm-line');const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);let word;while(walker.nextNode()){if(walker.currentNode.textContent.includes('value')){word=walker.currentNode;break}}if(!word)throw Error('Code identifier missing');const range=document.createRange(),offset=word.textContent.indexOf('value');range.setStart(word,offset);range.setEnd(word,offset+5);const r=range.getBoundingClientRect();word.parentElement.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));await until(()=>menuItem('Find references to'));if(menuItem('Copy path'))throw Error('File menu replaced code navigation');menuItem('Copy value').click();await until(()=>!visible('.menu'));return 'code navigation menu'})()`
+      `(async()=>{${prelude}visible('.abele-file-view .abele-github-find input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!visible('.abele-file-view .abele-github-find'));const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view')));const state={...leaf.view.getState()};delete state.line;delete state.endLine;await leaf.setViewState({type:'abele-node-file',active:true,state});await until(()=>!visible('.abele-file-view .abele-github-code__line_target'));const row=visible('.abele-file-view .cm-line');const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);let word;while(walker.nextNode()){if(walker.currentNode.textContent.includes('value')){word=walker.currentNode;break}}if(!word)throw Error('Code identifier missing');const range=document.createRange(),offset=word.textContent.indexOf('value');range.setStart(word,offset);range.setEnd(word,offset+5);const r=range.getBoundingClientRect();word.parentElement.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));await until(()=>menuItem('Find references to'));if(menuItem('Copy path'))throw Error('File menu replaced code navigation');menuItem('Go to definition of').click();await until(()=>!visible('.menu')&&visible('.abele-file-view .abele-github-code__line_target')&&leaf.view.getState().line===1);return 'definition opens in file tab'})()`
     )
   } finally {
     await evalLong(
@@ -430,6 +452,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
     await capture('desktop-diff-selection')
     await clearSelection()
+    await checkFileSearch('desktop')
     await evalLong(
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.external)});await view.file.step(1);if(view.file.target.id!==${JSON.stringify(ids.root)})throw Error('File arrows followed the sidebar');await view.file.open('src/sample.ts');view.file.mode.value='file';return 'bound navigation'})()`
     )
@@ -639,6 +662,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
     await capture('phone-diff-selection')
     await clearSelection()
+    await checkFileSearch('phone')
     await evalLong(
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view'))).view;view.file.mode.value='file';await until(()=>visible('.abele-file-view .cm-line'));return 'whole file'})()`
     )

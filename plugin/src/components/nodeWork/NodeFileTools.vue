@@ -57,6 +57,7 @@ const props = defineProps<{
   text: string
 }>()
 const finder = ref<InstanceType<typeof GithubFindBar>>()
+const emit = defineEmits<{ find: [] }>()
 const findOpen = ref(false)
 const fileNavigation = inject(FILE_NAVIGATION, undefined)
 const open = (url: string, pane: PaneType | false) => {
@@ -84,6 +85,8 @@ const search = source
     })
   : undefined
 async function showFind() {
+  // A changed file starts as a folded comparison. Find searches its whole file instead.
+  emit('find')
   findOpen.value = true
   await nextTick()
   finder.value?.focus()

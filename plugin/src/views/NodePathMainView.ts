@@ -9,7 +9,7 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { computed, h, shallowRef, watch, type WatchStopHandle } from 'vue'
+import { computed, h, nextTick, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { NodeRepositorySource } from '@/repository/node'
 import type { RepositoryRevision } from '@/repository/source'
 import { NodeService } from '@/node/NodeService'
@@ -131,6 +131,13 @@ export class NodePathMainView extends ItemView {
   getState(): Record<string, unknown> {
     return this.saved ? { ...this.saved } : {}
   }
+  /** Obsidian's current-file search command also calls this for non-markdown views. */
+  async showSearch(): Promise<void> {
+    if (!this.file) return
+    this.file.mode.value = 'file'
+    await nextTick()
+    this.contentEl.querySelector<HTMLElement>('[data-node-find]')?.click()
+  }
   async onOpen(): Promise<void> {
     this.contentEl.addClass('abele-node-content')
     // ⌘ S saves while editing, as Obsidian's own save command does in a note.
@@ -140,17 +147,17 @@ export class NodePathMainView extends ItemView {
       this.act(() => this.editing?.save())
       return false
     })
-    for (const [modifiers, selector] of [
-      [['Mod'], '[data-node-find]'],
-      [['Mod', 'Shift'], '[data-node-search]'],
-    ] as const) {
-      this.scope.register([...modifiers], 'f', () => {
-        const action = this.contentEl.querySelector<HTMLElement>(selector)
-        if (!action) return true
-        action.click()
-        return false
-      })
-    }
+    this.scope.register(['Mod'], 'f', () => {
+      if (!this.file) return true
+      void this.showSearch()
+      return false
+    })
+    this.scope.register(['Mod', 'Shift'], 'f', () => {
+      const action = this.contentEl.querySelector<HTMLElement>('[data-node-search]')
+      if (!action) return true
+      action.click()
+      return false
+    })
     if (this.saved && !this.ui) this.startBinding(this.saved)
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
