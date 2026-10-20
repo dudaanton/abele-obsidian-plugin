@@ -261,7 +261,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       continue
     }
     let updates = updatesOf(event)
-    if (event.type === 'pi.extension.error') {
+    if (event.type === 'pi.extension.error' && data.mapped !== true) {
       const extension = text('extension') || text('extension_path') || text('extension_id')
       const reason = text('error') || text('message')
       updates = [
@@ -278,6 +278,13 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         },
       ]
     }
+    updates = updates.map((update) =>
+      update.kind === 'notice' &&
+      update.code === 'extension_error' &&
+      update.text === 'A pi extension failed'
+        ? { ...update, text: t('streamB.nodeExtensionMissingDiagnostic') }
+        : update
+    )
     const piError = event.type === 'pi.message.final' ? piFailure(data) : ''
     // pi's failure is said on the answer it belongs to, with the way to send it again.
     if (piError) updates = updates.filter((u) => u.kind !== 'notice')

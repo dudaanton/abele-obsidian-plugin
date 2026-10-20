@@ -79,6 +79,44 @@ it('keeps visible turns when the device event window advances between refreshes'
   }
 })
 
+it('holds the visible transcript across an offline event gap and fills it on reconnect', async () => {
+  const f = fixture()
+  const online = vi.mocked(Object.getOwnPropertyDescriptor(f.client, 'connected')!.get!)
+  const p = new NodeChatPresenter(
+    {
+      kind: 'node-session',
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      sessionId: SID,
+      title: 'Sample',
+    },
+    { client: f.client, state: ref('offline'), error: ref('') } as unknown as NodeConnection
+  )
+  try {
+    await f.store.transaction((s) => {
+      s.events[SID] = journal.slice(0, 50)
+    })
+    await p.refresh()
+    const shown = p.messages.value
+    online.mockReturnValue(false)
+    await f.store.transaction((s) => {
+      s.events[SID] = journal.slice(100, 150)
+    })
+    await expect(p.refresh()).rejects.toThrow('earlier messages')
+    expect(p.messages.value).toBe(shown)
+    online.mockReturnValue(true)
+    await p.refresh()
+    expect(f.requests).toContainEqual({
+      method: 'stream.read',
+      params: { stream_id: SID, after_seq: 50, limit: 50 },
+    })
+    const expected = journal.slice(0, 150).filter((e) => e.type === 'input.accepted').length
+    expect(p.messages.value.filter((m) => m.role === 'user')).toHaveLength(expected)
+  } finally {
+    p.destroy()
+  }
+})
+
 describe('trimWindows', () => {
   it('keeps only the latest events of a windowed stream, and nothing of others', () => {
     const state = {

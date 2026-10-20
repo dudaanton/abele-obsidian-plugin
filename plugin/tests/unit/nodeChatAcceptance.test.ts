@@ -56,6 +56,22 @@ it('shows the extension identity and reason supplied by the node', () => {
   expect(p.messages[0].sessionMark?.text).toContain('Sample initialization failed')
 })
 
+it('does not duplicate mapped extension failures and explains missing diagnostics on older nodes', () => {
+  const p = reduceTranscript([
+    e(1, 'pi.extension.error', { mapped: true, error: 'extension_failed (details local only)' }),
+    e(2, 'session.update', {
+      update: {
+        kind: 'notice',
+        code: 'extension_error',
+        level: 'error',
+        text: 'A pi extension failed',
+      },
+    }),
+  ])
+  expect(p.messages).toHaveLength(1)
+  expect(p.messages[0].sessionMark?.text).toContain('did not include the extension name or reason')
+})
+
 it('binds resolved approvals and their retained change to the matching tool row', () => {
   const prompt = {
     prompt_id: 'sample-prompt',

@@ -215,7 +215,7 @@
         presenter.draftNotice?.value ? t('streamB.sendAgain.feead9') : t('streamB.send.f6f468')
       "
       :is-streaming="working"
-      :is-busy="sending"
+      :is-busy="sending || attaching"
       :text-only="true"
       :slash-extra="slashItems"
       :can-continue="false"

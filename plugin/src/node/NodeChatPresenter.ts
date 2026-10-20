@@ -7,6 +7,7 @@ import type { FakeStep, Prompt } from '@abele/node-client'
 import {
   type SessionCommand,
   PromptSchema,
+  NodeEventSchema,
   TargetChangedRefusalSchema,
   validateParams,
 } from '@abele/node-protocol'
@@ -325,18 +326,27 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const first = firstKept
         // A burst can overtake a device window between draws. Read the missing interval
         // before joining it, so a partial tool call cannot swallow an intervening turn.
-        if (latest && first > latest + 1 && client.connected) {
+        if (latest && first > latest + 1) {
+          if (!client.connected)
+            throw new UiError(uiMessage('streamB.couldNotReadEarlierMessages.5f0162'))
           let after = latest
           while (after < first - 1) {
-            const page = (await client.request('stream.read', {
+            const limit = Math.min(256, first - after - 1)
+            const raw = await client.request('stream.read', {
               stream_id: this.reference.sessionId,
               after_seq: after,
-              limit: Math.min(256, first - after - 1),
-            })) as JournalEvent[]
+              limit,
+            })
+            const page = Array.isArray(raw) ? raw.map((e) => NodeEventSchema.parse(e)) : []
             if (
-              !Array.isArray(page) ||
               !page.length ||
-              page.some((e, i) => e.seq !== after + i + 1)
+              page.length > limit ||
+              page.some(
+                (e, i) =>
+                  e.seq !== after + i + 1 ||
+                  e.stream_id !== this.reference.sessionId ||
+                  e.node_id !== this.reference.nodeId
+              )
             )
               throw new UiError(uiMessage('streamB.couldNotReadEarlierMessages.5f0162'))
             for (const event of page) this.visibleEvents.set(event.seq, event)
