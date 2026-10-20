@@ -85,12 +85,13 @@
       </span>
     </div>
 
-    <GithubCodeSearch
-      v-if="codeSearch && contentOpen"
-      :code="codeSearch"
-      @open="(url) => emit('open-result', url)"
-      @close="contentOpen = false"
-    />
+    <div v-if="codeSearch && contentOpen" class="abele-file-tree__body">
+      <GithubCodeSearch
+        :code="codeSearch"
+        @open="(url) => emit('open-result', url)"
+        @close="contentOpen = false"
+      />
+    </div>
     <div v-else class="abele-file-tree__body" role="tree" :aria-label="label">
       <!-- The files are still being read, or reading them failed, and there is no row yet:
            said in place of the rows, never as an empty folder. -->
