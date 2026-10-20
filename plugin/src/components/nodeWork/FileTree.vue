@@ -7,6 +7,14 @@
         :placeholder="t('streamB.findAFile.423001')"
         :aria-label="t('streamB.findAFileByNameOrPath.d42472')"
       />
+      <Icon
+        v-if="codeSearch"
+        icon="file-search"
+        data-node-project-search
+        :tooltip="t('streamB.searchCode.c33868')"
+        :active="contentOpen"
+        @click="contentOpen = !contentOpen"
+      />
       <!-- A phone's panel has no room for three glyphs beside the field: one, the view shown,
            and the three in its menu, opened at the glyph. -->
       <Icon
@@ -77,7 +85,13 @@
       </span>
     </div>
 
-    <div class="abele-file-tree__body" role="tree" :aria-label="label">
+    <GithubCodeSearch
+      v-if="codeSearch && contentOpen"
+      :code="codeSearch"
+      @open="(url) => emit('open-result', url)"
+      @close="contentOpen = false"
+    />
+    <div v-else class="abele-file-tree__body" role="tree" :aria-label="label">
       <!-- The files are still being read, or reading them failed, and there is no row yet:
            said in place of the rows, never as an empty folder. -->
       <div
@@ -329,6 +343,8 @@
 <script setup lang="ts">
 import { streamBNumber } from '@/i18n/streamBDate'
 import { t } from '@/i18n'
+import GithubCodeSearch from '../github/GithubCodeSearch.vue'
+import type { TabCode } from '@/github/search/tabCode'
 // The files of a folder or a worktree in the side panel, the way the file explorer lists a vault:
 // folders open in place, a click on a file opens it in the main area. Git speaks in codes at the
 // row's end: a coloured square for the kind of change, an accent dot for a change you have not
@@ -351,6 +367,7 @@ const props = withDefaults(
   defineProps<{
     entries: TreeEntry[]
     search?: (query: string) => Promise<TreeEntry[]>
+    codeSearch?: Pick<TabCode, 'search' | 'refLabel'>
     searchKey?: string
     changes: FileChange[]
     mode: FileTreeMode
@@ -382,6 +399,7 @@ const props = withDefaults(
   {
     selected: undefined,
     search: undefined,
+    codeSearch: undefined,
     searchKey: undefined,
     stale: false,
     git: true,
@@ -398,6 +416,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+  (e: 'open-result', url: string): void
   (e: 'update:mode', mode: FileTreeMode): void
   (e: 'open', path: string, stage?: 'staged' | 'unstaged' | 'committed'): void
   (e: 'stage' | 'unstage' | 'discard', path: string): void
@@ -409,6 +428,7 @@ const emit = defineEmits<{
 }>()
 
 const phone = Platform.isPhone
+const contentOpen = ref(false)
 /** The three views, as the computer's glyphs say them and the phone's menu lists them. */
 const MODES: { id: FileTreeMode; icon: string; title: string }[] = [
   { id: 'all', icon: 'folder-tree', title: t('streamB.allFiles.866956') },

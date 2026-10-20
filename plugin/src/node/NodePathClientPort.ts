@@ -2,6 +2,7 @@ import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import type { NodeClient } from '@abele/node-client'
 import { sessionActivity } from './sessionActivity'
+import { searchNodePathCode } from './NodePathSearch'
 import { worktreeDisplayPath } from './worktreePresentation'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ChannelError } from '@abele/channel-protocol'
@@ -584,6 +585,9 @@ export class NodePathClientPort implements NodePathPort {
       name: path.split('/').pop()!,
       kind: 'file',
     }))
+  }
+  searchCode(...args: Parameters<NonNullable<NodePathPort['searchCode']>>) {
+    return searchNodePathCode(this.client, ...args)
   }
   protected status(target: PathTarget, revision: RepositoryRevision) {
     const key = JSON.stringify([target.nodeId, target.id, revision])

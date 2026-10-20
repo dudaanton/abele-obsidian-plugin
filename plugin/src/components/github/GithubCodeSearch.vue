@@ -71,7 +71,7 @@
       />
     </div>
     <div v-else-if="error" class="abele-github-search__error">{{ presentUiError(error) }}</div>
-    <template v-else-if="results">
+    <template v-if="results && !running">
       <div v-if="results.note" class="abele-github-search__note">
         {{ presentUiField(results, 'note') }}
       </div>
@@ -106,6 +106,13 @@
           </div>
         </div>
       </div>
+      <Button
+        v-if="results.next"
+        :text="t('repository.loadMoreResults')"
+        :loading="loadingMore"
+        :disabled="loadingMore"
+        @click="more"
+      />
     </template>
   </section>
 </template>
@@ -170,6 +177,21 @@ const running = ref(false)
 const stageText = ref('')
 const error = ref('')
 const results = ref<CodeResults | null>(null)
+const loadingMore = ref(false)
+const more = async () => {
+  const previous = results.value
+  if (!previous?.next || loadingMore.value) return
+  const key = queryKey()
+  loadingMore.value = true
+  try {
+    const next = await previous.next()
+    if (results.value === previous && queryKey() === key) results.value = next
+  } catch (e) {
+    if (results.value === previous && queryKey() === key) error.value = presentUiError(e)
+  } finally {
+    loadingMore.value = false
+  }
+}
 let abort: AbortController | null = null
 /** Enter was pressed before the tab's item loaded: the search runs once it has. */
 let pending = false

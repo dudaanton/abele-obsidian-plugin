@@ -140,6 +140,7 @@
           :key="`${model.current.value?.id}:${mode}`"
           :entries="model.entries.value"
           :search-key="model.receivedAt?.value"
+          :code-search="codeSearch"
           :search="
             model.port?.search && ((query) => model.port.search!(model.current.value!, query))
           "
@@ -160,6 +161,7 @@
               v0: String(model.currentCopy.value?.branch ?? model.currentFolder.value?.name),
             })
           "
+          @open-result="(url) => act(() => openSearchResult(url))"
           @retry="model.refreshCurrent().catch((error) => model.report(error))"
           @expand="(path) => model.loadFolder(path).catch((error) => model.report(error))"
           @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
@@ -219,6 +221,11 @@ import NodeErrorText from '@/components/NodeErrorText.vue'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { streamBWord } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
+import { Platform } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { resolveNodeCodeLink } from '@/node/codeLinks'
+import { openNodeFileDestination } from '@/node/nodePathNavigation'
+import type { TabCode } from '@/github/search/tabCode'
 // The node's side panel: one place (a folder and its branch) chosen from a row that opens the
 // search of all of them, and the place's files, changes, history or pull requests under it.
 import { computed, watch } from 'vue'
@@ -275,6 +282,27 @@ const emit = defineEmits<{
 const git = computed(
   () => !props.model?.unavailable.value && (props.model?.currentFolder.value?.git ?? false)
 )
+const codeSearch = computed<Pick<TabCode, 'search' | 'refLabel'> | undefined>(() => {
+  const model = props.model,
+    target = model?.current.value
+  if (!model || !target || !model.port.searchCode) return
+  return {
+    refLabel: () => model.currentCopy.value?.branch ?? model.currentFolder.value?.name ?? '',
+    search: (scope, query, glob, _onStage, signal) =>
+      model.port.searchCode(target, scope, query, glob, signal),
+  }
+})
+const openSearchResult = async (url: string) => {
+  const target = props.model?.current.value
+  if (!target) return
+  const destination = resolveNodeCodeLink(url, target)
+  if (destination)
+    await openNodeFileDestination(
+      GlobalStore.getInstance().app.workspace,
+      { kind: 'file', target, ...destination },
+      Platform.isMobile
+    )
+}
 /** A folder without git has its files and its sessions only, whatever mode was last chosen. */
 const mode = computed(() => {
   const chosen = props.model?.panelMode.value

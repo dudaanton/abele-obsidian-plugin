@@ -208,6 +208,8 @@ export interface ResultFile {
 }
 
 export interface CodeResults {
+  /** The next page includes the results already shown. */
+  next?: () => Promise<CodeResults>
   files: ResultFile[]
   /** Matching lines, or files for a name search. */
   total: number

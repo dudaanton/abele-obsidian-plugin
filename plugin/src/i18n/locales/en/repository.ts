@@ -1,4 +1,7 @@
 export const repository = {
+  'repository.loadMoreResults': 'Load more results',
+  'repository.searchOmitted':
+    'Some files or matches were omitted because the node reached a search limit or could not read them. Narrow the search to see more.',
   'repository.find': 'Find in this tab',
   'repository.case': 'Match letter case',
   'repository.check': 'What to check',

@@ -98,6 +98,13 @@ export interface PathCatalogue {
 }
 /** Transport-independent product port. Wire validation belongs to the node client. */
 export interface NodePathPort {
+  searchCode?(
+    target: PathTarget,
+    scope: import('@/repository/search').Scope,
+    query: import('@/repository/search').CodeQuery,
+    glob: string,
+    signal?: AbortSignal
+  ): Promise<import('@/repository/model').CodeResults>
   search?(target: PathTarget, query: string): Promise<TreeEntry[]>
   invalidate?(target?: PathTarget): void
   catalogue(): Promise<PathCatalogue>
