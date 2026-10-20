@@ -106,7 +106,13 @@ it('reveals a cited range in the whole file even when the existing tab shows a d
   ;(view as any).ui = { unmount: vi.fn() }
   const file = { mode: shallowRef('diff'), destroy: vi.fn() }
   ;(view as any).file = file
+  const active = shallowRef(true)
+  const stop = vi.fn(() => {
+    active.value = false
+  })
+  ;(view as any).editing = { active, stop, destroy: vi.fn() }
   await view.setState({ ...state, line: 3, endLine: 7 }, {})
+  expect(stop).toHaveBeenCalledOnce()
   expect(file.mode.value).toBe('file')
   expect((view as any).navigationEndLine.value).toBe(7)
   await view.setState({ ...state, line: 3, endLine: 9 }, {})

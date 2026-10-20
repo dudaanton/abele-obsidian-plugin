@@ -187,6 +187,15 @@ export class NodePathMainView extends ItemView {
           this.saved.target.nodeId === parsed.target.nodeId &&
           this.saved.path === parsed.path &&
           JSON.stringify(this.saved.stage) === JSON.stringify(parsed.stage)))
+    // A code citation opens the working file; stopping the editor retains its local draft.
+    if (
+      same &&
+      parsed.kind === 'file' &&
+      parsed.endLine &&
+      !parsed.edit &&
+      this.editing?.active.value
+    )
+      this.editing.stop()
     this.saved =
       same && parsed.kind === 'file' && this.editing?.active.value
         ? { ...parsed, edit: true }

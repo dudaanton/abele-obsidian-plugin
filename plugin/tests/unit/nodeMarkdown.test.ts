@@ -22,6 +22,7 @@ it('recognises a copied raw node code URI pasted into a chat', () => {
   )
   root.textContent = `See ${link}.`
   nodeMarkdownPolicy.before!(root)
+  nodeMarkdownPolicy.before!(root)
   expect(root.querySelector('a')?.getAttribute('data-node-resource')).toBe(link)
 })
 

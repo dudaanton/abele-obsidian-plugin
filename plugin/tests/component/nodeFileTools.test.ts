@@ -23,6 +23,21 @@ vi.mock('@/github/codeViewer', () => ({
   mountCode: vi.fn(() => ({ destroy: vi.fn(), blame: vi.fn() })),
 }))
 const views: ReturnType<typeof mount>[] = []
+it('bounds linked ranges to the current document before expanding line decorations', async () => {
+  useVault([])
+  const view = mount(FileView, {
+    props: {
+      path: 'sample.ts',
+      text: 'first\nsecond',
+      mode: 'file',
+      line: 1,
+      endLine: Number.MAX_SAFE_INTEGER,
+    },
+  })
+  views.push(view)
+  await flushPromises()
+  expect(vi.mocked(mountCode).mock.calls.at(-1)?.[3]).toEqual({ start: 1, end: 2 })
+})
 afterEach(() => {
   views.splice(0).forEach((v) => v.unmount())
 })

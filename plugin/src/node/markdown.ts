@@ -40,7 +40,11 @@ export function nodeMarkdownClick(event: MouseEvent, open: (path: string) => voi
 export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): void {
   // Preserve node citations before the common URL guard strips non-web protocols.
   for (const link of Array.from(root.querySelectorAll('a'))) {
-    const path = link.getAttribute('data-href') ?? link.getAttribute('href') ?? ''
+    const path =
+      link.getAttribute('data-node-resource') ??
+      link.getAttribute('data-href') ??
+      link.getAttribute('href') ??
+      ''
     const citation = /(?:\.[\w-]+:\d+(?:-\d+)?|#L\d+(?:-L\d+)?)$/.test(path)
     if (
       /^(?:abele-node-code:|file:\/\/\/)/.test(path) ||

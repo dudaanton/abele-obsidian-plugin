@@ -53,7 +53,7 @@
         :file="repositoryFile"
         :glyph-host="glyphHost"
         plain
-        :range="line ? { start: line, end: endLine ?? line } : undefined"
+        :range="linkedRange"
         @open="openRepositoryLink"
       />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
@@ -164,6 +164,13 @@ watch(
 )
 
 const root = ref<HTMLElement>()
+// The file may have shrunk since the citation; expand only lines that still exist.
+const linkedRange = computed(() => {
+  const count = props.text.split('\n').length
+  return props.line && props.line <= count
+    ? { start: props.line, end: Math.min(props.endLine ?? props.line, count) }
+    : undefined
+})
 const glyphHost = ref<HTMLElement>()
 provide(
   REPOSITORY_SOURCE,
@@ -193,12 +200,7 @@ async function draw() {
   viewer?.destroy()
   viewer = undefined
   if (code.value) {
-    viewer = mountCode(
-      code.value,
-      props.text,
-      props.path,
-      props.line ? { start: props.line, end: props.endLine ?? props.line } : undefined
-    )
+    viewer = mountCode(code.value, props.text, props.path, linkedRange.value)
     if (props.line) {
       const drawn = viewer
       unpin = pinIntoView(code.value, () => drawn.targetTop(), LINE_CONTEXT)
