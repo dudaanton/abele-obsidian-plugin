@@ -37,6 +37,7 @@ describe('the requests of a project', () => {
     await sending
     expect(model.entry(id).outcome).toBeUndefined()
     expect(model.entry(id).history).toHaveLength(1)
+    expect(model.state.collections[0]?.requests[0]?.url).toBe('https://example.test/changed')
     await model.flush(id)
   })
   it('uses a five minute wait by default and remembers a per-request timeout', async () => {

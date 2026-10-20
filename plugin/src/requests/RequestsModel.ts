@@ -110,7 +110,7 @@ export class RequestsModel {
     try {
       const list = await this.rpc.list(this.projectId)
       this.state.folder = list.folder
-      this.state.collections = list.collections
+      this.state.collections = this.collectionsWithEdits(list.collections)
       this.state.environments = list.environments
       this.state.error = ''
       const remembered = this.ports.prefs.get('environment')
@@ -275,8 +275,18 @@ export class RequestsModel {
 
   private async refreshList() {
     const list = await this.rpc.list(this.projectId)
-    this.state.collections = list.collections
+    this.state.collections = this.collectionsWithEdits(list.collections)
     this.state.environments = list.environments
+  }
+
+  private collectionsWithEdits(collections: RequestList['collections']) {
+    return collections.map((collection) => ({
+      ...collection,
+      requests: collection.requests.map((row) => {
+        const doc = this.saves.has(row.id) ? this.state.entries[row.id]?.doc : undefined
+        return doc ? { ...row, name: doc.name, method: doc.method, url: doc.url } : row
+      }),
+    }))
   }
 
   async createCollection(name: string) {
@@ -484,7 +494,7 @@ export class RequestsModel {
     for (const [key, value] of Object.entries(values)) {
       if (typeof value !== 'string') continue
       const known = vars.find((v) => v.key === key)
-      // A token from an answer goes back only where it came from.
+      // Declared secrets go back only where the answer came from.
       if (!known) {
         vars.push({ key, value })
         changed = true

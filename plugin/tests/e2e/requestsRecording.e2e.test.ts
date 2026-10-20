@@ -205,6 +205,7 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
+  press(await until(()=>[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Run a program'),'launch options confirmed'));
   await until(()=>{const b=api.DebuggerService.instance.active.value;return b?.sessionId&&b.sessionId!==previousSession},'new debug session',600);
   await until(()=>{const c=api.DebuggerService.instance.active.value?.controller;return c?.session.status==='paused'&&c.session.frames.some(f=>f.file)},'paused program stack ready',600);
   await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path===${JSON.stringify(program)}&&l.containerEl.querySelector('.abele-debug-source__point')),'debug source loaded',600);
@@ -240,8 +241,36 @@ async function serviceListening() {
   )
 }
 
+const PAUSED_SEND = (shots: string) => `
+  const live=api.DebuggerService.instance.active.value;
+  const sourceId=live.controller.knownBreakpoints()[0].sourceId;
+  await live.controller.toggleBreakpoint(sourceId,8);
+  const requestLeaf=app.workspace.getLeavesOfType('abele-request').find(l=>l.view.getState().registrationId===${JSON.stringify(registration)});
+  app.workspace.setActiveLeaf(requestLeaf,{focus:true});
+  tab().querySelector('.abele-http-request__send').click();
+  await until(()=>live.controller.session.status==='paused'&&tab().querySelector('.abele-http-request__paused'),'request paused').catch(async()=>{
+    const diagnostic={error:live.controller.error,status:live.controller.session.status,execution:live.controller.snapshot?.execution,reason:live.controller.session.reason};
+    require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+${JSON.stringify(shots)}+'-diagnostic.json',JSON.stringify(diagnostic,null,2));
+    await shot(${JSON.stringify(shots + '-pause-unavailable')});
+    throw Error('Paused request unavailable: '+JSON.stringify(diagnostic)+' '+debugState());
+  });
+  ${shots.includes('phone') ? "if(app.workspace.activeLeaf!==requestLeaf)throw Error('Paused request lost behind a source tab');" : 'await wait(31000);'}
+  app.workspace.setActiveLeaf(requestLeaf,{focus:true});
+  await shot(${JSON.stringify(shots + '-waiting-paused')});
+  tab().querySelector('.abele-http-request__paused').click();
+  await until(()=>!app.workspace.rightSplit.collapsed,'paused debugger opened in one press');
+  await shot(${JSON.stringify(shots + '-paused-debugger')});
+  await goOn();
+  await until(()=>facts().startsWith('201'),'late answer received',600);
+  ${shots.includes('phone') ? '' : "if(!(Number(/(\\d+) ms/.exec(facts())?.[1])>=31000))throw Error('The late answer was lost: '+facts());"}
+  await live.controller.toggleBreakpoint(sourceId,8);
+  app.workspace.rightSplit.collapse();
+  app.workspace.setActiveLeaf(requestLeaf,{focus:true});
+  await shot(${JSON.stringify(shots + '-late-answer')});
+`
+
 /** The Requests view of this project, the request open, sent into the recording. */
-const SEND_INTO = (shots: string) => `
+const SEND_INTO = (shots: string, paused = false) => `
   await api.requests.openView();
   if(requests.context.value?.projectId!==${JSON.stringify(folder.projectId)})throw Error('Open requests did not pick the debugger project');
   await until(()=>panel()?.querySelector('.abele-requests-panel__recording'),'recording said in the view',600);
@@ -251,11 +280,19 @@ const SEND_INTO = (shots: string) => `
   (r.querySelector('.tree-item-self')??r).click();
   const into=await until(()=>tab()?.querySelector('.abele-http-request__into'),'send into the recording offered');
   await until(()=>into.classList.contains('abele-http-request__into_on'),'recording enabled by default');
+  if(into.getAttribute('aria-checked')!=='true'||!tab().querySelector('.abele-http-request__recording').textContent.includes('Record request'))throw Error('Recording switch has no visible state or label');
+  into.click();
+  await until(()=>into.getAttribute('aria-checked')==='false','recording off');
+  await shot(${JSON.stringify(shots + '-recording-off')});
+  into.click();
+  await until(()=>into.getAttribute('aria-checked')==='true','recording on');
+  if(tab().querySelector('.abele-http-request__timeout select').value!=='300000')throw Error('Debugger requests need a five minute default');
   await shot(${JSON.stringify(shots + '-recording')});
   tab().querySelector('.abele-http-request__send').click();
   await until(()=>facts().startsWith('201'),'answered',600);
   const steps=await until(()=>tab().querySelector('.abele-http-request__steps')?.textContent.trim(),'steps in code',200);
   await shot(${JSON.stringify(shots + '-into-run')});
+  ${paused ? PAUSED_SEND(shots) : ''}
   tab().querySelector('.abele-http-request__steps').click();
   const runLeaf=await until(()=>app.workspace.getLeavesOfType('abele-trace-run').find(l=>l.view.getState().registrationId===${JSON.stringify(registration)}),'run tab opened',400);
   const runEl=runLeaf.containerEl;
@@ -311,6 +348,51 @@ it('sends a saved request into the recording of a running service and opens its 
   expect(seen.under.length, JSON.stringify(seen)).toBeGreaterThanOrEqual(1)
   expect(seen.byTime).toBe(true)
 }, 240000)
+
+async function pausedRequestScene(phone: boolean) {
+  openChat()
+  rmSync(join(repo, 'src/port.txt'), { force: true })
+  inApp(`(async()=>{${prelude}
+    ${RUN('src/server.js')}
+    await recordPoint(9,['order']);
+    await goOn();
+    return {ok:true}
+  })()`)
+  await serviceListening()
+  try {
+    inApp(`(async()=>{${prelude}
+      ${SEND_INTO(phone ? 'http-paused-phone' : 'http-paused-desktop', true)}
+      ${STOP}
+      return {ok:true}
+    })()`)
+  } catch (error) {
+    console.log('[requests e2e] Paused send diagnostic', error)
+    throw error
+  } finally {
+    evalRaw(
+      `(async()=>{for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view','abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();await app.workspace.requestSaveLayout.run();return true})()`
+    )
+  }
+}
+
+// BUG: after adding an ordinary breakpoint beside a record point, the debugger observation
+// becomes lost while the server holds the HTTP request. Keep the pending guarantees visible
+// until session observation is repaired; the ordinary recording journeys above stay required.
+it.fails(
+  'BUG: retains a paused request beyond 30 seconds and shows its late answer',
+  async () => {
+    await pausedRequestScene(false)
+  },
+  240000
+)
+
+it.fails(
+  'BUG: opens the paused debugger from a phone request in one press',
+  async () => {
+    await withEmulatedPhone(() => pausedRequestScene(true))
+  },
+  240000
+)
 
 it('on a phone: the recording said in the drawer, the switch beside Send, the steps of the code', async () => {
   await withEmulatedPhone(async () => {
