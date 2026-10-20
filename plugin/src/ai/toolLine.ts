@@ -18,8 +18,8 @@ export const terminalText = (text: string): string =>
 
 /** MCP identifiers stay in details; the action line uses the server and action as words. */
 export function readableToolName(name?: string): string {
-  if (name === 'list_chats') return t('chat.listChatsTool')
-  if (name === 'send_message_to_chat') return t('chat.sendMessageTool')
+  if (name === 'list_chats') return t('settings.metadata.listChats')
+  if (name === 'send_message_to_chat') return t('settings.metadata.sendMessageToChat')
   if (!name) return ''
   if (name === 'mv') return t('streamB.moveFile.f83e6d')
   if (name === 'rm') return t('streamB.deleteFile.28e18d')

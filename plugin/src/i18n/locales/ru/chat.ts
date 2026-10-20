@@ -51,6 +51,8 @@ export const chat = {
   'chatTree.failed': 'Остановлен с ошибкой',
   'chat.listChatsTool': 'Список чатов',
   'chat.sendMessageTool': 'Отправить сообщение в чат',
+  'settings.metadata.listChats': 'Список чатов',
+  'settings.metadata.sendMessageToChat': 'Отправить сообщение в чат',
   'chat.letterAsked': 'Спросил {title}',
   'chat.letterSent': 'Отправлено в {title}',
   'chat.letterFrom': 'Из чата {title}',

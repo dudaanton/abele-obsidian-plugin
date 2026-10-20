@@ -1,4 +1,5 @@
 import { en } from './locales/en/pilot'
+import { chat } from './locales/en/chat'
 import { t } from './index'
 import type { MessageKey } from './types'
 import { SECTIONS } from '../transfer/entries'
@@ -7,7 +8,7 @@ import { isMcpToolName } from '../ai/mcp/names'
 
 // Only plugin-owned display metadata is looked up here; user names and wire labels stay raw.
 const metadata = new Map<string, MessageKey>(
-  Object.entries(en)
+  Object.entries({ ...en, ...chat })
     .filter(([key, value]) => key.startsWith('settings.metadata.') && typeof value === 'string')
     .map(([key, value]) => [value as string, key as MessageKey])
 )
@@ -30,8 +31,6 @@ export function settingsLabel(english: string): string {
 }
 
 export function settingsToolLabel(tool: { name: string; label: string }): string {
-  if (tool.name === 'list_chats') return t('chat.listChatsTool')
-  if (tool.name === 'send_message_to_chat') return t('chat.sendMessageTool')
   if (
     isMcpToolName(tool.name) ||
     (tool.name.startsWith('script_') && tool.name !== 'script_api_docs')

@@ -28,6 +28,8 @@ describe('createAgent', () => {
     expect(agent.permissionMode).toBe('confirm-all')
     // Memory is on by default, so a new agent can be asked to remember something at once.
     expect(agent.toolModes).toEqual({
+      list_chats: 'auto',
+      send_message_to_chat: 'ask',
       remember: 'ask',
       forget: 'ask',
       ...GITHUB_TOOL_MODES,

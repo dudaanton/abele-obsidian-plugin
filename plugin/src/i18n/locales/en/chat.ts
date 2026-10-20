@@ -50,6 +50,8 @@ export const chat = {
   'chatTree.failed': 'Stopped with an error',
   'chat.listChatsTool': 'List chats',
   'chat.sendMessageTool': 'Send message to chat',
+  'settings.metadata.listChats': 'List chats',
+  'settings.metadata.sendMessageToChat': 'Send message to chat',
   'chat.letterAsked': 'Asked {title}',
   'chat.letterSent': 'Sent to {title}',
   'chat.letterFrom': 'From {title}',

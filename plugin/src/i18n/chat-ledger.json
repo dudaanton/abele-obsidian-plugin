@@ -535,5 +535,32 @@
   },
   "chatTree.failed": {
     "englishHash": "b81d809887fc7b896b3bd0d81fe14f320e27d25c501191bf6e87b3e8b2ae69af"
+  },
+  "settings.metadata.listChats": {
+    "englishHash": "f8c2d035a8a5c11623b7c1e1208d1815394f776f043930fb119fcbddf3c6d6bf"
+  },
+  "settings.metadata.sendMessageToChat": {
+    "englishHash": "65495205a7dd3da03818dfba2048aff5fc677565015af334e8836bfbd44908c2"
+  },
+  "chat.letterAsked": {
+    "englishHash": "fcb98b7b3bd70f52f325c144d83ba7ff91b20ff5b9931b1cf7003b1a4746d010"
+  },
+  "chat.letterSent": {
+    "englishHash": "88d31592e552375cbaf7e3ea6a09657178fb79b3b21bea07c707410a5f4a5322"
+  },
+  "chat.letterFrom": {
+    "englishHash": "2a552ee3b1d7921e2c6d54227f9873df6869fb7931df8aab23b38d4492e0820d"
+  },
+  "chat.letterOpen": {
+    "englishHash": "2ff02ed91f54235c413d07d147e480e1835fec40ab3c39d3e3dce7b15693e535"
+  },
+  "chat.letterInterrupted": {
+    "englishHash": "293d2b013937ab009f57a3ff81e1bbe045c8f1e42fb654b2b7f1d7b673aee780"
+  },
+  "chat.letterRefused": {
+    "englishHash": "7288052d76e9a693c425e73773e78e6d3de196dcd77c82cfdbb3552f5f60fab5"
+  },
+  "chat.chatsListed": {
+    "englishHash": "0807dad1f57e13ff7b10916d26c5b5f9e7400a4da2a7980a5990dca482bec3fa"
   }
 }

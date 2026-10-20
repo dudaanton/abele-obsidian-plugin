@@ -50,6 +50,8 @@ export const chat = {
   'chatTree.failed': 'Apturēts kļūdas dēļ',
   'chat.listChatsTool': 'Tērzēšanu saraksts',
   'chat.sendMessageTool': 'Sūtīt ziņojumu tērzēšanai',
+  'settings.metadata.listChats': 'Tērzēšanu saraksts',
+  'settings.metadata.sendMessageToChat': 'Sūtīt ziņojumu tērzēšanai',
   'chat.letterAsked': 'Jautāts {title}',
   'chat.letterSent': 'Nosūtīts uz {title}',
   'chat.letterFrom': 'No {title}',
