@@ -179,14 +179,13 @@ watch(query, (q, _old, cleanup) => {
 })
 const filter = ref<Filter | null>(null)
 const stepLabel = (s: TraceStep) => {
+  const readable = s.values.filter((v) => !v.masked && !v.failed)
+  const changed = readable.filter((v) => !v.same)
   const brief =
     s.kind === 'probe'
-      ? s.values
-          .filter((v) => !v.masked && !v.failed)
-          .map((v) => `${v.name}: ${v.brief}`)
-          .join(', ')
+      ? (changed.length ? changed : readable).map((v) => `${v.name}: ${v.brief}`).join(', ')
       : ''
-  return brief ? `${s.label} · ${brief}` : s.label
+  return brief ? `${brief} · ${s.label}` : s.label
 }
 
 function shown(s: TraceStep) {

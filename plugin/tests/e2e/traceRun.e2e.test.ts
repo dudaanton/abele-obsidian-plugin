@@ -263,8 +263,8 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     return {rows,place,values,wide,narrow,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
   })()`)
   expect(seen.rows).toEqual([
-    'Contracts parsed · xmlText: <contracts>, result: { items: 40, source }',
-    'Contracts parsed · xmlText: <contracts>, result: { source: "sample-updated" }',
+    'xmlText: <contracts>, result: { items: 40, source } · Contracts parsed',
+    'result: { source: "sample-updated" } · Contracts parsed',
     'SampleError: no rows',
   ])
   expect(seen.place).toContain('parse.ts:18')
