@@ -4,7 +4,7 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { debugTarget, isFolderOwner, type DebugOwner } from './owner'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { DebuggerService } from './DebuggerService'
+import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { debuggerKey } from './DebuggerController'
 import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
@@ -20,6 +20,11 @@ export class DebugView extends ItemView {
     try {
       const { folderOwner } = await import('./folderActions')
       await DebuggerService.instance.restoreSelection(state, folderOwner)
+      const service = DebuggerService.instance,
+        binding = service.active.value
+      const owner = binding && service.owner(binding)
+      const sessionId = binding?.controller.snapshot?.debug_session_id
+      if (binding && owner && sessionId) configureSessionActions(owner, binding, sessionId)
     } catch (error) {
       console.debug('[debugger] Saved session unavailable', error)
     }
@@ -103,9 +108,21 @@ export async function showSession(presenter: DebugOwner, sessionId: string) {
     void service
       .discover(presenter)
       .catch((error) => console.debug('[debugger] Other sessions unavailable', error))
+  configureSessionActions(presenter, binding, sessionId)
+  // The shared reveal: on a phone a drawer can count as open while nothing of it is on screen,
+  // and only closing and opening it again shows the panel.
+  await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
+  GlobalStore.getInstance().app.workspace.requestSaveLayout?.()
+}
+function configureSessionActions(
+  presenter: DebugOwner,
+  binding: DebuggerBinding,
+  sessionId: string
+) {
   if (isFolderOwner(presenter)) {
     // The node retains the recipe, so ended sessions can restart after reopening the plugin.
     const restart = async () => {
+      const carried = [...(binding.retainedBreakpoints ?? [])]
       const client = presenter.connection.client
       const { snapshot: previous } = await client.debugger.status(sessionId)
       binding.controller.observe(client.debugger.current(sessionId))
@@ -126,6 +143,26 @@ export async function showSession(presenter: DebugOwner, sessionId: string) {
       const snapshot = await registerSources(presenter, started, target)
       await openSources(presenter, started, snapshot.incarnation, target)
       await showSession(presenter, started.debug_session_id)
+      const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
+      for (const point of carried) {
+        const source = started.sources.find((source) => source.path === point.file)
+        if (
+          !source ||
+          next.controller.snapshot?.breakpoints.some(
+            (known) =>
+              known.source_id === source.source_id &&
+              known.line === point.requestedLine &&
+              known.condition === point.condition
+          )
+        )
+          continue
+        await next.controller.setBreakpoint(
+          crypto.randomUUID(),
+          source.source_id,
+          point.requestedLine,
+          point.condition
+        )
+      }
     }
     if (binding.controller.snapshot?.target.process_ownership === 'external') {
       binding.rerun = undefined
@@ -135,10 +172,6 @@ export async function showSession(presenter: DebugOwner, sessionId: string) {
       binding.reattach = undefined
     }
   }
-  // The shared reveal: on a phone a drawer can count as open while nothing of it is on screen,
-  // and only closing and opening it again shows the panel.
-  await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
-  GlobalStore.getInstance().app.workspace.requestSaveLayout?.()
 }
 /** Runs a program of the chat's folder under the debugger and shows its session. */
 export async function startNodeProgram(presenter: DebugOwner) {
