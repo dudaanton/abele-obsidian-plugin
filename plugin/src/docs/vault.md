@@ -205,6 +205,8 @@ node's retained sessions; it never starts or reattaches a program automatically.
 are used only while their session and incarnation still match. Breakpoint locations retained
 in memory can be carried to an explicit attach to the same process and inspector port; source
 admission and normal breakpoint approval still apply.
+Source mappings retain their owning session ID, and at most 256 opaque attachment identity
+hashes retain the association with a process/inspector across reload without storing its command.
 Selected file or comparison text can be quoted into a chat draft with its relative path, line
 range and comparison side. Ask here creates a node chat bound to that file's target; Add to
 chat uses an explicitly chosen Obsidian chat. Neither action sends a provider turn or grants

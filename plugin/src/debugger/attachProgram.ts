@@ -4,6 +4,8 @@ import { t } from '@/i18n'
 // Debug panel as a started program's does. Detaching leaves the program running.
 import { Notice } from 'obsidian'
 import { z } from 'zod'
+import { sha256 } from '@noble/hashes/sha2'
+import { bytesToHex } from '@noble/hashes/utils'
 import { debugOwnerParams, isFolderOwner, type DebugOwner } from './owner'
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -89,7 +91,9 @@ export async function attachToProgram(
   const { workspace } = GlobalStore.getInstance().app
   const open = openFilesOf(workspace, target)
   const service = DebuggerService.instance
-  const attachmentKey = JSON.stringify([program.pid, program.port, program.script])
+  const attachmentKey = bytesToHex(
+    sha256(new TextEncoder().encode(JSON.stringify([program.pid, program.port, program.script])))
+  )
   const previous = service.forAttachment(presenter, attachmentKey)
   const carry = (previous?.retainedBreakpoints ?? []).filter(
     (point) => point.file && point.file !== point.sourceId

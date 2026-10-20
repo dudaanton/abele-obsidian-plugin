@@ -462,6 +462,7 @@ export class DebuggerService {
     const target = binding && this.folder(binding)
     const sessionId = binding?.sessionId ?? (binding && this.folders.get(binding)?.sessionId)
     if (!binding || !sessionId || !target) return {}
+    const peers = [...new Set([binding, ...this.peers(binding)])]
     return {
       sessionId,
       sessions: [
@@ -471,13 +472,24 @@ export class DebuggerService {
         ]),
       ].slice(0, 256),
       target,
-      sources: [
-        ...(this.sources.get(this.key(binding.registrationId, binding.conversationId)) ?? []),
-      ]
-        .filter(([, source]) => source.debugSessionId === sessionId)
+      attachments: peers
+        .flatMap((peer) =>
+          peer.attachmentKey && peer.sessionId
+            ? [{ sessionId: peer.sessionId, key: peer.attachmentKey }]
+            : []
+        )
+        .slice(0, 256),
+      sources: peers
+        .flatMap((peer) =>
+          [...(this.sources.get(this.key(peer.registrationId, peer.conversationId)) ?? [])].filter(
+            ([, source]) =>
+              source.debugSessionId === (peer === binding ? sessionId : peer.sessionId)
+          )
+        )
         .slice(0, 256)
         .map(([sourceId, source]) => ({
           sourceId,
+          sessionId: source.debugSessionId,
           path: source.path,
           incarnation: source.incarnation,
         })),
@@ -488,11 +500,18 @@ export class DebuggerService {
       .object({
         sessionId: z.string().min(1).max(128),
         sessions: z.array(z.string().min(1).max(128)).max(256).default([]),
+        attachments: z
+          .array(
+            z.object({ sessionId: z.string().min(1).max(128), key: z.string().min(1).max(128) })
+          )
+          .max(256)
+          .default([]),
         target: z.unknown(),
         sources: z
           .array(
             z.object({
               sourceId: z.string().max(128),
+              sessionId: z.string().min(1).max(128).optional(),
               path: z.string().max(4096),
               incarnation: z.string().max(128),
             })
@@ -508,16 +527,21 @@ export class DebuggerService {
     const owner = ownerOf(tab.data.target)
     for (const id of parsed.data.sessions) this.preferredSessions.add(id)
     const binding = this.binding(owner, parsed.data.sessionId)
-    for (const source of parsed.data.sources)
+    for (const attachment of parsed.data.attachments)
+      this.binding(owner, attachment.sessionId).attachmentKey = attachment.key
+    for (const source of parsed.data.sources) {
+      const sourceSessionId = source.sessionId ?? parsed.data.sessionId
+      const sourceBinding = this.binding(owner, sourceSessionId)
       this.registerSource(
-        binding.registrationId,
-        binding.conversationId,
+        sourceBinding.registrationId,
+        sourceBinding.conversationId,
         source.sourceId,
         source.path,
-        parsed.data.sessionId,
+        sourceSessionId,
         source.incarnation,
         tab.data.target
       )
+    }
     this.select(binding)
     try {
       await owner.connection.connect()
@@ -526,6 +550,9 @@ export class DebuggerService {
       throw error
     }
     await binding.open(parsed.data.sessionId)
+    for (const id of new Set(parsed.data.sessions)) {
+      if (id !== parsed.data.sessionId) await this.binding(owner, id).open(id)
+    }
     await this.discover(owner)
   }
   peers(binding: DebuggerBinding) {
@@ -587,7 +614,17 @@ export class DebuggerService {
   async discover(owner: DebugOwner) {
     if (!isFolderOwner(owner)) return
     const sessions = await this.sessions(owner)
-    for (const s of this.uniqueSessions(sessions)) {
+    const known = [...this.bindings.values()].flatMap((binding) => {
+      const folder = this.folder(binding),
+        snapshot = binding.controller.snapshot
+      return folder?.registrationId === owner.target.registrationId &&
+        folder.kind === owner.target.kind &&
+        folder.id === owner.target.id &&
+        snapshot
+        ? [snapshot]
+        : []
+    })
+    for (const s of this.uniqueSessions([...known, ...sessions])) {
       const binding = this.binding(owner, s.debug_session_id)
       if (!binding.sessionId) await binding.open(s.debug_session_id)
     }

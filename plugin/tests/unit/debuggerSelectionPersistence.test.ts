@@ -38,7 +38,7 @@ it('restores a remembered session even when the mobile layout omits the Debug le
       workspace: {
         onLayoutReady: (callback: () => Promise<void>) => ready.push(callback),
         getLeavesOfType: () => [],
-        getLeftLeaf: () => leaf,
+        getRightLeaf: () => leaf,
       },
     },
     register: (stop: () => void) => cleanups.push(stop),

@@ -35,7 +35,7 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
     const workspace = plugin.app.workspace
     const existing = workspace.getLeavesOfType(viewType)[0]
     if (existing && service.active.value) return
-    const leaf = existing ?? workspace.getLeftLeaf(false)
+    const leaf = existing ?? workspace.getRightLeaf(false)
     if (!leaf) return
     try {
       await leaf.setViewState({ type: viewType, active: false, state: { ...saved } })

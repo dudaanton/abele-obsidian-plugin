@@ -4,10 +4,92 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import type { FolderDebugOwner } from '@/debugger/owner'
 import { debuggerSnapshot } from '../fixtures/debugger'
 
+vi.mock('@/stores/GlobalStore', () => ({
+  GlobalStore: { getInstance: () => ({ app: { workspace: {} } }) },
+}))
+
 const service = new DebuggerService()
 afterEach(() => {
   service.destroy()
   vi.restoreAllMocks()
+})
+it('restores source identities and attachment keys for every primary session', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  const owner = {
+    kind: 'folder-debug',
+    target,
+    connection: { state: ref('connected'), connect: vi.fn(async () => {}) },
+  } as unknown as FolderDebugOwner
+  const ids = ['sample-first', 'sample-second']
+  const snapshots = ids.map((id) => debuggerSnapshot({ debug_session_id: id }))
+  const first = service.binding(owner, ids[0]),
+    second = service.binding(owner, ids[1])
+  for (const [index, binding] of [first, second].entries()) {
+    binding.controller.observe({ observation: 'current', snapshot: snapshots[index] })
+    binding.attachmentKey = String(index + 1).repeat(64)
+    service.registerSource(
+      binding.registrationId,
+      binding.conversationId,
+      'sample-source',
+      `src/sample-${index}.ts`,
+      ids[index],
+      'sample-incarnation',
+      target
+    )
+  }
+  service.select(first)
+  const saved = service.selectionState()
+  service.destroy()
+  const restored = ids.map((id, index) => {
+    const binding = service.binding(owner, id)
+    vi.spyOn(binding, 'open').mockImplementation(async () => {
+      binding.controller.observe({ observation: 'current', snapshot: snapshots[index] })
+    })
+    return binding
+  })
+  vi.spyOn(service, 'discover').mockResolvedValue()
+  await service.restoreSelection(saved, () => owner)
+  service.select(restored[1])
+  expect(restored[1].attachmentKey).toBe('2'.repeat(64))
+  expect(service.debugFor(target, 'src/sample-1.ts')?.debugSessionId).toBe(ids[1])
+})
+it('observes every saved primary session before discovering native mirror records', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  const owner = {
+    kind: 'folder-debug',
+    target,
+    connection: { state: ref('connected'), connect: vi.fn(async () => {}) },
+  } as unknown as FolderDebugOwner
+  const bindings = ['sample-first', 'sample-second'].map((id) => {
+    const binding = service.binding(owner, id)
+    vi.spyOn(binding, 'open').mockImplementation(async () => {
+      binding.controller.observe({
+        observation: 'current',
+        snapshot: debuggerSnapshot({ debug_session_id: id }),
+      })
+    })
+    return binding
+  })
+  vi.spyOn(service, 'discover').mockResolvedValue()
+  await service.restoreSelection(
+    { sessionId: 'sample-first', sessions: ['sample-first', 'sample-second'], target, sources: [] },
+    () => owner
+  )
+  expect(bindings[1].open).toHaveBeenCalledExactlyOnceWith('sample-second')
+  expect(service.active.value).toBe(bindings[0])
+  expect(service.peers(bindings[0])).toEqual(bindings)
 })
 it('retains the saved selection with its offline reason if reconnecting cannot complete', async () => {
   const target = {
