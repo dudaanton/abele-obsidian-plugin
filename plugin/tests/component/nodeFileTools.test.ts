@@ -10,7 +10,7 @@ import GithubCodeSearch from '@/components/github/GithubCodeSearch.vue'
 import { NodeRepositorySource } from '@/repository/node'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
-import { ref, shallowRef } from 'vue'
+import { h, ref, shallowRef } from 'vue'
 import { ChannelError } from '@abele/channel-protocol'
 import { useVault } from '../helpers/testEnv'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
@@ -72,6 +72,27 @@ function setup(blame = vi.fn().mockResolvedValue([])) {
   return { view, source }
 }
 describe('node file repository tools', () => {
+  it('releases the plain viewer when a mapped surface attaches and restores it when detached', async () => {
+    const mapped = ref(false)
+    const view = mount({
+      render: () =>
+        h(
+          FileView,
+          { path: 'sample.ts', text: 'const sample = 1', mode: 'file' },
+          mapped.value ? { code: () => h('div', 'Mapped source') } : {}
+        ),
+    })
+    views.push(view)
+    await flushPromises()
+    const plain = vi.mocked(mountCode).mock.results.at(-1)!.value
+    const before = vi.mocked(mountCode).mock.calls.length
+    mapped.value = true
+    await flushPromises()
+    expect(plain.destroy).toHaveBeenCalledOnce()
+    mapped.value = false
+    await flushPromises()
+    expect(mountCode).toHaveBeenCalledTimes(before + 1)
+  })
   it('retains search and blame controls when a debugger mapping supplies the code surface', async () => {
     const { source } = setup()
     const view = mount(NodePathFilePane, {

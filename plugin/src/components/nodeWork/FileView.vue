@@ -236,9 +236,9 @@ async function draw() {
     }
   }
 }
-onMounted(draw)
 watch(
   () => [
+    code.value,
     props.text,
     props.path,
     props.mode,
