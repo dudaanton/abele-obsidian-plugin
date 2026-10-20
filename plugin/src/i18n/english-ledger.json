@@ -26728,5 +26728,135 @@
       "es",
       "de"
     ]
+  },
+  "node.delegation.paused": {
+    "englishHash": "723b0e8c9db296e93e529bc135756c46371fccf331304292f764f9e72600951f",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.exitCode": {
+    "englishHash": "b027b515b8168eb554b5b7b568c2cd6a7b825097e06119b67bf70b9e31727f0b",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.output": {
+    "englishHash": "eb2f208d99998289709901681897b6d4430f5c3acdb3f12b559167811176b5bf",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.truncated": {
+    "englishHash": "e5902badfeec4bc0127452cc3dbc1063889942d513272c79bdde8787164d94ba",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.nodeManagerRun": {
+    "englishHash": "ea0f7b9a07cdf1f5ccc54ca9c402c4ddb9f8512701d3d0b191dd905f04cf6b5a",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.nodeManagerStatus": {
+    "englishHash": "48cf5f7d1fec4dbd03789b40eb3c3fb0a67936623d30d55d06eab96e1350990a",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.nodeManagerCancel": {
+    "englishHash": "2ebd96c817a9143fdb38a597a37ebd0d62a81dce2953175098028629d126077d",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.nodeManagerIntegrate": {
+    "englishHash": "f3233c507a7f2f6dff1ee541b3ffc008dd8c56b17c4193547f53e9411ebdb0a6",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.pending": {
+    "englishHash": "872ec0ad69682fa502f30576a7717c680454553936f949be04c550379a59449d",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.exited": {
+    "englishHash": "7aac6334dd6cf889cad0eee116c7fcf31cfe62db41a854e529a574991a592497",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.timedOut": {
+    "englishHash": "2e02fa05dbb63760fe3b7780a96a125305f1bcdfa39878f620ad26b3927366ed",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.denied": {
+    "englishHash": "dba5189bfb7c324238165fcbadbe1fff42d6e59cb81235c887ee622ac3a62451",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.backpressure": {
+    "englishHash": "48d4473c2157f0ee2edf3c58ee831a20bfa384aaf47f713cc57afa4efec1bce6",
+    "context": "Node manager command, delegation state or connection diagnostic",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
