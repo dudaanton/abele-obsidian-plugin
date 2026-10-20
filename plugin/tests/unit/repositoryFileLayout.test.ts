@@ -27,11 +27,12 @@ it('keeps code wrapping while blame is visible', () => {
   expect(content).toContain('overflow-wrap: anywhere')
 })
 
-it('lays out author, date and message across the full blame row', () => {
+it('lays out author and date intrinsically without percentage-width children', () => {
   const blame = css('GithubBlameRange')
   const label = blame.match(/\.abele-github-blame-range__open[^}]+__label\s*\{([^}]+)\}/)?.[1]
   expect(label).toContain('display: flex')
-  expect(label).toContain('width: 100%')
+  expect(label).toContain('width: max-content')
+  expect(blame).not.toContain('width: 100%')
   const date = blame.match(/\.is-mobile \.abele-github-blame-range__date\s*\{([^}]+)\}/)?.[1] ?? ''
   expect(date).not.toContain('display: none')
 })

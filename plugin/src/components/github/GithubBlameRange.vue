@@ -139,7 +139,7 @@ onBeforeUnmount(() => {
     display: flex;
     justify-content: flex-start;
     gap: var(--size-2-2);
-    width: 100%;
+    width: max-content;
     height: 100%;
     padding: 0 var(--size-2-2);
     font-size: inherit;
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
       display: flex;
       align-items: center;
       gap: var(--size-2-2);
-      width: 100%;
+      width: max-content;
       min-width: 0;
     }
   }
