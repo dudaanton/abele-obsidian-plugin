@@ -156,6 +156,34 @@ const askedAbout = async (...ids: string[]) => {
 }
 
 describe('stopping from an approval', () => {
+  it('retains hidden files without a note extension in the chat change list', () => {
+    session.noteTouched('Sample/.sample-config')
+    expect(session.touched.value.map((note) => note.path)).toContain('Sample/.sample-config')
+  })
+  it('leaves a visible stop marker without starting another model turn', async () => {
+    await askedAbout('one')
+    session.stopFromApproval('one')
+    expect(
+      session.messages.value.some(
+        (m) => m.role === 'system' && m.content.includes('Stopped by you')
+      )
+    ).toBe(true)
+    expect(turns).toHaveBeenCalledTimes(1)
+  })
+  it('tells the model not to retry an unchanged denied action', async () => {
+    await askedAbout('one')
+    await session.rejectToolCall()
+    expect(JSON.stringify(turns.mock.calls.at(-1)![0].messages)).toContain(
+      'Do not retry this action unchanged'
+    )
+  })
+
+  it('tells the model the exact arguments approved after editing', async () => {
+    await askedAbout('one')
+    await session.approveToolCall({ n: 'revised content' })
+    expect(JSON.stringify(turns.mock.calls.at(-1)![0].messages)).toContain('revised content')
+    expect(JSON.stringify(turns.mock.calls.at(-1)![0].messages)).toContain('edited')
+  })
   it('rejects every pending call without tools or another model turn, and stays settled', async () => {
     await askedAbout('one', 'two', 'three')
     session.queuedMessages.value = [{ id: 'queued', content: 'Unsent follow-up' }]

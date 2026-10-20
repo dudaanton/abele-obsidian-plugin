@@ -1,4 +1,11 @@
 export const streamB = {
+  'streamB.actionDenied': 'Abgelehnt: {action} · {reason}',
+  'streamB.actionFailed': '{action} fehlgeschlagen: {reason}',
+  'streamB.listFiles': 'Dateien auflisten',
+  'streamB.editContent': 'Zu schreibenden Inhalt bearbeiten',
+  'streamB.stoppedByYou': 'Von dir gestoppt. Die Aufgabe ist möglicherweise unvollständig.',
+  'streamB.writesWithoutAsking': 'Schreiben ohne Nachfrage · Jedes Mal fragen',
+  'streamB.chatChanges': 'Änderungen aus diesem Chat',
   'streamB.editorMessagePlaceholder': 'Nachricht…',
   'streamB.runSummary.start.done': 'Gestartet',
   'streamB.runSummary.start.running': 'Wird gestartet',

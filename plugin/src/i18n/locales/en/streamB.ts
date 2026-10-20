@@ -1,4 +1,11 @@
 export const streamB = {
+  'streamB.actionDenied': 'Denied: {action} · {reason}',
+  'streamB.actionFailed': '{action} failed: {reason}',
+  'streamB.listFiles': 'List files',
+  'streamB.editContent': 'Edit the content to write',
+  'streamB.stoppedByYou': 'Stopped by you. The task may be unfinished.',
+  'streamB.writesWithoutAsking': 'Writes without asking · Ask every time',
+  'streamB.chatChanges': 'Changes from this chat',
   'streamB.editorMessagePlaceholder': 'Message...',
   'streamB.runSummary.start.done': 'Started',
   'streamB.runSummary.start.running': 'Starting',

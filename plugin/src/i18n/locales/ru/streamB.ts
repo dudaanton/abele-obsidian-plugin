@@ -1,4 +1,11 @@
 export const streamB = {
+  'streamB.actionDenied': 'Отклонено: {action} · {reason}',
+  'streamB.actionFailed': '{action} — ошибка: {reason}',
+  'streamB.listFiles': 'Список файлов',
+  'streamB.editContent': 'Измените текст для записи',
+  'streamB.stoppedByYou': 'Остановлено вами. Задача может быть не завершена.',
+  'streamB.writesWithoutAsking': 'Запись без запроса · Спрашивать каждый раз',
+  'streamB.chatChanges': 'Изменения из этого чата',
   'streamB.editorMessagePlaceholder': 'Сообщение…',
   'streamB.runSummary.start.done': 'Запущено',
   'streamB.runSummary.start.running': 'Запускается',

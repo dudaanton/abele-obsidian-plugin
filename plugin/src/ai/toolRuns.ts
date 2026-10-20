@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { readableToolName, truncate } from './toolLine'
 import type { ChatMessage } from './types'
 
 /** What a tool does, in the words and glyph a run of the agent's work is told by. */
@@ -8,7 +9,7 @@ const KINDS: [RegExp, ToolKind][] = [
   // A node tool that starts another session or a worker; its name may carry its server's prefix.
   [/(^|__)start_(session|worker)$/, 'start'],
   [/delete|remove|trash|^rm(_|$)/i, 'delete'],
-  [/search|grep|find|glob|query|list/i, 'search'],
+  [/search|grep|find|glob|query|list|^ls$/i, 'search'],
   [/write|edit|create|append|save|apply|patch|move|rename|^mv(_|$)/i, 'write'],
   [/read|fetch|open|view|get|calculate/i, 'read'],
   [/command|bash|shell|exec|run/i, 'run'],
@@ -107,6 +108,17 @@ export function runKind(calls: readonly ChatMessage[]): ToolKind {
  * The kind still under way is said as going on.
  */
 export function runSummary(calls: readonly ChatMessage[]): string {
+  if (calls.some((call) => call.toolStatus === 'rejected'))
+    return calls
+      .map((call) =>
+        call.toolStatus === 'rejected'
+          ? t(call.toolExecution === 'not-run' ? 'streamB.actionDenied' : 'streamB.actionFailed', {
+              action: readableToolName(call.toolName),
+              reason: truncate(call.toolResult ?? '', 160),
+            })
+          : runSummary([call])
+      )
+      .join(' · ')
   const order: ToolKind[] = []
   const counts = new Map<ToolKind, number>()
   for (const c of calls) {

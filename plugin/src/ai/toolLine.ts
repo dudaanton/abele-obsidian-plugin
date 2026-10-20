@@ -1,4 +1,5 @@
 import type { ChatMessage } from './types'
+import { t } from '@/i18n'
 import { extractResultPath, toolFilePaths } from './toolFiles'
 export { extractResultPath } from './toolFiles'
 
@@ -16,6 +17,10 @@ export const TOOL_RESULT_MAX_LENGTH = 1000
 /** MCP identifiers stay in details; the action line uses the server and action as words. */
 export function readableToolName(name?: string): string {
   if (!name) return ''
+  if (name === 'mv') return t('streamB.moveFile.f83e6d')
+  if (name === 'rm') return t('streamB.deleteFile.28e18d')
+  if (name === 'cp') return t('streamB.copyFile.b60f1c')
+  if (name === 'ls') return t('streamB.listFiles')
   const words = (value: string) => value.replace(/[_-]+/g, ' ').trim()
   const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
   const match = /^mcp__(.+?)__(.+)$/.exec(name)

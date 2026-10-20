@@ -19,13 +19,23 @@ export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool 
       signal?.throwIfAborted()
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
+      if (
+        path.startsWith('/') ||
+        path.includes('\\') ||
+        path.split('/').some((part) => part === '..' || part === '.')
+      )
+        throw new Error('Expected a relative vault file path')
       if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(path)
-      if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
-      await app.fileManager.trashFile(file)
+      if (file instanceof TFile) await app.fileManager.trashFile(file)
+      else {
+        const stat = await app.vault.adapter.stat(path)
+        if (stat?.type !== 'file') throw new Error(`File not found: ${path}`)
+        if (!(await app.vault.adapter.trashSystem(path))) await app.vault.adapter.trashLocal(path)
+      }
       scopeOf(ctx).invalidate()
       return { content: [{ type: 'text', text: `Deleted: ${path}` }] }
     },

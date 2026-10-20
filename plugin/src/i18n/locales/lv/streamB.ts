@@ -1,4 +1,11 @@
 export const streamB = {
+  'streamB.actionDenied': 'Noraidīts: {action} · {reason}',
+  'streamB.actionFailed': '{action} neizdevās: {reason}',
+  'streamB.listFiles': 'Failu saraksts',
+  'streamB.editContent': 'Rediģēt ierakstāmo saturu',
+  'streamB.stoppedByYou': 'Jūs apturējāt izpildi. Uzdevums var būt nepabeigts.',
+  'streamB.writesWithoutAsking': 'Rakstīšana bez jautāšanas · Vienmēr jautāt',
+  'streamB.chatChanges': 'Šīs sarunas izmaiņas',
   'streamB.editorMessagePlaceholder': 'Ziņojums…',
   'streamB.runSummary.start.done': 'Palaists',
   'streamB.runSummary.start.running': 'Palaiž',

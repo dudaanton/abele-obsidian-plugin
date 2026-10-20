@@ -3,8 +3,30 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { initializeLocale } from '@/i18n'
 import { chatBlocks, ownLine, runKind, runState, runSummary, toolKind } from '@/ai/toolRuns'
 import type { ChatMessage } from '@/ai/types'
+import { readableToolName } from '@/ai/toolLine'
+
+it('uses human names for short vault tool identifiers', () => {
+  expect(readableToolName('mv')).toBe('Move file')
+  expect(readableToolName('rm')).toBe('Delete file')
+  expect(readableToolName('ls')).toBe('List files')
+  expect(toolKind('ls')).toBe('search')
+})
 
 let n = 0
+it('does not describe a denied move as a completed write', () => {
+  expect(
+    runSummary([
+      call('mv', {
+        toolStatus: 'rejected',
+        toolExecution: 'not-run',
+        toolResult: 'User rejected this action',
+      }),
+    ])
+  ).toContain('Denied')
+  expect(
+    runSummary([call('mv', { toolStatus: 'rejected', toolResult: 'Destination unavailable' })])
+  ).toContain('failed')
+})
 afterEach(() => initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs]))
 const call = (toolName: string, extra: Partial<ChatMessage> = {}): ChatMessage =>
   ({

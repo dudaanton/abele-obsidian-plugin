@@ -40,6 +40,13 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (app.vault.getAbstractFileByPath(safeTo)) {
         throw new Error(`Destination exists: ${safeTo}`)
       }
+      let parent = ''
+      for (const part of safeTo.split('/').slice(0, -1)) {
+        parent = parent ? `${parent}/${part}` : part
+        signal?.throwIfAborted()
+        if (!app.vault.getAbstractFileByPath(parent)) await app.vault.createFolder(parent)
+      }
+      signal?.throwIfAborted()
       await app.fileManager.renameFile(file, safeTo)
       scopeOf(ctx).invalidate()
       return {

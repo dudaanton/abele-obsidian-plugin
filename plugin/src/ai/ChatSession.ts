@@ -627,7 +627,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   noteTouched(path: string): void {
     const clean = path.trim().replace(/^\.?\//, '')
-    if (!clean.endsWith('.md') && !isScriptPath(clean)) return
+    if (
+      !clean.endsWith('.md') &&
+      !isScriptPath(clean) &&
+      !clean.split('/').some((part) => part.startsWith('.'))
+    )
+      return
     if (clean === this.currentChatFile.value?.path) return
 
     this.wroteThisTurn = true
@@ -2427,6 +2432,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       isError = true
     }
 
+    if (JSON.stringify(args) !== JSON.stringify(tc.arguments)) {
+      toolResult = {
+        ...toolResult,
+        content: [
+          ...toolResult.content,
+          {
+            type: 'text',
+            text: `The user edited the approved action. Actual arguments executed: ${JSON.stringify(args)}. Describe the actual result, using these values rather than the original proposal.`,
+          },
+        ],
+      }
+    }
+
     const toolChatMsg = this.allChatMessages.find(
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id
     )
@@ -2439,6 +2457,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         const imagePath = (toolResult.details as { imagePath?: unknown } | undefined)?.imagePath
         return {
           ...m,
+          toolParams: copyToolArgs(args),
           toolResult: resultText,
           toolExecution: undefined,
           toolImagePath: !isError && typeof imagePath === 'string' ? imagePath : undefined,
@@ -3014,7 +3033,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
 
-    this.recordRefusal(tc, reason || 'User rejected this action')
+    this.recordRefusal(
+      tc,
+      `${reason || 'User rejected this action'}. Do not retry this action unchanged or work around the refusal. Ask the user before attempting it again.`
+    )
 
     try {
       await this.processAllPendingToolCalls()
@@ -3036,7 +3058,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
     this.updateChatMessage(
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
-      (m) => ({ ...m, toolResult: reasonText, toolStatus: 'rejected' as const })
+      (m) => ({
+        ...m,
+        toolResult: reasonText,
+        toolStatus: 'rejected' as const,
+        toolExecution: 'not-run' as const,
+      })
     )
 
     this.rememberInternal({
@@ -3197,6 +3224,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   abort(): void {
+    const wasRunning =
+      !this.destroyed &&
+      !this.turnAborted &&
+      (this.isStreaming.value ||
+        this.isExecutingTool.value ||
+        this.pendingToolCalls.value.length > 0)
+    if (wasRunning) {
+      this.appendChatMessage({
+        id: nanoid(),
+        role: 'system',
+        content: t('streamB.stoppedByYou'),
+        timestamp: Date.now(),
+      })
+      this.updateVisibleMessages()
+      this.markDirty()
+    }
     this.delegationWakeStopped = true
     ++this.delegationStopEpoch
     const parent = this.delegationParentId
