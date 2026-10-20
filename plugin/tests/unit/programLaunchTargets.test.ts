@@ -1,6 +1,25 @@
 import { expect, it, vi } from 'vitest'
-import { programLaunchTargets, resolveLaunchTarget } from '@/debugger/programLaunchTargets'
+import {
+  programLaunchTargets,
+  programLaunchPaths,
+  resolveLaunchTarget,
+  type ProgramLaunchTarget,
+} from '@/debugger/programLaunchTargets'
 import { DebuggerControlMethodSchemas, DebuggerStartSchema } from '@abele/node-protocol'
+
+it('offers package scripts and built entries before searchable source aliases', () => {
+  const targets: ProgramLaunchTarget[] = Array.from({ length: 20 }, (_, i) => ({
+    program: `dist/entry-${i}.js`,
+    source: `src/entry-${i}.ts`,
+  }))
+  targets.push({ program: 'package.json', npm_script: 'sample' })
+  const paths = programLaunchPaths(targets, ['src/entry-0.ts', 'scripts/check.mjs'])
+  expect(paths[0]).toBe('npm run sample')
+  expect(paths.slice(1, 21)).toEqual(targets.slice(0, 20).map((t) => t.program))
+  expect(paths).toContain('src/entry-0.ts')
+  expect(paths).toContain('scripts/check.mjs')
+  expect(paths.filter((p) => p === 'src/entry-0.ts')).toHaveLength(1)
+})
 
 it('exposes launch target discovery in the vendored node protocol', () => {
   expect(DebuggerControlMethodSchemas).toHaveProperty('debugger.v1.launchTargets')

@@ -15,7 +15,11 @@ import { programFiles } from './programFiles'
 import { pickProgram } from '@/helpers/suggesters/RunnablePicker'
 import { openComponentDialog } from '@/modal/componentDialog'
 import ProgramLaunchDialog from './ProgramLaunchDialog.vue'
-import { launchTargetName, programLaunchTargets, resolveLaunchTarget } from './programLaunchTargets'
+import {
+  programLaunchPaths,
+  programLaunchTargets,
+  resolveLaunchTarget,
+} from './programLaunchTargets'
 
 const id = z.string().min(1).max(128)
 export const StartResultSchema = z.object({
@@ -347,13 +351,7 @@ export async function askAndStartProgram(
       console.debug('[debugger] Filename search unavailable; using open files', error)
     }
     if (paths || targets.length) {
-      paths = [
-        ...new Set([
-          ...targets.map(launchTargetName),
-          ...targets.filter((t) => !t.npm_script).map((t) => t.program),
-          ...(paths ?? []),
-        ]),
-      ]
+      paths = programLaunchPaths(targets, paths ?? [])
       const selected = await pickProgram(
         app,
         paths,
