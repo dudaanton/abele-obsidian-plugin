@@ -43,6 +43,15 @@ it('keeps typed build paths available on older nodes', async () => {
   expect(resolveLaunchTarget('dist/main.js', [])).toEqual({ program: 'dist/main.js', sources: [] })
 })
 
+it('recognizes an old node by its error code even when its message is descriptive', async () => {
+  const request = vi.fn().mockRejectedValue(
+    Object.assign(new Error('Method unavailable'), {
+      code: 'unsupported_method',
+    })
+  )
+  expect(await programLaunchTargets({ request } as never, {})).toEqual([])
+})
+
 it('does not hide a failed discovery as an empty project', async () => {
   const request = vi.fn().mockRejectedValue(new Error('disconnected'))
   await expect(programLaunchTargets({ request } as never, {})).rejects.toThrow('disconnected')

@@ -14,6 +14,7 @@ const TargetsSchema = z.object({
     .max(4096),
 })
 export type ProgramLaunchTarget = z.infer<typeof TargetsSchema>['targets'][number]
+const MethodErrorSchema = z.object({ code: z.string().optional(), message: z.string().optional() })
 export const launchTargetName = (target: ProgramLaunchTarget) =>
   target.npm_script ? `npm run ${target.npm_script}` : (target.source ?? target.program)
 
@@ -22,9 +23,12 @@ export async function programLaunchTargets(client: NodeClient, owner: object) {
   try {
     return TargetsSchema.parse(await client.request('debugger.v1.launchTargets', owner)).targets
   } catch (error) {
+    const failure = MethodErrorSchema.safeParse(error)
     if (
-      error instanceof Error &&
-      /unsupported_method|unknown_method|method_not_found/.test(error.message)
+      failure.success &&
+      /unsupported_method|unknown_method|method_not_found/.test(
+        `${failure.data.code ?? ''} ${failure.data.message ?? ''}`
+      )
     ) {
       console.debug('[debugger] Launch catalogue unavailable; using filename search')
       return []
