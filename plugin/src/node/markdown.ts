@@ -65,8 +65,7 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
   for (const text of texts) {
     const pattern =
       /abele-node-code:%7B[\w%!'()*~.-]*%7D|(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+(?::[1-9]\d*(?:-[1-9]\d*)?|#L[1-9]\d*(?:-L[1-9]\d*)?)/g
-    // eslint-disable-next-line obsidianmd/prefer-create-el -- Window has no fragment factory.
-    const fragment = root.ownerDocument.createDocumentFragment()
+    const fragment = createFragment()
     let end = 0
     for (const match of (text.textContent ?? '').matchAll(pattern)) {
       const index = match.index
