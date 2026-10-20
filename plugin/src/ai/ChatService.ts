@@ -76,6 +76,7 @@ export class ChatService {
   private tabsRestored = false
   private restoringTabs = false
   private restoreGeneration = 0
+  private disposed = false
   private continueRestore: (() => void) | null = null
   private readonly presentations = new TabIntentQueue()
   private readonly presentationGuards = new WeakMap<() => boolean, TabIntent>()
@@ -353,7 +354,7 @@ export class ChatService {
   /** Persist current tabs state to localStorage */
   saveTabs(): void {
     // An early selection/save must not persist just the hydrated prefix and lose pending tabs.
-    if (this.restoringTabs) return
+    if (this.disposed || this.restoringTabs) return
     const state: TabsState = {
       tabs: this.tabOrder.value
         .filter((id) => !this.runTabs.has(id))
@@ -1537,6 +1538,7 @@ export class ChatService {
   // ── Cleanup ───────────────────────────────────────────────────
 
   destroy(): void {
+    this.disposed = true
     this.restoreGeneration++
     this.continueRestore?.()
     this.continueRestore = null

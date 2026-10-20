@@ -191,3 +191,15 @@ it('does not publish a conversation that finishes loading after service teardown
   expect(service.getAllSessions()).toEqual([])
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it('preserves the saved layout when a destroyed service receives a late persistence callback', async () => {
+  const app = useVault([])
+  ChatService.getInstance().destroy()
+  const service = ChatService.getInstance()
+  await service.restoreTabs()
+  const saved = app.loadLocalStorage('abele-agent-tabs')
+  service.destroy()
+  // A final chat flush can finish after synchronous plugin unload has cleared the tabs.
+  service.saveTabs()
+  expect(app.loadLocalStorage('abele-agent-tabs')).toEqual(saved)
+})
