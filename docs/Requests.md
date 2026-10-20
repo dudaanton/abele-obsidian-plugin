@@ -81,9 +81,11 @@ debugger in one press. On a phone a completed send scrolls its answer into view;
 
 When `DebuggerService` has a binding for the same node and project whose trace says it is
 recording, the tab shows a switch beside Send. On, the send carries the debugger session id: the
-node puts every step taken while the request is out under it, by time, and writes the request as
-an `http` step at the time it went. The answer's *N steps in code* opens that run on the
-request's step.
+node groups recorded code steps under the request by time. On nodes that capture program HTTP,
+a run association is returned only when incoming traffic confirms the destination belongs to
+that session. The answer's *N steps in code* opens that run on the confirmed request step.
+When a confirmed request has no code steps, *Open recorded request* still opens it. A send with
+no run association remains in request history.
 
 ## Import
 

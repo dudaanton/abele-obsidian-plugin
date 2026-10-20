@@ -130,6 +130,11 @@ with what changed since the last time. *Open whole* opens a value in a tab of it
 shape, its whole text or its changes. A value can be followed through the run and anything can
 be marked. A run's menu renames or deletes it; deleting asks first.
 
+On nodes that capture program HTTP traffic, *Only the requests* shows incoming served requests
+and outgoing requests with their method, path, host, status and duration. Correlated code steps
+stay under each request; the clock icon identifies links made by time. Older nodes keep the
+browser-only explanation when no HTTP steps are available. Each run belongs to one debug session.
+
 A run never writes a note by itself. *Write a note about this run* in a run's tab writes one into
 the folder set in Settings →
 Nodes (*Notes about recorded runs*): a vault folder, or on a computer any folder, outside the vault
