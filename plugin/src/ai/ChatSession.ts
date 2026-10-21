@@ -561,6 +561,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
   }
 
+  /** Automatic tab eviction must leave every unfinished turn with its presenter. */
+  get canCloseIdleTab(): boolean {
+    const draft = this.draft.value
+    return (
+      !this.isBusy &&
+      !this.isMidTurn &&
+      !this.moving.value &&
+      !draft.text.length &&
+      !draft.attachments.length &&
+      !draft.editingDraftId &&
+      !draft.imports?.pending.size
+    )
+  }
+
   /**
    * True while the conversation must not be touched from outside.
    *

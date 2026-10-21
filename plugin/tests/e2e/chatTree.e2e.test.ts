@@ -64,7 +64,7 @@ const probe = (label: string) => `(async () => {
       if (Math.abs(chat.left) > 1 || Math.abs(chat.width - innerWidth) > 1) throw Error('Full-width phone chat leaves a drawer gutter')
       if (root.querySelector('.abele-ai-chat__header .abele-drawer-switch')) throw Error('Phone header still has a duplicate drawer selector')
     }
-    const first = service.newTab(); created.push(first)
+    const first = await service.newTab(); created.push(first)
     const session = service.getSession(first)
     session.chatTitle.value = 'Sample navigation chat'
     await wait(100)
@@ -123,7 +123,7 @@ const probe = (label: string) => `(async () => {
     await shot('node-moved')
     service.closedNodeChats.value=priorNodes.slice();await service.folders.forgetNode(sampleNodeId)
     await service.folders.setAccess(folder, { web_search: 'auto' })
-    const second = service.newTab(); created.push(second)
+    const second = await service.newTab(); created.push(second)
     const child = service.getSession(second)
     child.chatTitle.value = 'A long sample discussion title that keeps the row within its pane'
     child.anchor.value = { note: session.currentChatFile.value.path, message: 'sample-message', quote: 'Sample passage' }
@@ -160,7 +160,7 @@ const probe = (label: string) => `(async () => {
     session.isStreaming.value = true
     await shot('working')
     session.isStreaming.value = false
-    const third = service.newTab(); created.push(third)
+    const third = await service.newTab(); created.push(third)
     const archived = service.getSession(third)
     archived.chatTitle.value = 'Sample closed discussion'
     archived.anchor.value = { note: session.currentChatFile.value.path, message: 'sample-message', quote: 'Sample passage' }
@@ -316,6 +316,31 @@ const probe = (label: string) => `(async () => {
     await shot('provider-unavailable-exhausted')
     if(root.querySelector('.abele-ai-chat__error-dot_retrying'))throw Error('Exhausted provider still has a waiting indicator')
     reopened.error.value = null; reopened.errorPresentation.value = null; reopened.retrying.value = null
+    const capCandidate = await service.newTab(); created.push(capCandidate)
+    const capChat = service.getSession(capCandidate)
+    capChat.chatTitle.value = 'Sample least recently used chat'
+    await capChat.createInDirectory(path)
+    files.push(capChat.currentChatFile.value)
+    while (service.canCreateTab) created.push(await service.newTab())
+    // Select every other tab so the synthetic saved chat is the oldest idle candidate.
+    for (const id of service.tabOrder.value) if (id !== capCandidate) service.switchTab(id)
+    const capCurrent = service.activeTabId.value
+    const beforeCap = service.tabOrder.value.length
+    if (beforeCap !== 20) throw Error('Cap fixture did not reach twenty chats')
+    if (current().getAttribute('aria-expanded') === 'true') current().click()
+    await wait(100)
+    root.querySelector('[aria-label="Start a new chat"]').click()
+    await until(() => service.activeTabId.value !== capCurrent)
+    created.push(service.activeTabId.value)
+    if (service.tabOrder.value.length !== 20 || !service.tabOrder.value.includes(capCurrent)) throw Error('New chat at cap lost the current chat or exceeded the cap')
+    if (service.getSession(capCandidate)) throw Error('Oldest idle chat was not closed')
+    current().click()
+    await until(() => document.querySelector('.abele-chat-tree'))
+    const closed = document.querySelector('.abele-chat-tree__list > .abele-chat-tree__closed > .tree-item-self')
+    if (closed?.getAttribute('aria-expanded') !== 'true') closed?.click()
+    const closedCandidate = await until(() => document.querySelector('[data-chat="' + capChat.currentChatFile.value.path + '"]'))
+    closedCandidate.scrollIntoView({ block: 'nearest' })
+    await shot('plus-at-cap')
     return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
@@ -385,7 +410,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 31 : 32)
+    expect(result.pictures).toBe(onPhone() ? 32 : 33)
     console.log('Sample composer geometry', JSON.stringify(result.composer))
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)

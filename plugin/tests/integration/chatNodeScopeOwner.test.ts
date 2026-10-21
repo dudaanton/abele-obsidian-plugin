@@ -78,7 +78,7 @@ describe('owner node scope actions', () => {
   })
   it('restores an empty scoped chat from its saved tab reference after service restart', async () => {
     const service = ChatService.getInstance()
-    const id = service.newTab()
+    const id = (await service.newTab())!
     const session = service.getSession(id)!
     const entry = { kind: 'node' as const, node_id: 'sample-node', access: 'read' as const }
     await giveObsidianChatAccess(session, entry)

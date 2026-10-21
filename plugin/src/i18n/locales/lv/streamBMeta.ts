@@ -52,6 +52,7 @@ export const streamBMeta = {
   'streamBMeta.b55d48da85': 'Pati mape',
   'streamBMeta.358c86cabc': 'Bez zara pie {branch}',
   'streamBMeta.2e53bdcd07': 'Rīks',
+  'streamBMeta.noIdleChat': 'Nevar atvērt jaunu sarunu: nav citas neaktīvas sarunas, ko aizvērt.',
   'streamBMeta.19dfe9890f': 'Vispirms aizveriet vienu no atvērtajām cilnēm ({count})',
   'streamBMeta.162899fff5': 'Priekšā: nav zināms',
   'streamBMeta.220216bd7e': 'Atpaliek: nav zināms',

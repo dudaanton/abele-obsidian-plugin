@@ -47,8 +47,7 @@ export function runChatTabAction(action: ChatTabAction, chats = ChatService.getI
     case 'close':
       return closeActiveTab(chats)
     case 'create':
-      // A new chat when there is room; at the limit the bar says so, as the + does.
-      if (chats.canCreateTab) chats.newTab()
+      void chats.newTab()
       return
     case 'reopen':
       return void chats.reopenClosedTab()

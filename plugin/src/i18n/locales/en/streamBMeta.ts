@@ -52,6 +52,7 @@ export const streamBMeta = {
   'streamBMeta.b55d48da85': 'The folder itself',
   'streamBMeta.358c86cabc': 'Detached at {branch}',
   'streamBMeta.2e53bdcd07': 'Tool',
+  'streamBMeta.noIdleChat': 'Cannot open a new chat: no other idle chat can be closed.',
   'streamBMeta.19dfe9890f': 'Close one of the {count} open tabs first',
   'streamBMeta.162899fff5': 'Ahead: unknown',
   'streamBMeta.220216bd7e': 'Behind: unknown',

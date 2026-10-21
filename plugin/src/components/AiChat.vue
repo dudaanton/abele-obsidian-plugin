@@ -11,7 +11,7 @@
     <AiChatTabs
       v-if="!chatTreeSource"
       :tabs="tabInfos"
-      :can-create="chatService.canCreateTab"
+      :can-create="true"
       @select="chatService.switchTab($event)"
       @close="chatService.closeTab($event)"
       @create="onNewTab"

@@ -491,7 +491,7 @@ it('stores membership in the transcript and shows unknown folder ids at root', a
 
 it('files an open chat with unsaved edits through its own save, so it can still be reopened', async () => {
   await folders.create('', 'Collection')
-  const id = service.newTab()
+  const id = (await service.newTab())!
   const session = service.getSession(id)!
   session.chatTitle.value = 'Sample open chat'
   await session.createInDirectory(folders.path(''))

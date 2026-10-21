@@ -129,7 +129,7 @@ describe('real agents list on synthetic states', () => {
       ${close}
       const chats = window.__abeleTest.ChatService.getInstance()
       const previous = chats.activeTabId.value
-      const id = chats.newTab()
+      const id = await chats.newTab()
       const session = chats.getSession(id)
       try {
         session.chatTitle.value = 'Fabricated waiting question'

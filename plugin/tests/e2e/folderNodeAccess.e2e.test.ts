@@ -37,7 +37,7 @@ async function review(form: 'desktop' | 'phone') {
       await chats.folders.create('','Sample node collection');
       const entry={kind:'node',node_id:registration.expectedNodeId,access:'read'};
       await chats.folders.setNodeScope('Sample node collection',[entry]);
-      const session=chats.getSession(chats.newTab());session.chatTitle.value='Sample inherited node access';
+      const session=chats.getSession(await chats.newTab());session.chatTitle.value='Sample inherited node access';
       await session.createInDirectory(chats.folders.path(''));
       Object.assign(window.__folderNodeReview,{chat:session.id,path:session.currentChatFile.value.path,entry});
       await chats.folders.move(session.id,'Sample node collection');

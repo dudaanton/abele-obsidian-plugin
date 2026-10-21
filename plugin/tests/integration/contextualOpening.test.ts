@@ -554,7 +554,7 @@ describe('request-local contextual opening', () => {
     })
     const older = openChat(app.vault.getFileByPath(x)!)
     await preparing.promise
-    const blank = chats.newTab()
+    const blank = await chats.newTab()
     gate.resolve()
     await older
     expect(chats.activeTabId.value).toBe(blank)

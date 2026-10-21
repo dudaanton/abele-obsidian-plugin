@@ -43,7 +43,7 @@ const script = `(async () => {
   const service = t.ChatService.getInstance()
   service.ensureInitialized()
   // A fresh vault window may have no chat yet: open one tab of its own, closed again at the end.
-  const ownTab = service.activeSession.value ? null : service.newTab()
+  const ownTab = service.activeSession.value ? null : await service.newTab()
   const session = service.activeSession.value
   if (!session) return JSON.stringify({ error: 'no active chat session' })
 

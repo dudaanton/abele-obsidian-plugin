@@ -450,12 +450,8 @@ export class ChatTreeModel implements ChatTreeSource {
   }
   newChat(folder: string): void {
     this.run(async () => {
-      if (!this.service.canCreateTab) {
-        new Notice(ChatService.TABS_FULL)
-        return
-      }
-      const id = this.service.newTab()
-      if (folder) await this.service.folders.move(id, folder)
+      const id = await this.service.newTab()
+      if (id && folder) await this.service.folders.move(id, folder)
     })
   }
   newFolder(parent: string, name: string): void {

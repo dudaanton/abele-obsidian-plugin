@@ -61,11 +61,11 @@ function withConversation(id: string) {
 }
 
 describe('a new chat asks for the cursor', () => {
-  it('from the + in the tab bar', () => {
+  it('from the + in the tab bar', async () => {
     chats.createTab()
     const before = chats.focusRequest.value
 
-    const id = chats.newTab()
+    const id = (await chats.newTab())!
 
     expect(chats.activeTabId.value).toBe(id)
     expect(chats.focusRequest.value).toBe(before + 1)

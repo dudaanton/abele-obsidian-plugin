@@ -29,6 +29,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  service.destroy()
   vi.restoreAllMocks()
 })
 
@@ -45,6 +46,97 @@ describe('the limit on open chat tabs', () => {
 
     service.createTab()
     expect(service.tabOrder.value).toHaveLength(20)
+  })
+
+  it('makes room for + while preserving current, recently selected and busy chats', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    service.switchTab(ids[0])
+    service.switchTab(ids[19])
+    service.getSession(ids[1])!.isStreaming.value = true
+    const next = await service.newTab()
+    expect(next).not.toBe(ids[19])
+    expect(service.activeTabId.value).toBe(next)
+    expect(service.tabOrder.value).toHaveLength(MAX_TABS)
+    expect(service.getSession(ids[0])).not.toBeNull()
+    expect(service.getSession(ids[1])).not.toBeNull()
+    expect(service.getSession(ids[2])).toBeNull()
+  })
+
+  it('refuses + out loud when every other chat is busy', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    for (const id of ids.slice(0, -1)) service.getSession(id)!.isStreaming.value = true
+    expect(await service.newTab()).toBeNull()
+    expect(service.tabOrder.value).toEqual(ids)
+    expect(Notice.shown).toContain('Cannot open a new chat: no other idle chat can be closed.')
+  })
+
+  it.each(['question', 'approval', 'retry', 'tool', 'comment'])(
+    'does not evict a chat with a pending %s',
+    async (state) => {
+      const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+      const protectedChat = service.getSession(ids[0])!
+      if (state === 'question')
+        protectedChat.pendingQuestions.value = {
+          questions: [],
+          currentIndex: 0,
+          answers: [],
+          resolve: () => {},
+        }
+      if (state === 'retry') protectedChat.retrying.value = { attempt: 1, of: 2, secondsLeft: 3 }
+      if (state === 'approval')
+        protectedChat.pendingToolCalls.value = [
+          { type: 'toolCall', id: 'sample-tool', name: 'sample_action', arguments: {} },
+        ]
+      if (state === 'tool') protectedChat.isExecutingTool.value = true
+      if (state === 'comment') protectedChat.kind = 'comment'
+      await service.newTab()
+      expect(service.getSession(ids[0])).toBe(protectedChat)
+      expect(service.getSession(ids[1])).toBeNull()
+    }
+  )
+
+  it('saves an evicted chat and reopens it from Closed', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    const oldest = service.getSession(ids[0])!
+    oldest.chatTitle.value = 'Sample retained conversation'
+    await oldest.createInDirectory('AI/Chats')
+    const path = oldest.currentChatFile.value!.path
+    expect(await service.newTab()).toBeTruthy()
+    expect(service.getSessionByFile(path)).toBeNull()
+    await service.closeTab(service.activeTabId.value!)
+    expect(await service.reopenClosedTab()).toBe(true)
+    expect(service.activeSession.value?.currentChatFile.value?.path).toBe(path)
+    expect(service.activeSession.value?.chatTitle.value).toBe('Sample retained conversation')
+  })
+
+  it('keeps the candidate when saving fails', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    vi.spyOn(service.getSession(ids[0])!, 'saveForRelease').mockRejectedValue(
+      new Error('Sample save failure')
+    )
+    expect(await service.newTab()).toBeNull()
+    expect(service.tabOrder.value).toEqual(ids)
+    expect(Notice.shown).toContain('Error: Sample save failure')
+  })
+
+  it('keeps unsent composer text in its open chat', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    const oldest = service.getSession(ids[0])!
+    oldest.draft.value.text = 'Sample unfinished message'
+    await service.newTab()
+    expect(service.getSession(ids[0])).toBe(oldest)
+    expect(oldest.draft.value.text).toBe('Sample unfinished message')
+    expect(service.getSession(ids[1])).toBeNull()
+  })
+
+  it('rechecks activity after saving yields', async () => {
+    const ids = Array.from({ length: MAX_TABS }, () => service.createTab())
+    const oldest = service.getSession(ids[0])!
+    vi.spyOn(oldest, 'saveForRelease').mockImplementation(async () => {
+      oldest.isStreaming.value = true
+    })
+    expect(await service.newTab()).toBeNull()
+    expect(service.tabOrder.value).toEqual(ids)
   })
 
   it('takes a nineteenth and twentieth session handed over, and refuses the next out loud', () => {

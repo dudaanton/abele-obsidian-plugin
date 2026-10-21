@@ -52,6 +52,8 @@ export const streamBMeta = {
   'streamBMeta.b55d48da85': 'Сама папка',
   'streamBMeta.358c86cabc': 'Без ветки, коммит {branch}',
   'streamBMeta.2e53bdcd07': 'Инструмент',
+  'streamBMeta.noIdleChat':
+    'Нельзя открыть новый чат: нет другого неактивного чата, который можно закрыть.',
   'streamBMeta.19dfe9890f': 'Сначала закройте одну из открытых вкладок ({count})',
   'streamBMeta.162899fff5': 'Впереди: неизвестно',
   'streamBMeta.220216bd7e': 'Позади: неизвестно',

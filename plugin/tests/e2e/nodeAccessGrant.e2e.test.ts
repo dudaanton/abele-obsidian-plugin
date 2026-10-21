@@ -168,7 +168,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       // apart by its agent and last question; the folder and branch by name; a notice after.
       second = evalAsync<string>(
         `(async()=>{${prelude}
-        const id=chats.newTab();const other=chats.getAllSessions().find(s=>s.id===id);other.chatTitle.value='Sample second chat';
+        const id=await chats.newTab();const other=chats.getAllSessions().find(s=>s.id===id);other.chatTitle.value='Sample second chat';
         await chats.revealSidebar({focus:false});
         for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
         app.commands.executeCommandById('abele:open-node');

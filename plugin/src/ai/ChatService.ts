@@ -3,7 +3,7 @@ import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { providerKey } from '@/secrets/destinations'
 import { TabIntentQueue, type TabIntent } from './TabIntentQueue'
-import { ref, computed, shallowRef, toRaw } from 'vue'
+import { ref, computed, shallowRef, toRaw, watch } from 'vue'
 import { nanoid } from 'nanoid'
 import { copyChatData } from './chatClone'
 import { serializeChat } from './ChatLog'
@@ -110,6 +110,8 @@ export class ChatService {
   private readonly contextualLoads = new WeakMap<TFile, TabIntent>()
   private readonly releaseSaves = new WeakMap<ChatSession, Promise<void>>()
   private readonly tabReservations = new Set<ChatSession>()
+  private readonly tabUse = new Map<string, number>()
+  private tabUseClock = 0
   private loadingFiles = new Map<
     string,
     {
@@ -125,6 +127,13 @@ export class ChatService {
   }
 
   public readonly activeTabId = ref<string | null>(null)
+  private readonly stopTabUse = watch(
+    this.activeTabId,
+    (id) => {
+      if (id) this.tabUse.set(id, ++this.tabUseClock)
+    },
+    { flush: 'sync' }
+  )
   public readonly tabOrder = ref<string[]>([])
   public readonly closedNodeChats = shallowRef<ClosedNodeChat[]>([])
   public readonly nodeParentPaths = shallowRef<Record<string, string>>({})
@@ -427,6 +436,7 @@ export class ChatService {
     const session = new ChatSession(this)
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
+    this.tabUse.set(session.id, ++this.tabUseClock)
     if (select) this.activeTabId.value = session.id
     if (this.tabsRestored) this.saveTabs()
     return session.id
@@ -532,15 +542,48 @@ export class ChatService {
    * cursor, because it is also what restoring the layout at startup makes its tabs with, and
    * that should not pull the cursor out of the note somebody is opening the app to.
    */
-  newTab(): string {
+  async newTab(): Promise<string | null> {
     const intent = this.presentations.begin('new-tab', false)
+    const idle = (session: ChatSession) =>
+      session.id !== this.activeTabId.value &&
+      session.kind === 'chat' &&
+      session.canCloseIdleTab &&
+      !this.isLoading(session) &&
+      !this.tabReservations.has(session) &&
+      !this.childTabs(session.id).length
+    let candidate: ChatSession | undefined
+    if (!this.canCreateTab) {
+      candidate = [...this.sessions.values()]
+        .filter(idle)
+        .sort((a, b) => (this.tabUse.get(a.id) ?? 0) - (this.tabUse.get(b.id) ?? 0))[0]
+      if (!candidate) {
+        new Notice(t('streamBMeta.noIdleChat'))
+        return null
+      }
+      try {
+        await this.saveForRelease(candidate)
+      } catch (error) {
+        new Notice(String(error))
+        return null
+      }
+    }
     return (
       this.presentations.apply(intent, () => {
+        // Saving yields to navigation, new turns and other + requests. Recheck atomically.
+        if (!this.canCreateTab) {
+          if (!candidate || this.sessions.get(candidate.id) !== candidate || !idle(candidate)) {
+            new Notice(ChatService.TABS_FULL)
+            return null
+          }
+          this.rememberClosed(candidate)
+          candidate.destroy()
+          this.dropTabNow(candidate.id)
+        }
         this.tabSelectionRevision++
         const id = this.createTabNow()
         this.requestFocus()
         return id
-      }) ?? this.activeTabId.value!
+      }) ?? null
     )
   }
 
@@ -557,7 +600,7 @@ export class ChatService {
     if (!session) return
 
     if (session.kind === 'comment') {
-      this.newTab()
+      await this.newTab()
       return
     }
 
@@ -1031,6 +1074,7 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     const removed = this.sessions.delete(tabId) || this.nodeSessions.delete(tabId)
     if (!removed) return
+    this.tabUse.delete(tabId)
     if (session) CommentService.getInstance().releasePresentationNow(session)
     this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
 
@@ -1716,6 +1760,7 @@ export class ChatService {
   // ── Cleanup ───────────────────────────────────────────────────
 
   destroy(): void {
+    this.stopTabUse()
     this.chatTree?.destroy()
     if (chatTreeSource.value === this.chatTree) chatTreeSource.value = null
     this.chatFolders?.destroy()

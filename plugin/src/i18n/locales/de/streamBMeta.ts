@@ -52,6 +52,8 @@ export const streamBMeta = {
   'streamBMeta.b55d48da85': 'Der Ordner selbst',
   'streamBMeta.358c86cabc': 'Losgelöst bei {branch}',
   'streamBMeta.2e53bdcd07': 'Werkzeug',
+  'streamBMeta.noIdleChat':
+    'Kein neuer Chat möglich: Es kann kein anderer inaktiver Chat geschlossen werden.',
   'streamBMeta.19dfe9890f': 'Zuerst einen der offenen Tabs schließen ({count})',
   'streamBMeta.162899fff5': 'Voraus: unbekannt',
   'streamBMeta.220216bd7e': 'Zurück: unbekannt',
