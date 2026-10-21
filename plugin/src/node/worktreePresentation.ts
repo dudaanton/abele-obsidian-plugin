@@ -15,10 +15,12 @@ export async function waitForWorktreeJob<T extends { state: string }>(
 /** A managed worktree's storage id is not its name. */
 export function worktreeDisplayPath(path: string, branch: string | null): string {
   const name = branch?.replace(/^refs\/heads\//, '')
+  const leaf = path.split('/').pop() ?? ''
   if (
     name &&
-    name !== encodeURIComponent(name) &&
-    path.split('/').pop() === encodeURIComponent(name)
+    ((name !== encodeURIComponent(name) && leaf === encodeURIComponent(name)) ||
+      (/^.+-[a-f0-9]{16}$/.test(leaf) &&
+        leaf.slice(0, -17) === name.replace(/[^a-zA-Z0-9._-]/g, '-')))
   )
     return name
   return /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(path.split('/').pop() ?? '')

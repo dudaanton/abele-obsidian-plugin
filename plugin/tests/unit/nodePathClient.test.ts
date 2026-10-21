@@ -1020,6 +1020,34 @@ describe('a branch as a pull request would see it', () => {
       'refs/remotes/origin/trunk',
     ])
   })
+  it('loads branch capabilities before a catalogue has finished opening', async () => {
+    const { port } = branchFake(true)
+    await expect(port.branch(target)).resolves.toMatchObject({ state: { base: 'origin/trunk' } })
+  })
+  it('publishes capabilities before a slow project listing finishes', async () => {
+    const f = fake()
+    f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+    })
+    let release!: () => void
+    f.client.listProjects.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve([])
+        })
+    )
+    const port = new NodePathClientPort(f.client, {
+      nodeId: identity.node,
+      registrationId: identity.installation,
+    })
+    const ready = vi.fn()
+    const pending = port.catalogue(ready)
+    await vi.waitFor(() =>
+      expect(ready).toHaveBeenCalledWith(expect.arrayContaining(['node_path_v2']))
+    )
+    release()
+    await pending
+  })
   it('uses an available default ref when automatic base detection returns no base', async () => {
     const { port, divergence } = branchFake(false)
     divergence.mockImplementation(

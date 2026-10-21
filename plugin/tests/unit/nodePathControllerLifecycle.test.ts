@@ -6,9 +6,12 @@ import type { NodePathModel } from '@/node/NodePathModel'
 const fixture = vi.hoisted(() => ({
   open: vi.fn(),
   editing: vi.fn(async () => ({ enabled: true })),
+  execution: vi.fn(async () => {}),
+  notice: vi.fn(),
   project: vi.fn(async () => ({ trust: 'trusted', root_path: '/sample/project' })),
   choose: undefined as unknown as (item: { id: string }) => void,
 }))
+vi.mock('@/node/errorNotice', () => ({ nodeErrorNotice: fixture.notice }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
     constructor(_app: unknown, _rows: unknown, _title: string, choose: typeof fixture.choose) {
@@ -45,7 +48,9 @@ vi.mock('@/node/NodePathMutations', () => ({
   NodePathMutations: class {
     async selection() {}
     async trust() {}
-    async execution() {}
+    async execution() {
+      await fixture.execution()
+    }
     async session() {
       return { session_id: 'sample-session', title: 'Sample chat' }
     }
@@ -134,6 +139,7 @@ it('opens a newly created chat without waiting for the catalogue and recursive t
     refresh,
     report: vi.fn(),
     selectedChat: shallowRef(''),
+    error: shallowRef('Previous refusal'),
   }
   const target = {
     nodeId: 'sample-node',
@@ -151,5 +157,30 @@ it('opens a newly created chat without waiting for the catalogue and recursive t
     false
   )
   expect(model.selectedChat.value).toBe('sample-session')
+  expect(model.error.value).toBe('')
   expect(fixture.project).toHaveBeenCalledWith(target.projectId)
+})
+
+it('names the new chat action when execution admission is busy', async () => {
+  fixture.execution.mockRejectedValueOnce(new Error('resource_busy'))
+  fixture.notice.mockClear()
+  fixture.open.mockClear()
+  const target = {
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-worktree',
+  }
+  const model = {
+    registrationId: target.registrationId,
+    capabilities: shallowRef(['node_path_execution']),
+    folders: shallowRef([]),
+    copy: () => undefined,
+  }
+  await newNodePathChat(model as unknown as NodePathModel, target)
+  fixture.choose({ id: 'fake' })
+  await vi.waitFor(() => expect(fixture.notice).toHaveBeenCalled())
+  expect(fixture.notice.mock.calls.at(-1)?.[0].message).toContain('Could not start a new chat')
+  expect(fixture.open).not.toHaveBeenCalled()
 })

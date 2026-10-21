@@ -38,7 +38,7 @@ export class NodePathFileEditing {
   async start(path: string): Promise<void> {
     let editor = this.editor.value
     if (!editor) editor = this.editor.value = this.make()
-    if (path !== this.path) {
+    if (path !== this.path || (!this.active.value && !this.dirty.value)) {
       await editor.openFile(path)
       this.path = path
     }

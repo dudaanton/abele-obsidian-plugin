@@ -240,8 +240,9 @@ export class NodePathClientPort implements NodePathPort {
     string,
     Awaited<ReturnType<ReadClient['listWorkspaces']>>
   >()
-  async catalogue(): Promise<PathCatalogue> {
+  async catalogue(capabilities?: (capabilities: string[]) => void): Promise<PathCatalogue> {
     const description = await this.describe(true)
+    capabilities?.([...this.capabilities])
     const guarded = supportsExpectedTarget(description)
     const enriched = this.capabilities.includes('node_path_v2')
     const [projects, sessions] = await Promise.all([
@@ -445,6 +446,7 @@ export class NodePathClientPort implements NodePathPort {
    * committed that its base does not have.
    */
   async branch(target: PathTarget, base?: string): Promise<PathBranch> {
+    await this.describe()
     if (target.kind !== 'worktree' || !this.capabilities.includes('node_path_v2'))
       throw new UiError(uiMessage('streamBError.d4a2fc884b'))
     const own = this.worktrees.get(target.id)?.branch ?? null

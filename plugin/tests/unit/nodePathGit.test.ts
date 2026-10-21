@@ -184,6 +184,28 @@ describe('git actions from the panel', () => {
     })
     return { m, port }
   }
+  it('names a refused staging action and clears its banner after the next success', async () => {
+    const raw = client({
+      stage: vi
+        .fn()
+        .mockResolvedValueOnce({ state: 'failed', code: 'resource_busy', message: 'resource_busy' })
+        .mockResolvedValue({ state: 'applied' }),
+    })
+    const { m } = model(nodePathGit(raw as never))
+    await m.refresh()
+    await m.select(target.id)
+    try {
+      await m.stage('all')
+    } catch (error) {
+      m.report(error)
+    }
+    expect(m.error.value).toContain('Could not stage the files')
+    expect(m.error.value).not.toContain('delet')
+    await m.stage('all')
+    expect(m.error.value).toBe('')
+    expect(raw.stage).toHaveBeenCalledTimes(2)
+    m.destroy()
+  })
   it('acts on what the panel shows, one action at a time, and reads the worktree again after', async () => {
     let release = () => {}
     const git = nodePathGit(

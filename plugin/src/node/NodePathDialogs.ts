@@ -293,6 +293,7 @@ export async function openNodeWorktreeDialog(
       error.value ? h('div', { role: 'alert' }, error.value) : null,
       h(WorktreeDialog, {
         branches,
+        busy: busy.value,
         taken,
         base: base.value,
         onCancel: close,

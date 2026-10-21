@@ -1,14 +1,27 @@
 import { afterEach, expect, it } from 'vitest'
-import { nodeErrorWords } from '@/node/errorWords'
+import { nodeErrorWords, nodeActionError, nodeErrorDetails } from '@/node/errorWords'
+import { presentUiError } from '@/i18n/streamBErrors'
 import { initializeLocale } from '@/i18n'
 import { catalogs } from '@/i18n/catalogs'
 
 afterEach(() => initializeLocale('en'))
 
+it.each(['Stage', 'Chat', 'Read'] as const)(
+  'keeps the busy %s action explanation through notice rendering',
+  (action) => {
+    const failure = nodeActionError(new Error('resource_busy'), action)
+    const words = presentUiError(failure)
+    expect(nodeErrorDetails(words)).toBe(words)
+    expect(words).toContain('resource_busy')
+    expect(words).not.toContain('delet')
+  }
+)
+
 it('explains a busy worktree separately from a rate limit', () => {
   expect(nodeErrorWords('resource_busy')).toContain('in use')
   expect(nodeErrorWords('resource_busy')).not.toContain('deleting')
   expect(nodeErrorWords('resource_busy')).not.toBe(nodeErrorWords('rate_limit'))
+  expect(nodeErrorWords('resource_busy')).not.toContain('delet')
 })
 
 it.each([

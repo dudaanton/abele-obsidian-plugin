@@ -4,6 +4,7 @@
       <Input
         ref="field"
         v-model="branch"
+        :disabled="busy"
         :placeholder="t('streamBRest.newBranch')"
         :aria-label="t('streamB.branch.52656e')"
         :invalid="!!problem"
@@ -23,7 +24,7 @@
       <Button
         :text="base"
         icon="git-branch"
-        :disabled="existing"
+        :disabled="existing || busy"
         :tooltip="t('streamB.chooseTheBranchToStartFrom.aea1e2')"
         class="abele-worktree-dialog__base"
         @click="emit('choose-base')"
@@ -41,6 +42,7 @@
       />
       <Button
         :text="t('streamB.create.475949')"
+        :loading="busy"
         accent
         :disabled="!branch.trim() || !!problem"
         :tooltip="t('streamB.makeTheWorktreeOnTheNode.6bf7e0')"
@@ -68,10 +70,11 @@ const props = withDefaults(
     /** Branches already checked out in a worktree, which git will not check out twice. */
     taken: string[]
     base: string
+    busy?: boolean
     /** Where the node keeps worktrees of this repository. */
     home?: string
   }>(),
-  { home: undefined }
+  { home: undefined, busy: false }
 )
 
 const emit = defineEmits<{
@@ -103,7 +106,7 @@ const where = computed(() =>
 )
 
 function create() {
-  if (name.value && !problem.value) emit('create', name.value, props.base)
+  if (!props.busy && name.value && !problem.value) emit('create', name.value, props.base)
 }
 onMounted(() => window.setTimeout(() => field.value?.inputRef?.focus()))
 </script>

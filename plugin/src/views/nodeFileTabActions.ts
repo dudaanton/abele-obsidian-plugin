@@ -1,4 +1,6 @@
 import { t } from '@/i18n'
+import { nodeActionError } from '@/node/errorWords'
+import { presentUiError } from '@/i18n/streamBErrors'
 import { Notice, Platform, type App, type Menu } from 'obsidian'
 import { NodeService } from '@/node/NodeService'
 import { pathPages } from '@/node/NodePathClientPort'
@@ -105,7 +107,16 @@ export class NodeFileTabActions {
     const file = this.host.file(),
       doc = file?.document.value,
       state = this.host.saved()
-    if (doc && file && state?.kind === 'file') this.host.act(() => file.open(doc.path, state.stage))
+    if (doc && file && state?.kind === 'file')
+      this.host.act(async () => {
+        try {
+          await file.open(doc.path, state.stage)
+        } catch (error) {
+          const failure = nodeActionError(error, 'Read')
+          file.error.value = presentUiError(failure)
+          throw failure
+        }
+      })
   }
   /** Opens (or closes) an external worktree to saves, asking the owner first. */
   async unlock(): Promise<void> {

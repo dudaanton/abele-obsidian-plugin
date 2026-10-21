@@ -1,7 +1,19 @@
 import { t } from '@/i18n'
 import type { MessageKey } from '@/i18n/types'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
+
+/** Retain a refused action's meaning instead of borrowing deletion's instructions. */
+export function nodeActionError(error: unknown, action: 'Stage' | 'Chat' | 'Read'): unknown {
+  const busy =
+    error instanceof Error &&
+    (('code' in error && error.code === 'resource_busy') || /\bresource_busy\b/.test(error.message))
+  if (!busy) return error
+  return new UiError(uiMessage(`node.error.busy${action}`))
+}
 
 type NodeErrorKey = Extract<MessageKey, `node.error.${string}`>
+const busyActions = ['node.error.busyStage', 'node.error.busyChat', 'node.error.busyRead'] as const
 
 // Exact protocol/client codes: new codes get the generic explanation until classified.
 const groups: readonly [NodeErrorKey, readonly string[]][] = [
@@ -136,6 +148,7 @@ const explanations = new Map(
 /** Keep protocol diagnostics unchanged in state; translate only their presentation. */
 export function nodeErrorWords(error: string | null | undefined): string {
   if (!error) return ''
+  for (const key of busyActions) if (error === agentText(key) || error === t(key)) return t(key)
   const raw = error.trim().toLowerCase()
   const diagnostic = error.trim().match(/^([a-z][a-z0-9_]+):\s*(\S[\s\S]*)$/)
   if (diagnostic) {
@@ -170,5 +183,6 @@ export function nodeErrorWords(error: string | null | undefined): string {
 export function nodeErrorDetails(error: string | null | undefined): string {
   const words = nodeErrorWords(error)
   const raw = error?.trim()
+  if (busyActions.some((key) => raw === agentText(key) || raw === t(key))) return words
   return raw && !words.includes(raw) ? `${words} (${raw})` : words
 }

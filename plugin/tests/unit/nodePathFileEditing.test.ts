@@ -38,6 +38,18 @@ const target = {
 }
 
 describe('editing a node file in its own tab', () => {
+  it('rereads a clean editor when it is opened again after external changes', async () => {
+    const editor = editorFake()
+    const editing = new NodePathFileEditing(
+      target,
+      () => editor as never,
+      async () => true
+    )
+    await editing.start('sample.ts')
+    editing.stop()
+    await editing.start('sample.ts')
+    expect(editor.openFile).toHaveBeenCalledTimes(2)
+  })
   it('refreshes the active editor after an external change and retains its unsent draft', async () => {
     const editor = editorFake()
     const editing = new NodePathFileEditing(

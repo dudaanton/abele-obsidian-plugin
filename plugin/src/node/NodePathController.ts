@@ -1,4 +1,5 @@
 import { nodeErrorNotice } from './errorNotice'
+import { nodeActionError } from './errorWords'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { addFolderDebugMenu } from '@/debugger/folderActions'
 import { t } from '@/i18n'
@@ -651,14 +652,22 @@ export function startNodePathChat(
   const bound = Object.freeze({ ...target }),
     connection = NodeService.getInstance().connection(model.registrationId)
   nodePathAction(async () => {
-    if (!(await approveNodePathExecution(model, bound))) return
+    const approved = await approveNodePathExecution(model, bound).catch((error: unknown) => {
+      throw nodeActionError(error, 'Chat')
+    })
+    if (!approved) return
     if (!choice) throw new UiError(uiMessage('streamB.theSelectedAgentIsNoLongerAvailable.b7a53d'))
-    const session = await new NodePathMutations(connection.client).session(
-      bound,
-      t('streamB.newChat.db1838'),
-      choice.provider,
-      ...(choice.agent ? [choice.agent] : [])
-    )
+    const session = await new NodePathMutations(connection.client)
+      .session(
+        bound,
+        t('streamB.newChat.db1838'),
+        choice.provider,
+        ...(choice.agent ? [choice.agent] : [])
+      )
+      .catch((error: unknown) => {
+        throw nodeActionError(error, 'Chat')
+      })
+    model.error.value = ''
     rememberNodeAgent(model.nodeId, choice, app())
     // The returned session already carries this exact target. Refresh drawer metadata
     // in the background; recursively listing its files is not part of opening a chat.

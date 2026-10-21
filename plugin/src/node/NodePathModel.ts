@@ -6,6 +6,7 @@ import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
+import { nodeActionError } from './errorWords'
 import { NodePathHistoryModel } from './NodePathHistoryModel'
 import { replacementTarget, type TargetLocation } from './nodeTargetIdentity'
 import type { PathGit } from './nodePathGit'
@@ -107,7 +108,7 @@ export interface NodePathPort {
   ): Promise<import('@/repository/model').CodeResults>
   search?(target: PathTarget, query: string): Promise<TreeEntry[]>
   invalidate?(target?: PathTarget): void
-  catalogue(): Promise<PathCatalogue>
+  catalogue(capabilities?: (capabilities: string[]) => void): Promise<PathCatalogue>
   inspect(
     target: PathTarget,
     files?: boolean,
@@ -563,7 +564,11 @@ export class NodePathModel {
     if (this.gitBusy.value) throw new UiError(uiMessage('streamBError.607e975b14'))
     this.gitBusy.value = id
     try {
-      return await run(git, target, seen)
+      const result = await run(git, target, seen)
+      uiField(this.error, 'value', uiErrorMessage(''))
+      return result
+    } catch (error) {
+      throw id === 'stage' ? nodeActionError(error, 'Stage') : error
     } finally {
       this.gitBusy.value = ''
       this.invalidateRevision(target)
@@ -655,7 +660,10 @@ export class NodePathModel {
   private async refreshCatalogue(generation: number): Promise<void> {
     this.busy.value = true
     try {
-      const catalogue = await this.port.catalogue()
+      const catalogue = await this.port.catalogue((capabilities) => {
+        if (!this.disposed && generation === this.catalogueGeneration)
+          this.capabilities.value = [...capabilities]
+      })
       if (this.disposed || generation !== this.catalogueGeneration) return
       const previous = this.targets.value
       const selected = this.current.value

@@ -18,6 +18,12 @@ it('follows a creation job until it completes instead of requiring a folder refr
   expect(read).toHaveBeenCalledTimes(2)
 })
 it('uses the branch rather than an opaque folder id', () => {
+  expect(
+    worktreeDisplayPath(
+      '/sample/project.worktrees/topic-demo-0123456789abcdef',
+      'refs/heads/topic/demo'
+    )
+  ).toBe('topic/demo')
   expect(worktreeDisplayPath('12345678-1234-1234-1234-123456789abc', 'refs/heads/topic/demo')).toBe(
     'topic/demo'
   )

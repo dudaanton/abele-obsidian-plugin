@@ -359,7 +359,11 @@ const step = computed(() => {
 })
 /** A git action from the panel; what went wrong is said in the panel's notice. */
 const act = (run: () => Promise<unknown>) => {
-  void run().catch((error: unknown) => props.model?.report(error))
+  void run()
+    .then(() => {
+      if (props.model) props.model.error.value = ''
+    })
+    .catch((error: unknown) => props.model?.report(error))
 }
 /** A folder's own main branch, even with its remote and no other base, says nothing: no codes. */
 const branchSays = computed(() => {
