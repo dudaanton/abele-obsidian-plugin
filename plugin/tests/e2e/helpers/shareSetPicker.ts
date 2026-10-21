@@ -20,7 +20,9 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   await poll(() => {
     const inline = box.querySelector('.abele-share-picker__results');
     choice = [...(inline || box.ownerDocument).querySelectorAll('.suggestion-item')].find(one =>
-      one.dataset.shareKind === kind && one.textContent.includes(name) && one.getAttribute('aria-disabled') !== 'true');
+      one.dataset.shareKind === kind &&
+      (kind === 'vault' ? one.dataset.sharePath === '/' : kind === 'group' && !query.includes('/') ? one.querySelector('.suggestion-title')?.textContent.trim() === name : one.dataset.sharePath === query) &&
+      one.getAttribute('aria-disabled') !== 'true');
     return !!choice;
   }, undefined, 'Share picker: matching suggestion row');
   await poll(() => {

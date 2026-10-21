@@ -48,6 +48,7 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
 
   renderSuggestion(item: ShareItem, el: HTMLElement): void {
     el.dataset.shareKind = item.kind
+    el.dataset.sharePath = item.path
     const popup = el.closest<HTMLElement>('.suggestion-container')
     if (popup && !this.stopKeyboard)
       this.stopKeyboard = watchSuggestionKeyboard(this.inputEl, popup)

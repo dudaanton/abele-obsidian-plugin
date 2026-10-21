@@ -73,6 +73,7 @@
         :key="item.kind + ':' + item.id"
         class="suggestion-item mod-complex"
         :data-share-kind="item.kind"
+        :data-share-path="item.path"
         role="option"
         :aria-selected="false"
         :aria-disabled="!!coveredBy(item, taken())"

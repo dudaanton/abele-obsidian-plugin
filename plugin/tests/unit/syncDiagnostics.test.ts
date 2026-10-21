@@ -25,11 +25,17 @@ it('selects a folder by its scope kind even when the host renders an open-folder
   const row = document.createElement('div')
   row.className = 'suggestion-item'
   row.dataset.shareKind = 'folder'
+  row.dataset.sharePath = 'Garden/Flowers'
   row.textContent = 'Flowers'
   const icon = document.createElement('span')
   icon.className = 'lucide-folder-open'
   row.append(icon)
-  list.append(row)
+  const nested = document.createElement('div')
+  nested.className = 'suggestion-item'
+  nested.dataset.shareKind = 'folder'
+  nested.dataset.sharePath = 'Garden/Flowers/Nested'
+  nested.textContent = 'Nested Garden/Flowers'
+  list.append(nested, row)
   box.append(input, list)
   document.body.append(box)
   vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
