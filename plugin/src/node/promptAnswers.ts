@@ -79,7 +79,7 @@ export function retainPromptAnswerIdentity(
 /** Owner UI only. Both parent and child cards share the same durable answer identity. */
 export async function answerOwnerPrompt(
   client: import('@abele/node-client').NodeClient,
-  nodeId: string,
+  nodeId: string | undefined,
   raw: import('@abele/node-client').Prompt,
   choice: 'allow' | 'deny',
   value?: string
@@ -107,7 +107,9 @@ export async function answerOwnerPrompt(
   })
   const queued = await client.store.transaction((rawState) => {
     const state = rawState as NodeClientState
-    if (state.node_id !== nodeId) throw new Error('node_identity_mismatch')
+    // Token registrations learn identity at authenticated admission; paired ones pin it.
+    const expected = nodeId ?? client.target.expected_node_id ?? state.node_id
+    if (!expected || state.node_id !== expected) throw new Error('node_identity_mismatch')
     if (promptAnswerStates(state, session_id)[prompt_id]) return false
     state.outbox.push({ operation_id: operation, method: 'prompt.answer', params })
     return true

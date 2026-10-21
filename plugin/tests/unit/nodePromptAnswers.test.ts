@@ -29,6 +29,19 @@ const reference = {
   sessionId: prompt.session_id,
   title: 'Sample session',
 }
+it('answers on a token node using its authenticated store identity when no expected ID was configured', async () => {
+  const { answerOwnerPrompt } = await import('@/node/promptAnswers')
+  const { first } = await fixture()
+  try {
+    await answerOwnerPrompt(first.client, undefined, prompt, 'allow').catch(() => {})
+    expect(
+      (await first.client.pending()).filter((entry) => entry.method === 'prompt.answer')
+    ).toHaveLength(1)
+  } finally {
+    first.presenter.destroy()
+    first.store.close()
+  }
+})
 async function fixture() {
   const factory = new IDBFactory()
   const make = () => {

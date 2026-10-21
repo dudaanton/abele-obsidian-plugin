@@ -21,9 +21,15 @@ const Provider = z.object({
   permission_modes: z.array(z.string()).optional(),
   configuration: z
     .object({
-      model: z.string().optional(),
+      model: z
+        .string()
+        .nullish()
+        .transform((v) => v ?? undefined),
       models: z.array(z.string()).optional(),
-      profile: z.string().optional(),
+      profile: z
+        .string()
+        .nullish()
+        .transform((v) => v ?? undefined),
       /** Long-lived sessions: what a session can be set to on this node. */
       live_sessions: z.boolean().optional(),
       accounts: z.array(z.string()).optional(),
