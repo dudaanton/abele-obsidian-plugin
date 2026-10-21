@@ -4,6 +4,7 @@ import {
   saveLocalNodeActionModes,
   nodeActionModes,
 } from './nodeActionPermissions'
+import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from './ordinaryToolPolicy'
 import { NODE_COMMAND_TOOLS } from './tools/NodeManagerTools'
 import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
@@ -54,12 +55,7 @@ import { projectBranchCuts } from './chatBranchCuts'
 import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
 import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
-import {
-  NODE_AGENT_TOOL_NAMES,
-  NODE_EDIT_TOOLS,
-  NODE_FILE_OPERATIONS,
-  NODE_MUTATION_TOOLS,
-} from './tools/node/agent'
+import { NODE_AGENT_TOOL_NAMES, NODE_MUTATION_TOOLS } from './tools/node/agent'
 import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { nodeRepositoryToolsHost } from './tools/node'
 import { hasNodeScope, nodeScopeEntries } from './nodeScope'
@@ -99,7 +95,6 @@ import {
   LEGACY_NODE_TOOLS,
   agentSectionOverrides,
   alwaysOpenSections,
-  isSectionToolName,
   nodeSectionLive,
   sectionsOfLegacyGroups,
 } from './toolSections'
@@ -145,7 +140,6 @@ import {
   TOUCHING_TOOLS,
   type TouchedNote,
   WRITE_TOOLS,
-  DECK_WRITE_TOOLS,
   migrateOldPermissions,
   type CommentAnchor,
   type ChatDraft,
@@ -273,46 +267,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private static readonly SUMMARY_TRIGGERS = [1, 4, 12]
   private static readonly FALLBACK_TITLE_LENGTH = 50
 
-  /**
-   * Reads that never stop the chat. `query_docs` and `list_templates` are here because they
-   * are core — handed to every agent — while approval is decided by the tool modes further
-   * down, where a tool nobody configured reads as `off`. Left out, the reference an agent is
-   * told to consult before touching anything asked permission on every call.
-   */
-  private static readonly READ_TOOLS = [
-    'read',
-    READ_RESULT,
-    'ls',
-    'find',
-    'workspace',
-    'skill',
-    'query_docs',
-    'list_templates',
-  ]
   private static readonly EDIT_TOOLS = WRITE_TOOLS
-  private static readonly SCOPED_TOOLS = [
-    'read',
-    'edit',
-    'replace',
-    'write',
-    'rm',
-    'mv',
-    'cp',
-    'read_image',
-    'look_at_drawing',
-    'deck_read',
-    'deck_edit',
-    'deck_check',
-    'present',
-    'canvas_read',
-    'canvas_edit',
-    'canvas_layout',
-    'canvas_steps',
-    'canvas_export',
-    'look_at_canvas',
-    'ls',
-    'find',
-  ]
+  private static readonly SCOPED_TOOLS = ORDINARY_SCOPED_TOOLS
 
   public readonly id: string
 
@@ -1681,65 +1637,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
     if (toolName === 'send_message_to_chat' && this.letterAuthority(args).length) return true
-    if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove') return true
-    if (NODE_ACTION_TOOLS.includes(toolName))
-      return (
-        !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(toolName) &&
-        this.getToolMode(toolName) !== 'auto'
-      )
-    if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
-    const mode = this.permissionMode.value
-    if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'
-    if (NODE_FILE_OPERATIONS.includes(toolName)) return mode !== 'allow-all'
-    if (NODE_AGENT_TOOL_NAMES.includes(toolName)) return false
-
-    // This tool only records a proposal. Accepting it is a separate owner action, never a
-    // permission mode, tool call or automatic approval.
-    if (toolName === REPLY_REVISION_TOOL || isSectionToolName(toolName)) return false
-
-    // Listing is filtered by the tool itself, including ancestors of scoped files. It never
-    // grants access to the directory or needs approval to extend the scope.
-    if (toolName === 'ls') return false
-
-    // Out-of-scope file access always requires approval, whatever the mode says about writes.
-    if (this.outOfScopePath(toolName, args)) return true
-
-    if (
-      toolName === 'skill' &&
-      skillNeedsApproval(args?.name, this.agent.value, this.scopeResolver, this.skillCeiling)
-    )
-      return true
-
-    // Core read tools: never need approval
-    if (ChatSession.READ_TOOLS.includes(toolName)) return false
-    // The book tools a discussion in a book comes with only read, and only that book.
-    if (this.bookAnchored() && BOOK_READ_TOOLS.has(toolName)) return false
-    if (toolName === 'read_image' || toolName === 'look_at_drawing' || toolName === 'questions')
-      return false
-
-    // The one write with a mode of its own. It touches a single passage the person pointed
-    // at, so letting it run unattended is a reasonable thing to want without opening up
-    // `edit` on the whole vault. Anything short of `auto` falls through to the write rule.
-    if (toolName === EDIT_SELECTION_TOOL) {
-      if ((this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') === 'auto') return false
-    }
-
-    // Feature writes need both their own mode and the ordinary write permission.
-    if (DECK_WRITE_TOOLS.includes(toolName) && this.getToolMode(toolName) !== 'auto') return true
-
-    // Core edit tools: governed by permissionMode
-    if (ChatSession.EDIT_TOOLS.includes(toolName)) {
-      if (mode === 'allow-edit' || mode === 'allow-all') return false
-      return true
-    }
-    if (['rm', 'mv', 'cp'].includes(toolName)) {
-      if (mode === 'allow-all') return false
-      return true
-    }
-
-    // Feature tools: governed by toolModes
-    return (
-      (permissionKey ? this.toolModes.value[permissionKey] : this.getToolMode(toolName)) !== 'auto'
+    return ordinaryNeedsApproval(
+      {
+        permissionMode: this.permissionMode.value,
+        toolModes: this.toolModes.value,
+        getToolMode: (name) => this.getToolMode(name),
+        outOfScopePath: (name, params) => this.outOfScopePath(name, params),
+        bookAnchored: this.bookAnchored(),
+        skillNeedsApproval: (name) =>
+          skillNeedsApproval(name, this.agent.value, this.scopeResolver, this.skillCeiling),
+      },
+      toolName,
+      args,
+      permissionKey
     )
   }
 
