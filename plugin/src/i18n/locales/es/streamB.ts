@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.approvalCancelled': 'Cancelado',
+  'streamB.worktreeDeletionPending':
+    'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',
+  'streamB.providerUnavailable': 'El proveedor del modelo no está disponible temporalmente.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',
   'streamB.accessRunsWithoutAsking': 'Ejecuta todo sin preguntar',
   'streamB.actionDenied': 'Denegado: {action} · {reason}',

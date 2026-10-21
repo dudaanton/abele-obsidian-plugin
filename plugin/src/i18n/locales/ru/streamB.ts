@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.approvalCancelled': 'Отменено',
+  'streamB.worktreeDeletionPending':
+    'Рабочая копия удаляется. Обновите папку, чтобы проверить результат.',
+  'streamB.providerUnavailable': 'Сервис модели временно недоступен.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',
   'streamB.accessRunsWithoutAsking': 'Выполняет всё без запроса',
   'streamB.actionDenied': 'Отклонено: {action} · {reason}',

@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.approvalCancelled': 'Atcelts',
+  'streamB.worktreeDeletionPending':
+    'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
+  'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',
   'streamB.accessRunsWithoutAsking': 'Izpilda visu bez jautāšanas',
   'streamB.actionDenied': 'Noraidīts: {action} · {reason}',

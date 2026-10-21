@@ -1,4 +1,13 @@
 {
+  "streamB.approvalCancelled": {
+    "englishHash": "5818a573ef661fa044e31430985d64c6cef7bf3d496ec9806461a3d28c79ebd1"
+  },
+  "streamB.worktreeDeletionPending": {
+    "englishHash": "b524b05cd503c4c26a7955a570c44c9f551bcd54b133bc1abcae55ee1657769a"
+  },
+  "streamB.providerUnavailable": {
+    "englishHash": "1412cbfeb7907f5f4069fa64f97995ebc345830449d7e7e40815b7bd40e6c139"
+  },
   "streamB.chat.460b3a": {
     "englishHash": "0adf70d5dd00616bc4a78d9209f566ec31667ade9fe377893925b0835ee8fbb0"
   },

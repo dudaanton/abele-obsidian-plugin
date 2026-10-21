@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.approvalCancelled': 'Abgebrochen',
+  'streamB.worktreeDeletionPending':
+    'Der Worktree wird gelöscht. Aktualisieren Sie den Ordner, um das Ergebnis zu prüfen.',
+  'streamB.providerUnavailable': 'Der Modellanbieter ist vorübergehend nicht verfügbar.',
   'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',
   'streamB.accessRunsWithoutAsking': 'Führt alles ohne Nachfrage aus',
   'streamB.actionDenied': 'Abgelehnt: {action} · {reason}',
