@@ -8,14 +8,22 @@ import type { NodeConnection } from '@/node/NodeService'
 import { debuggerStatus } from '../fixtures/debugger'
 import { useVault } from '../helpers/testEnv'
 
-it('refreshes the held snapshot through debugger Retry when another pane can reconnect the node', async () => {
+it('recovers observation after reconnect only once a fresh debugger snapshot arrives, and retains Retry', async () => {
   useVault([])
   DebuggerService.instance.destroy()
   const state = ref('connected')
   const waits = new Map<string, (value: unknown) => void>()
+  let statusReads = 0
+  let finishReconnect!: (value: unknown) => void
   const rpc = vi.fn(async (method: string, raw: unknown) => {
     const params = raw as Record<string, string>
-    if (method === 'debugger.v1.status') return debuggerStatus()
+    if (method === 'debugger.v1.status') {
+      if (++statusReads === 2)
+        return new Promise((resolve) => {
+          finishReconnect = resolve
+        })
+      return debuggerStatus()
+    }
     if (method === 'debugger.v1.wait')
       return new Promise((resolve) => waits.set(params.wait_id, resolve))
     if (method === 'debugger.v1.cancelWait') {
@@ -62,10 +70,24 @@ it('refreshes the held snapshot through debugger Retry when another pane can rec
     await flushPromises()
     expect(view.find('.abele-debug-panel_lost').exists()).toBe(true)
     expect(sdk.current('sample-debug').observation).toBe('last-known')
+    expect(statusReads).toBe(2)
+    finishReconnect(debuggerStatus())
+    await flushPromises()
+    expect(view.find('.abele-debug-panel_paused').exists()).toBe(true)
+    expect(sdk.current('sample-debug').observation).toBe('current')
+    // Explicit Retry also obtains a fresh observation without replaying program controls.
+    state.value = 'offline'
+    sdk.disconnected()
+    await nextTick()
     await view.get('[aria-label="Try to reconnect"]').trigger('click')
     await flushPromises()
     expect(view.find('.abele-debug-panel_paused').exists()).toBe(true)
     expect(sdk.current('sample-debug').observation).toBe('current')
+    expect(
+      rpc.mock.calls.every(([method]) =>
+        ['debugger.v1.status', 'debugger.v1.wait', 'debugger.v1.cancelWait'].includes(method)
+      )
+    ).toBe(true)
   } finally {
     view.unmount()
     sidebarRetry.remove()
