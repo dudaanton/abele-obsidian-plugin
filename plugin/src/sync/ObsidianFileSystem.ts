@@ -1896,7 +1896,6 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot list ${folder}`, cause)
     }
     for (const path of listed.files) {
-      if (isDeviceLocalPluginState(path, this.configDir)) continue
       if (isAdapterTemp(path)) {
         // A temp of new bytes a killed write left behind goes; a backup is somebody's only
         // copy, and the write journal puts it back.
@@ -1904,6 +1903,7 @@ export class ObsidianFileSystem implements FileSystem {
           await this.sweep(path)
         continue
       }
+      if (isDeviceLocalPluginState(path, this.configDir)) continue
       const info = await this.fileAt(path)
       if (info !== null) yield info
     }
