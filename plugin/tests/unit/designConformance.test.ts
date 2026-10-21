@@ -73,6 +73,20 @@ describe('glyph button boxes', () => {
             if (prop.type === NodeTypes.ATTRIBUTE && prop.name === 'class')
               el.className = prop.value?.content ?? ''
           }
+          // The kit's own root binds this class rather than writing it literally.
+          // Inspect its interactive variant as well as the controls composed by callers.
+          const bindsNativeClass =
+            el.matches('.abele-obsidian-icon, .abele-obsidian-button') &&
+            node.props.some(
+              (prop) =>
+                prop.type === NodeTypes.DIRECTIVE &&
+                prop.name === 'bind' &&
+                prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
+                prop.arg.content === 'class' &&
+                prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION &&
+                /['"]clickable-icon['"]\s*:/.test(prop.exp.content)
+            )
+          if (bindsNativeClass) el.classList.add('clickable-icon')
           const clicked = node.props.some(
             (prop) =>
               prop.type === NodeTypes.DIRECTIVE &&
@@ -97,7 +111,11 @@ describe('glyph button boxes', () => {
             (buttonNames.has(node.tag) && plain)
           )
             el.classList.add('clickable-icon')
-          if (iconNames.has(node.tag)) el.dataset.glyph = 'true'
+          if (
+            iconNames.has(node.tag) ||
+            (bindsNativeClass && el.matches('.abele-obsidian-icon, .abele-obsidian-button'))
+          )
+            el.dataset.glyph = 'true'
           if (
             buttonNames.has(node.tag) &&
             node.props.some((prop) =>
@@ -161,7 +179,7 @@ describe('glyph button boxes', () => {
       compiler.dispose()
     }
     expect(failures).toEqual([])
-  })
+  }, 30_000)
 })
 
 /**
