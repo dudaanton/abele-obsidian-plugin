@@ -303,7 +303,7 @@ body.is-phone .abele-chat-input__scope:has(.abele-chat-input__scope-mode) {
     margin-inline-start: calc(-1 * var(--size-2-3));
   }
   > .abele-obsidian-icon__text {
-    margin-inline-start: 0;
+    margin-inline-start: var(--size-2-2);
   }
   > .abele-chat-input__scope-mode {
     margin-inline-end: calc(-1 * var(--size-2-3));
@@ -312,4 +312,8 @@ body.is-phone .abele-chat-input__scope:has(.abele-chat-input__scope-mode) {
 
 body.is-phone .abele-chat-input__toolbar:has(.abele-chat-input__scope-mode) {
   column-gap: 0;
+
+  .abele-chat-input__toolbar-left {
+    column-gap: 0;
+  }
 }

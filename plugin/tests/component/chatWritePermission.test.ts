@@ -13,7 +13,20 @@ it('shows automatic writes in Access and leaves restoring prompting to setup', a
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   const permissionMode = ref('allow-edit')
-  const session = fakeChatSession({ kind: 'chat', overrides: { permissionMode } })
+  const session = fakeChatSession({
+    kind: 'chat',
+    overrides: {
+      permissionMode,
+      scopeResolver: {
+        summary: ref('2 folders'),
+        entries: ref([
+          { type: 'folder', path: 'Sample' },
+          { type: 'folder', path: 'Other' },
+        ]),
+        addFile: () => {},
+      },
+    },
+  })
   const service = ChatService.getInstance()
   service.tabOrder.value = ['tab-a']
   service.activeTabId.value = 'tab-a'
@@ -24,7 +37,7 @@ it('shows automatic writes in Access and leaves restoring prompting to setup', a
     await nextTick()
     expect(wrapper.find('.abele-chat-write-permission').exists()).toBe(false)
     const access = wrapper.get('.abele-chat-input__scope')
-    expect(access.attributes('aria-label')).toContain('Writes without asking')
+    expect(access.attributes('aria-label')).toBe('Access: Sample, Other · Writes without asking')
     await access.trigger('click')
     expect(wrapper.getComponent({ name: 'AiChatSetup' }).props('open')).toBe('scope')
     expect(permissionMode.value).toBe('allow-edit')

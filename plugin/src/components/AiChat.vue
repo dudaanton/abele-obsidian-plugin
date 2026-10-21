@@ -1258,9 +1258,7 @@ const access = computed(() => {
   const summary = scope?.summary.value ?? ''
   if (!scope) return { label: '', icon: 'vault', code: '' }
   const full = summary === 'Full vault'
-  const files = full
-    ? summary
-    : (scope.entries?.value ?? []).map((entry) => `${entry.type}: ${entry.path}`).join(' · ')
+  const files = full ? summary : (scope.entries?.value ?? []).map((entry) => entry.path).join(', ')
   const nodes = nodeSaid.value.slice(0, nodeAccess.value.length)
   const said = [files, ...nodes].filter(Boolean).join(' · ') || t('streamB.noFiles.c219d9')
   const places = (full ? 0 : (scope?.entries?.value.length ?? 0)) + nodes.length

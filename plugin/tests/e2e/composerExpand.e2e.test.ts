@@ -84,6 +84,11 @@ const probeLib = `(() => {
     async accessModes(phone) {
       const scope = state.session.scopeResolver
       const original = { entries: scope.entries.value, full: scope.fullVaultAccess.value, mode: state.session.permissionMode.value }
+      const gapProbe = document.createElement('span')
+      gapProbe.style.cssText = 'position:absolute;display:block;width:var(--size-2-2);height:0;pointer-events:none'
+      document.body.append(gapProbe)
+      const expectedGap = gapProbe.getBoundingClientRect().width
+      gapProbe.remove()
       const results = []
       try {
         for (const [label, mode, full, glyph, words] of [
@@ -115,8 +120,13 @@ const probeLib = `(() => {
           }
           const left = button.closest('.abele-chat-input__toolbar-left').getBoundingClientRect()
           const right = chatEl().querySelector('.abele-chat-input__toolbar-right').getBoundingClientRect()
+          const countEl = button.querySelector('.abele-obsidian-icon__text')
+          const countGap = countEl ? parseFloat(getComputedStyle(countEl).marginInlineStart) : null
+          const modeGap = code ? parseFloat(getComputedStyle(code).marginInlineStart) : null
+          const expectedPlaces = full ? 'Full vault' : 'Sample, Other'
+          if (!button.getAttribute('aria-label').includes(expectedPlaces)) throw new Error('Unexpected access places: ' + button.getAttribute('aria-label'))
           const geometry = [button, code, button.querySelector('.abele-obsidian-icon__text')].filter(Boolean).map((el) => { const c = getComputedStyle(el); return { width: el.getBoundingClientRect().width, padding: c.padding, margin: c.margin, size: c.getPropertyValue('--icon-size'), xs: c.getPropertyValue('--icon-xs') } })
-          results.push({ oneRow: Math.abs((left.top + left.bottom - right.top - right.bottom) / 2) < 1, geometry, label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? 'svg-icon lucide-' + (glyph === 'pencil' ? 'edit-3' : glyph) : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
+          results.push({ countGap, modeGap, expectedGap, oneRow: Math.abs((left.top + left.bottom - right.top - right.bottom) / 2) < 1, geometry, label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? 'svg-icon lucide-' + (glyph === 'pencil' ? 'edit-3' : glyph) : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
         }
       } finally {
         scope.entries.value = original.entries
@@ -916,10 +926,15 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
             banner: boolean
             oneRow: boolean
             geometry: unknown
+            countGap: number | null
+            modeGap: number | null
+            expectedGap: number
           }>
         >('accessModes(true)')
         for (const mode of modes) {
           expect(mode.oneRow, JSON.stringify(mode)).toBe(true)
+          if (mode.countGap !== null) expect(mode.countGap).toBe(mode.expectedGap)
+          if (mode.modeGap !== null) expect(mode.modeGap).toBe(mode.expectedGap)
           expect(mode.inside).toBe(true)
           expect(mode.nestedButtons).toBe(0)
           expect(mode.banner).toBe(false)
