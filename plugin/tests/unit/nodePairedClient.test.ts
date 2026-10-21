@@ -292,7 +292,9 @@ it.each(['0.4.18', '0.4.19'])(
         'Sample device',
         { host: 'sample.example.ts.net', port: 8443 }
       )
-      expect(model.state.value).toMatchObject({ phase: 'connected' })
+      expect(model.state.value, JSON.stringify(model.state.value)).toMatchObject({
+        phase: 'connected',
+      })
       expect(admitted).toBe(true)
       expect(service.nodes.value).toHaveLength(1)
     } finally {

@@ -15,13 +15,14 @@ import { NodeDelegationController } from './NodeDelegationController'
 import { NodeManagerController } from './NodeManagerController'
 import type { DelegationCard } from './delegation'
 import { NodeObsidianTools } from './NodeObsidianTools'
+import { nodeAdvertisesMethod } from './advertisedMethods'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
-  readonly obsidian?: NodeObsidianTools
+  obsidian?: NodeObsidianTools
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
   readonly manager: NodeManagerController
@@ -41,16 +42,10 @@ export class NodeConnection {
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore,
-    tools?: { nodeId: string; label: string }
+    private readonly tools?: { nodeId: string; label: string }
   ) {
     this.manager = new NodeManagerController(client, store)
     this.delegation = new NodeDelegationController(client, store)
-    if (tools) {
-      this.obsidian = new NodeObsidianTools(client, store, tools.nodeId, tools.label)
-      this.delegation.obsidianSnapshot = (parent, provider) =>
-        this.obsidian!.delegationSnapshot(parent, provider)
-      this.delegation.configureChildTools = (session) => this.obsidian!.adoptSession(session)
-    }
     // The SDK supplies wire deadlines. This host deadline also bounds timer grace
     // while backgrounded, and publishes failure before callers render their error.
     const request = client.request?.bind(client)
@@ -138,10 +133,29 @@ export class NodeConnection {
     }))
   }
 
+  private admitObsidianTools(): void {
+    if (
+      !this.obsidian &&
+      this.tools &&
+      nodeAdvertisesMethod(this.client, 'obsidian.tools.v1.advertise')
+    ) {
+      this.obsidian = new NodeObsidianTools(
+        this.client,
+        this.store,
+        this.tools.nodeId,
+        this.tools.label
+      )
+      this.delegation.obsidianSnapshot = (parent, provider) =>
+        this.obsidian!.delegationSnapshot(parent, provider)
+      this.delegation.configureChildTools = (session) => this.obsidian!.adoptSession(session)
+    }
+  }
+
   connect(reason = 'explicit'): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
     if (this.connecting) return this.connecting
     if (this.client.connected) {
+      this.admitObsidianTools()
       this.state.value = 'connected'
       return this.obsidian
         ? this.client
@@ -167,6 +181,7 @@ export class NodeConnection {
         // Re-negotiate capabilities on every admitted transport, before exposing it.
         if (this.client.describe) {
           const description = await this.client.describe()
+          this.admitObsidianTools()
           await this.obsidian?.connectionChanged(description)
         }
         if (this.disposed || generation !== this.generation) {

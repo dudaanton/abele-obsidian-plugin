@@ -24,7 +24,7 @@ it('retains the trusted inline snapshot across creation retries and rejects mode
   const client = {
     describe: async () => ({
       capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
-      providers: [{ provider: 'fake', available: true }],
+      providers: [{ provider: 'claude', available: true }],
     }),
     createDelegation: create,
     subscribeDelegation: async () => {},
@@ -46,7 +46,7 @@ it('retains the trusted inline snapshot across creation retries and rejects mode
   controller.obsidianSnapshot = vi.fn(async () => snapshot)
   const task = {
     task_key: 'sample-task',
-    provider: 'fake' as const,
+    provider: 'claude' as const,
     title: 'Sample task',
     text: 'Create a sample note',
   }
