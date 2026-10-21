@@ -2247,7 +2247,7 @@ const onContinue = async () => {
 
 // A new chat is the ordinary one at once; working on a node is picked in it, from its agents.
 const onNewTab = () => chatService.newTab()
-const onNewChatMenu = () => void handleNewChat()
+const onNewChatMenu = () => onNewTab()
 
 // What the chat is set up with and the rarer ways out of it, in the header's ⋯ menu.
 const phone = Platform.isPhone
@@ -2380,11 +2380,6 @@ const onHeaderOverflowAction = (id: string) => {
       openAgents()
       break
   }
-}
-
-const handleNewChat = async () => {
-  const id = session.value?.id
-  if (id) await chatService.startNewChat(id)
 }
 
 /**

@@ -205,12 +205,12 @@ describe('the cursor in the composer', () => {
 
   it('is asked for by the header new-chat action', async () => {
     const start = vi.spyOn(service, 'startNewChat').mockResolvedValue()
-    const create = vi.spyOn(service, 'createTab')
+    const create = vi.spyOn(service, 'newTab').mockReturnValue('new-tab')
     const wrapper = open()
 
     await wrapper.get('[aria-label="Start a new chat"]').trigger('click')
 
-    expect(start).toHaveBeenCalledExactlyOnceWith('session-1')
-    expect(create).not.toHaveBeenCalled()
+    expect(start).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledExactlyOnceWith()
   })
 })
