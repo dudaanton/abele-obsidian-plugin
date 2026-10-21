@@ -130,7 +130,10 @@ describe('connection item sets', () => {
       itemClient: () => ({ deleteItem: remove }),
     } as unknown as ReturnType<TokenUi['client']>)
     await ui.itemSets.shares(id)
+    const mountedPreview = computed(() => ui.itemSets.deleteFacts('share-a', 'item-a'))
+    expect(mountedPreview.value).toBe(null)
     await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')?.files).toBe(1))
+    expect(mountedPreview.value?.files).toBe(1)
     const facts = ui.itemSets.deleteFacts('share-a', 'item-a')
     await ui.itemSets.deleteFromServer('share-a', 'item-a')
     expect(remove).toHaveBeenCalledOnce()

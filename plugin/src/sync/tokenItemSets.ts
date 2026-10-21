@@ -37,7 +37,7 @@ export class TokenItemSets implements ShareSetSource {
   private readonly pending = new Map<string, Promise<boolean>>()
   private readonly choiceCache = shallowReactive(new Map<string, ShareItem[]>())
   private readonly issued = new Map<string, { connectionId: string; share: IssuedShare }>()
-  private readonly facts = new Map<string, ShareDeleteFacts>()
+  private readonly facts = shallowReactive(new Map<string, ShareDeleteFacts>())
   private readonly factsPending = new Set<string>()
   private installed = false
   private epoch = 0
