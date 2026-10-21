@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { reviewWindowOverflow } from './helpers/reviewWindowOverflow'
 
 targets('desktop')
 const shots = shotDir('abele-chat-windows-design')
@@ -33,15 +34,8 @@ const probe = (screen: string) => `(async () => {
   const capture = async (name, selector) => {
     await until(() => document.querySelector(selector)?.getBoundingClientRect().width)
     await wait(250)
-    const el = document.querySelector(selector), bounds = el.closest('.modal')?.getBoundingClientRect() || el.getBoundingClientRect()
-    const walk = node => {
-      const style=getComputedStyle(node), box=node.getBoundingClientRect()
-      if (!box.width || style.display === 'none' || style.visibility === 'hidden') return
-      if (box.left < Math.max(0,bounds.left)-1 || box.right > Math.min(innerWidth,bounds.right)+1) report.overflow.push(name+':'+node.tagName+':'+node.className+':'+Math.round(box.left)+'..'+Math.round(box.right)+':'+node.textContent.slice(0,80))
-      if (style.overflowX === 'auto' || style.overflowX === 'scroll') return
-      for (const child of node.children) walk(child)
-    }
-    walk(el)
+    const el = document.querySelector(selector)
+    report.overflow.push(...(${reviewWindowOverflow.toString()})(el).map(detail => name + ':' + detail))
     const path=${JSON.stringify(shots)}+'/'+${JSON.stringify(screen)}+'-'+name+'.png'
     const image=await require('@electron/remote').getCurrentWindow().webContents.capturePage()
     require('fs').writeFileSync(path,image.toPNG()); report.states.push(name); report.shots.push(path)
