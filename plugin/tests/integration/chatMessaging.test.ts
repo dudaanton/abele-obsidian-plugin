@@ -97,6 +97,19 @@ it('refuses a combined node turn rather than returning another request answer', 
   expect(Object.values(state.nodeLetters!)[0].status).toBe('interrupted')
 })
 
+it('does not substitute intermediate text for an empty final node answer', async () => {
+  const { presenter, state, finish, projection } = nodeLetterTarget()
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  const refused = expect(result).rejects.toThrow('without an answer')
+  await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+  finish()
+  projection.value.messages.push({ role: 'assistant', nodeTurnId: 'sample-turn', content: '' })
+  await refused
+})
+
 it('queues behind node work and stops without admission when disconnected', async () => {
   const { presenter, client, projection, state } = nodeLetterTarget()
   projection.value.activeRuns.push('busy-run')

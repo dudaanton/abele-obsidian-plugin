@@ -784,12 +784,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
             throw new Error(t('chat.letterNode.separate'))
           await this.refresh()
           const answer = this.messages.value.findLast(
-            (message) =>
-              message.role === 'assistant' &&
-              message.nodeTurnId === data.turn_id &&
-              message.content.trim()
+            (message) => message.role === 'assistant' && message.nodeTurnId === data.turn_id
           )?.content
-          if (!answer) throw new Error(t('chat.letterNode.empty'))
+          if (!answer?.trim()) throw new Error(t('chat.letterNode.empty'))
           await client.store.transaction((raw) => {
             Object.assign((raw as NodeClientState).nodeLetters[operation_id], {
               turnId: data.turn_id,
