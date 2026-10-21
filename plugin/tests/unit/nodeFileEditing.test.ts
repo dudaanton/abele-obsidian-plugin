@@ -56,11 +56,12 @@ it('notices external changes during an unsent edit without replacing its text', 
   s.setCurrent('external edit')
   await model.openFile('sample.txt')
   expect(model.draftText.value).toBe('local edit')
-  expect(model.draft.value?.status).toBe('conflict')
+  expect(model.document.value?.contentId).toBe(await hash('external edit'))
+  expect(model.document.value?.contentId).not.toBe(model.draft.value?.baseContentId)
   s.store.close()
 })
 
-it('replaces a confirmed old saved version when the file changes externally', async () => {
+it('reads the current file while retaining the confirmed save as history', async () => {
   const s = await setup()
   const doc = await s.source.read('sample.txt')
   await s.source.edit('sample.txt', doc, 'before')
@@ -73,8 +74,8 @@ it('replaces a confirmed old saved version when the file changes externally', as
   s.setCurrent('external version')
   await model.openFile('sample.txt')
   expect(model.document.value?.text).toBe('external version')
-  expect(model.draftText.value).toBe('external version')
-  expect(model.draft.value).toBeUndefined()
+  expect(model.draft.value?.status).toBe('saved')
+  expect(model.document.value?.contentId).not.toBe(model.draft.value?.baseContentId)
   s.store.close()
 })
 it('persists unsent edits and their original version across source/store recreation', async () => {

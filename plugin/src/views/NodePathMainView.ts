@@ -389,7 +389,7 @@ export class NodePathMainView extends ItemView {
       ))
       this.stops.push(
         watch(
-          () => model.fileRefresh.value[pathTargetKey(state.target)],
+          () => model.fileRefresh?.value[pathTargetKey(state.target)],
           () => this.act(() => editing.refresh())
         )
       )

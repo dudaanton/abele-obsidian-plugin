@@ -597,19 +597,6 @@ export class NodeFilesModel {
     draft = await this.documents.draft(path)
     if (generation !== this.fileGeneration || signal?.aborted) return
     const keepTyped = this.filePath.value === path && editsAtStart !== this.editGeneration
-    if (
-      !keepTyped &&
-      draft &&
-      !draft.pending &&
-      doc.contentId &&
-      draft.baseContentId !== doc.contentId
-    ) {
-      if (draft.status === 'saved') {
-        await this.documents.discard(path, draft.revision)
-        if (generation !== this.fileGeneration || signal?.aborted) return
-        draft = undefined
-      } else draft = { ...draft, status: 'conflict' }
-    }
     this.filePath.value = path
     this.document.value = doc
     if (!keepTyped) {

@@ -95,6 +95,14 @@
       }}</span
     >
     <span
+      v-else-if="
+        model.draft.value?.status === 'saved' &&
+        model.document.value?.contentId !== model.draft.value.baseContentId
+      "
+      role="status"
+      >{{ t('streamB.changedOnDisk.c12f35') }}</span
+    >
+    <span
       v-else-if="model.draft.value?.status === 'saved' && !model.draftDirty.value"
       role="status"
       >{{ t('streamB.savedTheNodeConfirmedThisVersionExternal.f4f869') }}</span
