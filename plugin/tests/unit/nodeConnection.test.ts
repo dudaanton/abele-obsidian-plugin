@@ -5,8 +5,34 @@ import { FrameCodec, LIMITS } from '@abele/channel-protocol'
 import { RecordQueue } from '@abele/channel-client'
 import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import { folderDebugReason } from '@/debugger/folderActions'
+import { AgentsService } from '@/agents/AgentsService'
+import { ChatService } from '@/ai/ChatService'
 
 vi.mock('@/debugger/register', () => ({}))
+it('publishes token-node attention using the identity learned at admission', async () => {
+  const memory = new MemoryClientStore()
+  await memory.transaction((s) => {
+    s.node_id = 'sample-node'
+  })
+  const setDelegations = vi.fn()
+  const agents = vi.spyOn(AgentsService, 'getInstance').mockReturnValue({ setDelegations } as never)
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [] } as never)
+  const client = { connected: true, target: {}, disconnect: async () => {} }
+  const connection = new NodeConnection(
+    client as never,
+    { transaction: memory.transaction.bind(memory), close() {} } as never
+  )
+  try {
+    await connection.refreshDelegations()
+    expect(setDelegations).toHaveBeenCalledWith('sample-node', {})
+  } finally {
+    connection.destroy()
+    agents.mockRestore()
+    chats.mockRestore()
+  }
+})
 
 it('settles a folder menu on a silent transport and describes the replacement peer', async () => {
   vi.useFakeTimers()

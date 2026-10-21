@@ -106,8 +106,8 @@ export class NodeConnection {
         if (!this.disposed) {
           this.managerCards.value = managerCards
           this.delegationCards.value = cards
-          if (this.client.target?.expected_node_id)
-            AgentsService.getInstance().setDelegations(this.client.target.expected_node_id, cards)
+          const nodeId = await this.store.transaction((s) => s.node_id)
+          if (nodeId) AgentsService.getInstance().setDelegations(nodeId, cards)
           const { ChatService } = await import('@/ai/ChatService')
           await this.delegation.wakeDelivered(cards, (parent, id, notice) => {
             const session = ChatService.getInstance()
