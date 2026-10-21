@@ -194,6 +194,8 @@ it.each([false, true])(
     const s = session('confirm-all')
     const files = [{ path: 'Notes/sample.md' }, { path: 'Private/hidden.md' }]
     if (deniedFirst) files.reverse()
+    // The chat service's own startup read of the folder catalog is not the tool's doing.
+    await ChatService.getInstance().folders.reload()
     const metadata = vi.spyOn(app.vault, 'getAbstractFileByPath')
     const bytes = vi.spyOn(app.vault, 'readBinary')
     const create = vi.spyOn(app.vault, 'createBinary')
