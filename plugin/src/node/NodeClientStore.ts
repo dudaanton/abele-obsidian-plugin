@@ -220,6 +220,7 @@ export class NodeClientStore implements ClientStore {
       let result: T
       let failure: unknown
       let pending = true
+      let finish: (() => void) | undefined
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       tx.oncomplete = () => {
         journal?.committed()
@@ -257,6 +258,17 @@ export class NodeClientStore implements ClientStore {
       }
       const keepAlive = () => {
         if (!pending) return
+        if (finish) {
+          try {
+            finish()
+            pending = false
+          } catch (error) {
+            failure = error
+            pending = false
+            tx.abort()
+          }
+          return
+        }
         const request = store.count('state')
         request.onsuccess = keepAlive
       }
@@ -301,11 +313,14 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
-            journal.save()
             intent = intentOf(state) !== before
             executionIntent = JSON.stringify(state.obsidianExecutions) !== executionsBefore
-            store.put({ ...state, events: {} }, 'state')
-            pending = false
+            // An awaited callback may finish in a timer/network task, where IndexedDB is
+            // inactive even with pending requests. Commit in the next count success handler.
+            finish = () => {
+              journal!.save()
+              store.put({ ...state, events: {} }, 'state')
+            }
           } catch (error) {
             failure = error
             pending = false

@@ -34,10 +34,10 @@ it('measures idle polling before and after migrating a large synthetic client st
     try {
       // The former production algorithm: the transaction stays alive by repeatedly cloning state.
       const before=await measure(()=>new Promise((resolve,reject)=>{
-        const tx=db.transaction('client','readwrite'),object=tx.objectStore('client');let pending=true;
+        const tx=db.transaction('client','readwrite'),object=tx.objectStore('client');let pending=true,ready=false,state;
         tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
-        const alive=()=>{if(pending){const r=object.get('state');r.onsuccess=alive}};
-        const r=object.get('state');r.onsuccess=()=>{alive();setTimeout(()=>{object.put(r.result,'state');pending=false},40)};
+        const alive=()=>{if(!pending)return;if(ready){object.put(state,'state');pending=false;return}const r=object.get('state');r.onsuccess=alive};
+        const r=object.get('state');r.onsuccess=()=>{state=r.result;alive();setTimeout(()=>{ready=true},40)};
       }));
       db.close();db=null;
       store=new window.__abeleTest.NodeClientStore(namespace);

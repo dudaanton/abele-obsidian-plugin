@@ -1,9 +1,77 @@
 /** The chat looks at the node store after every event without rewriting it. */
 import { expect, it, vi } from 'vitest'
-import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore, IDBRequest } from 'fake-indexeddb'
 import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
+
+it('leaves the legacy database intact when migration validation fails', async () => {
+  const factory = new IDBFactory()
+  const legacy = {
+    cursors: {},
+    events: {},
+    outbox: [],
+    results: {},
+    unsupported: 'sample recovery evidence',
+  }
+  await new Promise<void>((resolve, reject) => {
+    const open = factory.open('abele-node-sample-invalid-migration', 1)
+    open.onupgradeneeded = () => open.result.createObjectStore('client').put(legacy, 'state')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      open.result.close()
+      resolve()
+    }
+  })
+  const store = new NodeClientStore('sample-invalid-migration', factory)
+  await expect(store.read(() => null)).rejects.toBeDefined()
+  const retained = await new Promise<unknown>((resolve, reject) => {
+    const open = factory.open('abele-node-sample-invalid-migration', 1)
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const tx = open.result.transaction('client')
+      const get = tx.objectStore('client').get('state')
+      get.onsuccess = () => resolve(get.result)
+      tx.oncomplete = () => open.result.close()
+    }
+  })
+  expect(retained).toEqual(legacy)
+})
+
+it('writes after an awaited callback inside an active IndexedDB request handler', async () => {
+  const store = new NodeClientStore('sample-active-request', new IDBFactory())
+  let active = false
+  const writes: boolean[] = []
+  const dispatch = IDBRequest.prototype.dispatchEvent
+  const put = IDBObjectStore.prototype.put
+  const dispatchSpy = vi
+    .spyOn(IDBRequest.prototype, 'dispatchEvent')
+    .mockImplementation(function (event) {
+      active = true
+      try {
+        return dispatch.call(this, event)
+      } finally {
+        active = false
+      }
+    })
+  const putSpy = vi
+    .spyOn(IDBObjectStore.prototype, 'put')
+    .mockImplementation(function (value, key) {
+      if (key === 'state') writes.push(active)
+      return put.call(this, value, key)
+    })
+  try {
+    await store.transaction(async (state) => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      state.cursors.sample = 1
+    })
+    expect(writes).toEqual([true])
+  } finally {
+    dispatchSpy.mockRestore()
+    putSpy.mockRestore()
+    store.close()
+  }
+})
 
 it('migrates legacy sessions atomically to bounded journals while retaining recovery state', async () => {
   const factory = new IDBFactory()
