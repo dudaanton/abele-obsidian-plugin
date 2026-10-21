@@ -50,13 +50,13 @@ it.each([false, true])(
       await until(()=>fileLeaf.view.file?.document.value);
       fileLeaf.view.fileTab.start();
       await until(()=>fileLeaf.view.editing?.active.value);
-      const blob=client.repository.blob;
+      const blob=client.repository.blob,content=client.repository.content;
       client.repository.blob=async()=>{throw Object.assign(new Error('resource_busy'),{code:'resource_busy'})};
       fileLeaf.view.fileTab.stop();
       await until(()=>fileLeaf.view.contentEl.textContent.includes('Editing stopped.'));
       await shot('stop-editing-busy');
       client.repository.blob=async()=>({...await blob(),content_id:'sample-updated'});
-      client.repository.content=async()=>{const text='export const sample = false'+String.fromCharCode(10);return {offset:0,total:text.length,base64:btoa(text)}};
+      client.repository.content=async request=>{if(request.content_id==='sample-patch')return content(request);const text='export const sample = false'+String.fromCharCode(10);return {offset:0,total:text.length,base64:btoa(text)}};
       await model.reloadTarget(model.current.value);
       await until(()=>fileLeaf.view.file.document.value.text.includes('false'));
       await shot('file-refreshed');
@@ -64,7 +64,7 @@ it.each([false, true])(
       const editor=fileLeaf.view.editing.editor.value;
       await editor.editText('export const sample = "local"'+String.fromCharCode(10));
       client.repository.blob=async()=>({...await blob(),content_id:'sample-external'});
-      client.repository.content=async()=>{const text='export const sample = "external"'+String.fromCharCode(10);return {offset:0,total:text.length,base64:btoa(text)}};
+      client.repository.content=async request=>{if(request.content_id==='sample-patch')return content(request);const text='export const sample = "external"'+String.fromCharCode(10);return {offset:0,total:text.length,base64:btoa(text)}};
       await model.reloadTarget(model.current.value);
       await until(()=>fileLeaf.view.contentEl.textContent.includes('Changed on disk'));
       if(!editor.draftText.value.includes('local'))throw Error('External change replaced local draft');
