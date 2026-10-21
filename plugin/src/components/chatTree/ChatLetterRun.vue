@@ -11,7 +11,7 @@
     :collapsed="!open"
     @click="open = !open"
   >
-    <template #end>
+    <template v-if="state !== 'done'" #end>
       <StatusDot :tone="tone" :label="stateLabel" />
     </template>
     <template v-if="canOpen" #actions>
@@ -51,7 +51,7 @@ const props = defineProps<{ message: ChatMessage }>()
 const open = ref(false)
 const line = ref<InstanceType<typeof TreeItem>>()
 const indent = ref('0px')
-const letter = computed(() => props.message.chatLetter!)
+const letter = computed(() => props.message.chatLetter)
 const canOpen = computed(() => canOpenLetterChat(letter.value.to))
 const unknown = computed(
   () => letter.value.to.unknown || (!canOpen.value && letter.value.to.title === letter.value.to.id)
@@ -109,6 +109,9 @@ onUnmounted(() => observer?.disconnect())
 </script>
 
 <style lang="scss">
+.abele-chat-letter > .abele-tree-item__self > .abele-tree-item__inner {
+  flex: 1 1 auto;
+}
 .abele-chat-letter > .tree-item-children {
   margin-inline-start: 0;
   padding-inline-start: 0;

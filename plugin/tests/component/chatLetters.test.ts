@@ -154,6 +154,7 @@ it('keeps a letter visible as a quiet running line and expands its completed ans
       }),
     })
     expect(wrapper.find('.abele-chat-letter_running').exists()).toBe(false)
+    expect(wrapper.find('.abele-status-dot').exists()).toBe(false)
     expect(wrapper.find('[aria-expanded="false"]').exists()).toBe(true)
     await wrapper.find('.tree-item-self').trigger('click')
     expect(wrapper.find('[aria-expanded="true"]').exists()).toBe(true)
