@@ -526,6 +526,7 @@ export class TokenEngineRuntime
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(this.received(await response.json()))
             this.assertIncomingPaths(page.items.map((item) => item.path))
+            if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
             if (this.pulling) {
               for (const item of page.items) this.pullPaths.add(item.path)
               this.pullProgress('Receiving files')

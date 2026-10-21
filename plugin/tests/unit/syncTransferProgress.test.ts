@@ -150,7 +150,11 @@ it('omits time left until enough received-byte samples and a known inventory', (
 })
 
 it.each<[TransferSnapshot, string]>([
-  [{ stage: 'Downloading', completed: 0 }, 'Downloading · 0 files'],
+  [{ stage: 'Downloading', completed: 0 }, 'Downloading'],
+  [
+    { stage: 'Uploading', completed: 0, total: 1, totalKnown: true, bytes: 0, totalBytes: 0 },
+    'Uploading · 0 of 1 file',
+  ],
   [
     { stage: 'Downloading', completed: 1, total: 2, totalKnown: false },
     'Downloading · 1 of at least 2 files',
@@ -161,7 +165,7 @@ it.each<[TransferSnapshot, string]>([
   ],
   [
     { stage: 'Downloading', completed: 0, total: 0, totalKnown: true, bytes: 0, totalBytes: 0 },
-    'Downloading · 0 of 0 files · 0 of 0 B',
+    'Syncing',
   ],
   [
     { stage: 'Downloading', completed: 1, total: 5, totalKnown: true, bytes: 1024 },
@@ -170,3 +174,30 @@ it.each<[TransferSnapshot, string]>([
 ])('formats transfer edges honestly', (transfer, expected) => {
   expect(connectionLine({ status: 'syncing', paused: false }, { transfer })).toBe(expected)
 })
+
+it('settles an empty server inventory before local comparison and upload', () => {
+  const changed = vi.fn()
+  const progress = new TransferProgress(changed)
+  progress.begin('Downloading')
+  progress.inventoryComplete()
+  expect(changed).toHaveBeenLastCalledWith()
+  progress.begin('Uploading')
+  progress.add('sample.md', 7)
+  progress.inventoryComplete()
+  expect(changed).toHaveBeenLastCalledWith(
+    expect.objectContaining({ stage: 'Uploading', total: 1, totalBytes: 7 })
+  )
+  progress.clear()
+})
+
+it.each(['Uploading', 'Downloading'])(
+  'uses indeterminate wording for an unknown empty %s inventory',
+  (stage) => {
+    expect(
+      connectionLine(
+        { status: 'syncing', paused: false },
+        { transfer: { stage, completed: 0, total: 0, totalKnown: false, bytes: 0 } }
+      )
+    ).toBe(stage)
+  }
+)

@@ -48,6 +48,11 @@ export class TransferProgress {
   }
   inventoryComplete(known = true): void {
     if (!this.snapshot) return
+    // An empty pull is finished; local comparison or upload can now own the status line.
+    if (known && !this.paths.size) {
+      this.clear()
+      return
+    }
     this.snapshot.total = this.paths.size
     this.snapshot.totalKnown = known
     this.snapshot.totalBytes =
@@ -146,6 +151,9 @@ export class TransferProgress {
 }
 
 export function transferText(one: TransferSnapshot, text: SyncText = englishSyncText): string {
+  if (one.total === 0 && one.completed === 0)
+    return text(one.totalKnown === false ? one.stage : 'Syncing')
+  if (one.total === undefined && one.completed === 0) return text(one.stage)
   const folders = one.stage === 'Preparing folders'
   const total = one.total
   let result =
@@ -174,7 +182,7 @@ export function transferText(one: TransferSnapshot, text: SyncText = englishSync
               ? '{completed} of {count} folder'
               : '{completed} of {count} file'
         ))
-  if (one.bytes !== undefined) {
+  if (one.bytes !== undefined && one.totalBytes !== 0) {
     const units = ['B', 'KB', 'MB', 'GB']
     const size = Math.max(one.bytes, one.totalBytes ?? 0)
     const unit = Math.min(3, Math.max(0, Math.floor(Math.log2(Math.max(1, size)) / 10)))

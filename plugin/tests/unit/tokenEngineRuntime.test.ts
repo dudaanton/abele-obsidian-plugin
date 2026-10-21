@@ -1700,6 +1700,40 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
   }
 })
 
+it('replaces an empty server download with comparison, then real upload counts', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const send = wire.fetch.getMockImplementation()!
+  let transfer: TransferSnapshot | undefined
+  const duringUpload: (TransferSnapshot | undefined)[] = []
+  wire.fetch.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
+    if (route.startsWith('/v2/uploads/')) duringUpload.push(transfer)
+    return send(input, init)
+  })
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
+  const duringComparison: (TransferSnapshot | undefined)[] = []
+  const one = runtime(wire, fs, new MemoryStateStore(), new PathCoordinator(), null, {
+    progress: (value) => {
+      transfer = value
+    },
+    comparing: (value) => {
+      if (value) duringComparison.push(transfer)
+    },
+  })
+  try {
+    await one.runtime.sync()
+    expect(duringComparison.length).toBeGreaterThan(0)
+    expect(duringComparison).not.toContainEqual(expect.objectContaining({ stage: 'Downloading' }))
+    expect(duringUpload.length).toBeGreaterThan(0)
+    for (const value of duringUpload)
+      expect(value).toMatchObject({ stage: 'Uploading', total: 1, totalBytes: 5 })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it.each([true, false])(
   'counts upload bytes only after acknowledgement (acknowledged=%s)',
   async (acknowledged) => {
