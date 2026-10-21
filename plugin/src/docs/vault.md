@@ -2121,6 +2121,12 @@ an agent only a version it has. Nothing about it is stored in the vault: a scrip
 its text. A script the agent writes or edits with its file tools counts as written on this
 device; on another device the same change waits to be confirmed there.
 
+Choosing Not now in script review keeps the script unconfirmed and suppresses its arrival
+notice for that exact path and content hash across reloads on this device. Up to 256 such
+revisions are kept in the device-local `abele-script-notice-dismissed` preference. A changed
+revision notifies again; an aborted review does not record a dismissal. The review command
+still lists the waiting script, and its execution approval is unchanged.
+
 ## Sync path identity
 
 Sync directory metadata (`v2-directories` in the device ledger) uses schema version 2. Server

@@ -12,6 +12,28 @@ import { reviewScript } from './reviewScript'
 import type { ScriptService } from './ScriptService'
 import type { ParsedScript } from './types'
 
+const DISMISSED_NOTICE_KEY = 'abele-script-notice-dismissed'
+const noticeVersion = (script: ParsedScript) => `${script.path}\0${script.hash}`
+function dismissedNotices(): Set<string> {
+  const saved: unknown = GlobalStore.getInstance().app?.loadLocalStorage?.(DISMISSED_NOTICE_KEY)
+  return new Set(
+    Array.isArray(saved)
+      ? saved.filter((key): key is string => typeof key === 'string').slice(-256)
+      : []
+  )
+}
+function deferNotice(script: ParsedScript) {
+  if (!script.hash) return
+  const dismissed = dismissedNotices()
+  const key = noticeVersion(script)
+  dismissed.delete(key)
+  dismissed.add(key)
+  GlobalStore.getInstance().app?.saveLocalStorage?.(
+    DISMISSED_NOTICE_KEY,
+    [...dismissed].slice(-256)
+  )
+}
+
 /**
  * Shows a script from elsewhere; true once this version is confirmed. A refused one is shown
  * with nothing to confirm. What is confirmed is the version shown — the index's, which is the
@@ -37,7 +59,11 @@ export async function reviewOne(
   )
   // Confirm may have closed the dialog just before the run was cancelled.
   signal?.throwIfAborted()
-  if (!yes || verdict === 'refused') return false
+  if (!yes) {
+    deferNotice(script)
+    return false
+  }
+  if (verdict === 'refused') return false
   service.confirm(script)
   return true
 }
@@ -64,6 +90,7 @@ export async function reviewWaiting(service: ScriptService): Promise<void> {
  * Says once per version, per session, that scripts arrived that wait to be confirmed — with a
  * button that goes through them. A script only ever run by an automation or at startup would
  * otherwise just stop, with nothing on screen to say why.
+ * A version explicitly deferred in review stays quiet across reloads; it is still unconfirmed.
  *
  * The notice stays until pressed, but only while something waits: confirmed or removed, the
  * scripts it names no longer need it, and a plugin that unloads takes it along — left behind,
@@ -79,8 +106,10 @@ export class WaitingScriptsNotice {
 
   announce(): void {
     const waiting = this.service.waitingScripts()
+    const dismissed = dismissedNotices()
     const fresh = waiting.filter((s) => {
-      const key = `${s.path}\0${s.hash}`
+      const key = noticeVersion(s)
+      if (dismissed.has(key)) return false
       if (this.announced.has(key)) return false
       this.announced.add(key)
       return true
