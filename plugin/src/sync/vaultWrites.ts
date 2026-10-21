@@ -248,7 +248,10 @@ export class VaultWriter {
     } catch (error) {
       if (inFlight.has(temp)) {
         await this.dropQuietly(temp)
-        if (entry.backup === undefined || !(await this.there(entry.backup)))
+        if (
+          !(await this.there(temp)) &&
+          (entry.backup === undefined || !(await this.there(entry.backup)))
+        )
           this.deps.journal.drop(entry)
       }
       throw error

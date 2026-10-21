@@ -9,7 +9,12 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
-import { EngineError, MemoryStateStore, readReconciliation, type FileInfo } from '@abele/sync-sdk/core'
+import {
+  EngineError,
+  MemoryStateStore,
+  readReconciliation,
+  type FileInfo,
+} from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
 import { RuntimeFence } from '@/sync/external/recovery'
@@ -18,6 +23,32 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const text = (value: string): Uint8Array => new TextEncoder().encode(value)
 const read = (bytes: Uint8Array | ArrayBuffer): string => new TextDecoder().decode(bytes)
+
+it('retains ownership when a failed write cannot remove its private temp', async () => {
+  const app = buildFakeVault([])
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  const remove = app.vault.adapter.remove.bind(app.vault.adapter)
+  let temp = ''
+  app.vault.adapter.writeBinary = async (path, bytes, options) => {
+    temp = path
+    await write(path, bytes, options)
+    throw new Error('interrupted write')
+  }
+  app.vault.adapter.remove = async () => {
+    throw new Error('disk unavailable')
+  }
+  await expect(
+    new ObsidianFileSystem(app as never).writeAtomic('sample.bin', text('remote'), 1)
+  ).rejects.toThrow()
+  expect(app.loadLocalStorage(JOURNAL_KEY)).toEqual([
+    expect.objectContaining({ temp, target: 'sample.bin' }),
+  ])
+  expect(await app.vault.adapter.exists(temp)).toBe(true)
+  app.vault.adapter.remove = remove
+  await new ObsidianFileSystem(app as never).recover()
+  expect(await app.vault.adapter.exists(temp)).toBe(false)
+  expect(app.loadLocalStorage(JOURNAL_KEY)).toBeNull()
+})
 
 it('never replays or sweeps retired write intents and retains all three physical variants', async () => {
   const target = 'sample.bin',
