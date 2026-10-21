@@ -149,10 +149,24 @@ async function inspectRuns(label: string) {
         await evalLong(`(async () => {
         for(let i=0;i<100&&!document.querySelector('[data-manager-approval]');i++)await new Promise(r=>setTimeout(r,50));
         const root=document.querySelector('[data-manager-approval]');
-        return JSON.stringify({open:root.querySelector('details').open, text:[...root.querySelectorAll('.setting-item-description')].map(el=>el.textContent).join(' '),overflow:root.scrollWidth>root.clientWidth+1});
+        const run=root.closest('.abele-node-manager-run');
+        const answers=[...run.querySelectorAll('button')].filter(button=>['Stop','Deny','Allow'].includes(button.textContent.trim()));
+        return JSON.stringify({open:root.querySelector('[data-manager-evidence] .abele-disclosure__control').getAttribute('aria-expanded')==='true',text:root.textContent,command:root.querySelector('[data-manager-command]').textContent,duplicate:run.textContent.includes('npm test -- tests/sample-parser.test.ts'),nativeDetails:!!run.querySelector('details'),buttonsVisible:answers.length===3&&answers.every(button=>{const box=button.getBoundingClientRect();return box.width>0&&box.top>=0&&box.bottom<=window.innerHeight}),overflow:root.scrollWidth>root.clientWidth+1});
       })()`)
-      ) as { open: boolean; text: string; overflow: boolean }
-      expect(report.open).toBe(escaped)
+      ) as {
+        open: boolean
+        text: string
+        command: string
+        duplicate: boolean
+        nativeDetails: boolean
+        buttonsVisible: boolean
+        overflow: boolean
+      }
+      expect(report.open).toBe(false)
+      expect(report.command).toBe(escaped ? 'printf "sample\\nline\\r\\u202e\\u200b"' : 'npm test')
+      expect(report.duplicate).toBe(false)
+      expect(report.nativeDetails).toBe(false)
+      expect(report.buttonsVisible).toBe(true)
       expect(report.text).toContain('sample-project')
       expect(report.text).toContain('sample-session')
       expect(report.text).not.toMatch(/[\n\r\u202e\u200b]/u)

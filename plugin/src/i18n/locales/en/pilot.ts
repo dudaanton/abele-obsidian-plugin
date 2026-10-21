@@ -3552,6 +3552,8 @@ export const en = {
     'Time limit reached while waiting for your answer. Answer the kept prompt, then continue the developer.',
   'node.delegation.pausedLimit':
     'Time limit reached. Send a message to continue in the same chat and worktree.',
+  'node.manager.session': 'Session',
+  'node.manager.sourceWorktree': 'Source worktree',
   'node.manager.command': 'Command',
   'node.manager.invalidCommand':
     'Supply exactly one of argv or command, and one project_id or worktree_id. Check timeout_ms and output_bytes ranges.',

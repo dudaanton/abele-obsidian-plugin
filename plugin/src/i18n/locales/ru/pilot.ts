@@ -3724,6 +3724,8 @@ export const ru = {
     'Достигнут лимит времени в ожидании вашего ответа. Ответьте на сохранённый запрос и продолжите работу разработчика.',
   'node.delegation.pausedLimit':
     'Достигнут лимит времени. Отправьте сообщение, чтобы продолжить в том же чате и рабочем дереве.',
+  'node.manager.session': 'Сессия',
+  'node.manager.sourceWorktree': 'Исходное рабочее дерево',
   'node.manager.command': 'Команда',
   'node.manager.invalidCommand':
     'Укажите либо argv, либо command и одну цель: project_id или worktree_id. Проверьте диапазоны timeout_ms и output_bytes.',

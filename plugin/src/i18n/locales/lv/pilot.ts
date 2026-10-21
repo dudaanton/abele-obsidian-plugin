@@ -3654,6 +3654,8 @@ export const lv = {
     'Gaidot jūsu atbildi, sasniegts laika limits. Atbildiet uz saglabāto pieprasījumu un turpiniet izstrādātāja darbu.',
   'node.delegation.pausedLimit':
     'Sasniegts laika limits. Nosūtiet ziņu, lai turpinātu tajā pašā tērzēšanā un darba kokā.',
+  'node.manager.session': 'Sesija',
+  'node.manager.sourceWorktree': 'Avota darba koks',
   'node.manager.command': 'Komanda',
   'node.manager.invalidCommand':
     'Norādiet argv vai command un vienu mērķi: project_id vai worktree_id. Pārbaudiet timeout_ms un output_bytes diapazonus.',

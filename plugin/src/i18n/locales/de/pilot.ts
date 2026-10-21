@@ -3695,6 +3695,8 @@ export const de = {
     'Zeitlimit beim Warten auf Ihre Antwort erreicht. Beantworten Sie die gespeicherte Anfrage und setzen Sie den Entwickler fort.',
   'node.delegation.pausedLimit':
     'Zeitlimit erreicht. Senden Sie eine Nachricht, um im selben Chat und Worktree fortzufahren.',
+  'node.manager.session': 'Sitzung',
+  'node.manager.sourceWorktree': 'Quellarbeitsbaum',
   'node.manager.command': 'Befehl',
   'node.manager.invalidCommand':
     'Geben Sie entweder argv oder command und ein Ziel an: project_id oder worktree_id. Prüfen Sie die Bereiche von timeout_ms und output_bytes.',

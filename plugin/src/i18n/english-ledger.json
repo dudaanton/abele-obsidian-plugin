@@ -27408,5 +27408,25 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.session": {
+    "englishHash": "3282a5fb7403a7729fe83abfa32b12661f2c75c2da43e0a63b10e13111500f42",
+    "context": "Quiet manager approval facts",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.sourceWorktree": {
+    "englishHash": "f233e5453a6e02a2ca66da388b8f1a9aabfc13485b59feb191c9ca2b448a4283",
+    "context": "Quiet manager approval facts",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

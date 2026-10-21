@@ -1,13 +1,16 @@
 <template>
-  <Card
-    class="abele-node-manager-run"
-    :title="card.title"
-    :subtitle="
-      [stateLabel, card.run.reason ? nodeErrorDetails(card.run.reason) : '']
-        .filter(Boolean)
-        .join(' · ')
-    "
-  >
+  <section class="abele-node-manager-run">
+    <MetaLine
+      v-if="card.run.state !== 'pending_approval'"
+      :facts="[
+        {
+          key: '0',
+          value: [stateLabel, card.run.reason ? nodeErrorDetails(card.run.reason) : '']
+            .filter(Boolean)
+            .join(' · '),
+        },
+      ]"
+    />
     <AiToolApproval
       v-for="prompt in card.prompts"
       :key="prompt.prompt_id"
@@ -34,31 +37,38 @@
         <code>{{ path }}</code>
       </li>
     </ul>
-    <details :open="card.run.state === 'running'">
-      <summary>{{ t('node.manager.output') }}</summary>
+    <Disclosure v-model="outputOpen" :label="t('node.manager.output')" data-manager-output>
       <p v-if="card.run.stdout_truncated || card.run.stderr_truncated">
         {{ t('node.manager.truncated') }}
       </p>
       <pre>{{ card.run.stdout }}</pre>
       <pre>{{ card.run.stderr }}</pre>
-    </details>
-  </Card>
+    </Disclosure>
+  </section>
 </template>
 <script setup lang="ts">
 import type { Prompt } from '@abele/node-client'
 import type { NodeManagerController } from '@/node/NodeManagerController'
 import type { ChatMessage } from '@/ai/types'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { nodeErrorDetails } from '@/node/errorWords'
 import { t } from '@/i18n'
-import Card from './obsidian/Card.vue'
+import MetaLine from './obsidian/MetaLine.vue'
+import Disclosure from './obsidian/Disclosure.vue'
 import Button from './obsidian/Button.vue'
 import AiToolApproval from './AiToolApproval.vue'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
   disabled?: boolean
 }>()
+const outputOpen = ref(props.card.run.state === 'running')
+watch(
+  () => props.card.run.state,
+  (state) => {
+    outputOpen.value = state === 'running'
+  }
+)
 const stateLabel = computed(() => {
   switch (props.card.run.state) {
     case 'pending_approval':

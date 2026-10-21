@@ -6,6 +6,33 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
+it.each([false, true])(
+  'uses one pending command card with folded evidence (escaped: %s)',
+  async (escaped) => {
+    const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+    const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+    const card = nodeManagerFixture('pending_approval', escaped)
+    const wrapper = mount(NodeManagerRunCard, { props: { card } })
+    try {
+      expect(wrapper.text()).not.toContain(card.title)
+      expect(wrapper.findAll('.abele-card')).toHaveLength(0)
+      expect(wrapper.find('details').exists()).toBe(false)
+      expect(wrapper.get('[data-manager-command]').element.tagName).toBe('CODE')
+      expect(wrapper.get('[data-manager-approval] .abele-meta-line').text()).toContain(
+        'Project: sample-project'
+      )
+      expect(wrapper.text()).not.toMatch(/project_id|session_id/)
+      expect(wrapper.find('[data-manager-evidence] pre').exists()).toBe(false)
+      expect(
+        wrapper
+          .findAll('button')
+          .filter((button) => ['Stop', 'Deny', 'Allow'].includes(button.text()))
+      ).toHaveLength(3)
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
 it('summarizes a worker shell approval and keeps its exact input in details', async () => {
   const { default: AiToolApproval } = await import('@/components/AiToolApproval.vue')
   const prompt = {
@@ -60,8 +87,10 @@ it('shows shell quotes and backslashes verbatim outside JSON details', async () 
   }
   const wrapper = mount(NodeManagerRunCard, { props: { card } })
   try {
-    expect(wrapper.get('[data-manager-approval] .setting-item-description').text()).toBe(command)
-    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeUndefined()
+    expect(wrapper.get('[data-manager-command]').text()).toBe(command)
+    expect(
+      wrapper.get('[data-manager-evidence] .abele-disclosure__control').attributes('aria-expanded')
+    ).toBe('false')
   } finally {
     wrapper.unmount()
   }
@@ -94,7 +123,7 @@ it.each([
   try {
     const summary = wrapper
       .get('[data-manager-approval]')
-      .findAll('.setting-item-description')
+      .findAll('[data-manager-command], .abele-meta-line')
       .map((row) => row.text())
       .join(' ')
     expect(summary).not.toContain(hidden)
@@ -109,7 +138,10 @@ it.each([
     expect(summary).toContain(`sample${marker}argument`)
     expect(summary).toContain(`tree${marker}id`)
     expect(summary).toContain(`session${marker}id`)
-    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeDefined()
+    expect(
+      wrapper.get('[data-manager-evidence] .abele-disclosure__control').attributes('aria-expanded')
+    ).toBe('false')
+    await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
     const evidence = wrapper.get('[data-manager-evidence] code').text()
     if (hidden !== '\n') expect(evidence).not.toContain(hidden)
     expect(JSON.parse(evidence)).toEqual(card.prompts[0].input)
@@ -155,7 +187,9 @@ it('presents command approvals as command and folder with raw evidence collapsed
   try {
     expect(wrapper.get('[data-manager-approval]').text()).toContain('npm test')
     expect(wrapper.get('[data-manager-approval]').text()).toContain('/workspace/sample-project')
-    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeUndefined()
+    expect(
+      wrapper.get('[data-manager-evidence] .abele-disclosure__control').attributes('aria-expanded')
+    ).toBe('false')
   } finally {
     wrapper.unmount()
   }

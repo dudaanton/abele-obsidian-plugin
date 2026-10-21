@@ -3724,6 +3724,8 @@ export const es = {
     'Se alcanzó el límite de tiempo esperando tu respuesta. Responde a la solicitud guardada y continúa al desarrollador.',
   'node.delegation.pausedLimit':
     'Se alcanzó el límite de tiempo. Envía un mensaje para continuar en el mismo chat y árbol de trabajo.',
+  'node.manager.session': 'Sesión',
+  'node.manager.sourceWorktree': 'Árbol de trabajo de origen',
   'node.manager.command': 'Comando',
   'node.manager.invalidCommand':
     'Indica argv o command y un destino: project_id o worktree_id. Comprueba los rangos de timeout_ms y output_bytes.',

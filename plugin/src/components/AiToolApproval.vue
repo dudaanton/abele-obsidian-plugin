@@ -53,16 +53,15 @@
         :path="diff.path"
       />
       <div v-if="managerApproval" data-manager-approval>
-        <Setting
-          v-for="row in managerApproval.rows"
-          :key="row.name"
-          :name="row.name"
-          :desc="row.value"
-        />
-        <details data-manager-evidence :open="managerApproval.escaped">
-          <summary>{{ t('node.manager.evidence') }}</summary>
+        <code data-manager-command>{{ managerApproval.command }}</code>
+        <MetaLine :facts="managerApproval.facts" />
+        <Disclosure
+          v-model="originalOpen"
+          :label="t('streamB.originalAction.67ccdf')"
+          data-manager-evidence
+        >
           <pre class="abele-tool-approval__code"><code>{{ managerApproval.evidence }}</code></pre>
-        </details>
+        </Disclosure>
       </div>
       <template v-else>
         <code>{{ toolSummary(message) }}</code>
@@ -399,6 +398,7 @@ import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/co
 import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
 import HttpSendPreview from './debugger/http/HttpSendPreview.vue'
 import Setting from './obsidian/Setting.vue'
+import MetaLine from './obsidian/MetaLine.vue'
 import { providerLabel } from '@/node/providers'
 /** A saved request as an agent's send would put it on the wire, for its card. */
 const readHttpSend = (id: string, environment?: string) =>
@@ -437,10 +437,8 @@ const managerApproval = computed(() => {
   const params = input.params as Record<string, unknown> | undefined
   if (!params) return undefined
   const rows: { name: string; value: string }[] = []
-  let escaped = false
   const add = (name: string, value: string) => {
     const visible = visibleText(value)
-    escaped ||= visible !== value
     rows.push({ name, value: visible })
   }
   if (input.method === 'command.v1.run') {
@@ -449,14 +447,11 @@ const managerApproval = computed(() => {
       value: Array.isArray(params.argv)
         ? params.argv
             .map((arg) => {
-              if (typeof arg === 'string') escaped ||= visibleText(arg) !== arg
               return typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : visibleJson(arg)
             })
             .join(' ')
         : visibleText(promptString(params.command)),
     })
-    if (!Array.isArray(params.argv))
-      escaped ||= visibleText(promptString(params.command)) !== promptString(params.command)
   } else {
     add(
       t('node.manager.branches'),
@@ -473,13 +468,23 @@ const managerApproval = computed(() => {
     ] as const)
       add(t(label), promptString(params[key]))
   }
-  for (const key of ['project_id', 'worktree_id', 'source_worktree_id'] as const)
-    if (typeof params[key] === 'string') add(key, params[key])
-  add('session_id', props.nodePrompt?.session_id ?? '')
+  for (const [key, label] of [
+    ['project_id', 'streamB.project.985959'],
+    ['worktree_id', 'streamB.worktree.c893ba'],
+    ['source_worktree_id', 'node.manager.sourceWorktree'],
+  ] as const)
+    if (typeof params[key] === 'string') add(t(label), params[key])
+  add(t('node.manager.session'), props.nodePrompt?.session_id ?? '')
   if (typeof params.session_id === 'string' && params.session_id !== props.nodePrompt?.session_id)
-    add('params.session_id', params.session_id)
+    add(t('node.manager.session'), params.session_id)
   if (typeof input.cwd === 'string') add(t('node.manager.folder'), input.cwd)
-  return { rows, escaped, evidence: visibleJson(input, 2) }
+  return {
+    command: rows[0]?.value ?? '',
+    facts: rows
+      .slice(1)
+      .map((row, index) => ({ key: String(index), label: row.name, value: row.value })),
+    evidence: visibleJson(input, 2),
+  }
 })
 const nodeValue = ref('')
 const obsidianCall = computed(
@@ -968,6 +973,15 @@ const toggleEdit = () => {
 </script>
 
 <style lang="scss">
+[data-manager-approval] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+[data-manager-command] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 // The debugger's card: a thin frame in the accent while it waits for you, small text.
 .abele-tool-approval {
   margin: var(--size-4-2) 0;
