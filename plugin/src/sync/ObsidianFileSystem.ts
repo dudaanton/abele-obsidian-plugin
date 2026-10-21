@@ -1461,15 +1461,20 @@ export class ObsidianFileSystem implements FileSystem {
     const entry = this.journal.entries().find((one) => one.temp === id && one.streaming)
     if (this.stageOperations.has(id) || entry?.backup || entry?.retiredGeneration)
       throw new EngineError('io', 'stage is busy or awaiting recovery')
-    const standing = await this.rawStat(id)
-    if (standing !== null) {
-      if (!entry || standing.type !== 'file')
-        throw new EngineError('io', 'cannot discard an unowned stage')
-      await this.disk.remove(id)
+    this.stageOperations.add(id)
+    try {
+      const standing = await this.rawStat(id)
+      if (standing !== null) {
+        if (!entry || standing.type !== 'file')
+          throw new EngineError('io', 'cannot discard an unowned stage')
+        await this.disk.remove(id)
+      }
+      if (entry) this.journal.drop(entry)
+      this.stages.delete(id)
+      releaseSourceStage(id)
+    } finally {
+      this.stageOperations.delete(id)
     }
-    if (entry) this.journal.drop(entry)
-    this.stages.delete(id)
-    releaseSourceStage(id)
   }
   async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
     let entry =

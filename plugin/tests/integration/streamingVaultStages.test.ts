@@ -47,6 +47,31 @@ it('finishes stage discard after a crash between file removal and journal retire
   expect(new WriteJournal(storage).entries()).toEqual([])
   expect(await app.vault.adapter.read('sample.bin')).toBe('original')
 })
+it('excludes appends while idempotent discard awaits its disk check', async () => {
+  const { app, fs } = setup(),
+    disk = fs()
+  const stage = await disk.beginAtomicWrite('sample-new.bin', 0, null)
+  const entered = deferred<void>(),
+    resume = deferred<void>()
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  let waiting = true
+  app.vault.adapter.stat = async (path) => {
+    if (path === stage.id && waiting) {
+      waiting = false
+      entered.resolve()
+      await resume.promise
+    }
+    return stat(path)
+  }
+  const pending = disk.discardStage(stage.id)
+  await entered.promise
+  try {
+    await expect(stage.append(0, new Uint8Array([1]))).rejects.toThrow('stage is busy')
+  } finally {
+    resume.resolve()
+    await pending
+  }
+})
 it('awaits stage ownership before journalling or creating its private artifact', async () => {
   const { app, fs, storage } = setup()
   const disk = fs(),
