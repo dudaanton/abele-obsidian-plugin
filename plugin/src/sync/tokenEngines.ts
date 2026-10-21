@@ -187,7 +187,9 @@ export class TokenEngines {
       if (JSON.stringify(moved) !== JSON.stringify(pins)) this.saveDevicePins(moved)
       for (const runtime of this.live.values()) runtime.localRenamed(from, file.path)
     })
-    this.deleteEvent = app.vault.on('delete', (file) => this.localOnly.deleted(file.path))
+    this.deleteEvent = app.vault.on('delete', (file) =>
+      this.localOnly.deleted(file.path, (path) => !!app.vault.getAbstractFileByPath(path))
+    )
     ui.connectionsChanged = async (assertCurrent) => {
       assertCurrent?.()
       this.start()

@@ -52,9 +52,11 @@ export class LocalOnlyCopies {
         caseKey(path).startsWith(caseKey(root) + '/')
     )
   }
-  deleted(path: string): void {
+  deleted(path: string, exists: (path: string) => boolean): void {
     const matches = (candidate: string) =>
-      caseKey(candidate) === caseKey(path) || caseKey(candidate).startsWith(caseKey(path) + '/')
+      (caseKey(candidate) === caseKey(path) ||
+        caseKey(candidate).startsWith(caseKey(path) + '/')) &&
+      !exists(candidate)
     if (!this.paths.some(matches)) return
     for (const record of this.registry.records())
       for (const slot of slots) {
@@ -72,7 +74,9 @@ export class LocalOnlyCopies {
   async forgetMissing(path: string, exists: (path: string) => Promise<boolean>): Promise<void> {
     if (await exists(path))
       throw new Error('The kept copy exists; it cannot be forgotten as missing')
-    this.deleted(path)
+    const checked = new Map<string, boolean>()
+    for (const candidate of new Set(this.paths)) checked.set(candidate, await exists(candidate))
+    this.deleted(path, (candidate) => checked.get(candidate) !== false)
   }
   async assertPublishSafe(
     exists: (path: string) => Promise<boolean>,

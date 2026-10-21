@@ -55,11 +55,42 @@ it('retires a deleted kept identity durably so restart and a later ordinary file
   registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Old/Kept.md'])
   const copies = new LocalOnlyCopies(registry)
   copies.renamed('Old/Kept.md', 'Shared/Kept.md')
-  copies.deleted('Shared/Kept.md')
+  copies.deleted('Shared/Kept.md', () => false)
   const restarted = new LocalOnlyCopies(TokenConnectionRegistry.open(local))
   await expect(restarted.assertPublishSafe(async () => false)).resolves.toBeUndefined()
   expect(restarted.has('Shared/Kept.md')).toBe(false)
 })
+
+it.each(['Shared/note.md', 'shared'])(
+  'keeps a surviving case-distinct identity when deleting %s',
+  async (deleted) => {
+    const values = new Map<string, unknown>()
+    const local = {
+      loadLocalStorage: (key: string) => structuredClone(values.get(key) ?? null),
+      saveLocalStorage: (key: string, value: unknown) => {
+        values.set(key, structuredClone(value))
+      },
+    }
+    const registry = TokenConnectionRegistry.open(local),
+      id = registry.add()
+    registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Old/Note.md'])
+    registry
+      .storage(id)
+      .saveLocalStorage('abele-sync-token-state:local-only-pending', ['Shared/Note.md'])
+    const copies = new LocalOnlyCopies(registry)
+    copies.renamed('Old/Note.md', 'Shared/Note.md')
+    registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Shared/Note.md'])
+    copies.refresh()
+    const exists = vi.fn((path: string) => path === 'Shared/Note.md')
+    copies.deleted(deleted, exists)
+    expect(exists).toHaveBeenCalledWith('Shared/Note.md')
+    const restarted = new LocalOnlyCopies(TokenConnectionRegistry.open(local))
+    expect(restarted.has('Shared/Note.md')).toBe(true)
+    await expect(
+      restarted.assertPublishSafe(async (path) => path === 'Shared/Note.md')
+    ).resolves.toBeUndefined()
+  }
+)
 
 it('allows explicitly forgetting a missing copy after delete persistence failed, but refuses an existing file', async () => {
   const values = new Map<string, unknown>()
@@ -76,7 +107,7 @@ it('allows explicitly forgetting a missing copy after delete persistence failed,
   registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Sample/Kept.md'])
   const copies = new LocalOnlyCopies(registry)
   broken = true
-  expect(() => copies.deleted('Sample/Kept.md')).toThrow()
+  expect(() => copies.deleted('Sample/Kept.md', () => false)).toThrow()
   const restarted = new LocalOnlyCopies(TokenConnectionRegistry.open(local))
   const report = vi.fn()
   await expect(restarted.assertPublishSafe(async () => false, report)).rejects.toThrow('kept-copy')
