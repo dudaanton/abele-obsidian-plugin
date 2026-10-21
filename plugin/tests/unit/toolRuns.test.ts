@@ -5,6 +5,17 @@ import { chatBlocks, ownLine, runKind, runState, runSummary, toolKind } from '@/
 import type { ChatMessage } from '@/ai/types'
 import { readableToolName } from '@/ai/toolLine'
 
+it('retains uncertainty evidence in a collapsed tool failure', () => {
+  expect(
+    runSummary([
+      call('mcp__abele_debugger__debug_launch', {
+        toolStatus: 'rejected',
+        toolResult: JSON.stringify({ outcome: 'outcome_unknown', code: 'outcome_unknown' }),
+      }),
+    ])
+  ).toContain('outcome_unknown')
+})
+
 it('keeps structured refusal evidence out of the collapsed tool line', () => {
   const text = runSummary([
     call('mcp__abele_debugger__debug_status', {
