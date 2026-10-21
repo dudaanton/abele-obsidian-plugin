@@ -74,7 +74,7 @@ it('defaults off, isolates trust, installs and logs code, and keeps delete holds
   await ui.refreshReviews()
   expect(runtime.apply).toHaveBeenCalledOnce()
   expect(await reviews.executables.pending()).toEqual([])
-  expect(ui.activity.value[source.id].events?.[0].text).toContain('Installed code from ')
+  expect(ui.activity.value[source.id].events?.at(0)?.text).toContain('Installed code from ')
   expect(runtime.decideDeletes).not.toHaveBeenCalled()
   expect(await runtime.heldDeletes()).toHaveLength(1)
   ui.setTrusted(source.id, false)
@@ -95,7 +95,7 @@ it('shares linked private attachments and logs them only for a trusted connectio
   expect(ui.questions.value).toEqual([])
   expect(runtime.publishAttachment).toHaveBeenCalledWith(target.id)
   expect(await reviews.attachments.mayUpload(source, target)).toBe(true)
-  expect(ui.activity.value[source.id].events?.[0].text).toContain('Shared Private/sample.png')
+  expect(ui.activity.value[source.id].events?.at(0)?.text).toContain('Shared Private/sample.png')
 })
 
 it('rechecks trust after asynchronous preparation before installing code', async () => {

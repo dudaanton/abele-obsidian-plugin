@@ -85,7 +85,7 @@
         <p class="abele-sync-window__progress">
           {{ t('sync.window.recentDesc') }}
         </p>
-        <ConnectionEvents :events="events ?? []" />
+        <ConnectionEvents :events="events ?? []" :revision="activity?.eventsRevision" />
       </Section>
     </div>
     <template #footer>

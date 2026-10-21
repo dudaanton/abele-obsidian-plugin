@@ -19,7 +19,7 @@ function mountWindow() {
     id = ui.rows.value[0].id
   const events = Array.from({ length: 100 }, (_, i) => ({ at: 1000 + i, text: `Event ${i}` }))
   ui.publish(id, { ...pull(0), events })
-  const renders = { window: 0, events: 0 }
+  const renders = { window: 0, events: 0, chunks: 0 }
   const view = mount(ConnectionWindow, {
     props: { ui, connectionId: id },
     global: {
@@ -31,6 +31,7 @@ function mountWindow() {
             // again on every redraw of the window body.
             if (this.$.type.__name === 'Progress') renders.window++
             if (this.$.type === (ConnectionEvents as unknown)) renders.events++
+            if (this.$.type.__name === 'ConnectionEventChunk') renders.chunks++
           },
         },
       ],
@@ -78,6 +79,42 @@ it('retains only the latest timed actions after thirty thousand file events', as
     expect(rows[0].text()).toContain('sample-25000.md')
     expect(rows.at(-1)?.text()).toContain('sample-29999.md')
     expect(view.findAll('.abele-sync-window__time')).toHaveLength(5000)
+  } finally {
+    view.unmount()
+  }
+})
+
+it('appends in place while closed without copying or walking the retained history', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.recordEvent(id, 'Uploaded Notes/first.md')
+  const history = ui.activity.value[id].events!
+  const iterate = vi.spyOn(history, Symbol.iterator)
+  for (let i = 0; i < 33000; i++) ui.recordEvent(id, `Uploaded Notes/sample-${i}.md`)
+  expect(ui.activity.value[id].events).toBe(history)
+  expect(iterate).not.toHaveBeenCalled()
+  expect(history).toHaveLength(5000)
+})
+
+it('updates only boundary chunks during sustained appends with a full log open', async () => {
+  vi.useFakeTimers()
+  const { ui, id, view, renders } = mountWindow()
+  try {
+    for (let i = 0; i < 5000; i++) ui.recordEvent(id, `Uploaded Notes/seed-${i}.md`)
+    await vi.advanceTimersByTimeAsync(300)
+    const first = view.findAll('.abele-sync-window__events li')[1000].element
+    const formatted = vi.spyOn(Date.prototype, 'toLocaleTimeString')
+    expect(view.findAllComponents({ name: 'ConnectionEventChunk' }).length).toBeGreaterThan(0)
+    expect(view.findAllComponents({ name: 'ConnectionEventChunk' }).length).toBeLessThanOrEqual(80)
+    const before = renders.chunks
+    for (let i = 0; i < 30; i++) {
+      ui.recordEvent(id, `Downloaded Notes/live-${i}.md`)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(view.findAll('.abele-sync-window__events li').at(-1)?.text()).toContain(`live-${i}.md`)
+    }
+    expect(first.isConnected || view.element.contains(first)).toBe(true)
+    expect(formatted).toHaveBeenCalledTimes(30)
+    expect(renders.chunks - before).toBeLessThanOrEqual(60)
   } finally {
     view.unmount()
   }

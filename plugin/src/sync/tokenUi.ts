@@ -1,4 +1,5 @@
 import { settingsSyncText } from '@/i18n/settingsSync'
+import { ActivityHistory, type ConnectionEvents } from './activityHistory'
 import { ServerDeleteWait } from '@/components/sync/serverDelete'
 import { t } from '@/i18n'
 import { englishSyncText, type SyncText } from './presentation'
@@ -221,7 +222,8 @@ export interface ConnectionActivity {
   conflicts?: string[]
   error?: string
   /** The last few things that happened to the connection, oldest first, in the person's words. */
-  events?: { at: number; text: string }[]
+  events?: ConnectionEvents
+  eventsRevision?: number
 }
 export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>,
@@ -532,11 +534,15 @@ export class TokenUi {
     console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
   recordEvent(id: string, text: string): void {
+    const previous = this.activity.value[id]?.events
+    const events = previous instanceof ActivityHistory ? previous : new ActivityHistory(previous)
+    events.append({ at: Date.now(), text })
     this.activity.value = {
       ...this.activity.value,
       [id]: {
         ...this.activity.value[id],
-        events: [...(this.activity.value[id]?.events ?? []).slice(-4999), { at: Date.now(), text }],
+        events,
+        eventsRevision: events.revision,
       },
     }
   }
