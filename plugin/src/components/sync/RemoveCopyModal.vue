@@ -4,16 +4,17 @@
     :can-close="() => !busy"
     close-in-footer
     phone-sheet
+    content-sized
     @close="close"
   >
     <dl class="abele-server-delete__facts">
       <dt>Files here</dt>
       <dd>{{ files.toLocaleString('en') }}</dd>
       <dt>Changed here</dt>
-      <dd>{{ edited ? `${edited.toLocaleString('en')}, they stay` : 'None' }}</dd>
+      <dd>{{ edited ? keptLabel(edited) : 'None' }}</dd>
       <template v-if="item.kept">
         <dt>Also synced elsewhere</dt>
-        <dd>{{ item.kept.toLocaleString('en') }}, they stay</dd>
+        <dd>{{ keptLabel(item.kept) }}</dd>
       </template>
     </dl>
     <p class="abele-server-delete__note">
@@ -50,6 +51,7 @@ const emit = defineEmits<{ close: []; done: [] }>()
 
 const busy = ref(false)
 const failure = ref('')
+const keptLabel = (n: number) => `${n.toLocaleString('en')}, ${n === 1 ? 'it stays' : 'they stay'}`
 const files = computed(() => props.item.files ?? 0)
 const edited = computed(() => props.item.edited ?? 0)
 const count = computed(() => {

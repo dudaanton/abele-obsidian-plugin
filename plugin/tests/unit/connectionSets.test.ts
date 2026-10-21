@@ -340,10 +340,16 @@ describe('connection item sets', () => {
                 file_id: 'shared-note',
                 path: 'Notes/Shared.md',
                 bytes: 25,
-                overlap_count: 2,
+                overlap_count: hidden ? 2 : 3,
                 overlaps: hidden
                   ? []
                   : [
+                      {
+                        token_id: 'same-scope-token',
+                        item_id: 'same-scope-item',
+                        scope_id: 'scope-group',
+                        scope: group,
+                      },
                       {
                         token_id: 'another-token',
                         item_id: 'other-item',

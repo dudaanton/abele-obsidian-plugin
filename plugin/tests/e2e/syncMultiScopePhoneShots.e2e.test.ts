@@ -81,7 +81,12 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     )
     closeSyncScreens(phone)
 
-    const preview = await phone.long<{ files: number; access: string; scope: string }>(
+    const preview = await phone.long<{
+      files: number
+      access: string
+      scope: string
+      warnings: string[]
+    }>(
       'open group server-delete preview',
       `
       const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
@@ -94,20 +99,23 @@ it('captures four multi-scope screens on the phone without confirming destructiv
         const title=textOf(confirm.querySelector('.modal-title'));
         const cancel=[...confirm.querySelectorAll('.abele-modal__footer button')].find(one=>textOf(one)==='Cancel'&&!one.disabled);
         const loss=[...confirm.querySelectorAll('.abele-server-delete__access li')].find(one=>textOf(one.querySelector('span'))==='Sample workshop access'&&textOf(one.querySelector('.abele-server-delete__scope'))==='Loses Group: Workshop');
-        const points=[confirm.querySelector('.modal-title'),loss,cancel];
-        const onTop=points.every(one=>{if(!one)return false;const r=one.getBoundingClientRect(),doc=one.ownerDocument,x=r.left+r.width/2,y=r.top+r.height/2;return r.width>0&&r.height>0&&x>=0&&y>=0&&x<doc.defaultView.innerWidth&&y<doc.defaultView.innerHeight&&confirm.contains(doc.elementFromPoint(x,y))});
+        const remove=[...confirm.querySelectorAll('.abele-modal__footer button')].find(one=>one.classList.contains('mod-warning')&&!one.disabled);
+        const points=[confirm.querySelector('.modal-title'),loss,cancel,remove];
+        const onTop=points.every(one=>{if(!one)return false;const r=one.getBoundingClientRect(),doc=one.ownerDocument,x=r.left+r.width/2,y=r.top+r.height/2;return r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=doc.defaultView.innerWidth&&r.bottom<=Math.min(doc.defaultView.innerHeight,doc.defaultView.visualViewport?doc.defaultView.visualViewport.offsetTop+doc.defaultView.visualViewport.height:doc.defaultView.innerHeight)&&confirm.contains(doc.elementFromPoint(x,y))});
         stablePreview=title==='Delete “Workshop” from the server?'&&onTop?stablePreview+1:0;
         return stablePreview>=3;
       },undefined,'visible topmost Workshop server-delete title, named Access closed and Cancel');
       const facts=confirm.querySelector('.abele-server-delete__facts');const count=[...facts.querySelectorAll('dt')].find(one=>textOf(one)==='Files');
       if(![...facts.querySelectorAll('dt')].some(one=>textOf(one)==='Access closed'))throw new Error('Access closed label missing');
-      return {files:Number(textOf(count.nextElementSibling).replace(/[^0-9]/g,'')),access:textOf(confirm.querySelector('.abele-server-delete__access')),scope:textOf(confirm.querySelector('.abele-server-delete__scope'))}
+      return {files:Number(textOf(count.nextElementSibling).replace(/[^0-9]/g,'')),access:textOf(confirm.querySelector('.abele-server-delete__access')),scope:textOf(confirm.querySelector('.abele-server-delete__scope')),warnings:[...confirm.querySelectorAll('.abele-server-delete__also')].map(one=>textOf(one))}
     `
     )
     expect(preview.files).toBe(2)
     expect(preview.access).toContain('Sample workshop access')
     expect(preview.access).toContain('Loses Group: Workshop')
     expect(preview.scope).not.toBe('/')
+    expect(preview.warnings.some((warning) => warning.includes('in group Reading list'))).toBe(true)
+    expect(preview.warnings.some((warning) => warning.includes('in group Workshop'))).toBe(false)
     screenshot(shots + '/3-server-delete-group.png')
     await phone.long(
       'cancel server deletion',
@@ -159,11 +167,12 @@ it('captures four multi-scope screens on the phone without confirming destructiv
       await poll(()=>row=[...inWindows('.abele-connection-items')?.querySelectorAll('.abele-connection-items__item_detached')||[]].find(one=>textOf(one).includes('Field notes')));
       icon(row,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Remove your copy…'));action.click();let box;
       await poll(()=>{box=modal('Remove your copy of Field notes?');return box&&[...box.querySelectorAll('.abele-modal__footer button')].some(one=>textOf(one)==='Remove 1 file'&&!one.disabled)},undefined,'remove-copy counts including the edited file');
+      await poll(()=>{const buttons=[...box.querySelectorAll('.abele-modal__footer button')];return buttons.length===2&&buttons.every(one=>{const r=one.getBoundingClientRect(),doc=one.ownerDocument,win=doc.defaultView;return !one.disabled&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=win.innerWidth&&r.bottom<=Math.min(win.innerHeight,win.visualViewport?win.visualViewport.offsetTop+win.visualViewport.height:win.innerHeight)&&one.contains(doc.elementFromPoint(r.left+r.width/2,r.top+r.height/2))})},undefined,'remove-copy Cancel and Remove fully visible and reachable');
       const fact=label=>{const dt=[...box.querySelectorAll('dt')].find(one=>textOf(one)===label);return textOf(dt?.nextElementSibling)};return {files:fact('Files here'),changed:fact('Changed here'),note:textOf(box.querySelector('.abele-server-delete__note'))}
     `
     )
     expect(copy.files).toBe('2')
-    expect(copy.changed).toBe('1, they stay')
+    expect(copy.changed).toBe('1, it stays')
     expect(copy.note).toContain('Nothing changes on the server')
     screenshot(shots + '/4-remove-copy.png')
     await phone.long(

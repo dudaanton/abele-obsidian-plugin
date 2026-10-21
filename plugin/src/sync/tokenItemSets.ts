@@ -740,6 +740,7 @@ export class TokenItemSets implements ShareSetSource {
       for (const file of item.files) {
         const undisclosed = file.overlap_count - file.overlaps.length
         for (const overlap of file.overlaps) {
+          if (losesScope(overlap.scope)) continue
           if (overlap.scope.kind === 'group') {
             const group = overlap.scope.path.split('/').pop().replace(/\.md$/i, '')
             also.set(file.file_id + ':' + overlap.scope_id, { path: file.path, group })

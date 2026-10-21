@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { AbstractInputSuggest, Platform, Menu } from 'obsidian'
 import SharePicker from '@/components/sync/SharePicker.vue'
 import Button from '@/components/obsidian/Button.vue'
+import Modal from '@/components/obsidian/Modal.vue'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
 import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
@@ -452,4 +453,28 @@ describe('shared item screens', () => {
     expect(wrapper.text()).toMatch(/changed|edited/i)
     wrapper.unmount()
   })
+  it.each([1, 3])(
+    'fits a short remove-copy sheet and uses correct kept-file wording (%s)',
+    (edited) => {
+      const wrapper = mount(RemoveCopyModal, {
+        props: { item: { ...detached, files: 5, edited, kept: 1 }, remove: async () => {} },
+        global: {
+          stubs: {
+            Modal: {
+              props: { contentSized: Boolean },
+              template: '<div><slot /><slot name="footer" /></div>',
+            },
+          },
+        },
+      })
+      try {
+        expect(wrapper.findComponent(Modal).props('contentSized')).toBe(true)
+        const values = wrapper.findAll('dd').map((one) => one.text())
+        expect(values).toContain(edited === 1 ? '1, it stays' : '3, they stay')
+        expect(values.at(-1)).toBe('1, it stays')
+      } finally {
+        wrapper.unmount()
+      }
+    }
+  )
 })
