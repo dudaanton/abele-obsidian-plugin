@@ -26,14 +26,6 @@ export function verifySyncSdkInputs(root = plugin) {
   const lock = read(join(root, 'package-lock.json'))
   const locked = lock.packages?.[`node_modules/${name}`]
   const retired = ['@abele/sync-core', '@abele/sync-protocol', '@abele/notes']
-  // Development archives retain the same installed-file and lock integrity checks.
-  const source = manifest.dependencies?.[name]
-  const development =
-    SDK_INPUT.development === true &&
-    typeof source === 'string' &&
-    source.startsWith('file:') &&
-    lock.packages?.['']?.dependencies?.[name] === source &&
-    locked?.resolved === source
   if (
     retired.some(
       (name) =>
@@ -43,12 +35,11 @@ export function verifySyncSdkInputs(root = plugin) {
   )
     throw new Error('Retired sync package input remains')
   if (
-    (!development && source !== SDK_INPUT.version) ||
+    manifest.dependencies?.[name] !== SDK_INPUT.version ||
     locked?.version !== SDK_INPUT.version ||
     locked?.link ||
-    (!development &&
-      locked?.resolved !==
-        `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz`) ||
+    locked?.resolved !==
+      `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz` ||
     locked?.integrity !== SDK_INPUT.integrity
   )
     throw new Error('Unpinned sync SDK version, registry source or integrity')
