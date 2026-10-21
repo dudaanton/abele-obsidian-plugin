@@ -75,6 +75,8 @@ it.each(files)('parses %s browser programs without executing the app', (file) =>
     originalNode: { x: 0, y: 0 },
     attached: [{ points: [0, 0, 1] }],
     buildJustifiedEpub: () => new Uint8Array(),
+    closeFixtureLeaves: async () => {},
+    final: false,
   }
   const values = new Proxy(scope, {
     has: () => true,
