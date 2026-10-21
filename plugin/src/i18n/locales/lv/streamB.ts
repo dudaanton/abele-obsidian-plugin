@@ -4,6 +4,12 @@ export const streamB = {
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
   'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
   'streamB.permissionInherit': 'Deleģēšanā mantot vecāka režīmu (jaunos čatos jautāt)',
+  'streamB.permissionBypassDisabled': 'Darbība bez jautāšanas šajā mezglā ir izslēgta.',
+  'streamB.permissionCopyCommand': 'Kopēt komandu',
+  'streamB.permissionAskNow': 'Tagad jautāt',
+  'streamB.permissionCodexAsk':
+    'Codex nevar jautāt pirms katras darbības, tāpēc režīmā Jautāt tas nesāks darbu. Izvēlieties Bez jautāšanas.',
+  'streamB.permissionInherit': 'Tāpat kā čatam, kas deleģē',
   'streamB.permissionUpdateNode':
     'Pirms šī pakalpojuma sniedzēja palaišanas atjauniniet mezglu, lai tas ziņotu par atļauju režīmiem un tos ievērotu.',
   'streamB.permissionAsk': 'Jautāt',
@@ -11,10 +17,9 @@ export const streamB = {
   'streamB.permissionUnknown': 'Atļauju režīms nav norādīts',
   'streamB.permissionNeedsBypass':
     'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas». Deleģējot arī vecāka čatam jādarbojas bez jautāšanas.',
-  'streamB.permissionNodeOptIn': 'Mezgla operatoram mezglā jāiespējo --claude-allow-bypass.',
-  'streamB.permissionOpenSettings': 'Aģenta atļauju iestatījumi',
-  'streamB.permissionCodexFolder':
-    'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. «Bez jautāšanas» atļauj labojumus tā mapē bez apstiprinājuma; piekļuve paliek šīs mapes robežās. Mezgla operatoram arī jāiespējo --claude-allow-bypass.',
+  'streamB.permissionNodeOptIn': 'Mezglā atļaujiet darbību bez jautāšanas:',
+  'streamB.permissionOpenSettings': 'Atvērt aģenta iestatījumus',
+  'streamB.permissionCodexFolder': 'Rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
   'streamB.permissionOwnerChoice':
     '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',

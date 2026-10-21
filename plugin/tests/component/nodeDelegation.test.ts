@@ -301,7 +301,8 @@ it('keeps a long activity message compact while retaining its latest text', () =
   try {
     expect(wrapper.text()).toContain('Latest sample action')
     expect(wrapper.text()).not.toContain(message)
-    expect(wrapper.get('button').text()).toContain('Open child chat')
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Open child chat')
+    expect(wrapper.get('button').text()).toBe('')
   } finally {
     wrapper.unmount()
   }
@@ -315,10 +316,18 @@ it('collapses finished reports and keeps pending prompts one press away', async 
   }
   const wrapper = mount(NodeDelegationCard, { props: { card, nodeLabel: 'Sample node' } })
   try {
-    expect(wrapper.get('details.abele-node-delegation__details').attributes('open')).toBeUndefined()
+    expect(
+      wrapper
+        .get('.abele-node-delegation__details .abele-disclosure__control')
+        .attributes('aria-expanded')
+    ).toBe('false')
     expect(wrapper.text()).toContain('work/sample-parser')
     await wrapper.setProps({ card: { ...card, state: 'running', pendingHumanPrompts: 2 } })
-    expect(wrapper.get('details.abele-node-delegation__details').attributes('open')).toBeDefined()
+    expect(
+      wrapper
+        .get('.abele-node-delegation__details .abele-disclosure__control')
+        .attributes('aria-expanded')
+    ).toBe('true')
     expect(wrapper.text()).toContain('Checking boundary cases')
     expect(wrapper.text()).toContain('src/parser.ts')
     await wrapper.get('[data-pending-prompts]').trigger('click')
@@ -351,7 +360,7 @@ it('renders one durable result and informational question without vault markup e
   }
 })
 
-it('shows a deadline as resumable and retains a report beside an extension warning', () => {
+it('shows a deadline as resumable and retains a report beside an extension warning', async () => {
   const wrapper = mount(NodeDelegationCard, {
     props: {
       nodeLabel: 'Sample node',
@@ -366,6 +375,7 @@ it('shows a deadline as resumable and retains a report beside an extension warni
   })
   try {
     expect(wrapper.text()).toContain('Paused; can continue')
+    await wrapper.get('.abele-node-delegation__details .abele-disclosure__control').trigger('click')
     expect(wrapper.text()).toContain('sample extension: shutdown warning')
     expect(wrapper.text()).toContain('Implemented the sample parser change')
   } finally {

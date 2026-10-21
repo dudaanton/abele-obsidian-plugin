@@ -16,7 +16,7 @@ import {
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { agentChoices, nodeProviders, type AgentChoice } from './providers'
-import { nodeAgentModeLabel, nodeAgentOwnerMode } from './nodeAgentTools'
+import { nodeAgentOwnerMode } from './nodeAgentTools'
 import { configureOwnerPermissionMode } from './toolPermissions'
 import { openNodeAgentSettings } from './openNodeAgentSettings'
 import { preferredAgentChoices, lastNodeAgent, rememberNodeAgent } from './agentPreference'
@@ -640,25 +640,19 @@ export async function newNodePathChat(
   )
   new NodeSuggestModal(
     app(),
-    agentSuggestions(choices).flatMap((item, index) => {
+    agentSuggestions(choices).map((item, index) => {
       const choice = choices[index]
-      const row = {
-        ...item,
-        note: [nodeAgentModeLabel(model.nodeId, choice.provider), item.note]
-          .filter(Boolean)
-          .join(' · '),
-      }
-      return choice.permissionNote
-        ? [
-            row,
-            {
-              id: `settings:${agentChoiceId(choice)}`,
-              title: `${choice.label} · ${t('streamB.permissionOpenSettings')}`,
-              icon: 'settings',
-              kind: t('streamB.permissionOpenSettings'),
-            },
-          ]
-        : [row]
+      const blocked =
+        !choice.unavailable && !!choice.permissionNote && nodeAgentOwnerMode(model.nodeId, choice.provider) !== 'allow-all'
+      return blocked
+        ? {
+            ...item,
+            id: `settings:${agentChoiceId(choice)}`,
+            icon: 'alert-circle',
+            warning: choice.permissionNote,
+            note: choice.unavailable || undefined,
+          }
+        : { ...item, note: choice.unavailable || undefined }
     }),
     t('streamB.chooseTheAgent.8f3bf5'),
     (item) => {

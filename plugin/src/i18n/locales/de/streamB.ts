@@ -5,6 +5,12 @@ export const streamB = {
   'streamB.providerUnavailable': 'Der Modellanbieter ist vorübergehend nicht verfügbar.',
   'streamB.permissionInherit':
     'Beim Delegieren vom übergeordneten Chat übernehmen (in neuen Chats nachfragen)',
+  'streamB.permissionBypassDisabled': 'Ausführen ohne Nachfrage ist auf diesem Knoten deaktiviert.',
+  'streamB.permissionCopyCommand': 'Befehl kopieren',
+  'streamB.permissionAskNow': 'Jetzt fragen',
+  'streamB.permissionCodexAsk':
+    'Codex kann nicht vor jeder Aktion fragen und startet daher im Modus „Fragen“ nicht. Wählen Sie „Ohne Nachfrage“.',
+  'streamB.permissionInherit': 'Wie der delegierende Chat',
   'streamB.permissionUpdateNode':
     'Aktualisieren Sie diesen Knoten, damit er Berechtigungsmodi meldet und durchsetzt, bevor Sie diesen Anbieter starten.',
   'streamB.permissionAsk': 'Nachfragen',
@@ -12,11 +18,9 @@ export const streamB = {
   'streamB.permissionUnknown': 'Berechtigungsmodus nicht gemeldet',
   'streamB.permissionNeedsBypass':
     'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren. Beim Delegieren muss auch der übergeordnete Chat ohne Nachfrage laufen.',
-  'streamB.permissionNodeOptIn':
-    'Der Knotenbetreiber muss --claude-allow-bypass auf dem Knoten aktivieren.',
-  'streamB.permissionOpenSettings': 'Agentenberechtigungen',
-  'streamB.permissionCodexFolder':
-    'Dieser Anbieter kann nicht vor jeder Aktion fragen. «Ohne Nachfrage» erlaubt Änderungen in seinem Ordner ohne Bestätigung; er bleibt auf diesen Ordner beschränkt. Der Knotenbetreiber muss außerdem --claude-allow-bypass aktivieren.',
+  'streamB.permissionNodeOptIn': 'Auf dem Knoten das Ausführen ohne Nachfrage erlauben:',
+  'streamB.permissionOpenSettings': 'Agenteneinstellungen öffnen',
+  'streamB.permissionCodexFolder': 'Bearbeitet ohne Nachfrage im eigenen Ordner und bleibt darin.',
   'streamB.permissionOwnerChoice':
     '«Nachfragen» verlangt eine Bestätigung für jede Aktion. «Ohne Nachfrage» erlaubt die Werkzeuge des Agenten ohne Bestätigung, auch außerhalb seines Ordners.',
   'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',

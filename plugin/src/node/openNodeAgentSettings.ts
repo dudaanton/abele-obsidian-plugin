@@ -5,7 +5,8 @@ import { ensureNodeAgents } from './nodeAgentTools'
 export async function openNodeAgentSettings(
   nodeId: string,
   name: string,
-  provider: string
+  provider: string,
+  nodePermissionReason?: string
 ): Promise<void> {
   const { default: AgentEditorModal } = await import(
     '@/components/settings/ai/AgentEditorModal.vue'
@@ -18,6 +19,7 @@ export async function openNodeAgentSettings(
     AgentEditorModal,
     {
       agentId: agent.id,
+      nodePermissionReason,
       onClose: () => modal.unmount(),
     },
     { remove: true }

@@ -56,7 +56,12 @@ it('shows a refusal with an exact owner settings action without changing mode', 
   expect(wrapper.text()).toContain('Without asking')
   expect(openNodeAgentSettings).not.toHaveBeenCalled()
   await wrapper.get('button').trigger('click')
-  expect(openNodeAgentSettings).toHaveBeenCalledWith('sample-node', 'Sample node', 'codex')
+  expect(openNodeAgentSettings).toHaveBeenCalledWith(
+    'sample-node',
+    'Sample node',
+    'codex',
+    undefined
+  )
   await wrapper.setProps({
     policy: {
       permission_mode: 'bypassPermissions',
@@ -64,10 +69,10 @@ it('shows a refusal with an exact owner settings action without changing mode', 
       status: 'supported',
     },
   })
-  expect(wrapper.text()).toContain('Without asking')
+  expect(wrapper.find('[aria-label="Without asking"]').exists()).toBe(true)
   expect(wrapper.find('button').exists()).toBe(false)
   await wrapper.setProps({ policy: undefined })
-  expect(wrapper.text()).toContain('Permission mode not reported')
+  expect(wrapper.text()).toBe('')
   await wrapper.setProps({
     policy: {
       permission_mode: 'bypassPermissions',
@@ -76,7 +81,11 @@ it('shows a refusal with an exact owner settings action without changing mode', 
       reason: 'bypass_not_allowed',
     },
   })
-  expect(wrapper.text()).toContain('--claude-allow-bypass')
+  expect(wrapper.text()).toContain('On the node, allow running without asking:')
+  await wrapper.get('.abele-disclosure__control').trigger('click')
+  expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
+    'abele-node service flags set --allow-bypass on'
+  )
   wrapper.unmount()
 })
 
@@ -208,4 +217,23 @@ it('explains Codex requirements even when an older node omits approval metadata'
     nodeProviders({ providers: [{ provider: 'codex', available: true }] })
   ).find((choice) => choice.provider === 'codex')
   expect(choice?.permissionNote).toContain('cannot ask before each action')
+})
+
+it('keeps unknown policy quiet and gives refusals a visible settings button', () => {
+  const wrapper = mount(NodeToolPermissions, {
+    props: { nodeLabel: 'Sample node', provider: 'codex', nodeId: 'sample-node' },
+  })
+  expect(wrapper.text()).toBe('')
+  wrapper.unmount()
+  const refused = mount(NodeToolPermissions, {
+    props: {
+      nodeLabel: 'Sample node',
+      provider: 'codex',
+      nodeId: 'sample-node',
+      reason: 'interactive_approval_unsupported',
+    },
+  })
+  expect(refused.get('button').classes()).not.toContain('clickable-icon')
+  expect(refused.find('.abele-status-dot_red').exists()).toBe(true)
+  refused.unmount()
 })

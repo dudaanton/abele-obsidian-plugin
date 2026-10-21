@@ -5,6 +5,12 @@ export const streamB = {
   'streamB.providerUnavailable': 'Сервис модели временно недоступен.',
   'streamB.permissionInherit':
     'Наследовать режим родителя при делегировании (новые чаты — с вопросами)',
+  'streamB.permissionBypassDisabled': 'На этой ноде работа без вопросов отключена.',
+  'streamB.permissionCopyCommand': 'Скопировать команду',
+  'streamB.permissionAskNow': 'Сейчас — спрашивать',
+  'streamB.permissionCodexAsk':
+    'Codex не умеет спрашивать перед каждым действием, поэтому в режиме «Спрашивать» не запустится. Выберите «Без вопросов».',
+  'streamB.permissionInherit': 'Как у чата, который делегирует',
   'streamB.permissionUpdateNode':
     'Обновите ноду, чтобы она сообщала и соблюдала режимы разрешений, прежде чем запускать этого провайдера.',
   'streamB.permissionAsk': 'Спрашивать',
@@ -12,10 +18,10 @@ export const streamB = {
   'streamB.permissionUnknown': 'Режим разрешений не сообщён',
   'streamB.permissionNeedsBypass':
     'Этот провайдер не может спрашивать перед каждым действием. Чтобы включить его, выберите «Без вопросов» в настройках агента. При делегировании родительский чат тоже должен работать без вопросов.',
-  'streamB.permissionNodeOptIn': 'Оператор ноды должен включить на ноде --claude-allow-bypass.',
-  'streamB.permissionOpenSettings': 'Разрешения агента',
+  'streamB.permissionNodeOptIn': 'На ноде разрешите работу без вопросов:',
+  'streamB.permissionOpenSettings': 'Открыть настройки агента',
   'streamB.permissionCodexFolder':
-    'Этот провайдер не может спрашивать перед каждым действием. «Без вопросов» разрешает правки в его папке без подтверждений; доступ остаётся ограничен этой папкой. Оператор ноды также должен включить --claude-allow-bypass.',
+    'Редактирует в своей папке без вопросов; остаётся внутри этой папки.',
   'streamB.permissionOwnerChoice':
     '«Спрашивать» требует подтверждения каждого действия. «Без вопросов» разрешает инструменты агента без подтверждений, в том числе вне его папки.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',

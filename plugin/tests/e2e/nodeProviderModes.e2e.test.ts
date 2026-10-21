@@ -32,9 +32,12 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       const root=await until(()=>document.querySelector('.abele-node-chat'));
       root.querySelector('.abele-node-chat__agent').click();
       await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('Codex')));
-      states.picker=document.body.textContent.includes('This provider cannot ask before each action.') && document.body.textContent.includes('Codex · Agent permission settings');
+      states.picker=[...document.querySelectorAll('.menu-item-title')].filter(el=>el.textContent.includes('Codex')).length===1 && !!document.querySelector('.abele-node-provider-blocked');
       await shot('picker');
-      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(150);
+      [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim().startsWith('Codex')).click();
+      const blockedSettings=await until(()=>document.querySelector('.abele-agent-editor'));
+      await until(()=>blockedSettings.querySelector('.abele-node-permission-warning'));
+      await shot('picker-blocked-settings');await close();
       await api.closeNodeSessionFixture();
       await api.openNodeSessionFixture('letter');
       const overridden=chats.getNodeSession(chats.activeTabId.value);
@@ -49,7 +52,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       await shot('agent-settings-inherited');await close();
       api.openDialog('node-agent-permissions');
       const settings=await until(()=>document.querySelector('.abele-agent-editor'));await until(()=>settings.querySelector('select'));await wait(150);
-      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('confined to that folder');
+      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes("in Ask it won't start") && !settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('it stays inside that folder');
       await shot('agent-settings');
       const select=[...settings.querySelectorAll('select')].find(el=>[...el.options].some(option=>option.value==='confirm-all') && [...el.options].some(option=>option.value==='allow-all'));
       const configured=api.AgentRegistry.getInstance().list({includeUtility:true,includeNode:true}).find(agent=>agent.node?.id==='sample-permission-node');
@@ -61,10 +64,21 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
         api.openDialog('node-delegation-card',{permissionState:state});
         const card=await until(()=>document.querySelector('.abele-node-delegation'));await wait(150);
         const text=card.textContent;
-        states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Agent permission settings'))
-          : state==='node-opt-in' ? text.includes('--claude-allow-bypass')
-          : state==='running' ? text.includes('Without asking') : text.includes('Permission mode not reported');
-        await shot('delegation-'+state);await close();
+        states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))
+          : state==='node-opt-in' ? text.includes('On the node, allow running without asking:')
+          : state==='running' ? !!card.querySelector('[aria-label="Without asking"]') : !card.querySelector('[aria-label="Without asking"],[aria-label="Ask"]');
+        await shot('delegation-'+state);
+        if(state==='node-opt-in'){
+          card.querySelector('.abele-disclosure__control').click();await until(()=>card.querySelector('input'));
+          if(card.querySelector('input').value!=='abele-node service flags set --allow-bypass on')throw Error('Missing node opt-in command');
+          await shot('delegation-node-opt-in-command');
+        }
+        if(state==='refused' || state==='node-opt-in'){
+          [...card.querySelectorAll('button')].find(b=>b.textContent.includes('Open agent settings')).click();
+          const exact=await until(()=>document.querySelector('.abele-agent-editor'));
+          await until(()=>exact.querySelector('select'));await shot('delegation-'+state+'-settings');
+        }
+        await close();
       }
       return JSON.stringify(states);
     } finally { await close();await api.closeNodeSessionFixture() }

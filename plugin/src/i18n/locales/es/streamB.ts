@@ -4,6 +4,12 @@ export const streamB = {
     'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',
   'streamB.providerUnavailable': 'El proveedor del modelo no está disponible temporalmente.',
   'streamB.permissionInherit': 'Heredar del chat principal al delegar (preguntar en chats nuevos)',
+  'streamB.permissionBypassDisabled': 'La ejecución sin preguntar está desactivada en este nodo.',
+  'streamB.permissionCopyCommand': 'Copiar comando',
+  'streamB.permissionAskNow': 'Preguntar ahora',
+  'streamB.permissionCodexAsk':
+    'Codex no puede preguntar antes de cada acción, así que no se iniciará en Preguntar. Elige Sin preguntar.',
+  'streamB.permissionInherit': 'Igual que el chat que delega',
   'streamB.permissionUpdateNode':
     'Actualice este nodo para que indique y aplique los modos de permisos antes de iniciar este proveedor.',
   'streamB.permissionAsk': 'Preguntar',
@@ -11,11 +17,9 @@ export const streamB = {
   'streamB.permissionUnknown': 'Modo de permisos no indicado',
   'streamB.permissionNeedsBypass':
     'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente. Al delegar, el chat principal también debe ejecutarse sin preguntar.',
-  'streamB.permissionNodeOptIn':
-    'El operador del nodo debe activar --claude-allow-bypass en el nodo.',
-  'streamB.permissionOpenSettings': 'Permisos del agente',
-  'streamB.permissionCodexFolder':
-    'Este proveedor no puede preguntar antes de cada acción. «Sin preguntar» permite editar en su carpeta sin confirmación; sigue limitado a esa carpeta. El operador del nodo también debe activar --claude-allow-bypass.',
+  'streamB.permissionNodeOptIn': 'En el nodo, permite ejecutar sin preguntar:',
+  'streamB.permissionOpenSettings': 'Abrir ajustes del agente',
+  'streamB.permissionCodexFolder': 'Edita en su carpeta sin preguntar; permanece dentro de ella.',
   'streamB.permissionOwnerChoice':
     '«Preguntar» requiere aprobar cada acción. «Sin preguntar» permite ejecutar las herramientas del agente sin aprobación, también fuera de su carpeta.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',

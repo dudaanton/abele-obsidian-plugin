@@ -4,6 +4,12 @@ export const streamB = {
     'Worktree deletion is in progress. Refresh the folder to check its result.',
   'streamB.providerUnavailable': 'The model provider is temporarily unavailable.',
   'streamB.permissionInherit': 'Inherit parent for delegation (Ask for new chats)',
+  'streamB.permissionBypassDisabled': 'Running without asking is disabled on this node.',
+  'streamB.permissionCopyCommand': 'Copy command',
+  'streamB.permissionAskNow': 'Ask now',
+  'streamB.permissionCodexAsk':
+    "Codex can't ask before each action, so in Ask it won't start. Choose Without asking.",
+  'streamB.permissionInherit': 'Same as the chat that delegates',
   'streamB.permissionUpdateNode':
     'Update this node to report and enforce provider permission modes before starting this provider.',
   'streamB.permissionAsk': 'Ask',
@@ -11,10 +17,10 @@ export const streamB = {
   'streamB.permissionUnknown': 'Permission mode not reported',
   'streamB.permissionNeedsBypass':
     'This provider cannot ask before each action. Choose Without asking in its agent settings to enable it. For delegation, the parent chat must also run without asking.',
-  'streamB.permissionNodeOptIn': 'The node operator must enable --claude-allow-bypass on the node.',
-  'streamB.permissionOpenSettings': 'Agent permission settings',
+  'streamB.permissionNodeOptIn': 'On the node, allow running without asking:',
+  'streamB.permissionOpenSettings': 'Open agent settings',
   'streamB.permissionCodexFolder':
-    'This provider cannot ask before each action. Without asking allows edits in its folder without prompts; it stays confined to that folder. The node operator must also enable --claude-allow-bypass.',
+    'Edits in its folder without asking; it stays inside that folder.',
   'streamB.permissionOwnerChoice':
     'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',

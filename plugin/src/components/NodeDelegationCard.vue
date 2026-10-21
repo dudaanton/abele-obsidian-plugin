@@ -1,23 +1,33 @@
 <template>
   <section class="abele-node-delegation" :aria-label="t('streamB.nodeDelegation.f2834f')">
-    <Setting
-      :name="card.title"
-      :desc="
-        [nodeLabel, providerLabel(card.provider), delegationBranchLabel(card.branch), stateLabel]
-          .filter(Boolean)
-          .join(' · ')
-      "
-    >
-      <Button
+    <Setting :name="card.title">
+      <template #desc
+        ><span class="abele-node-delegation__meta"
+          >{{
+            [
+              nodeLabel,
+              providerLabel(card.provider),
+              delegationBranchLabel(card.branch),
+              stateLabel,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }}<NodeToolPermissions
+            :policy="card.toolPermissions"
+            :node-label="nodeLabel"
+            :provider="card.provider"
+            mode-only /></span
+      ></template>
+      <Icon
         v-if="card.sessionId"
-        :text="t('streamB.openChildChat.8ed00f')"
-        plain
         icon="message-square"
+        :tooltip="t('streamB.openChildChat.8ed00f')"
         @click="emit('open')"
       />
     </Setting>
     <NodeToolPermissions
       :policy="card.toolPermissions"
+      hide-mode
       :reason="card.reason"
       :node-id="card.nodeId"
       :node-label="nodeLabel"
@@ -58,8 +68,11 @@
         @stop="emit('stop', prompt)"
       />
     </template>
-    <details class="abele-node-delegation__details" :open="!finished || !!card.pendingHumanPrompts">
-      <summary>{{ t('node.delegation.activity') }}</summary>
+    <Disclosure
+      class="abele-node-delegation__details"
+      :label="t('node.delegation.activity')"
+      v-model="activityOpen"
+    >
       <p
         v-for="warning in card.warnings ?? []"
         :key="warning"
@@ -73,16 +86,24 @@
       <p v-if="activityPreview" class="abele-node-delegation__report">
         {{ activityPreview }}
       </p>
-      <ul v-if="card.activity?.files.length">
-        <li v-for="file in card.activity.files" :key="file">
-          <code>{{ file }}</code>
-        </li>
-      </ul>
+      <div v-if="card.activity?.files.length">
+        <div
+          v-for="file in card.activity.files"
+          :key="file"
+          class="abele-node-delegation__metadata"
+        >
+          {{ file }}
+        </div>
+      </div>
       <template v-for="report in card.reports" :key="report.seq">
-        <details v-if="report.kind === 'progress'">
-          <summary>{{ t('streamB.progress.466482') }}</summary>
+        <Disclosure
+          v-if="report.kind === 'progress'"
+          :label="t('streamB.progress.466482')"
+          :model-value="!!expandedReports[report.seq]"
+          @update:model-value="expandedReports[report.seq] = $event"
+        >
           <p class="abele-node-delegation__report">{{ delegationReportText(report.text) }}</p>
-        </details>
+        </Disclosure>
         <div v-else :data-mailbox-seq="report.seq">
           <strong>{{
             report.kind === 'result'
@@ -92,7 +113,7 @@
           <p class="abele-node-delegation__report">{{ delegationReportText(report.text) }}</p>
         </div>
       </template>
-    </details>
+    </Disclosure>
   </section>
 </template>
 <script setup lang="ts">
@@ -103,17 +124,24 @@ import NodeQuestionnaire from './NodeQuestionnaire.vue'
 import { obsidianPromptCall } from '@/node/obsidianPresentation'
 import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
 import { delegationBranchLabel, delegationReportText } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
+import Icon from './obsidian/Icon.vue'
+import Disclosure from './obsidian/Disclosure.vue'
 const props = defineProps<{ card: DelegationCard; nodeLabel: string; disabled?: boolean }>()
 const activityPreview = computed(() => {
   const text = props.card.activity?.message ?? ''
   const characters = Array.from(text)
-  return characters.length > 320 ? `…${characters.slice(-320).join('')}` : text
+  return characters.length > 320
+    ? `… ${characters
+        .slice(-320)
+        .join('')
+        .replace(/^\S*\s/, '')}`
+    : text
 })
 const finished = computed(() =>
   [
@@ -126,6 +154,14 @@ const finished = computed(() =>
     'grant revoked',
   ].includes(props.card.state)
 )
+const activityOpen = ref(!finished.value || !!props.card.pendingHumanPrompts)
+watch(
+  () => [finished.value, props.card.pendingHumanPrompts],
+  () => {
+    activityOpen.value = !finished.value || !!props.card.pendingHumanPrompts
+  }
+)
+const expandedReports = ref<Record<number, boolean>>({})
 const stateLabel = computed(() => {
   const state = props.card.state
   if (state === 'stopped') return t('node.delegation.paused')
@@ -156,17 +192,28 @@ const emit = defineEmits<{
 <style scoped>
 .abele-node-delegation {
   min-width: 0;
+  font-size: var(--font-ui-small);
   padding: var(--size-4-2);
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   margin-block: var(--size-4-2);
   overflow-wrap: anywhere;
 }
+.abele-node-delegation__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+.abele-node-delegation > :deep(.setting-item) {
+  display: flex;
+  align-items: flex-start;
+}
 .abele-node-delegation__report {
   white-space: pre-wrap;
+  font-size: inherit;
 }
 .abele-node-delegation__metadata {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-smaller);
 }
 </style>

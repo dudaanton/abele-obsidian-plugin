@@ -12,6 +12,7 @@ export interface NodeSuggestion {
   kind: string
   title: string
   note?: string
+  warning?: string
   /** A number at the row's end, and what it counts. */
   count?: { value: number; label: string }
   /** The one in use now, marked in the accent colour. */
@@ -99,7 +100,8 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
     }
     const icon = el.createDiv({ cls: 'suggestion-icon abele-node-suggestion__kind' })
     setIcon(icon, item.icon)
-    setTooltip(icon, item.kind)
+    setTooltip(icon, item.warning || item.kind)
+    if (item.warning) icon.addClass('abele-node-suggestion__warning')
     const content = el.createDiv({ cls: 'suggestion-content' })
     content.createDiv({ cls: 'suggestion-title', text: item.title })
     if (item.note) content.createDiv({ cls: 'suggestion-note', text: item.note })

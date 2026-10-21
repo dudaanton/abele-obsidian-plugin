@@ -50,3 +50,7 @@
 body.is-phone .abele-node-suggest-hint {
   flex-wrap: wrap;
 }
+
+.abele-node-suggestion__warning {
+  color: var(--color-orange);
+}

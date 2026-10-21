@@ -330,13 +330,13 @@ import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
 import { streamBCount } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
-import { Menu, Notice, Platform } from 'obsidian'
+import { setIcon, setTooltip, Menu, Notice, Platform } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
 import NodeToolPermissions from './NodeToolPermissions.vue'
 import { readToolPermissions } from '@/node/toolPermissions'
-import { nodeAgentModeLabel } from '@/node/nodeAgentTools'
+import { nodeAgentOwnerMode } from '@/node/nodeAgentTools'
 import { openNodeAgentSettings } from '@/node/openNodeAgentSettings'
 import { nodeAttachmentText } from '@/node/nodeChatAttachments'
 import type { NodeHistoryAction } from '@/node/NodeChatHistory'
@@ -456,37 +456,32 @@ const chooseAgent = () => {
   const agent = sessionAgent() ?? ''
   for (const choice of agentChoices(props.presenter.providerReports?.value ?? [])) {
     const current = choice.provider === provider && (choice.agent ?? '') === agent
-    menu.addItem((i) =>
-      i
-        .setTitle(
-          [
-            choice.label,
-            nodeAgentModeLabel(props.presenter.reference.nodeId, choice.provider),
-            choice.permissionNote,
-            choice.unavailable,
-          ]
-            .filter(Boolean)
-            .join(' · ')
-        )
-        .setChecked(current)
-        .setDisabled(!!choice.unavailable)
-        .onClick(() => {
-          if (!current) emit('start-with', choice)
-        })
-    )
-    if (choice.permissionNote)
-      menu.addItem((i) =>
-        i
-          .setTitle(`${choice.label} · ${t('streamB.permissionOpenSettings')}`)
-          .setIcon('settings')
-          .onClick(() =>
-            openNodeAgentSettings(
-              props.presenter.reference.nodeId,
-              nodeLabel.value,
-              choice.provider
-            )
+    const blocked =
+      !choice.unavailable && !!choice.permissionNote &&
+      nodeAgentOwnerMode(props.presenter.reference.nodeId, choice.provider) !== 'allow-all'
+    menu.addItem((i) => {
+      i.setTitle(choice.label).setChecked(current).setDisabled(!!choice.unavailable)
+      if (blocked) {
+        const title = createFragment()
+        title.append(choice.label + ' ')
+        const warning = createSpan()
+        warning.className = 'abele-node-provider-blocked'
+        warning.setAttribute('aria-label', choice.permissionNote ?? '')
+        setIcon(warning, 'alert-circle')
+        setTooltip(warning, choice.permissionNote ?? '')
+        title.append(warning)
+        i.setTitle(title)
+      }
+      i.onClick(() => {
+        if (blocked)
+          void openNodeAgentSettings(
+            props.presenter.reference.nodeId,
+            nodeLabel.value,
+            choice.provider
           )
-      )
+        else if (!current) emit('start-with', choice)
+      })
+    })
   }
   const rect = button.getBoundingClientRect()
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
@@ -980,4 +975,13 @@ watch(
     overflow-wrap: anywhere;
   }
 }
+</style>
+
+<style>
+.abele-node-provider-blocked {
+  display: inline-flex;
+  color: var(--color-orange);
+  vertical-align: middle;
+}
+
 </style>

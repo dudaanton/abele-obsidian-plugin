@@ -94,6 +94,6 @@ export function permissionRefusal(reason?: string | null): string {
   if (reason.includes('interactive_approval_unsupported')) return t('streamB.permissionNeedsBypass')
   if (reason.includes('tool_permissions_unavailable')) return t('streamB.permissionUpdateNode')
   if (/bypass.*(disabled|unsupported|not_allowed|not_enabled)|allow.bypass/.test(reason))
-    return t('streamB.permissionNodeOptIn')
+    return t('streamB.permissionBypassDisabled')
   return ''
 }

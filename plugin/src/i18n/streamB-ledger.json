@@ -5453,13 +5453,13 @@
     "englishHash": "b6d1f78e253956ef7949d7cbcdff679cc4292fc5a3d89a95b65e5754b664229a"
   },
   "streamB.permissionNodeOptIn": {
-    "englishHash": "8ae5b29f5a99866e842781aa6eee91279d67068bf43f0749336b9328ed3131fa"
+    "englishHash": "638aff89fde274b38487fc46fb005d1b82a5e49539b9a50196a44e1e767326e7"
   },
   "streamB.permissionOpenSettings": {
-    "englishHash": "d7a52e5b58087e582beae77cccca510256c5abc84df9f5e69406a119cfe96685"
+    "englishHash": "610152942e1eeded5d8f429f8a203cfec09665400f90a6fcdfaac3877d50da8b"
   },
   "streamB.permissionCodexFolder": {
-    "englishHash": "db0118157aa3b001d528a7f14059e11c05e5e470ec49594f1a316e5120df87e4"
+    "englishHash": "8c7f95398e6ea759fee3d5c4bcea942442d2c96c310ec0bff41419e53a6237c9"
   },
   "streamB.permissionOwnerChoice": {
     "englishHash": "eb5493a6c674ed2389f5109ae6d68bdda42aaa5ab1b48a2473f9733f337eee83"
@@ -5468,6 +5468,18 @@
     "englishHash": "7a6cdd0108ced38dcdee0d922f823bc4e64c417a59a8e049d17eea926d38361c"
   },
   "streamB.permissionInherit": {
-    "englishHash": "fb863b0248e81425d3914332b799e316e68ea9e05c0f1e1dbf50cfaef9da3f5e"
+    "englishHash": "28f503122085ca4279a4c839a869f82b1a6e148dda69e81fa89718d9f7998ea6"
+  },
+  "streamB.permissionCodexAsk": {
+    "englishHash": "385601b2033931362a251cbd435156449d89d61233cb76a15ba6c88b637b67ce"
+  },
+  "streamB.permissionAskNow": {
+    "englishHash": "458efa400019f53d2f33e2360fb565262b033fab2c5d80d48f622513c95a87a3"
+  },
+  "streamB.permissionCopyCommand": {
+    "englishHash": "3ca1c09e0a7edf1d8983959a83131c5c03273283770a825530f3bb87733a26d4"
+  },
+  "streamB.permissionBypassDisabled": {
+    "englishHash": "d407e25f8d3307ec154320ec627576f54effc189da299f5275b7d18a2934dabb"
   }
 }
