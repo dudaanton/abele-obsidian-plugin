@@ -99,6 +99,14 @@ const probe = (device: string) =>
       seen.changes = !!panel.querySelector('.abele-file-tree__group')
       seen.aheadBehind = panel.querySelector('.abele-branch-codes__drift')?.textContent.replace(/\\s/g, '') === '21'
       await shot('changes-staged')
+      const { model } = window.__abeleNodePanelFixture
+      const inspected = model.inspections.value
+      model.inspections.value = {}
+      seen.initialLoading = await until(() => panel.querySelector('[aria-busy="true"]')?.textContent.includes('Loading the file changes'))
+      if (panel.querySelector('.abele-file-tree')) throw Error('Uninitialized status rendered as a file list')
+      await shot('changes-loading')
+      model.inspections.value = inspected
+      await wait(100)
       await nodePanel.mode('Files'); seen.files = !!panel.querySelector('.abele-file-tree .tree-item-self[data-path]'); await shot('files')
       await nodePanel.mode('History'); seen.history = !!panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'); await shot('history')
       await nodePanel.mode('Pull requests'); seen.pulls = text(panel).includes('does not say which remote'); await shot('pulls')
@@ -141,12 +149,13 @@ const probe = (device: string) =>
 it('pictures every state of the node panel on a computer', () => {
   const seen = probe('desktop')
   const shown = Object.entries(seen).filter(([key]) => key.startsWith('onScreen '))
-  expect(shown.length).toBe(13)
+  expect(shown.length).toBe(14)
   expect(shown.filter(([, ok]) => !ok)).toEqual([])
   expect(
     Object.fromEntries(Object.entries(seen).filter(([key]) => !key.startsWith('onScreen ')))
   ).toEqual({
     changes: true,
+    initialLoading: true,
     aheadBehind: true,
     files: true,
     history: true,
@@ -165,6 +174,6 @@ it('pictures every state of the node panel on a computer', () => {
 
 it('pictures every state of the node panel in the phone layout', async () => {
   const seen = await withEmulatedPhone(async () => probe('phone'))
-  expect(Object.keys(seen).filter((key) => key.startsWith('onScreen ')).length).toBe(13)
+  expect(Object.keys(seen).filter((key) => key.startsWith('onScreen ')).length).toBe(14)
   expect(Object.entries(seen).filter(([, ok]) => !ok)).toEqual([])
 })

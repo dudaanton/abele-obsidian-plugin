@@ -68,6 +68,10 @@ describe('product node sidebar', () => {
         node: { name: 'Sample node', status: 'offline', seen: 'Today, 12:00' },
       },
     })
+    expect(view.text()).toContain('Loading the file changes…')
+    expect(view.findComponent(FileTree).exists()).toBe(false)
+    model.inspection.value = { entries: [], changes: model.changes.value } as never
+    await flushPromises()
     expect(view.get('.abele-node-place__name').text()).toBe('trunk')
     expect(view.get('.abele-node-place__where').text()).toBe('Sample')
     expect(view.find('.abele-file-tree_stale').exists()).toBe(true)
@@ -248,7 +252,7 @@ describe('the branch in the panel', () => {
       }),
       panelHistory: shallowRef(undefined),
       panelPulls: shallowRef(undefined),
-      inspection: shallowRef(undefined),
+      inspection: shallowRef({ entries: [], changes: [] }),
       loadPanelBranch: vi.fn(async () => {}),
       loadPanelHistory: vi.fn(async () => {}),
       loadPanelPulls: vi.fn(async () => {}),
@@ -357,7 +361,7 @@ describe('git actions in the panel', () => {
       }),
       panelHistory: shallowRef(undefined),
       panelPulls: shallowRef(undefined),
-      inspection: shallowRef(undefined),
+      inspection: shallowRef({ entries: [], changes: [] }),
       gitBusy: ref(''),
       port: { git: {}, createPull: vi.fn() },
       stage,

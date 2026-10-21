@@ -135,6 +135,12 @@
               : t('streamBMeta.b8b90dce28')
           }}
         </div>
+        <EmptyState
+          v-else-if="(mode === 'files' || mode === 'changes') && !model.inspection.value"
+          :text="t('streamB.loadingTheFileChanges.167dbf')"
+          variant="loading"
+          role="status"
+        />
         <FileTree
           v-else-if="mode === 'files' || mode === 'changes'"
           :key="`${model.current.value?.id}:${mode}`"
@@ -221,6 +227,7 @@ import NodeErrorText from '@/components/NodeErrorText.vue'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { streamBWord } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
+import EmptyState from '../obsidian/EmptyState.vue'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { resolveNodeCodeLink } from '@/node/codeLinks'
