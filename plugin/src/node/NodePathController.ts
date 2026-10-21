@@ -663,7 +663,13 @@ export async function newNodePathChat(
     (item) => {
       if (item.id.startsWith('settings:')) {
         const choice = choices.find((c) => `settings:${agentChoiceId(c)}` === item.id)
-        if (choice) void openNodeAgentSettings(model.nodeId, model.nodeId, choice.provider)
+        if (choice)
+          void openNodeAgentSettings(
+            model.nodeId,
+            NodeService.getInstance().nodes.value.find((node) => node.id === model.registrationId)
+              ?.label ?? t('streamB.node.e93372'),
+            choice.provider
+          )
         return
       }
       const choice = choices.find((c) => agentChoiceId(c) === item.id && !c.unavailable)

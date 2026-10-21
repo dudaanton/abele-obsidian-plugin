@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import NodeToolPermissions from '@/components/NodeToolPermissions.vue'
 import { openNodeAgentSettings } from '@/node/openNodeAgentSettings'
 vi.mock('@/node/openNodeAgentSettings', () => ({ openNodeAgentSettings: vi.fn() }))
-import { nodeProviders } from '@/node/providers'
+import { agentChoices, nodeProviders } from '@/node/providers'
 import {
   ownerPermissionPatch,
   readToolPermissions,
@@ -195,4 +195,11 @@ it('retains the provider per-action approval capability', () => {
       ],
     })[0].configuration?.per_action_approval
   ).toBe(false)
+})
+
+it('explains Codex requirements even when an older node omits approval metadata', () => {
+  const choice = agentChoices(
+    nodeProviders({ providers: [{ provider: 'codex', available: true }] })
+  ).find((choice) => choice.provider === 'codex')
+  expect(choice?.permissionNote).toContain('cannot ask before each action')
 })
