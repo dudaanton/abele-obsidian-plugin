@@ -213,7 +213,7 @@ describe('conversation presentation', () => {
     expect(input.props('scopeCode')).toBe('3')
     expect(input.props('scopeLabel')).toBe(
       // Node places are said by name; with no node here to ask, the ids stand in for the names.
-      'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node node · sample-project · worktree sample-workspace · can read files'
+      'Access: Sample/reference.md, Sample/Pages · sample-node node · sample-project · worktree sample-workspace · can read files'
     )
   })
   it('passes background question and approval state to the tree dots', async () => {
