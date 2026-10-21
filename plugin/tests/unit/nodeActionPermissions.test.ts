@@ -3,6 +3,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 import { DelegationTaskInputSchema, DelegationStorageSchema } from '@/node/delegation'
 import { ChatSession } from '@/ai/ChatSession'
+import { ordinaryNeedsApproval } from '@/ai/ordinaryToolPolicy'
 import { agentChoices, nodeProviders } from '@/node/providers'
 import {
   nodeActionModes,
@@ -47,14 +48,19 @@ it('requires approval for Ask actions and refuses Off even with an old approval'
     expect(() => requireNodeActionPermission(session, name, true)).toThrow(/off/)
 })
 it('asks before every mutating node action in ask mode, even in bypass', () => {
-  const session = {
-    permissionMode: { value: 'allow-all' },
-    getToolMode: () => 'ask',
-  } as unknown as ChatSession
+  // Vault chats and node agents share this evaluator.
+  const policy = {
+    permissionMode: 'allow-all' as const,
+    toolModes: {},
+    getToolMode: () => 'ask' as const,
+    outOfScopePath: () => null,
+    bookAnchored: false,
+    skillNeedsApproval: () => false,
+  }
   for (const name of actions.filter(
     (n) => !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(n)
   ))
-    expect(ChatSession.prototype.needsApproval.call(session, name)).toBe(true)
+    expect(ordinaryNeedsApproval(policy, name)).toBe(true)
 })
 it('lets listing, status and cancel tools follow the tool that started the work', () => {
   const off = nodeActionModes({}, {}, {})
