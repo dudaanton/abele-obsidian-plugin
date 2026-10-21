@@ -1,10 +1,11 @@
 <template>
   <TreeItem
+    ref="line"
     class="abele-chat-run abele-chat-letter"
     :class="[`abele-chat-run_${state}`, { 'abele-chat-letter_running': state === 'running' }]"
     :icon="state === 'running' ? 'loader' : 'message-square-share'"
     :text="t('chat.letterAsked', { title })"
-    :title="unknown ? letter.to.id : undefined"
+    :style="{ '--abele-letter-indent': indent }"
     :where="letter.to.folder"
     :collapsible="letter.reply !== undefined"
     :collapsed="!open"
@@ -25,11 +26,17 @@
       <Markdown :text="letter.reply" />
     </div>
   </TreeItem>
-  <CallNote v-if="letter.refusal" class="abele-chat-msg__letter-refusal" :text="letter.refusal" />
+  <CallNote
+    v-if="letter.refusal"
+    class="abele-chat-msg__letter-refusal"
+    :text="letter.refusal"
+    :style="{ '--abele-letter-indent': indent }"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, onUpdated, watch } from 'vue'
+import { setTooltip } from 'obsidian'
 import { t } from '@/i18n'
 import { openLetterChat, canOpenLetterChat } from '@/ai/chatMessaging'
 import { callState } from '@/ai/toolRuns'
@@ -42,6 +49,8 @@ import CallNote from '../obsidian/CallNote.vue'
 
 const props = defineProps<{ message: ChatMessage }>()
 const open = ref(false)
+const line = ref<InstanceType<typeof TreeItem>>()
+const indent = ref('0px')
 const letter = computed(() => props.message.chatLetter!)
 const canOpen = computed(() => canOpenLetterChat(letter.value.to))
 const unknown = computed(
@@ -68,6 +77,35 @@ const stateLabel = computed(() =>
         ? t('chat.letterRefused')
         : title.value
 )
+// Follow the host's actual tree padding, including theme changes and right-to-left layouts.
+const align = () => {
+  const root = line.value?.$el as HTMLElement | undefined
+  const text = root?.querySelector<HTMLElement>('.abele-tree-item__text')
+  if (!root || !text) return
+  const rowBox = root.getBoundingClientRect(),
+    textBox = text.getBoundingClientRect()
+  const offset =
+    getComputedStyle(root).direction === 'rtl'
+      ? rowBox.right - textBox.right
+      : textBox.left - rowBox.left
+  indent.value = `${Math.max(0, offset)}px`
+}
+const tooltip = () => {
+  if (line.value?.$el)
+    setTooltip(line.value.$el as HTMLElement, unknown.value ? letter.value.to.id : '')
+}
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  align()
+  tooltip()
+  if (typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(align)
+    observer.observe(line.value!.$el as HTMLElement)
+  }
+})
+onUpdated(align)
+watch(() => [unknown.value, letter.value.to.id], tooltip)
+onUnmounted(() => observer?.disconnect())
 </script>
 
 <style lang="scss">
@@ -78,7 +116,7 @@ const stateLabel = computed(() =>
 }
 .abele-chat-letter__reply,
 .abele-chat-letter + .abele-call-note {
-  padding-inline-start: calc(var(--icon-xs) + var(--size-4-1) + var(--size-4-2));
+  padding-inline-start: var(--abele-letter-indent);
   font-size: var(--font-ui-small);
 }
 .abele-chat-letter__reply {

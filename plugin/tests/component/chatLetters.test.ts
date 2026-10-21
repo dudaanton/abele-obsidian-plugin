@@ -24,6 +24,50 @@ const letterMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   ...overrides,
 })
 
+it('aligns replies and notes with the actual themed row text', async () => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement
+  ) {
+    const left = this.classList.contains('abele-tree-item__text') ? 62 : 16
+    return {
+      x: left,
+      y: 0,
+      left,
+      right: 374,
+      top: 0,
+      bottom: 24,
+      width: 374 - left,
+      height: 24,
+      toJSON: () => ({}),
+    }
+  })
+  const wrapper = mount(ChatLetterRun, {
+    props: {
+      message: letterMessage({
+        chatLetter: {
+          to: { id: 'docs', title: 'Sample documentation' },
+          refusal: 'That is this chat.',
+        },
+      }),
+    },
+  })
+  try {
+    await wrapper.vm.$nextTick()
+    expect(
+      (wrapper.find('.abele-chat-letter').element as HTMLElement).style.getPropertyValue(
+        '--abele-letter-indent'
+      )
+    ).toBe('46px')
+    expect(
+      (wrapper.find('.abele-call-note').element as HTMLElement).style.getPropertyValue(
+        '--abele-letter-indent'
+      )
+    ).toBe('46px')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('shows a chat listing as titles and folders without dumping internal identifiers', () => {
   const wrapper = mount(AiChatMessageDetails, {
     props: {
@@ -89,7 +133,7 @@ it('keeps unknown identifiers in the tooltip and offers only usable destinations
   try {
     expect(wrapper.text()).toContain('Asked an unknown chat')
     expect(wrapper.text()).not.toContain('missing-chat')
-    expect(wrapper.find('[title="missing-chat"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="missing-chat"]').exists()).toBe(true)
     expect(wrapper.find('.abele-tree-item__actions').exists()).toBe(false)
   } finally {
     wrapper.unmount()

@@ -19,6 +19,7 @@ it.each(onPhone() ? [true] : [false, true])(
       const shots=${JSON.stringify(shotDir('chat-messaging'))};
       const shot=async state=>{await wait(150);const path=shots+'/'+${JSON.stringify(phone ? 'phone-' : 'desktop-')}+state+'.png';if(window.__e2eHost)await window.__e2eHost.shot(path);else require('fs').writeFileSync(path,(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())};
       const root=()=>leaf.view.containerEl;
+      const textStart=el=>{const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode()){if(node.textContent.trim()){const range=document.createRange();range.selectNodeContents(node);return range.getBoundingClientRect().left}}throw Error('Missing letter text')};
       let release, pending, target, originalLoop, originalAfter, originalCheck, originalDirectory;
       try {
         const caller=chats.getSession(chats.createTab());ids.push(caller.id);
@@ -67,12 +68,15 @@ it.each(onPhone() ? [true] : [false, true])(
         target.appendChatMessage(cycle);target.updateVisibleMessages();
         try{await reverse.execute('cycle',cycle.toolParams)}catch{}
         await until(()=>root().querySelector('.abele-chat-msg__letter-refusal'));await shot('cycle-refused');
+        const noteOffset=Math.abs(textStart(root().querySelector('.abele-chat-letter .abele-tree-item__text'))-textStart(root().querySelector('.abele-call-note')));
         release();await pending;
         await until(()=>root().querySelector('.abele-chat-msg__sent-to'));
         const sent=root().querySelector('.abele-chat-msg__sent-to').textContent;await shot('sent');
         chats.switchTab(caller.id);await until(()=>root().querySelector('.abele-chat-letter [aria-expanded="false"]'));
         root().querySelector('.abele-chat-letter .tree-item-self').click();
-        await until(()=>root().querySelector('.abele-chat-letter [aria-expanded="true"]'));await shot('answer-expanded');
+        await until(()=>root().querySelector('.abele-chat-letter [aria-expanded="true"]'));await until(()=>root().querySelector('.abele-chat-letter__reply')?.textContent.includes('reconnects'));await shot('answer-expanded');
+        const replyOffset=Math.abs(textStart(root().querySelector('.abele-chat-letter .abele-tree-item__text'))-textStart(root().querySelector('.abele-chat-letter__reply')));
+        const replyBorder=getComputedStyle(root().querySelector('.abele-chat-letter > .tree-item-children')).borderInlineStartWidth;
         const refused={...call,id:'refused',toolCallId:'refusal',toolParams:{chat_id:caller.id,message:'Sample self request'}};
         caller.appendChatMessage(refused);caller.updateVisibleMessages();
         try{await send.execute('refusal',refused.toolParams)}catch{}
@@ -97,7 +101,7 @@ it.each(onPhone() ? [true] : [false, true])(
         const saved=caller.currentChatFile.value;await chats.closeTab(caller.id);await chats.openChatFile(saved);
         const reopened=chats.getSessionByFile(saved.path);ids.push(reopened.id);
         await until(()=>root().textContent.includes('interrupted by a reload'));root().querySelector('[data-message-id="interrupted"]')?.scrollIntoView({block:'center'});await shot('interrupted-reload');
-        return JSON.stringify({approval,incoming,sent,reply,refusal});
+        return JSON.stringify({approval,incoming,sent,reply,refusal,noteOffset,replyOffset,replyBorder});
       } finally {
         if(originalDirectory)chats.listOpenChats=originalDirectory;
         if(release)release();if(pending)await pending.catch(()=>{});if(target&&originalLoop)target.runAgentLoop=originalLoop;
@@ -113,6 +117,9 @@ it.each(onPhone() ? [true] : [false, true])(
       expect(result.sent).toContain('Sample request')
       expect(result.reply).toContain('reconnects')
       expect(result.refusal).toBe('That is this chat.')
+      expect(result.noteOffset).toBeLessThanOrEqual(1)
+      expect(result.replyOffset).toBeLessThanOrEqual(1)
+      expect(result.replyBorder).toBe('0px')
     }
     if (phone && !onPhone()) await withEmulatedPhone(run)
     else await run()
