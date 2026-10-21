@@ -47,9 +47,11 @@ it('reads delegation cards without rewriting the entire node store', async () =>
   const f = fixture()
   await f.controller.create('parent', task)
   const write = vi.spyOn(f.store, 'transaction')
+  const read = vi.spyOn(f.store, 'read')
   try {
     expect((await f.controller.snapshot()).parent).toHaveLength(1)
     expect(write).not.toHaveBeenCalled()
+    expect(read).toHaveBeenCalledTimes(1)
   } finally {
     f.store.close()
   }

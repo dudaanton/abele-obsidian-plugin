@@ -638,116 +638,113 @@ export class NodeDelegationController {
   }
 
   async snapshot(): Promise<Record<string, DelegationCard[]>> {
-    const parents = await readStore(this.store, (s) => [
-      ...new Set(Object.values(s.delegation?.tasks ?? {}).map((t) => t.parentId)),
-    ])
-    return Object.fromEntries(
-      await Promise.all(parents.map(async (parent) => [parent, await this.cards(parent)]))
-    )
+    return readStore(this.store, (s) => {
+      const parents = new Set(Object.values(s.delegation?.tasks ?? {}).map((t) => t.parentId))
+      return Object.fromEntries(
+        [...parents].map((parent) => [parent, this.projectCards(s, parent)])
+      )
+    })
   }
   /** Replaceable projection: replay never appends a second parent message/result. */
   cards(parent: string): Promise<DelegationCard[]> {
-    return readStore(this.store, (s) =>
-      Object.values(s.delegation?.tasks ?? {})
-        .filter((t) => t.parentId === parent)
-        .map((t) => {
-          const child = t.child
-          const events = child ? (s.events[child.mailbox_stream_id] ?? []) : []
-          const reports: DelegationCard['reports'] = []
-          let state: string = t.status?.state ?? child?.state ?? 'outcome unknown'
-          // Session status can arrive before the independent mailbox replay. Do not
-          // announce settled parent delivery while its result/terminal bytes are still
-          // outstanding; the mailbox's committed terminal event settles this card.
+    return readStore(this.store, (s) => this.projectCards(s, parent))
+  }
+  private projectCards(s: NodeClientState, parent: string): DelegationCard[] {
+    return Object.values(s.delegation?.tasks ?? {})
+      .filter((t) => t.parentId === parent)
+      .map((t) => {
+        const child = t.child
+        const events = child ? (s.events[child.mailbox_stream_id] ?? []) : []
+        const reports: DelegationCard['reports'] = []
+        let state: string = t.status?.state ?? child?.state ?? 'outcome unknown'
+        // Session status can arrive before the independent mailbox replay. Do not
+        // announce settled parent delivery while its result/terminal bytes are still
+        // outstanding; the mailbox's committed terminal event settles this card.
+        if (
+          child &&
+          t.status &&
+          ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(t.status.state) &&
+          (s.cursors[child.mailbox_stream_id] ?? 0) < t.status.mailbox_head_seq
+        )
+          state = `${t.status.state} · receiving mailbox`
+        let reason: string | undefined = t.status?.reason
+        for (const event of events) {
+          const data = event.data as {
+            delegation_id?: string
+            state?: string
+            text?: string
+            reason?: string
+          }
+          if (data.delegation_id !== child?.delegation_id) continue
           if (
-            child &&
-            t.status &&
-            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(t.status.state) &&
-            (s.cursors[child.mailbox_stream_id] ?? 0) < t.status.mailbox_head_seq
-          )
-            state = `${t.status.state} · receiving mailbox`
-          let reason: string | undefined = t.status?.reason
-          for (const event of events) {
-            const data = event.data as {
-              delegation_id?: string
-              state?: string
-              text?: string
-              reason?: string
-            }
-            if (data.delegation_id !== child?.delegation_id) continue
-            if (
-              event.type === 'delegation.terminal' &&
-              data.state &&
-              event.seq > (t.followupMailboxSeq ?? 0)
-            ) {
-              state = data.state
-              reason = data.reason
-            }
-            if (
-              ['delegation.progress', 'delegation.question', 'delegation.result'].includes(
-                event.type
-              ) &&
-              event.seq > (t.followupMailboxSeq ?? 0) &&
-              typeof data.text === 'string' &&
-              !reports.some((r) => r.seq === event.seq)
-            )
-              reports.push({ seq: event.seq, kind: event.type.slice(11), text: data.text })
+            event.type === 'delegation.terminal' &&
+            data.state &&
+            event.seq > (t.followupMailboxSeq ?? 0)
+          ) {
+            state = data.state
+            reason = data.reason
           }
-          const canRead = !!child
-          const transcript = canRead
-            ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
-            : undefined
-          const pending = new Map<string, Prompt>(
-            (canRead && child ? (this.pendingPrompts.get(child.session_id) ?? []) : []).map(
-              (prompt) => [prompt.prompt_id, prompt]
-            )
+          if (
+            ['delegation.progress', 'delegation.question', 'delegation.result'].includes(
+              event.type
+            ) &&
+            event.seq > (t.followupMailboxSeq ?? 0) &&
+            typeof data.text === 'string' &&
+            !reports.some((r) => r.seq === event.seq)
           )
-          for (const prompt of transcript?.prompts ?? []) {
-            if (prompt.state === 'pending') pending.set(prompt.prompt_id, prompt)
-            else pending.delete(prompt.prompt_id)
-          }
-          const messages = transcript?.messages ?? []
-          const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
-          const tool = messages.findLast(
-            (m) => m.role === 'tool-call' && m.toolResult === undefined
+            reports.push({ seq: event.seq, kind: event.type.slice(11), text: data.text })
+        }
+        const canRead = !!child
+        const transcript = canRead
+          ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
+          : undefined
+        const pending = new Map<string, Prompt>(
+          (canRead && child ? (this.pendingPrompts.get(child.session_id) ?? []) : []).map(
+            (prompt) => [prompt.prompt_id, prompt]
           )
-          const workspace = child?.workspace_id
-            ? this.workspaces.get(child.workspace_id)
-            : undefined
-          return {
-            title: t.input.title,
-            taskKey: t.input.task_key,
-            provider: t.input.provider,
-            delegationId: child?.delegation_id,
-            sessionId: child?.session_id,
-            nodeId: child?.node_id,
-            projectId: t.input.project_id,
-            workspaceId: child?.workspace_id ?? undefined,
-            branch: workspace?.branch,
-            activity: canRead
-              ? {
-                  message: latest?.content.slice(-2000),
-                  tool: tool?.toolName?.slice(0, 256),
-                  files: workspace?.files ?? [],
-                }
-              : undefined,
-            state,
-            reason,
-            prompts: t.status?.pending_human_prompts === 0 ? [] : [...pending.values()],
-            promptDiffs: transcript?.promptDiffs,
-            answers: child ? promptAnswerStates(s, child.session_id) : {},
-            warnings: canRead
-              ? (s.events[child!.session_id] ?? [])
-                  .filter((e) => e.type === 'pi.extension.warning')
-                  .slice(-5)
-                  .map((e) => {
-                    const data = e.data as { extension?: string; event?: string; error?: string }
-                    return [data.extension, data.event, data.error].filter(Boolean).join(': ')
-                  })
-              : [],
-            pendingHumanPrompts: t.status?.pending_human_prompts ?? pending.size,
-            reports,
-          }
-        })
-    )
+        )
+        for (const prompt of transcript?.prompts ?? []) {
+          if (prompt.state === 'pending') pending.set(prompt.prompt_id, prompt)
+          else pending.delete(prompt.prompt_id)
+        }
+        const messages = transcript?.messages ?? []
+        const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
+        const tool = messages.findLast((m) => m.role === 'tool-call' && m.toolResult === undefined)
+        const workspace = child?.workspace_id ? this.workspaces.get(child.workspace_id) : undefined
+        return {
+          title: t.input.title,
+          taskKey: t.input.task_key,
+          provider: t.input.provider,
+          delegationId: child?.delegation_id,
+          sessionId: child?.session_id,
+          nodeId: child?.node_id,
+          projectId: t.input.project_id,
+          workspaceId: child?.workspace_id ?? undefined,
+          branch: workspace?.branch,
+          activity: canRead
+            ? {
+                message: latest?.content.slice(-2000),
+                tool: tool?.toolName?.slice(0, 256),
+                files: workspace?.files ?? [],
+              }
+            : undefined,
+          state,
+          reason,
+          prompts: t.status?.pending_human_prompts === 0 ? [] : [...pending.values()],
+          promptDiffs: transcript?.promptDiffs,
+          answers: child ? promptAnswerStates(s, child.session_id) : {},
+          warnings: canRead
+            ? (s.events[child!.session_id] ?? [])
+                .filter((e) => e.type === 'pi.extension.warning')
+                .slice(-5)
+                .map((e) => {
+                  const data = e.data as { extension?: string; event?: string; error?: string }
+                  return [data.extension, data.event, data.error].filter(Boolean).join(': ')
+                })
+            : [],
+          pendingHumanPrompts: t.status?.pending_human_prompts ?? pending.size,
+          reports,
+        }
+      })
   }
 }
