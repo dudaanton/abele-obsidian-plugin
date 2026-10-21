@@ -1,8 +1,24 @@
 /** The chat looks at the node store after every event without rewriting it. */
 import { expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
+
+it('reads the state only once while an asynchronous transaction is waiting', async () => {
+  const store = new NodeClientStore('sample-idle-read-count', new IDBFactory())
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  try {
+    await store.transaction(async (state) => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      state.cursors.sample = 1
+    })
+    expect(get.mock.calls.filter(([key]) => key === 'state')).toHaveLength(1)
+    expect(await store.read((state) => state.cursors.sample)).toBe(1)
+  } finally {
+    get.mockRestore()
+    store.close()
+  }
+})
 
 it('reads the state in a read-only transaction that writes nothing back', async () => {
   const factory = new IDBFactory()

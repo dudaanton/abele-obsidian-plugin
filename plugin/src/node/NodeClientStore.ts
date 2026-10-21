@@ -213,8 +213,8 @@ export class NodeClientStore implements ClientStore {
   async transaction<T>(work: (state: NodeClientState) => T | Promise<T>): Promise<T> {
     const db = await this.open()
     return new Promise<T>((resolve, reject) => {
-      // The readwrite lock isolates even separate plugin windows/handles. A keepalive read
-      // prevents IndexedDB's automatic commit while an injected callback awaits work.
+      // The readwrite lock isolates even separate plugin windows/handles. A key count
+      // prevents automatic commit across an asynchronous callback without cloning history.
       // Relaxed first: most transactions only add the events a node streamed, which this device
       // reads again from the node if a crash loses them. One that changed anything else (what
       // was sent, receipts, drafts) completes only after a strict flush, below.
@@ -260,7 +260,7 @@ export class NodeClientStore implements ClientStore {
       }
       const keepAlive = () => {
         if (!pending) return
-        const request = store.get('state')
+        const request = store.count('state')
         request.onsuccess = keepAlive
       }
       const request = store.get('state')
