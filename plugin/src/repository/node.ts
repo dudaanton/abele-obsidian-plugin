@@ -650,19 +650,30 @@ export class NodeRepositorySource implements RepositorySource {
   }
   async blame(ref: string, path: string): Promise<BlameRange[]> {
     const revision = await this.at(ref)
-    const page = await this.pages(
-      (cursor) =>
-        this.client.repository.blame({
-          ...this.target,
-          revision,
-          path,
-          start: 1,
-          count: 1500,
-          cursor,
-        }),
-      // The protocol limits each page, not the complete file attribution.
-      100000
-    )
+    const load = (start: number) =>
+      this.pages(
+        (cursor) =>
+          this.client.repository.blame({
+            ...this.target,
+            revision,
+            path,
+            start,
+            count: 1500,
+            cursor,
+          }),
+        1500
+      )
+    const page = await load(1)
+    let batch = page,
+      bytes = JSON.stringify(page.entries).length
+    // Count selects a line range; cursors only paginate within that range.
+    while (batch.entries.length === 1500) {
+      batch = await load(batch.entries.at(-1)!.line + 1)
+      bytes += JSON.stringify(batch.entries).length
+      if (page.entries.length + batch.entries.length > 100000 || bytes > 4 * 1024 * 1024)
+        throw new UiError(uiMessage('streamBError.b930e16c73'))
+      page.entries.push(...batch.entries)
+    }
     // Blame lines carry identities and authors only. Read immutable commit metadata without
     // loading each commit's changed files, and share it across every range of that commit.
     const commits = [...new Set(page.entries.flatMap((line) => (line.commit ? [line.commit] : [])))]

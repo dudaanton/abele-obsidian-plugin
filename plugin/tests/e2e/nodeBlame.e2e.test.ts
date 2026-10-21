@@ -1,0 +1,81 @@
+import { expect, it } from 'vitest'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { startPairedNode, PAIRED_PRELUDE } from './helpers/pairedNode'
+import { evalLong } from './helpers/obsidianCli'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { shotDir } from './helpers/shots'
+import { targets } from './helpers/target'
+
+targets('desktop')
+const shots = shotDir('abele-node-blame')
+
+async function scenario(layout: string) {
+  const node = await startPairedNode()
+  const project = resolve(node.state, '../sample-project')
+  const text =
+    Array.from({ length: 1500 }, (_, index) => `// sample line ${index + 1}`).join('\n') + '\n'
+  const git = (...args: string[]) =>
+    promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+      cwd: project,
+    })
+  try {
+    writeFileSync(resolve(project, 'sample.ts'), text)
+    await git('add', 'sample.ts')
+    await git(
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'Add sample file'
+    )
+    writeFileSync(resolve(project, 'sample.ts'), text + '// uncommitted final line\n')
+    const target = JSON.parse(
+      await evalLong(`(async()=>{${PAIRED_PRELUDE}
+      const client=nodes.connection(${JSON.stringify(node.registration)}).client;
+      const project=await client.registerProject(${JSON.stringify(project)},'trusted');
+      const rows=await client.repository.worktrees({project_id:project.project_id});
+      const root=rows.entries.find(row=>row.kind==='root');
+      return JSON.stringify({nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:project.project_id,kind:'worktree',id:root.worktree_id})})()`)
+    )
+    const probe = async (layout: string) => {
+      const result = JSON.parse(
+        await evalLong(`(async()=>{${PAIRED_PRELUDE}
+        const leaf=app.workspace.getLeaf('tab');
+        try {
+          await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(target)},path:'sample.ts',line:1}});
+          await leaf.loadIfDeferred?.();await app.workspace.revealLeaf(leaf);
+          app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
+          const root=leaf.view.contentEl;
+          const toggle=await until(()=>root.querySelector('[aria-label="Toggle line blame"]'),'Blame toggle');toggle.click();
+          await until(()=>root.querySelector('.abele-github-blame-range')||root.querySelector('.abele-github-notice'),'Blame response');
+          const author=root.querySelector('.abele-github-blame-range__name');
+          if(!author)throw Error('Blame missing: '+root.textContent);
+          const authorName=author.textContent;
+          await new Promise(r=>setTimeout(r,300));
+          require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+          const scroll=root.querySelector('.abele-node-main');scroll.scrollTop=scroll.scrollHeight;
+          await until(()=>[...root.querySelectorAll('.abele-github-blame-range__name')].some(el=>el.textContent==='Uncommitted'),'Attribution after line 1500');
+          await until(()=>[...root.querySelectorAll('.cm-line')].some(el=>el.textContent.includes('uncommitted final line')),'Final source line');
+          return JSON.stringify({author:authorName,pressed:toggle.getAttribute('aria-pressed'),errors:[...root.querySelectorAll('[role=alert]')].map(el=>el.textContent)});
+        } finally {leaf.detach()}
+      })()`)
+      )
+      expect(result).toEqual({ author: 'Sample', pressed: 'true', errors: [] })
+    }
+    await probe(layout)
+  } finally {
+    await node.close()
+  }
+}
+
+it('attributes a file beyond the first blame page in desktop and phone layouts', async () => {
+  await scenario('desktop')
+  await withEmulatedPhone(() => scenario('phone'))
+}, 180_000)
