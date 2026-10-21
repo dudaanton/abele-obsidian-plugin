@@ -528,6 +528,20 @@ export class TokenItemSets implements ShareSetSource {
     this.counts.set(item.id, await this.copyCounts(item.recordId))
     this.changed()
   }
+  async previewCopy(id: string, itemId: string): Promise<ConnectionItem> {
+    const stored = this.store.get(id)?.items.find((one) => one.id === itemId)
+    if (stored?.detached && stored.recordId) {
+      const counts = await this.copyCounts(stored.recordId)
+      const current = this.store.get(id)?.items.find((one) => one.id === itemId)
+      if (!current?.detached || current.recordId !== stored.recordId)
+        throw new Error('Local copy changed; open its preview again')
+      this.counts.set(itemId, counts)
+      this.changed()
+    }
+    const item = this.items(id)?.find((one) => one.id === itemId)
+    if (!item) throw new Error('Local copy is unavailable')
+    return item
+  }
   async shares(id?: string): Promise<IssuedShare[]> {
     const connectionId = this.selected(id),
       client = this.client(connectionId)

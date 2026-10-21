@@ -48,7 +48,7 @@
         @pause="(item, paused) => act(() => sets!.pauseItem(connectionId, item.id, paused))"
         @follow="(item) => act(() => sets!.followItem(connectionId, item.id))"
         @reveal="(item) => emit('reveal', item.path)"
-        @remove-copy="(item) => (removingCopy = item)"
+        @remove-copy="openCopyPreview"
       />
 
       <Section v-if="refused.length" :title="t('sync.window.notSent')">
@@ -171,6 +171,22 @@ const emit = defineEmits<{
 const sets = computed(() => shareSetSource.value)
 const setItems = computed(() => sets.value?.items(props.connectionId) ?? null)
 const removingCopy = ref<ConnectionItem | null>(null)
+let previewingCopy = false
+async function openCopyPreview(item: ConnectionItem): Promise<void> {
+  if (previewingCopy) return
+  previewingCopy = true
+  try {
+    await act(async () => {
+      const source = sets.value
+      if (!source) throw new Error('Local copy is unavailable')
+      removingCopy.value = source.previewCopy
+        ? await source.previewCopy(props.connectionId, item.id)
+        : item
+    })
+  } finally {
+    previewingCopy = false
+  }
+}
 async function act(action: () => Promise<void>): Promise<void> {
   trustError.value = ''
   try {

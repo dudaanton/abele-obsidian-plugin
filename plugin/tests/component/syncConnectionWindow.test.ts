@@ -7,6 +7,9 @@ import { historyConnection } from '@/sync/tokenHistory'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { readFileSync } from 'node:fs'
 import { compileString } from 'sass-embedded'
+import { shareSetSource, type ConnectionItem } from '@/sync/shareSets'
+import ConnectionItems from '@/components/sync/ConnectionItems.vue'
+import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
 
 it('keeps the dot beside long status text in a non-wrapping row at phone width', () => {
   const ui = tokenUiFixture()
@@ -52,6 +55,49 @@ it('keeps the dot beside long status text in a non-wrapping row at phone width',
 afterEach(() => {
   vi.restoreAllMocks()
   historyConnection.value = null
+})
+
+it('waits for fresh edited-copy counts before opening the removal confirmation', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const item: ConnectionItem = {
+    id: 'detached-a',
+    path: 'Sample',
+    kind: 'folder',
+    state: { kind: 'detached' },
+    files: 2,
+    edited: 0,
+  }
+  let resolve!: (item: ConnectionItem) => void
+  const pending = new Promise<ConnectionItem>((done) => {
+    resolve = done
+  })
+  vi.spyOn(ui.itemSets, 'items').mockReturnValue([item])
+  const preview = vi.spyOn(ui.itemSets, 'previewCopy').mockReturnValue(pending)
+  const before = shareSetSource.value
+  shareSetSource.value = ui.itemSets
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: {
+      stubs: {
+        Modal: { template: '<div><slot /></div>' },
+        SelectiveSync: true,
+        RemoveCopyModal: true,
+      },
+    },
+  })
+  try {
+    view.getComponent(ConnectionItems).vm.$emit('remove-copy', item)
+    await flushPromises()
+    expect(preview).toHaveBeenCalledWith(id, item.id)
+    expect(view.findComponent(RemoveCopyModal).exists()).toBe(false)
+    resolve({ ...item, edited: 1 })
+    await flushPromises()
+    expect(view.getComponent(RemoveCopyModal).props('item').edited).toBe(1)
+  } finally {
+    view.unmount()
+    shareSetSource.value = before
+  }
 })
 
 it('offers explicit confirmed recovery for a missing kept copy', async () => {

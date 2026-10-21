@@ -29,6 +29,29 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('refreshes a detached preview after a later local edit instead of reusing detachment counts', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      id = registry.add()
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    ui.itemSets.store.create(id, 'Sample share', [folder('folder-a', 'Sample')], { 'folder-a': id })
+    ui.itemSets.store.reconcile(id, [])
+    let edited = 0
+    ui.itemSets.copyCounts = vi.fn(async () => ({ files: 2, edited, kept: 0 }))
+    ui.itemSets.removeLocal = async () => {}
+    await ui.itemSets.removeCopy(id, 'folder-a')
+    expect(ui.itemSets.items(id)?.[0].edited).toBe(0)
+    edited = 1
+    expect(await ui.itemSets.previewCopy(id, 'folder-a')).toMatchObject({ files: 2, edited: 1 })
+    expect(ui.itemSets.copyCounts).toHaveBeenCalledTimes(2)
+  })
   it('keeps a detached copy when another persisted group cannot open after restart', () => {
     const records = [
       { id: 'detached', scope: { kind: 'group' as const, path: 'Groups/Old.md' } },

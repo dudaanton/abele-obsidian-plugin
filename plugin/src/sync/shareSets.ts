@@ -191,6 +191,8 @@ export interface ShareSetSource {
   pauseItem: (connectionId: string, itemId: string, paused: boolean) => Promise<void>
   followItem: (connectionId: string, itemId: string) => Promise<void>
   removeCopy: (connectionId: string, itemId: string) => Promise<void>
+  /** Recount local bytes immediately before showing the removal confirmation. */
+  previewCopy?: (connectionId: string, itemId: string) => Promise<ConnectionItem>
   /** What deleting one item of a share, or the whole share when `itemId` is null, would take. */
   deleteFacts: (shareId: string, itemId: string | null) => ShareDeleteFacts | null
   closeDeletePreview?: (shareId: string) => void
