@@ -350,7 +350,10 @@ describe('actual recipient cleanup consumers', () => {
         () => [],
         currentReport
       )) as Record<string, any>
-      expect(report['dialog key-destinations'].error).toBe('Sample ' + reason)
+      // The capture keeps the stack for diagnosis; it must still name this refusal first.
+      expect(report['dialog key-destinations'].error).toMatch(
+        new RegExp(`^Error: Sample ${reason}\\n`)
+      )
       expect(report['dialog key-destinations'].cleanupErrors).toEqual([
         { stage: 'completion', message: 'Sample ' + reason },
         { stage: 'restore', message: 'Sample ' + reason },
