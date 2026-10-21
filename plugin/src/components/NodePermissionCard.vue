@@ -11,8 +11,10 @@
     @stop="emit('stop')"
   />
   <span v-else-if="obsidianCall" class="abele-node-permission__note" role="status">
-    {{ streamBLabel(prompt.state)
-    }}<template v-if="prompt.choice"> · {{ streamBLabel(prompt.choice) }}</template>
+    {{ prompt.state === 'invalidated' ? t('streamB.approvalCancelled') : streamBLabel(prompt.state)
+    }}<template v-if="prompt.choice && prompt.state !== 'invalidated'">
+      · {{ streamBLabel(prompt.choice) }}</template
+    >
   </span>
   <RequestCard
     v-else
@@ -145,7 +147,13 @@
         "
       />
       {{ isQuestion ? t('streamB.question.289aff') : t('streamB.permission.229efc') }}
-      {{ streamBLabel(prompt.state) }}{{ prompt.choice ? ': ' + streamBLabel(prompt.choice) : '' }}
+      {{
+        prompt.state === 'invalidated'
+          ? t('streamB.approvalCancelled')
+          : streamBLabel(prompt.state)
+      }}{{
+        prompt.choice && prompt.state !== 'invalidated' ? ': ' + streamBLabel(prompt.choice) : ''
+      }}
       <template v-if="prompt.value !== undefined && prompt.value !== null">
         · {{ prompt.value }}</template
       >

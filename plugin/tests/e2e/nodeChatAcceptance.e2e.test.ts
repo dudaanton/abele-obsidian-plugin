@@ -79,6 +79,14 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-start-failed');
           const failed=root().textContent.includes('Sample configuration is invalid')&&!p.projection.value.queuedInputs.length;
           const attach=!!root().querySelector('button[aria-label="Attach a file"]');
+          input('cancel-input','Edit a sample file.');
+          append('run.started',{run_id:'sample-cancel-run',input_id:'cancel-input'});
+          append('pi.tool.call',{run_id:'sample-cancel-run',tool_use_id:'sample-cancel-edit',name:'edit',input:{path:'sample.txt'}});
+          append('prompt.resolved',{...prompt,prompt_id:'sample-cancel-prompt',run_id:'sample-cancel-run',tool_use_id:'sample-cancel-edit',state:'invalidated',choice:'deny'});
+          append('pi.tool.result',{run_id:'sample-cancel-run',tool_use_id:'sample-cancel-edit',is_error:true,result:'Node denied, expired or lost this exact approval'});
+          append('run.interrupted',{run_id:'sample-cancel-run'});await publish();
+          if(root().textContent.includes('User rejected this action')||root().textContent.includes('Denied:'))throw Error('Stop was shown as an owner denial');
+          scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-approval-cancelled');
           return JSON.stringify({emptyCorrect,modelPresent,collapsed,retained,ordered,stopped,failed,attach});
         } finally { await window.__abeleTest.closeNodeSessionFixture();chats.activeTabId.value=active }
       })()`,

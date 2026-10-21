@@ -3,6 +3,21 @@ import { expect, it, vi } from 'vitest'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import { useVault } from '../helpers/testEnv'
+it('calls an invalidated approval stopped instead of denied', () => {
+  useVault([])
+  const wrapper = mount(NodePermissionCard, {
+    props: {
+      disabled: true,
+      prompt: { prompt_id: 'sample-stop', state: 'invalidated', choice: 'deny' } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Cancelled')
+    expect(wrapper.text()).not.toMatch(/deny|denied/i)
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('separates the translated refusal label from its retained diagnostic', () => {
   useVault([])
   const wrapper = mount(NodePermissionCard, {

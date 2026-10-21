@@ -54,6 +54,44 @@ const e = (seq: number, type: string, data: unknown): JournalEvent => ({
   at: new Date(seq * 1000).toISOString(),
 })
 
+it('records an invalidated approval as stopped even when its tool result arrives before the interrupt', () => {
+  const p = reduceTranscript([
+    e(1, 'pi.tool.call', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-edit',
+      name: 'edit',
+      input: {},
+    }),
+    e(2, 'prompt.resolved', {
+      prompt_id: 'sample-stop',
+      session_id: 'sample-session',
+      run_id: 'sample-run',
+      revision: 1,
+      action_digest: 'a'.repeat(64),
+      kind: 'permission',
+      tool_use_id: 'sample-edit',
+      tool_name: 'edit',
+      expires_at: 1999999999999,
+      choice: 'deny',
+      installation_id: null,
+      delivered: false,
+      state: 'invalidated',
+    }),
+    e(3, 'pi.tool.result', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-edit',
+      is_error: true,
+      result: 'Node denied, expired or lost this exact approval',
+    }),
+    e(4, 'run.interrupted', { run_id: 'sample-run' }),
+  ])
+  expect(p.messages.find((m) => m.role === 'tool-call')).toMatchObject({
+    toolStatus: 'rejected',
+    toolExecution: 'not-run',
+    toolResult: undefined,
+  })
+})
+
 it('preselects the last available agent, then a configured real provider', () => {
   const providers = nodeProviders({
     providers: [

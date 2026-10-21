@@ -518,6 +518,12 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   for (const [id, decisions] of Object.entries(toolPrompts)) {
     const tool = messages.get(id)
     if (tool && decisions.at(-1)?.choice === 'deny') {
+      if (decisions.at(-1)?.state === 'invalidated') {
+        tool.toolStatus = 'rejected'
+        tool.toolExecution = 'not-run'
+        tool.toolResult = undefined
+        continue
+      }
       if (
         tool.toolExecution === 'interrupted' ||
         (tool.toolExecution === 'not-run' &&
