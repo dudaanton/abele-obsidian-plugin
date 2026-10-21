@@ -1,17 +1,15 @@
 import { t } from '@/i18n'
 import { readableToolName, truncate } from './toolLine'
 import type { ChatMessage } from './types'
-import { nodeErrorWords } from '@/node/errorWords'
-
-function failureBrief(result: string) {
+function structuredFailure(result: string) {
   try {
     const value: unknown = JSON.parse(result)
     if (value && typeof value === 'object' && 'code' in value && typeof value.code === 'string')
-      return nodeErrorWords(value.code)
+      return true
   } catch {
     // Ordinary text results already carry their explanation.
   }
-  return truncate(result, 160)
+  return false
 }
 
 /** What a tool does, in the words and glyph a run of the agent's work is told by. */
@@ -183,10 +181,17 @@ export function runSummary(calls: readonly ChatMessage[]): string {
         const denied =
           call.toolExecution === 'not-run' ||
           (call.toolExecution === undefined && call.toolResult === 'User rejected this action')
+        if (!denied && structuredFailure(call.toolResult ?? '')) {
+          const label = t('streamB.failed.5d28a9')
+          parts.push(
+            `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${readableToolName(call.toolName)}`
+          )
+          continue
+        }
         parts.push(
           t(denied ? 'streamB.actionDenied' : 'streamB.actionFailed', {
             action: readableToolName(call.toolName),
-            reason: failureBrief(call.toolResult ?? ''),
+            reason: truncate(call.toolResult ?? '', 160),
           })
         )
       }

@@ -18,6 +18,7 @@ it('keeps structured refusal evidence out of the collapsed tool line', () => {
   ])
   expect(text).not.toContain('{')
   expect(text).not.toContain('sample-request')
+  expect(text).toMatch(/^Failed:/)
   expect(text).toContain('Debugger: status')
 })
 
