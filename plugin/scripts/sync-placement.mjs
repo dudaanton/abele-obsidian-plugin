@@ -189,12 +189,20 @@ export function syncPlacementPlugin() {
           code,
           'const state = await this.clear(target, from, change, sha);',
           `const state = await this.clear(target, from, change, sha,
-            entry === null && from === null && firstTarget === null ? null : undefined);`
+            entry === null && from === null && firstTarget === null ? null : undefined, entry);`
         )
         code = replaceOnce(
           code,
           'async clear(target, from, change, sha) {',
-          'async clear(target, from, change, sha, knownAbsent) {'
+          'async clear(target, from, change, sha, knownAbsent, baseline) {'
+        )
+        code = replaceOnce(
+          code,
+          'if (there === null)\n            return { free: null };',
+          `if (there === null) return { free: null };
+          // Equality with a new remote version cannot authorize adoption of an
+          // occupied moved destination: those bytes may be a concurrent local save.
+          if (from !== null && baseline && baseline.sha !== sha) return 'held';`
         )
         code = replaceOnce(
           code,
@@ -349,20 +357,19 @@ export function syncPlacementPlugin() {
           // for unrelated files merely because their sizes match the remote content.
           return null;
         }
+        async editedMoveDestination(change, entry) {
+          if (!entry || entry.wirePath === change.path || await this.fs.stat(entry.path) !== null)
+            return false;
+          let target;
+          try { target = await resolveLocalFile(this.fs, this.state, change.path); }
+          catch { return true; }
+          if (await this.fs.stat(target) === null) return false;
+          try { return (await fingerprintPlacementFile(this.fs, target, this.hash)).sha !== entry.sha; }
+          catch { return true; }
+        }
         async placeObserved(change, sha, entry, fetched, local) {
-          // A missing old name may be an offline move plus edit. Its destination
-          // must still match the recorded base before any adoption or replacement.
-          if (entry && entry.wirePath !== change.path && await this.fs.stat(entry.path) === null) {
-            let target;
-            try { target = await resolveLocalFile(this.fs, this.state, change.path); }
-            catch { return false; }
-            if (await this.fs.stat(target) !== null) {
-              try {
-                if ((await fingerprintPlacementFile(this.fs, target, this.hash)).sha !== entry.sha)
-                  return false;
-              } catch { return false; }
-            }
-          }
+          // Preflight avoids unnecessary transfers; the lease repeats this content check.
+          if (await this.editedMoveDestination(change, entry)) return false;
           // An own commit may precede its local receipt. Verify and adopt existing bytes before
           // fetching them again, without settling an interrupted pull's retained write intent.
           if (change.op !== 'move' && this.adoptionCandidates?.get(change.file_id) !== false &&
@@ -468,7 +475,9 @@ export function syncPlacementPlugin() {
           return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
             () => this.placeUnlocked(change, sha, entry, fetched, local));
         }
-        async placeUnlocked(change, sha, entry, fetched, local) {`
+        async placeUnlocked(change, sha, entry, fetched, local) {
+          if (await this.editedMoveDestination(change, entry)) return false;
+`
         )
       } else if (file.endsWith('/pullRecovery.js')) {
         code = replaceOnce(
