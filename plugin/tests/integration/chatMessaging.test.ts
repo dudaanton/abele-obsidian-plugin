@@ -82,7 +82,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
-it('uses the tree directory metadata and includes node chats without adding hidden sessions', () => {
+it('uses the tree directory metadata and includes node chats without adding hidden sessions', async () => {
   const service = ChatService.getInstance()
   const local = service.getSession(service.createTab())!
   service.createTab()
@@ -108,6 +108,9 @@ it('uses the tree directory metadata and includes node chats without adding hidd
   )
   expect(list).toHaveBeenCalled()
   expect(chatMessaging.list(local.id)).toEqual([directory[1]])
+  await expect(
+    chatMessaging.send(local.id, 'node-chat', 'Sample remote request')
+  ).rejects.toThrow('cannot receive cross-chat messages')
 })
 
 it('opens a node letter destination through its existing tab', async () => {

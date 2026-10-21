@@ -1364,6 +1364,6 @@ string for an unfiled chat. This is independent of the transcript file directory
 
 # Messages between chats
 
-`list_chats` lists other open local chats with their id, title, folder, agent and state. It is read-only and runs automatically by default. Closed chats and the caller are omitted.
+`list_chats` lists other open local and node chats using the navigation directory: id, title, folder relative to the chats directory, agent (`{ id, name }` or null), and state (`idle`, `waiting`, `working`, or `failed`). It is read-only and runs automatically by default. Closed chats, helper transcripts and the caller are omitted. Cross-chat delivery currently accepts local chat destinations; a node destination returns a refusal.
 
 `send_message_to_chat` takes `chat_id` and `message`. It asks for approval by default, showing the target title, folder and message. The target works in its own chat, using its own tools and permissions; its final answer returns as the tool result. Self messages, closed or unknown targets and circular waits are refused. A reload ends an unfinished request visibly without resending it; check the target chat before asking again.
