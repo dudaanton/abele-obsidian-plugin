@@ -6,13 +6,7 @@
         <div class="abele-sync-window__status">
           <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
           <span class="abele-sync-window__line">{{ line }}</span>
-          <span
-            v-if="activity?.lastSync && row?.status === 'idle' && !progress"
-            class="abele-sync-window__server"
-            >· {{ settingsSyncWhen(new Date(activity.lastSync).toISOString()) }}</span
-          >
         </div>
-        <span class="abele-sync-window__server">{{ host }}</span>
       </div>
       <Progress
         v-if="progress"
@@ -242,7 +236,6 @@ watch(liveActivity, (next) => {
 })
 onBeforeUnmount(() => window.clearTimeout(redraw))
 const name = computed(() => (row.value ? new URL(row.value.address).host : ''))
-const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() =>
   setItems.value?.[0]?.state.kind === 'detached'
     ? setLine(

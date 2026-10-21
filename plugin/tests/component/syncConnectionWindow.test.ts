@@ -57,6 +57,31 @@ afterEach(() => {
   historyConnection.value = null
 })
 
+it('prints an idle sync time once and keeps the server address only in the title', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.registry.setStatus(id, 'idle')
+  ui.refresh()
+  ui.activity.value = { [id]: { lastSync: Date.now() } }
+  const host = new URL(ui.rows.value[0].address).host
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: {
+      stubs: {
+        Modal: { props: ['title'], template: '<section><h1>{{ title }}</h1><slot /></section>' },
+        SelectiveSync: true,
+      },
+    },
+  })
+  try {
+    expect(view.get('.abele-sync-window__line').text()).toMatch(/^Synced /)
+    expect(view.findAll('.abele-sync-window__server')).toHaveLength(0)
+    expect(view.text().split(host)).toHaveLength(2)
+  } finally {
+    view.unmount()
+  }
+})
+
 it('waits for fresh edited-copy counts before opening the removal confirmation', async () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id

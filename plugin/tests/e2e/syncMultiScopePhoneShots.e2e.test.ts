@@ -89,6 +89,16 @@ it('captures four multi-scope screens on the phone without confirming destructiv
       const detail=modal('Sample field team');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>textOf(one.querySelector('.abele-list-row__title'))==='Workshop')||[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>textOf(one).startsWith('Workshop')));
       icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'));action.click();let confirm;
       await poll(()=>{confirm=inWindows('.abele-server-delete__facts')?.closest('.modal');return confirm&&textOf(confirm.querySelector('.abele-server-delete__access')).includes('Sample workshop access')&&[...confirm.querySelectorAll('.abele-modal__footer button')].some(one=>one.classList.contains('mod-warning')&&!one.disabled)},undefined,'loaded group preview with named closed access');
+      let stablePreview=0;
+      await poll(()=>{
+        const title=textOf(confirm.querySelector('.modal-title'));
+        const cancel=[...confirm.querySelectorAll('.abele-modal__footer button')].find(one=>textOf(one)==='Cancel'&&!one.disabled);
+        const loss=[...confirm.querySelectorAll('.abele-server-delete__access li')].find(one=>textOf(one.querySelector('span'))==='Sample workshop access'&&textOf(one.querySelector('.abele-server-delete__scope'))==='Loses Group: Workshop');
+        const points=[confirm.querySelector('.modal-title'),loss,cancel];
+        const onTop=points.every(one=>{if(!one)return false;const r=one.getBoundingClientRect(),doc=one.ownerDocument,x=r.left+r.width/2,y=r.top+r.height/2;return r.width>0&&r.height>0&&x>=0&&y>=0&&x<doc.defaultView.innerWidth&&y<doc.defaultView.innerHeight&&confirm.contains(doc.elementFromPoint(x,y))});
+        stablePreview=title==='Delete “Workshop” from the server?'&&onTop?stablePreview+1:0;
+        return stablePreview>=3;
+      },undefined,'visible topmost Workshop server-delete title, named Access closed and Cancel');
       const facts=confirm.querySelector('.abele-server-delete__facts');const count=[...facts.querySelectorAll('dt')].find(one=>textOf(one)==='Files');
       if(![...facts.querySelectorAll('dt')].some(one=>textOf(one)==='Access closed'))throw new Error('Access closed label missing');
       return {files:Number(textOf(count.nextElementSibling).replace(/[^0-9]/g,'')),access:textOf(confirm.querySelector('.abele-server-delete__access')),scope:textOf(confirm.querySelector('.abele-server-delete__scope'))}
@@ -122,6 +132,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
       `
       const root=await openSyncTab();connectionRow(root,${JSON.stringify(receiverId)}).click();let rows;
       await poll(()=>{rows=[...inWindows('.abele-connection-items')?.querySelectorAll('.abele-connection-items__item')||[]];return rows.length===4});
+      await poll(()=>![...document.querySelectorAll('.notice'),...settingsDoc().querySelectorAll('.notice')].some(one=>{const r=one.getBoundingClientRect();return r.width>0&&r.height>0&&one.ownerDocument.defaultView.getComputedStyle(one).opacity!=='0'}),undefined,'connection saved notice to clear before screenshot');
       rows.at(-1).scrollIntoView({block:'nearest'});
       await poll(()=>rows.every(one=>{const r=one.getBoundingClientRect(),win=one.ownerDocument.defaultView;const footer=one.closest('.modal').querySelector('.abele-modal__footer')?.getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=Math.min(win.innerHeight,footer?.top??win.innerHeight)}),undefined,'all four item rows visible together');return rows.map(one=>textOf(one))
     `
