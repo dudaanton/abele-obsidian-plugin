@@ -8,7 +8,7 @@ export class SyncTaskBudget {
     this.bytes += bytes
     if (this.bytes < 1024 * 1024 && performance.now() - this.since < 8) return
     this.bytes = 0
-    const host = window as Window & {
+    const host = globalThis as typeof globalThis & {
       scheduler?: { yield?: () => Promise<void> }
     }
     const scheduler = host.scheduler
