@@ -8,10 +8,14 @@ export class SyncTaskBudget {
     this.bytes += bytes
     if (this.bytes < 1024 * 1024 && performance.now() - this.since < 8) return
     this.bytes = 0
-    const host = globalThis as typeof globalThis & {
-      scheduler?: { yield?: () => Promise<void> }
-    }
-    const scheduler = host.scheduler
+    const scheduler =
+      typeof window === 'undefined'
+        ? undefined
+        : (
+            window as Window & {
+              scheduler?: { yield?: () => Promise<void> }
+            }
+          ).scheduler
     if (scheduler?.yield) await scheduler.yield()
     else if (typeof MessageChannel !== 'undefined')
       await new Promise<void>((resolve) => {
@@ -23,7 +27,11 @@ export class SyncTaskBudget {
         }
         channel.port2.postMessage(null)
       })
-    else await new Promise<void>((resolve) => host.setTimeout(resolve, 0))
+    else
+      await new Promise<void>((resolve) => {
+        if (typeof window !== 'undefined') window.setTimeout(resolve, 0)
+        else self.setTimeout(resolve, 0)
+      })
     this.since = performance.now()
     signal?.throwIfAborted()
   }
