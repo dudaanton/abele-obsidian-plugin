@@ -96,7 +96,9 @@
           data-find-part="tool"
           @contextmenu.prevent="showActions"
         >
-          <span class="abele-chat-msg__tool-name">{{ readableToolName(message.toolName) }}</span>
+          <span v-if="!toolFilePath || !compactToolDetails" class="abele-chat-msg__tool-name">{{
+            readableToolName(message.toolName)
+          }}</span>
           <ChatToolFiles
             v-if="toolFilePath"
             :message="message"

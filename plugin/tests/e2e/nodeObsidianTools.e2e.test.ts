@@ -99,6 +99,8 @@ it.skipIf(!available).each([
         if (row.querySelector('.abele-chat-msg__tool-line_files')) throw Error('Node file call puts its path on another row');
         const name = row.querySelector('.abele-chat-msg__tool-name'), path = row.querySelector('.abele-chat-msg__tool-link');
         if (name && path && Math.abs(name.getBoundingClientRect().top - path.getBoundingClientRect().top) > 8) throw Error('Node file call is not a single run line');
+        const place = row.querySelector('.abele-call-place');
+        if (path && (name || path.getBoundingClientRect().height > 30 || (place && Math.abs(path.getBoundingClientRect().top - place.getBoundingClientRect().top) > 8))) throw Error('Compact file row must be its glyph, path and quiet device code');
       }
       if (!root.textContent.includes('Text waiting for approval.')) throw Error('Approval does not show the note text');
       const approval=root.querySelector('.abele-tool-approval');

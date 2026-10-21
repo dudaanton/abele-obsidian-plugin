@@ -66,6 +66,7 @@ it('keeps completed writes in the ordinary one-line call without text, diff or r
   try {
     expect(view.find('.abele-chat-msg__tool-line').text()).toContain('sample.md')
     expect(view.find('.abele-chat-msg__tool-line_files').exists()).toBe(false)
+    expect(view.find('.abele-chat-msg__tool-name').exists()).toBe(false)
     expect(view.find('.abele-call-place').text()).toContain('Sample remote')
     expect(view.find('.abele-chat-msg__tool-output').exists()).toBe(false)
     expect(view.find('.abele-chat-msg__diff').exists()).toBe(false)
