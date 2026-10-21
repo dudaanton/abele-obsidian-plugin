@@ -140,6 +140,28 @@ async function inspectCards(label: string) {
 }
 
 async function inspectRuns(label: string) {
+  for (const escaped of [false, true]) {
+    try {
+      await evalLong(
+        `window.__abeleTest.openDialog('node-manager-run', {managerEscapedCommand:${escaped}})`
+      )
+      const report = JSON.parse(
+        await evalLong(`(async () => {
+        for(let i=0;i<100&&!document.querySelector('[data-manager-approval]');i++)await new Promise(r=>setTimeout(r,50));
+        const root=document.querySelector('[data-manager-approval]');
+        return JSON.stringify({open:root.querySelector('details').open, text:[...root.querySelectorAll('.setting-item-description')].map(el=>el.textContent).join(' '),overflow:root.scrollWidth>root.clientWidth+1});
+      })()`)
+      ) as { open: boolean; text: string; overflow: boolean }
+      expect(report.open).toBe(escaped)
+      expect(report.text).toContain('sample-project')
+      expect(report.text).toContain('sample-session')
+      expect(report.text).not.toMatch(/[\n\r\u202e\u200b]/u)
+      expect(report.overflow).toBe(false)
+      columnShot(`${shots}/${label}-approval-${escaped ? 'escaped' : 'normal'}.png`)
+    } finally {
+      await closeFixture()
+    }
+  }
   for (const state of [
     'pending_approval',
     'running',

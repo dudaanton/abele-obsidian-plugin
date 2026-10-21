@@ -6,6 +6,88 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
+it.each([
+  '\n',
+  '\r',
+  '\t',
+  '\u202e',
+  '\u200b',
+  '\u0000',
+  '\u001b',
+  '\u0085',
+  '\ufeff',
+  '\u{e0001}',
+])('makes command evidence visible for %j', async (hidden) => {
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  const card = nodeManagerFixture()
+  card.prompts[0].input = {
+    method: 'command.v1.run',
+    params: {
+      argv: ['printf', `sample${hidden}argument`],
+      worktree_id: `tree${hidden}id`,
+      session_id: `session${hidden}id`,
+    },
+    cwd: `/workspace/sample${hidden}folder`,
+  }
+  const wrapper = mount(NodeManagerRunCard, { props: { card } })
+  try {
+    const summary = wrapper
+      .get('[data-manager-approval]')
+      .findAll('.setting-item-description')
+      .map((row) => row.text())
+      .join(' ')
+    expect(summary).not.toContain(hidden)
+    expect(summary).toContain('sample-session')
+    expect(summary).toContain('tree')
+    const escaped = [...hidden]
+      .flatMap((char) => char.split(''))
+      .map((char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
+      .join('')
+    const marker =
+      ({ '\n': '\\n', '\r': '\\r', '\t': '\\t' } as Record<string, string>)[hidden] ?? escaped
+    expect(summary).toContain(`sample${marker}argument`)
+    expect(summary).toContain(`tree${marker}id`)
+    expect(summary).toContain(`session${marker}id`)
+    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeDefined()
+    const evidence = wrapper.get('[data-manager-evidence] code').text()
+    if (hidden !== '\n') expect(evidence).not.toContain(hidden)
+    expect(JSON.parse(evidence)).toEqual(card.prompts[0].input)
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('shows shell commands and both integration worktrees without hidden formatting', async () => {
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  const card = nodeManagerFixture()
+  card.prompts[0].input = {
+    method: 'command.v1.run',
+    params: { command: 'echo sample\nnext\u202e', project_id: 'sample-project' },
+    cwd: '/workspace/sample',
+  }
+  const wrapper = mount(NodeManagerRunCard, { props: { card } })
+  try {
+    expect(wrapper.get('[data-manager-approval]').text()).toContain('echo sample\\nnext\\u202e')
+    expect(wrapper.get('[data-manager-approval]').text()).toContain('sample-project')
+    card.prompts[0].input = {
+      method: 'git.v1.integrate',
+      params: {
+        source_worktree_id: 'sample-source',
+        worktree_id: 'sample-target',
+        source_branch: 'feature',
+        target_branch: 'main',
+      },
+    }
+    await wrapper.setProps({ card: { ...card, prompts: [{ ...card.prompts[0] }] } })
+    const summary = wrapper.get('[data-manager-approval]').text()
+    expect(summary).toContain('sample-source')
+    expect(summary).toContain('sample-target')
+    expect(summary).toContain('sample-session')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('presents command approvals as command and folder with raw evidence collapsed', async () => {
   const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
   const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')

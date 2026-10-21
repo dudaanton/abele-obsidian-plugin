@@ -24,6 +24,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
+  managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
   delegationState?:
     | 'paused-prompt'
@@ -426,7 +427,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
               { title: 'Manager command', size: 'tall', onClose: () => emit('close') },
               {
                 default: () =>
-                  h(NodeManagerRunCard, { card: nodeManagerFixture(options?.managerRunState) }),
+                  h(NodeManagerRunCard, {
+                    card: nodeManagerFixture(
+                      options?.managerRunState,
+                      options?.managerEscapedCommand
+                    ),
+                  }),
               }
             ),
       })

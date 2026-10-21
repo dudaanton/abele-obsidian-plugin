@@ -31,7 +31,9 @@
       <div class="abele-tool-approval__message">{{ params.message }}</div>
     </template>
     <template v-else-if="nodePrompt">
-      <div v-if="location" class="abele-tool-approval__path">{{ location }}</div>
+      <div v-if="location" class="abele-tool-approval__path">
+        {{ managerApproval ? visibleText(location) : location }}
+      </div>
       <Diff
         v-for="(diff, index) in diffs ?? []"
         :key="index"
@@ -41,16 +43,14 @@
       />
       <div v-if="managerApproval" data-manager-approval>
         <Setting
-          v-for="row in managerApproval"
+          v-for="row in managerApproval.rows"
           :key="row.name"
           :name="row.name"
           :desc="row.value"
         />
-        <details data-manager-evidence>
+        <details data-manager-evidence :open="managerApproval.escaped">
           <summary>{{ t('node.manager.evidence') }}</summary>
-          <pre
-            class="abele-tool-approval__code"
-          ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+          <pre class="abele-tool-approval__code"><code>{{ managerApproval.evidence }}</code></pre>
         </details>
       </div>
       <pre
@@ -374,6 +374,19 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ answer: [choice: 'allow' | 'deny', value?: string]; stop: [] }>()
 const promptString = (value: unknown): string => (typeof value === 'string' ? value : '')
+// Keep JSON reversible while exposing characters that can reorder or conceal evidence.
+const visibleJson = (value: unknown, indent?: number): string =>
+  (JSON.stringify(value, null, indent) ?? '').replace(
+    /[\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\u007f-\u009f]/gu,
+    (char) =>
+      char
+        .split('')
+        .map((part) => {
+          return `\\u${part.charCodeAt(0).toString(16).padStart(4, '0')}`
+        })
+        .join('')
+  )
+const visibleText = (value: string): string => visibleJson(value).slice(1, -1)
 const managerApproval = computed(() => {
   const input = props.nodePrompt?.input
   if (!input || !['command.v1.run', 'git.v1.integrate'].includes(promptString(input.method)))
@@ -381,35 +394,49 @@ const managerApproval = computed(() => {
   const params = input.params as Record<string, unknown> | undefined
   if (!params) return undefined
   const rows: { name: string; value: string }[] = []
+  let escaped = false
+  const add = (name: string, value: string) => {
+    const visible = visibleText(value)
+    escaped ||= visible !== value
+    rows.push({ name, value: visible })
+  }
   if (input.method === 'command.v1.run') {
     rows.push({
       name: t('node.manager.command'),
       value: Array.isArray(params.argv)
         ? params.argv
-            .map((arg) =>
-              typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : JSON.stringify(arg)
-            )
+            .map((arg) => {
+              if (typeof arg === 'string') escaped ||= visibleText(arg) !== arg
+              return typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : visibleJson(arg)
+            })
             .join(' ')
-        : promptString(params.command),
+        : visibleText(promptString(params.command)),
     })
+    if (!Array.isArray(params.argv))
+      escaped ||= visibleText(promptString(params.command)) !== promptString(params.command)
   } else {
-    rows.push({
-      name: t('node.manager.branches'),
-      value: params.rebase
+    add(
+      t('node.manager.branches'),
+      params.rebase
         ? t('streamB.rebaseOnto.708b25', {
             v0: promptString(params.source_branch),
             v1: promptString(params.target_branch),
           })
-        : `${promptString(params.source_branch)} → ${promptString(params.target_branch)}`,
-    })
+        : `${promptString(params.source_branch)} → ${promptString(params.target_branch)}`
+    )
     for (const [key, label] of [
       ['expected_source_head', 'node.manager.sourceHead'],
       ['expected_target_head', 'node.manager.targetHead'],
     ] as const)
-      rows.push({ name: t(label), value: promptString(params[key]) })
+      add(t(label), promptString(params[key]))
   }
-  if (typeof input.cwd === 'string') rows.push({ name: t('node.manager.folder'), value: input.cwd })
-  return rows
+  for (const key of ['project_id', 'worktree_id', 'source_worktree_id'] as const)
+    if (typeof params[key] === 'string') add(key, params[key])
+  add('session_id', props.nodePrompt?.session_id ?? '')
+  if (typeof params.session_id === 'string' && params.session_id !== props.nodePrompt?.session_id)
+    add('params.session_id', params.session_id)
+  if (typeof input.cwd === 'string') add(t('node.manager.folder'), input.cwd)
+  return { rows, escaped, evidence: visibleJson(input, 2) }
 })
 const nodeValue = ref('')
 
@@ -591,7 +618,10 @@ function moreMenu(event?: MouseEvent) {
 }
 
 const headerText = computed(() => {
-  if (props.nodePrompt) return props.nodePrompt.title || props.nodePrompt.tool_name
+  if (props.nodePrompt) {
+    const title = props.nodePrompt.title || props.nodePrompt.tool_name
+    return managerApproval.value ? visibleText(title) : title
+  }
   switch (props.message.toolName) {
     case 'create':
       return t('streamB.createFile.6990d3')

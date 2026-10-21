@@ -1,7 +1,8 @@
 import type { Prompt } from '@abele/node-client'
 import type { NodeManagerController } from '@/node/NodeManagerController'
 export function nodeManagerFixture(
-  state: import('@abele/node-protocol').ManagerRun['state'] = 'pending_approval'
+  state: import('@abele/node-protocol').ManagerRun['state'] = 'pending_approval',
+  escaped = false
 ): Awaited<ReturnType<NodeManagerController['cards']>>[number] {
   const prompt: Prompt = {
     kind: 'permission' as const,
@@ -19,7 +20,10 @@ export function nodeManagerFixture(
     title: 'Run sample project checks',
     input: {
       method: 'command.v1.run',
-      params: { argv: ['npm', 'test'], project_id: 'sample-project' },
+      params: {
+        argv: escaped ? ['printf', 'sample\nline\r\u202e\u200b'] : ['npm', 'test'],
+        project_id: 'sample-project',
+      },
       cwd: '/workspace/sample-project',
     },
   }
