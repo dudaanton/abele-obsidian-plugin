@@ -29,7 +29,7 @@
         }}<span v-if="letterTarget?.folder"> · {{ letterTarget.folder }}</span>
       </div>
       <div class="abele-tool-approval__message">{{ params.message }}</div>
-      <div v-if="letterAuthority.length" class="abele-tool-approval__path">
+      <div v-if="letterAuthority.length" class="abele-tool-approval__note">
         {{ t('chat.letterAuthority', { capabilities: letterAuthority.join(', ') }) }}
       </div>
     </template>
