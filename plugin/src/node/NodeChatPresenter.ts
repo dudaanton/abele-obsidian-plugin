@@ -877,6 +877,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             throw new UiError(uiMessage('streamB.theSessionWorktreeChangedReviewTheCurrent.9cd2c5'))
         }
       }
+      await this.connection.obsidian?.ensureSession(this.reference.sessionId, this.provider.value)
       const observed_seq = await client.cursor(this.reference.sessionId)
       const params = validateParams('session.send', {
         session_id: this.reference.sessionId,
@@ -1010,6 +1011,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
         throw new UiError(uiMessage('streamB.reconnectBeforeStoppingARun.5e2dbd'))
       const current = this.projection.value.prompts.find((p) => p.prompt_id === prompt.prompt_id)
       if (!current || current.state !== 'pending' || current.run_id !== prompt.run_id) return
+      prompt = current
+      if (
+        prompt.run_id?.startsWith('obsidian:') &&
+        typeof prompt.input?.invocation_id === 'string'
+      ) {
+        await this.connection.client.request('obsidian.tools.v1.cancel', {
+          invocation_id: prompt.input.invocation_id,
+        })
+        await this.refresh()
+        return
+      }
       if (
         prompt.input?.method === 'command.v1.run' ||
         prompt.input?.method === 'git.v1.integrate'

@@ -27,6 +27,14 @@ export const en = {
   'debug.pausedAtStart': 'Paused at start',
   'node.disconnectRevokeNotice':
     'Disconnect this device and revoke its key on the node? Other devices stay connected.',
+  'node.tools.runner': 'Runs in Obsidian on {device}',
+  'node.tools.noRunner': 'No device with Obsidian is connected to the node now',
+  'node.tools.nodeAgent': 'Node agent',
+  'node.tools.modes': 'Off = unavailable. Ask = needs approval. Auto = runs on its own.',
+  'node.tools.waiting': 'Waiting for Obsidian',
+  'node.tools.executing': 'Running in Obsidian',
+  'node.tools.unknown':
+    'The action outcome could not be confirmed. Check the affected files before requesting it again.',
   'node.actionDeniedByOwner': 'User rejected this action',
   'streamB.runSummary.move.done': 'Moved',
   'streamB.runSummary.move.running': 'Moving',

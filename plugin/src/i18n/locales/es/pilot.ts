@@ -29,6 +29,15 @@ export const es = {
   'debug.pausedAtStart': 'En pausa al inicio',
   'node.disconnectRevokeNotice':
     '¿Desconectar este dispositivo y revocar su clave en el nodo? Los demás dispositivos seguirán conectados.',
+  'node.tools.runner': 'Se ejecuta en Obsidian en {device}',
+  'node.tools.noRunner': 'No hay ningún dispositivo con Obsidian conectado al nodo',
+  'node.tools.nodeAgent': 'Agente del nodo',
+  'node.tools.modes':
+    'Desactivado = no disponible. Preguntar = requiere aprobación. Auto = se ejecuta por su cuenta.',
+  'node.tools.waiting': 'Esperando a Obsidian',
+  'node.tools.executing': 'Se está ejecutando en Obsidian',
+  'node.tools.unknown':
+    'No se pudo confirmar el resultado de la acción. Revisa los archivos afectados antes de solicitarla de nuevo.',
   'node.actionDeniedByOwner': 'El usuario rechazó esta acción',
   'streamB.runSummary.move.done': 'Movido',
   'streamB.runSummary.move.running': 'Moviendo',

@@ -1,4 +1,5 @@
 import type { JournalEvent } from '@abele/channel-protocol'
+import { obsidianCallMessage, obsidianPromptCall } from './obsidianPresentation'
 import {
   PromptSchema,
   SessionSchema,
@@ -43,6 +44,13 @@ export interface NodeTranscript {
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
 export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscript {
   const messages = new Map<string, ChatMessage>()
+  const obsidianCalls = new Map<string, { name: string; args: unknown; run: string; seq: number }>()
+  const callKey = (name: string, args: unknown, run: string): string =>
+    JSON.stringify([name, args, run], (_key, value: unknown) =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+        : value
+    )
   const messageSequences: Record<string, number> = {}
   let sequence = 0
   const prompts = new Map<string, Prompt>()
@@ -195,6 +203,23 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : {}
     const text = (key: string) => (typeof data[key] === 'string' ? data[key] : '')
     at = Date.parse(event.at)
+    if (event.type === 'obsidian.tools.updated') {
+      const call = obsidianCallMessage(data, at)
+      if (call) {
+        const previous = messages.get(call.id)
+        messages.set(call.id, { ...call, timestamp: previous?.timestamp ?? at })
+        if (!previous) messageSequences[call.id] = sequence
+        if (!obsidianCalls.has(call.id))
+          obsidianCalls.set(call.id, {
+            name: text('tool_name'),
+            args: data.arguments,
+            run: text('run_id'),
+            seq: sequence,
+          })
+      }
+      continue
+    }
+    if (event.type === 'obsidian.tools.configured') continue
     currentRun = text('run_id')
     if (event.type === 'turn.started') boundaryTurn = text('turn_id') || `legacy-turn:${event.seq}`
     currentTurn = text('turn_id') || boundaryTurn
@@ -457,6 +482,13 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   const promptDiffs: NodeTranscript['promptDiffs'] = {}
   const toolPrompts: NodeTranscript['toolPrompts'] = {}
   for (const prompt of prompts.values()) {
+    const obsidian = obsidianPromptCall(prompt)
+    if (obsidian) {
+      if (obsidian.toolDiff)
+        promptDiffs[prompt.prompt_id] = [{ path: obsidian.toolPath ?? '', ...obsidian.toolDiff }]
+      if (prompt.state !== 'pending') (toolPrompts[obsidian.id] ??= []).push(prompt)
+      continue
+    }
     if (!prompt.tool_use_id) continue
     const id = agent.toolByNativeId(prompt.tool_use_id, prompt.run_id)
     const tool = id ? messages.get(id) : undefined
@@ -488,6 +520,26 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     }
   }
   const children: NodeTranscript['children'] = {}
+  // Provider wrappers and the owner coordinator describe the same bridge call. Only
+  // pair preceding wrappers from this trusted bridge, in order, and retain unmatched calls.
+  const wrappers = new Map<string, { ids: string[]; next: number }>()
+  for (const m of messages.values()) {
+    if (m.role !== 'tool-call' || m.id.startsWith('obsidian:')) continue
+    const wire = m.toolName?.replace(/^mcp__abele_debugger__/, '')
+    if (!wire?.startsWith('obsidian_')) continue
+    const key = callKey(wire.slice('obsidian_'.length), m.toolParams, messageRuns.get(m.id) ?? '')
+    const bucket = wrappers.get(key) ?? { ids: [], next: 0 }
+    bucket.ids.push(m.id)
+    wrappers.set(key, bucket)
+  }
+  for (const call of obsidianCalls.values()) {
+    const bucket = wrappers.get(callKey(call.name, call.args, call.run))
+    const id = bucket?.ids[bucket.next]
+    if (bucket && id && messageSequences[id] < call.seq) {
+      messages.delete(id)
+      bucket.next++
+    }
+  }
   // Some runtimes report an empty model error immediately before the interruption receipt.
   // The committed outcome is authoritative; keep partial text, remove that false diagnosis.
   for (const m of messages.values()) {

@@ -278,6 +278,7 @@ const sectionLabel = (group: string) => settingsLabel(originalSectionLabel(group
 
 const props = withDefaults(
   defineProps<{
+    coreModes?: boolean
     toolModes: Record<string, ToolMode>
     /** Defer mounting group controls until their heading is opened. */
     collapsed?: boolean
@@ -380,7 +381,7 @@ const defaultDescs = computed<Record<string, string>>(() =>
   Object.fromEntries(registry.value.map((tool) => [tool.name, tool.description]))
 )
 
-const isCore = (name: string) => CORE_TOOLS.has(name)
+const isCore = (name: string) => !props.coreModes && CORE_TOOLS.has(name)
 const getMode = (name: string): ToolMode => props.toolModes[name] ?? 'off'
 const setMode = (name: string, mode: ToolMode) => emit('update', name, mode)
 

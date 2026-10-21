@@ -28,6 +28,15 @@ export const lv = {
   'debug.pausedAtStart': 'Apturēts sākumā',
   'node.disconnectRevokeNotice':
     'Atvienot šo ierīci un atsaukt tās atslēgu mezglā? Citas ierīces paliks savienotas.',
+  'node.tools.runner': 'Darbojas Obsidian ierīcē {device}',
+  'node.tools.noRunner': 'Mezglam pašlaik nav pievienota neviena ierīce ar Obsidian',
+  'node.tools.nodeAgent': 'Mezgla aģents',
+  'node.tools.modes':
+    'Izslēgts = nav pieejams. Jautāt = vajadzīgs apstiprinājums. Auto = izpilda patstāvīgi.',
+  'node.tools.waiting': 'Gaida Obsidian',
+  'node.tools.executing': 'Darbojas Obsidian',
+  'node.tools.unknown':
+    'Darbības rezultātu nevarēja apstiprināt. Pirms atkārtota pieprasījuma pārbaudiet skartos failus.',
   'node.actionDeniedByOwner': 'Lietotājs noraidīja šo darbību',
   'streamB.runSummary.move.done': 'Pārvietots',
   'streamB.runSummary.move.running': 'Pārvieto',

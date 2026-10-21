@@ -33,7 +33,7 @@
         {{ t('chat.letterAuthority', { capabilities: letterAuthority.join(', ') }) }}
       </div>
     </template>
-    <template v-else-if="nodePrompt">
+    <template v-else-if="nodePrompt && !obsidianCall">
       <div v-if="location" class="abele-tool-approval__path">
         {{ managerApproval ? visibleText(location) : location }}
       </div>
@@ -92,6 +92,14 @@
           >{{ t('streamB.notAccepted.0f11a8') }} {{ answerState.error }}</template
         >
       </div>
+    </template>
+    <template v-else-if="obsidianCall && message.toolName !== 'create' && message.toolDiff">
+      <div class="abele-tool-approval__path">{{ params.path }}</div>
+      <Diff
+        :text-left="message.toolDiff.old"
+        :text-right="message.toolDiff.new"
+        :path="String(params.path || '')"
+      />
     </template>
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
     <template v-else-if="message.toolName === 'create'">
@@ -287,6 +295,19 @@
     <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">
       {{ parseError }}
     </div>
+    <Disclosure
+      v-if="obsidianCall && nodePrompt"
+      v-model="originalOpen"
+      :label="t('streamB.originalAction.67ccdf')"
+    >
+      <pre
+        class="abele-tool-approval__code"
+      ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+    </Disclosure>
+    <div v-if="obsidianCall && answerState" role="status">
+      {{ t('streamB.waitingForConfirmation.bc8582') }}
+      <template v-if="answerState.error">{{ answerState.error }}</template>
+    </div>
     <Button
       v-if="nodePrompt && answerState"
       class="abele-tool-approval__stop"
@@ -310,7 +331,7 @@
               : t('streamB.allow.e213c1')
         "
         accent
-        :disabled="keyApprovalBusy"
+        :disabled="keyApprovalBusy || disabled || !!(nodePrompt && answerState)"
         :tooltip="t('streamB.letTheAgentDoExactlyThisOnce.db2a63')"
         @click="approve"
       />
@@ -442,6 +463,9 @@ const managerApproval = computed(() => {
   return { rows, escaped, evidence: visibleJson(input, 2) }
 })
 const nodeValue = ref('')
+const obsidianCall = computed(
+  () => props.nodePrompt?.run_id === `obsidian:${props.message.toolCallId}`
+)
 
 const session = computed(() =>
   props.nodePrompt ? undefined : ChatService.getInstance().activeSession.value
@@ -633,7 +657,7 @@ function moreMenu(event?: MouseEvent) {
 }
 
 const headerText = computed(() => {
-  if (props.nodePrompt) {
+  if (props.nodePrompt && !obsidianCall.value) {
     const title = props.nodePrompt.title || props.nodePrompt.tool_name
     return managerApproval.value ? visibleText(title) : title
   }

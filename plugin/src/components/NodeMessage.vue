@@ -7,13 +7,16 @@
     :read-only-history="true"
     :extend-actions="historyState ? addHistoryActions : undefined"
     :can-reply="canReply"
-    :compact-tool-details="true"
+    :compact-tool-details="!message.id.startsWith('obsidian:')"
     :resource-opener="openResource"
     @reply="emit('reply', $event)"
     @show-reply="emit('show-reply', $event)"
     @open-session="emit('open-session', $event)"
   >
     <template #tool-note>
+      <div v-if="message.toolDevice" class="abele-node-message-note">
+        {{ t('node.tools.runner', { device: message.toolDevice }) }}
+      </div>
       <span
         v-if="message.toolResult || message.content"
         class="abele-node-message-note"

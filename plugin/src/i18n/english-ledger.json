@@ -27318,5 +27318,75 @@
       "es",
       "de"
     ]
+  },
+  "node.tools.runner": {
+    "englishHash": "8ea905a418bb1601cbc143b3c770adcb70cef1e9932f38d01822dbf16cd884a5",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.noRunner": {
+    "englishHash": "4dc0618bbcdb5679c041a621c2057bcaa9a6870ff4c0116f68fe4c1ee7671dc6",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.nodeAgent": {
+    "englishHash": "3c72f6da6d58be3eb9012224aa330de03223cec466817b71ed4507c5f87f2086",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.waiting": {
+    "englishHash": "4fb0a23a7121b35c646654d7854650b90656dd01828ed1221ee4b13fecca2acf",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.executing": {
+    "englishHash": "f1259b3ce3d05d152c232aa9924f3e599e81d47049797fb643fda2ee64171657",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.unknown": {
+    "englishHash": "c14cdb398955c9109857fa81cb0c9a1aa4cd27c28d0f5bdf01a156903a1e665a",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.modes": {
+    "englishHash": "e36557378815f4da4677ade2fbaf31da76d8df222a712173d92be9f290a7ae65",
+    "context": "Node agent Obsidian executor and tool controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

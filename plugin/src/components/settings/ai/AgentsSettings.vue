@@ -16,10 +16,14 @@
             :text="t('settings.ai.AgentsSettings.default.37a8eec1')"
             accent
           />
-          <Badge v-if="agent.utility" :text="t('settings.ai.AgentsSettings.utility.57ffcc28')" />
+          <Badge v-if="agent.node" :text="agent.node.name" />
+          <Badge
+            v-if="agent.utility && !agent.node"
+            :text="t('settings.ai.AgentsSettings.utility.57ffcc28')"
+          />
         </template>
 
-        <template #actions>
+        <template v-if="!agent.node" #actions>
           <Icon
             icon="star"
             :tooltip="starTooltip(agent)"
@@ -109,7 +113,7 @@ const bump = () => revision.value++
 
 const agents = computed(() => {
   void revision.value
-  return registry.list({ includeUtility: true })
+  return registry.list({ includeUtility: true, includeNode: true })
 })
 const defaultAgentId = computed(() => {
   void revision.value
@@ -124,6 +128,7 @@ function starTooltip(agent: AgentDefinition): string {
 }
 
 function metaFor(agent: AgentDefinition): string[] {
+  if (agent.node) return [t('node.tools.nodeAgent'), agent.node.name]
   return [modelLabel(agent), promptLabel(agent), scopeLabel(agent)]
 }
 
@@ -151,7 +156,7 @@ function persist(): void {
 
 function addAgent(): void {
   const agent = registry.create({
-    name: `Agent ${registry.list({ includeUtility: true }).length + 1}`,
+    name: `Agent ${registry.list({ includeUtility: true, includeNode: true }).length + 1}`,
   })
   persist()
   editingId.value = agent.id

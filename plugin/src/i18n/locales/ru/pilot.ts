@@ -29,6 +29,15 @@ export const ru = {
   'debug.pausedAtStart': 'Остановлено при запуске',
   'node.disconnectRevokeNotice':
     'Отключить это устройство и отозвать его ключ на ноде? Остальные устройства останутся подключёнными.',
+  'node.tools.runner': 'Выполняется в Obsidian на устройстве {device}',
+  'node.tools.noRunner': 'К ноде сейчас не подключено ни одного устройства с Obsidian',
+  'node.tools.nodeAgent': 'Агент ноды',
+  'node.tools.modes':
+    'Выкл. — недоступно. Спрашивать — нужно одобрение. Авто — выполняется самостоятельно.',
+  'node.tools.waiting': 'Ожидание Obsidian',
+  'node.tools.executing': 'Выполняется в Obsidian',
+  'node.tools.unknown':
+    'Не удалось подтвердить результат действия. Проверьте затронутые файлы, прежде чем запрашивать его снова.',
   'node.actionDeniedByOwner': 'Пользователь отклонил действие',
   'streamB.runSummary.move.done': 'Перемещено',
   'streamB.runSummary.move.running': 'Перемещение',

@@ -5,11 +5,11 @@
         ? t('settings.ai.AgentEditorModal.agent_value.c67844d1', { value0: String(agent.name) })
         : t('settings.ai.AgentEditorModal.agent.11b39c93')
     "
-    size="wide"
+    :size="Platform.isMobile ? 'tall' : 'wide'"
     @close="emit('close')"
   >
     <div class="abele-agent-editor">
-      <Tabs v-model="section" :tabs="SECTIONS" level="secondary" />
+      <Tabs v-model="section" :tabs="sections" level="secondary" />
 
       <div v-if="agent" class="abele-agent-editor__body">
         <!-- Basic -->
@@ -32,64 +32,66 @@
             />
           </Setting>
 
-          <Setting
-            :name="t('settings.ai.AgentEditorModal.utility_agent.e8384fe8')"
-            :desc="t('settings.ai.AgentEditorModal.hidden_from_the_chat_picker.a9f2b9dc')"
-          >
-            <Checkbox :is-enabled="agent.utility" @toggle="patch({ utility: !agent.utility })" />
-          </Setting>
+          <template v-if="!agent.node">
+            <Setting
+              :name="t('settings.ai.AgentEditorModal.utility_agent.e8384fe8')"
+              :desc="t('settings.ai.AgentEditorModal.hidden_from_the_chat_picker.a9f2b9dc')"
+            >
+              <Checkbox :is-enabled="agent.utility" @toggle="patch({ utility: !agent.utility })" />
+            </Setting>
 
-          <Setting
-            :name="t('settings.ai.AgentEditorModal.model.5e2c614c')"
-            :desc="t('settings.ai.AgentEditorModal.the_model_this_agent_runs.d092d7ab')"
-          >
-            <Dropdown
-              :model-value="modelKey"
-              :options="modelOptions"
-              @update:model-value="selectModel($event)"
+            <Setting
+              :name="t('settings.ai.AgentEditorModal.model.5e2c614c')"
+              :desc="t('settings.ai.AgentEditorModal.the_model_this_agent_runs.d092d7ab')"
+            >
+              <Dropdown
+                :model-value="modelKey"
+                :options="modelOptions"
+                @update:model-value="selectModel($event)"
+              />
+            </Setting>
+
+            <Setting
+              :name="t('settings.ai.AgentEditorModal.fallback_model.ed293bb6')"
+              :desc="t('settings.ai.AgentEditorModal.offered_as_a_retry_when.3264a4a0')"
+            >
+              <Dropdown
+                :model-value="fallbackKey"
+                :options="[
+                  { value: '', display: t('settings.ai.AgentEditorModal.none.dc937b59') },
+                  ...modelOptions,
+                ]"
+                @update:model-value="selectFallback($event)"
+              />
+            </Setting>
+
+            <Setting
+              :name="t('settings.ai.AgentEditorModal.background_model.905a0833')"
+              :desc="t('settings.ai.AgentEditorModal.for_naming_and_compacting_this.772ec428')"
+            >
+              <Dropdown
+                :model-value="backgroundKey"
+                :options="[
+                  {
+                    value: '',
+                    display: t('settings.ai.AgentEditorModal.follow_the_setting.ead899ca'),
+                  },
+                  ...modelOptions,
+                ]"
+                @update:model-value="selectBackground($event)"
+              />
+            </Setting>
+
+            <!-- The interceptors in the order they run, each given what the one before returned. -->
+            <InterceptorList
+              :entries="interceptorEntries"
+              :choices="interceptorOptions"
+              :narrow="Platform.isPhone"
+              pattern-placeholder="^/todo"
+              :desc="t('settings.ai.AgentEditorModal.they_read_this_agent_s.81992c4a')"
+              @update:entries="patch({ interceptors: $event })"
             />
-          </Setting>
-
-          <Setting
-            :name="t('settings.ai.AgentEditorModal.fallback_model.ed293bb6')"
-            :desc="t('settings.ai.AgentEditorModal.offered_as_a_retry_when.3264a4a0')"
-          >
-            <Dropdown
-              :model-value="fallbackKey"
-              :options="[
-                { value: '', display: t('settings.ai.AgentEditorModal.none.dc937b59') },
-                ...modelOptions,
-              ]"
-              @update:model-value="selectFallback($event)"
-            />
-          </Setting>
-
-          <Setting
-            :name="t('settings.ai.AgentEditorModal.background_model.905a0833')"
-            :desc="t('settings.ai.AgentEditorModal.for_naming_and_compacting_this.772ec428')"
-          >
-            <Dropdown
-              :model-value="backgroundKey"
-              :options="[
-                {
-                  value: '',
-                  display: t('settings.ai.AgentEditorModal.follow_the_setting.ead899ca'),
-                },
-                ...modelOptions,
-              ]"
-              @update:model-value="selectBackground($event)"
-            />
-          </Setting>
-
-          <!-- The interceptors in the order they run, each given what the one before returned. -->
-          <InterceptorList
-            :entries="interceptorEntries"
-            :choices="interceptorOptions"
-            :narrow="Platform.isPhone"
-            pattern-placeholder="^/todo"
-            :desc="t('settings.ai.AgentEditorModal.they_read_this_agent_s.81992c4a')"
-            @update:entries="patch({ interceptors: $event })"
-          />
+          </template>
         </template>
 
         <!-- Prompts -->
@@ -181,83 +183,93 @@
 
         <!-- Access -->
         <template v-else-if="section === 'access'">
-          <Setting
-            :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
-            :desc="t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')"
-          >
-            <Dropdown
-              :model-value="agent.permissionMode"
-              :options="PERMISSION_OPTIONS"
-              @update:model-value="patch({ permissionMode: $event as PermissionMode })"
-            />
-          </Setting>
-
-          <Section
-            :title="t('settings.git.repositoryConnections')"
-            :desc="t('settings.ai.AgentEditorModal.off_no_access_ask_approve.d4da8c61')"
-          >
+          <template v-if="!agent.node">
             <Setting
-              v-for="connection in githubConnections"
-              :key="connection.id"
-              :name="connection.name"
-              :desc="
-                !isBrowsableConnection(connection)
-                  ? connectionUnavailableReason(connection)
-                  : `${connection.provider || t('settings.git.githubId')} · ${connection.server || t('settings.ai.AgentEditorModal.github_com.3aeb0024')}${connection.account ? ' · ' + connection.account.login : ''}`
-              "
+              :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
+              :desc="t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')"
             >
               <Dropdown
-                v-if="isBrowsableConnection(connection)"
-                :model-value="agent.githubConnections?.[connection.id] ?? 'off'"
-                :options="CONNECTION_MODES"
-                @update:model-value="
-                  patch({
-                    githubConnections: {
-                      ...agent.githubConnections,
-                      [connection.id]: $event as ToolMode,
-                    },
-                  })
-                "
+                :model-value="agent.permissionMode"
+                :options="PERMISSION_OPTIONS"
+                @update:model-value="patch({ permissionMode: $event as PermissionMode })"
               />
             </Setting>
-            <Setting
-              v-for="id in missingGithubConnections"
-              :key="id"
-              :name="
-                t('settings.ai.AgentEditorModal.unavailable_connection_value.795252e1', {
-                  value0: String(id),
-                })
-              "
-              :desc="t('settings.ai.AgentEditorModal.this_agent_refers_to_a.48e627ef')"
-            >
-              <Dropdown
-                :model-value="agent.githubConnections?.[id] ?? 'off'"
-                :options="CONNECTION_MODES"
-                @update:model-value="
-                  patch({
-                    githubConnections: { ...agent.githubConnections, [id]: $event as ToolMode },
-                  })
-                "
-              />
-            </Setting>
-          </Section>
-          <Section
-            :title="t('settings.ai.AgentEditorModal.scope.b073f6c6')"
-            :desc="t('settings.ai.AgentEditorModal.where_this_agent_works_by.08d21d74')"
-          >
-            <AiScopeEditor
-              :entries="agent.scope"
-              :full-vault-access="agent.fullVaultAccess"
-              @update:entries="patch({ scope: $event })"
-              @update:full-vault-access="patch({ fullVaultAccess: $event })"
-            />
-          </Section>
 
+            <Section
+              :title="t('settings.git.repositoryConnections')"
+              :desc="t('settings.ai.AgentEditorModal.off_no_access_ask_approve.d4da8c61')"
+            >
+              <Setting
+                v-for="connection in githubConnections"
+                :key="connection.id"
+                :name="connection.name"
+                :desc="
+                  !isBrowsableConnection(connection)
+                    ? connectionUnavailableReason(connection)
+                    : `${connection.provider || t('settings.git.githubId')} · ${connection.server || t('settings.ai.AgentEditorModal.github_com.3aeb0024')}${connection.account ? ' · ' + connection.account.login : ''}`
+                "
+              >
+                <Dropdown
+                  v-if="isBrowsableConnection(connection)"
+                  :model-value="agent.githubConnections?.[connection.id] ?? 'off'"
+                  :options="CONNECTION_MODES"
+                  @update:model-value="
+                    patch({
+                      githubConnections: {
+                        ...agent.githubConnections,
+                        [connection.id]: $event as ToolMode,
+                      },
+                    })
+                  "
+                />
+              </Setting>
+              <Setting
+                v-for="id in missingGithubConnections"
+                :key="id"
+                :name="
+                  t('settings.ai.AgentEditorModal.unavailable_connection_value.795252e1', {
+                    value0: String(id),
+                  })
+                "
+                :desc="t('settings.ai.AgentEditorModal.this_agent_refers_to_a.48e627ef')"
+              >
+                <Dropdown
+                  :model-value="agent.githubConnections?.[id] ?? 'off'"
+                  :options="CONNECTION_MODES"
+                  @update:model-value="
+                    patch({
+                      githubConnections: { ...agent.githubConnections, [id]: $event as ToolMode },
+                    })
+                  "
+                />
+              </Setting>
+            </Section>
+            <Section
+              :title="t('settings.ai.AgentEditorModal.scope.b073f6c6')"
+              :desc="t('settings.ai.AgentEditorModal.where_this_agent_works_by.08d21d74')"
+            >
+              <AiScopeEditor
+                :entries="agent.scope"
+                :full-vault-access="agent.fullVaultAccess"
+                @update:entries="patch({ scope: $event })"
+                @update:full-vault-access="patch({ fullVaultAccess: $event })"
+              />
+            </Section>
+          </template>
+          <p v-if="agent.node" class="abele-agent-editor__runner" role="status">
+            <StatusDot :tone="runner.state === 'device' ? 'green' : 'orange'" :label="runnerSaid" />
+            {{ runnerSaid }}
+          </p>
           <Section
             :title="t('settings.ai.AgentEditorModal.tools.ea93d6a2')"
-            :desc="t('settings.ai.AgentEditorModal.off_unavailable_ask_needs_approval.845b7983')"
+            :desc="
+              agent.node
+                ? t('node.tools.modes')
+                : t('settings.ai.AgentEditorModal.off_unavailable_ask_needs_approval.845b7983')
+            "
           >
             <Setting
+              v-if="!agent.node"
               :name="t('settings.ai.AgentEditorModal.offer_tools.677c3882')"
               :desc="t('settings.ai.AgentEditorModal.by_section_the_agent_sees.636028d7')"
             >
@@ -277,7 +289,8 @@
               />
             </Setting>
             <ToolModesEditor
-              :tool-modes="agent.toolModes"
+              :tool-modes="effectiveToolModes"
+              :core-modes="!!agent.node"
               collapsed
               hide-show-all
               :by-section="toolDiscoveryMode(agent) === 'sections'"
@@ -352,6 +365,9 @@
 </template>
 
 <script setup lang="ts">
+import StatusDot from '../../obsidian/StatusDot.vue'
+import { nodeToolRunners } from '@/node/nodeAgentTools'
+import { NodeObsidianAdapter } from '@/node/NodeObsidianAdapter'
 import I18nText from '@/components/obsidian/I18nText.vue'
 import { t } from '@/i18n'
 import { isBrowsableConnection, connectionUnavailableReason } from '@/github/connections'
@@ -449,7 +465,28 @@ const missingGithubConnections = computed(() =>
 )
 const skills = computed(() => discoverSkills())
 
-const section = ref('basic')
+const sections = computed(() =>
+  agent.value?.node ? SECTIONS.filter((item) => ['basic', 'access'].includes(item.id)) : SECTIONS
+)
+const section = ref(registry.get(props.agentId)?.node ? 'access' : 'basic')
+const runner = computed(() => nodeToolRunners[agent.value?.node?.id ?? ''] ?? { state: 'none' })
+const runnerSaid = computed(() =>
+  runner.value.state === 'device'
+    ? t('node.tools.runner', { device: runner.value.device ?? '' })
+    : t('node.tools.noRunner')
+)
+const effectiveToolModes = computed(() => {
+  if (!agent.value?.node) return agent.value?.toolModes ?? {}
+  const adapter = new NodeObsidianAdapter(agent.value.id, 'settings', async () => [])
+  try {
+    return {
+      ...Object.fromEntries(adapter.tools().map((tool) => [tool.name, tool.mode])),
+      ...agent.value.toolModes,
+    }
+  } finally {
+    adapter.destroy()
+  }
+})
 
 // ── Editing ──
 
@@ -585,6 +622,13 @@ function toggleSkill(name: string): void {
 </script>
 
 <style lang="scss">
+.abele-agent-editor__runner {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
 .abele-agent-editor {
   display: flex;
   flex-direction: column;

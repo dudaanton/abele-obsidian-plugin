@@ -29,6 +29,15 @@ export const de = {
   'debug.pausedAtStart': 'Beim Start angehalten',
   'node.disconnectRevokeNotice':
     'Dieses Gerät trennen und seinen Schlüssel auf dem Knoten widerrufen? Andere Geräte bleiben verbunden.',
+  'node.tools.runner': 'Wird in Obsidian auf {device} ausgeführt',
+  'node.tools.noRunner': 'Derzeit ist kein Gerät mit Obsidian mit dem Knoten verbunden',
+  'node.tools.nodeAgent': 'Knoten-Agent',
+  'node.tools.modes':
+    'Aus = nicht verfügbar. Fragen = Zustimmung erforderlich. Auto = wird selbstständig ausgeführt.',
+  'node.tools.waiting': 'Wartet auf Obsidian',
+  'node.tools.executing': 'Wird in Obsidian ausgeführt',
+  'node.tools.unknown':
+    'Das Ergebnis der Aktion konnte nicht bestätigt werden. Prüfe die betroffenen Dateien, bevor du sie erneut anforderst.',
   'node.actionDeniedByOwner': 'Der Benutzer hat diese Aktion abgelehnt',
   'streamB.runSummary.move.done': 'Verschoben',
   'streamB.runSummary.move.running': 'Verschieben',

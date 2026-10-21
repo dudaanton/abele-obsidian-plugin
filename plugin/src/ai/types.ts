@@ -738,6 +738,8 @@ export interface ChatMessage {
   nodeTurnId?: string
   /** What another agent calls its tool call, in words («Edit src/app.ts»), when it says. */
   toolTitle?: string
+  /** The connected Obsidian executor, independent of native node file locations. */
+  toolDevice?: string
   /** The file a tool call works on, as its agent reports it. */
   toolPath?: string
   /** All structured locations reported by a provider, retained in saved history. */

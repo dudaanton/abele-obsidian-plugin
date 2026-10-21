@@ -1,5 +1,21 @@
 <template>
+  <AiToolApproval
+    v-if="obsidianCall && prompt.state === 'pending'"
+    :message="obsidianCall"
+    :node-prompt="prompt"
+    :disabled="disabled"
+    :answer-state="answerState"
+    :diffs="diffs"
+    :location="obsidianCall.toolPath"
+    @answer="(choice, answer) => emit('answer', choice, answer)"
+    @stop="emit('stop')"
+  />
+  <span v-else-if="obsidianCall" class="abele-node-permission__note" role="status">
+    {{ streamBLabel(prompt.state)
+    }}<template v-if="prompt.choice"> · {{ streamBLabel(prompt.choice) }}</template>
+  </span>
   <RequestCard
+    v-else
     class="abele-tool-approval abele-node-permission"
     :waiting="prompt.state === 'pending'"
   >
@@ -146,6 +162,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import AiToolApproval from './AiToolApproval.vue'
+import { obsidianPromptCall } from '@/node/obsidianPresentation'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
@@ -177,6 +195,7 @@ const emit = defineEmits<{
   (e: 'stop'): void
 }>()
 const value = ref('')
+const obsidianCall = computed(() => obsidianPromptCall(props.prompt))
 const detailOpen = ref(false)
 const title = computed(() => {
   const name = props.prompt.tool_name
