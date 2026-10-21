@@ -15,14 +15,13 @@ const shots = shotDir('abele-node-blame')
 async function scenario(layout: string) {
   const node = await startPairedNode()
   const project = resolve(node.state, '../sample-project')
-  const text =
+  let text =
     Array.from({ length: 1500 }, (_, index) => `// sample line ${index + 1}`).join('\n') + '\n'
   const git = (...args: string[]) =>
     promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
       cwd: project,
     })
-  try {
-    writeFileSync(resolve(project, 'sample.ts'), text)
+  const commitFile = async (message: string) => {
     await git('add', 'sample.ts')
     await git(
       '-c',
@@ -33,8 +32,21 @@ async function scenario(layout: string) {
       'commit.gpgsign=false',
       'commit',
       '-m',
-      'Add sample file'
+      message
     )
+  }
+  try {
+    writeFileSync(resolve(project, 'sample.ts'), text)
+    await commitFile('Add sample file')
+    const unavailable = (await git('rev-parse', 'HEAD')).stdout.trim()
+    for (let line = 1; line <= 5; ++line) {
+      const lines = text.split('\n')
+      lines[line] = `// edited line ${line + 1}`
+      text = lines.join('\n')
+      writeFileSync(resolve(project, 'sample.ts'), text)
+      await commitFile('Update sample line')
+    }
+    const transient = (await git('rev-parse', 'HEAD')).stdout.trim()
     writeFileSync(resolve(project, 'sample.ts'), text + '// uncommitted final line\n')
     const target = JSON.parse(
       await evalLong(`(async()=>{${PAIRED_PRELUDE}
@@ -61,11 +73,26 @@ async function scenario(layout: string) {
             const principal=await nodes.connection(${JSON.stringify(node.registration)}).client.store.transaction(current=>({installation:!!current.installation_id}));
             throw Error(String(error)+'; '+JSON.stringify({text:root.textContent.slice(0,1600),state:leaf.view.getState(),principal,connection:nodes.connection(${JSON.stringify(node.registration)}).state.value}));
           }
+          const client=nodes.connection(${JSON.stringify(node.registration)}).client;
+          const original=client.repository.commit.bind(client.repository);
+          const stats={active:0,peak:0,attempts:{}};
+          window.__abeleBlameMetadataFixture={restore:()=>{client.repository.commit=original}};
+          client.repository.commit=async params=>{
+            const sha=params.revision.commit;
+            const attempt=stats.attempts[sha]=(stats.attempts[sha]??0)+1;
+            stats.peak=Math.max(stats.peak,++stats.active);
+            try {
+              if(sha===${JSON.stringify(unavailable)}||(sha===${JSON.stringify(transient)}&&attempt===1))
+                throw Object.assign(Error('Sample read capacity exhausted'),{code:'resource_busy'});
+              return await original(params);
+            } finally {--stats.active}
+          };
           toggle.click();
           await until(()=>root.querySelector('.abele-github-blame-range')||root.querySelector('.abele-github-notice'),'Blame response');
           const author=root.querySelector('.abele-github-blame-range__name');
           if(!author)throw Error('Blame missing: '+root.textContent);
           const authorName=author.textContent;
+          const firstDate=root.querySelector('.abele-github-blame-range__date').textContent;
           await new Promise(r=>setTimeout(r,300));
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
           const scroll=root.querySelector('.abele-node-main');
@@ -80,14 +107,21 @@ async function scenario(layout: string) {
           });
           await until(()=>[...root.querySelectorAll('.cm-line')].some(el=>el.textContent.includes('uncommitted final line')),'Final source line');
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'-last-line.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
-          return JSON.stringify({author:authorName,pressed:toggle.getAttribute('aria-pressed'),errors:[...root.querySelectorAll('[role=alert]')].map(el=>el.textContent)});
+          return JSON.stringify({author:authorName,firstDate,pressed:toggle.getAttribute('aria-pressed'),errors:[...root.querySelectorAll('[role=alert]')].map(el=>el.textContent),peak:stats.peak,unavailableAttempts:stats.attempts[${JSON.stringify(unavailable)}],transientAttempts:stats.attempts[${JSON.stringify(transient)}]});
         } finally {leaf.detach()}
       })()`)
       )
-      expect(result).toEqual({ author: 'Sample', pressed: 'true', errors: [] })
+      expect(result).toMatchObject({ author: 'Sample', firstDate: '', pressed: 'true', errors: [] })
+      expect(result.peak).toBeLessThanOrEqual(2)
+      expect(result.unavailableAttempts).toBeGreaterThanOrEqual(3)
+      expect(result.transientAttempts).toBeGreaterThanOrEqual(2)
     }
     await probe(layout)
   } finally {
+    await evalLong(`(()=>{
+      window.__abeleBlameMetadataFixture?.restore();delete window.__abeleBlameMetadataFixture;
+      return 'restored commit transport';
+    })()`).catch(() => {})
     await node.close()
   }
 }

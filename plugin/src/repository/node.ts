@@ -73,6 +73,24 @@ const summary = (c: Commit): CommitSummary => ({
   date: c.authored_at,
   message: c.message,
 })
+// Tabs share the node's read capacity. Keep room for file and tree reads as well.
+const blameCommitQueues = new WeakMap<
+  NodeRepositoryClient,
+  { active: number; waiting: (() => void)[] }
+>()
+async function withBlameCommitSlot<T>(client: NodeRepositoryClient, read: () => Promise<T>) {
+  let queue = blameCommitQueues.get(client)
+  if (!queue) blameCommitQueues.set(client, (queue = { active: 0, waiting: [] }))
+  if (queue.active >= 2) await new Promise<void>((resolve) => queue.waiting.push(resolve))
+  else ++queue.active
+  try {
+    return await read()
+  } finally {
+    const next = queue.waiting.shift()
+    if (next) next()
+    else --queue.active
+  }
+}
 const changedStatus = (s: string): FileChange['status'] =>
   s.startsWith('A') || s === '??'
     ? 'added'
@@ -678,16 +696,40 @@ export class NodeRepositorySource implements RepositorySource {
     // loading each commit's changed files, and share it across every range of that commit.
     const commits = [...new Set(page.entries.flatMap((line) => (line.commit ? [line.commit] : [])))]
     const metadata = new Map<string, CommitSummary>()
-    for (let from = 0; from < commits.length; from += 8) {
+    for (let from = 0; from < commits.length; from += 2) {
       await Promise.all(
-        commits.slice(from, from + 8).map(async (commit): Promise<void> => {
-          const result = await this.read(() =>
-            this.client.repository.commit({
-              ...this.target,
-              revision: { kind: 'commit', commit },
+        commits.slice(from, from + 2).map(async (commit): Promise<void> => {
+          const result = await withBlameCommitSlot(this.client, () =>
+            this.read(async () => {
+              for (let attempt = 0; attempt < 3; ++attempt) {
+                this.assertCurrent()
+                try {
+                  return await this.client.repository.commit({
+                    ...this.target,
+                    revision: { kind: 'commit', commit },
+                  })
+                } catch (error) {
+                  this.assertCurrent()
+                  if (
+                    attempt === 2 ||
+                    !error ||
+                    typeof error !== 'object' ||
+                    (error as { code?: unknown }).code !== 'resource_busy'
+                  ) {
+                    console.debug('[Abele] node blame: commit metadata unavailable', commit, error)
+                    return undefined
+                  }
+                  console.debug(
+                    '[Abele] node blame: retrying busy commit metadata',
+                    commit,
+                    attempt + 1
+                  )
+                  await new Promise((resolve) => window.setTimeout(resolve, 50 * (attempt + 1)))
+                }
+              }
             })
           )
-          metadata.set(commit, summary(result))
+          if (result) metadata.set(commit, summary(result))
         })
       )
     }
@@ -703,8 +745,8 @@ export class NodeRepositorySource implements RepositorySource {
           end: line.line,
           commit: metadata.get(sha) ?? {
             sha,
-            author: 'Uncommitted',
-            message: WORKING_TREE,
+            author: line.commit ? line.author : 'Uncommitted',
+            message: line.commit ? '' : WORKING_TREE,
             date: '',
           },
         })

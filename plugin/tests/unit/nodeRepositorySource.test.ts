@@ -14,7 +14,109 @@ const fixture = () => {
     }),
   }
 }
+const blamePage = (commits: (string | null)[]) => ({
+  cursor: null,
+  incomplete: false,
+  omissions: [],
+  content_id: 'sample-content',
+  entries: commits.map((commit, index) => ({
+    line: index + 1,
+    original_line: index + 1,
+    commit,
+    author: 'Sample author',
+    text: 'sample',
+  })),
+})
+const commitDetails = (commit: string) => ({
+  commit,
+  parents: [],
+  email: 'sample@example.invalid',
+  author: 'Sample author',
+  authored_at: '2026-01-08T12:00:00Z',
+  subject: 'Sample change',
+  message: 'Sample change',
+})
 describe('node repository source through the validated client contract', () => {
+  it('shares at most two blame commit lookups across tabs of the same client', async () => {
+    const { source, client } = fixture()
+    const other = new NodeRepositorySource(client, identity, { node: 'Sample node', project: '' })
+    vi.spyOn(client.repository, 'blame').mockResolvedValue(
+      blamePage(Array.from({ length: 6 }, (_, index) => String(index + 1).repeat(40)))
+    )
+    let active = 0,
+      peak = 0
+    vi.spyOn(client.repository, 'commit').mockImplementation(async ({ revision }) => {
+      if (revision.kind !== 'commit') throw new Error('Expected an immutable commit')
+      peak = Math.max(peak, ++active)
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        return commitDetails(revision.commit)
+      } finally {
+        --active
+      }
+    })
+    try {
+      const results = await Promise.all([
+        source.blame(WORKING_TREE, 'sample.ts'),
+        other.blame(WORKING_TREE, 'sample.ts'),
+      ])
+      expect(results.map((ranges) => ranges.length)).toEqual([6, 6])
+      expect(peak).toBeLessThanOrEqual(2)
+    } finally {
+      source.dispose()
+      other.dispose()
+    }
+  })
+  it('retries busy blame metadata with a bounded short backoff', async () => {
+    vi.useFakeTimers()
+    const { source, client } = fixture()
+    vi.spyOn(client.repository, 'blame').mockResolvedValue(blamePage([HEAD]))
+    const attempts: number[] = []
+    const commit = vi.spyOn(client.repository, 'commit').mockImplementation(async () => {
+      attempts.push(Date.now())
+      if (attempts.length < 3) throw new ChannelError('resource_busy')
+      return commitDetails(HEAD)
+    })
+    try {
+      const result = expect(source.blame(WORKING_TREE, 'sample.ts')).resolves.toMatchObject([
+        { commit: { sha: HEAD, date: '2026-01-08T12:00:00Z', message: 'Sample change' } },
+      ])
+      await Promise.all([result, vi.runAllTimersAsync()])
+      expect(commit).toHaveBeenCalledTimes(3)
+      expect(attempts.slice(1).map((at, index) => at - attempts[index])).toEqual([50, 100])
+    } finally {
+      source.dispose()
+      vi.useRealTimers()
+    }
+  })
+  it('keeps attribution without metadata after busy retries or another lookup failure', async () => {
+    vi.useFakeTimers()
+    const { source, client } = fixture()
+    vi.spyOn(client.repository, 'blame').mockResolvedValue(blamePage([BASE, HEAD, null]))
+    const commit = vi
+      .spyOn(client.repository, 'commit')
+      .mockImplementation(async ({ revision }) => {
+        if (revision.kind === 'commit' && revision.commit === BASE)
+          throw new ChannelError('resource_busy')
+        throw new Error('Commit metadata unavailable')
+      })
+    try {
+      const result = expect(source.blame(WORKING_TREE, 'sample.ts')).resolves.toMatchObject([
+        { start: 1, end: 1, commit: { sha: BASE, author: 'Sample author', date: '', message: '' } },
+        { start: 2, end: 2, commit: { sha: HEAD, author: 'Sample author', date: '', message: '' } },
+        {
+          start: 3,
+          end: 3,
+          commit: { sha: '', author: 'Uncommitted', date: '', message: WORKING_TREE },
+        },
+      ])
+      await Promise.all([result, vi.runAllTimersAsync()])
+      expect(commit).toHaveBeenCalledTimes(4)
+    } finally {
+      source.dispose()
+      vi.useRealTimers()
+    }
+  })
   it('invalidates mutable observations when a same-repository batch cannot be decoded', async () => {
     const { source, event } = fixture()
     await source.startWatching()
