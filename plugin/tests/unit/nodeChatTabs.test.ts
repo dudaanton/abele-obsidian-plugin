@@ -278,6 +278,33 @@ it('keeps the entered text when local persistence fails before enqueueing', asyn
   presenter.destroy()
 })
 
+it('waits briefly for a transient connection state before admitting a turn exactly once', async () => {
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+    new MemoryClientStore()
+  )
+  const state = ref('connected')
+  const presenter = new NodeChatPresenter(reference, { client, state } as unknown as NodeConnection)
+  const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(false)
+  const flush = vi.spyOn(client, 'flush').mockResolvedValue(undefined)
+  vi.spyOn(client, 'cursor').mockResolvedValue(0)
+  vi.spyOn(client, 'operationResult').mockResolvedValue(undefined)
+  try {
+    const sending = presenter.send('Sample input during reconnect')
+    await new Promise((resolve) => window.setTimeout(resolve, 30))
+    connected.mockReturnValue(true)
+    state.value = 'connected'
+    await sending
+    expect(presenter.error.value).toBe('')
+    expect(flush).toHaveBeenCalledOnce()
+    expect(
+      (await client.pending()).filter((entry) => entry.method === 'session.send')
+    ).toHaveLength(1)
+  } finally {
+    presenter.destroy()
+  }
+})
+
 it('keeps a terminally rejected input as a draft rather than an accepted message', async () => {
   const client = new NodeClient(
     { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
