@@ -651,7 +651,11 @@ export class TokenItemSets implements ShareSetSource {
             bytes: 0,
             access: [],
             canWrite: false,
-            unavailableReason: 'Could not read the files this would delete. Try again.',
+            unavailableReason:
+              (error as { code?: string })?.code === 'forbidden' ||
+              (error as { status?: number })?.status === 403
+                ? 'This connection does not allow that action.'
+                : 'Could not read the files this would delete. Try again.',
           })
           this.changed()
         })
@@ -672,7 +676,7 @@ export class TokenItemSets implements ShareSetSource {
         : await client.previewTokenItem(shareId, itemId)
     const items =
       'items' in preview ? preview.items.filter((item) => item.removed_at === null) : [preview]
-    const also = new Map<string, { path: string; group: string }>()
+    const also = new Map<string, { path: string; group?: string; overlapCount?: number }>()
     const affected = new Map<string, { label: string; scope: string }>()
     const tokens = (await client.tokens()).items
     const deletedFiles = new Set(items.flatMap((item) => item.files.map((file) => file.file_id)))
@@ -712,13 +716,15 @@ export class TokenItemSets implements ShareSetSource {
     for (const item of items) {
       if (item.scope.kind === 'group' && item.files.length < item.file_count) alsoMore = true
       for (const file of item.files) {
-        if (file.overlap_count > file.overlaps.length) alsoMore = true
+        const undisclosed = file.overlap_count - file.overlaps.length
         for (const overlap of file.overlaps) {
           if (overlap.scope.kind === 'group') {
             const group = overlap.scope.path.split('/').pop().replace(/\.md$/i, '')
             also.set(file.file_id + ':' + overlap.scope_id, { path: file.path, group })
           }
         }
+        if (undisclosed > 0)
+          also.set(file.file_id + ':undisclosed', { path: file.path, overlapCount: undisclosed })
       }
     }
     return {

@@ -263,9 +263,14 @@ describe('connection item sets', () => {
       await runtime.close()
     }
   })
-  it.each([false, true])(
-    'uses authoritative group counts and cross-token overlap facts (whole=%s)',
-    async (whole) => {
+  it.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [false, false, true],
+  ])(
+    'uses authoritative group counts and overlap disclosure (whole=%s, hidden=%s, denied=%s)',
+    async (whole, hidden, denied) => {
       const { storage, data } = setup()
       data.delete(TOKEN_REGISTRY_KEY)
       const registry = TokenConnectionRegistry.open(storage),
@@ -293,6 +298,11 @@ describe('connection item sets', () => {
             limits: { max_file_bytes: 1000, quota_bytes: null },
           })
         if (path.endsWith('/preview')) {
+          if (denied)
+            return Response.json(
+              { error: { code: 'forbidden', message: 'untrusted response detail' } },
+              { status: 403 }
+            )
           const preview = {
             id: 'group-item',
             scope_id: 'scope-group',
@@ -308,14 +318,16 @@ describe('connection item sets', () => {
                 path: 'Notes/Shared.md',
                 bytes: 25,
                 overlap_count: 2,
-                overlaps: [
-                  {
-                    token_id: 'another-token',
-                    item_id: 'other-item',
-                    scope_id: 'other-scope',
-                    scope: { kind: 'group', id: 'group-b', path: 'Groups/Other group.md' },
-                  },
-                ],
+                overlaps: hidden
+                  ? []
+                  : [
+                      {
+                        token_id: 'another-token',
+                        item_id: 'other-item',
+                        scope_id: 'other-scope',
+                        scope: { kind: 'group', id: 'group-b', path: 'Groups/Other group.md' },
+                      },
+                    ],
               },
             ],
           }
@@ -392,11 +404,23 @@ describe('connection item sets', () => {
       await ui.itemSets.shares(id)
       const itemId = whole ? null : 'group-item'
       await vi.waitFor(() => expect(ui.itemSets.deleteFacts('issued', itemId)).not.toBe(null))
+      if (denied) {
+        expect(ui.itemSets.deleteFacts('issued', itemId)).toMatchObject({
+          canWrite: false,
+          unavailableReason: 'This connection does not allow that action.',
+        })
+        return
+      }
       expect(ui.itemSets.deleteFacts('issued', itemId)).toMatchObject({
         canWrite: true,
         files: whole ? 601 : 501,
         bytes: whole ? 23456 : 12345,
-        also: [{ path: 'Notes/Shared.md', group: 'Other group' }],
+        also: hidden
+          ? [{ path: 'Notes/Shared.md', overlapCount: 2 }]
+          : [
+              { path: 'Notes/Shared.md', group: 'Other group' },
+              { path: 'Notes/Shared.md', overlapCount: 1 },
+            ],
         access: [{ label: 'Sample group share', scope: 'Loses Group: Sample group' }],
         alsoMore: true,
       })

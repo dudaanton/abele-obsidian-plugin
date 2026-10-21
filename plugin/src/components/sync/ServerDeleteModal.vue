@@ -36,8 +36,15 @@
       :key="one.path + ':' + one.group"
       class="abele-server-delete__also mod-warning"
     >
-      {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared in group {{ one.group }}.
-      Deleted here, it leaves the server for that group too.
+      <template v-if="one.group">
+        {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared in group
+        {{ one.group }}. Deleted here, it leaves the server for that group too.
+      </template>
+      <template v-else>
+        {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared through
+        {{ one.overlapCount }} other {{ one.overlapCount === 1 ? 'access' : 'accesses' }}. Deleted
+        here, it leaves the server for those accesses too.
+      </template>
     </p>
     <p v-if="facts.alsoMore" class="abele-server-delete__also mod-warning">
       More shared files or groups may also be affected.
@@ -83,7 +90,10 @@ import { folderSize, serverDeleteFailure, type ServerDeleteFacts } from './serve
 const props = defineProps<{
   name: string
   host: string
-  facts: ServerDeleteFacts & { also?: { path: string; group: string }[]; alsoMore?: boolean }
+  facts: ServerDeleteFacts & {
+    also?: { path: string; group?: string; overlapCount?: number }[]
+    alsoMore?: boolean
+  }
   remove: () => Promise<void>
   choices?: { value: string; label: string }[]
   choice?: string

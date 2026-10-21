@@ -182,6 +182,31 @@ describe('shared item screens', () => {
       }
     }
   )
+  it('warns about count-only overlaps without inventing a group name', () => {
+    const wrapper = mount(ServerDeleteModal, {
+      props: {
+        name: 'Sample share',
+        host: 'sync.example',
+        facts: {
+          files: 1,
+          bytes: 10,
+          access: [],
+          canWrite: true,
+          also: [{ path: 'Notes/Sample.md', overlapCount: 2 }],
+        },
+        remove: async () => {},
+      },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      const warning = wrapper.get('.abele-server-delete__also').text()
+      expect(warning).toContain('Sample is also shared through 2 other accesses.')
+      expect(warning).not.toContain('group')
+      expect(warning).not.toContain('undefined')
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('shows each overlapping group and discloses capped preview details', () => {
     const wrapper = mount(ServerDeleteModal, {
       props: {
