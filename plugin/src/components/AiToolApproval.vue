@@ -129,7 +129,7 @@
 
     <template v-else-if="message.toolName === 'node_git_commit'">
       <p>{{ params.message }}</p>
-      <p v-if="commitPreviewError" role="status">{{ commitPreviewError }}</p>
+      <p v-if="commitPreviewError" role="status">{{ nodeErrorDetails(commitPreviewError) }}</p>
       <p v-else-if="!commitPreview">{{ t('kit.loading') }}</p>
       <template v-else>
         <p>{{ t('node.files.fileCount', { count: commitPreview.files.length }) }}</p>
@@ -612,6 +612,8 @@ const effectiveParams = computed(() => {
 watch(
   [
     session,
+    params,
+    () => props.message.toolCallId ?? props.message.id,
     () =>
       JSON.stringify(
         ['node', 'project', 'workspace', 'target_kind', 'expected_head'].map(
@@ -620,7 +622,7 @@ watch(
       ),
     () => props.message.toolName,
   ],
-  async ([owner, _target, name], _previous, cleanup) => {
+  async ([owner, _args, _call, _target, name], _previous, cleanup) => {
     commitPreview.value = null
     commitDiffs.value = {}
     commitPreviewError.value = ''
@@ -637,9 +639,7 @@ watch(
       if (!controller.signal.aborted) commitPreview.value = preview
     } catch (error) {
       if (!controller.signal.aborted)
-        commitPreviewError.value = nodeErrorDetails(
-          error instanceof Error ? error.message : String(error)
-        )
+        commitPreviewError.value = error instanceof Error ? error.message : String(error)
     }
   },
   { immediate: true }
