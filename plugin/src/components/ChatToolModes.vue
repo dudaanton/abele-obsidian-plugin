@@ -9,7 +9,7 @@
         class="abele-chat-tools__field"
         :label="t('chat.searchTools')"
         :placeholder="t('chat.searchToolsHint')"
-        autofocus
+        :autofocus="autofocus !== false"
       />
       <!-- Every tool at once, the same menu as a group's. -->
       <Icon
@@ -114,6 +114,7 @@ const props = defineProps<{
   toolModes: Record<string, ToolMode>
   floor?: Record<string, ToolMode>
   raisedBy?: Record<string, string>
+  autofocus?: boolean
 }>()
 const emit = defineEmits<{
   /** Several tools at once — a group, or all of them: one change for the host to save. */

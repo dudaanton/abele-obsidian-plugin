@@ -6,7 +6,12 @@
       {{ t('chatTree.accessHint') }}
     </p>
     <AiNodeScopeEditor v-if="nodeScopeOwner" :session="nodeScopeOwner" folder />
-    <ChatToolModes :tool-modes="modes" :floor="floor" @update-many="(m) => emit('update', m)" />
+    <ChatToolModes
+      :tool-modes="modes"
+      :floor="floor"
+      :autofocus="!nodeScopeOwner"
+      @update-many="(m) => emit('update', m)"
+    />
   </ObsidianModal>
 </template>
 
