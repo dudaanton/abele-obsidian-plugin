@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.backToParent': 'Atpakaļ uz {name}',
   'chatTree.missing': 'Šī saruna vairs nav pieejama.',
   'chatTree.transferLabel': 'Sarunu mapju piekļuve',
   'chatTree.invalidFolder': 'Nederīgs mapes nosaukums',
