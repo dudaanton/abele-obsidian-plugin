@@ -27,11 +27,26 @@
         role="listitem"
       >
         <Icon :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'" />
-        <span class="abele-scope-mgr__entry-path">{{ label(entry) }}</span>
+        <span class="abele-scope-mgr__entry-path"
+          >{{ label(entry) }}
+          <span
+            v-if="inheritedFrom(entry)"
+            class="abele-scope-mgr__entry-type abele-node-scope-editor__source"
+          >
+            {{ t('chatTree.fromFolder', { name: inheritedFrom(entry) }) }}
+          </span>
+        </span>
         <span class="abele-scope-mgr__entry-type">
           {{ entry.access === 'edit' ? t('streamB.readAndEdit.4067e8') : t('streamB.read.331634') }}
         </span>
         <Icon
+          v-if="inheritedFrom(entry)"
+          icon="folder"
+          :interactive="false"
+          :tooltip="t('chatTree.fromFolder', { name: inheritedFrom(entry) })"
+        />
+        <Icon
+          v-else
           class="abele-scope-mgr__entry-remove"
           icon="x"
           :tooltip="t('streamB.removeFromChatAccess.f736f6', { v0: String(label(entry)) })"
@@ -131,6 +146,7 @@ import {
   giveObsidianChatAccess,
   setObsidianChatNodeScope,
   removeObsidianChatNodeAccess,
+  approveObsidianChatNodeAccess,
 } from '@/ai/tools/node/owner'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
@@ -142,7 +158,18 @@ const props = defineProps<{ session: NodeScopeOwner; folder?: boolean }>()
 const parsed = computed(() =>
   NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )
-const entries = computed(() => (parsed.value.success ? parsed.value.data : []))
+const inheritedFrom = (entry: NodeScopeEntry) =>
+  props.session.inheritedNodeScopes?.find((source) =>
+    source.entries.some((value) => nodeScopeKey(value) === nodeScopeKey(entry))
+  )?.folder
+const entries = computed(() => [
+  ...new Map(
+    [
+      ...(parsed.value.success ? parsed.value.data : []),
+      ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+    ].map((entry) => [nodeScopeKey(entry), entry])
+  ).values(),
+])
 const nodes = ref<{ id: string; label: string; node_id?: string }[]>([])
 const projects = ref<{ id: string; label: string; git: boolean }[]>([])
 const targets = ref<{ value: string; display: string; identity: NodeChatTarget }[]>([])
@@ -335,7 +362,7 @@ function clear() {
 function approve() {
   const chat = props.session,
     current = [...entries.value]
-  void perform(() => setObsidianChatNodeScope(chat, current))
+  void perform(() => approveObsidianChatNodeAccess(chat, current))
 }
 function remove(entry: NodeScopeEntry) {
   const chat = props.session
@@ -373,6 +400,11 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
+.abele-node-scope-editor__source {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* Refresh stays beside the words, even where a setting's control drops under them. */
 .abele-obsidian-setting.abele-node-scope-editor__head {
   grid-template-columns: minmax(0, 1fr) auto;

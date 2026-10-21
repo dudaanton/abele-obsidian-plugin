@@ -29,7 +29,11 @@ export interface NodeScopeTarget {
   target: NodeChatTarget
 }
 export interface NodeScopeChat {
-  readonly inheritedNodeScopes?: readonly { identity: string; entries: NodeScopeEntry[] }[]
+  readonly inheritedNodeScopes?: readonly {
+    identity: string
+    entries: NodeScopeEntry[]
+    folder?: string
+  }[]
   readonly nodeScopeIdentity: string | undefined
   readonly overrides: { value: SessionOverrides }
   readonly conversationVersion: { value: number }

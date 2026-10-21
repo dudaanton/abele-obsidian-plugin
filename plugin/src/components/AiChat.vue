@@ -1220,7 +1220,14 @@ const scopeSummary = computed(() => {
  */
 const nodeAccess = computed(() => {
   const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
-  return parsed.success ? parsed.data : []
+  return [
+    ...new Map(
+      [
+        ...(parsed.success ? parsed.data : []),
+        ...(session.value?.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+      ].map((entry) => [JSON.stringify(entry), entry])
+    ).values(),
+  ]
 })
 provide(
   NODE_CODE_LINK_OPENER,
@@ -1254,7 +1261,13 @@ watch(
   nodeAccess,
   async (list) => {
     nodeSaid.value = await Promise.all(
-      list.map(async (entry) => nodeScopeSentence(await nodeScopeNames(entry), entry.access))
+      list.map(async (entry) => {
+        const said = nodeScopeSentence(await nodeScopeNames(entry), entry.access)
+        const source = session.value?.inheritedNodeScopes.find((source) =>
+          source.entries.some((value) => JSON.stringify(value) === JSON.stringify(entry))
+        )
+        return source ? `${said} · ${t('chatTree.fromFolder', { name: source.folder })}` : said
+      })
     )
   },
   { immediate: true }

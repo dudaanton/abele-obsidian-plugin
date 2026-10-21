@@ -252,7 +252,8 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         place.querySelector(':scope > .abele-obsidian-icon').click();
         const item=await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give a chat access…')),'menu item');
         item.click();
-        const rows=await until(()=>{const r=[...document.querySelectorAll('.suggestion-item')];return r.length>=2&&r},'chat picker');
+        const picker=await until(()=>[...document.querySelectorAll('.prompt-input')].find(input=>input.placeholder==='Which chat gets access'),'chat picker opened');
+        const rows=await until(()=>{const r=[...picker.closest('.prompt').querySelectorAll('.suggestion-item')];return r.length>=2&&r},'chat picker');
         if(!rows[0].textContent.includes('Sample second chat')||!rows[0].textContent.includes('Open now')||!rows[0].textContent.includes('no questions yet'))throw Error('Open chat is not first: '+rows[0].textContent);
         const first=rows.find(r=>r.textContent.includes('Sample node access'));
         if(!first||!first.textContent.includes('Sample node access agent')||!first.textContent.includes('Read the sample file'))throw Error('Chats are not told apart: '+(first&&first.textContent));
@@ -263,7 +264,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       await capture(`chat-picker-${form}`)
       evalAsync(
         `(async()=>{${prelude}
-        document.querySelector('.suggestion-item').click();
+        document.querySelector('.prompt-input[placeholder="Which chat gets access"]').closest('.prompt').querySelector('.suggestion-item').click();
         const dialog=await until(()=>[...document.querySelectorAll('.modal')].find(m=>m.getBoundingClientRect().width>0&&m.textContent.includes('Give a chat access')),'grant dialog');
         if(!dialog.textContent.includes('Folder: sample-app')||!dialog.textContent.includes('Worktree: main')||!dialog.textContent.includes('Sample workstation'))throw Error('Grant dialog does not name the place: '+dialog.textContent);
         if(dialog.textContent.includes(${JSON.stringify(setup.worktree)}))throw Error('Grant dialog shows an id: '+dialog.textContent);

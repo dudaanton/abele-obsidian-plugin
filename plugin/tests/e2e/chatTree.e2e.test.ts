@@ -198,7 +198,14 @@ const probe = (label: string) => `(async () => {
     if (root.querySelector('.abele-chat-switch__where')) throw Error('Nested chat still shows its folder in the header')
     if (!current().getAttribute('aria-label').includes(folder)) throw Error('Nested chat lost the folder in its tooltip')
     await shot('nested-header-short-parent')
-    if (!root.querySelector('.abele-node-scope-chips [aria-label="From the folder ' + folder + '"]')) throw Error('Inherited node scope is not labelled with its folder')
+    root.querySelector('.abele-chat-input__scope').click()
+    const nodeEditor = await until(() => document.querySelector('.abele-chat-setup .abele-node-scope-editor'))
+    await until(() => nodeEditor.textContent.includes('From the folder ' + folder))
+    const inheritedEntry = [...nodeEditor.querySelectorAll('.abele-scope-mgr__entry')].find(row => row.textContent.includes('From the folder ' + folder))
+    if (!inheritedEntry || inheritedEntry.querySelector('.abele-scope-mgr__entry-remove')) throw Error('Inherited node scope is missing its source or can be removed as an own chip')
+    await shot('chat-inherited-node-access')
+    nodeEditor.closest('.modal-container').querySelector('.modal-close-button, .modal-header-button').click()
+    await until(() => !document.querySelector('.abele-chat-setup'))
     const longParent = 'A long sample parent title that must stay entirely in the tooltip'
     session.chatTitle.value = longParent
     service.switchTab(first); await wait(50); service.switchTab(second)
@@ -330,7 +337,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 22 : 23)
+    expect(result.pictures).toBe(onPhone() ? 23 : 24)
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)
