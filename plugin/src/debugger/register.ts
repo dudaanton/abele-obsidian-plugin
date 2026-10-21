@@ -131,6 +131,7 @@ function configureSessionActions(
     // The node retains the recipe, so ended sessions can restart after reopening the plugin.
     const restart = async () => {
       const carried = [...(binding.retainedBreakpoints ?? [])]
+      const recordPoints = [...(binding.trace?.points ?? [])]
       const client = presenter.connection.client
       const { snapshot: previous } = await client.debugger.status(sessionId)
       binding.controller.observe(client.debugger.current(sessionId))
@@ -154,7 +155,15 @@ function configureSessionActions(
       const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
       for (const point of carried) {
         const source = started.sources.find((source) => source.path === point.file)
-        if (source) await restoreBreakpoint(next.controller, source.source_id, point)
+        if (!source) continue
+        const record = recordPoints.find((record) => record.breakpoint_id === point.id)
+        if (record && next.trace) {
+          await next.trace.savePoint(source.source_id, point.requestedLine, {
+            take: record.take,
+            ...(point.condition ? { when: point.condition } : {}),
+            ...(record.note ? { note: record.note } : {}),
+          })
+        } else await restoreBreakpoint(next.controller, source.source_id, point)
       }
     }
     if (binding.controller.snapshot?.target.process_ownership === 'external') {

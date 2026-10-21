@@ -105,6 +105,7 @@ export async function attachToProgram(
   const carry = (previous?.retainedBreakpoints ?? []).filter(
     (point) => point.file && point.file !== point.sourceId
   )
+  const recordPoints = [...(previous?.trace?.points ?? [])]
   const nodeRestores = debuggerAcceptanceCapabilities(
     await presenter.connection.client.describe?.()
   ).attach_breakpoint_restore
@@ -158,9 +159,17 @@ export async function attachToProgram(
   await show(started.debug_session_id)
   binding.controller.session.watches = watches
   ++binding.revision.value
-  for (const point of nodeRestores ? [] : carry) {
+  for (const point of carry) {
     const source = started.sources.find((source) => source.path === point.file)
-    if (source) await restoreBreakpoint(binding.controller, source.source_id, point)
+    if (!source) continue
+    const record = recordPoints.find((record) => record.breakpoint_id === point.id)
+    if (record && binding.trace) {
+      await binding.trace.savePoint(source.source_id, point.requestedLine, {
+        take: record.take,
+        ...(point.condition ? { when: point.condition } : {}),
+        ...(record.note ? { note: record.note } : {}),
+      })
+    } else if (!nodeRestores) await restoreBreakpoint(binding.controller, source.source_id, point)
   }
   return started.debug_session_id
 }

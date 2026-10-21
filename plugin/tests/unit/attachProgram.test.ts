@@ -126,6 +126,44 @@ afterEach(() => {
 })
 
 describe('attaching the debugger to a running program', () => {
+  it('carries recording metadata even when the node restores ordinary breakpoints', async () => {
+    fakeWorkspace()
+    const { presenter } = fakePresenter([inFolder])
+    await attachToProgram(presenter, inFolder, async () => {})
+    const binding = DebuggerService.instance.binding(presenter)
+    binding.retainedBreakpoints = [
+      {
+        id: 'sample-point',
+        file: 'src/server.js',
+        sourceId: 's1',
+        requestedLine: 5,
+        line: 5,
+        state: 'set',
+        condition: 'sample > 2',
+      },
+    ]
+    const savePoint = vi.fn(async () => {})
+    Object.assign(binding, {
+      trace: {
+        points: [{ breakpoint_id: 'sample-point', take: ['sample'], note: 'Sample note' }],
+        savePoint,
+        dispose: vi.fn(),
+      },
+    })
+    Object.assign(presenter.connection.client, {
+      describe: async () => ({
+        capabilities: {
+          capabilities: { debugger_v1: { status: 'supported', attach_breakpoint_restore: true } },
+        },
+      }),
+    })
+    await attachToProgram(presenter, { ...inFolder, pid: 4102 }, async () => {})
+    expect(savePoint).toHaveBeenCalledWith('s1', 5, {
+      take: ['sample'],
+      when: 'sample > 2',
+      note: 'Sample note',
+    })
+  })
   it.each([
     [false, false, false],
     [true, false, false],

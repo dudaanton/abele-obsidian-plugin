@@ -130,6 +130,29 @@ it('carries retained points through an explicit re-attach using the node recipe'
   )
 })
 
+it('restores record point metadata when reattaching a restarted program', async () => {
+  const { context, binding } = fixture('detached')
+  binding.controller.snapshot.target.process_ownership = 'external'
+  binding.retainedBreakpoints = [
+    { id: 'sample-point', file: 'sample.cjs', requestedLine: 5, condition: 'count > 2' } as never,
+  ]
+  const savePoint = vi.fn(async () => {})
+  Object.assign(binding, {
+    trace: {
+      points: [{ breakpoint_id: 'sample-point', take: ['count'], note: 'Sample' }],
+      savePoint,
+    },
+  })
+  await showSession(context, 'sample-ended')
+  await binding.reattach!()
+  expect(savePoint).toHaveBeenCalledWith('sample-source', 5, {
+    take: ['count'],
+    when: 'count > 2',
+    note: 'Sample',
+  })
+  expect(binding.controller.setBreakpoint).not.toHaveBeenCalled()
+})
+
 it.each(['owned', 'external'] as const)(
   'restores explicit controls for a retained %s session without restarting it',
   async (ownership) => {
