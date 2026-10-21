@@ -272,6 +272,26 @@ const probe = (label: string) => `(async () => {
     if (await app.vault.read(marker) !== markerContent) throw Error('Tree action changed a disk folder access file')
     // An empty selection queues behind the requested move before fixture files are released.
     await service.folders.moveMany([], '')
+    for (const destination of ['', folder]) {
+      await service.folders.move(reopened.id, destination)
+      service.switchTab(reopened.id)
+      await wait(100)
+      if (current().getAttribute('aria-expanded') === 'true') current().click()
+      const previous = service.getSession(reopened.id)
+      root.querySelector('[aria-label="Start a new chat"]').click()
+      await until(() => service.activeTabId.value !== reopened.id)
+      created.push(service.activeTabId.value)
+      if (service.getSession(reopened.id) !== previous || !service.tabOrder.value.includes(reopened.id)) throw Error('New chat closed its predecessor')
+      if ((service.folders.folderOf(reopened.id) || '') !== destination) throw Error('New chat moved its predecessor')
+      await shot(destination ? 'new-chat-preserves-folder' : 'new-chat-preserves-top')
+    }
+    service.switchTab(reopened.id)
+    reopened.handleAgentEvent({type:'stream_event',event:{type:'error',error:'HTTP 503: {"error":"Sample unavailable service"}'}})
+    reopened.retrying.value = { attempt: 1, of: 2, secondsLeft: 3 }
+    await until(() => root.querySelector('[role="alert"]')?.textContent.includes('The model provider is temporarily unavailable'))
+    if (root.querySelector('[role="alert"]').textContent.includes('Sample unavailable service')) throw Error('Raw provider response is visible')
+    await shot('provider-unavailable-retrying')
+    reopened.error.value = null; reopened.errorPresentation.value = null; reopened.retrying.value = null
     return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
@@ -341,7 +361,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 23 : 24)
+    expect(result.pictures).toBe(onPhone() ? 26 : 27)
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)

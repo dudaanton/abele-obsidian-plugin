@@ -34,7 +34,7 @@ import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { MapBlock } from '@/helpers/mapConfig'
-import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
+import { DEFAULT_RETRY, backoffDelay, isTransient, providerErrorPresentation } from './retry'
 import { AgentLoop, failedToolResult } from './client/AgentLoop'
 import { nodeAccessRefusalOf } from './tools/node/accessRefusal'
 import { mobileBackground } from './mobileBackground'
@@ -1685,7 +1685,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         } else if (se.type === 'thinking_delta') {
           this.streamingThinking.value += se.delta
         } else if (se.type === 'error') {
-          this.errorPresentation.value = se.error ? null : uiMessage('streamBError.545311af41')
+          this.errorPresentation.value = se.error
+            ? providerErrorPresentation(se.error)
+            : uiMessage('streamBError.545311af41')
           this.error.value = se.error || 'Unknown streaming error'
           console.error('[Abele AI]', se.error)
         }
@@ -1698,6 +1700,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           const am = msg
 
           if (am.errorMessage) {
+            this.errorPresentation.value = providerErrorPresentation(am.errorMessage)
             this.error.value = am.errorMessage
             console.error('[Abele AI]', am.errorMessage)
           }
@@ -2162,7 +2165,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const errObj = err instanceof Error ? err : new Error(String(err))
       if (errObj.name === 'AbortError') return
       this.errorPresentation.value = errObj.message
-        ? uiErrorMessage(errObj)
+        ? (providerErrorPresentation(errObj.message) ?? uiErrorMessage(errObj))
         : uiMessage('streamBError.0f56130f3d')
       this.error.value = errObj.message || 'An unknown error occurred'
       console.error('[Abele AI]', err)

@@ -199,6 +199,20 @@ describe('trying again on its own', () => {
     expect(session.error.value).toContain('overloaded')
   })
 
+  it('presents an unavailable provider while retaining the raw failure for diagnostics and retry', async () => {
+    setRetry(1, 3000)
+    const raw = 'HTTP 503: {"error":{"message":"Sample service overloaded"}}'
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    loopThat([failed(raw)])
+    const done = session.sendMessage('Sample question')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(session.errorPresentation.value).toMatchObject({ key: 'streamB.providerUnavailable' })
+    expect(session.retrying.value?.secondsLeft).toBe(2)
+    expect(log).toHaveBeenCalledWith('[Abele AI]', raw)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await done
+  })
+
   it('does not repeat a failure that will never pass', async () => {
     setRetry(3)
     loopThat([failed('HTTP 401: invalid api key')])

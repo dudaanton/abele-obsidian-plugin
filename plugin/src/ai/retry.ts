@@ -8,8 +8,14 @@
  */
 
 import type { RetrySettings } from './types'
+import { uiMessage, type UiMessage } from '@/i18n/streamBErrors'
 
 export type { RetrySettings }
+
+/** Keep provider diagnostics in the log; the chat says what the reader can do. */
+export function providerErrorPresentation(error: string): UiMessage | null {
+  return /\bHTTP\s+5\d{2}\b/i.test(error) ? uiMessage('streamB.providerUnavailable') : null
+}
 
 export const DEFAULT_RETRY: RetrySettings = {
   attempts: 0,
