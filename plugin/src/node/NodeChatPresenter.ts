@@ -949,7 +949,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
       // Connection state can lag a socket reconnect. Wait before admission, never replay
       // a send after it has entered the durable outbox.
-      for (let attempt = 0; !online() && !this.destroyed && attempt < 15; attempt++)
+      for (let attempt = 0; !online() && !this.destroyed && attempt < 5; attempt++)
         await new Promise<void>((resolve) => window.setTimeout(resolve, 100))
       if (!online())
         throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
