@@ -86,6 +86,7 @@ import {
 import {
   closedSectionHint,
   emulatedTools,
+  isSectionOpener,
   mergeOpen,
   offerSections,
   openSectionsOnPath,
@@ -1521,7 +1522,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         signal?: AbortSignal,
         callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
-        if (this.toolCeiling && !this.toolCeiling(tool))
+        if (this.toolCeiling && !isSectionOpener(tool) && !this.toolCeiling(tool))
           throw new Error('This tool is outside the hosted run permission ceiling')
         // ZIP's selected array and invocation owner must not change during approval/tracker awaits.
         const invocationParams =

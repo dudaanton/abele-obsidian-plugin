@@ -20,6 +20,26 @@ import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 destroyChatsAfterEach()
+it('opens discovery sections in a hosted run while keeping unapproved leaf tools unavailable', async () => {
+  useVault([])
+  AgentRegistry.destroy()
+  AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
+  const target = AgentRegistry.getInstance().create({ toolModes: { fetch: 'auto' } })
+  const run = new ChatSession(ChatService.getInstance(), undefined, {
+    kind: 'run',
+    agentId: target.id,
+    toolCeiling: (tool) => tool.name === 'fetch',
+  })
+  const tools = (run as unknown as { getTools(): AgentTool[] }).getTools()
+  expect(tools.some((tool) => tool.name === 'create')).toBe(false)
+  const open = tools.find((tool) => tool.name.startsWith('open_'))!
+  expect(open).toBeDefined()
+  await expect(
+    open.execute('sample-open', {}, new AbortController().signal)
+  ).resolves.toMatchObject({
+    content: [expect.objectContaining({ text: expect.stringContaining('fetch') })],
+  })
+})
 const agent = (patch: Partial<AgentDefinition> = {}) => AgentRegistry.getInstance().create(patch)
 const chat = (target: AgentDefinition) =>
   new ChatSession(ChatService.getInstance(), undefined, { agentId: target.id })

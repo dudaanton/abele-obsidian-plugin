@@ -128,9 +128,13 @@ export function sectionGuide(section: ToolSection, input: SectionOfferInput): st
   return parts.join('\n\n')
 }
 
+const sectionOpeners = new WeakSet<AgentTool>()
+/** Identity belongs to this factory; a remote tool cannot claim to be a discovery helper. */
+export const isSectionOpener = (tool: AgentTool): boolean => sectionOpeners.has(tool)
+
 function sectionTool(section: ToolSection, input: SectionOfferInput): AgentTool {
   const names = section.tools.map((t) => t.name).join(', ')
-  return {
+  const tool: AgentTool = {
     name: section.toolName,
     label: `Open ${section.group}`,
     category: section.group,
@@ -138,6 +142,8 @@ function sectionTool(section: ToolSection, input: SectionOfferInput): AgentTool 
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     execute: async () => ({ content: [{ type: 'text', text: sectionGuide(section, input) }] }),
   }
+  sectionOpeners.add(tool)
+  return tool
 }
 
 /**
