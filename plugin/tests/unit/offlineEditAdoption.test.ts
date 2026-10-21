@@ -12,18 +12,21 @@ it.each(
   [false, true].flatMap((bounded) =>
     [false, true].flatMap((preserveStamp) =>
       [false, true].flatMap((knownCopy) =>
-        ['sample.md', 'renamed.md', 'Moved/sample.md'].map((localPath) => ({
-          bounded,
-          preserveStamp,
-          knownCopy,
-          localPath,
-        }))
+        ['sample.md', 'renamed.md', 'Moved/sample.md'].flatMap((localPath) =>
+          [false, true].map((deferred) => ({
+            bounded,
+            preserveStamp,
+            knownCopy,
+            localPath,
+            deferred,
+          }))
+        )
       )
     )
   )
 )(
-  'holds offline edits across equal and later remote pages ($bounded, $preserveStamp, $knownCopy)',
-  async ({ bounded, preserveStamp, knownCopy, localPath }) => {
+  'holds offline edits across equal and later remote pages ($localPath, $bounded, $preserveStamp, $knownCopy, $deferred)',
+  async ({ bounded, preserveStamp, knownCopy, localPath, deferred }) => {
     const fs = new MemoryFileSystem(),
       state = new MemoryStateStore()
     const a = new TextEncoder().encode('sample A')
@@ -111,6 +114,7 @@ it.each(
       },
     } as unknown as EngineClient
     const result = await pull(client, fs, state, {
+      defer: deferred ? () => true : undefined,
       filter: { excluded: () => false },
       dirty: new Set(),
       expected: new ExpectedWrites(),
@@ -119,9 +123,10 @@ it.each(
     expect(await fs.read(localPath)).toEqual(b)
     // Equal bytes on page one must not acknowledge an unpushed edit as a clean base.
     expect(afterEqual).toEqual(base)
-    expect(result.held).toEqual(
-      expect.arrayContaining([expect.objectContaining({ seq: 3, version_id: 'version-c' })])
-    )
+    if (!deferred)
+      expect(result.held).toEqual(
+        expect.arrayContaining([expect.objectContaining({ seq: 3, version_id: 'version-c' })])
+      )
     expect(await state.byFileId(base.fileId)).toEqual(base)
     expect(await fs.stat(localPath)).toEqual(before)
     expect(write).not.toHaveBeenCalled()
