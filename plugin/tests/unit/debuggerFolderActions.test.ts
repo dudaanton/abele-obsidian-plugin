@@ -82,6 +82,22 @@ it('uses the known folder while the initial file-tree read is still pending', as
   expect(await Promise.race([commandTarget(), deadline])).toEqual(target)
 })
 
+it('uses a folder selected during startup without waiting for its first tree listing', async () => {
+  const target = owner().target
+  const current = ref<typeof target>()
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    ready: vi.fn(() => new Promise<void>(() => {})),
+    model: () => ({ current }),
+  } as never)
+  const pending = commandTarget()
+  current.value = target
+  const deadline = new Promise((resolve) => window.setTimeout(() => resolve('still waiting'), 25))
+  expect(await Promise.race([pending, deadline])).toEqual(target)
+})
+
 it('handles folder startup failures in the command instead of rejecting silently', async () => {
   const target = owner().target
   vi.spyOn(NodeService, 'getInstance').mockReturnValue({

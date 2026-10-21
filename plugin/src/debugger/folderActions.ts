@@ -156,6 +156,32 @@ export async function addFolderDebugMenu(
   }
 }
 
+async function availableCommandFolder(paths: NodePathService, registrationId: string) {
+  const model = paths.model(registrationId)
+  if (model.current.value) return model.current.value
+  let stop = () => {}
+  try {
+    // Startup selects the folder before reading its tree. The command needs that identity,
+    // not a completed listing (which can keep changing while programs record).
+    const selected = new Promise<void>((resolve) => {
+      stop = watch(
+        model.current,
+        (current) => {
+          if (current) resolve()
+        },
+        {
+          immediate: true,
+          flush: 'sync',
+        }
+      )
+    })
+    await Promise.race([paths.ready(registrationId), selected])
+    return model.current.value
+  } finally {
+    stop()
+  }
+}
+
 /** The active file's folder first, otherwise the place selected in the node panel. */
 export async function commandTarget(): Promise<PathTarget | undefined> {
   const workspace = GlobalStore.getInstance().app.workspace
@@ -177,19 +203,13 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
     ?.registrationId
   const paths = NodePathService.getInstance()
   if (registrationId) {
-    const known = paths.model(registrationId).current.value
-    if (known) return known
-    await paths.ready(registrationId)
-    const current = paths.model(registrationId).current.value
+    const current = await availableCommandFolder(paths, registrationId)
     if (current) return current
   }
   // Commands are available before the sidebar creates a path model. Restore its remembered
   // folder and load the node's folders when this device has no remembered selection yet.
   for (const node of NodeService.getInstance().nodes.value) {
-    const known = paths.model(node.id).current.value
-    if (known) return known
-    await paths.ready(node.id)
-    const target = paths.model(node.id).current.value
+    const target = await availableCommandFolder(paths, node.id)
     if (target) return target
   }
   return undefined
