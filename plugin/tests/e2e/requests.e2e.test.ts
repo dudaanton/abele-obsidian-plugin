@@ -259,6 +259,8 @@ it('refreshes requests added on disk without reopening the view on either layout
         panel().querySelector('[aria-label="Refresh requests"]').click();
         await until(()=>panel().textContent.includes('Disk sample'),'new disk request');
         await shot('requests-disk-refresh-${device}');
+        row('Disk sample').scrollIntoView({block:'center'});
+        await shot('requests-disk-refresh-row-${device}');
         return panel().textContent.includes('Disk sample');
       } finally {
         fs.unlinkSync(file);

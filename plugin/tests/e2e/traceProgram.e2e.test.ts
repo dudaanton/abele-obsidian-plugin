@@ -216,6 +216,7 @@ afterAll(async () => {
  * record points too. `via` is the menu item: Debug asks for a program while the chat has no session.
  */
 const RUN = (program: string, shots = '', via = 'Run a program') => `
+  const previousProgramSession=api.DebuggerService.instance.active.value?.sessionId;
   document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
@@ -224,6 +225,11 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
+  await until(()=>document.querySelector('.modal.abele-modal'),'launch options');
+  const stopAtStart=document.querySelector('.modal.abele-modal [role="checkbox"][aria-label="Stop at start"]');
+  if(stopAtStart?.getAttribute('aria-checked')==='false') press(stopAtStart);
+  press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
+  await until(()=>{const binding=api.DebuggerService.instance.active.value;return binding?.sessionId&&binding.sessionId!==previousProgramSession},'new debug session',600);
   await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
 
 /** The call stack as the panel lists it, Node's own frames folded into one row. */

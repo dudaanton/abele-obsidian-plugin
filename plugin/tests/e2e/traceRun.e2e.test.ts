@@ -505,6 +505,7 @@ it('explains a missing run after refresh and a followed value with no matches on
   const check = (device: string) => {
     connect()
     const seen = evalAsync<{ missing: boolean; stale: number }>(`(async()=>{${prelude}
+      await app.workspace.getLeaf(false).setViewState({type:'empty',active:true});
       for(const leaf of app.workspace.getLeavesOfType('abele-trace-run'))leaf.detach();
       ${OPEN_RUN()}
       await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)}},{follow:'sample-value-not-recorded'});
@@ -520,6 +521,7 @@ it('explains a missing run after refresh and a followed value with no matches on
         return {missing:leaf.view.containerEl.textContent.includes('This run is no longer on the node.'),stale:leaf.view.containerEl.querySelectorAll('.abele-trace-run__step').length};
       } finally {
         fs.renameSync(removed,folder);
+        await app.workspace.getLeaf(false).setViewState({type:'empty',active:true});
         for(const leaf of app.workspace.getLeavesOfType('abele-trace-run'))leaf.detach();
       }
     })()`)
