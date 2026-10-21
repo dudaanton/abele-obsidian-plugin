@@ -128,7 +128,7 @@ export class NodeObsidianDelegate {
         : {}),
     })
   }
-  private async durable(
+  private async retain(
     i: ObsidianInvocation,
     key: string,
     method: string,
@@ -147,25 +147,41 @@ export class NodeObsidianDelegate {
         },
       })
     })
+    return request
+  }
+  private async durable(
+    i: ObsidianInvocation,
+    key: string,
+    method: string,
+    params: Record<string, unknown>
+  ) {
+    const request = await this.retain(i, key, method, params)
     return this.client.request(request.method, request.params as Record<string, unknown>)
   }
   async handle(i: ObsidianInvocation, signal: AbortSignal): Promise<void> {
-    if (i.action === 'cancel' || i.cancel_requested) {
-      await this.recover(i, signal)
-      return
-    }
+    const cancelled = i.action === 'cancel' || i.cancel_requested || signal.aborted
+    const root = z.object({
+      runs: z.array(z.object({ run_id: z.string(), call_id: z.string().optional() })),
+    })
+    const existing = root.parse(await this.request(i, 'get'))
+    const admitted = new Set(existing.runs.flatMap((run) => (run.call_id ? [run.call_id] : [])))
     // Replay only immutable owner intents. Physical branch claims never enter an outbox.
     const retained = await this.store.read((state) =>
       Object.entries(state.operationRequests ?? {})
         .filter(([key]) => key.startsWith(`host:${i.invocation_id}:`))
         .map(([, value]) => value)
     )
-    for (const request of retained)
+    for (const request of retained) {
+      if (request.method.endsWith('.begin')) {
+        const params = z.object({ call_id: z.string() }).parse(request.params)
+        // Already admitted work needs receipts, not a fresh admission under today's policy.
+        if (admitted.has(params.call_id) || cancelled) continue
+        admitted.add(params.call_id)
+      }
       await this.client.request(request.method, request.params as Record<string, unknown>)
-    const view = z
-      .object({ runs: z.array(z.object({ run_id: z.string() })) })
-      .parse(await this.request(i, 'get'))
-    if (view.runs.length) {
+    }
+    const view = root.parse(await this.request(i, 'get'))
+    if (view.runs.length || cancelled) {
       await this.recover(i, signal)
       return
     }
@@ -237,7 +253,7 @@ export class NodeObsidianDelegate {
   private async run(i: ObsidianInvocation, run: RunView, signal: AbortSignal) {
     if (run.status !== 'running') return
     for (let offset = 0; offset < run.branches.length; offset += run.batch_size) {
-      await Promise.all(
+      const settled = await Promise.allSettled(
         run.branches.slice(offset, offset + run.batch_size).map(async (branch) => {
           const key = `host:${i.invocation_id}:branch:${branch.branch_id}`
           if (!['queued', 'running'].includes(branch.state)) return
@@ -287,6 +303,17 @@ export class NodeObsidianDelegate {
             async () => []
           )
           let chain = Promise.resolve()
+          let local = Promise.resolve()
+          let transportError: unknown
+          let terminalRetained = false
+          const finish = async (suffix: string, params: Record<string, unknown>) => {
+            await local
+            const request = await this.retain(i, key + ':' + suffix, 'record', params)
+            terminalRetained = true
+            await chain
+            if (transportError) throw transportError
+            return this.client.request(request.method, request.params as Record<string, unknown>)
+          }
           const seen = new Map<string, string>()
           let version = 0
           const persist = () => {
@@ -307,16 +334,31 @@ export class NodeObsidianDelegate {
             })
             for (const message of messages) {
               const recordId = crypto.randomUUID()
-              chain = chain
-                .then(() =>
-                  this.durable(i, key + ':record:' + recordId, 'record', {
-                    branch_id: branch.branch_id,
-                    record_id: recordId,
-                    state: 'running',
-                    messages: [message],
-                  })
-                )
-                .then(() => {})
+              const retained = local.then(() =>
+                this.retain(i, key + ':record:' + recordId, 'record', {
+                  branch_id: branch.branch_id,
+                  record_id: recordId,
+                  state: 'running',
+                  messages: [message],
+                })
+              )
+              local = retained.then(() => {})
+              chain = chain.then(async () => {
+                const request = await retained
+                if (transportError) return
+                try {
+                  await this.client.request(
+                    request.method,
+                    request.params as Record<string, unknown>
+                  )
+                } catch (error) {
+                  transportError = error
+                }
+              })
+              // Retention errors still propagate at finish; streaming must not emit an
+              // unhandled rejection while the ordinary provider finishes its current turn.
+              void local.catch(() => {})
+              void chain.catch(() => {})
             }
           }
           try {
@@ -382,8 +424,7 @@ export class NodeObsidianDelegate {
               signal.removeEventListener('abort', abort)
             }
             persist()
-            await chain
-            await this.durable(i, key + ':final', 'record', {
+            await finish('final', {
               branch_id: branch.branch_id,
               record_id: 'final',
               messages: [],
@@ -402,9 +443,9 @@ export class NodeObsidianDelegate {
                 : {}),
             })
           } catch (error) {
+            if (terminalRetained) throw error
             persist()
-            await chain
-            await this.durable(i, key + ':error', 'record', {
+            await finish('error', {
               branch_id: branch.branch_id,
               record_id: 'error',
               messages: [],
@@ -422,6 +463,8 @@ export class NodeObsidianDelegate {
           }
         })
       )
+      const failure = settled.find((result) => result.status === 'rejected')
+      if (failure?.status === 'rejected') throw failure.reason
     }
   }
   async history(i: Pick<ObsidianInvocation, 'invocation_id'>, branch: string): Promise<unknown[]> {

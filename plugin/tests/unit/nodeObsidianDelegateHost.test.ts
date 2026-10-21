@@ -13,7 +13,7 @@ import type { ObsidianInvocation } from '@/node/NodeObsidianExecutor'
 import type { ChatSession } from '@/ai/ChatSession'
 
 afterEach(() => vi.restoreAllMocks())
-function fixture(lostClaim = false) {
+function fixture(lostClaim = false, gate?: Promise<void>) {
   useVault([{ path: 'sample.md', content: 'Sample' }])
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
@@ -45,6 +45,7 @@ function fixture(lostClaim = false) {
     item: 'Sample task',
   }
   const run = {
+    call_id: 'sample-call',
     run_id: 'sample-host-run',
     root_id: 'sample-session',
     depth: 1,
@@ -66,7 +67,10 @@ function fixture(lostClaim = false) {
     const action = method.split('.').at(-1)
     if (action === 'configuration')
       return { configuration: { conversation: nodeConversation(parent) } }
-    if (action === 'get') return raw.run_id ? run : { runs: begun ? [{ run_id: run.run_id }] : [] }
+    if (action === 'get')
+      return raw.run_id
+        ? run
+        : { runs: begun ? [{ run_id: run.run_id, call_id: run.call_id }] : [] }
     if (action === 'begin') {
       begun = true
       return run
@@ -117,6 +121,7 @@ function fixture(lostClaim = false) {
       },
       sendMessage: async (task: string) => {
         starts(task)
+        if (gate) await gate
         expect(scope.isInScope('sample.md')).toBe(true)
         expect(scope.isInScope('outside.md')).toBe(false)
         expect(options!.toolCeiling!({ name: 'create' } as never)).toBe(false)
@@ -156,7 +161,7 @@ function fixture(lostClaim = false) {
     action: 'hosted',
     state: 'executing',
   }
-  return { host, store, request, starts, history, invocation, branch, sessions }
+  return { host, store, request, starts, history, invocation, branch, sessions, run }
 }
 it('claims once, runs a private ordinary branch under its parent ceiling and records history before settling', async () => {
   const f = fixture()
@@ -185,6 +190,66 @@ it('reads every retained history page and records unknown after a lost physical 
     expect(f.starts).not.toHaveBeenCalled()
     expect(f.branch.state).toBe('outcome_unknown')
     expect(f.request.mock.calls.filter(([m]) => m.endsWith('.history'))).toHaveLength(2)
+  } finally {
+    f.store.close()
+  }
+})
+it('keeps sibling sub-runs owned until they settle when another branch loses its claim reply', async () => {
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const f = fixture(false, gate)
+  f.run.batch_size = 2
+  f.run.branches.push({ branch_id: 'sample-second-branch', state: 'queued', item: 'Second task' })
+  const original = f.request.getMockImplementation()!
+  f.request.mockImplementation(async (method, params) => {
+    if (method.endsWith('.claim') && params.branch_id === 'sample-branch') {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      throw new Error('Sample lost claim reply')
+    }
+    return original(method, params)
+  })
+  let settled = false
+  const task = f.host
+    .handle(f.invocation, new AbortController().signal)
+    .catch(() => {})
+    .finally(() => {
+      settled = true
+    })
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(f.starts).toHaveBeenCalledOnce()
+    expect(settled).toBe(false)
+  } finally {
+    release()
+    await task
+    f.store.close()
+  }
+})
+it('retains a known final result when a history append reply is lost and replays receipts without restarting', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  let lost = true
+  let admitted = false
+  f.request.mockImplementation(async (method, params) => {
+    if (method.endsWith('.begin')) {
+      if (admitted) throw new Error('A new settings revision prevents re-admission')
+      admitted = true
+    }
+    if (lost && method.endsWith('.record') && params.state === 'running') {
+      lost = false
+      throw new Error('Sample lost history reply')
+    }
+    return original(method, params)
+  })
+  try {
+    await expect(f.host.handle(f.invocation, new AbortController().signal)).rejects.toThrow(
+      'Sample lost history reply'
+    )
+    await f.host.handle(f.invocation, new AbortController().signal)
+    expect(f.starts).toHaveBeenCalledOnce()
+    expect(f.branch.state).toBe('done')
   } finally {
     f.store.close()
   }

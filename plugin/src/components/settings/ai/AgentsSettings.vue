@@ -156,7 +156,7 @@ function persist(): void {
 
 function addAgent(): void {
   const agent = registry.create({
-    name: `Agent ${registry.list({ includeUtility: true, includeNode: true }).length + 1}`,
+    name: `Agent ${registry.list({ includeUtility: true }).length + 1}`,
   })
   persist()
   editingId.value = agent.id
