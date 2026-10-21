@@ -3101,3 +3101,8 @@ store so lost replies can be reconciled with the exact same IDs and bytes. Physi
 claims are never queued for replay. The configured conversation snapshot carries serialized
 scope ceilings, permission mode, skills, tool sections, GitHub rights and delegation depth;
 it is a ceiling for private ordinary sub-runs, never an expansion of current target policy.
+
+The device-local token registry records an interrupted split update in
+`abele-sync-registry-write-v1`. Before reading connection records it finishes the exact
+recorded document and item-selection writes, then retires that recovery record. This is
+local recovery metadata and is never part of a transferred connection.

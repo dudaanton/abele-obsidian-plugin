@@ -29,6 +29,24 @@ const receipt = {
   status: 'active' as const,
 }
 
+it('repairs an interrupted item document and selection write on reopen', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store)
+  const mainId = registry.add()
+  const itemId = registry.add(true)
+  registry.select(mainId)
+  const save = store.saveLocalStorage
+  store.saveLocalStorage = (key, value) => {
+    if (key === 'abele-sync-item-selection-v1') throw new Error('interrupted selection')
+    save(key, value)
+  }
+  expect(() => registry.select(itemId)).toThrow('interrupted selection')
+  store.saveLocalStorage = save
+  const restarted = TokenConnectionRegistry.open(store)
+  expect(restarted.selectedId).toBe(itemId)
+  expect(restarted.records()).toHaveLength(2)
+})
+
 it('pins the original local root on attach even if the server already renamed the scope', () => {
   const store = local(),
     registry = TokenConnectionRegistry.open(store),

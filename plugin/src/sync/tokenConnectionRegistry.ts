@@ -12,6 +12,7 @@ import { LocalPlacementError } from './localFolderPlacement'
 export const TOKEN_REGISTRY_KEY = 'abele-sync-connections-v2'
 export const ITEM_REGISTRY_KEY = 'abele-sync-item-connections-v1'
 const ITEM_SELECTION_KEY = 'abele-sync-item-selection-v1'
+const REGISTRY_WRITE_KEY = 'abele-sync-registry-write-v1'
 const secretPrefix = DEVICE_SECRET_PREFIX + 'token-'
 const id = z.string().min(1).max(200)
 const localRootSchema = z
@@ -144,6 +145,7 @@ export class TokenConnectionRegistry {
   private constructor(private readonly local: LocalStorage) {}
   static open(local: LocalStorage): TokenConnectionRegistry {
     const registry = new TokenConnectionRegistry(local)
+    registry.repairWrite()
     if (local.loadLocalStorage(TOKEN_REGISTRY_KEY) != null) {
       registry.validated()
       return registry
@@ -198,6 +200,7 @@ export class TokenConnectionRegistry {
           ...(cleanup.length || old?.cleanup !== undefined ? { cleanup } : {}),
         }
       }
+      const writes: [string, unknown][] = []
       for (const [target, data] of [
         [TOKEN_REGISTRY_KEY, split(false)],
         [ITEM_REGISTRY_KEY, split(true)],
@@ -210,18 +213,44 @@ export class TokenConnectionRegistry {
         )
           continue
         if (same(this.local.loadLocalStorage(target), data)) continue
-        this.local.saveLocalStorage(target, clone(data))
-        if (!same(this.local.loadLocalStorage(target), data)) throw recovery()
+        writes.push([target, data])
       }
       const selection = itemIds.has(doc.selectedId) ? doc.selectedId : null
       if ((this.local.loadLocalStorage(ITEM_SELECTION_KEY) ?? null) !== selection) {
-        this.local.saveLocalStorage(ITEM_SELECTION_KEY, selection)
-        if (this.local.loadLocalStorage(ITEM_SELECTION_KEY) !== selection) throw recovery()
+        writes.push([ITEM_SELECTION_KEY, selection])
       }
+      if (!writes.length) return
+      this.local.saveLocalStorage(REGISTRY_WRITE_KEY, clone(writes))
+      if (!same(this.local.loadLocalStorage(REGISTRY_WRITE_KEY), writes)) throw recovery()
+      this.repairWrite()
       return
     }
     this.local.saveLocalStorage(key, clone(value))
     if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
+  }
+  /** Finish the exact split update before exposing either document to a runtime. */
+  private repairWrite(): void {
+    const raw = this.local.loadLocalStorage(REGISTRY_WRITE_KEY)
+    if (raw == null) return
+    if (!Array.isArray(raw)) throw recovery()
+    const seen = new Set<string>()
+    for (const pair of raw) {
+      if (!Array.isArray(pair) || pair.length !== 2) throw recovery()
+      const [key, value] = pair
+      if (seen.has(key)) throw recovery()
+      seen.add(key)
+      if (key === TOKEN_REGISTRY_KEY || key === ITEM_REGISTRY_KEY) this.check(value)
+      else if (key !== ITEM_SELECTION_KEY || (value !== null && typeof value !== 'string'))
+        throw recovery()
+    }
+    validatedDocuments.delete(this.local)
+    for (const [key, value] of raw) {
+      if (same(this.local.loadLocalStorage(key), value)) continue
+      this.local.saveLocalStorage(key, clone(value))
+      if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
+    }
+    this.local.saveLocalStorage(REGISTRY_WRITE_KEY, null)
+    if (this.local.loadLocalStorage(REGISTRY_WRITE_KEY) != null) throw recovery()
   }
   /** A private copy to change and write back. */
   private document(): Document {
@@ -229,6 +258,7 @@ export class TokenConnectionRegistry {
   }
   /** The validated document, read-only: shared with later reads until the storage changes. */
   private validated(): Document {
+    this.repairWrite()
     const raw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
     const itemRaw = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
     const selection = this.local.loadLocalStorage(ITEM_SELECTION_KEY)
