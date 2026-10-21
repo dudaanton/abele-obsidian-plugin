@@ -8,6 +8,20 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('does not replace current frames with an older state revision at the same event cursor', () => {
+  const { model } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ state_revision: 6, stop_epoch: 4, event_seq: 9 }),
+  })
+  model.session.frames = [{ name: 'main', file: 'src/sample.ts', line: 7 }]
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ state_revision: 5, stop_epoch: 3, event_seq: 9 }),
+  })
+  expect(model.snapshot?.state_revision).toBe(6)
+  expect(model.session.frames[0].name).toBe('main')
+})
 it('evaluates a watch against the latest revision of the same paused frame', async () => {
   const { model, rpc, command } = fixture()
   model.actions = []

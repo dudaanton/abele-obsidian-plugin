@@ -190,7 +190,9 @@ export class DebuggerController {
     const s = DebuggerSnapshotSchema.parse(observation.snapshot)
     if (
       this.snapshot?.debug_session_id === s.debug_session_id &&
-      s.event_seq < this.snapshot.event_seq
+      (s.event_seq < this.snapshot.event_seq ||
+        (s.incarnation === this.snapshot.incarnation &&
+          s.state_revision < this.snapshot.state_revision))
     )
       return
     const replaced =
