@@ -370,7 +370,7 @@ it.each(['desktop', 'phone'])(
         const count=await until(()=>visible('.modal input[aria-label="Hit count"]'),'hit count editor');
         count.value='3';count.dispatchEvent(new Event('input',{bubbles:true}));
         await shot(${JSON.stringify(name)}+'-hit-count-editor');
-        press([...count.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
+        press([...count.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Save'));
         await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.hit_condition==='3'),'hit count saved');
         noOwnerApproval();
         await bpMenu();
@@ -379,14 +379,14 @@ it.each(['desktop', 'phone'])(
       const condition=await until(()=>visible('.modal input[aria-label="Edit condition"]'),'condition editor');
       condition.value='1 < 2 && "a" < "b"';condition.dispatchEvent(new Event('input',{bubbles:true}));
       await shot(${JSON.stringify(name)}+'-condition');
-      press([...condition.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
+      press([...condition.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Save'));
       noOwnerApproval();
       await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.condition==='1 < 2 && "a" < "b"'),'condition saved verbatim');
       await bpMenu();press(item('Log message'));
       const logMessage=await until(()=>visible('.modal input[aria-label="Log message"]'),'log message editor');
       logMessage.value='sample {1 < 2 && "a" < "b"}';logMessage.dispatchEvent(new Event('input',{bubbles:true}));
       await shot(${JSON.stringify(name)}+'-log-message');
-      press([...logMessage.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
+      press([...logMessage.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Save'));
       noOwnerApproval();
       await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.log_message==='sample {1 < 2 && "a" < "b"}'),'log message saved verbatim');
       showPoints();
@@ -418,17 +418,18 @@ it.each(['desktop', 'phone'])(
         if(current.session.status!=='paused'||!current.session.frames.length||!current.session.variables.length||current.error)
           throw Error('Watch disturbed the paused view: '+debugState());
       }
-      const evaluatedScope=binding.controller.session.variables.find(value=>value.handle);
-      if(!evaluatedScope)throw Error('Watch left no current scope handle');
-      await binding.controller.inspect(evaluatedScope.handle);
-      await until(()=>binding.controller.session.variables.some(value=>value.children?.length),'scope expands after watch evaluation');
       noOwnerApproval();
       await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();
       await wait(600);
       if(!app.workspace.rightSplit.containerEl.offsetWidth){app.workspace.rightSplit.collapse();await wait(500);app.workspace.rightSplit.expand()}
       const watchField=await until(()=>visible('.abele-debug-panel__add input'),'watch visible for its picture');
       watchField.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
+      if(binding.controller.session.watches.find(w=>w.expression==='1 < 2 && "a" < "b"')?.stale)throw Error('Fresh watch is labelled as an old value');
       await shot(${JSON.stringify(name)}+'-watch');
+      const evaluatedScope=binding.controller.session.variables.find(value=>value.handle);
+      if(!evaluatedScope)throw Error('Watch left no current scope handle');
+      await binding.controller.inspect(evaluatedScope.handle);
+      await until(()=>binding.controller.session.variables.some(value=>value.children?.length),'scope expands after watch evaluation');
       const snapshot=binding.controller.snapshot;
       const result={conversation:snapshot.target.conversation_id,chats:chats.tabOrder.value.filter(id=>id.startsWith('node:')).length,sessions:(await client.listSessions()).length};
       await binding.controller.command('stop');
@@ -508,6 +509,54 @@ it('persists an automatically generated node title in the tab and node session l
   }
 }, 240000)
 
+it.each(['desktop', 'phone'])(
+  'revalidates an edited program before hitting its new source on %s',
+  async (device) => {
+    const original =
+      'let sample = 0\nsetInterval(() => {\n  sample += 1\n  console.log(sample)\n}, 100)\n'
+    writeFileSync(join(repo, 'src/edited.cjs'), original)
+    openChat()
+    const probe = async () =>
+      inAppLong(`(async()=>{${prelude}
+    ${RUN('src/edited.cjs')}
+    const service=api.DebuggerService.instance;
+    let binding=service.active.value;
+    try {
+      await binding.controller.command('continue');
+      require('fs').writeFileSync(${JSON.stringify(join(repo, 'src/edited.cjs'))},'// sample edit'+String.fromCharCode(10)+${JSON.stringify(original)});
+      for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))leaf.detach();
+      const leaf=app.workspace.getLeaf('tab');
+      await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/edited.cjs'}});
+      await until(()=>leaf.containerEl.textContent.includes('sample edit'),'edited bytes loaded');
+      await until(()=>leaf.containerEl.querySelector('[role="status"]')?.textContent.includes('changed'),'changed source refused');
+      if(leaf.containerEl.querySelector('.abele-debug-source__point'))throw Error('Edited source still offers breakpoints');
+      app.workspace.rightSplit.collapse();
+      await shot('edited-source-${device}-refused');
+      await binding.controller.command('stop');
+      await binding.rerun();
+      await until(()=>service.active.value!==binding&&service.active.value?.controller.session.status==='paused','edited program restarted');
+      binding=service.active.value;
+      await app.workspace.revealLeaf(leaf);
+      const mark=await until(()=>marginAt(4,leaf.containerEl),'edited source admitted after restart');
+      press(mark);
+      await until(()=>binding.controller.session.breakpoints.some(point=>point.line===4),'edited breakpoint set');
+      await binding.controller.command('continue');
+      await until(()=>binding.controller.session.status==='paused'&&binding.controller.session.frames.some(frame=>frame.file==='src/edited.cjs'&&frame.line===4),'edited breakpoint hit');
+      service.reveal(binding,'src/edited.cjs',4);
+      await until(()=>leaf.containerEl.querySelector('.abele-debug-source__line_here'),'edited throwing line marked');
+      await shot('edited-source-${device}-hit');
+      return true;
+    } finally { await binding.controller.command('stop'); }
+  })()`)
+    try {
+      expect(device === 'phone' ? await withEmulatedPhone(probe) : await probe()).toBe(true)
+    } finally {
+      openChat()
+    }
+  },
+  300000
+)
+
 it('walks from source through stepping, recording, analysis, a crash, restart and reattach', async () => {
   const seen = await inAppLong<{
     values: number[]
@@ -543,6 +592,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await shot('journey-source');
     ${RUN('src/journey.cjs', 'journey-start', 'Debug')}
     await until(()=>paused(),'initial stop');
+    await api.DebuggerService.instance.active.value.controller.setExceptionFilters(['uncaught']);
     press(await until(()=>marginAt(6),'gutter of function call'));
     await until(()=>document.querySelectorAll('.abele-debug-panel .abele-breakpoint-mark').length,'breakpoint shown');
     await goOn();
@@ -638,9 +688,11 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await control('Back to debugger');
     await until(()=>visible('.abele-debug-panel'),'returned debugger');
     await shot('journey-back-debugger');
-    await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('Synthetic calculation failure'),'exception visible',900);
+    await until(()=>paused()&&document.querySelector('.abele-debug-panel')?.textContent.includes('Synthetic calculation failure'),'paused exception visible',900);
     await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('journey.cjs:7'),'exception source location');
-    await shot('journey-exception');
+    await until(()=>enabled('Continue (F5)'),'exception Continue enabled');
+    api.DebuggerService.instance.reveal(api.DebuggerService.instance.active.value,'src/journey.cjs',7);
+    await sourceAt(7,'journey-exception');
     const restart=()=>enabled('Restart: the same program from its first line');
     if(paused())await control('Stop (Shift+F5)');
     await until(()=>visible('.abele-debug-panel_exited'),'program stopped');

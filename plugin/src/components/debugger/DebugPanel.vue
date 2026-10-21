@@ -25,7 +25,7 @@
       <span class="abele-debug-panel__name">{{ session.program }}</span>
       <span class="abele-debug-panel__state">{{ stateLabel }}</span>
       <a
-        v-if="top && session.status !== 'exited'"
+        v-if="top?.file && session.status !== 'exited'"
         class="abele-debug-panel__where"
         role="button"
         tabindex="0"
@@ -74,13 +74,19 @@
         </template>
         <TreeItem
           class="abele-debug-panel__browser"
-          icon="globe"
+          :icon="recording.browser.state === 'none' ? 'file-code' : 'globe'"
           :text="browserBrief"
           @click="(e: MouseEvent) => emit('browser-menu', e)"
         >
           <template #end>
             <StatusDot
-              :tone="recording.browser.state === 'connected' ? 'green' : 'faint'"
+              :tone="
+                recording.browser.state === 'none'
+                  ? 'red'
+                  : recording.browser.state === 'connected'
+                    ? 'green'
+                    : 'faint'
+              "
               :label="browserLabel"
             />
           </template>
@@ -412,13 +418,14 @@ const browserBrief = computed(() => {
   const b = props.recording?.browser
   if (!b) return ''
   if (b.via === 'har') return t('streamC.865beacb015d6057')
-  if (b.state === 'none') return t('settings.nodes.disconnected')
+  if (b.state === 'none') return props.session.program
   if (b.state === 'lost') return t('streamC.51e1357de85bd272')
   return b.tab ?? ''
 })
 const browserLabel = computed(() => {
   const b = props.recording?.browser
   if (!b) return ''
+  if (b.state === 'none') return t('streamC.80e8dd1a5a05f707')
   const via =
     b.via === 'agent'
       ? t('streamC.3a986c7151b3317a')
@@ -597,10 +604,18 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
 // The native phone drawer is narrower than a full row of debugger controls.
 .abele-debug-panel > .nav-header {
   height: auto;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--background-secondary);
 }
 .abele-debug-panel .nav-buttons-container {
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  > * {
+    flex-shrink: 0;
+  }
 }
 .abele-debug-panel__program {
   display: flex;
@@ -705,6 +720,12 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   font-size: var(--font-ui-smaller);
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  display: block;
+}
+.abele-debug-panel .abele-tree-item__end {
+  min-width: 0;
+  max-width: 100%;
 }
 // A path or a tab's title: one line beside its glyph, cut at the end.
 .abele-debug-panel .abele-debug-panel__browser .abele-tree-item__inner,

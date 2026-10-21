@@ -10,7 +10,12 @@
       >
         {{ t('node.codeLineUnavailable') }}
       </div>
-      <div v-if="admissionReason" role="status" :title="admissionCode || undefined">
+      <div
+        v-if="admissionReason"
+        class="setting-item-description"
+        role="status"
+        :title="admissionCode || undefined"
+      >
         {{ admissionReason }}
       </div>
       <div v-if="model.document.value.note" role="status">

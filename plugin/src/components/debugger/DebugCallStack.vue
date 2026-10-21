@@ -138,4 +138,12 @@ const location = (frame: DebugFrame) =>
 .abele-debug-stack__internals > .tree-item-self {
   color: var(--text-faint);
 }
+.abele-debug-panel .abele-debug-stack .abele-tree-item__inner {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.abele-debug-panel .abele-debug-stack .abele-tree-item__text {
+  min-width: 0;
+  overflow-wrap: normal;
+}
 </style>

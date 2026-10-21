@@ -132,7 +132,7 @@ export function marginMenu(
               title: label,
               value: known[field] ?? '',
               label,
-              submitText: t('settings.GithubSettings.edit.464c4ffd'),
+              submitText: t('settings.GithubConnectionEditor.save.1509f561'),
               validate: (value) => value,
             })
             if (value !== null)

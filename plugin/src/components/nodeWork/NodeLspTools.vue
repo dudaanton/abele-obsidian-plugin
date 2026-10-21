@@ -296,6 +296,14 @@ onBeforeUnmount(() => {
   flex: 1 1 0;
   min-width: 0;
 }
+.abele-lsp-notice code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  vertical-align: bottom;
+}
 .abele-lsp-notice > .abele-obsidian-button {
   flex-shrink: 0;
 }

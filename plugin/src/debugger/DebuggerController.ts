@@ -1265,6 +1265,10 @@ export class DebuggerController {
       await this.refreshApprovals()
       await this.refreshHistory()
       if (settled && this.session.status === 'paused') {
+        if (this.loadedStackEpoch === this.snapshot?.stop_epoch) {
+          const watch = this.session.watches.find((value) => value.expression === expression)
+          if (watch) watch.stale = false
+        }
         this.watchesEpoch = this.snapshot?.stop_epoch
         this.notify()
         return this.watchesEpoch

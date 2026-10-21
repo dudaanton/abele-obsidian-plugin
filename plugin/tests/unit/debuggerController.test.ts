@@ -8,6 +8,23 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('shows the capture destination without a disconnected browser row while recording code', () => {
+  const { model } = fixture()
+  const panel = mount(DebugPanel, {
+    props: {
+      session: model.session,
+      recording: {
+        elapsed: '0:04',
+        steps: 3,
+        folder: 'runs/sample-capture',
+        browser: { state: 'none', via: 'agent', hosts: [] },
+      },
+    },
+  })
+  expect(panel.text()).not.toContain('Not connected')
+  expect(panel.text()).toContain('sample-capture')
+  panel.unmount()
+})
 it.each([
   [false, 'completed'],
   [true, 'completed'],
@@ -168,14 +185,24 @@ it('does not resurrect a removed watch while another evaluation is in flight', a
   expect(model.session.watches.map((watch) => watch.expression)).toEqual(['first'])
   expect(command).toHaveBeenCalledTimes(1)
 })
-it('reevaluates retained watches when loading a stop and selecting another frame', async () => {
+it.each([false, true])('reevaluates retained watches with renewed handles: %s', async (renew) => {
   const { model, rpc, command } = fixture()
   model.session.watches = [{ expression: 'sample.count', value: '1', stale: true }]
   let operationId = ''
   let value = '2'
   command.mockImplementation(async (_method, params: any) => {
     operationId = params.operation_id
-    return receipt('completed', { operation_id: operationId, snapshot: model.snapshot })
+    return receipt('completed', {
+      operation_id: operationId,
+      snapshot: renew
+        ? {
+            ...model.snapshot,
+            stop_epoch: model.snapshot!.stop_epoch + 1,
+            state_revision: model.snapshot!.state_revision + 1,
+            event_seq: model.snapshot!.event_seq + 1,
+          }
+        : model.snapshot,
+    })
   })
   rpc.mockImplementation(async (method) => {
     if (method === 'debugger.v1.stack')
@@ -204,7 +231,7 @@ it('reevaluates retained watches when loading a stop and selecting another frame
             event_seq: 8,
             stop: null,
             observed_at: '2025-01-01T00:00:00.000Z',
-            stop_epoch: model.snapshot!.stop_epoch,
+            stop_epoch: model.snapshot!.stop_epoch - (renew ? 1 : 0),
             state_revision: 4,
             target_id: 'sample-target',
             build_identity: 'matched',
@@ -228,7 +255,14 @@ it('reevaluates retained watches when loading a stop and selecting another frame
     })
   )
   expect(model.session.watches[0]).toMatchObject({ value: '8', stale: false })
-  model.observe({ observation: 'current', snapshot: snapshot({ stop_epoch: 4, event_seq: 10 }) })
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      stop_epoch: model.snapshot!.stop_epoch + 1,
+      event_seq: model.snapshot!.event_seq + 1,
+      state_revision: model.snapshot!.state_revision + 1,
+    }),
+  })
   value = '32'
   await model.loadStack()
   expect(model.session.watches[0]).toMatchObject({ value: '32', stale: false })
