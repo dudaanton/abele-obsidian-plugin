@@ -20,7 +20,7 @@ const probe = (label: string) => `(async () => {
   const path = service.folders.path(folder)
   if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic folder already exists')
   const created = [], files = []
-  let leaf, narrowLeaf, pictureCount = 0
+  let leaf, narrowLeaf, ownsLeaf = false, pictureCount = 0
   const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
   const shot = async name => {
     pictureCount++
@@ -31,8 +31,11 @@ const probe = (label: string) => `(async () => {
     require('fs').writeFileSync(path, image.toPNG())
   }
   try {
-    leaf = app.workspace.getRightLeaf(true)
-    await leaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
+    leaf = app.workspace.getLeavesOfType('abele-ai-sidebar-view').find(item => item.getRoot() === app.workspace.rightSplit)
+    if (!leaf) {
+      leaf = app.workspace.getRightLeaf(true); ownsLeaf = true
+      await leaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
+    }
     await app.workspace.revealLeaf(leaf)
     app.workspace.rightSplit.expand()
     if (!app.isMobile) app.workspace.rightSplit.setSize(420)
@@ -143,7 +146,8 @@ const probe = (label: string) => `(async () => {
     const directory = app.vault.getAbstractFileByPath(path)
     if (directory) await app.vault.delete(directory, true)
     narrowLeaf?.detach()
-    leaf?.detach()
+    if (leaf?.view.containerEl.querySelector('.abele-chat-switch__current')?.getAttribute('aria-expanded') === 'true') leaf.view.containerEl.querySelector('.abele-chat-switch__current').click()
+    if (ownsLeaf) leaf?.detach()
     if (!app.isMobile && priorWidth) app.workspace.rightSplit.setSize(priorWidth)
     if (prior) service.switchTab(prior)
   }
