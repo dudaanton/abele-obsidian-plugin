@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.letterAuthority': 'Ohne Rückfrage kann der Zielchat Folgendes nutzen: {capabilities}.',
+  'chat.letterAuthority.files': 'Dateien bearbeiten, kopieren, verschieben und löschen',
+  'chat.letterAuthority.edit': 'Dateien bearbeiten',
+  'chat.letterAuthority.node': 'seine Node-Werkzeuge gemäß seinen Berechtigungen',
   'chatTree.backToParent': 'Zurück zu {name}',
   'chat.letterNode.stopped': 'Die Anfrage wurde gestoppt.',
   'chat.letterNode.closed': 'Der Zielchat ist geschlossen.',

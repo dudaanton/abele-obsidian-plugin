@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.letterAuthority': 'Bez apstiprinājuma saņēmējs var izmantot: {capabilities}.',
+  'chat.letterAuthority.files': 'failu rediģēšanu, kopēšanu, pārvietošanu un dzēšanu',
+  'chat.letterAuthority.edit': 'failu rediģēšanu',
+  'chat.letterAuthority.node': 'sava mezgla rīkus atbilstoši tā atļaujām',
   'chatTree.backToParent': 'Atpakaļ uz {name}',
   'chat.letterNode.stopped': 'Pieprasījums apturēts.',
   'chat.letterNode.closed': 'Mērķa čats ir aizvērts.',

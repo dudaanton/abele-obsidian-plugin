@@ -269,7 +269,9 @@ export interface AgentToolsOptions {
  * a saved copy of a default that slipped through is still not taken for one.
  */
 export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
-  const tools = buildAgentTools(options)
+  const tools = buildAgentTools(options).filter(
+    (tool) => tool.name !== 'send_message_to_chat' || options.session?.canSendChatLetter
+  )
   const overrides = AbeleConfig.getInstance().ai.prompts?.toolDescriptions ?? {}
   for (const tool of tools) {
     const saved = overrides[tool.name]
@@ -330,7 +332,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createDownloadImageTool(),
     createDownloadFileTool(),
     createDelegateTool(options.session),
-    ...createChatMessagingTools(options.session),
+    ...createChatMessagingTools(options.session, true),
     ...createNodeDelegationTools(options.session),
     ...createNodeManagerTools(options.session),
     createReplaceTool(),

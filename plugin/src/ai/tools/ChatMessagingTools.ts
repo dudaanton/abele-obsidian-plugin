@@ -4,8 +4,8 @@ import { chatMessaging, resolveLetterChat } from '../chatMessaging'
 import { LetterRefusal, type LetterChat } from '@/chats/chatLetters'
 import { t } from '@/i18n'
 
-export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
-  return [
+export function createChatMessagingTools(owner?: ChatSession, metadata = false): AgentTool[] {
+  const tools: AgentTool[] = [
     {
       name: 'list_chats',
       label: 'List chats',
@@ -34,6 +34,7 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
       execute: async (id, params, signal, ctx) => {
         const session = ctx?.session ?? owner
         if (!session) throw new Error('No active chat')
+        if (!session.canSendChatLetter) throw new Error('This turn cannot send chat letters')
         if (typeof params.chat_id !== 'string' || typeof params.message !== 'string')
           throw new Error('chat_id and message must be strings')
         const target = resolveLetterChat(params.chat_id)
@@ -43,6 +44,8 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
         session.attachChatLetter(id, { to })
         await session.save()
         try {
+          if (ctx && session.letterAuthority(params).length && !ctx.approved)
+            throw new Error('Sending to this chat requires owner approval')
           const reply = await chatMessaging.send(session.id, to.id, params.message, signal)
           to.path =
             chatMessaging.list(session.id).find((chat) => chat.id === to.id)?.path ?? to.path
@@ -66,4 +69,7 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
       },
     },
   ]
+  return tools.filter(
+    (tool) => tool.name !== 'send_message_to_chat' || metadata || owner?.canSendChatLetter
+  )
 }

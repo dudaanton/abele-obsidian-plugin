@@ -1654,6 +1654,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
+    if (toolName === 'send_message_to_chat' && this.letterAuthority(args).length) return true
     if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove') return true
     if (NODE_ACTION_TOOLS.includes(toolName))
       return (
@@ -3205,7 +3206,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     permissionKey?: string,
     destinationKey?: string
   ) {
-    if (name === 'node_propose_edit' || needsSecretApproval(name, args))
+    if (
+      name === 'node_propose_edit' ||
+      needsSecretApproval(name, args) ||
+      (name === 'send_message_to_chat' && this.letterAuthority(args).length)
+    )
       return Promise.resolve({ kind: 'ask' as const })
     return this.turnPolicy.decide(
       id,
@@ -4818,6 +4823,35 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   /** A letter uses this conversation's own tools, agent and approval queue. */
+  private receivingLetter = false
+
+  get canSendChatLetter(): boolean {
+    return (
+      this.kind !== 'run' &&
+      this.depth === 0 &&
+      !this.delegationParentId &&
+      !this.receivingLetter &&
+      !this.messages.value.findLast((message) => message.role === 'user')?.fromSession
+    )
+  }
+
+  /** Capabilities the owner must see before sending to a more powerful conversation. */
+  letterAuthority(args?: Record<string, unknown>): string[] {
+    if (typeof args?.chat_id !== 'string') return []
+    const service = this.chatService
+    if (service.getNodeSession(args.chat_id)) return ['node']
+    const target = service.getSession(args.chat_id)
+    if (!target) return []
+    const rank = { 'confirm-all': 0, 'allow-edit': 1, 'allow-all': 2 }
+    const result: string[] = []
+    if (rank[target.permissionMode.value] > rank[this.permissionMode.value])
+      result.push(target.permissionMode.value)
+    for (const [name, mode] of Object.entries(target.toolModes.value)) {
+      if (mode === 'auto' && this.getToolMode(name) !== 'auto') result.push(name)
+    }
+    return result
+  }
+
   async receiveChatLetter(
     content: string,
     from: LetterChat,
@@ -4847,25 +4881,30 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (signal?.aborted || this.destroyed || this.conversationVersion.value !== version)
       throw new Error('The message was cancelled or the target chat closed')
     console.debug('[Abele chat message]', { from: from.id, to: this.id, phase: 'received' })
-    const before = new Set(this.messages.value.map((m) => m.id))
-    const generation = this.generation
-    await this.sendMessage(content, undefined, undefined, undefined, from)
-    // A model turn may return at an approval; the answer belongs to the continuation.
-    await waitUntilIdle()
-    if (this.generation !== generation || this.error.value) {
-      throw new Error(this.error.value || 'The target chat stopped before answering')
+    this.receivingLetter = true
+    try {
+      const before = new Set(this.messages.value.map((m) => m.id))
+      const generation = this.generation
+      await this.sendMessage(content, undefined, undefined, undefined, from)
+      // A model turn may return at an approval; the answer belongs to the continuation.
+      await waitUntilIdle()
+      if (this.generation !== generation || this.error.value) {
+        throw new Error(this.error.value || 'The target chat stopped before answering')
+      }
+      const answer = this.messages.value.findLast(
+        (m) => !before.has(m.id) && m.role === 'assistant' && m.content
+      )
+      if (!answer) throw new Error('The target chat ended without an answer')
+      this.updateChatMessage(
+        (m) => m.id === answer.id,
+        (m) => ({ ...m, sentTo: from })
+      )
+      await this.save()
+      console.debug('[Abele chat message]', { from: from.id, to: this.id, phase: 'answered' })
+      return answer.content
+    } finally {
+      this.receivingLetter = false
     }
-    const answer = this.messages.value.findLast(
-      (m) => !before.has(m.id) && m.role === 'assistant' && m.content
-    )
-    if (!answer) throw new Error('The target chat ended without an answer')
-    this.updateChatMessage(
-      (m) => m.id === answer.id,
-      (m) => ({ ...m, sentTo: from })
-    )
-    await this.save()
-    console.debug('[Abele chat message]', { from: from.id, to: this.id, phase: 'answered' })
-    return answer.content
   }
 
   updateDelegateProgress(status: string): void {

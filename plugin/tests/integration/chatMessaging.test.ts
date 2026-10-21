@@ -5,6 +5,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { createChatMessagingTools } from '@/ai/tools/ChatMessagingTools'
+import { createAgentTools, getToolRegistry, codeToolDescriptions } from '@/ai/tools'
 import {
   chatMessaging,
   openMessagingChats,
@@ -409,6 +410,9 @@ it('delivers and persists both ends using the receiving session permissions', as
   expect(a.getToolMode('list_chats')).toBe('auto')
   const reopened = new ChatSession(service)
   await reopened.load(b.currentChatFile.value!)
+  expect(reopened.canSendChatLetter).toBe(false)
+  await reopened.addUserNote('A new ordinary question')
+  expect(reopened.canSendChatLetter).toBe(true)
   expect(reopened.messages.value.findLast((m) => m.role === 'assistant')?.sentTo?.path).toBe(
     a.currentChatFile.value!.path
   )
@@ -468,10 +472,79 @@ it('does not resend an interrupted letter after reloading its saved chat', async
 })
 
 it('registers a read-only listing and an approval-required send tool', () => {
-  const tools = createChatMessagingTools()
+  const tools = createChatMessagingTools(new ChatSession(ChatService.getInstance()))
   expect(tools.map((tool) => tool.name)).toEqual(['list_chats', 'send_message_to_chat'])
   expect(DEFAULT_AI_SETTINGS.toolModes.list_chats).toBe('auto')
   expect(DEFAULT_AI_SETTINGS.toolModes.send_message_to_chat).toBe('ask')
+})
+
+it('forces approval when an automatic letter addresses a broader target', async () => {
+  const service = ChatService.getInstance()
+  const sender = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  sender.toolModes.value = { ...sender.toolModes.value, send_message_to_chat: 'auto' }
+  sender.permissionMode.value = 'confirm-all'
+  target.permissionMode.value = 'allow-all'
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(true)
+  const send = createChatMessagingTools(sender).find((t) => t.name === 'send_message_to_chat')!
+  await expect(
+    send.execute('unapproved', { chat_id: target.id, message: 'Sample question' }, undefined, {
+      session: sender,
+      approved: false,
+    } as never)
+  ).rejects.toThrow('requires owner approval')
+  target.permissionMode.value = 'confirm-all'
+  target.toolModes.value = { ...target.toolModes.value, eval_js: 'auto' }
+  sender.toolModes.value = { ...sender.toolModes.value, eval_js: 'ask' }
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(true)
+  target.toolModes.value = { ...sender.toolModes.value }
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(false)
+})
+
+it('withholds sending from delegated runs and ownerless script tools', () => {
+  const run = new ChatSession(ChatService.getInstance(), undefined, { kind: 'run', depth: 1 })
+  expect(createChatMessagingTools(run).some((t) => t.name === 'send_message_to_chat')).toBe(false)
+  expect(createChatMessagingTools().some((t) => t.name === 'send_message_to_chat')).toBe(false)
+  expect(createAgentTools().some((t) => t.name === 'send_message_to_chat')).toBe(false)
+  expect(getToolRegistry().some((t) => t.name === 'send_message_to_chat')).toBe(true)
+  expect(codeToolDescriptions().send_message_to_chat).toBeTruthy()
+})
+
+it('withholds sending during a letter turn and restores it after failure', async () => {
+  const session = new ChatSession(ChatService.getInstance())
+  const cached = createChatMessagingTools(session).find((t) => t.name === 'send_message_to_chat')!
+  vi.spyOn(session, 'sendMessage').mockImplementation(async () => {
+    expect(createChatMessagingTools(session).some((t) => t.name === 'send_message_to_chat')).toBe(
+      false
+    )
+    await expect(
+      cached.execute('chain', { chat_id: 'other', message: 'Question' })
+    ).rejects.toThrow('cannot send chat letters')
+    throw new Error('Sample interruption')
+  })
+  await expect(
+    session.receiveChatLetter('Question', { id: 'source', title: 'Source' })
+  ).rejects.toThrow('Sample interruption')
+  expect(createChatMessagingTools(session).some((t) => t.name === 'send_message_to_chat')).toBe(
+    true
+  )
+})
+
+it('never lets an interceptor approve a broader destination for the owner', async () => {
+  const service = ChatService.getInstance()
+  const sender = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  target.permissionMode.value = 'allow-all'
+  sender.permissionMode.value = 'confirm-all'
+  const host = sender as unknown as {
+    policyFor(id: string, name: string, args: Record<string, unknown>): Promise<unknown>
+    turnPolicy: { decide: () => Promise<unknown> }
+  }
+  const decide = vi.spyOn(host.turnPolicy, 'decide').mockResolvedValue({ kind: 'approve' })
+  await expect(
+    host.policyFor('letter', 'send_message_to_chat', { chat_id: target.id })
+  ).resolves.toEqual({ kind: 'ask' })
+  expect(decide).not.toHaveBeenCalled()
 })
 
 it('does not deliver a queued request into a replacement conversation in the same tab', async () => {
@@ -543,6 +616,7 @@ it('keeps a real target tool approval in the receiving chat until it is answered
     expect(b.pendingToolCalls.value[0]?.name, JSON.stringify(b.messages.value)).toBe('write')
   )
   expect(a.pendingToolCalls.value).toEqual([])
+  expect(b.canSendChatLetter).toBe(false)
   expect(done).toBe(false)
   await b.rejectToolCall()
   await expect(pending).resolves.toBe('A sample answer')

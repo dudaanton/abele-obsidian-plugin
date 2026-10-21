@@ -29,6 +29,9 @@
         }}<span v-if="letterTarget?.folder"> · {{ letterTarget.folder }}</span>
       </div>
       <div class="abele-tool-approval__message">{{ params.message }}</div>
+      <div v-if="letterAuthority.length" class="abele-tool-approval__path">
+        {{ t('chat.letterAuthority', { capabilities: letterAuthority.join(', ') }) }}
+      </div>
     </template>
     <template v-else-if="nodePrompt">
       <div v-if="location" class="abele-tool-approval__path">
@@ -451,6 +454,18 @@ const letterTarget = computed(() =>
   props.message.toolName === 'send_message_to_chat'
     ? openMessagingChats().find((chat) => chat.id === params.value.chat_id)
     : undefined
+)
+const letterAuthority = computed(
+  () =>
+    (props.message.toolName === 'send_message_to_chat'
+      ? session.value?.letterAuthority(params.value)
+      : []
+    )?.map((name) => {
+      if (name === 'allow-all') return t('chat.letterAuthority.files')
+      if (name === 'allow-edit') return t('chat.letterAuthority.edit')
+      if (name === 'node') return t('chat.letterAuthority.node')
+      return name
+    }) ?? []
 )
 const contentKey = computed(() => {
   if (props.message.toolName === 'edit') return 'new_string'

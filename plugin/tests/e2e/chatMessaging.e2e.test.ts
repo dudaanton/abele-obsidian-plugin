@@ -41,6 +41,9 @@ it.each(onPhone() ? [true] : [false, true])(
         await until(()=>root().textContent.includes('Sample documentation with a long descriptive title'));await shot('list-chats');
         root().querySelector('[data-run-ids~="listed"] .tree-item-self').click();
         const call={id:'letter',role:'tool-call',content:'',timestamp:Date.now(),toolCallId:'ask',toolName:'send_message_to_chat',toolStatus:'pending',toolParams:{chat_id:target.id,message:'Explain the sample behavior.\\nInclude the recovery steps.'}};
+        caller.permissionMode.value='confirm-all';target.permissionMode.value='allow-all';
+        caller.toolModes.value={...caller.toolModes.value,send_message_to_chat:'auto'};
+        if(!caller.needsApproval(call.toolName,call.toolParams))throw Error('Broader target bypassed approval');
         caller.appendChatMessage(call);caller.updateVisibleMessages();
         caller.pendingToolCalls.value=[{type:'toolCall',id:'ask',name:call.toolName,arguments:call.toolParams}];
         chats.switchTab(caller.id);await leaf.setViewState({type:'abele-ai-sidebar-view',active:true});
@@ -52,7 +55,7 @@ it.each(onPhone() ? [true] : [false, true])(
         originalAfter=target.afterTurn;originalCheck=target.checkAnswer;
         target.afterTurn=async()=>{};target.checkAnswer=async()=>{};
         target.runAgentLoop=async function(){this.isStreaming.value=true;try{await new Promise(r=>release=r);this.appendChatMessage({id:'sample-answer',role:'assistant',content:'The sample reconnects after waking. Check the connection state before retrying.',timestamp:Date.now()});this.updateVisibleMessages()}finally{this.isStreaming.value=false}};
-        pending=send.execute('ask',call.toolParams);
+        pending=send.execute('ask',call.toolParams,undefined,{approved:true});
         await until(()=>release&&root().querySelector('.abele-chat-letter_running'));
         await shot('asking');
         chats.switchTab(target.id);await until(()=>root().querySelector('.abele-chat-msg__from'));
@@ -65,11 +68,7 @@ it.each(onPhone() ? [true] : [false, true])(
         target.pendingToolCalls.value=[];target.updateChatMessage(m=>m.id==='target-approval',m=>({...m,toolStatus:'rejected',toolResult:'Sample action declined'}));target.isStreaming.value=true;
         target.inheritToolSections(['delegation']);
         const reverse=target.getTools().find(t=>t.name==='send_message_to_chat');
-        const cycle={...call,id:'cycle',toolCallId:'cycle',toolParams:{chat_id:caller.id,message:'Sample circular request'}};
-        target.appendChatMessage(cycle);target.updateVisibleMessages();
-        try{await reverse.execute('cycle',cycle.toolParams)}catch{}
-        await until(()=>root().querySelector('.abele-chat-msg__letter-refusal'));await shot('cycle-refused');
-        const noteOffset=Math.abs(textStart(root().querySelector('.abele-chat-letter .abele-tree-item__text'))-textStart(root().querySelector('.abele-call-note')));
+        if(reverse)throw Error('Letter turn offered chained sending');
         release();await pending;
         await until(()=>root().querySelector('.abele-chat-msg__sent-to'));
         const sent=root().querySelector('.abele-chat-msg__sent-to').textContent;await shot('sent');
@@ -84,6 +83,7 @@ it.each(onPhone() ? [true] : [false, true])(
         try{await send.execute('refusal',refused.toolParams)}catch{}
         await until(()=>root().querySelector('.abele-chat-msg__letter-refusal'));await shot('refused');
         const refusedRow=root().querySelector('[data-message-id="refused"]');
+        const noteOffset=Math.abs(textStart(refusedRow.querySelector('.abele-tree-item__text'))-textStart(refusedRow.querySelector('.abele-call-note')));
         if(!refusedRow.querySelector('.abele-status-dot_red'))throw Error('Refused letter has no state dot');
         const labelFlex=getComputedStyle(refusedRow.querySelector('.abele-tree-item__inner')).flex;
         const reply=caller.messages.value.find(m=>m.id==='letter').chatLetter.reply,refusal=caller.messages.value.find(m=>m.id==='refused').chatLetter.refusal;
@@ -102,7 +102,7 @@ it.each(onPhone() ? [true] : [false, true])(
         if(!node)throw Error('Node letter fixture did not open');
         const nodeLetter={...call,id:'node-answer',toolCallId:'node-answer',toolParams:{chat_id:nodeId,message:'Check the sample request on the node.'}};
         caller.appendChatMessage(nodeLetter);caller.updateVisibleMessages();
-        await send.execute('node-answer',nodeLetter.toolParams);
+        await send.execute('node-answer',nodeLetter.toolParams,undefined,{approved:true});
         chats.switchTab(nodeId);await until(()=>root().querySelector('.abele-chat-msg__from')?.textContent.includes('Sample request'));
         root().querySelector('.abele-chat-msg__from').scrollIntoView({block:'center'});await shot('node-incoming');
         const nodeIncoming=root().querySelector('.abele-chat-msg__from').textContent;
@@ -141,6 +141,7 @@ it.each(onPhone() ? [true] : [false, true])(
       )
       expect(result.approval).toContain('Sample documentation')
       expect(result.approval).toContain('Include the recovery steps.')
+      expect(result.approval).toContain('file edits, copies, moves and deletion')
       expect(result.incoming).toContain('Sample request')
       expect(result.sent).toContain('Sample request')
       expect(result.reply).toContain('reconnects')

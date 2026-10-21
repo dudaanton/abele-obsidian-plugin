@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.letterAuthority': 'Without asking, the target may use: {capabilities}.',
+  'chat.letterAuthority.files': 'file edits, copies, moves and deletion',
+  'chat.letterAuthority.edit': 'file edits',
+  'chat.letterAuthority.node': 'its node tools under its own permissions',
   'chatTree.backToParent': 'Back to {name}',
   'chat.letterNode.stopped': 'The request was stopped.',
   'chat.letterNode.closed': 'The target chat is closed.',

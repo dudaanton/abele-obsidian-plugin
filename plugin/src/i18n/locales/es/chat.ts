@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.letterAuthority': 'Sin pedir confirmación, el chat de destino puede usar: {capabilities}.',
+  'chat.letterAuthority.files': 'edición, copia, traslado y eliminación de archivos',
+  'chat.letterAuthority.edit': 'edición de archivos',
+  'chat.letterAuthority.node': 'las herramientas de su nodo según sus permisos',
   'chatTree.backToParent': 'Volver a {name}',
   'chat.letterNode.stopped': 'La solicitud se detuvo.',
   'chat.letterNode.closed': 'El chat de destino está cerrado.',

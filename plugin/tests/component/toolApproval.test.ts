@@ -83,6 +83,24 @@ function approval(toolName: string, params: Record<string, unknown>) {
   return mount(AiToolApproval, { props: { message } })
 }
 
+it('shows the broader target capabilities beside the exact letter', () => {
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: { letterAuthority: () => ['allow-all', 'eval_js'] },
+  } as never)
+  const wrapper = approval('send_message_to_chat', {
+    chat_id: 'sample',
+    message: 'Sample question',
+  })
+  try {
+    expect(wrapper.text()).toContain('Sample question')
+    expect(wrapper.text()).toContain(
+      'Without asking, the target may use: file edits, copies, moves and deletion, eval_js.'
+    )
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 /** The read is asynchronous, so the diff appears a tick after mounting. */
 async function settled(wrapper: ReturnType<typeof approval>) {
   await nextTick()
