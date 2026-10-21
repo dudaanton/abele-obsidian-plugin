@@ -13,13 +13,15 @@ it('uses protocol-valid synthetic events for the idle measurement', () => {
 
 it('does not mistake catalog session announcements for a session journal', async () => {
   const store = new NodeClientStore('sample-catalog-retention', new IDBFactory())
-  const catalog = giantJournal({ turns: 60, outputBytes: 40 }).map((event) => ({
+  const source = giantJournal({ turns: 60, outputBytes: 40 })
+  const catalog = source.map((event) => ({
     ...event,
     stream_id: 'sample-catalog',
     type: 'session.created',
-    data: { session_id: 'sample-child-' + event.seq },
+    data: { ...source[0].data, session_id: 'sample-child-' + event.seq },
   }))
   try {
+    for (const event of catalog) NodeEventSchema.parse(event)
     await store.transaction((state) => {
       state.events.catalog = catalog
     })
@@ -33,13 +35,22 @@ it('does not mistake catalog session announcements for a session journal', async
 it('keeps a session bounded after its identifying events have left the retained window', async () => {
   const store = new NodeClientStore('sample-sticky-window', new IDBFactory())
   const journal = giantJournal({ turns: 60, outputBytes: 40 })
-  const output = journal.slice(1).map((event) => ({ ...event, type: 'command.output' }))
+  const output = journal.slice(1).map((event) => ({
+    ...event,
+    type: 'command.output',
+    data: { run_id: 'sample-run', stream: 'stdout', text: 'Sample output ' + event.seq },
+  }))
   try {
+    for (const event of output) NodeEventSchema.parse(event)
     await store.transaction((state) => {
       state.events.sample = [journal[0], ...output]
+      state.cursors.sample = journal.length
     })
     await store.transaction((state) => {
-      state.events.sample.push(...output.slice(0, 10))
+      state.events.sample.push(
+        ...output.slice(0, 10).map((event, i) => ({ ...event, seq: journal.length + i + 1 }))
+      )
+      state.cursors.sample += 10
     })
     expect(await store.read((state) => state.events.sample.length)).toBe(400)
     expect(await store.read((state) => state.windows?.sample)).toBe(400)

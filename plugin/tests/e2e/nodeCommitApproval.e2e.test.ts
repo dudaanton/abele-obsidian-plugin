@@ -66,6 +66,20 @@ async function inspectCommit(label: string) {
       `document.querySelector('[data-node-commit-diff] .abele-disclosure__control').click()`
     )
     await inspect('diff-open', '+Sample')
+    writeFileSync(join(project, 'sample.bin'), Buffer.from([0, 1, 2, 3]))
+    await promisify(execFile)('/usr/bin/git', ['add', '--', 'sample.bin'], { cwd: project })
+    await evalLong(
+      `(()=>{${setup}const session=chats.activeSession.value;session.updateChatMessage(m=>m.toolCallId==='sample-commit',m=>({...m,toolParams:{...window.__sampleCommitArgs}}));session.updateVisibleMessages()})()`
+    )
+    expect((await inspect('binary-folded', 'sample.bin')).files).toBe(3)
+    const binary = await evalLong(`(async()=>{
+      const row=[...document.querySelectorAll('[data-node-commit-diff]')].find(el=>el.textContent.includes('sample.bin'));
+      row.querySelector('.abele-disclosure__control').click();
+      await new Promise(r=>setTimeout(r,100));
+      return row.querySelector('.abele-disclosure__content')?.textContent.trim()??'';
+    })()`)
+    expect(binary.length).toBeGreaterThan(0)
+    await inspect('binary-diff', 'sample.bin')
     await evalLong(
       `(()=>{${setup}const session=chats.activeSession.value;session.updateChatMessage(m=>m.toolCallId==='sample-commit',m=>({...m,toolParams:{...window.__sampleCommitArgs,expected_head:'b'.repeat(40)}}));session.updateVisibleMessages()})()`
     )
