@@ -15,6 +15,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
     const until = async fn => { for(let i=0;i<200;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Permission screen did not appear: '+fn) };
     const close = async () => { for(const b of document.querySelectorAll('.modal-container .modal-header-button,.modal-container .modal-close-button'))b.click();await until(()=>!document.querySelector('.modal.abele-modal'));await wait(100) };
     const shot = async name => {
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));await wait(150);
       const path = ${JSON.stringify(shots)} + '/' + (app.isMobile ? 'phone-' : 'desktop-') + name + '.png';
       if(window.__e2eHost) { const r=await window.__e2eHost.shot(path);if(String(r).startsWith('no picture:'))throw Error(r) }
       else require('fs').writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
