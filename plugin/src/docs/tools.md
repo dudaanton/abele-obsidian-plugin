@@ -961,8 +961,12 @@ own permissions and cannot move them to a similarly named server.
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
 Delegation and command tools are Off by default. Enable them through the ordinary agent or
 chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
-cannot enable these tools. Ask prompts before delegation, follow-up, cancellation, command
-execution and integration; enabled list/status tools can read without a prompt. Chat files
+cannot enable these tools. Ask prompts before starting a delegation (`node_delegate`), running a
+command (`node_command_run`) and integrating (`node_git_integrate`). The tools that list, follow up
+on or cancel that work (`node_delegations`, `node_delegation_status`, `node_delegation_send`,
+`node_delegation_cancel` with `node_delegate`; `node_command_status`, `node_command_cancel` with
+`node_command_run`) follow their parent tool: available without a prompt while it is Ask or Auto,
+unavailable while it is Off. Chat files
 and folder permissions cannot grant these action permissions on another device.
 Models cannot access credentials, send generic node requests or answer child human prompts.
 Nodes must advertise delegation_without_grant. Older nodes say they need an update to take tasks

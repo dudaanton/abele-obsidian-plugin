@@ -56,6 +56,28 @@ it('asks before every mutating node action in ask mode, even in bypass', () => {
   ))
     expect(ChatSession.prototype.needsApproval.call(session, name)).toBe(true)
 })
+it('lets listing, follow-up and cancel tools follow the tool that started the work', () => {
+  const off = nodeActionModes({}, {}, {})
+  for (const name of actions) expect(off[name] ?? 'off').toBe('off')
+  const on = nodeActionModes(
+    {},
+    { node_delegate: 'ask', node_command_run: 'auto', node_delegation_status: 'off' },
+    {}
+  )
+  for (const name of [
+    'node_delegations',
+    'node_delegation_status',
+    'node_delegation_send',
+    'node_delegation_cancel',
+    'node_command_status',
+    'node_command_cancel',
+  ])
+    expect(on[name]).toBe('auto')
+  expect(on.node_git_integrate ?? 'off').toBe('off')
+  const stale = nodeActionModes({}, { node_command_status: 'auto', node_command_cancel: 'ask' }, {})
+  expect(stale.node_command_status ?? 'off').toBe('off')
+  expect(stale.node_command_cancel ?? 'off').toBe('off')
+})
 it('never offers the test provider', () => {
   expect(nodeProviders({ providers: [{ provider: 'fake', available: true }] })).toEqual([])
   expect(

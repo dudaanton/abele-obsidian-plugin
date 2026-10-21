@@ -532,6 +532,15 @@ export const NODE_ACTION_TOOLS = [
   'node_command_cancel',
   'node_git_integrate',
 ]
+/** Node tools that only act on what their parent tool started, and follow its permission. */
+export const NODE_ACTION_PARENTS: Record<string, string> = {
+  node_delegations: 'node_delegate',
+  node_delegation_status: 'node_delegate',
+  node_delegation_send: 'node_delegate',
+  node_delegation_cancel: 'node_delegate',
+  node_command_status: 'node_command_run',
+  node_command_cancel: 'node_command_run',
+}
 export const NODE_ACTION_DEFAULTS: Record<string, ToolMode> = Object.fromEntries(
   NODE_ACTION_TOOLS.map((name) => [name, 'off'])
 )

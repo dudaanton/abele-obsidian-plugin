@@ -1,6 +1,6 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ref } from 'vue'
-import { NODE_ACTION_TOOLS, type ToolMode } from './types'
+import { NODE_ACTION_PARENTS, NODE_ACTION_TOOLS, type ToolMode } from './types'
 export { NODE_ACTION_TOOLS } from './types'
 import type { ChatSession } from './ChatSession'
 
@@ -48,6 +48,12 @@ export function nodeActionModes(
     const mode = local[name] ?? agent[name]
     if (local[name] !== undefined || mode === 'ask' || mode === 'auto') modes[name] = mode
     else if (base[name] === 'off') modes[name] = 'off'
+  }
+  // Listing, status, follow-up and cancel act only on work the parent tool started: they are
+  // available without a prompt exactly while the person has that parent tool enabled.
+  for (const [name, parent] of Object.entries(NODE_ACTION_PARENTS)) {
+    delete modes[name]
+    if (modes[parent] === 'ask' || modes[parent] === 'auto') modes[name] = 'auto'
   }
   return modes
 }
