@@ -1,7 +1,7 @@
 .abele-chat-input {
   // The «/» list stands over the field, measured from here.
   position: relative;
-  padding: var(--size-4-2) var(--abele-chat-inset, var(--size-4-2));
+  padding: var(--size-4-2) calc(var(--abele-chat-inset, var(--size-4-4)) / 2);
   flex-shrink: 0;
 }
 

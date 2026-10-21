@@ -2428,8 +2428,8 @@ body.is-phone
 }
 
 .abele-ai-chat {
-  // The chat stands as far from the pane's edges as the plugin's other side panels do (money,
-  // accounts, time): its header, its messages and the field to write in, on one edge.
+  // Keep the message inset aligned with the other side panels; the header and composer
+  // use half of it to leave more room for their controls.
   --abele-chat-inset: calc(var(--p-spacing) * 2);
   position: absolute;
   top: 0;
@@ -2480,7 +2480,7 @@ body.is-phone
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--size-4-1) var(--abele-chat-inset);
+  padding: var(--size-4-1) calc(var(--abele-chat-inset) / 2);
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   gap: var(--size-4-1);
