@@ -13,7 +13,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
     const api = window.__abeleTest;
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const until = async fn => { for(let i=0;i<200;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Permission screen did not appear: '+fn) };
-    const close = async () => { for(const b of document.querySelectorAll('.modal .modal-close-button'))b.click();await wait(200) };
+    const close = async () => { for(const b of document.querySelectorAll('.modal-container .modal-header-button,.modal-container .modal-close-button'))b.click();await until(()=>!document.querySelector('.modal.abele-modal'));await wait(100) };
     const shot = async name => {
       const path = ${JSON.stringify(shots)} + '/' + (app.isMobile ? 'phone-' : 'desktop-') + name + '.png';
       if(window.__e2eHost) { const r=await window.__e2eHost.shot(path);if(String(r).startsWith('no picture:'))throw Error(r) }
@@ -39,11 +39,11 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       states.sessionOverride=configurations.length===1 && configurations[0].params[1].permission_mode==='plan';
       await api.closeNodeSessionFixture();
       api.openDialog('node-agent-permissions',{agentInherit:true});
-      const inherited=await until(()=>document.querySelector('.abele-agent-editor'));
+      const inherited=await until(()=>document.querySelector('.abele-agent-editor'));await until(()=>inherited.querySelector('select'));await wait(150);
       states.inherit=[...inherited.querySelectorAll('select')].some(select=>select.value==='inherit');
       await shot('agent-settings-inherited');await close();
       api.openDialog('node-agent-permissions');
-      const settings=await until(()=>document.querySelector('.abele-agent-editor'));
+      const settings=await until(()=>document.querySelector('.abele-agent-editor'));await until(()=>settings.querySelector('select'));await wait(150);
       states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('confined to that folder');
       await shot('agent-settings');
       const select=[...settings.querySelectorAll('select')].find(el=>[...el.options].some(option=>option.value==='confirm-all') && [...el.options].some(option=>option.value==='allow-all'));
@@ -54,7 +54,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       await shot('agent-settings-without-asking');await close();
       for(const state of ['refused','node-opt-in','running','unknown']) {
         api.openDialog('node-delegation-card',{permissionState:state});
-        const card=await until(()=>document.querySelector('.abele-node-delegation'));
+        const card=await until(()=>document.querySelector('.abele-node-delegation'));await wait(150);
         const text=card.textContent;
         states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Agent permission settings'))
           : state==='node-opt-in' ? text.includes('--claude-allow-bypass')
