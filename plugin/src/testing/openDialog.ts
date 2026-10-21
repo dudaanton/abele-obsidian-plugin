@@ -24,6 +24,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
+  delegationCommand?: string
   managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
   delegationState?:
@@ -464,7 +465,10 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
               {
                 default: () =>
                   h(NodeDelegationCard, {
-                    card: nodeDelegationCardFixture(options?.delegationState),
+                    card: nodeDelegationCardFixture(
+                      options?.delegationState,
+                      options?.delegationCommand
+                    ),
                     nodeLabel: 'Sample node',
                   }),
               }

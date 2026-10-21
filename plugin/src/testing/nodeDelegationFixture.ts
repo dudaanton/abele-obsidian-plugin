@@ -9,7 +9,8 @@ export function nodeDelegationCardFixture(
     | 'paused-prompt'
     | 'warning'
     | 'prompt'
-    | 'answering'
+    | 'answering',
+  command = 'npm test -- tests/sample-parser.test.ts'
 ): DelegationCard {
   const card: DelegationCard = {
     delegationId: 'sample-delegation',
@@ -55,7 +56,7 @@ export function nodeDelegationCardFixture(
         tool_name: 'Bash',
         title: 'Run sample checks',
         input: {
-          command: 'npm test -- tests/sample-parser.test.ts',
+          command,
           cwd: '/workspace/sample-project/work/sample-parser',
         },
       },

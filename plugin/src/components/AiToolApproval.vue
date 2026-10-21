@@ -64,7 +64,9 @@
         </Disclosure>
       </div>
       <template v-else>
-        <code>{{ toolSummary(message) }}</code>
+        <code data-node-command>{{
+          nodeCommand === undefined ? toolSummary(message) : visibleText(nodeCommand)
+        }}</code>
         <pre
           v-if="typeof nodePrompt.input?.content === 'string'"
           class="abele-tool-approval__code"
@@ -72,7 +74,7 @@
         <Disclosure v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
           <pre
             class="abele-tool-approval__code"
-          ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+          ><code>{{ visibleJson(nodePrompt.input, 2) }}</code></pre>
         </Disclosure>
       </template>
       <Dropdown
@@ -496,6 +498,18 @@ const session = computed(() =>
 )
 const isEditing = ref(false)
 const originalOpen = ref(false)
+const nodeCommand = computed(() => {
+  const command = props.nodePrompt?.input?.command
+  return typeof command === 'string' ? command : undefined
+})
+watch(
+  () => [nodeCommand.value, toolSummary(props.message)] as const,
+  ([command, summary]) => {
+    if (command !== undefined && (summary !== command || visibleText(command) !== command))
+      originalOpen.value = true
+  },
+  { immediate: true }
+)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
 const questionList = computed(() =>
@@ -978,7 +992,8 @@ const toggleEdit = () => {
   flex-direction: column;
   gap: var(--size-4-2);
 }
-[data-manager-command] {
+[data-manager-command],
+[data-node-command] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

@@ -6,6 +6,33 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
+it.each([
+  ['long', 'echo ' + 'sample'.repeat(60), true],
+  ['hidden', 'echo \u202e\u001b\nline', true],
+  ['whitespace', 'echo  sample', true],
+  ['normal', 'npm test', false],
+] as const)(
+  'shows the complete %s worker command with appropriate evidence',
+  async (_, command, open) => {
+    const { default: AiToolApproval } = await import('@/components/AiToolApproval.vue')
+    const wrapper = mount(AiToolApproval, {
+      props: {
+        nodePrompt: { tool_name: 'Bash', title: 'Run command', input: { command } } as never,
+        message: { toolName: 'Bash', toolParams: { command } } as never,
+      },
+    })
+    try {
+      expect(wrapper.get('[data-node-command]').element.textContent).toBe(
+        command.replace('\u202e', '\\u202e').replace('\u001b', '\\u001b').replace('\n', '\\n')
+      )
+      expect(wrapper.get('.abele-disclosure__control').attributes('aria-expanded')).toBe(
+        String(open)
+      )
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
 it.each([false, true])(
   'uses one pending command card with folded evidence (escaped: %s)',
   async (escaped) => {
