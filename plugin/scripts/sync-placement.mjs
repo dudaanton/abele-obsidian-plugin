@@ -93,7 +93,8 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'seen.add(sha);',
-          `const candidate = await this.placer.localSource(sha, change.size, local);
+          `if (await this.placer.destinationMatches(change.path, sha, change.size)) continue;
+            const candidate = await this.placer.localSource(sha, change.size, local);
             if (candidate) { local.set(sha, candidate); continue; }
             seen.add(sha);`
         )
@@ -116,7 +117,7 @@ export function syncPlacementPlugin() {
               if (this.placer.initialLocal.has(change.sha)) continue;
               // A missing receipt does not mean missing bytes. Let placement verify and adopt
               // an existing portable spelling before spending a content request on it.
-              if (entry === null) {
+              {
                 const inventory = await this.placer.paths(change.path);
                 if (inventory.blocked(change.path)) continue;
                 let target;
@@ -136,7 +137,7 @@ export function syncPlacementPlugin() {
                   exists = names.has(target.normalize('NFC').toLowerCase());
                 } else exists = await this.fs.stat(target) !== null;
                 this.placer.adoptionCandidates.set(change.file_id, exists);
-                if (exists) continue;
+                if (exists && (entry === null || await this.placer.destinationMatches(target, change.sha, change.size))) continue;
               }
               if (await this.placer.localSource(change.sha, change.size, local)) continue;
               wanted.push(change);
@@ -374,8 +375,15 @@ export function syncPlacementPlugin() {
           try { return (await fingerprintPlacementFile(this.fs, target, this.hash)).sha !== entry.sha; }
           catch { return true; }
         }
+        async destinationMatches(path, sha, size) {
+          try {
+            const have = await fingerprintPlacementFile(this.fs, path, this.hash);
+            return have.sha === sha && have.size === size;
+          } catch { return false; }
+        }
         async placeObserved(change, sha, entry, fetched, local) {
           // Preflight avoids unnecessary transfers; the lease repeats this content check.
+          if (entry !== null && await this.edited(entry)) return false;
           if (await this.editedMoveDestination(change, entry)) return false;
           // An own commit may precede its local receipt. Verify and adopt existing bytes before
           // fetching them again, without settling an interrupted pull's retained write intent.

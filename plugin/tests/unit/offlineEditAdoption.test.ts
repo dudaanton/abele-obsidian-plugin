@@ -103,18 +103,20 @@ it.each(
       afterEqual = await state.byFileId(base.fileId)
       return { items: [change(3, shaC, 'version-c')], head_seq: 3, next_since: 3 }
     })
+    const getBlob = vi.fn(async (sha: string) => (sha === shaB ? b : c).slice())
+    const openVersion = vi.fn(async (_id: string, version: string) => {
+      const bytes = version === 'version-b' ? b : c
+      return {
+        size: bytes.length,
+        read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
+        assertUnchanged: async () => {},
+        close: async () => {},
+      }
+    })
     const client = {
       changes,
-      getBlob: async (sha: string) => (sha === shaB ? b : c).slice(),
-      openVersion: async (_id: string, version: string) => {
-        const bytes = version === 'version-b' ? b : c
-        return {
-          size: bytes.length,
-          read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
-          assertUnchanged: async () => {},
-          close: async () => {},
-        }
-      },
+      getBlob,
+      openVersion,
     } as unknown as EngineClient
     const result = await pull(client, fs, state, {
       defer: deferred ? () => true : undefined,
@@ -136,5 +138,7 @@ it.each(
     expect(move).not.toHaveBeenCalled()
     expect(remove).not.toHaveBeenCalled()
     expect(stage).not.toHaveBeenCalled()
+    expect(getBlob.mock.calls.filter(([sha]) => sha === shaB)).toHaveLength(0)
+    expect(openVersion.mock.calls.filter(([, version]) => version === 'version-b')).toHaveLength(0)
   }
 )
