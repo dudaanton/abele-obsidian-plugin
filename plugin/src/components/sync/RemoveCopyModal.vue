@@ -11,13 +11,7 @@
       <dt>Files here</dt>
       <dd>{{ files.toLocaleString('en') }}</dd>
       <dt>Changed here</dt>
-      <dd>
-        {{
-          edited
-            ? `${edited.toLocaleString('en')} changed here ${edited === 1 ? 'stays' : 'stay'}`
-            : 'None'
-        }}
-      </dd>
+      <dd>{{ edited ? keptLabel(edited) : 'None' }}</dd>
       <template v-if="item.kept">
         <dt>Also synced elsewhere</dt>
         <dd>{{ keptLabel(item.kept) }}</dd>

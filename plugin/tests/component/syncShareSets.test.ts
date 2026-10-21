@@ -513,7 +513,7 @@ describe('shared item screens', () => {
       try {
         expect(wrapper.findComponent(Modal).props('contentSized')).toBe(true)
         const values = wrapper.findAll('dd').map((one) => one.text())
-        expect(values).toContain(edited === 1 ? '1 changed here stays' : '3 changed here stay')
+        expect(values[1]).toBe(edited === 1 ? '1, it stays' : '3, they stay')
         expect(values.at(-1)).toBe('1, it stays')
       } finally {
         wrapper.unmount()

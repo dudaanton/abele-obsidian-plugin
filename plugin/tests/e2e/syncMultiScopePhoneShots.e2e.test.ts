@@ -66,8 +66,10 @@ it('captures four multi-scope screens on the phone without confirming destructiv
         const keyboard=Math.max(...[doc.documentElement,doc.body].map(el=>parseFloat(win.getComputedStyle(el).getPropertyValue('--keyboard-height'))||0),win.visualViewport?win.innerHeight-win.visualViewport.height:0);
         rows=[...box.querySelectorAll('.abele-share-picker__results .suggestion-item')].filter(one=>one.dataset.shareKind==='group'&&one.dataset.sharePath===${JSON.stringify(workshop)});
         const bottom=Math.min(win.innerHeight-keyboard,win.visualViewport?win.visualViewport.offsetTop+win.visualViewport.height:win.innerHeight);
-        return keyboard>1&&doc.activeElement===input&&input.value==='Workshop'&&rows.length===1&&rows.every(one=>{const r=one.getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=bottom});
-      },undefined,'inline Workshop result fully above keyboard');
+        const sheet=box.getBoundingClientRect();
+        const fillsRoom=Math.abs(sheet.bottom-bottom)<=12;
+        return fillsRoom&&keyboard>1&&doc.activeElement===input&&input.value==='Workshop'&&rows.length===1&&rows.every(one=>{const r=one.getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=bottom});
+      },undefined,'Share sheet reaches keyboard with inline Workshop result fully above it');
       return {inline:!!box.querySelector('.abele-share-picker__results'),titles:rows.map(one=>textOf(one))}
     `
     )
@@ -172,7 +174,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     `
     )
     expect(copy.files).toBe('2')
-    expect(copy.changed).toBe('1 changed here stays')
+    expect(copy.changed).toBe('1, it stays')
     expect(copy.note).toContain('Nothing changes on the server')
     screenshot(shots + '/4-remove-copy.png')
     await phone.long(

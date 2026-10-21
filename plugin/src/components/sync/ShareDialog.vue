@@ -250,6 +250,18 @@ defineExpose({ open: (id: string) => (opened.value = id) })
 </script>
 
 <style lang="scss">
+// Use the keyboard room already measured by the shared shell, rather than the native
+// sheet cap or flex shrinking leaving part of that room unused while results grow.
+body.is-phone
+  .modal-container.abele-keyboard-room
+  > .modal.abele-share-dialog:has(.abele-share-picker[data-searching='true']) {
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
+  flex-shrink: 0;
+  margin-block: 0;
+}
+
 body.is-phone .abele-share-dialog:has(.abele-share-picker[data-searching='true']) {
   .abele-modal__body {
     overflow: hidden;
