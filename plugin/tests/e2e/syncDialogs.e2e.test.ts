@@ -76,6 +76,96 @@ liveCase(
 )
 liveCase(
   'syncDialogs',
+  'real comparison and upload keep the open activity log live at desktop and phone widths',
+  [85, 90],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      vault = a.vault(),
+      size = windowSize(vault)
+    const id = await s.connect()
+    try {
+      for (const width of [1200, 390]) {
+        await setWindowSize(vault, width, width === 1200 ? 900 : 844)
+        await reloadAs(vault, width < 500)
+        await a.waitIdle()
+        await a.pause(id, true)
+        const folder = s.root + '/Sample activity ' + width
+        a.run(
+          `const folder=${JSON.stringify(folder)};if(!app.vault.getAbstractFileByPath(folder))await app.vault.createFolder(folder);for(let i=0;i<160;i++)await app.vault.create(folder+'/sample-'+i+'.md','Sample content '+i+' '+${width});return true`
+        )
+        // Hold real I/O at observable phases, without inventing snapshots or log lines.
+        a.run(`const runtime=host.live.get(${JSON.stringify(id)}),fs=runtime.options.fs,read=fs.fingerprint,fetcher=runtime.options.fetch;
+          const state=window.__sampleActivity={compareReached:false,uploadReached:false,puts:0};
+          const comparison=new Promise(resolve=>state.releaseComparison=resolve),upload=new Promise(resolve=>state.releaseUpload=resolve);
+          fs.fingerprint=async function(...args){if(!state.compareReached){state.compareReached=true;await comparison}return read.apply(this,args)};
+          runtime.options.fetch=async function(input,init){if(init?.method==='PUT'&&String(input).includes('/v2/uploads/')){if(++state.puts===100){state.uploadReached=true;await upload}await sleep(10)}return fetcher(input,init)};
+          state.restore=()=>{state.releaseComparison();state.releaseUpload();fs.fingerprint=read;runtime.options.fetch=fetcher};return true`)
+        try {
+          await a.pause(id, false)
+          await a.long(
+            'comparison visible',
+            `await poll(()=>window.__sampleActivity.compareReached);const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes('Compar'));return true`
+          )
+          const comparing = await captureSyncScreen(
+            a,
+            'token-real-comparison-' + width,
+            '.abele-sync-window'
+          )
+          expect(comparing.error).toBe('')
+          expect(comparing.over).toEqual([])
+          a.run(`window.__sampleActivity.releaseComparison();return true`)
+          await a.long(
+            'upload visible',
+            `await poll(()=>window.__sampleActivity.uploadReached);await poll(()=>inWindows('.abele-sync-window__line')?.textContent.includes('Uploading'));inWindows('.abele-sync-window').closest('.abele-modal__body').scrollTop=0;return true`
+          )
+          const uploading = await captureSyncScreen(
+            a,
+            'token-real-upload-' + width,
+            '.abele-sync-window'
+          )
+          expect(uploading.error).toBe('')
+          expect(uploading.over).toEqual([])
+          const before = a.run<number>(
+            `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');if(list.querySelectorAll('li').length<100)throw new Error('Expected sustained real activity');body.scrollTop=body.scrollHeight;return list.querySelectorAll('li').length`
+          )
+          const log = await captureSyncScreen(
+            a,
+            'token-real-log-bottom-' + width,
+            '.abele-sync-window'
+          )
+          expect(log.error).toBe('')
+          a.run(
+            `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=100;window.__sampleActivity.scrollTop=body.scrollTop;window.__sampleActivity.releaseUpload();return true`
+          )
+          await a.waitIdle()
+          const kept = a.run<boolean>(
+            `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');await poll(()=>list.querySelectorAll('li').length>${before});return Math.abs(body.scrollTop-window.__sampleActivity.scrollTop)<5`
+          )
+          expect(kept).toBe(true)
+          const scrolled = await captureSyncScreen(
+            a,
+            'token-real-log-scrolled-live-' + width,
+            '.abele-sync-window'
+          )
+          expect(scrolled.error).toBe('')
+        } finally {
+          a.run(`window.__sampleActivity?.restore();delete window.__sampleActivity;return true`)
+          await a.waitIdle()
+          closeSyncScreens(a)
+        }
+      }
+    } finally {
+      closeSyncScreens(a)
+      await setWindowSize(vault, ...size)
+      await reloadAs(vault, false)
+    }
+  },
+  fixture,
+  300000
+)
+liveCase(
+  'syncDialogs',
   'native token connect errors sharing and connection rows fit desktop and phone widths',
   [2, 7, 11, 13, 14],
   async () => {

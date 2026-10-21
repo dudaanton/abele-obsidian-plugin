@@ -336,7 +336,7 @@ export class TokenEngineRuntime
     this.uploadProgress = new TransferProgress(
       (one) => {
         // The SDK exposes a journal batch, not the whole run's content inventory.
-        const shown =
+        const shown: TransferSnapshot | undefined =
           one &&
           (one.stage === 'Uploading'
             ? { ...one, total: undefined, totalBytes: undefined, totalKnown: false }
