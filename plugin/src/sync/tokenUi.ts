@@ -189,6 +189,7 @@ export const statusName = (status: string, text: SyncText = englishSyncText) =>
     )[status] ?? 'Needs attention'
   )
 export interface ConnectionActivity {
+  missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
   transfer?: import('./transferProgress').TransferSnapshot
@@ -310,6 +311,7 @@ export class TokenUi {
     scope?: V2Scope
   ) => Promise<void> = async () => {}
   localOnlyChanged: () => void = () => {}
+  forgetMissingKeptCopy: (path: string) => Promise<void> = async () => {}
   releaseLocalOnly: (id: string, paths: string[]) => Promise<void> = async () => {}
   fencePublicationJournal: (id: string, paths: string[]) => Promise<void> = async () => {}
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost

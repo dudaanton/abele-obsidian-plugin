@@ -2943,6 +2943,12 @@ connections stop with a visible error rather than publish an unknown destination
 known location allows retry. An existing host retries pending rename metadata before startup;
 no content or basename guessing is used. If all identity writes fail, the new location cannot
 survive process loss; safety then depends on the old persisted path being detectably missing.
+Vault deletion events retire kept-copy identities and their path exclusions durably, including
+children of a deleted folder. If this write fails, the connection window lists the missing path
+and offers a confirmed “Forget this kept copy” action. It checks that the path is still absent,
+retires only that path and its descendants, and retries stopped connections. Confirmation warns
+that an unknown moved copy may sync at its new location; a later file at the forgotten path is
+ordinary content. Missing destinations remain vault-wide blockers because their scope is unknown.
 Before fencing, a pending publication batch touching retained paths is quarantined intact in
 ledger metadata `local-only-publication-journal:<idempotencyKey>` before clearing its replay slot.
 Startup and runtime journal reads enforce the same rule. Mixed batches are never split or

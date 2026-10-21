@@ -1,4 +1,9 @@
 export const extra = {
+  'sync.kept.forget': 'Aizmirst šo kopiju',
+  'sync.kept.confirm': 'Aizmirst šo kopiju?',
+  'sync.kept.message':
+    'Aizmirst trūkstošo kopiju {path}? Ja tā pārvietota, tā var sinhronizēties no jaunās vietas. Vēlāk šajā ceļā izveidotie faili sinhronizējas kā parasti.',
+  'sync.kept.error': 'Neizdevās aizmirst kopiju. Pārbaudiet lokālo krātuvi un mēģiniet vēlreiz.',
   'sync.deleteChoice': 'Ko dzēst',
   'sync.readOnly': 'Tikai lasāms',
   'sync.overlapGroup':

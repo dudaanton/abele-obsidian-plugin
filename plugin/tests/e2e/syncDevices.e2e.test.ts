@@ -173,6 +173,25 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   expect((await s.items()).find((item) => item.path === wholePath)).toMatchObject({
     sha: await sha256(new TextEncoder().encode('whole token kept bytes')),
   })
+  const forgotten = folder + '/Deleted kept copy.md'
+  owner.create(forgotten, 'local-only bytes')
+  await owner.long(
+    'delete kept copy while identity storage fails',
+    `const store=svc.registry.storage(${JSON.stringify(ownerId)});store.saveLocalStorage('abele-sync-token-state:local-only',[${JSON.stringify(forgotten)}]);svc.localOnlyChanged();const storage=svc.registry.localStorage;const save=storage.saveLocalStorage;storage.saveLocalStorage=function(key,value){if(key==='abele-sync-local-only-copies-v1')throw new Error('Synthetic delete persistence failure');return save.call(this,key,value)};try{await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(forgotten)}))}catch{}finally{storage.saveLocalStorage=save}return true`
+  )
+  owner.run(
+    `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
+  )
+  await owner.long(
+    'confirm forgetting the missing kept copy in its connection window',
+    `await poll(()=>svc.activity.value[${JSON.stringify(ownerId)}]?.missingKeptCopies?.includes(${JSON.stringify(forgotten)}));const root=await openSyncTab();connectionRow(root,${JSON.stringify(ownerId)}).click();await poll(()=>inWindows('.abele-sync-window'));const win=inWindows('.abele-sync-window');await press(win,'Forget this kept copy');await poll(()=>modal('Forget this kept copy?'));await press(()=>modal('Forget this kept copy?'),'Forget this kept copy');await poll(()=>host.live.get(${JSON.stringify(ownerId)})?.engine.status.state==='idle');return true`
+  )
+  closeSyncScreens(owner)
+  owner.create(forgotten, 'new ordinary file')
+  await owner.syncNow(ownerId)
+  expect((await s.items()).find((item) => item.path === forgotten)).toMatchObject({
+    sha: await sha256(new TextEncoder().encode('new ordinary file')),
+  })
 }, 300000)
 it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uploader', async () => {
   const s = fixture(),

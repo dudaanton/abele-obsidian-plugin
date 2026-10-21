@@ -7,7 +7,7 @@
           <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
           <span class="abele-sync-window__line">{{ line }}</span>
           <span
-            v-if="activity?.lastSync && row?.status === 'idle'"
+            v-if="activity?.lastSync && row?.status === 'idle' && !progress"
             class="abele-sync-window__server"
             >· {{ settingsSyncWhen(new Date(activity.lastSync).toISOString()) }}</span
           >
@@ -25,6 +25,22 @@
         {{ activity.transfer.currentFile }}
       </p>
       <p v-if="failure" class="abele-sync-window__error mod-warning" role="alert">{{ failure }}</p>
+      <Setting v-for="path in activity?.missingKeptCopies ?? []" :key="path" :name="path">
+        <Button
+          :text="t('sync.kept.forget')"
+          :tooltip="t('sync.kept.forget')"
+          @click="forgetting = path"
+        />
+      </Setting>
+      <ConfirmModal
+        v-if="forgetting"
+        :title="t('sync.kept.confirm')"
+        :message="t('sync.kept.message', { path: forgetting })"
+        :confirm-text="t('sync.kept.forget')"
+        :confirm-tooltip="t('sync.kept.forget')"
+        @confirm="forgetCopy"
+        @close="forgetting = ''"
+      />
 
       <ConnectionItems
         v-if="setItems"
@@ -123,6 +139,7 @@ import Icon from '../obsidian/Icon.vue'
 import EntryRow from '../obsidian/EntryRow.vue'
 import Progress from '../obsidian/Progress.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
+import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import HeldDeletesBlock from './HeldDeletesBlock.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 import SelectiveSync from '../settings/sync/SelectiveSync.vue'
@@ -165,6 +182,16 @@ async function act(action: () => Promise<void>): Promise<void> {
 
 const row = computed(() => props.ui.rows.value.find((one) => one.id === props.connectionId))
 const trustError = ref('')
+const forgetting = ref('')
+async function forgetCopy(): Promise<void> {
+  const path = forgetting.value
+  forgetting.value = ''
+  try {
+    await props.ui.forgetMissingKeptCopy(path)
+  } catch {
+    trustError.value = t('sync.kept.error')
+  }
+}
 async function toggleTrusted(): Promise<void> {
   trustError.value = ''
   try {

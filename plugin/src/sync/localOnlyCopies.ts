@@ -52,17 +52,44 @@ export class LocalOnlyCopies {
         caseKey(path).startsWith(caseKey(root) + '/')
     )
   }
-  async assertPublishSafe(exists: (path: string) => Promise<boolean>): Promise<void> {
+  deleted(path: string): void {
+    const matches = (candidate: string) =>
+      caseKey(candidate) === caseKey(path) || caseKey(candidate).startsWith(caseKey(path) + '/')
+    if (!this.paths.some(matches)) return
+    for (const record of this.registry.records())
+      for (const slot of slots) {
+        const paths = (record.state[slot] ?? []) as string[]
+        const remaining = paths.filter((one) => !matches(this.physical(record, one)))
+        if (remaining.length !== paths.length) {
+          this.pendingChanges = this.pendingChanges.filter(
+            (one) => one.id !== record.id || one.slot !== slot
+          )
+          this.pendingChanges.push({ id: record.id, slot, paths: remaining })
+        }
+      }
+    this.persistRename(this.copies().filter((one) => !matches(one.path)))
+  }
+  async forgetMissing(path: string, exists: (path: string) => Promise<boolean>): Promise<void> {
+    if (await exists(path))
+      throw new Error('The kept copy exists; it cannot be forgotten as missing')
+    this.deleted(path)
+  }
+  async assertPublishSafe(
+    exists: (path: string) => Promise<boolean>,
+    report?: (paths: string[]) => void
+  ): Promise<void> {
     if (this.unsaved || this.pendingChanges.length) this.persistRename(this.copies())
     this.refresh()
     // A lost rename destination can be anywhere in the vault, including another connection.
     // Do not guess from a basename or allow any engine to publish before it is resolved.
-    for (const path of new Set(this.paths))
-      if (!(await exists(path)))
-        throw new Error(
-          'Cannot sync: a saved kept-copy path is missing; its location must be resolved before syncing: ' +
-            path
-        )
+    const missing: string[] = []
+    for (const path of new Set(this.paths)) if (!(await exists(path))) missing.push(path)
+    report?.(missing)
+    if (missing.length)
+      throw new Error(
+        'Cannot sync: a saved kept-copy path is missing; its location must be resolved before syncing: ' +
+          missing[0]
+      )
   }
   renamed(from: string, to: string): void {
     const matches = (path: string) =>

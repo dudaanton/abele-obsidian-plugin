@@ -39,6 +39,13 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 const ui: TokenUi = tokenUiFixture(props.screen === 'empty')
+if (props.screen === 'states') {
+  const id = ui.rows.value[0].id
+  ui.publish(id, {
+    missingKeptCopies: ['Sample collection/Missing kept copy.md'],
+    error: 'A kept-copy location must be resolved before syncing.',
+  })
+}
 const mode = computed(() =>
   props.screen === 'connect-error'
     ? 'connect'

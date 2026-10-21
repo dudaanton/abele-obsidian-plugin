@@ -54,6 +54,34 @@ afterEach(() => {
   historyConnection.value = null
 })
 
+it('offers explicit confirmed recovery for a missing kept copy', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.publish(id, { missingKeptCopies: ['Sample/Missing.md'] })
+  const forget = vi.fn(async () => {})
+  ui.forgetMissingKeptCopy = forget
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: {
+      stubs: {
+        Modal: { template: '<div><slot /></div>' },
+        SelectiveSync: true,
+        ConfirmModal: {
+          template: '<button class="confirm-forget" @click="$emit(\'confirm\')">Confirm</button>',
+        },
+      },
+    },
+  })
+  const button = view.findAll('button').find((one) => one.text() === 'Forget this kept copy')
+  expect(button).toBeDefined()
+  await button!.trigger('click')
+  expect(forget).not.toHaveBeenCalled()
+  await view.get('.confirm-forget').trigger('click')
+  await flushPromises()
+  expect(forget).toHaveBeenCalledWith('Sample/Missing.md')
+  view.unmount()
+})
+
 it('shows the shared transfer line, current path and timed recent activity', () => {
   const ui = tokenUiFixture()
   const id = ui.rows.value[0].id

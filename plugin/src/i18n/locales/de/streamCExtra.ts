@@ -1,4 +1,10 @@
 export const extra = {
+  'sync.kept.forget': 'Diese Kopie vergessen',
+  'sync.kept.confirm': 'Diese Kopie vergessen?',
+  'sync.kept.message':
+    'Die fehlende Kopie unter {path} vergessen? Falls sie verschoben wurde, kann sie am neuen Ort synchronisiert werden. Später unter diesem Pfad erstellte Dateien werden normal synchronisiert.',
+  'sync.kept.error':
+    'Die Kopie konnte nicht vergessen werden. Lokalen Speicher prüfen und erneut versuchen.',
   'sync.deleteChoice': 'Was löschen',
   'sync.readOnly': 'Nur lesen',
   'sync.overlapGroup':

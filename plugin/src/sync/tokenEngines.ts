@@ -81,6 +81,7 @@ export class TokenEngines {
   private readonly localFiles: TokenAttachmentHost
   private readonly localOnly: LocalOnlyCopies
   private readonly renameEvent: EventRef
+  private readonly deleteEvent: EventRef
   constructor(
     private readonly app: App,
     private readonly ui: TokenUi,
@@ -90,6 +91,23 @@ export class TokenEngines {
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
     this.localOnly = new LocalOnlyCopies(ui.registry)
+    ui.forgetMissingKeptCopy = async (path) => {
+      await this.localOnly.forgetMissing(
+        path,
+        async (candidate) => !!(await vaultDisk(this.app.vault).stat(candidate))
+      )
+      for (const record of ui.registry.records()) {
+        ui.publish(record.id, {
+          missingKeptCopies: ui.activity.value[record.id]?.missingKeptCopies?.filter(
+            (one) => one !== path
+          ),
+        })
+        if (!ui.runtimes.has(record.id))
+          await ui
+            .retryConnection(record.id, () => {})
+            .catch((error) => this.failed(record.id, error))
+      }
+    }
     ui.localOnlyChanged = () => this.localOnly.refresh()
     ui.releaseLocalOnly = async (id, paths) => {
       try {
@@ -169,6 +187,7 @@ export class TokenEngines {
       if (JSON.stringify(moved) !== JSON.stringify(pins)) this.saveDevicePins(moved)
       for (const runtime of this.live.values()) runtime.localRenamed(from, file.path)
     })
+    this.deleteEvent = app.vault.on('delete', (file) => this.localOnly.deleted(file.path))
     ui.connectionsChanged = async (assertCurrent) => {
       assertCurrent?.()
       this.start()
@@ -678,7 +697,8 @@ export class TokenEngines {
           : undefined
       await stage('Checking kept copies', () =>
         this.localOnly.assertPublishSafe(
-          async (path) => !!(await vaultDisk(this.app.vault).stat(path))
+          async (path) => !!(await vaultDisk(this.app.vault).stat(path)),
+          (paths) => this.ui.publish(record.id, { missingKeptCopies: paths })
         )
       )
       await quarantineLocalOnlyJournal(state, (path) =>
@@ -1468,6 +1488,7 @@ export class TokenEngines {
     if (externalActionsOf.get(this.app.vault) === this) externalActionsOf.delete(this.app.vault)
     this.cancelStartup()
     this.app.vault.offref(this.renameEvent)
+    this.app.vault.offref(this.deleteEvent)
     this.ui.connectionsChanged = async () => {}
     this.ui.connectionForgotten = async () => {}
     this.closing = this.engines.close()

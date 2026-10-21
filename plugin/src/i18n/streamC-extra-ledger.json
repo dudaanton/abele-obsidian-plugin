@@ -7688,5 +7688,25 @@
     "englishHash": "0b43d74d36c78a7ed71f6708a986493492e6521937b9cba40a6425263d449d2e",
     "context": "Sync deletion and access confirmation",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.kept.forget": {
+    "englishHash": "cea068ec415cab1e58d6dd2c9b6d92e87ac21a930da4106620af8091b2a91ec8",
+    "context": "Explicit missing kept-copy recovery in connection window",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.kept.confirm": {
+    "englishHash": "3d40ed4a544f20ade284c4e1006ea3cd076b3fc8b47e1be122a27037f0b0496f",
+    "context": "Explicit missing kept-copy recovery in connection window",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.kept.message": {
+    "englishHash": "69faf74f9f0d08b54d6f6f66a9ee7c166e1729a2f1545280aca6db5600a5485c",
+    "context": "Explicit missing kept-copy recovery in connection window",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.kept.error": {
+    "englishHash": "46437f5b50c89707715e43466040e18433a32616c38dd42e5ff4fc9de7cc8ea2",
+    "context": "Explicit missing kept-copy recovery in connection window",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }
