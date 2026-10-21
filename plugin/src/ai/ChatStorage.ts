@@ -746,10 +746,10 @@ export class ChatStorage {
       const settled = settledAttention(attention)
       const next = {
         ...metadata,
+        // The session's placement is read from the folder catalog, which follows the file; keep
+        // the file's own value only when the session has none.
         treeFolderId:
-          disk.metadata?.treeFolderId !== undefined
-            ? disk.metadata.treeFolderId
-            : metadata.treeFolderId,
+          metadata.treeFolderId !== undefined ? metadata.treeFolderId : disk.metadata?.treeFolderId,
         attention,
         pendingToolCalls: metadata.pendingToolCalls?.filter((tc) => !settled.has(tc.id)),
       }

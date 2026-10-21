@@ -350,3 +350,24 @@ it('stores membership in the transcript and shows unknown folder ids at root', a
   )
   expect(parseChatMetadata(await app.vault.read(file))?.treeFolderId).toBe('unknown-folder')
 })
+
+it('files an open chat with unsaved edits through its own save, so it can still be reopened', async () => {
+  await folders.create('', 'Collection')
+  const id = service.newTab()
+  const session = service.getSession(id)!
+  session.chatTitle.value = 'Sample open chat'
+  await session.createInDirectory(folders.path(''))
+  const file = session.currentChatFile.value!
+  await folders.move(id, 'Collection')
+  expect(folders.folderOf(file.path)).toBe('Collection')
+  expect(parseChatMetadata(await app.vault.read(file))?.treeFolderId).toBeTruthy()
+  session.chatTitle.value = 'Renamed open chat'
+  // Unsaved local work, as a chat that is being typed in has.
+  ;(session as unknown as { dirty: boolean }).dirty = true
+  await expect(session.reconcileForSelectionReturn()).resolves.toBeUndefined()
+  await session.save()
+  await folders.move(id, '')
+  expect(folders.folderOf(file.path)).toBe('')
+  expect(parseChatMetadata(await app.vault.read(file))?.treeFolderId).toBeNull()
+  await expect(session.reconcileForSelectionReturn()).resolves.toBeUndefined()
+})

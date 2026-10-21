@@ -228,7 +228,6 @@ export class ChatFolders {
           continue
         const id = target?.id ?? null
         if (session) {
-          if (session.currentChatFile.value) await session.saveForRelease()
           const file = session.currentChatFile.value
           if (file) await this.assignFile(file, id)
           else this.membership.set(source.id, id)
@@ -251,6 +250,14 @@ export class ChatFolders {
     })
   }
   private async assignFile(file: TFile, id: string | null): Promise<void> {
+    const session = this.service.getSessionByFile(file.path)
+    if (session && !session.isDestroyed) {
+      // An open chat writes its own placement, so its saved state stays in step with the file
+      // instead of meeting an outside edit on its next save.
+      this.membership.set(file.path, id)
+      await session.saveForRelease()
+      return
+    }
     await ChatStorage.getInstance().transformDiscussion(file, (content) => {
       const parsed = parseChat(content)
       if (!parsed.metadata) throw new Error('Invalid chat metadata')
