@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
 import { NodeService } from '@/node/NodeService'
+import { resolveManagerTargets } from '@/node/managerTargets'
 const id = z.string().min(1).max(128)
 const targets = z.looseObject({ node: id, session_id: id, operation_id: id.optional() })
 export const NODE_COMMAND_TOOLS = [
@@ -29,9 +30,9 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
     category: 'Nodes',
     description:
       name === 'node_command_run'
-        ? 'Run argv (literal arguments) OR command in project_id OR worktree_id, with optional cwd, timeout_ms and output_bytes (1024–16384 per stream). session_id is an existing node session (for example a developer session). Requires command_run_v1. Returns a pending owner approval, not execution success. Owner answers in chat; never answer prompts yourself. Preserve exact body and operation_id after uncertainty; poll node_command_status for exit_code, stdout/stderr tails and truncation flags.'
+        ? 'Run argv (literal arguments) OR command in project_id, worktree_id or workspace_id returned by node_delegate. Without a target, use the session worktree. A specific worktree takes precedence over project_id. Optional cwd, timeout_ms and output_bytes (1024–16384 per stream). session_id is an existing node session (for example a developer session). Requires command_run_v1. Returns a pending owner approval, not execution success. Owner answers in chat; never answer prompts yourself. Preserve exact body and operation_id after uncertainty; poll node_command_status for exit_code, stdout/stderr tails and truncation flags.'
         : name === 'node_git_integrate'
-          ? 'Integrate source_worktree_id into worktree_id using git_integrate_v1. Supply target_branch, source_branch and full expected_target_head/expected_source_head from fresh status reads. rebase defaults false (fast-forward only); true rebases the developer in its own worktree first. Always creates an exact owner approval. Poll node_command_status. Show conflicting_files and outcome_unknown plainly; inspect both heads before a new attempt, never retry blindly. Older nodes retain existing git tools; do not emulate integration with a shell command.'
+          ? 'Integrate source_worktree_id (or source_workspace_id from delegation) into worktree_id (or workspace_id) using git_integrate_v1. Supply target_branch, source_branch and full expected_target_head/expected_source_head from fresh status reads. rebase defaults false (fast-forward only); true rebases the developer in its own worktree first. Always creates an exact owner approval. Poll node_command_status. Show conflicting_files and outcome_unknown plainly; inspect both heads before a new attempt, never retry blindly. Older nodes retain existing git tools; do not emulate integration with a shell command or create unmanaged worktrees through commands.'
           : name === 'node_command_status'
             ? 'Read the current/final status of this parent chat’s command or integration using session_id and run_id. Read-only; no owner approval. Returns bounded output, exit code, truncation flags and conflicts.'
             : 'Cancel this parent chat’s pending or running command using session_id, run_id and stable operation_id. An already running integration refuses cancellation; inspect its status.',
@@ -46,6 +47,8 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
             'run_id',
             'project_id',
             'worktree_id',
+            'workspace_id',
+            'source_workspace_id',
             'source_worktree_id',
             'command',
             'cwd',
@@ -70,8 +73,6 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
             : name === 'node_git_integrate'
               ? [
                   'operation_id',
-                  'worktree_id',
-                  'source_worktree_id',
                   'target_branch',
                   'source_branch',
                   'expected_target_head',
@@ -85,7 +86,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       const parent = context?.session ?? owner
       if (!parent) throw new Error('Manager tool requires an executing parent chat')
       const parentId = await parent.ensureDelegationParentId()
-      const { node, operation_id, ...params } = targets.parse(raw)
+      const { node, operation_id, ...input } = targets.parse(raw)
       const service = NodeService.getInstance()
       const matches = service.nodes.value.filter((n) => n.id === node || n.expectedNodeId === node)
       if (matches.length !== 1) throw new Error('Choose an explicit node registration')
@@ -96,6 +97,17 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
       requireGrantFreeDelegation(await connection.client.describe())
+      const method =
+        name === 'node_command_run'
+          ? 'command.v1.run'
+          : name === 'node_git_integrate'
+            ? 'git.v1.integrate'
+            : 'command.v1.cancel'
+      const params = await resolveManagerTargets(
+        connection.client,
+        name === 'node_command_status' ? 'command.v1.status' : method,
+        input
+      )
       const guards: (() => void)[] = []
       const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
       if (entries.some((entry) => entry.kind === 'node')) {
@@ -153,7 +165,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           }
           if (!found)
             throw new Error(
-              'This worktree is outside this chat’s node access. Add its project using the chat’s node chips.'
+              'worktree_not_found: This worktree was not found in the accessible projects. Use worktree_id from status, or pass the delegation workspace_id.'
             )
         }
       }
