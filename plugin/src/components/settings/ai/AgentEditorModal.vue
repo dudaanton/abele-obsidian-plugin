@@ -264,7 +264,7 @@
             :title="t('settings.ai.AgentEditorModal.tools.ea93d6a2')"
             :desc="
               agent.node
-                ? t('node.tools.modes')
+                ? undefined
                 : t('settings.ai.AgentEditorModal.off_unavailable_ask_needs_approval.845b7983')
             "
           >
@@ -288,7 +288,16 @@
                 @update:model-value="patch({ toolDiscovery: $event as 'sections' | 'all-at-once' })"
               />
             </Setting>
+            <ChatToolModes
+              v-if="agent.node"
+              :registry="nodeToolRegistry"
+              :tool-modes="effectiveToolModes"
+              :floor="{}"
+              core-modes
+              @update-many="setToolModes"
+            />
             <ToolModesEditor
+              v-else
               :tool-modes="effectiveToolModes"
               :core-modes="!!agent.node"
               collapsed
@@ -387,6 +396,7 @@ import CardGrid from '../../obsidian/CardGrid.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import AiScopeEditor from '../../AiScopeEditor.vue'
 import ToolModesEditor from '../../ToolModesEditor.vue'
+import ChatToolModes from '../../ChatToolModes.vue'
 
 import AgentMemoryEditor from './AgentMemoryEditor.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
@@ -483,6 +493,14 @@ const effectiveToolModes = computed(() => {
       ...Object.fromEntries(adapter.tools().map((tool) => [tool.name, tool.mode])),
       ...agent.value.toolModes,
     }
+  } finally {
+    adapter.destroy()
+  }
+})
+const nodeToolRegistry = computed(() => {
+  const adapter = new NodeObsidianAdapter(props.agentId, 'settings', async () => [])
+  try {
+    return adapter.toolRegistry()
   } finally {
     adapter.destroy()
   }

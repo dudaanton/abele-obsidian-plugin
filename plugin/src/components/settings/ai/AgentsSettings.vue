@@ -5,7 +5,11 @@
         v-for="agent in agents"
         :key="agent.id"
         :title="agent.name"
-        :description="streamBAgentDescription(agent.description)"
+        :description="
+          agent.node && agent.description === agent.node.name
+            ? ''
+            : streamBAgentDescription(agent.description)
+        "
         :meta="metaFor(agent)"
         clickable
         @click="editingId = agent.id"
@@ -128,7 +132,7 @@ function starTooltip(agent: AgentDefinition): string {
 }
 
 function metaFor(agent: AgentDefinition): string[] {
-  if (agent.node) return [t('node.tools.nodeAgent'), agent.node.name]
+  if (agent.node) return []
   return [modelLabel(agent), promptLabel(agent), scopeLabel(agent)]
 }
 

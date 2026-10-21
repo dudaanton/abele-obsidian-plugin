@@ -31,6 +31,30 @@ const group = (view: ReturnType<typeof mount>, name: string) =>
   view.findAllComponents(TreeItem).find((item) => item.props('text') === name)!
 
 describe('the tools a chat may use', () => {
+  it('uses the supplied node registry with the same group menu, including controllable core tools', async () => {
+    const view = mount(ChatToolModes, {
+      props: {
+        registry: [
+          { name: 'read', label: 'Read file', category: 'Files', description: 'Read a file' },
+        ],
+        coreModes: true,
+        floor: {},
+        toolModes: { read: 'ask' },
+      },
+    })
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    try {
+      expect(view.findAll('[data-tool-group]')).toHaveLength(1)
+      expect(group(view, 'Files').props('flair')).toBe('1')
+      await view.get('.abele-chat-tools__all').trigger('click')
+      const menu = shown.mock.contexts.at(-1) as Menu
+      menu.items.find((item) => item.title === 'Run on its own')!.handler!()
+      expect(view.emitted('updateMany')).toEqual([[{ read: 'auto' }]])
+    } finally {
+      view.unmount()
+      shown.mockRestore()
+    }
+  })
   it('changes one tool through the permissions surface without changing its peers', async () => {
     const tool = optionalFiles()[0]
     const key = keyOf(tool)

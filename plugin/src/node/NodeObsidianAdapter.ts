@@ -5,7 +5,7 @@ import { resolveTargetAgent } from '@/ai/DelegateRun'
 import { ObsidianDelegateArgumentsSchema, QuestionnaireQuestionsSchema } from '@abele/node-protocol'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from '@/ai/ordinaryToolPolicy'
-import { createAgentTools } from '@/ai/tools'
+import { createAgentTools, getToolRegistry } from '@/ai/tools'
 import { skillNeedsApproval } from '@/ai/tools/SkillTool'
 import { CORE_TOOLS } from '@/ai/types'
 import { contentHash, ReadGuard } from '@/ai/readGuard'
@@ -112,6 +112,11 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
             ? 'ask'
             : 'auto',
     }))
+  }
+  toolRegistry() {
+    const tools = this.registry()
+    const names = new Set(tools.map((tool) => tool.name))
+    return getToolRegistry(tools).filter((tool) => names.has(tool.name))
   }
   permissionModes(ceiling: ReadonlyMap<string, 'off' | 'ask' | 'auto'>) {
     const current = new Map(this.tools().map((tool) => [tool.name, tool.mode]))

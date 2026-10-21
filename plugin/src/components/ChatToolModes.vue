@@ -105,7 +105,7 @@ import Search from './obsidian/Search.vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
-import { getToolRegistry } from '@/ai/tools'
+import { getToolRegistry, type ToolInfo } from '@/ai/tools'
 import { CORE_TOOLS, type ToolMode } from '@/ai/types'
 import { isMcpToolName } from '@/ai/mcp/names'
 import { below } from '@/chats/chatTree'
@@ -115,6 +115,9 @@ const props = defineProps<{
   floor?: Record<string, ToolMode>
   raisedBy?: Record<string, string>
   autofocus?: boolean
+  registry?: ToolInfo[]
+  /** Node-hosted core tools have the same per-tool choice as every other node tool. */
+  coreModes?: boolean
 }>()
 const emit = defineEmits<{
   /** Several tools at once — a group, or all of them: one change for the host to save. */
@@ -145,7 +148,7 @@ const query = ref('')
 
 const groups = computed<Group[]>(() => {
   const byCategory = new Map<string, Tool[]>()
-  for (const tool of getToolRegistry()) {
+  for (const tool of props.registry ?? getToolRegistry()) {
     const list = byCategory.get(tool.category) ?? []
     list.push({
       name: tool.name,
@@ -174,7 +177,7 @@ const shown = computed<Group[]>(() => {
     .filter((group) => group.tools.length)
 })
 
-const isCore = (tool: Tool) => CORE_TOOLS.has(tool.name)
+const isCore = (tool: Tool) => !props.coreModes && CORE_TOOLS.has(tool.name)
 const optionalOf = (group: Group) => group.tools.filter((t) => !isCore(t))
 const coreOf = (group: Group) => group.tools.filter(isCore)
 const optional = computed(() => shown.value.flatMap(optionalOf))
