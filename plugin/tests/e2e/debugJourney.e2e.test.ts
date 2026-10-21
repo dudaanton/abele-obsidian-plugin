@@ -698,6 +698,8 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>paused()&&document.querySelector('.abele-debug-panel')?.textContent.includes('Synthetic calculation failure'),'paused exception visible',900);
     await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('journey.cjs:7'),'exception source location');
     await until(()=>enabled('Continue (F5)'),'exception Continue enabled');
+    document.querySelector('.abele-debug-panel__program').scrollIntoView({block:'center'});
+    await wait(200);
     api.DebuggerService.instance.reveal(api.DebuggerService.instance.active.value,'src/journey.cjs',7);
     await sourceAt(7,'journey-exception');
     const restart=()=>enabled('Restart: the same program from its first line');
