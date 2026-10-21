@@ -46,7 +46,7 @@ it('keeps every token dialog in the phone and desktop layout inventory', () => {
   const screens = [...registry.matchAll(/'(?<name>sync-[^']+)':/g)].map(
     (match) => match.groups!.name
   )
-  expect(screens).toHaveLength(11)
+  expect(screens).toHaveLength(17)
   const phone = read('tests/e2e/phoneLayout.e2e.test.ts')
   const inventory = phone.slice(phone.indexOf('const DIALOGS = ['), phone.indexOf('].map('))
   for (const screen of screens) expect(inventory).toContain("'" + screen + "'")

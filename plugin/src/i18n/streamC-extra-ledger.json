@@ -7718,5 +7718,10 @@
     "englishHash": "c6bd5c95cda6faa5d385e0254e647053c9bfd00e0b9189c787e63f024a14ad59",
     "context": "Grouped deletion warnings and phone share result scrolling",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.deleteIssuerOnly": {
+    "englishHash": "6fe52c1c2fc366987ee321677b03969be75e38d19c68b573d55705b9fa83a790",
+    "context": "Disabled server deletion action for a receiver",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

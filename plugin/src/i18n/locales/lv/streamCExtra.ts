@@ -1,4 +1,5 @@
 export const extra = {
+  'sync.deleteIssuerOnly': 'Tikai piekļuves izsniedzējs var dzēst šos failus no servera',
   'sync.overlapGroupMany': 'Faili ({count}) ir arī grupā {group}. Tie pazudīs arī no turienes.',
   'sync.scrollResults': 'Ritiniet, lai redzētu vairāk',
   'sync.kept.forget': 'Aizmirst šo kopiju',

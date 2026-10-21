@@ -368,10 +368,7 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
   )
   menu.addItem((item) => {
     if (sets.value?.several(row.id) && !sets.value.owner(row.id)) {
-      item
-        .setTitle('Only the issuer can delete these files from the server')
-        .setIcon('cloud-off')
-        .setDisabled(true)
+      item.setTitle(t('sync.deleteIssuerOnly')).setIcon('cloud-off').setDisabled(true)
       return
     }
     const configure = (facts: ServerDeleteFacts | null) => {

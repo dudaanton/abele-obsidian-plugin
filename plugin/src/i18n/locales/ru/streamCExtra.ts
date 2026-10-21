@@ -1,4 +1,5 @@
 export const extra = {
+  'sync.deleteIssuerOnly': 'Только выдавший доступ может удалить эти файлы с сервера',
   'sync.overlapGroupMany': 'Файлы ({count}) также в группе {group}. Оттуда тоже исчезнут.',
   'sync.scrollResults': 'Прокрутите, чтобы увидеть остальные',
   'sync.kept.forget': 'Забыть эту копию',

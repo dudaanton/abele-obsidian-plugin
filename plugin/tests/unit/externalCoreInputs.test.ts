@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { verifySyncSdkInputs } from '../../scripts/verify-sync-sdk.mjs'
+import { verifySyncSdkInputs, SDK_INPUT } from '../../scripts/verify-sync-sdk.mjs'
 import { describe, expect, it } from 'vitest'
 import * as core from '@abele/sync-sdk/core'
 import * as records from '@/sync/external/records'
@@ -13,7 +13,7 @@ describe('canonical external state inputs', () => {
     expect(exported.exclusiveOperationPort).toBeTypeOf('function')
   })
   it('pins the explicit committed canonical input rather than a mutable sibling or unrelated revision', () => {
-    expect(verifySyncSdkInputs().version).toBe('0.1.1')
+    expect(verifySyncSdkInputs().version).toBe(SDK_INPUT.version)
   })
 
   it('uses the core facade, schemas, transaction checks and error class together', () => {

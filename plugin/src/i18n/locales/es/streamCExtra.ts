@@ -1,4 +1,6 @@
 export const extra = {
+  'sync.deleteIssuerOnly':
+    'Solo quien concedió el acceso puede eliminar estos archivos del servidor',
   'sync.overlapGroupMany':
     'Hay {count} archivos también en el grupo {group}. También se eliminan de allí.',
   'sync.scrollResults': 'Desplázate para ver más',
