@@ -1,11 +1,14 @@
 # Node browser packages
 
-The node-protocol and node-client payloads are refreshed to source revision
-`9f3ade947a5d0f7e3ff63d96f865fb63e2974ff5` for `obsidian.tools.v1`, including
-atomic delegation snapshots, durable questionnaires and the local delegate host. Channel
-payloads and their local patches below are preserved. The extension uses the public generic
+The node-protocol and node-client payloads are refreshed from released AbeleNode
+`v0.4.40` (`0c43339ff4cf01f6f0cedf4ac1e75c4c44fc347b`) for `obsidian.tools.v1`,
+including atomic delegation snapshots, durable questionnaires and the local delegate host.
+The existing `patches/paired-welcome.patch` is applied before packaging: the authenticated
+welcome uses the normal record limit while pre-authentication records retain their smaller
+bound. Only paired.js and its map are regenerated with TypeScript 5.9.3, ES2022 and ES modules.
+Channel payloads and their local patches below are preserved. The extension uses the public generic
 request API and questionnaire helpers; atomic snapshots and structured answers pass through
-ordinary SDK validation and durable retry storage. This source snapshot precedes its node release.
+ordinary SDK validation and durable retry storage. The node packages follow the released tag.
 
 **Vendored browser packages.** Apart from the two refreshed payloads above, these exact `0.0.0` npm tarballs contain the built browser
 packages of AbeleNode revision `bed6ddf19935b8527e1fa339c63ad2e556687869` (v0.4.38): delegation through installation authority (delegation_without_grant), debugger frame source paths, exception text, stop on entry, exit codes and attach breakpoint restoration, device disconnect and node.disconnect, plus durable approved manager command/integration APIs, resumable delegation deadlines, retained reports after extension warnings, and pi chat
