@@ -206,6 +206,8 @@ const emit = defineEmits<{
 }
 .abele-node-delegation > :deep(.setting-item) {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: flex-start;
 }
 .abele-node-delegation__report {
