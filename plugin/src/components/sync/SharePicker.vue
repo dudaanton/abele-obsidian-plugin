@@ -2,6 +2,7 @@
   <div
     ref="root"
     class="abele-share-picker"
+    :data-searching="phone && focused && !!query.trim()"
     :data-share-picker-mode="phone ? 'inline' : 'native'"
     :data-platform-phone="Platform.isPhone"
     :data-platform-mobile="Platform.isMobile"
@@ -62,6 +63,7 @@
       role="listbox"
       aria-label="Folders, groups and files"
       data-keeps-focus
+      @scroll="updateMore"
     >
       <EmptyState
         v-if="!results.length"
@@ -101,6 +103,12 @@
         />
       </div>
     </div>
+    <p
+      v-if="phone && focused && !full && !disabled && moreResults"
+      class="setting-item-description abele-share-picker__more"
+    >
+      {{ t('sync.scrollResults') }}
+    </p>
   </div>
 </template>
 
@@ -111,6 +119,7 @@
  * `SHARE_LIMIT`, the field goes quiet and says why.
  */
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { t } from '@/i18n'
 import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
@@ -138,7 +147,10 @@ const props = defineProps<{
   disabled?: boolean
   autofocus?: boolean
 }>()
-const emit = defineEmits<{ 'update:modelValue': [items: ShareItem[]] }>()
+const emit = defineEmits<{
+  'update:modelValue': [items: ShareItem[]]
+  searching: [active: boolean]
+}>()
 
 const taken = () => [...(props.inShare ?? []), ...props.modelValue]
 const full = computed(() => taken().length >= SHARE_LIMIT)
@@ -150,7 +162,22 @@ const phone =
   document.body.classList.contains('is-phone')
 const query = ref('')
 const focused = ref(false)
+const moreResults = ref(false)
+function updateMore() {
+  const el = list.value
+  moreResults.value = !!el && el.scrollHeight > el.clientHeight + el.scrollTop + 1
+}
+watch([focused, query], () => emit('searching', phone && focused.value && !!query.value.trim()))
 const list = ref<HTMLElement>()
+let listObserver: ResizeObserver | undefined
+watch(list, (element) => {
+  listObserver?.disconnect()
+  if (element && typeof ResizeObserver !== 'undefined') {
+    listObserver = new ResizeObserver(updateMore)
+    listObserver.observe(element)
+  }
+  void nextTick(updateMore)
+})
 const root = ref<HTMLElement>()
 const results = computed(() => matchingShareItems(props.choices, taken(), query.value))
 const pick = (item: ShareItem) => {
@@ -185,6 +212,7 @@ const reveal = () => {
       floor - KEYBOARD_GAP
     )
     box.scrollTop += delta
+    updateMore()
   })
 }
 watch([results, focused], reveal)
@@ -197,6 +225,7 @@ onMounted(() => {
   win.visualViewport?.addEventListener('resize', reveal)
 })
 onBeforeUnmount(() => {
+  listObserver?.disconnect()
   for (const event of KEYBOARD_EVENTS) win?.removeEventListener(event, reveal)
   win?.visualViewport?.removeEventListener('resize', reveal)
 })

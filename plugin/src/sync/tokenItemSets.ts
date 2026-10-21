@@ -698,7 +698,10 @@ export class TokenItemSets implements ShareSetSource {
         : await client.previewTokenItem(shareId, itemId)
     const items =
       'items' in preview ? preview.items.filter((item) => item.removed_at === null) : [preview]
-    const also = new Map<string, { path: string; group?: string; overlapCount?: number }>()
+    const also = new Map<
+      string,
+      { path: string; group?: string; groupId?: string; overlapCount?: number }
+    >()
     const affected = new Map<string, { label: string; scope: string }>()
     const tokens = (await client.tokens()).items
     const deletedFiles = new Set(items.flatMap((item) => item.files.map((file) => file.file_id)))
@@ -743,7 +746,11 @@ export class TokenItemSets implements ShareSetSource {
           if (losesScope(overlap.scope)) continue
           if (overlap.scope.kind === 'group') {
             const group = overlap.scope.path.split('/').pop().replace(/\.md$/i, '')
-            also.set(file.file_id + ':' + overlap.scope_id, { path: file.path, group })
+            also.set(file.file_id + ':' + overlap.scope_id, {
+              path: file.path,
+              group,
+              groupId: overlap.scope.id,
+            })
           }
         }
         if (undisclosed > 0)

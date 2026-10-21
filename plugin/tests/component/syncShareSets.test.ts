@@ -110,15 +110,55 @@ describe('shared item screens', () => {
     try {
       await wrapper.get('input').trigger('focusin')
       await wrapper.get('input').setValue('Garden')
+      expect(wrapper.emitted('searching')?.at(-1)).toEqual([true])
       const rows = wrapper.findAll('.suggestion-item')
       expect(rows).toHaveLength(1)
       expect(rows[0].attributes('aria-disabled')).toBe('true')
       expect(rows[0].text()).toContain('In Garden')
+      const results = wrapper.get('.abele-share-picker__results')
+      Object.defineProperties(results.element, {
+        scrollHeight: { value: 300 },
+        clientHeight: { value: 100 },
+      })
+      await results.trigger('scroll')
+      expect(wrapper.get('.abele-share-picker__more').text()).toBe('Scroll for more')
+      results.element.scrollTop = 200
+      await results.trigger('scroll')
+      expect(wrapper.find('.abele-share-picker__more').exists()).toBe(false)
       await rows[0].trigger('click')
       expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     } finally {
       wrapper.unmount()
       platform.isPhone = wasPhone
+    }
+  })
+  it('hides the phone share introduction while searching and restores it on blur', async () => {
+    const platform = Platform as { isPhone: boolean },
+      previous = platform.isPhone
+    platform.isPhone = true
+    const wrapper = mount(ShareSetsFixture, {
+      props: { screen: 'empty' },
+      global: {
+        stubs: {
+          Modal: { template: '<main><slot /><slot name="footer" /></main>' },
+        },
+      },
+    })
+    try {
+      expect(wrapper.text()).toContain('Give someone folders')
+      const input = wrapper.get('input[type="search"]')
+      await input.trigger('focusin')
+      await input.setValue('Example')
+      expect(wrapper.text()).not.toContain('Give someone folders')
+      expect(wrapper.get('.abele-share-picker').attributes('data-searching')).toBe('true')
+      expect(wrapper.getComponent(ShareDialog).getComponent(Modal).attributes('modal-class')).toBe(
+        'abele-share-dialog'
+      )
+      await input.trigger('focusout')
+      expect(wrapper.text()).toContain('Give someone folders')
+    } finally {
+      wrapper.unmount()
+      platform.isPhone = previous
     }
   })
   it.each(['platform', 'body'] as const)(
@@ -221,6 +261,9 @@ describe('shared item screens', () => {
           also: [
             { path: 'Notes/Sample.md', group: 'First group' },
             { path: 'Notes/Sample.md', group: 'Other group' },
+            { path: 'Notes/Second.md', group: 'Other group' },
+            { path: 'Notes/Third.md', group: 'Other group' },
+            { path: 'Notes/Third.md', group: 'Other group' },
           ],
           alsoMore: true,
         },
@@ -231,8 +274,8 @@ describe('shared item screens', () => {
     try {
       const warnings = wrapper.findAll('.abele-server-delete__also').map((one) => one.text())
       expect(warnings).toHaveLength(3)
-      expect(warnings[0]).toContain('also shared in group First group')
-      expect(warnings[1]).toContain('also shared in group Other group')
+      expect(warnings[0]).toBe('Sample is also in group First group. It goes from there too.')
+      expect(warnings[1]).toBe('3 files are also in group Other group. They go from there too.')
       expect(warnings[2]).toContain('More shared files or groups may also be affected')
       expect(wrapper.get('.abele-server-delete__facts').text()).toContain('501')
     } finally {
@@ -470,7 +513,7 @@ describe('shared item screens', () => {
       try {
         expect(wrapper.findComponent(Modal).props('contentSized')).toBe(true)
         const values = wrapper.findAll('dd').map((one) => one.text())
-        expect(values).toContain(edited === 1 ? '1, it stays' : '3, they stay')
+        expect(values).toContain(edited === 1 ? '1 changed here stays' : '3 changed here stay')
         expect(values.at(-1)).toBe('1, it stays')
       } finally {
         wrapper.unmount()

@@ -1,4 +1,6 @@
 export const extra = {
+  'sync.overlapGroupMany': '{count} files are also in group {group}. They go from there too.',
+  'sync.scrollResults': 'Scroll for more',
   'sync.kept.forget': 'Forget this kept copy',
   'sync.kept.confirm': 'Forget this kept copy?',
   'sync.kept.message':
@@ -6,8 +8,7 @@ export const extra = {
   'sync.kept.error': 'Could not forget the kept copy. Check local storage and try again.',
   'sync.deleteChoice': 'What to delete',
   'sync.readOnly': 'Read only',
-  'sync.overlapGroup':
-    '{name} is also shared in group {group}. Deleted here, it leaves the server for that group too.',
+  'sync.overlapGroup': '{name} is also in group {group}. It goes from there too.',
   'sync.overlapCount':
     '{name} is also shared through {count} other accesses. Deleted here, it leaves the server for those accesses too.',
   'sync.overlapMore': 'More shared files or groups may also be affected.',

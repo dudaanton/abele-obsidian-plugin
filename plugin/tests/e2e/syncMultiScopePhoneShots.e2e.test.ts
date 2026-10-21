@@ -172,7 +172,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     `
     )
     expect(copy.files).toBe('2')
-    expect(copy.changed).toBe('1, it stays')
+    expect(copy.changed).toBe('1 changed here stays')
     expect(copy.note).toContain('Nothing changes on the server')
     screenshot(shots + '/4-remove-copy.png')
     await phone.long(

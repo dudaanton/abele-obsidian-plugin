@@ -1,17 +1,31 @@
 <template>
-  <Modal title="Share access" size="tall" phone-sheet :can-close="() => !busy" @close="close">
+  <Modal
+    title="Share access"
+    size="tall"
+    phone-sheet
+    modal-class="abele-share-dialog"
+    :can-close="() => !busy"
+    @close="close"
+  >
     <Section
-      desc="Give someone folders, groups and single notes with one token, or connect another device of yours to the whole vault. What a token opens can change later."
+      :desc="
+        searching
+          ? undefined
+          : 'Give someone folders, groups and single notes with one token, or connect another device of yours to the whole vault. What a token opens can change later.'
+      "
     >
       <!-- The set is long and wraps: its field under its words, the dialog's full width. -->
       <div class="abele-share-dialog__field">
-        <div class="setting-item-name">What to share</div>
-        <div class="setting-item-description">The whole vault is for your own devices.</div>
+        <div v-if="!searching" class="setting-item-name">What to share</div>
+        <div v-if="!searching" class="setting-item-description">
+          The whole vault is for your own devices.
+        </div>
         <SharePicker
           v-model="picked"
           :choices="choices"
           :disabled="busy"
           placeholder="Add a folder, group or file…"
+          @searching="searching = $event"
         />
       </div>
       <Setting name="Read only" desc="They get every change but cannot change anything.">
@@ -145,6 +159,7 @@ const error = ref('')
 const shares = ref<IssuedShare[]>([])
 const opened = ref<string | null>(null)
 const deleting = ref<{ item: string | null } | null>(null)
+const searching = ref(false)
 
 const choices = computed(() => props.source.choices(props.connectionId))
 const openedShare = computed(() => shares.value.find((one) => one.id === opened.value) ?? null)
@@ -235,6 +250,38 @@ defineExpose({ open: (id: string) => (opened.value = id) })
 </script>
 
 <style lang="scss">
+body.is-phone .abele-share-dialog:has(.abele-share-picker[data-searching='true']) {
+  .abele-modal__body {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .abele-modal__body > .abele-section:not(:first-child),
+  .abele-section:first-child > .setting-item {
+    display: none;
+  }
+  .abele-section:first-child,
+  .abele-share-dialog__field,
+  .abele-share-picker {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .abele-share-dialog__field {
+    padding-block: 0;
+  }
+  .abele-share-picker__results {
+    flex: 1 1 0;
+    max-height: none;
+    min-height: 0;
+    overflow-y: scroll;
+  }
+  .abele-share-picker__more {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+}
 .abele-share-dialog__field {
   display: flex;
   flex-direction: column;

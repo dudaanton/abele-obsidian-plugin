@@ -201,7 +201,7 @@ export interface ShareSetSource {
 
 /** The server's facts for deleting, and the notes that other shared groups hold as well. */
 export interface ShareDeleteFacts extends ServerDeleteFacts {
-  also?: { path: string; group?: string; overlapCount?: number }[]
+  also?: { path: string; group?: string; groupId?: string; overlapCount?: number }[]
   alsoMore?: boolean
 }
 

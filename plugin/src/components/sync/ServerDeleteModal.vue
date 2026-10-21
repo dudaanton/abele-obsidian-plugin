@@ -31,16 +31,13 @@
         </ul>
       </dd>
     </dl>
-    <p
-      v-for="one in facts.also ?? []"
-      :key="one.path + ':' + one.group"
-      class="abele-server-delete__also mod-warning"
-    >
+    <p v-for="one in warnings" :key="one.key" class="abele-server-delete__also mod-warning">
       <template v-if="one.group">
         {{
-          t('sync.overlapGroup', {
+          t(one.count === 1 ? 'sync.overlapGroup' : 'sync.overlapGroupMany', {
             name: one.path.split('/').pop()?.replace(/\.md$/, '') ?? '',
             group: one.group,
+            count: String(one.count),
           })
         }}
       </template>
@@ -87,7 +84,7 @@ import { t, currentLocale } from '@/i18n'
  * Asks before one connection's files leave the server: which server, how much, and whose
  * access closes with them. While it runs it cannot be closed; uncertainty offers retry.
  */
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -103,7 +100,7 @@ const props = defineProps<{
   name: string
   host: string
   facts: ServerDeleteFacts & {
-    also?: { path: string; group?: string; overlapCount?: number }[]
+    also?: { path: string; group?: string; groupId?: string; overlapCount?: number }[]
     alsoMore?: boolean
   }
   remove: () => Promise<void>
@@ -115,6 +112,28 @@ const emit = defineEmits<{ close: []; done: []; choose: [value: string] }>()
 
 const busy = ref(false)
 const failure = ref('')
+const warnings = computed(() => {
+  const grouped = new Map<
+    string,
+    {
+      key: string
+      path: string
+      group?: string
+      overlapCount?: number
+      count: number
+      paths: Set<string>
+    }
+  >()
+  for (const [index, one] of (props.facts.also ?? []).entries()) {
+    const key = one.group ? 'group:' + (one.groupId ?? one.group) : 'other:' + index
+    const current = grouped.get(key)
+    if (current) {
+      current.paths.add(one.path)
+      current.count = current.paths.size
+    } else grouped.set(key, { ...one, key, count: 1, paths: new Set([one.path]) })
+  }
+  return [...grouped.values()]
+})
 
 function close(): void {
   if (!busy.value) emit('close')

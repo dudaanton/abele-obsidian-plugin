@@ -7675,8 +7675,8 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.overlapGroup": {
-    "englishHash": "9cae5a8c37365b09e9fc5a672f09fd06fde5d3efaed8fa6e6f2b92dff6ff56d0",
-    "context": "Sync deletion and access confirmation",
+    "englishHash": "ae4aa4703960beed5af635df511855594927d6f718fd83f5cfbf8da3c048e7da",
+    "context": "Grouped deletion warnings and phone share result scrolling",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.overlapCount": {
@@ -7707,6 +7707,16 @@
   "sync.kept.error": {
     "englishHash": "46437f5b50c89707715e43466040e18433a32616c38dd42e5ff4fc9de7cc8ea2",
     "context": "Explicit missing kept-copy recovery in connection window",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.overlapGroupMany": {
+    "englishHash": "0439cdfb3681c517cfccad6dc0b473fcc2fea7d986dffd25da8cf58b0c5eb444",
+    "context": "Grouped deletion warnings and phone share result scrolling",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.scrollResults": {
+    "englishHash": "c6bd5c95cda6faa5d385e0254e647053c9bfd00e0b9189c787e63f024a14ad59",
+    "context": "Grouped deletion warnings and phone share result scrolling",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

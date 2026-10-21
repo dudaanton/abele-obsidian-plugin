@@ -1,4 +1,6 @@
 export const extra = {
+  'sync.overlapGroupMany': 'Faili ({count}) ir arī grupā {group}. Tie pazudīs arī no turienes.',
+  'sync.scrollResults': 'Ritiniet, lai redzētu vairāk',
   'sync.kept.forget': 'Aizmirst šo kopiju',
   'sync.kept.confirm': 'Aizmirst šo kopiju?',
   'sync.kept.message':
@@ -6,8 +8,7 @@ export const extra = {
   'sync.kept.error': 'Neizdevās aizmirst kopiju. Pārbaudiet lokālo krātuvi un mēģiniet vēlreiz.',
   'sync.deleteChoice': 'Ko dzēst',
   'sync.readOnly': 'Tikai lasāms',
-  'sync.overlapGroup':
-    '{name} ir kopīgots arī grupā {group}. Dzēšot šeit, tas pazūd no servera arī šai grupai.',
+  'sync.overlapGroup': '{name} ir arī grupā {group}. Tas pazudīs arī no turienes.',
   'sync.overlapCount':
     '{name} ir kopīgots arī caur citām piekļuvēm: {count}. Dzēšot šeit, tas pazūd no servera arī tām.',
   'sync.overlapMore': 'Var tikt ietekmēti arī citi kopīgotie faili vai grupas.',

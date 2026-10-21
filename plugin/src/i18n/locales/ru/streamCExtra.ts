@@ -1,4 +1,6 @@
 export const extra = {
+  'sync.overlapGroupMany': 'Файлы ({count}) также в группе {group}. Оттуда тоже исчезнут.',
+  'sync.scrollResults': 'Прокрутите, чтобы увидеть остальные',
   'sync.kept.forget': 'Забыть эту копию',
   'sync.kept.confirm': 'Забыть эту копию?',
   'sync.kept.message':
@@ -6,8 +8,7 @@ export const extra = {
   'sync.kept.error': 'Не удалось забыть копию. Проверьте локальное хранилище и повторите.',
   'sync.deleteChoice': 'Что удалить',
   'sync.readOnly': 'Только чтение',
-  'sync.overlapGroup':
-    '{name} также в группе {group}. Удаление уберёт её с сервера и для этой группы.',
+  'sync.overlapGroup': '{name} также в группе {group}. Оттуда тоже исчезнет.',
   'sync.overlapCount':
     '{name} также доступна через другие доступы: {count}. Удаление уберёт её с сервера и для них.',
   'sync.overlapMore': 'Это может затронуть и другие общие файлы или группы.',
