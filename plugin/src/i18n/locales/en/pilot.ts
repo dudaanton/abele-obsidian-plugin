@@ -3534,6 +3534,12 @@ export const en = {
   'debug.watchLastValue': 'Last value: {value}',
   'debug.logPoint': 'Log point: {message}',
   'node.delegation.paused': 'Paused; can continue',
+  'node.delegation.ownerAnswer':
+    'Waiting for your approval. Answer the pending action on this card or open the child chat. The manager cannot answer for you.',
+  'node.delegation.pausedPrompt':
+    'Time limit reached while waiting for your answer. Answer the kept prompt, then continue the developer.',
+  'node.delegation.pausedLimit':
+    'Time limit reached. Send a message to continue in the same chat and worktree.',
   'node.manager.command': 'Command',
   'node.manager.invalidCommand':
     'Supply exactly one of argv or command, and one project_id or worktree_id. Check timeout_ms and output_bytes ranges.',
@@ -3545,12 +3551,6 @@ export const en = {
   'node.manager.sourceHead': 'Source head',
   'node.manager.targetHead': 'Target head',
   'node.manager.evidence': 'Exact approval details',
-  'node.delegation.ownerAnswer':
-    'Waiting for your approval. Answer the pending action on this card or open the child chat. The manager cannot answer for you.',
-  'node.delegation.pausedPrompt':
-    'Time limit reached while waiting for your answer. Answer the kept prompt, then continue the developer.',
-  'node.delegation.pausedLimit':
-    'Time limit reached. Send a message to continue in the same chat and worktree.',
   'node.manager.exitCode': 'Exit code: {code}',
   'node.manager.output': 'Output',
   'node.manager.truncated': 'Earlier output was truncated.',
