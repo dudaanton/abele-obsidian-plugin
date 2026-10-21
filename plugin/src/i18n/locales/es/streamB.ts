@@ -1,10 +1,11 @@
 export const streamB = {
+  'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',
+  'streamB.accessRunsWithoutAsking': 'Ejecuta todo sin preguntar',
   'streamB.actionDenied': 'Denegado: {action} · {reason}',
   'streamB.actionFailed': '{action} falló: {reason}',
   'streamB.listFiles': 'Listar archivos',
   'streamB.editContent': 'Editar el contenido que se escribirá',
   'streamB.stoppedByYou': 'Lo has detenido. La tarea puede estar sin terminar.',
-  'streamB.writesWithoutAsking': 'Escritura sin preguntar · Preguntar siempre',
   'streamB.chatChanges': 'Cambios de este chat',
   'streamB.nodeHistoryFreshPreview': 'Solicita una vista previa nueva antes de restaurar archivos.',
   'streamB.nodeHistoryCannotRead':

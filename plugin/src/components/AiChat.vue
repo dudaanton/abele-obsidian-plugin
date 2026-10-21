@@ -109,7 +109,6 @@
 
       <!-- Node access is counted in the composer's access button; above the messages only what
            is wrong with it. -->
-      <ChatWritePermission v-if="session" :session="session" />
       <AiNodeScopeChips v-if="session" :key="session.id" :session="session" errors-only />
 
       <ChatFindBar
@@ -428,6 +427,7 @@
         :scope-label="access.label"
         :scope-icon="access.icon"
         :scope-code="access.code"
+        :scope-mode="access.mode"
         :can-note="commentSession"
         :note-blocked="midTurn"
         @send="onSend"
@@ -514,7 +514,6 @@
 </template>
 
 <script setup lang="ts">
-import ChatWritePermission from './chat/ChatWritePermission.vue'
 import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { NODE_CODE_LINK_OPENER } from '@/node/codeLinkContext'
@@ -1266,6 +1265,10 @@ const access = computed(() => {
   const said = [files, ...nodes].filter(Boolean).join(' · ') || t('streamB.noFiles.c219d9')
   const places = (full ? 0 : (scope?.entries?.value.length ?? 0)) + nodes.length
   return {
+    mode:
+      session.value?.permissionMode?.value === 'confirm-all'
+        ? undefined
+        : session.value?.permissionMode?.value,
     label: t('streamB.access.0fce24', { v0: String(said) }),
     icon: full && !nodes.length ? 'vault' : 'folder-lock',
     code: full && !nodes.length ? '' : String(places),

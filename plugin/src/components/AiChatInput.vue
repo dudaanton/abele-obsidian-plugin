@@ -101,10 +101,18 @@
             v-if="scopeLabel"
             :icon="scopeIcon ?? 'vault'"
             :text-right="scopeCode || undefined"
-            :tooltip="scopeLabel"
+            :tooltip="scopeTooltip"
             class="abele-chat-input__scope"
             @click="emit('openScope')"
-          />
+          >
+            <Icon
+              v-if="scopeMode"
+              :icon="scopeMode === 'allow-edit' ? 'pencil' : 'shield-off'"
+              size="xs"
+              :interactive="false"
+              class="abele-chat-input__scope-mode"
+            />
+          </Icon>
           <!-- How a node session runs: its mode, model and context, from the chat. -->
           <slot name="settings" />
         </div>
@@ -255,6 +263,7 @@ const props = defineProps<{
   scopeIcon?: string
   /** How many places of its own the agent may reach, beside the glyph. */
   scopeCode?: string
+  scopeMode?: 'allow-edit' | 'allow-all'
   /**
    * This conversation has a place in a note to keep words against — it is a comment.
    *
@@ -296,6 +305,18 @@ const COMMANDS = ['/compact', '/new', '/load', '/scope', '/prompt']
 const draft = ref<ChatDraft>(props.conversationDraft ?? { text: '', attachments: [] })
 let draftOwner = props.attachmentOwner
 let boundToSession = !!props.conversationDraft
+const scopeTooltip = computed(() =>
+  [
+    props.scopeLabel,
+    props.scopeMode === 'allow-edit'
+      ? t('streamB.accessWritesWithoutAsking')
+      : props.scopeMode === 'allow-all'
+        ? t('streamB.accessRunsWithoutAsking')
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+)
 const importing = computed(() => !!draft.value.imports?.pending.size)
 const text = computed({
   get: () => draft.value.text,

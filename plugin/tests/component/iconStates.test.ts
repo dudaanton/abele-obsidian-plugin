@@ -6,6 +6,17 @@ import Icon from '@/components/obsidian/Icon.vue'
 // aria-disabled, and lights up anything with `clickable-icon`. These are the two
 // contracts the icon's look depends on.
 describe('Icon states', () => {
+  it('keeps trailing content after the count inside the same action', () => {
+    const w = mount(Icon, {
+      props: { icon: 'folder-lock', textRight: '2', label: 'Access', interactive: true },
+      slots: { default: '<span aria-hidden="true">mode</span>' },
+    })
+    expect(w.element.tagName).toBe('BUTTON')
+    expect([...w.element.children].map((child) => child.textContent)).toEqual(['', '2', 'mode'])
+    expect(w.findAll('button')).toHaveLength(1)
+    w.unmount()
+  })
+
   it('marks a disabled action the way Obsidian does, so the theme drops its hover', () => {
     const w = mount(Icon, {
       props: { icon: 'pin', label: 'Pin', disabled: true, onClick: () => {} },
@@ -35,12 +46,14 @@ describe('Icon sizes', () => {
   it('takes one of the host icon sizes by name, as a BEM modifier', () => {
     for (const size of ['xs', 'm', 'l', 'xl'] as const) {
       const w = mount(Icon, { props: { icon: 'pin', size } })
-      expect((w.element as HTMLElement).classList.contains(`abele-obsidian-icon_size-${size}`)).toBe(true)
+      expect(
+        (w.element as HTMLElement).classList.contains(`abele-obsidian-icon_size-${size}`)
+      ).toBe(true)
     }
   })
 
   it('without a size, leaves the size to the place it sits in', () => {
     const w = mount(Icon, { props: { icon: 'pin' } })
-    expect([...(w.element as HTMLElement).classList].some(c => c.includes('_size-'))).toBe(false)
+    expect([...(w.element as HTMLElement).classList].some((c) => c.includes('_size-'))).toBe(false)
   })
 })

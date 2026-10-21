@@ -81,6 +81,42 @@ const probeLib = `(() => {
   }
 
   window.__composerProbe = {
+    async accessModes(phone) {
+      const scope = state.session.scopeResolver
+      const original = { entries: scope.entries.value, full: scope.fullVaultAccess.value, mode: state.session.permissionMode.value }
+      const results = []
+      try {
+        for (const [label, mode, full, glyph, words] of [
+          ['confirm-all', 'confirm-all', false, null, null],
+          ['edit-vault', 'allow-edit', true, 'pencil', 'Writes without asking'],
+          ['edit-places', 'allow-edit', false, 'pencil', 'Writes without asking'],
+          ['all-places', 'allow-all', false, 'shield-off', 'Runs everything without asking'],
+        ]) {
+          scope.entries.value = [{ type: 'folder', path: 'Sample' }, { type: 'folder', path: 'Other' }]
+          scope.fullVaultAccess.value = full
+          state.session.permissionMode.value = mode
+          await wait(400)
+          const button = chatEl().querySelector('button.abele-chat-input__scope')
+          const code = button.querySelector('.abele-chat-input__scope-mode')
+          const r = button.getBoundingClientRect()
+          const row = button.closest('.abele-chat-input__toolbar').getBoundingClientRect()
+          await shoot('access-' + (phone ? 'phone-' : 'desktop-') + label)
+          if (!phone && glyph) {
+            win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+            if (!(await until(() => [...document.querySelectorAll('.tooltip')].some((tip) => tip.textContent.includes(words)), 5000))) throw new Error('Access tooltip did not appear')
+            await shoot('access-tooltip-' + label)
+            win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
+            await wait(200)
+          }
+          results.push({ label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? require('obsidian').getIcon(glyph).getAttribute('class') : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
+        }
+      } finally {
+        scope.entries.value = original.entries
+        scope.fullVaultAccess.value = original.full
+        state.session.permissionMode.value = original.mode
+      }
+      return results
+    },
     async open() {
       state.requests = []
       state.attachmentFolder = app.vault.getConfig('attachmentFolderPath')
@@ -681,6 +717,26 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     setFocusEmulation(true)
     try {
       opened = await step('open()')
+      const accessModes = await step<
+        Array<{
+          expectedGlyph: string | null
+          glyph: string | null
+          expectedWords: string | null
+          words: string
+          count: string
+          inside: boolean
+          nestedButtons: number
+          banner: boolean
+        }>
+      >('accessModes(false)')
+      for (const mode of accessModes) {
+        expect(mode.banner).toBe(false)
+        expect(mode.nestedButtons).toBe(0)
+        expect(mode.inside).toBe(true)
+        if (mode.expectedGlyph) expect(mode.glyph).toBe(mode.expectedGlyph)
+        else expect(mode.glyph).toBeNull()
+        if (mode.expectedWords) expect(mode.words).toContain(mode.expectedWords)
+      }
       caret = await step('compareNoteCaret()')
       await step(`write(${JSON.stringify(DRAFT)})`)
       collapsed = await step('measure("desktop-collapsed")')
@@ -845,6 +901,15 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       setFocusEmulation(true)
       try {
         await step('open()')
+        const modes =
+          await step<Array<{ inside: boolean; nestedButtons: number; banner: boolean }>>(
+            'accessModes(true)'
+          )
+        for (const mode of modes) {
+          expect(mode.inside).toBe(true)
+          expect(mode.nestedButtons).toBe(0)
+          expect(mode.banner).toBe(false)
+        }
         phoneCaret = await step('compareNoteCaret()')
         tapAreas.push(await step('tapArea("phone-empty-tap-area")'))
         await step('keyboard(true)')

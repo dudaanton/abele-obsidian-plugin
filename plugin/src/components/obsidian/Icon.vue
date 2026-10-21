@@ -24,6 +24,7 @@
     <span v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</span>
     <span v-if="icon" ref="iconEl" class="abele-obsidian-icon__icon" aria-hidden="true" />
     <span v-if="textRight" class="abele-obsidian-icon__text">{{ textRight }}</span>
+    <slot />
   </component>
 </template>
 
@@ -197,7 +198,7 @@ watch(accessibleName, updateTooltip)
     margin-right: var(--size-2-2);
   }
 
-  &:last-child:not(:first-child) {
+  &:not(:first-child) {
     margin-left: var(--size-2-2);
   }
 }

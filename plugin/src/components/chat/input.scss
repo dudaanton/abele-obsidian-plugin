@@ -290,3 +290,8 @@ body.is-mobile .abele-chat-input__textarea {
 .abele-chat-input__replies + .abele-chat-input__attachments {
   padding-top: var(--size-2-2);
 }
+
+.abele-chat-input__scope .abele-chat-input__scope-mode {
+  margin-inline-start: var(--size-2-2);
+  color: var(--text-muted);
+}

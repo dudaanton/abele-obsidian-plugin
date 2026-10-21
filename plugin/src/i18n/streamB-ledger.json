@@ -5308,16 +5308,6 @@
       "de"
     ]
   },
-  "streamB.writesWithoutAsking": {
-    "englishHash": "305d9230a1bc69ba86f32e43e530b1c2ac20888fdb0285b7c609d20d22b7d011",
-    "context": "Chat, node and Git hosting presentation",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
-  },
   "streamB.chatChanges": {
     "englishHash": "46423d55ab9e50ab84d86ed973fad6f5ffe391c755dd04f7d07cfd0a2a0cda4a",
     "context": "Chat, node and Git hosting presentation",
@@ -5420,5 +5410,25 @@
   },
   "streamB.nodeAttachmentTextOnly": {
     "englishHash": "9c886cea0ba9a00b85cbbadd6c0bd4eb50b7f22f74450cf399928738624e5cc3"
+  },
+  "streamB.accessWritesWithoutAsking": {
+    "englishHash": "08826c1d917c5a5254e27c55a17bdf6846bd236f45d89b22d74f5b99248b2422",
+    "context": "Chat access button tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "streamB.accessRunsWithoutAsking": {
+    "englishHash": "9e80438ddcd08ba9e9ea462bace3b61de5e2ce8f0ed5734f0553566dcfb612fc",
+    "context": "Chat access button tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

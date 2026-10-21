@@ -1,10 +1,11 @@
 export const streamB = {
+  'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',
+  'streamB.accessRunsWithoutAsking': 'Izpilda visu bez jautāšanas',
   'streamB.actionDenied': 'Noraidīts: {action} · {reason}',
   'streamB.actionFailed': '{action} neizdevās: {reason}',
   'streamB.listFiles': 'Failu saraksts',
   'streamB.editContent': 'Rediģēt ierakstāmo saturu',
   'streamB.stoppedByYou': 'Jūs apturējāt izpildi. Uzdevums var būt nepabeigts.',
-  'streamB.writesWithoutAsking': 'Rakstīšana bez jautāšanas · Vienmēr jautāt',
   'streamB.chatChanges': 'Šīs sarunas izmaiņas',
   'streamB.nodeHistoryFreshPreview': 'Pirms failu atjaunošanas pieprasiet jaunu priekšskatījumu.',
   'streamB.nodeHistoryCannotRead':

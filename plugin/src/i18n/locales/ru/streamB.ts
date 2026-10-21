@@ -1,10 +1,11 @@
 export const streamB = {
+  'streamB.accessWritesWithoutAsking': 'Записывает без запроса',
+  'streamB.accessRunsWithoutAsking': 'Выполняет всё без запроса',
   'streamB.actionDenied': 'Отклонено: {action} · {reason}',
   'streamB.actionFailed': '{action} — ошибка: {reason}',
   'streamB.listFiles': 'Список файлов',
   'streamB.editContent': 'Измените текст для записи',
   'streamB.stoppedByYou': 'Остановлено вами. Задача может быть не завершена.',
-  'streamB.writesWithoutAsking': 'Запись без запроса · Спрашивать каждый раз',
   'streamB.chatChanges': 'Изменения из этого чата',
   'streamB.nodeHistoryFreshPreview': 'Перед откатом файлов запросите новый предпросмотр.',
   'streamB.nodeHistoryCannotRead':

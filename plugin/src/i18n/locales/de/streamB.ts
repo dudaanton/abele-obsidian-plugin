@@ -1,10 +1,11 @@
 export const streamB = {
+  'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',
+  'streamB.accessRunsWithoutAsking': 'Führt alles ohne Nachfrage aus',
   'streamB.actionDenied': 'Abgelehnt: {action} · {reason}',
   'streamB.actionFailed': '{action} fehlgeschlagen: {reason}',
   'streamB.listFiles': 'Dateien auflisten',
   'streamB.editContent': 'Zu schreibenden Inhalt bearbeiten',
   'streamB.stoppedByYou': 'Von dir gestoppt. Die Aufgabe ist möglicherweise unvollständig.',
-  'streamB.writesWithoutAsking': 'Schreiben ohne Nachfrage · Jedes Mal fragen',
   'streamB.chatChanges': 'Änderungen aus diesem Chat',
   'streamB.nodeHistoryFreshPreview':
     'Fordere vor dem Zurücksetzen der Dateien eine neue Vorschau an.',

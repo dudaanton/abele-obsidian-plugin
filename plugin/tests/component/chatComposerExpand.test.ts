@@ -60,6 +60,30 @@ function composer(props: Record<string, unknown> = {}) {
 const editor = () => fakeNoteEditors[fakeNoteEditors.length - 1]
 
 it.each([
+  ['allow-edit', 'pencil', 'Writes without asking'],
+  ['allow-all', 'shield-off', 'Runs everything without asking'],
+] as const)('puts %s inside the existing access button', async (scopeMode, icon, words) => {
+  const wrapper = composer({
+    scopeLabel: 'Access: Sample · Other',
+    scopeCode: '2',
+    scopeIcon: 'folder-lock',
+    scopeMode,
+  })
+  const access = wrapper.get('button.abele-chat-input__scope')
+  const glyph = access.get('.abele-chat-input__scope-mode')
+  expect(glyph.element.tagName).toBe('SPAN')
+  expect(glyph.classes()).toContain('abele-obsidian-icon_size-xs')
+  expect(glyph.get('.abele-obsidian-icon__icon').attributes('data-icon')).toBe(icon)
+  expect(access.attributes('aria-label')).toBe('Access: Sample · Other · ' + words)
+  expect(access.text()).toBe('2')
+  await glyph.trigger('click')
+  expect(wrapper.emitted('openScope')).toHaveLength(1)
+  await wrapper.setProps({ scopeMode: undefined })
+  expect(access.find('.abele-chat-input__scope-mode').exists()).toBe(false)
+  expect(access.attributes('aria-label')).toBe('Access: Sample · Other')
+})
+
+it.each([
   ['en', 'Message...'],
   ['ru', 'Сообщение…'],
   ['lv', 'Ziņojums…'],
