@@ -63,7 +63,7 @@
       <Image v-if="imageUrl" :src="imageUrl" :alt="path" fit="contain" />
       <GithubBlob
         v-else-if="repository && revision && !metadataNote && !image"
-        :key="repository.cacheNamespace"
+        :key="JSON.stringify(repository.identity)"
         :text="text"
         :file="repositoryFile"
         :glyph-host="fileGlyphHost"

@@ -201,6 +201,23 @@ describe('node file repository tools', () => {
     expect(blame).toHaveBeenLastCalledWith('working-fresh', 'sample.ts')
     expect(view.find('[role=alert]').exists()).toBe(false)
   })
+  it('keeps blame enabled when rereading replaces the repository source', async () => {
+    const blame = vi.fn().mockRejectedValue(new ChannelError('stale_revision'))
+    const { view, source } = setup(blame)
+    const freshBlame = vi.fn().mockResolvedValue([])
+    const refresh = vi.fn(async () => {
+      await view.setProps({
+        revision: 'working-fresh',
+        repository: { ...source, cacheNamespace: 'fresh-source', blame: freshBlame },
+      } as never)
+    })
+    await view.setProps({ refresh } as never)
+    await flushPromises()
+    await view.get('[aria-label="Toggle line blame"]').trigger('click')
+    await flushPromises()
+    expect(freshBlame).toHaveBeenCalledWith('working-fresh', 'sample.ts')
+    expect(view.get('[aria-label="Toggle line blame"]').attributes('aria-pressed')).toBe('true')
+  })
   it('routes rendered working-file links through the ordinary file navigation binding', async () => {
     const { source } = setup()
     const navigate = vi.fn(() => true)

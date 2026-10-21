@@ -53,7 +53,15 @@ async function scenario(layout: string) {
           await leaf.loadIfDeferred?.();await app.workspace.revealLeaf(leaf);
           app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
           const root=leaf.view.contentEl;
-          const toggle=await until(()=>root.querySelector('[aria-label="Toggle line blame"]'),'Blame toggle');toggle.click();
+          let toggle;
+          try {
+            toggle=await until(()=>root.querySelector('[aria-label="Toggle line blame"]'),'Blame toggle');
+          } catch(error) {
+            require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'-missing-toggle.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+            const principal=await nodes.connection(${JSON.stringify(node.registration)}).client.store.transaction(current=>({installation:!!current.installation_id}));
+            throw Error(String(error)+'; '+JSON.stringify({text:root.textContent.slice(0,1600),state:leaf.view.getState(),principal,connection:nodes.connection(${JSON.stringify(node.registration)}).state.value}));
+          }
+          toggle.click();
           await until(()=>root.querySelector('.abele-github-blame-range')||root.querySelector('.abele-github-notice'),'Blame response');
           const author=root.querySelector('.abele-github-blame-range__name');
           if(!author)throw Error('Blame missing: '+root.textContent);
