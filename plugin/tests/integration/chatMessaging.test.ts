@@ -5,7 +5,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { createChatMessagingTools } from '@/ai/tools/ChatMessagingTools'
-import { chatMessaging, openMessagingChats } from '@/ai/chatMessaging'
+import { chatMessaging, openMessagingChats, openLetterChat } from '@/ai/chatMessaging'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import type { Message } from '@/ai/client'
@@ -81,6 +81,42 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
+
+it('uses the tree directory metadata and includes node chats without adding hidden sessions', () => {
+  const service = ChatService.getInstance()
+  const local = service.getSession(service.createTab())!
+  service.createTab()
+  const directory = [
+    {
+      id: local.id,
+      title: 'Directory title',
+      folder: 'Examples',
+      agent: null,
+      state: 'failed' as const,
+    },
+    {
+      id: 'node-chat',
+      title: 'Remote sample',
+      folder: 'Examples/Remote',
+      agent: { id: 'provider', name: 'Sample provider' },
+      state: 'waiting' as const,
+    },
+  ]
+  const list = vi.spyOn(service, 'listOpenChats').mockReturnValue(directory)
+  expect(openMessagingChats().map(({ receive: _receive, path: _path, ...chat }) => chat)).toEqual(
+    directory
+  )
+  expect(list).toHaveBeenCalled()
+  expect(chatMessaging.list(local.id)).toEqual([directory[1]])
+})
+
+it('opens a node letter destination through its existing tab', async () => {
+  const service = ChatService.getInstance()
+  vi.spyOn(service, 'getNodeSession').mockReturnValue({} as never)
+  const switchTab = vi.spyOn(service, 'switchTab').mockImplementation(() => {})
+  await openLetterChat({ id: 'node-chat', title: 'Remote sample' })
+  expect(switchTab).toHaveBeenCalledWith('node-chat')
+})
 
 it('keeps the caller title on a refused self-addressed letter', async () => {
   const service = ChatService.getInstance()

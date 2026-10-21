@@ -13,8 +13,8 @@ export interface ChatLetter {
 }
 
 export interface LetterEndpoint extends LetterChat {
-  agent: string
-  state: string
+  agent: { id: string; name: string } | null
+  state: 'idle' | 'waiting' | 'working' | 'failed'
   receive(message: string, from: LetterChat, signal?: AbortSignal): Promise<string>
 }
 

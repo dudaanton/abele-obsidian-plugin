@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { ChatLetters, type LetterEndpoint } from '@/chats/chatLetters'
 
 function endpoint(id: string, reply = async () => 'Answer'): LetterEndpoint {
-  return { id, title: id, folder: '', agent: 'Helper', state: 'idle', receive: reply }
+  return {
+    id,
+    title: id,
+    folder: '',
+    agent: { id: 'helper', name: 'Helper' },
+    state: 'idle',
+    receive: reply,
+  }
 }
 
 describe('chat letters', () => {
