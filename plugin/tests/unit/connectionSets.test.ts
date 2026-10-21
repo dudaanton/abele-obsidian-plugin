@@ -29,6 +29,29 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('reconciles a pause persisted before its runtime registry write failed', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      id = registry.add()
+    const keys = { get: () => null, set: () => {}, remove: () => {} }
+    const transport = async () => {
+      throw new Error('No network')
+    }
+    const ui = new TokenUi(registry, keys, transport)
+    ui.itemSets.store.create(id, 'Sample share', [folder('folder-a', 'Sample')], { 'folder-a': id })
+    const pause = vi.spyOn(registry, 'setPaused').mockImplementation(() => {
+      throw new Error('interrupted registry')
+    })
+    await expect(ui.itemSets.pauseItem(id, 'folder-a', true)).rejects.toThrow(
+      'interrupted registry'
+    )
+    pause.mockRestore()
+    expect(registry.records()[0].paused).toBe(false)
+    const restarted = new TokenUi(TokenConnectionRegistry.open(storage), keys, transport)
+    expect(restarted.registry.records()[0].paused).toBe(true)
+    expect(restarted.itemSets.store.get(id)?.items[0].paused).toBe(true)
+  })
   it('refreshes a detached preview after a later local edit instead of reusing detachment counts', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)

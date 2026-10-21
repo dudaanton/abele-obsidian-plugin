@@ -88,6 +88,15 @@ export class TokenItemSets implements ShareSetSource {
     private readonly transport: typeof fetch
   ) {
     this.store = new ConnectionSets(ui.registry.localStorage)
+    // Item membership is the source of the requested pause. Repair a split before
+    // any runtime is opened; the registry copy is only its engine projection.
+    const records = new Map(ui.registry.records().map((record) => [record.id, record]))
+    for (const connection of this.store.all())
+      for (const item of connection.items) {
+        const record = records.get(item.recordId)
+        if (!item.detached && record && record.paused !== item.paused)
+          ui.registry.setPaused(record.id, item.paused)
+      }
     this.refreshUploadBindings()
   }
   install(): void {
@@ -500,9 +509,10 @@ export class TokenItemSets implements ShareSetSource {
     }
     const item = this.store.get(id)?.items.find((one) => one.id === itemId)
     if (!item?.recordId || item.detached) throw new Error('Item is no longer shared')
+    if (paused) await this.ui.runtimes.get(item.recordId)?.pause(true)
     this.store.pause(id, itemId, paused)
     this.ui.registry.setPaused(item.recordId, paused)
-    await this.ui.runtimes.get(item.recordId)?.pause(paused)
+    if (!paused) await this.ui.runtimes.get(item.recordId)?.pause(false)
     this.changed()
   }
   async followItem(id: string, itemId: string): Promise<void> {
