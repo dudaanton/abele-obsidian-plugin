@@ -6,6 +6,36 @@ import { obsidianConversationPresentation } from '@/node/obsidianConversationPre
 import { useVault } from '../helpers/testEnv'
 import CallPlace from '@/components/chat/CallPlace.vue'
 import { obsidianDeviceName } from '@/node/obsidianDevice'
+import * as openChat from '@/ai/openChat'
+
+it('opens an Obsidian call file in the vault instead of resolving it in the node workspace', async () => {
+  useVault([])
+  const local = vi.spyOn(openChat, 'openVaultFile').mockResolvedValue()
+  const native = vi.fn()
+  const view = mount(NodeMessage, {
+    props: {
+      openResource: native,
+      message: {
+        id: 'obsidian:sample-create',
+        role: 'tool-call',
+        content: '',
+        timestamp: 0,
+        toolName: 'create',
+        toolParams: { path: 'sample.md' },
+        toolStatus: 'approved',
+        toolResult: 'Created',
+      },
+    },
+  })
+  try {
+    await view.get('[role="link"]').trigger('click')
+    expect(local).toHaveBeenCalledWith('sample.md')
+    expect(native).not.toHaveBeenCalled()
+  } finally {
+    view.unmount()
+    local.mockRestore()
+  }
+})
 
 it('omits the place code when the call ran on this device', () => {
   useVault([])

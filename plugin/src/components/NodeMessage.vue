@@ -8,7 +8,7 @@
     :message="message"
     :invocation="message.id.slice('obsidian:'.length)"
     :revision="conversation.revision.value"
-    :open-resource="openResource"
+    :open-resource="callResourceOpener"
   />
   <AiChatMessage
     v-else
@@ -17,7 +17,7 @@
     :extend-actions="historyState ? addHistoryActions : undefined"
     :can-reply="canReply"
     compact-tool-details
-    :resource-opener="openResource"
+    :resource-opener="callResourceOpener"
     @reply="emit('reply', $event)"
     @show-reply="emit('show-reply', $event)"
     @open-session="emit('open-session', $event)"
@@ -99,6 +99,7 @@ import type { NodeHistoryAction } from '@/node/NodeChatHistory'
 import { nodeErrorWords } from '@/node/errorWords'
 import { t } from '@/i18n'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
+import { openVaultFile } from '@/ai/openChat'
 import { toolResultText } from '@/ai/toolLine'
 import type { QueueState } from '@/node/presentation'
 import AiChatMessage from './AiChatMessage.vue'
@@ -119,6 +120,12 @@ const runMessage = computed(() =>
   props.message.id.startsWith('obsidian:')
     ? { ...props.message, toolDiff: undefined }
     : props.message
+)
+const openObsidianResource = (path: string) => {
+  void openVaultFile(path)
+}
+const callResourceOpener = computed(() =>
+  props.message.id.startsWith('obsidian:') ? openObsidianResource : props.openResource
 )
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
