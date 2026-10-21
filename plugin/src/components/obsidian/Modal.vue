@@ -44,7 +44,8 @@ const props = defineProps<{
   modalClass?: string | string[]
 }>()
 
-const modal = ref<ShellModal | null>(null)
+// Native dialogs reach the host app and vault; Vue only needs their identity.
+const modal = shallowRef<ShellModal | null>(null)
 watch(
   () => props.title,
   (title) => modal.value?.setTitle(title ?? '')
