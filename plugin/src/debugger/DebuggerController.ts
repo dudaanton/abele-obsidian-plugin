@@ -74,7 +74,8 @@ const empty = (): DebugSession => ({
 })
 
 /** Shared-control presentation, independent of Obsidian and provider authority.
- * No command outbox, automatic expression inspection or uncertain effect retry. */
+ * No command outbox or uncertain effect retry. Retained owner watch intents are renewed
+ * only for paused frames. */
 export class DebuggerController {
   session = empty()
   actions: DebugAction[] = []

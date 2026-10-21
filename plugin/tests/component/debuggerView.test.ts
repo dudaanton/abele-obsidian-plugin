@@ -353,7 +353,7 @@ describe('debugger panel', () => {
     expect(w.get('.abele-debug-panel__mode').attributes('disabled')).toBeDefined()
     w.unmount()
   })
-  it('detaches from a program it attached to instead of stopping it, and says it runs on', async () => {
+  it('detaches from an attached program and leaves its later process state unknown', async () => {
     const w = mount(DebugPanel, {
       props: { session: { ...session('running'), attached: true } },
     })
@@ -365,7 +365,9 @@ describe('debugger panel', () => {
     await last.trigger('click')
     expect(w.emitted('command')?.at(-1)).toEqual(['stop'])
     await w.setProps({ session: { ...session('exited'), attached: true, detached: true } })
-    expect(w.get('[role="status"]').attributes('aria-label')).toBe('Detached · The program runs on')
+    expect(w.get('[role="status"]').attributes('aria-label')).toBe(
+      'Detached · Program state unknown'
+    )
     expect(w.text()).not.toContain('Exit code unknown')
     w.unmount()
     // A program the node started keeps its Stop.
