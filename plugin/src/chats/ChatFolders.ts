@@ -103,6 +103,8 @@ export class ChatFolders {
   }
   noteFile(file: TFile, folder: string | null | undefined): void {
     const previous = this.membership.get(file.path)
+    const session = this.service.getSessionByFile(file.path)
+    if (session) this.membership.delete(session.id)
     this.membership.set(file.path, folder ?? null)
     this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder })
     if (previous !== (folder ?? null)) this.revision.value++

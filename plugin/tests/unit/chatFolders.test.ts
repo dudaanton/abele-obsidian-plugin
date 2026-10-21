@@ -315,3 +315,13 @@ it('keeps child folders distinct when deleting their parent would collide with a
   expect(folders.paths).toHaveLength(2)
   expect(folders.folderOf('AI/Chats/sample.abchat')).not.toBe('Drafts')
 })
+
+it('reports current membership after moving a chat that was filed before its first save', async () => {
+  await folders.create('', 'First')
+  await folders.create('', 'Second')
+  const id = service.createTab()
+  await folders.move(id, 'First')
+  await service.getSession(id)!.addUserNote('Sample question')
+  await folders.move(id, 'Second')
+  expect(service.listOpenChats().find((chat) => chat.id === id)?.folder).toBe('Second')
+})

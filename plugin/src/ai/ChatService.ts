@@ -1455,7 +1455,7 @@ export class ChatService {
           ? this.folderLocation(parentSession)
           : (this.nodeParentPaths.value[id] ?? '')
       const folder = this.folders.folderOf(
-        this.folders.membershipOf(id) !== undefined ? id : path || id
+        id.startsWith('node:') && this.folders.membershipOf(id) !== undefined ? id : path || id
       )
       const agent = session?.agent.value
       const node = this.nodeSessions.get(id)
