@@ -330,10 +330,6 @@ onMounted(async () => {
   min-width: 0;
   color: var(--text-normal);
 }
-.abele-sync-window__server {
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-}
 .abele-sync-window__progress {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
