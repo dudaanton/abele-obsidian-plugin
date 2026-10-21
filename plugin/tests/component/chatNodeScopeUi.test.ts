@@ -5,6 +5,7 @@ import { Menu } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
 import AiNodeScopeEditor from '@/components/AiNodeScopeEditor.vue'
 import AiNodeScopeChips from '@/components/AiNodeScopeChips.vue'
+import FolderAccessModal from '@/components/chatTree/FolderAccessModal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import { CHAT_TREE_SOURCE } from '@/chats/chatTree'
@@ -82,6 +83,25 @@ async function choose(title: string) {
   await flushPromises()
 }
 describe('node scope beside vault scope and in the header', () => {
+  it('keeps the quiet folder inheritance description above Nodes', () => {
+    const view = mount(FolderAccessModal, {
+      props: { name: 'Collection', floor: {}, access: {}, nodeScopeOwner: setup() },
+      global: {
+        stubs: {
+          ObsidianModal: { template: '<div><slot /></div>' },
+          AiNodeScopeEditor: true,
+          ChatToolModes: true,
+        },
+      },
+    })
+    const description = view.get('.abele-folder-access__about')
+    expect(description.text()).toBe('Every chat in this folder gets these on top of the default.')
+    expect(description.classes()).toContain('setting-item-description')
+    expect(description.element.nextElementSibling?.tagName.toLowerCase()).toBe(
+      'ai-node-scope-editor-stub'
+    )
+    view.unmount()
+  })
   it('shows disconnected grants as rows with a dot, without a contradictory empty state or approval block', async () => {
     const session = setup()
     mocks.host.mockResolvedValue({

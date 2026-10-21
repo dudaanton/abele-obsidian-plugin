@@ -2,6 +2,9 @@
   <!-- A folder's access: the same tools tree as a chat's, for every chat in the folder. It only
        adds: what the default gives is the least each tool can be. -->
   <ObsidianModal :title="name" size="tall" modal-class="abele-folder-access" @close="emit('close')">
+    <p class="abele-folder-access__about setting-item-description">
+      {{ t('chatTree.accessHint') }}
+    </p>
     <AiNodeScopeEditor v-if="nodeScopeOwner" :session="nodeScopeOwner" folder />
     <Section :title="t('chat.tools')" :tooltip="t('chatTree.accessHint')">
       <ChatToolModes
