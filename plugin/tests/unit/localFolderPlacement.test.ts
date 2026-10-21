@@ -61,6 +61,14 @@ it('maps streaming destinations and leaves opaque stage identities unchanged', a
   expect(reopenStage).toHaveBeenCalledWith('opaque-stage')
 })
 
+it('cleans an opaque stage without mapping its locator as a server path', async () => {
+  const discardStage = vi.fn(async () => {})
+  const disk = Object.assign(new MemoryFileSystem(), { discardStage })
+  const fs = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
+  await fs.discardStage('opaque-stage')
+  expect(discardStage).toHaveBeenCalledExactlyOnceWith('opaque-stage')
+})
+
 it('maps bounded representation reads to the placed file', async () => {
   const disk = new MemoryFileSystem()
   const readPrefix = vi.fn(async (path: string) => new TextEncoder().encode(path))
@@ -73,7 +81,10 @@ it('maps bounded representation reads to the placed file', async () => {
 
 it('assigns a placement policy to every filesystem interface method', () => {
   const methods = ['fs', 'streaming'].flatMap((file) => {
-    const text = readFileSync(`node_modules/@abele/sync-sdk/dist/internal/core/${file}.d.ts`, 'utf8')
+    const text = readFileSync(
+      `node_modules/@abele/sync-sdk/dist/internal/core/${file}.d.ts`,
+      'utf8'
+    )
     const ast = ts.createSourceFile(file, text, ts.ScriptTarget.Latest)
     return ast.statements.flatMap((node) =>
       ts.isInterfaceDeclaration(node) &&

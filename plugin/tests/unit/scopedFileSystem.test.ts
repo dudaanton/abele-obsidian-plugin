@@ -9,6 +9,15 @@ const assertPath = (path: string) => {
   if (!includes(path)) throw new Error('outside scope')
 }
 
+it('permits cleanup of an owned opaque stage but refuses foreign cleanup', async () => {
+  const discardStage = vi.fn(async () => {})
+  const disk = Object.assign(new MemoryFileSystem(), { discardStage })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  await fs.discardStage('Shared/sample.tmp')
+  await expect(async () => fs.discardStage('Private/sample.tmp')).rejects.toThrow('outside scope')
+  expect(discardStage).toHaveBeenCalledExactlyOnceWith('Shared/sample.tmp')
+})
+
 it('delegates inventory passes and filters cached directory inventories', async () => {
   const pass = Symbol.for('abele.sync.inventory-pass-v1')
   const directories = Symbol.for('abele.sync.inventory-directories-v1')

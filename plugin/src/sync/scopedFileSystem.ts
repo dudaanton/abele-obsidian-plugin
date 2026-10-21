@@ -127,6 +127,11 @@ export function scopedFileSystem(
           if (Array.isArray(preserve)) preserve.forEach(assertPath)
           return value.call(target, paths, work, preserve)
         }
+      if (key === 'discardStage')
+        return async (id: string) => {
+          assertStage(id)
+          return value.call(target, id)
+        }
       if (key === 'reopenStage')
         return async (id: string) => {
           assertStage(id)

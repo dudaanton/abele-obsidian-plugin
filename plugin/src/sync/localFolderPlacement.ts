@@ -260,6 +260,8 @@ export class LocalFolderPlacement {
               ? { ...result, path: placement.toServer(result.path) }
               : result
           }
+        // Opaque stage locators never pass through server-to-local path mapping.
+        if (key === 'discardStage') return (id: string) => value.call(target, id)
         if (policy === 'identity')
           return async (id: string) => {
             const stage = await value.call(target, id)
