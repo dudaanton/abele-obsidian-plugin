@@ -203,6 +203,12 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
           questions: [
             { question: 'Choose a sample destination', options: ['Reference', 'Draft'] },
             { question: 'Add a sample label', type: 'input', options: [] },
+            {
+              question: 'Choose sample categories',
+              type: 'multi',
+              options: ['One', 'Two'],
+              allow_custom: false,
+            },
           ],
         },
         1
