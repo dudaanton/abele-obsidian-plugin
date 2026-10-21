@@ -25,9 +25,9 @@ afterEach(() => {
 describe('npm sync SDK input preflight', () => {
   it('verifies the audited npm version, integrity and installed package bytes', () => {
     const input = verifySyncSdkInputs()
-    expect(input.version).toBe('0.1.1')
+    expect(input.version).toBe('0.2.0')
     expect(input.integrity).toBe(
-      'sha512-xuIPmmDwAMMqmsIeq/ecWfLxyyfgRtnUH12oCMBqMZ6aBFtACcVTjsf+0JwaSBmGX1HrHLq/dToZWkQsGGCexQ=='
+      'sha512-9qI4gl1wGox1HogXUCKD6JpKVfPunlLqQESNYWBH6iRn76bBjBNrLKryvS9lI53fNH+vS1ekescCErdHT7SGCg=='
     )
   })
   it('refuses a manifest that omits the pinned SDK input', () => {

@@ -26,7 +26,7 @@ describe('reproducible sync build inputs', () => {
   }
 
   it('accepts the selected archive, lockfile and installed payload', () => {
-    expect(verifySyncSdkInputs(plugin).version).toBe('0.1.1')
+    expect(verifySyncSdkInputs(plugin).version).toBe('0.2.0')
   })
 
   it('rejects a deliberately mismatched npm package integrity', () => {
@@ -91,8 +91,15 @@ describe('reproducible sync build inputs', () => {
   it('does not run a mutation of a sibling checkout before production builds', () => {
     expect(JSON.stringify(manifest.scripts)).not.toContain('../../abele-sync')
   })
-  it('pins the shared SDK to an exact registry version instead of mutable sibling code', () => {
-    expect(manifest.dependencies['@abele/sync-sdk']).toBe('0.1.1')
+  it('pins the shared SDK to the audited development archive instead of mutable sibling code', () => {
+    expect(manifest.dependencies['@abele/sync-sdk']).toBe(
+      'file:vendor/abele-sync-sdk-0.2.0-e345b771.tgz'
+    )
+    expect(
+      createHash('sha256')
+        .update(readFileSync(resolve(plugin, 'vendor/abele-sync-sdk-0.2.0-e345b771.tgz')))
+        .digest('hex')
+    ).toBe('e345b771d5b0747c50a421e134cea41dcf56ec18184a09f477cb24689982c58a')
     for (const name of ['@abele/sync-core', '@abele/sync-protocol', '@abele/notes'])
       expect(manifest.dependencies[name]).toBeUndefined()
   })
