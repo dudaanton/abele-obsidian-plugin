@@ -971,10 +971,18 @@ export class ChatService {
     const comments = CommentService.getInstance()
     // An expanded discussion is an independent chat, never a replacement for the comment slot.
     if (session.kind !== 'comment') return this.presentLoadedSession(intent, session, previous)
+    const ancestors = new Set<ChatSession>([session])
+    let parentPath = session.anchor.value?.note
+    while (parentPath) {
+      const parent = this.getSessionByFile(parentPath)
+      if (!parent || ancestors.has(parent)) break
+      ancestors.add(parent)
+      parentPath = parent.anchor.value?.note
+    }
     const contextualTabs = () =>
       [...this.sessions.values()].filter(
         (other) =>
-          other !== session &&
+          !ancestors.has(other) &&
           other.kind === 'comment' &&
           other.commentId &&
           comments.isShown(other.commentId)

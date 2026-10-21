@@ -96,7 +96,7 @@ it('moves keyboard focus from search into the tree and opens with Enter', async 
   expect(source.open).toHaveBeenCalledWith('sample')
 })
 
-it('keeps a closed child of an open chat reachable in the folder closed branch', async () => {
+it('keeps a closed child under its open parent', async () => {
   source.root.value[0].children = [
     {
       kind: 'chat',
@@ -108,11 +108,35 @@ it('keeps a closed child of an open chat reachable in the folder closed branch',
     },
   ]
   const view = show()
-  expect(view.find('[data-chat="child"]').exists()).toBe(false)
-  await view.get('.abele-chat-tree__closed > .tree-item-self').trigger('click')
+  expect(view.find('[data-chat="sample"] [data-chat="child"]').exists()).toBe(true)
   expect(view.find('[data-chat="child"]').exists()).toBe(true)
   await view.get('[data-chat="child"] > .tree-item-self').trigger('click')
   expect(source.open).toHaveBeenCalledWith('child')
+})
+
+it('reveals the current nested chat on reopening and preserves other folds', async () => {
+  source.root.value = ['parent', 'other'].map((id) => ({
+    kind: 'chat',
+    id,
+    title: id,
+    open: true,
+    at: 0,
+    children: [{ kind: 'chat', id: `${id}-child`, title: 'Child', open: true, at: 0 }],
+  }))
+  const first = show()
+  for (const id of ['parent', 'other'])
+    await first.get(`[data-chat="${id}"] > .tree-item-self .collapse-icon`).trigger('click')
+  first.unmount()
+  views.pop()
+  source.activeId.value = 'parent-child'
+  const reopened = show()
+  await reopened.vm.$nextTick()
+  expect(
+    reopened.get('[data-chat="parent-child"] > .tree-item-self').attributes('aria-current')
+  ).toBe('true')
+  expect(reopened.get('[data-chat="other"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'false'
+  )
 })
 
 it('disables tool modes below a folder floor and retains each floor during bulk edits', async () => {

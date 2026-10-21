@@ -168,15 +168,6 @@ const hit = (c: (typeof chats.value)[number]) =>
 const openChats = computed(() => chats.value.filter((c) => c.open && hit(c)))
 const closedChats = computed(() => {
   const closed = chats.value.filter((chat) => !chat.open)
-  const collect = (chat: (typeof chats.value)[number]) => {
-    if (!chat.open) {
-      closed.push(chat)
-      return
-    }
-    for (const child of chat.children ?? []) collect(child)
-  }
-  if (!searching.value)
-    for (const chat of openChats.value) for (const child of chat.children ?? []) collect(child)
   return closed.filter((chat) => !searching.value || (props.withClosed && hit(chat)))
 })
 

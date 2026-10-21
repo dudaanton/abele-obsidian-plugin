@@ -87,6 +87,25 @@ const probe = (label: string) => `(async () => {
     session.isStreaming.value = true
     await shot('working')
     session.isStreaming.value = false
+    const third = service.newTab(); created.push(third)
+    const archived = service.getSession(third)
+    archived.chatTitle.value = 'Sample closed discussion'
+    archived.anchor.value = { note: session.currentChatFile.value.path, message: 'sample-message', quote: 'Sample passage' }
+    await archived.createInDirectory(path)
+    files.push(archived.currentChatFile.value)
+    const archivedPath = archived.currentChatFile.value.path
+    await service.closeTab(third)
+    service.switchTab(first)
+    if (document.querySelector('.abele-chat-tree')) current().click()
+    current().click()
+    await until(() => document.querySelector('[data-chat="' + first + '"] [data-chat="' + archivedPath + '"]'))
+    await shot('open-and-closed-children')
+    document.querySelector('[data-chat="' + first + '"] > .tree-item-self .collapse-icon').click()
+    current().click()
+    service.switchTab(second)
+    current().click()
+    await until(() => document.querySelector('[data-chat="' + second + '"] > .tree-item-self.is-active'))
+    await shot('current-nested-chat')
     await service.closeTab(first)
     await until(() => !service.tabOrder.value.includes(first))
     if (!document.querySelector('.abele-chat-tree')) current().click()
@@ -162,7 +181,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 11 : 12)
+    expect(result.pictures).toBe(onPhone() ? 13 : 14)
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)

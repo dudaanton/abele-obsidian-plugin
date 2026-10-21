@@ -1,6 +1,43 @@
 import { t } from '@/i18n'
-import { ref } from 'vue'
-import type { ChatTreeKind, ChatTreeState } from '@/chats/chatTree'
+import { reactive, ref } from 'vue'
+import type { ChatTreeEntry, ChatTreeKind, ChatTreeSource, ChatTreeState } from '@/chats/chatTree'
+
+const folds = new WeakMap<ChatTreeSource, Set<string>>()
+export const foldsOf = (source: ChatTreeSource): Set<string> => {
+  let folded = folds.get(source)
+  if (!folded) {
+    folded = reactive(new Set<string>())
+    folds.set(source, folded)
+  }
+  return folded
+}
+
+/** Reveal the current path without changing unrelated groups. */
+export function revealCurrentChat(
+  entries: ChatTreeEntry[],
+  id: string,
+  folded: Set<string>
+): boolean {
+  const visit = (items: ChatTreeEntry[], folder: string, nested: boolean): boolean => {
+    for (const entry of items) {
+      const current = entry.kind === 'chat' && entry.id === id
+      const contains =
+        !current &&
+        visit(
+          entry.children ?? [],
+          entry.kind === 'folder' ? entry.path : folder,
+          entry.kind === 'chat'
+        )
+      if (current || contains) {
+        if (contains) folded.delete(entry.kind === 'folder' ? entry.path : `chat:${entry.id}`)
+        if (entry.kind === 'chat' && !entry.open && !nested) folded.add(`${folder}#closed`)
+        return true
+      }
+    }
+    return false
+  }
+  return visit(entries, '', false)
+}
 
 /** The chat being dragged onto a folder, by id. */
 export const dragged = ref<string | null>(null)

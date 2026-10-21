@@ -69,7 +69,7 @@ import Icon from '../obsidian/Icon.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { chatsOf, useChatTreeSource, foldersOf, type ChatTreeChat } from '@/chats/chatTree'
-import { dragged, KIND_ICON, KIND_WORDS, matches, STATE_WORDS } from './chatTreeView'
+import { dragged, foldsOf, KIND_ICON, KIND_WORDS, matches, STATE_WORDS } from './chatTreeView'
 import { confirmDialog } from '../obsidian/dialogs'
 
 const props = defineProps<{
@@ -84,16 +84,23 @@ const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)
 const phone = Platform.isPhone
 
-/** Nested chats: open ones, and closed ones when asked for; under a search, those it finds. */
+/** Closed descendants stay with their parent; search still respects the archive toggle. */
 const kids = computed(() =>
   (props.chat.children ?? []).filter(
     (k) =>
-      (k.open || !props.chat.open || (props.withClosed && !!props.query.trim())) &&
+      (!props.query.trim() || k.open || props.withClosed) &&
       (!props.query.trim() ||
         [k, ...chatsOf(k.children ?? [])].some((x) => matches(x.title, props.query)))
   )
 )
-const folded = ref(false)
+const folds = foldsOf(source.value)
+const folded = computed({
+  get: () => folds.has(`chat:${props.chat.id}`),
+  set: (value: boolean) => {
+    if (value) folds.add(`chat:${props.chat.id}`)
+    else folds.delete(`chat:${props.chat.id}`)
+  },
+})
 
 const timeOf = (at: number) =>
   !at

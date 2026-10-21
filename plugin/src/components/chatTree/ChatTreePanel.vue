@@ -54,14 +54,14 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ChatTreeRows from './ChatTreeRows.vue'
 import { chatsOf, useChatTreeSource } from '@/chats/chatTree'
-import { dragged, matches } from './chatTreeView'
+import { dragged, foldsOf, matches, revealCurrentChat } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -69,7 +69,7 @@ const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)
 const query = ref('')
 const withClosed = ref(false)
-const folded = reactive(new Set<string>())
+const folded = foldsOf(source.value)
 const flip = (path: string) => (folded.has(path) ? folded.delete(path) : folded.add(path))
 
 const nothing = computed(
@@ -81,6 +81,21 @@ const nothing = computed(
 )
 
 const list = ref<HTMLElement>()
+watch(
+  () => [source.value.root.value, source.value.activeId.value] as const,
+  async ([entries, id]) => {
+    if (!id) return
+    revealCurrentChat(entries, id, folded)
+    await nextTick()
+    const row = [...(list.value?.querySelectorAll<HTMLElement>('[data-chat]') ?? [])].find(
+      (element) => element.dataset.chat === id
+    )
+    row
+      ?.querySelector<HTMLElement>(':scope > .tree-item-self')
+      ?.scrollIntoView?.({ block: 'nearest' })
+  },
+  { immediate: true }
+)
 /** Down from the field steps onto the first row, as the history's list does. */
 const navigate = (e: KeyboardEvent) => {
   if (
