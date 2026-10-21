@@ -88,6 +88,17 @@ it('labels entry pauses separately and retains enriched exception descriptions',
   model.observe({ observation: 'current', snapshot: state })
   expect(model.session.reason).toBe('SampleError: Missing sample item')
 })
+
+it('does not claim a detached process is still running', () => {
+  const { model } = fixture()
+  const state = snapshot({ lifecycle: 'detached' })
+  state.target.process_ownership = 'external'
+  model.observe({ observation: 'current', snapshot: state })
+  const w = mount(DebugPanel, { props: { session: model.session } })
+  expect(w.text()).toContain('Detached')
+  expect(w.text()).not.toContain('The program runs on')
+  w.unmount()
+})
 it('prefers admitted relative caller paths and never maps unadmitted library frames', async () => {
   const { model, rpc } = fixture()
   model.setCapabilities({ frame_source_paths: true })

@@ -15,6 +15,7 @@ import {
 import type { DebuggerObservationState } from '@abele/node-client'
 import type { DebugAction, DebugSession, DebugVariable } from '@/components/debugger/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
+import { pauseReason } from './pauseReason'
 type DebuggerReceipt = ReturnType<typeof DebuggerReceiptSchema.parse>
 
 const ProposalSchema = z
@@ -241,7 +242,8 @@ export class DebuggerController {
     this.session.detached = s.lifecycle === 'detached'
     this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
     const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
-    this.session.reason = stop?.reason === 'entry' ? 'entry' : (stop?.description ?? stop?.reason)
+    this.session.reason =
+      stop?.reason === 'entry' ? 'entry' : pauseReason(stop?.description ?? stop?.reason)
     this.session.breakpoints = this.knownBreakpoints()
     if (!this.session.frames.length && stop?.location)
       this.session.frames = [
