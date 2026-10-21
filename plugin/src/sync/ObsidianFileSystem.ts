@@ -1474,10 +1474,11 @@ export class ObsidianFileSystem implements FileSystem {
   async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
     let entry =
       this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
+    const stat = await this.rawStat(id)
+    if (!stat) throw Object.assign(new Error('streaming stage is missing'), { code: 'ENOENT' })
     if (!entry?.streaming || entry.backup || entry.retiredGeneration)
       throw new EngineError('io', 'streaming stage is unavailable or awaiting recovery')
-    const stat = await this.rawStat(id)
-    if (!stat || stat.type !== 'file') throw new EngineError('io', 'streaming stage is missing')
+    if (stat.type !== 'file') throw new EngineError('io', 'streaming stage is not a file')
     let offset = stat.size,
       busy = false,
       finished = false

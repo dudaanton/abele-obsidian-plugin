@@ -32,6 +32,7 @@ it('finishes stage discard after a crash between file removal and journal retire
   // The remove reached disk, but the process quit before the next journal write.
   await app.vault.adapter.remove(stage.id)
   const restarted = fs()
+  await expect(restarted.reopenStage(stage.id)).rejects.toMatchObject({ code: 'ENOENT' })
   await restarted.discardStage(stage.id)
   await restarted.discardStage(stage.id)
   expect(new WriteJournal(storage).entries()).toEqual([])
