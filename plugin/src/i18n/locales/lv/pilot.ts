@@ -76,7 +76,6 @@ export const lv = {
     'Sesijas apturētas. Kad apturēšana pabeigta, vēlreiz izvēlieties darba koka dzēšanu.',
   'node.error.busy':
     'Šis resurss tiek izmantots. Uzgaidi, līdz pašreizējā darbība beidzas, un mēģini vēlreiz.',
-    'Šī mape vai darba koks tiek izmantots. Uzgaidiet, līdz pašreizējā darbība beidzas, un mēģiniet vēlreiz.',
   'node.error.busyStage':
     'Failus nevarēja pievienot indeksam, jo darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz. (resource_busy)',
   'node.error.busyChat':

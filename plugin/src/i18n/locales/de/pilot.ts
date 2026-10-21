@@ -79,7 +79,6 @@ export const de = {
     'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
   'node.error.busy':
     'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
-    'Dieser Ordner oder Worktree wird verwendet. Warten Sie, bis die aktuelle Aktion beendet ist, und versuchen Sie es erneut.',
   'node.error.busyStage':
     'Die Dateien konnten nicht vorgemerkt werden, da der Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
   'node.error.busyChat':

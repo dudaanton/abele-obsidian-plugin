@@ -76,7 +76,6 @@ export const en = {
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
   'node.error.busy':
     'This resource is in use. Wait for the current operation to finish and try again.',
-    'This folder or worktree is in use. Wait for the current action to finish and try again.',
   'node.error.busyStage':
     'Could not stage the files because the worktree is busy. Wait for the current action to finish and try again. (resource_busy)',
   'node.error.busyChat':

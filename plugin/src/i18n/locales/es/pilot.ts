@@ -88,7 +88,6 @@ export const es = {
     'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
   'node.error.busy':
     'Este recurso está en uso. Espera a que termine la operación actual e inténtalo de nuevo.',
-    'Esta carpeta o árbol de trabajo está en uso. Espere a que termine la acción actual e inténtelo de nuevo.',
   'node.error.busyStage':
     'No se pudieron preparar los archivos porque el árbol de trabajo está ocupado. Espere e inténtelo de nuevo. (resource_busy)',
   'node.error.busyChat':
