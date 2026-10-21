@@ -102,10 +102,11 @@ const probeLib = `(() => {
           const row = button.closest('.abele-chat-input__toolbar').getBoundingClientRect()
           await shoot('access-' + (phone ? 'phone-' : 'desktop-') + label)
           if (!phone && glyph) {
-            win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-            if (!(await until(() => [...document.querySelectorAll('.tooltip')].some((tip) => tip.textContent.includes(words)), 5000))) throw new Error('Access tooltip did not appear')
+            require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+            button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
+            if (!(await until(() => [...document.querySelectorAll('.tooltip')].some((tip) => tip.textContent.includes(words)), 5000))) throw new Error('Access tooltip did not appear: ' + JSON.stringify({ button: button.outerHTML, tips: [...document.querySelectorAll('.tooltip')].map((tip) => tip.outerHTML), tooltip: require('obsidian').setTooltip.toString(), focused: document.hasFocus() }))
             await shoot('access-tooltip-' + label)
-            win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
+            require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
             await wait(200)
           }
           results.push({ label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? require('obsidian').getIcon(glyph).getAttribute('class') : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
