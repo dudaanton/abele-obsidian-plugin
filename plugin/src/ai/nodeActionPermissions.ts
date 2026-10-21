@@ -42,12 +42,14 @@ export function nodeActionModes(
   local: Record<string, ToolMode>,
   agent: Record<string, ToolMode>
 ): Record<string, ToolMode> {
-  return {
-    ...base,
-    ...Object.fromEntries(
-      NODE_ACTION_TOOLS.map((name) => [name, local[name] ?? agent[name] ?? 'off'])
-    ),
+  const modes = { ...base }
+  for (const name of NODE_ACTION_TOOLS) {
+    delete modes[name]
+    const mode = local[name] ?? agent[name]
+    if (local[name] !== undefined || mode === 'ask' || mode === 'auto') modes[name] = mode
+    else if (base[name] === 'off') modes[name] = 'off'
   }
+  return modes
 }
 export function requireNodeActionPermission(
   chat: ChatSession,

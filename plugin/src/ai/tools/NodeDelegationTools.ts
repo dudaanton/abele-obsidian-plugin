@@ -1,3 +1,4 @@
+import { nodeDelegationProviders, testNodeProvidersEnabled } from '@/node/providers'
 import { requireNodeActionPermission } from '../nodeActionPermissions'
 import { UiError } from '@/i18n/streamBErrors'
 import { requireGrantFreeDelegation } from '@/node/delegationCapability'
@@ -112,7 +113,9 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
               ...item,
               approved: item.approved?.map((destination) => ({
                 ...destination,
-                providers: destination.providers?.filter((provider) => provider !== 'fake'),
+                providers: destination.providers?.filter(
+                  (provider) => provider !== 'fake' || testNodeProvidersEnabled()
+                ),
                 project_ids: destination.project_ids.filter((project) => {
                   try {
                     requireDelegationScope(parent, item.node, project)
@@ -225,7 +228,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
               'Stable task identity within this parent; reuse with identical arguments on retry (max 128 characters)',
           },
           project_id: { type: 'string' },
-          provider: { type: 'string', enum: ['claude', 'pi', 'codex'] },
+          provider: { type: 'string', enum: nodeDelegationProviders() },
           title: { type: 'string' },
           text: { type: 'string' },
           base_ref: { type: 'string', description: 'Branch/commit on the node; defaults to HEAD' },

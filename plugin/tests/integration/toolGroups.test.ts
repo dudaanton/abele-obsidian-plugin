@@ -201,7 +201,7 @@ describe('tools offered by section', () => {
     reopened.destroy()
   })
 
-  it('opens the node section from the start in a chat with node scope', () => {
+  it('opens node files with scope and offers node actions only after a local tool choice', () => {
     session.overrides.value = {
       ...session.overrides.value,
       nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
@@ -209,7 +209,7 @@ describe('tools offered by section', () => {
     const offered = names(session)
     expect(offered).toContain('open_nodes')
     expect(offered).toContain('node_ls')
-    for (const tool of [
+    const actions = [
       'node_delegate',
       'node_delegations',
       'node_delegation_send',
@@ -219,9 +219,14 @@ describe('tools offered by section', () => {
       'node_command_status',
       'node_command_cancel',
       'node_git_integrate',
-    ]) {
-      expect(offered).toContain(tool)
+    ]
+    for (const tool of actions) expect(offered).not.toContain(tool)
+    session.toolModes.value = {
+      ...session.toolModes.value,
+      ...Object.fromEntries(actions.map((tool) => [tool, 'auto' as const])),
     }
+    const enabled = names(session)
+    for (const tool of actions) expect(enabled).toContain(tool)
     expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
     expect(session.getToolMode('node_command_run')).toBe('ask')
     expect(session.getToolMode('node_command_status')).toBe('auto')

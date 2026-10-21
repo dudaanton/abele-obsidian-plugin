@@ -1,6 +1,15 @@
 import { z } from 'zod'
 import { t } from '@/i18n'
 
+declare const __ABELE_TEST_SHARING__: boolean
+/** The existing sharing-test build is the only client surface for fixture providers. */
+export function testNodeProvidersEnabled(): boolean {
+  return typeof __ABELE_TEST_SHARING__ !== 'undefined' && __ABELE_TEST_SHARING__
+}
+export function nodeDelegationProviders(): string[] {
+  return ['claude', 'pi', 'codex', ...(testNodeProvidersEnabled() ? ['fake'] : [])]
+}
+
 const Capability = z.union([
   z.object({ status: z.literal('supported'), evidence: z.string().optional() }),
   z.object({ status: z.enum(['unsupported', 'unverified']), reason: z.string() }),
@@ -76,12 +85,14 @@ export function nodeProviders(description: unknown): NodeProvider[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((value) => {
     const result = Provider.safeParse(value)
-    return result.success && result.data.provider !== 'fake' ? [result.data] : []
+    return result.success && (result.data.provider !== 'fake' || testNodeProvidersEnabled())
+      ? [result.data]
+      : []
   })
 }
 /** Delegated work runs on the agents that take one message per run; ACP agents do not. */
 export const delegatable = (p: NodeProvider): boolean =>
-  ['claude', 'pi', 'codex'].includes(p.provider)
+  nodeDelegationProviders().includes(p.provider)
 export function capabilityReason(provider: NodeProvider | undefined, feature: string): string {
   const capability = provider?.capabilities[feature]
   return capability?.status === 'supported'
@@ -111,7 +122,7 @@ const said = (diagnostic: string | null | undefined): string =>
  * Every agent a new session could run, in the order people know them: Claude Code, Codex, pi,
  * then the ACP agents the node lists. An agent this node does not report or cannot start now
  * stays in the list, unavailable with the reason, so the list does not change shape between
- * nodes. Test providers are never offered.
+ * nodes. Normal builds exclude fixture providers.
  */
 export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] {
   const of = (name: NodeProviderName) => providers.find((p) => p.provider === name)
@@ -134,5 +145,8 @@ export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] 
       label: agent.name || agent.id,
       unavailable: agent.available ? '' : said(agent.diagnostic),
     })
+  const fake = of('fake')
+  if (testNodeProvidersEnabled() && fake && providerAvailable(fake))
+    choices.push({ provider: 'fake', label: providerLabel('fake'), unavailable: '' })
   return choices
 }

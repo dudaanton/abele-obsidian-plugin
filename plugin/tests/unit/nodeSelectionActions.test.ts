@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { chooseNodePathBase, newNodePathChat, pickNodePathPlace } from '@/node/NodePathController'
 import { selectionQuote } from '@/components/nodeWork/fileSelection'
@@ -62,7 +62,9 @@ vi.mock('@/node/NodePathMutations', () => ({
     session = f.session
   },
 }))
+beforeEach(() => vi.stubGlobal('__ABELE_TEST_SHARING__', true))
 afterEach(() => {
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.clearAllMocks()
   f.choose = undefined

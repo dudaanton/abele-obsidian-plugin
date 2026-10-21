@@ -974,7 +974,7 @@ from chats; do not ask for a grant or create one automatically.
   this device's local registration alias; use that alias to select between installations of one node.
 - `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
   optional `base_ref` (HEAD by default). Available Claude Code, pi and Codex providers come from
-  the node; test providers are never offered. The child gets its own
+  the node; test providers are hidden in normal builds. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
 - Creation returns `node_id`, `session_id`, `delegation_id`, `state`, `project_id`, `workspace_id`
   and task `title`, not credentials. Use that project and workspace for review tools. A

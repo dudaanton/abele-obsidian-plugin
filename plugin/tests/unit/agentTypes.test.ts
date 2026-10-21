@@ -9,6 +9,7 @@ import {
   LOCATION_TOOL_MODES,
   GITHUB_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
+  NODE_ACTION_DEFAULTS,
 } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 
@@ -38,6 +39,7 @@ describe('createAgent', () => {
       ...LINT_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,
+      ...NODE_ACTION_DEFAULTS,
     })
     expect(agent.memory).toEqual([])
     expect(agent.scope).toEqual([])

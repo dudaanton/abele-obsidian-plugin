@@ -704,7 +704,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     set: (value) => {
       if (!this.nodeScopeIdentity) this.pendingNodeActionAgents.add(this.agentId.value)
       saveLocalNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value, value)
-      this.setOverride('toolModes', value)
+      const persisted = { ...value }
+      for (const name of NODE_ACTION_TOOLS) delete persisted[name]
+      this.setOverride('toolModes', persisted)
     },
   })
 

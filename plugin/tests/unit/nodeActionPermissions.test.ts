@@ -1,4 +1,4 @@
-import { beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 import { DelegationTaskInputSchema, DelegationStorageSchema } from '@/node/delegation'
@@ -15,6 +15,7 @@ import { useVault } from '../helpers/testEnv'
 beforeEach(() => {
   useVault([])
 })
+afterEach(() => vi.unstubAllGlobals())
 const actions = [
   'node_delegate',
   'node_delegations',
@@ -63,6 +64,20 @@ it('never offers the test provider', () => {
     )
   ).toBe(false)
 })
+it('offers the test provider only in the existing test-sharing build', () => {
+  vi.stubGlobal('__ABELE_TEST_SHARING__', true)
+  const providers = nodeProviders({ providers: [{ provider: 'fake', available: true }] })
+  expect(providers.map((p) => p.provider)).toEqual(['fake'])
+  expect(agentChoices(providers).some((p) => p.provider === 'fake')).toBe(true)
+  expect(
+    DelegationTaskInputSchema.safeParse({
+      task_key: 'sample-task',
+      provider: 'fake',
+      title: 'Sample task',
+      text: 'Work',
+    }).success
+  ).toBe(true)
+})
 it('rejects new test-provider work while retaining old task records', () => {
   const input = {
     task_key: 'sample-task',
@@ -89,7 +104,7 @@ it('rejects new test-provider work while retaining old task records', () => {
   ).toBe(true)
 })
 it('ignores imported chat and folder grants, and persists a local choice per agent', () => {
-  expect(nodeActionModes({ node_delegate: 'auto' }, {}, {}).node_delegate).toBe('off')
+  expect(nodeActionModes({ node_delegate: 'auto' }, {}, {})).toEqual({})
   saveLocalNodeActionModes('sample-chat', 'sample-agent', { node_delegate: 'ask' })
   expect(localNodeActionModes('sample-chat', 'sample-agent').node_delegate).toBe('ask')
   expect(localNodeActionModes('sample-chat', 'other-agent').node_delegate).toBeUndefined()

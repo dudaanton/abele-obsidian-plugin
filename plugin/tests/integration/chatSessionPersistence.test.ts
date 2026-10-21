@@ -190,6 +190,21 @@ describe('loading a chat saved by this build', () => {
 })
 
 describe('loading a chat saved before agents existed', () => {
+  it('resolves missing node modes as Off without saving defaults into old overrides', async () => {
+    seedAgent()
+    storedChat = { metadata: { type: 'abele-chat', toolModes: { fetch: 'ask' } }, messages: [] }
+    const session = newSession()
+    await session.load(FAKE_FILE)
+    expect(session.getToolMode('node_delegate')).toBe('off')
+    expect(session.overrides.value.toolModes).toEqual({ fetch: 'ask' })
+    session.toolModes.value = {
+      ...session.toolModes.value,
+      node_delegate: 'off',
+      chart_docs: 'auto',
+    }
+    await saveWithOneMessage(session)
+    expect(savedMetadata?.overrides?.toolModes).toEqual({ fetch: 'ask', chart_docs: 'auto' })
+  })
   it('freezes the stored snapshot as overrides', async () => {
     const agent = seedAgent()
     storedChat = {

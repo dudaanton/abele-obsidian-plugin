@@ -1,3 +1,4 @@
+import { testNodeProvidersEnabled } from './providers'
 import type { Prompt } from '@abele/node-client'
 import type { PromptAnswerState } from './promptAnswers'
 import { t } from '@/i18n'
@@ -9,14 +10,19 @@ export const DelegationTaskInputSchema = z
   .object({
     task_key: z.string().min(1).max(128),
     project_id: z.string().min(1).max(128).optional(),
-    provider: z.enum(['claude', 'pi', 'codex']),
+    provider: z
+      .enum(['claude', 'pi', 'codex', 'fake'])
+      .refine(
+        (provider) => provider !== 'fake' || testNodeProvidersEnabled(),
+        'Test providers require a sharing-test build'
+      ),
     title: z.string().max(256),
     text: z.string().min(1).max(32768),
     base_ref: z.string().min(1).max(256).default('HEAD'),
   })
   .strict()
 export type DelegationTaskInput = z.input<typeof DelegationTaskInputSchema>
-// Keep retained records readable while new requests exclude test providers.
+// Keep retained records readable independently of the build’s provider choices.
 const RetainedTaskInputSchema = DelegationTaskInputSchema.extend({
   provider: z.enum(['claude', 'pi', 'codex', 'fake']),
 })
