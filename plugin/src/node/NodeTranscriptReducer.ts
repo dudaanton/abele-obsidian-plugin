@@ -10,6 +10,7 @@ import { t } from '@/i18n'
 import type { ChatMessage } from '@/ai/types'
 import { readAgentReplyText } from '@/ai/replyLinks'
 import { piFailure } from './piFailure'
+import { cancelledPrompt } from './promptOutcome'
 import { LiveTranscript, type LiveProjection } from './liveTranscript'
 import {
   UpdateTranscript,
@@ -517,8 +518,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   }
   for (const [id, decisions] of Object.entries(toolPrompts)) {
     const tool = messages.get(id)
-    if (tool && decisions.at(-1)?.choice === 'deny') {
-      if (decisions.at(-1)?.state === 'invalidated') {
+    const decision = decisions.at(-1)
+    if (tool && decision?.choice === 'deny') {
+      if (cancelledPrompt(decision)) {
         tool.toolStatus = 'rejected'
         tool.toolExecution = 'not-run'
         tool.toolResult = undefined

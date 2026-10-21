@@ -37,6 +37,12 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           const emptyCorrect=!root().textContent.includes('Fake (non-executing)')&&root().querySelectorAll('.abele-chat-msg_user,.abele-chat-msg_assistant').length===0;
           const modelPresent=p.live.value.settings.model==='sample/model-a'&&p.live.value.choices.models.length===2&&p.live.value.choices.accounts[0].label==='sample-account';
           await shot('node-chat-empty');
+          const priorModel = p.control.state.value.settings.model;
+          p.control.state.value.settings.model = 'gpt-9.7-sol';
+          await until(()=>root().querySelector('.abele-session-settings')?.getAttribute('aria-label')?.includes('GPT-9.7'));
+          if(root().querySelector('.abele-session-settings__model')?.textContent==='gpt-9.7-sol')throw Error('Raw model id replaced its display family');
+          await shot('node-chat-model-label');
+          p.control.state.value.settings.model = priorModel;
           const scope={run_id:'sample-process',runtime_generation:1};
           const input=(id,text)=>append('input.accepted',{input_id:id,text});
           const start=id=>append('turn.started',{run_id:scope.run_id,input_ids:[id]});
@@ -87,6 +93,14 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           append('run.interrupted',{run_id:'sample-cancel-run'});await publish();
           if(root().textContent.includes('User rejected this action')||root().textContent.includes('Denied:'))throw Error('Stop was shown as an owner denial');
           scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-approval-cancelled');
+          append('pi.tool.call',{run_id:'sample-close-run',tool_use_id:'sample-close-create',name:'create',input:{path:'sample-close.txt'}});
+          append('prompt.resolved',{...prompt,prompt_id:'sample-close-prompt',run_id:'sample-close-run',tool_use_id:'sample-close-create',tool_name:'create',title:'Create sample-close.txt',input:{path:'sample-close.txt'},state:'resolved',choice:'deny',installation_id:null});
+          append('pi.tool.result',{run_id:'sample-close-run',tool_use_id:'sample-close-create',is_error:true,result:'Node denied, expired or lost this exact approval'});
+          append('pi.tool.call',{run_id:'sample-retry-run',tool_use_id:'sample-retry-create',name:'create',input:{path:'sample-close.txt'}});
+          append('prompt.resolved',{...prompt,prompt_id:'sample-retry-prompt',run_id:'sample-retry-run',tool_use_id:'sample-retry-create',tool_name:'create',title:'Create sample-close.txt',input:{path:'sample-close.txt'},state:'resolved',choice:'allow',installation_id:'sample-owner-installation'});
+          append('pi.tool.result',{run_id:'sample-retry-run',tool_use_id:'sample-retry-create',result:'Created sample-close.txt'});await publish();
+          if(root().textContent.includes('User rejected this action')||root().textContent.includes('Denied:'))throw Error('Client closure was shown as an owner denial after retry');
+          scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-closure-and-retry');
           return JSON.stringify({emptyCorrect,modelPresent,collapsed,retained,ordered,stopped,failed,attach});
         } finally { await window.__abeleTest.closeNodeSessionFixture();chats.activeTabId.value=active }
       })()`,

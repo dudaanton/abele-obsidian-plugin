@@ -18,6 +18,26 @@ it('calls an invalidated approval stopped instead of denied', () => {
     wrapper.unmount()
   }
 })
+it('does not call an automatic close refusal an owner denial', () => {
+  useVault([])
+  const wrapper = mount(NodePermissionCard, {
+    props: {
+      disabled: true,
+      prompt: {
+        prompt_id: 'sample-close',
+        state: 'resolved',
+        choice: 'deny',
+        installation_id: null,
+      } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Cancelled')
+    expect(wrapper.text()).not.toMatch(/deny|denied/i)
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('separates the translated refusal label from its retained diagnostic', () => {
   useVault([])
   const wrapper = mount(NodePermissionCard, {

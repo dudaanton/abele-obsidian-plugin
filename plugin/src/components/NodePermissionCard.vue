@@ -11,10 +11,8 @@
     @stop="emit('stop')"
   />
   <span v-else-if="obsidianCall" class="abele-node-permission__note" role="status">
-    {{ prompt.state === 'invalidated' ? t('streamB.approvalCancelled') : streamBLabel(prompt.state)
-    }}<template v-if="prompt.choice && prompt.state !== 'invalidated'">
-      · {{ streamBLabel(prompt.choice) }}</template
-    >
+    {{ cancelled ? t('streamB.approvalCancelled') : streamBLabel(prompt.state)
+    }}<template v-if="prompt.choice && !cancelled"> · {{ streamBLabel(prompt.choice) }}</template>
   </span>
   <RequestCard
     v-else
@@ -138,7 +136,7 @@
     </template>
     <div v-else class="abele-node-permission__note">
       <ResultMark
-        v-if="prompt.state === 'resolved'"
+        v-if="prompt.state === 'resolved' && !cancelled"
         :state="prompt.delivered ? 'done' : 'skipped'"
         :text="
           prompt.delivered
@@ -147,17 +145,12 @@
         "
       />
       {{ isQuestion ? t('streamB.question.289aff') : t('streamB.permission.229efc') }}
-      {{
-        prompt.state === 'invalidated'
-          ? t('streamB.approvalCancelled')
-          : streamBLabel(prompt.state)
-      }}{{
-        prompt.choice && prompt.state !== 'invalidated' ? ': ' + streamBLabel(prompt.choice) : ''
-      }}
+      {{ cancelled ? t('streamB.approvalCancelled') : streamBLabel(prompt.state)
+      }}{{ prompt.choice && !cancelled ? ': ' + streamBLabel(prompt.choice) : '' }}
       <template v-if="prompt.value !== undefined && prompt.value !== null">
         · {{ prompt.value }}</template
       >
-      <template v-if="prompt.state === 'resolved'">
+      <template v-if="prompt.state === 'resolved' && !cancelled">
         ·
         {{
           prompt.delivered
@@ -175,6 +168,7 @@ import { obsidianPromptCall } from '@/node/obsidianPresentation'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
+import { cancelledPrompt } from '@/node/promptOutcome'
 import type { Prompt } from '@abele/node-client'
 import { toolSummary, readableToolName } from '@/ai/toolLine'
 import { KIND_ICON, toolKind } from '@/ai/toolRuns'
@@ -198,6 +192,7 @@ const props = defineProps<{
   /** The changes the call it asks about would make, when its agent showed them. */
   diffs?: { path: string; old: string; new: string }[]
 }>()
+const cancelled = computed(() => cancelledPrompt(props.prompt))
 const emit = defineEmits<{
   (e: 'answer', choice: 'allow' | 'deny', value?: string): void
   (e: 'stop'): void

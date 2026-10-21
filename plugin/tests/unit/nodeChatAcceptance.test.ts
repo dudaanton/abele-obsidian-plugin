@@ -3,6 +3,7 @@ import { agentChoices, nodeProviders, providerLabel } from '@/node/providers'
 import { preferredAgentChoices } from '@/node/agentPreference'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
+import { runSummary } from '@/ai/toolRuns'
 it('uses an exact owner denial instead of a later generic approval failure', () => {
   const prompt = {
     prompt_id: 'sample-denial',
@@ -17,7 +18,7 @@ it('uses an exact owner denial instead of a later generic approval failure', () 
     input: { path: 'sample.txt' },
     expires_at: 1999999999999,
     choice: 'deny',
-    installation_id: null,
+    installation_id: 'sample-owner-installation',
     delivered: true,
     state: 'resolved',
   }
@@ -52,6 +53,62 @@ const e = (seq: number, type: string, data: unknown): JournalEvent => ({
   data,
   actor: { kind: 'node' },
   at: new Date(seq * 1000).toISOString(),
+})
+
+it('keeps an automatic close refusal cancelled in the summary after an approved retry succeeds', () => {
+  const prompt = {
+    prompt_id: 'sample-close',
+    session_id: 'sample-session',
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    kind: 'permission',
+    tool_use_id: 'sample-create',
+    tool_name: 'create',
+    expires_at: 1999999999999,
+    choice: 'deny',
+    installation_id: null,
+    delivered: true,
+    state: 'resolved',
+  }
+  const p = reduceTranscript([
+    e(1, 'pi.tool.call', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-create',
+      name: 'create',
+      input: { path: 'sample.txt' },
+    }),
+    e(2, 'prompt.resolved', prompt),
+    e(3, 'pi.tool.result', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-create',
+      is_error: true,
+      result: 'Node denied, expired or lost this exact approval',
+    }),
+    e(4, 'pi.tool.call', {
+      run_id: 'sample-retry',
+      tool_use_id: 'sample-retry-create',
+      name: 'create',
+      input: { path: 'sample.txt' },
+    }),
+    e(5, 'prompt.resolved', {
+      ...prompt,
+      prompt_id: 'sample-retry-prompt',
+      run_id: 'sample-retry',
+      tool_use_id: 'sample-retry-create',
+      choice: 'allow',
+      installation_id: 'sample-owner-installation',
+    }),
+    e(6, 'pi.tool.result', {
+      run_id: 'sample-retry',
+      tool_use_id: 'sample-retry-create',
+      result: 'Created sample.txt',
+    }),
+  ])
+  const calls = p.messages.filter((m) => m.role === 'tool-call')
+  expect(calls[0]).toMatchObject({ toolExecution: 'not-run', toolResult: undefined })
+  expect(calls[1].toolStatus).toBe('approved')
+  expect(runSummary(calls)).not.toMatch(/denied|user rejected/i)
 })
 
 it('records an invalidated approval as stopped even when its tool result arrives before the interrupt', () => {

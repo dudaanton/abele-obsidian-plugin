@@ -17,6 +17,57 @@ const reference = {
   sessionId: 'sample-session',
   title: 'Sample session',
 }
+
+it('retains an unanswered node approval when its presenter closes and reopens', async () => {
+  const store = new MemoryClientStore()
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+    store
+  )
+  const prompt = {
+    kind: 'permission',
+    prompt_id: 'sample-retained',
+    session_id: reference.sessionId,
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    expires_at: 1999999999999,
+    state: 'pending',
+    choice: null,
+    installation_id: null,
+    delivered: false,
+  }
+  await store.transaction((state) => {
+    state.events[reference.sessionId] = [
+      {
+        kind: 'event',
+        node_id: reference.nodeId,
+        stream_id: reference.sessionId,
+        seq: 1,
+        at: '2025-01-01T00:00:00.000Z',
+        actor: { kind: 'node' },
+        type: 'prompt.opened',
+        data: prompt,
+      },
+    ]
+  })
+  const interrupt = vi.spyOn(client, 'interrupt')
+  const answer = vi.spyOn(client, 'answerPrompt')
+  const connection = { client, state: ref('offline') } as unknown as NodeConnection
+  const first = new NodeChatPresenter(reference, connection)
+  await first.refresh()
+  first.destroy()
+  const reopened = new NodeChatPresenter(reference, connection)
+  try {
+    await reopened.refresh()
+    expect(reopened.projection.value.prompts).toEqual([prompt])
+    expect(await client.pending()).toEqual([])
+    expect(interrupt).not.toHaveBeenCalled()
+    expect(answer).not.toHaveBeenCalled()
+  } finally {
+    reopened.destroy()
+  }
+})
 afterEach(() => {
   ChatService.getInstance().destroy()
   vi.restoreAllMocks()
