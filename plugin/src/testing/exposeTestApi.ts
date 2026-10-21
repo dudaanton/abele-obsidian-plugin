@@ -54,6 +54,7 @@ import {
   closeNodeSessionFixture,
   nodeSessionCalls,
 } from './nodeSessionScreen'
+import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
 import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
 import { pairedLoopbackTransport } from './nodePairedTransport'
@@ -316,6 +317,7 @@ interface AbeleTestApi {
   }
   codeSelectionAdapters: { chat: typeof chatCodeSelection; note: typeof insertCodeSelection }
   ChatService: typeof ChatService
+  NodeClientStore: typeof NodeClientStore
   NodeService: typeof NodeService
   AgentsService: typeof AgentsService
   NodePathService: typeof NodePathService
@@ -988,6 +990,7 @@ export function exposeTestApi(plugin: Plugin): void {
     requests: { service: RequestsService, openView: openRequestsView, openTab: openRequestTab },
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,
+    NodeClientStore,
     NodeService,
     AgentsService,
     NodePathService,

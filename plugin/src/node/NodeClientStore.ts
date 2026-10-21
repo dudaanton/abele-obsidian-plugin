@@ -7,7 +7,7 @@ import { FileDraftSchema, type FileDraft } from './fileDrafts'
 import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
 import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
-import { trimWindows } from './sessionWindow'
+import { ClientJournal } from './clientJournal'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
 
@@ -128,32 +128,13 @@ function intentOf(state: NodeClientState): string {
   return JSON.stringify(rest)
 }
 
-/**
- * Stored events already found valid in this run, by stream, sequence, type and time. A journal
- * event never changes once stored; checking every stored event again in every transaction cost a
- * long session's chat most of its time while an answer streamed.
- */
-const validEvents = new Set<string>()
-const eventKey = (e: unknown): string | null => {
-  const event = e as { stream_id?: unknown; seq?: unknown; type?: unknown; at?: unknown }
-  return event && typeof event === 'object'
-    ? `${String(event.stream_id)}\u0000${String(event.seq)}\u0000${String(event.type)}\u0000${String(event.at)}`
-    : null
-}
-
 function readState(raw: unknown): NodeClientState {
   if (raw === undefined) return { cursors: {}, events: {}, outbox: [], results: {} }
   const state = StateSchema.parse(raw)
   const events = Object.fromEntries(
     Object.entries(state.events).map(([key, values]) => [
       key,
-      values.map((e) => {
-        const known = eventKey(e)
-        if (known && validEvents.has(known)) return e as ReturnType<typeof NodeEventSchema.parse>
-        const event = NodeEventSchema.parse(e)
-        if (known) validEvents.add(known)
-        return event
-      }),
+      values.map((e) => NodeEventSchema.parse(e)),
     ])
   )
   for (const request of Object.values(state.operationRequests ?? {}))
@@ -190,6 +171,7 @@ export function readStore<T>(store: ClientStore, look: (state: NodeClientState) 
 /** One database per enrolled installation, never a vault file or a transferable setting. */
 export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
+  private readonly journal = new ClientJournal()
   constructor(
     private readonly namespace: string,
     private readonly factory: IDBFactory = indexedDB
@@ -197,9 +179,22 @@ export class NodeClientStore implements ClientStore {
 
   private open(): Promise<IDBDatabase> {
     return (this.database ??= new Promise((resolve, reject) => {
-      const request = this.factory.open(`abele-node-${this.namespace}`, 1)
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('client')
+      const request = this.factory.open(`abele-node-${this.namespace}`, 2)
+      request.onupgradeneeded = (event) => {
+        const db = request.result
+        if (!db.objectStoreNames.contains('client')) db.createObjectStore('client')
+        db.createObjectStore('journal')
+        if (event.oldVersion === 1) {
+          const tx = request.transaction!
+          const legacy = tx.objectStore('client').get('state')
+          legacy.onsuccess = () => {
+            try {
+              ClientJournal.migrate(tx, readState(legacy.result))
+            } catch {
+              tx.abort()
+            }
+          }
+        }
       }
       request.onsuccess = () => {
         request.result.onversionchange = () => request.result.close()
@@ -218,14 +213,16 @@ export class NodeClientStore implements ClientStore {
       // Relaxed first: most transactions only add the events a node streamed, which this device
       // reads again from the node if a crash loses them. One that changed anything else (what
       // was sent, receipts, drafts) completes only after a strict flush, below.
-      const tx = db.transaction('client', 'readwrite', { durability: 'relaxed' })
+      const tx = db.transaction(['client', 'journal'], 'readwrite', { durability: 'relaxed' })
       let intent = false
       let executionIntent = false
       const store = tx.objectStore('client')
       let result: T
       let failure: unknown
       let pending = true
+      let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       tx.oncomplete = () => {
+        journal?.committed()
         if (!intent) return resolve(result)
         // A strict commit after it puts this one on disk too: transactions commit in order.
         let flush: IDBTransaction
@@ -269,6 +266,7 @@ export class NodeClientStore implements ClientStore {
         void (async () => {
           try {
             const state = readState(request.result)
+            journal = await this.journal.load(tx, state)
             const before = intentOf(state)
             const executionsBefore = JSON.stringify(state.obsidianExecutions)
             const submitted = state.outbox.slice()
@@ -303,11 +301,10 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
-            // A long session's journal stays on the node; the device keeps its latest window.
-            trimWindows(state)
+            journal.save()
             intent = intentOf(state) !== before
             executionIntent = JSON.stringify(state.obsidianExecutions) !== executionsBefore
-            store.put(state, 'state')
+            store.put({ ...state, events: {} }, 'state')
             pending = false
           } catch (error) {
             failure = error
@@ -322,18 +319,26 @@ export class NodeClientStore implements ClientStore {
   async read<T>(look: (state: NodeClientState) => T): Promise<T> {
     const db = await this.open()
     return new Promise<T>((resolve, reject) => {
-      const tx = db.transaction('client', 'readonly')
+      const tx = db.transaction(['client', 'journal'], 'readonly')
       const request = tx.objectStore('client').get('state')
       let result: T
+      let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       request.onsuccess = () => {
-        try {
-          result = look(readState(request.result))
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)))
-          tx.abort()
-        }
+        void (async () => {
+          try {
+            const state = readState(request.result)
+            journal = await this.journal.load(tx, state)
+            result = look(state)
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)))
+            tx.abort()
+          }
+        })()
       }
-      tx.oncomplete = () => resolve(result)
+      tx.oncomplete = () => {
+        journal?.committed()
+        resolve(result)
+      }
       tx.onerror = () => reject(tx.error ?? new Error('Node store read failed'))
     })
   }

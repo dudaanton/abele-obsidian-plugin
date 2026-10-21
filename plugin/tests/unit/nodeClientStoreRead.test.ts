@@ -3,6 +3,122 @@ import { expect, it, vi } from 'vitest'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
+import { giantJournal } from '../fixtures/giantJournal.mjs'
+
+it('migrates legacy sessions atomically to bounded journals while retaining recovery state', async () => {
+  const factory = new IDBFactory()
+  const journal = giantJournal({ turns: 60, outputBytes: 40 })
+  const legacy = {
+    cursors: { sample: journal.length },
+    events: { sample: journal },
+    outbox: [],
+    results: {},
+    chatDrafts: { sample: { text: 'Unsent sample', notice: '' } },
+  }
+  await new Promise<void>((resolve, reject) => {
+    const open = factory.open('abele-node-sample-migration', 1)
+    open.onupgradeneeded = () => open.result.createObjectStore('client').put(legacy, 'state')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      open.result.close()
+      resolve()
+    }
+  })
+  const store = new NodeClientStore('sample-migration', factory)
+  try {
+    expect(await store.read((state) => state.events.sample)).toEqual(journal.slice(-400))
+    expect(await store.read((state) => state.cursors.sample)).toBe(journal.length)
+    expect(await store.read((state) => state.chatDrafts)).toEqual(legacy.chatDrafts)
+    await store.transaction((state) => {
+      state.cursors.other = 1
+    })
+  } finally {
+    store.close()
+  }
+  const reopened = new NodeClientStore('sample-migration', factory)
+  try {
+    expect(await reopened.read((state) => state.events.sample)).toEqual(journal.slice(-400))
+  } finally {
+    reopened.close()
+  }
+})
+
+it('isolates cached journals across handles, failed callbacks, and readonly mutations', async () => {
+  const factory = new IDBFactory()
+  const first = new NodeClientStore('sample-cache-isolation', factory)
+  const second = new NodeClientStore('sample-cache-isolation', factory)
+  const journal = giantJournal({ turns: 1 })
+  try {
+    await first.transaction((state) => {
+      state.events.sample = journal
+    })
+    expect(await second.read((state) => state.events.sample.length)).toBe(journal.length)
+    await expect(
+      first.transaction((state) => {
+        state.events.sample[0].data = { damaged: true }
+        throw new Error('Sample rollback')
+      })
+    ).rejects.toThrow('Sample rollback')
+    await first.read((state) => {
+      state.events.sample.length = 0
+    })
+    expect(await first.read((state) => state.events.sample)).toEqual(journal)
+    await second.transaction((state) => {
+      state.events.sample = journal.slice(1)
+    })
+    expect(await first.read((state) => state.events.sample)).toEqual(journal.slice(1))
+    await first.transaction((state) => {
+      state.events = {}
+    })
+    expect(await second.read((state) => state.events)).toEqual({})
+  } finally {
+    first.close()
+    second.close()
+  }
+})
+
+it('bounds newly received sessions without trimming control streams or cursor evidence', async () => {
+  const store = new NodeClientStore('sample-session-retention', new IDBFactory())
+  const journal = giantJournal({ turns: 60, outputBytes: 40 })
+  const control = journal.map((event) => ({ ...event, type: 'sample.control' }))
+  try {
+    await store.transaction((state) => {
+      state.events.sample = journal
+      state.events.mailbox = control
+      state.cursors.sample = journal.length
+    })
+    expect(await store.read((state) => state.events.sample)).toEqual(journal.slice(-400))
+    expect(await store.read((state) => state.events.mailbox)).toEqual(control)
+    expect(await store.read((state) => state.cursors.sample)).toBe(journal.length)
+  } finally {
+    store.close()
+  }
+})
+
+it('keeps journals out of metadata and does not read or rewrite them on idle ticks', async () => {
+  const store = new NodeClientStore('sample-split-journal', new IDBFactory())
+  const journal = giantJournal({ turns: 3 })
+  await store.transaction((state) => {
+    state.events.sample = journal
+  })
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+  try {
+    await store.transaction((state) => {
+      state.cursors.sample = journal.length
+    })
+    expect(
+      (put.mock.calls.find(([, key]) => key === 'state')?.[0] as { events: unknown }).events
+    ).toEqual({})
+    expect(put.mock.calls.filter(([, key]) => key === 'sample')).toHaveLength(0)
+    expect(get.mock.calls.filter(([key]) => key === 'sample')).toHaveLength(0)
+    expect(await store.read((state) => state.events.sample)).toEqual(journal)
+  } finally {
+    get.mockRestore()
+    put.mockRestore()
+    store.close()
+  }
+})
 
 it('reads the state only once while an asynchronous transaction is waiting', async () => {
   const store = new NodeClientStore('sample-idle-read-count', new IDBFactory())

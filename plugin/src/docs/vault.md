@@ -3077,6 +3077,13 @@ effect; a final receipt retains its structured result. A missing or unfinished r
 after a node claim means the outcome is unknown, never permission to repeat the handler.
 These receipts are device-local recovery evidence, not vault files or transferable settings.
 
+The installation-local IndexedDB node cache stores client metadata separately from each
+stream's journal. Legacy single-record caches migrate atomically on opening. Session streams
+retain their latest 400 events (or the explicitly requested window); older history remains
+on the node and the chat reads it in pages. Control streams, pending operations, local drafts,
+approval answers and execution receipts are retained. Unchanged journals are neither read
+again nor rewritten during metadata-only polling in the same client handle.
+
 Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
 (node ID, display name and provider). Their ordinary permission mode, scope and tool modes
 travel through the Agents settings-transfer section. They are excluded from vault model
