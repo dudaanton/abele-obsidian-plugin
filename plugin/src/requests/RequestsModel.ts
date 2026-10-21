@@ -432,8 +432,11 @@ export class RequestsModel {
         }
       }
       const keyed = await this.ports.keys.prepare(out, options.interactive, options.signal)
-      const recording = this.ports.recording(keyed.out.url)
-      const into = (options.intoRecording ?? this.state.intoRecording) && recording
+      const recording =
+        (options.intoRecording ?? this.state.intoRecording)
+          ? await this.ports.recording(keyed.out.url)
+          : undefined
+      const into = recording
       const started = await this.rpc.send(this.projectId, {
         requestId: id,
         ...(environment ? { environment } : {}),
@@ -445,8 +448,10 @@ export class RequestsModel {
         secrets: [...new Set([...keyed.secrets, ...Object.values(this.secrets()).filter(Boolean)])],
         ...(into
           ? {
-              debugSessionId: recording.sessionId,
-              ...(this.state.env?.step_header ? { stepHeader: true } : {}),
+              ...(recording.routeByDestination
+                ? { routeByDestination: true }
+                : { debugSessionId: recording.sessionId }),
+              ...(recording.stepHeader || this.state.env?.step_header ? { stepHeader: true } : {}),
             }
           : {}),
       })

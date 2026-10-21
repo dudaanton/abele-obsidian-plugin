@@ -1,7 +1,7 @@
 // Where the saved requests meet Obsidian: which project of which node the Requests view shows, the
 // key store, the scripts, the recording going on and the choices remembered on this device. One
 // model per project, shared by the view and every request tab of it, and by the agent's tools.
-import { computed, shallowRef, type ComputedRef } from 'vue'
+import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -15,7 +15,8 @@ import {
 } from '@/ai/tools/secretUtils'
 import { RequestsModel, forgetRequestSecrets, type RequestsPorts } from './RequestsModel'
 import type { Outgoing } from './resolve'
-import { HttpRpc, nodeHttpSupported } from './wire'
+import { HttpRpc, nodeHttpSupported, httpRecordingCapabilities } from './wire'
+import type { RequestRecording } from './ports'
 import { distinctProjects, projectOfTab, serverAddress } from './projectContext'
 
 export const RequestsContextSchema = z.object({
@@ -164,6 +165,29 @@ export function recordingOf(
   }
 }
 
+export async function destinationRecording(
+  c: Pick<RequestsContext, 'registrationId' | 'projectId'>,
+  url?: string
+): Promise<RequestRecording | undefined> {
+  if (!url) return recordingOf(c)
+  const connection = NodeService.getInstance().connection(c.registrationId)
+  await connection.connect()
+  const support = httpRecordingCapabilities(await connection.client.describe())
+  if (!support.destination) return recordingOf(c, url)
+  const owner = await rpcFor(c.registrationId).rpc.destination(c.projectId, url)
+  if (owner.reason !== 'owned' || !owner.debug_session_id) return undefined
+  const binding = DebuggerService.instance
+    .projectBindings(c.registrationId, c.projectId)
+    .find((candidate) => candidate.sessionId === owner.debug_session_id)
+  if (!binding?.trace?.status?.recording || !binding.controller.snapshot) return undefined
+  return {
+    sessionId: owner.debug_session_id,
+    name: binding.controller.snapshot.target.launch_configuration_id,
+    routeByDestination: true,
+    stepHeader: support.correlation,
+  }
+}
+
 export class RequestsService {
   private static current?: RequestsService
   static instance() {
@@ -175,6 +199,14 @@ export class RequestsService {
   }
 
   private readonly models = new Map<string, RequestsModel>()
+  private readonly destinations = new Map<
+    string,
+    {
+      value: ShallowRef<{ recording?: RequestRecording } | undefined>
+      at: number
+      loading: boolean
+    }
+  >()
   /** The request whose tab was looked at last: the view marks it, a new request goes beside it. */
   readonly openRequest = shallowRef<{ registrationId: string; projectId: string; id: string }>()
   private readonly chosen = shallowRef<RequestsContext | undefined>(this.remembered())
@@ -235,7 +267,7 @@ export class RequestsService {
       model = new RequestsModel(rpcFor(c.registrationId).rpc, c.projectId, {
         keys: keyPort,
         scripts: scriptPort,
-        recording: (url) => recordingOf(c, url),
+        recording: (url) => destinationRecording(c, url),
         prefs: {
           get: (name) => {
             const v = app.loadLocalStorage(prefix + name) as unknown
@@ -254,7 +286,34 @@ export class RequestsService {
     c: Pick<RequestsContext, 'registrationId' | 'projectId'>,
     url?: string
   ): ComputedRef<{ sessionId: string; name: string } | undefined> {
-    return computed(() => recordingOf(c, url))
+    return computed(() => {
+      const fallback = recordingOf(c, url)
+      if (!url) return fallback
+      const id = JSON.stringify([key(c), url])
+      let entry = this.destinations.get(id)
+      if (!entry) {
+        entry = { value: shallowRef<{ recording?: RequestRecording }>(), at: 0, loading: false }
+        this.destinations.set(id, entry)
+        if (this.destinations.size > 256) {
+          const oldest = this.destinations.keys().next().value
+          if (oldest !== undefined) this.destinations.delete(oldest)
+        }
+      }
+      if (!entry.loading && Date.now() - entry.at > 5000) {
+        const current = entry
+        current.loading = true
+        current.at = Date.now()
+        void destinationRecording(c, url)
+          .then((recording) => {
+            current.value.value = { recording }
+          })
+          .catch((error) => console.debug('[requests] Recording destination unavailable', error))
+          .finally(() => {
+            current.loading = false
+          })
+      }
+      return entry.value.value ? entry.value.value.recording : fallback
+    })
   }
 
   /** Every project of every node that keeps saved requests, the connected nodes first. */

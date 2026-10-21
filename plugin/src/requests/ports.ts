@@ -1,6 +1,12 @@
 // What the requests model needs from around it, so it is tested without the key store, a script,
 // the debugger or a device's storage.
 import type { Outgoing } from './resolve'
+export interface RequestRecording {
+  sessionId: string
+  name: string
+  routeByDestination?: boolean
+  stepHeader?: boolean
+}
 
 /** What a script is given around a send: before it the request, after it the answer too. */
 export interface RequestScriptInput {
@@ -35,7 +41,7 @@ export interface RequestsPorts {
     ): Promise<RequestScriptResult | undefined>
   }
   /** The program being recorded now in this project, when one is. */
-  recording(url?: string): { sessionId: string; name: string } | undefined
+  recording(url?: string): RequestRecording | undefined | Promise<RequestRecording | undefined>
   prefs: { get(key: string): string | undefined; set(key: string, value: string): void }
   /** Waits between reads of a send under way; tests answer at once. */
   wait?: (ms: number) => Promise<void>

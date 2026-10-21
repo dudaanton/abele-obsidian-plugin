@@ -118,11 +118,21 @@ export interface OutgoingSend {
   /** Into the recording of this debugger session. */
   debugSessionId?: string
   stepHeader?: boolean
+  routeByDestination?: boolean
 }
 
 /** The `http.v1` methods over a node connection's generic request; every answer is validated. */
 export class HttpRpc {
   constructor(private readonly request: (method: string, params: unknown) => Promise<unknown>) {}
+  async destination(projectId: string, url: string) {
+    return z
+      .object({
+        debug_session_id: z.string().nullable(),
+        candidates: z.array(z.string()),
+        reason: z.enum(['remote', 'owned', 'ambiguous', 'unobserved']),
+      })
+      .parse(await this.request('http.v1.destination', { project_id: projectId, url }))
+  }
   async list(projectId: string) {
     return ListSchema.parse(await this.request('http.v1.list', { project_id: projectId }))
   }
@@ -185,6 +195,7 @@ export class HttpRpc {
         ...(send.timeoutMs ? { timeout_ms: send.timeoutMs } : {}),
         ...(send.debugSessionId ? { debug_session_id: send.debugSessionId } : {}),
         ...(send.stepHeader ? { step_header: true } : {}),
+        ...(send.routeByDestination ? { route_by_destination: true } : {}),
       })
     )
   }
@@ -215,9 +226,25 @@ export class HttpRpc {
 
 const HttpDescription = z.object({
   capabilities: z.object({
-    capabilities: z.object({ http_v1: z.object({ status: z.string() }).optional() }),
+    capabilities: z.object({
+      http_v1: z
+        .object({
+          status: z.string(),
+          destination_owner: z.boolean().optional(),
+          recording_correlation: z.boolean().optional(),
+        })
+        .optional(),
+    }),
   }),
 })
+export function httpRecordingCapabilities(description: unknown) {
+  const r = HttpDescription.safeParse(description)
+  const flags = r.success ? r.data.capabilities.capabilities.http_v1 : undefined
+  return {
+    destination: flags?.status === 'supported' && flags.destination_owner === true,
+    correlation: flags?.status === 'supported' && flags.recording_correlation === true,
+  }
+}
 /** Saved requests are offered where the node says it keeps and sends them. */
 export function nodeHttpSupported(description: unknown): boolean {
   const r = HttpDescription.safeParse(description)

@@ -8,6 +8,25 @@ import {
 import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 
 beforeEach(() => forgetRequestSecrets())
+it('routes recorded sends by destination and enables instrumentation correlation', async () => {
+  const node = fakeNode()
+  const model = new RequestsModel(
+    node.rpc,
+    'project-1',
+    ports({
+      recording: async () => ({
+        sessionId: 'sample-owner',
+        name: 'sample-server',
+        routeByDestination: true,
+        stepHeader: true,
+      }),
+    })
+  )
+  await model.load()
+  await model.send('Samples/Create sample.http', { interactive: true, intoRecording: true })
+  expect(node.sent[0]).toMatchObject({ route_by_destination: true, step_header: true })
+  expect(node.sent[0]).not.toHaveProperty('debug_session_id')
+})
 it.each(['request_timeout', 'outcome_unknown'])(
   'recovers a %s status read without resending a held request',
   async (code) => {
