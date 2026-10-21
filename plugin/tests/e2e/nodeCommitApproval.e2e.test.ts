@@ -19,9 +19,12 @@ async function inspectCommit(label: string) {
   try {
     const open = async () =>
       evalLong(`(async()=>{${setup}
-      const id=await api.openRegularChatFixture(),session=chats.getSession(id);
+      const id=chats.createTab(),session=chats.getSession(id);
       window.__sampleCommitChat=id;
+      await session.addUserNote('Sample commit approval probe');
       await session.saveForRelease();
+      if(!session.currentChatFile.value)throw Error('Sample parent chat was not saved');
+      await chats.revealSidebar({focus:false});
       await api.giveNodeChatAccess(session,{kind:'node',node_id:${JSON.stringify(node.node)},access:'edit'});
       const project=(await client.listProjects())[0];
       const root=(await client.repository.worktrees({project_id:project.project_id})).entries.find(entry=>entry.kind==='root');
@@ -69,7 +72,7 @@ async function inspectCommit(label: string) {
     await inspect('stale', 'The folder or worktree has changed')
   } finally {
     await evalLong(
-      '(async()=>{const api=window.__abeleTest;if(window.__sampleCommitChat)await api.ChatService.getInstance().deleteChat(window.__sampleCommitChat);await api.closeRegularChatFixture();delete window.__sampleCommitArgs;delete window.__sampleCommitChat})()'
+      '(async()=>{const api=window.__abeleTest;if(window.__sampleCommitChat)await api.ChatService.getInstance().deleteChat(window.__sampleCommitChat);delete window.__sampleCommitArgs;delete window.__sampleCommitChat})()'
     )
     await node.close()
   }

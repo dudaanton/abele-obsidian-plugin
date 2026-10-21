@@ -11,11 +11,14 @@ async function inspect(label: string) {
   try {
     const report = JSON.parse(
       await evalLong(`(async()=>{
-      const api=window.__abeleTest,id=await api.openRegularChatFixture();
-      const session=api.ChatService.getInstance().getSession(id);
+      const api=window.__abeleTest,chats=api.ChatService.getInstance(),id=chats.createTab();
+      const session=chats.getSession(id);
       window.__sampleNoticeChat=id;
       session.runAgentLoop=async()=>{};session.afterTurn=async()=>{};session.checkAnswer=async()=>{};
+      await session.addUserNote('Sample manager notice probe');
       await session.saveForRelease();
+      if(!session.currentChatFile.value)throw Error('Sample parent chat was not saved');
+      await chats.revealSidebar({focus:false});
       const previous=session.messages.value.length;
       session.wakeDelegationResult('sample-hidden-id','Read node_command_status for sample-hidden-id');
       for(let i=0;i<100;i++){
@@ -47,7 +50,7 @@ async function inspect(label: string) {
     )
   } finally {
     await evalLong(
-      '(async()=>{const api=window.__abeleTest;if(window.__sampleNoticeChat)await api.ChatService.getInstance().deleteChat(window.__sampleNoticeChat);await api.closeRegularChatFixture();delete window.__sampleNoticeChat})()'
+      '(async()=>{const api=window.__abeleTest;if(window.__sampleNoticeChat)await api.ChatService.getInstance().deleteChat(window.__sampleNoticeChat);delete window.__sampleNoticeChat})()'
     )
   }
 }
@@ -70,7 +73,7 @@ async function inspectEscalation(label: string) {
     columnShot(`${shots}/${label}-escalation.png`)
   } finally {
     await evalLong(
-      "document.querySelector('.abele-node-manager-run')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()"
+      `(async()=>{const root=document.querySelector('.abele-node-manager-run');const close=[...(root?.closest('.modal-container')?.querySelectorAll('.modal-header-button,.modal-close-button')??[])].find(el=>el.getBoundingClientRect().width);if(close)close.click();else document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));for(let i=0;i<100&&root?.isConnected;i++)await new Promise(r=>setTimeout(r,50));if(root?.isConnected)throw Error('Sample command dialog did not close')})()`
     )
   }
 }
