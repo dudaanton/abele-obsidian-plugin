@@ -854,9 +854,12 @@ export class NodePathModel {
     this.fileRefresh.value = versions
   }
   /** Whole-target refreshes plus streamed edits of this file or one of its parent folders. */
-  fileVersion(target: PathTarget, path: string): number {
-    const key = pathTargetKey(target),
-      versions = this.fileRefresh.value
+  fileVersion(
+    target: PathTarget,
+    path: string,
+    versions: Readonly<Record<string, number>> = this.fileRefresh.value
+  ): number {
+    const key = pathTargetKey(target)
     let version = versions[key] ?? 0,
       prefix = ''
     for (const part of path.split('/').filter(Boolean)) {
@@ -1450,14 +1453,18 @@ export class NodePathFileModel {
     markRaw(this)
     this.watchTarget()
     this.stopRefresh = watch(
-      () =>
-        pathModel.fileVersion?.(this.target, this.document.value?.path ?? '') ??
-        pathModel.fileRefresh?.value[pathTargetKey(this.target)],
-      () => {
-        this.watchTarget()
+      () => pathModel.fileRefresh?.value,
+      (next, previous) => {
         const doc = this.document.value
-        if (!doc || doc.revision?.kind === 'commit' || typeof this.stage === 'object') return
-        void this.open(doc.path, this.stage).catch(() => {})
+        if (!doc) return
+        const version = (values: Readonly<Record<string, number>> | undefined) =>
+          pathModel.fileVersion?.(this.target, doc.path, values ?? {}) ??
+          values?.[pathTargetKey(this.target)] ??
+          0
+        if (version(next) === version(previous)) return
+        this.watchTarget()
+        if (doc.revision?.kind === 'commit' || typeof this.stage === 'object') return
+        void this.open(doc.path, this.stage, false, true).catch(() => {})
       }
     )
   }
@@ -1481,9 +1488,14 @@ export class NodePathFileModel {
   }
   async refresh(): Promise<void> {
     const doc = this.document.value
-    if (doc) await this.open(doc.path, this.stage, true)
+    if (doc) await this.open(doc.path, this.stage, true, true)
   }
-  async open(path: string, stage?: PathFileStage, fresh = false): Promise<void> {
+  async open(
+    path: string,
+    stage?: PathFileStage,
+    fresh = false,
+    preserveMode = false
+  ): Promise<void> {
     const generation = ++this.generation
     this.busy.value = true
     try {
@@ -1498,7 +1510,8 @@ export class NodePathFileModel {
       if (generation !== this.generation) return
       this.document.value = file
       this.stage = stage
-      this.mode.value = file.change ? 'diff' : 'file'
+      this.mode.value =
+        preserveMode && this.mode.value === 'file' ? 'file' : file.change ? 'diff' : 'file'
       uiField(this.error, 'value', uiErrorMessage(''))
     } catch (error) {
       if (generation === this.generation)

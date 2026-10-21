@@ -344,15 +344,18 @@ describe('the path sidebar model on the change stream', () => {
       text,
       contentId: text,
       revision,
+      change: { path: 'README.md', kind: 'modified', before: 'before', after: text },
     }))
     const tab = new NodePathFileModel(model, target)
     await tab.open('README.md')
+    tab.mode.value = 'file'
     expect(port.watch).toHaveBeenCalledTimes(1)
     await model.select(other.id)
     text = 'after'
     changed({ entries: [{ change: 'modified', entry: file('README.md') }], git: false })
     await ticks()
     expect(tab.document.value?.text).toBe('after')
+    expect(tab.mode.value).toBe('file')
     port.tree.mockRejectedValueOnce(new ChannelError('stale_revision'))
     await model.reloadTarget(target)
     await ticks()
@@ -387,6 +390,23 @@ describe('the path sidebar model on the change stream', () => {
     changed({ entries: [{ change: 'modified', entry: file('src/other.ts') }], git: false })
     await ticks()
     expect(port.file).not.toHaveBeenCalled()
+    tab.destroy()
+    model.destroy()
+  })
+  it('does not reread a newly opened file because it changed before the tab existed', async () => {
+    const { model, port, changed } = await open()
+    changed({ entries: [{ change: 'modified', entry: file('README.md') }], git: false })
+    port.file.mockResolvedValue({
+      target,
+      path: 'README.md',
+      text: 'current',
+      contentId: 'sample-content',
+      revision,
+    })
+    const tab = new NodePathFileModel(model, target)
+    await tab.open('README.md')
+    await ticks()
+    expect(port.file).toHaveBeenCalledOnce()
     tab.destroy()
     model.destroy()
   })
