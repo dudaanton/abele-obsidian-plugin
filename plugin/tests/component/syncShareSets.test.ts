@@ -32,6 +32,34 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('shows settled rows for zero-total progress without hiding real transfers', () => {
+    const wrapper = mount(ConnectionItems, {
+      props: {
+        items: [
+          {
+            id: 'idle',
+            kind: 'group',
+            path: 'Example.md',
+            state: { kind: 'syncing', completed: 0, total: 0 },
+          },
+          {
+            id: 'active',
+            kind: 'folder',
+            path: 'Files',
+            state: { kind: 'syncing', completed: 1, total: 3 },
+          },
+        ],
+      },
+    })
+    try {
+      const rows = wrapper.findAll('.abele-connection-items__item')
+      expect(rows[0].text()).toContain('Synced')
+      expect(rows[0].text()).not.toContain('Receiving')
+      expect(rows[1].text()).toContain('Receiving 1 of 3')
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('omits the Access closed row when no share loses its scope', () => {
     const wrapper = mount(ServerDeleteModal, {
       props: {

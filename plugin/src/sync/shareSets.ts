@@ -107,7 +107,7 @@ export function itemTone(state: ItemState): ItemTone {
     case 'synced':
       return 'green'
     case 'syncing':
-      return 'accent'
+      return state.total > 0 ? 'accent' : 'green'
     case 'paused':
     case 'moved':
       return 'orange'
@@ -126,7 +126,7 @@ export function itemLine(state: ItemState): string {
     case 'synced':
       return 'Synced'
     case 'syncing':
-      return `Receiving ${n(state.completed)} of ${n(state.total)}`
+      return state.total > 0 ? `Receiving ${n(state.completed)} of ${n(state.total)}` : 'Synced'
     case 'paused':
       return 'Paused on this device'
     case 'moved':

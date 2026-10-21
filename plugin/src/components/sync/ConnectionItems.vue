@@ -15,7 +15,7 @@
             <StatusDot
               :tone="itemTone(item.state)"
               :label="itemLine(item.state)"
-              :pulse="item.state.kind === 'syncing'"
+              :pulse="item.state.kind === 'syncing' && item.state.total > 0"
             />
             <span :class="{ 'mod-warning': itemTone(item.state) === 'red' }">{{
               itemLine(item.state)
