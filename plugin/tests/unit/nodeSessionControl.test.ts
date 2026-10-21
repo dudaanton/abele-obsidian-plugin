@@ -58,6 +58,11 @@ const provider = (modes = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk']):
   },
 })
 const journal: LiveProjection = { live: true, tasks: [], context: null, compacting: false }
+it('uses the same model family before and after a raw model id is reported', () => {
+  expect(modelLabel('sample/gpt-9.7-sol').split(' ')[0]).toBe('GPT-9.7')
+  expect(modelLabel('gpt-9.7-sol').split(' ')[0]).toBe('GPT-9.7')
+  expect(modelLabel('sample/gpt-9.7-sol-preview')).toBe('GPT-9.7 Sol Preview')
+})
 it('uses node models and avoids calling a pi account a subscription', async () => {
   const c = client(
     state({ settings: { ...state().settings, model: 'sample/a', account: 'default' } })

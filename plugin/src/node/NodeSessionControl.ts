@@ -39,8 +39,16 @@ const EFFORT_LABEL: Record<string, string> = {
   },
 }
 
-/** «Opus», «Opus 5.5» from `opus` or `claude-opus-5-5`; anything else as the node says it. */
+/** Known model families and versions from provider IDs; unknown names stay as reported. */
 export function modelLabel(model: string): string {
+  const gpt = /(?:^|\/)gpt[-_ ]?(\d+(?:[.-]\d+)*)(.*)$/i.exec(model)
+  if (gpt) {
+    const variant = gpt[2]
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    return `GPT-${gpt[1]}${variant ? ` ${variant}` : ''}`
+  }
   const found = /(opus|sonnet|haiku|fable)(?:[-_ ]?(\d+(?:[-.]\d+)*))?/i.exec(model)
   if (!found) return model
   const family = found[1][0].toUpperCase() + found[1].slice(1).toLowerCase()
