@@ -1,15 +1,18 @@
 import type { ChatMessage } from '@/ai/types'
+import { chatBlocks } from '@/ai/toolRuns'
 
 /** A retry updates the original card instead of appending it under the latest reply. */
 export function nodeCardPlacement(
   blocks: readonly (
     | { kind: 'run'; id: string; calls: ChatMessage[] }
     | { kind: 'message'; message: ChatMessage }
-  )[]
+  )[],
+  history?: readonly ChatMessage[]
 ): Record<string, string[]> {
   const seen = new Set<string>()
   const placement: Record<string, string[]> = {}
-  for (const block of blocks) {
+  // Hidden older calls still own their cards; loading history reveals them in place.
+  for (const block of history ? chatBlocks([...history]) : blocks) {
     const calls = block.kind === 'run' ? block.calls : [block.message]
     const keys: string[] = []
     for (const call of calls) {
