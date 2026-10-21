@@ -11,7 +11,7 @@
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ShellModal, type ShellSize } from '@/modal/ShellModal'
-import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef, useSlots } from 'vue'
+import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef, useSlots, watch } from 'vue'
 
 /**
  * A dialog: the shell (`ShellModal`) with its body and its pinned row as slots. The body scrolls
@@ -45,6 +45,10 @@ const props = defineProps<{
 }>()
 
 const modal = ref<ShellModal | null>(null)
+watch(
+  () => props.title,
+  (title) => modal.value?.setTitle(title ?? '')
+)
 let unmounting = false
 
 const id = ref(genid())

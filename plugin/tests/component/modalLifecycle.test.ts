@@ -11,6 +11,16 @@ afterEach(() => {
 })
 
 describe('native modal lifecycle', () => {
+  it('updates its native title when the conversation title changes', async () => {
+    const title = vi.spyOn(Modal.prototype, 'setTitle')
+    const view = mount(ObsidianModal, { props: { title: 'Sample chat' } })
+    try {
+      await view.setProps({ title: 'Parser review' })
+      expect(title).toHaveBeenLastCalledWith('Parser review')
+    } finally {
+      view.unmount()
+    }
+  })
   it('does not treat being temporarily hidden or replaced by its parent as a user dismissal', () => {
     const close = vi.fn()
     const view = mount(ObsidianModal, { props: { title: 'A queued question', onClose: close } })
