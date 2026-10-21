@@ -285,9 +285,10 @@ describe('asking inside a comment', () => {
 
     expect(chats.activeSession.value).toBe(child)
     expect(service.isShown(child.commentId!)).toBe(true)
-    expect(service.isShown(C1)).toBe(false)
-    expect(chats.tabOrder.value).not.toContain(parent.id)
-    // Handed back, not ended: it still paints its message's marker and can be shown again.
+    // A nested comment never closes its parent: the parent stays shown and keeps its tab.
+    expect(service.isShown(C1)).toBe(true)
+    expect(chats.tabOrder.value).toContain(parent.id)
+    // Still alive: it paints its message's marker and stays reachable.
     expect(parent.isDestroyed).toBe(false)
     expect(service.sessionFor(C1)).toBe(parent)
   })
