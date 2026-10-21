@@ -124,6 +124,17 @@ function writeRun(root: string) {
       chain: 'n2',
       values: [],
     },
+    {
+      id: 't0004',
+      kind: 'http',
+      ts: '2026-01-02T03:04:05.040Z',
+      at: 40,
+      label: 'POST /api/samples',
+      host: 'localhost:4000',
+      sent: true,
+      status: 201,
+      values: [],
+    },
   ]
   writeFileSync(
     join(httpDir, 'timeline.jsonl'),
@@ -140,7 +151,7 @@ function writeRun(root: string) {
       started_at: '2026-01-02T03:04:05.000Z',
       length_ms: 100,
       state: 'done',
-      steps: 3,
+      steps: 4,
       bytes: 0,
       points: [],
     })
@@ -453,7 +464,7 @@ it('shows incoming and outgoing program requests with correlated code on desktop
       client.request=async function(method,params,...rest){
         const result=await request.call(this,method,params,...rest);
         if(method!=='trace.v1.run'||params.run_id!=='sample-http-run')return result;
-        return {...result,steps:result.steps.map(s=>s.kind!=='http'?s:{...s,direction:s.id==='t0002'?'incoming':'outgoing',duration_ms:s.id==='t0002'?50:12})};
+        return {...result,steps:result.steps.map(s=>s.kind!=='http'?s:{...s,direction:s.id==='t0002'?'incoming':'outgoing',duration_ms:s.id==='t0002'?50:12,sent:s.id==='t0004'})};
       };
       try {
         await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:'sample-http-run'});
@@ -468,6 +479,7 @@ it('shows incoming and outgoing program requests with correlated code on desktop
     })()`)
     expect(seen.text).toContain('Incoming')
     expect(seen.text).toContain('Outgoing')
+    expect(seen.text).toContain('A request you sent')
     expect(seen.text).toContain('200')
     expect(seen.text).toContain('503')
     expect(seen.text).toContain('50 ms')
