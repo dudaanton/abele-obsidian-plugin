@@ -43,6 +43,29 @@ it('clears a prior listing error after an explicit successful folder refresh', a
   expect(model.error.value).toBe('')
   model.destroy()
 })
+
+it('does not clear the new selection error when an old folder refresh finishes', async () => {
+  const { model, port } = fixture()
+  await model.refresh()
+  await model.selectTarget(target)
+  let finish!: (value: any) => void
+  port.inspect.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  const reading = model.reloadTarget(target, false)
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  const other = { ...target, id: 'sample-other-tree' }
+  model.targets.value.push(other)
+  model.selected.value = other.id
+  model.report(new ChannelError('unauthorized'))
+  finish({ entries: [], changes: [] })
+  await reading
+  expect(model.error.value).toBe('unauthorized')
+  model.destroy()
+})
 function fixture() {
   const port = {
     catalogue: vi.fn(async () => ({

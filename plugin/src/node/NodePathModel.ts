@@ -790,7 +790,8 @@ export class NodePathModel {
       return
     }
     await this.recoverRead(target, () => this.reloadTargetOnce(target, files))
-    uiField(this.error, 'value', uiErrorMessage(''))
+    if (this.current.value && pathTargetKey(this.current.value) === pathTargetKey(target))
+      uiField(this.error, 'value', uiErrorMessage(''))
     const key = pathTargetKey(target)
     this.fileRefresh.value = {
       ...this.fileRefresh.value,
