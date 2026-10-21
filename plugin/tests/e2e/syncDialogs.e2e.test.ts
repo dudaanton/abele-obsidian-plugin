@@ -94,6 +94,14 @@ liveCase(
         a.run(
           `const folder=${JSON.stringify(folder)};if(!app.vault.getAbstractFileByPath(folder))await app.vault.createFolder(folder);for(let i=0;i<160;i++)await app.vault.create(folder+'/sample-'+i+'.md','Sample content '+i+' '+${width});return true`
         )
+        // Populate history with durable file actions before holding the next upload.
+        // Parallel transfers can remain in one phase until the batch commits.
+        await a.pause(id, false)
+        await a.syncNow(id)
+        await a.pause(id, true)
+        a.run(
+          `const folder=${JSON.stringify(folder)};for(let i=0;i<160;i++)await app.vault.modify(app.vault.getFileByPath(folder+'/sample-'+i+'.md'),'Revised sample content '+i+' '+${width});return true`
+        )
         // Hold real I/O at observable phases, without inventing snapshots or log lines.
         a.run(`const runtime=host.live.get(${JSON.stringify(id)}),fs=runtime.options.fs,read=fs.fingerprint,fetcher=runtime.options.fetch;
           const state=window.__sampleActivity={compareReached:false,uploadReached:false,puts:0};
