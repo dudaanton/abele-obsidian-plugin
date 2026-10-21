@@ -35,7 +35,14 @@ async function inspectDialog(name: string, picture = name) {
         const r = field.getBoundingClientRect();
         if (r.width && (r.left < 0 || r.right > innerWidth + 1)) outside.push(field.getAttribute('aria-label') || field.tagName);
       }
+      if (${JSON.stringify(name)} === 'node-delegation-card') {
+        const disclosure=modal.querySelector('.abele-node-delegation__details .abele-disclosure__control');
+        if(disclosure?.getAttribute('aria-expanded')==='false')disclosure.click();
+        await wait(150);
+      }
       const text = modal.textContent;
+      const actionLabels = [...modal.querySelectorAll('button')].map(button=>button.getAttribute('aria-label') || button.textContent);
+
       if (${JSON.stringify(name)} === 'node-settings-access') {
         const action=modal.querySelector('[aria-label="Pairing, debugger access, remove"]'), box=action.getBoundingClientRect();
         action.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:box.x+box.width/2,clientY:box.y+box.height/2}));
@@ -51,7 +58,7 @@ async function inspectDialog(name: string, picture = name) {
         document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
         await wait(100);
       }
-      return JSON.stringify({ outside, text, shot, controls: modal.querySelectorAll('input,textarea,select,button').length });
+      return JSON.stringify({ outside, text, shot, actionLabels, controls: modal.querySelectorAll('input,textarea,select,button').length });
     } finally {
       modal?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
       for (let i=0; i<100 && document.querySelector('.modal'); i++) await wait(20);
@@ -60,7 +67,7 @@ async function inspectDialog(name: string, picture = name) {
   })()`,
       60000
     )
-  ) as { outside: string[]; text: string; shot: string; controls: number }
+  ) as { outside: string[]; text: string; shot: string; controls: number; actionLabels: string[] }
   expect(result.outside).toEqual([])
   expect(result.controls).toBeGreaterThan(0)
   expect(result.shot).not.toMatch(/^no picture:/)
@@ -77,7 +84,7 @@ async function inspectDialog(name: string, picture = name) {
     expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
   }
   if (name === 'node-delegation-card') {
-    expect(result.text).toContain('Open child chat')
+    expect(result.actionLabels).toContain('Open child chat')
     expect(result.text).toContain('Result')
   }
 }
