@@ -15,6 +15,7 @@
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
       'abele-obsidian-icon_active': active,
+      'abele-obsidian-icon_with-text': textLeft || textRight,
       [`abele-obsidian-icon_color-${color}`]: color && color !== 'grey',
       [`abele-obsidian-icon_size-${size}`]: !!size,
     }"
@@ -199,5 +200,12 @@ watch(accessibleName, updateTooltip)
   &:last-child:not(:first-child) {
     margin-left: var(--size-2-2);
   }
+}
+
+// A theme may size phone glyphs as squares; labelled actions need room for their words too.
+.abele-obsidian-icon.clickable-icon.abele-obsidian-icon_with-text {
+  width: max-content;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 </style>
