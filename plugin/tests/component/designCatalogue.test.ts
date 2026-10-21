@@ -12,6 +12,7 @@ describe('test-only design catalogue', () => {
     const states = mount(DesignCatalogue, { ...options, props: { page: 'states' } })
     expect(states.find('.abele-run-report').exists()).toBe(true)
     expect(states.find('.abele-short-list').exists()).toBe(true)
+    expect(states.find('.abele-call-note').text()).toBe('The sample action was not sent.')
     states.unmount()
     const controls = mount(DesignCatalogue, { ...options, props: { page: 'controls' } })
     expect(controls.find('[data-selection-sample]').exists()).toBe(true)

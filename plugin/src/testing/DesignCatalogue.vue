@@ -242,6 +242,7 @@
         ><Section title="No passage selected"><Quote text="" /></Section>
       </template>
       <template v-else-if="page === 'states'">
+        <CallNote text="The sample action was not sent." />
         <Section title="Run report">
           <RunReport finished status="Import complete" :facts="[{ label: 'Notes', value: 3 }]" />
           <ShortList
@@ -740,6 +741,7 @@ import RequestCard from '@/components/obsidian/RequestCard.vue'
 import CardGrid from '@/components/obsidian/CardGrid.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import StatusDot from '@/components/obsidian/StatusDot.vue'
+import CallNote from '@/components/obsidian/CallNote.vue'
 const compactStates = [
   { tone: 'green', label: 'Running' },
   { tone: 'orange', label: 'Paused' },

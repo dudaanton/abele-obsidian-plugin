@@ -29,6 +29,7 @@ export const CATALOGUE_COMPONENTS = [
   'Badge',
   'Breadcrumbs',
   'Button',
+  'CallNote',
   'Card',
   'CardGrid',
   'Chart',
