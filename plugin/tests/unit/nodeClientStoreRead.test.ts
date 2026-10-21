@@ -5,6 +5,24 @@ import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
 
+it('keeps a session bounded after its identifying events have left the retained window', async () => {
+  const store = new NodeClientStore('sample-sticky-window', new IDBFactory())
+  const journal = giantJournal({ turns: 60, outputBytes: 40 })
+  const output = journal.slice(1).map((event) => ({ ...event, type: 'command.output' }))
+  try {
+    await store.transaction((state) => {
+      state.events.sample = [journal[0], ...output]
+    })
+    await store.transaction((state) => {
+      state.events.sample.push(...output.slice(0, 10))
+    })
+    expect(await store.read((state) => state.events.sample.length)).toBe(400)
+    expect(await store.read((state) => state.windows?.sample)).toBe(400)
+  } finally {
+    store.close()
+  }
+})
+
 it('leaves the legacy database intact when migration validation fails', async () => {
   const factory = new IDBFactory()
   const legacy = {

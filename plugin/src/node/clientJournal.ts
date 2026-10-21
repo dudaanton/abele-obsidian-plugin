@@ -13,14 +13,17 @@ function request<T>(value: IDBRequest<T>): Promise<T> {
 }
 
 /** Session journals are paged from the node; mailbox and other control streams stay intact. */
-function retained(events: Events, window?: number): Events {
-  const keep =
-    window ??
-    (events.some((event) =>
+function retained(state: NodeClientState, stream: string, events: Events): Events {
+  let keep = state.windows?.[stream]
+  if (
+    keep === undefined &&
+    events.some((event) =>
       ['session.created', 'session.update', 'input.accepted'].includes(event.type)
     )
-      ? SESSION_WINDOW
-      : undefined)
+  ) {
+    // Persist the classification: the identifying event itself will leave the window.
+    ;(state.windows ??= {})[stream] = keep = SESSION_WINDOW
+  }
   return keep && events.length > keep ? events.slice(-keep) : events
 }
 
@@ -66,7 +69,7 @@ export class ClientJournal {
         configurable: true,
         enumerable: true,
         get: () => {
-          const copy = structuredClone(retained(snapshot.events, state.windows?.[stream]))
+          const copy = structuredClone(retained(state, stream, snapshot.events))
           assign(stream, copy)
           return copy
         },
@@ -89,7 +92,7 @@ export class ClientJournal {
         }
         for (const stream of Object.keys(current)) {
           if (current === events && Object.getOwnPropertyDescriptor(current, stream)?.get) continue
-          const next = retained(current[stream], state.windows?.[stream])
+          const next = retained(state, stream, current[stream])
           const previous = snapshots.get(stream)
           if (previous && JSON.stringify(next) === JSON.stringify(previous.events)) continue
           const revision = crypto.randomUUID()
@@ -110,7 +113,7 @@ export class ClientJournal {
   static migrate(tx: IDBTransaction, state: NodeClientState): void {
     const revisions: Record<string, string> = {}
     for (const [stream, events] of Object.entries(state.events)) {
-      tx.objectStore('journal').put(retained(events, state.windows?.[stream]), stream)
+      tx.objectStore('journal').put(retained(state, stream, events), stream)
       revisions[stream] = crypto.randomUUID()
     }
     tx.objectStore('client').put({ ...state, events: {} }, 'state')
