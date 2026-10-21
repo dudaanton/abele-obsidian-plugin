@@ -44,6 +44,7 @@ describe('bundle size', () => {
       { cwd: root, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, NODE_ENV: 'production' } }
     )
     report = JSON.parse(stdout) as Report
+    console.info(`Emitted bytes: main.js ${report.mainJsBytes}; CSS ${report.stylesBytes}`)
     writeFileSync(
       path.join(tmpdir(), 'abele-bundle-size.json'),
       JSON.stringify({ ...report, budget }, null, 2)

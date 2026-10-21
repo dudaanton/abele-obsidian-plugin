@@ -19,7 +19,7 @@ it.each(onPhone() ? [true] : [false, true])(
       const shots=${JSON.stringify(shotDir('chat-messaging'))};
       const shot=async state=>{await wait(150);const path=shots+'/'+${JSON.stringify(phone ? 'phone-' : 'desktop-')}+state+'.png';if(window.__e2eHost)await window.__e2eHost.shot(path);else require('fs').writeFileSync(path,(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())};
       const root=()=>leaf.view.containerEl;
-      let release, pending, target, originalLoop, originalAfter, originalCheck;
+      let release, pending, target, originalLoop, originalAfter, originalCheck, originalDirectory;
       try {
         const caller=chats.getSession(chats.createTab());ids.push(caller.id);
         target=chats.getSession(chats.createTab());ids.push(target.id);
@@ -45,7 +45,7 @@ it.each(onPhone() ? [true] : [false, true])(
         await until(()=>root().querySelector('.abele-tool-approval__message'));
         const approval=root().querySelector('.abele-tool-approval').textContent;
         await shot('approval-long-message');
-        caller.pendingToolCalls.value=[];call.toolStatus='approved';caller.updateVisibleMessages();
+        caller.pendingToolCalls.value=[];caller.updateChatMessage(m=>m.id==='letter',m=>({...m,toolStatus:'approved'}));caller.updateVisibleMessages();
         originalLoop=target.runAgentLoop;
         originalAfter=target.afterTurn;originalCheck=target.checkAnswer;
         target.afterTurn=async()=>{};target.checkAnswer=async()=>{};
@@ -86,12 +86,20 @@ it.each(onPhone() ? [true] : [false, true])(
           await until(()=>root().querySelector('[data-message-id="'+id+'"] .abele-chat-msg__letter-refusal'));
           root().querySelector('[data-message-id="'+id+'"]').scrollIntoView({block:'center'});await shot(id+'-refused');
         }
+        originalDirectory=chats.listOpenChats;
+        chats.listOpenChats=function(){return [...originalDirectory.call(this),{id:'sample-node',title:'Sample node chat',folder:'Examples',agent:null,state:'idle'}]};
+        const nodeCall={...call,id:'node-refused',toolCallId:'node-refused',toolParams:{chat_id:'sample-node',message:'Sample remote question'}};
+        caller.appendChatMessage(nodeCall);caller.updateVisibleMessages();try{await send.execute('node-refused',nodeCall.toolParams)}catch{}
+        await until(()=>root().querySelector('[data-message-id="node-refused"] .abele-call-note'));
+        root().querySelector('[data-message-id="node-refused"]').scrollIntoView({block:'center'});await shot('node-refused');
+        chats.listOpenChats=originalDirectory;originalDirectory=undefined;
         caller.appendChatMessage({...call,id:'interrupted',toolCallId:'interrupted',toolStatus:'approved',chatLetter:{to:{id:target.id,title:target.chatTitle.value,path:targetPath}}});caller.updateVisibleMessages();await caller.save();
         const saved=caller.currentChatFile.value;await chats.closeTab(caller.id);await chats.openChatFile(saved);
         const reopened=chats.getSessionByFile(saved.path);ids.push(reopened.id);
         await until(()=>root().textContent.includes('interrupted by a reload'));root().querySelector('[data-message-id="interrupted"]')?.scrollIntoView({block:'center'});await shot('interrupted-reload');
         return JSON.stringify({approval,incoming,sent,reply,refusal});
       } finally {
+        if(originalDirectory)chats.listOpenChats=originalDirectory;
         if(release)release();if(pending)await pending.catch(()=>{});if(target&&originalLoop)target.runAgentLoop=originalLoop;
         if(target&&originalAfter)target.afterTurn=originalAfter;if(target&&originalCheck)target.checkAnswer=originalCheck;
         for(const id of ids)await chats.closeTab(id);for(const file of files)if(file&&app.vault.getAbstractFileByPath(file.path))await app.vault.delete(file);
@@ -104,7 +112,7 @@ it.each(onPhone() ? [true] : [false, true])(
       expect(result.incoming).toContain('Sample request')
       expect(result.sent).toContain('Sample request')
       expect(result.reply).toContain('reconnects')
-      expect(result.refusal).toContain('own chat')
+      expect(result.refusal).toBe('That is this chat.')
     }
     if (phone && !onPhone()) await withEmulatedPhone(run)
     else await run()
