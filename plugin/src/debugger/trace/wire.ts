@@ -212,11 +212,14 @@ export class TraceRpc {
   /** A whole run, page after page; the node stops each page under its record size. */
   async wholeRun(projectId: string, runId: string): Promise<WireRun> {
     const first = await this.run(projectId, runId)
-    const steps = [...first.steps]
+    const count = first.run.steps
+    const steps = first.steps.slice(0, count)
     let next = first.next
-    while (next !== undefined) {
-      const page = await this.run(projectId, runId, next)
-      steps.push(...page.steps)
+    while (next !== undefined && steps.length < count) {
+      const page = await this.run(projectId, runId, next, count - steps.length)
+      steps.push(...page.steps.slice(0, count - steps.length))
+      if (page.next !== undefined && page.next <= next)
+        throw new Error('Run cursor did not advance')
       next = page.next
     }
     return { ...first, steps, next: undefined }

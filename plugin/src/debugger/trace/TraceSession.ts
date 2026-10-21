@@ -121,6 +121,7 @@ export class TraceSession {
     const stop = snapshot?.threads.find((t) => t.thread_id === snapshot.selected_thread_id)?.stop
     const hits = stop?.hit_breakpoint_ids ?? []
     return (
+      (!stop?.reason || stop.reason === 'breakpoint') &&
       hits.length > 0 &&
       hits.every(
         (id) =>

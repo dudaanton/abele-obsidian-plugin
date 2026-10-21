@@ -388,6 +388,11 @@ describe('a stop on record points', () => {
     expect(s.isRecordStop(stopped(['bp-1']))).toBe(true)
     expect(s.isRecordStop(stopped(['bp-1', 'bp-2']))).toBe(false)
     expect(s.isRecordStop(stopped([]))).toBe(false)
+    for (const reason of ['exception', 'pause', 'step']) {
+      const state = stopped(['bp-1'])
+      state.threads[0].stop!.reason = reason
+      expect(s.isRecordStop(state)).toBe(false)
+    }
   })
 })
 
