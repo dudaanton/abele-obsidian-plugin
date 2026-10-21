@@ -5466,5 +5466,8 @@
   },
   "streamB.permissionUpdateNode": {
     "englishHash": "7a6cdd0108ced38dcdee0d922f823bc4e64c417a59a8e049d17eea926d38361c"
+  },
+  "streamB.permissionInherit": {
+    "englishHash": "fb863b0248e81425d3914332b799e316e68ea9e05c0f1e1dbf50cfaef9da3f5e"
   }
 }

@@ -1205,7 +1205,39 @@ it('does not send owner mode to older nodes', async () => {
   }
 })
 
-it('applies a later owner mode change before sending a delegated follow-up', async () => {
+it.each(['pi', 'codex'] as const)(
+  'inherits parent bypass for %s without a configured developer mode',
+  async (provider) => {
+    const f = fixture()
+    const description = await f.client.describe()
+    f.client.describe.mockResolvedValue({
+      ...description,
+      providers: [{ provider, available: true }],
+      capabilities: {
+        capabilities: {
+          ...description.capabilities.capabilities,
+          'tool.permissions.v1': { status: 'supported' },
+        },
+      },
+    })
+    try {
+      await f.controller.create('parent', { ...task, provider }, undefined, 'allow-all')
+      expect(f.client.createDelegation.mock.calls[0][0].permission_mode).toBe('bypassPermissions')
+      f.controller.ownerPermissionMode = () => 'confirm-all'
+      await f.controller.create(
+        'parent',
+        { ...task, provider, task_key: 'explicit-ask-task' },
+        undefined,
+        'allow-all'
+      )
+      expect(f.client.createDelegation.mock.calls[1][0].permission_mode).toBe('manual')
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
+it('preserves an explicit session choice on delegated follow-up despite a changed agent default', async () => {
   const f = fixture()
   const description = await f.client.describe()
   f.client.describe.mockResolvedValue({
@@ -1245,8 +1277,10 @@ it('applies a later owner mode change before sending a delegated follow-up', asy
   try {
     await f.controller.create('parent', task)
     expect((await f.controller.cards('parent'))[0].toolPermissions).toEqual(manual)
-    mode = 'allow-all'
+    await f.client.configureSession('child', { permission_mode: 'bypassPermissions' })
+    mode = 'confirm-all'
     await f.controller.send('parent', 'delegation', 'Continue the sample task')
+    expect(f.client.configureSession).toHaveBeenCalledTimes(1)
     expect(f.client.configureSession).toHaveBeenCalledWith('child', {
       permission_mode: 'bypassPermissions',
     })

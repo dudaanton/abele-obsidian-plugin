@@ -39,6 +39,7 @@ export interface DialogFixtureOptions {
     | 'prompt'
     | 'answering'
   permissionState?: 'running' | 'refused' | 'node-opt-in' | 'unknown'
+  agentInherit?: boolean
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
   agentsState?: import('./agentsFixture').AgentsFixtureState
@@ -928,7 +929,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }),
   'agent-editor': () =>
     mountAlone(AgentEditorModal, { agentId: AgentRegistry.getInstance().list()[0]?.id ?? '' }),
-  'node-agent-permissions': () => {
+  'node-agent-permissions': (options) => {
     const config = AbeleConfig.getInstance(),
       registry = AgentRegistry.getInstance()
     const save = config.saveSettings
@@ -938,7 +939,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     const agent = registry.create({
       name: 'Sample code agent',
       utility: true,
-      node: { id: 'sample-permission-node', name: 'Sample node', provider: 'codex' },
+      node: {
+        id: 'sample-permission-node',
+        name: 'Sample node',
+        provider: 'codex',
+        permissionModeConfigured: !options?.agentInherit,
+      },
     })
     mountAlone(
       defineComponent({

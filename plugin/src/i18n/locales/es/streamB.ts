@@ -3,6 +3,7 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',
   'streamB.providerUnavailable': 'El proveedor del modelo no está disponible temporalmente.',
+  'streamB.permissionInherit': 'Heredar del chat principal al delegar (preguntar en chats nuevos)',
   'streamB.permissionUpdateNode':
     'Actualice este nodo para que indique y aplique los modos de permisos antes de iniciar este proveedor.',
   'streamB.permissionAsk': 'Preguntar',

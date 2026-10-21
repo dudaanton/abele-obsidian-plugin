@@ -35,6 +35,11 @@ Node delegation records retain the owner's permission mode in the exact create r
 the node's effective tool-permission snapshot with the child and latest status. Missing
 snapshots on older nodes remain unknown. Refusals retain their status reason; they never
 authorize changing the owner's agent settings.
+Node-agent definitions retain whether the owner explicitly chose their permission default;
+otherwise delegation inherits its parent's effective mode. Delegation captures the stricter
+parent/developer mode at creation, as ordinary delegation does. New node chats receive the
+agent default once; subsequent sends use the node's persisted session choice, including
+choices made from another device, without reapplying the agent default.
 
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.

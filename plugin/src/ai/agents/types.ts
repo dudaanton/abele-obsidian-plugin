@@ -40,7 +40,7 @@ export interface ScopeEntry {
 
 export interface AgentDefinition {
   /** A node-hosted provider. Its Obsidian tool controls use this same definition. */
-  node?: { id: string; name: string; provider: string }
+  node?: { id: string; name: string; provider: string; permissionModeConfigured?: boolean }
   id: string
   name: string
   description: string

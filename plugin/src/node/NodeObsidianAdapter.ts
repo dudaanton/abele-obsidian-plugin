@@ -7,7 +7,7 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from '@/ai/ordinaryToolPolicy'
 import { createAgentTools, getToolRegistry } from '@/ai/tools'
 import { skillNeedsApproval } from '@/ai/tools/SkillTool'
-import { CORE_TOOLS } from '@/ai/types'
+import { CORE_TOOLS, NODE_ACTION_TOOLS, type PermissionMode } from '@/ai/types'
 import { contentHash, ReadGuard } from '@/ai/readGuard'
 import type { AgentTool, AgentToolResult, Message, ReadMark } from '@/ai/client'
 import { ResultStore, createReadResultTool } from '@/ai/resultStore'
@@ -44,18 +44,20 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     private readonly marks: (session: string, run: string) => Promise<ReadMark[]>,
     private readonly previousResults: (
       session: string
-    ) => Promise<AgentToolResult[]> = async () => []
+    ) => Promise<AgentToolResult[]> = async () => [],
+    private readonly effectivePermissionMode?: () => PermissionMode | undefined
   ) {
     this.guardScope.setFullVaultAccess(true)
   }
 
-  private agent() {
+  private agent(sessionMode = true) {
     const agent = AgentRegistry.getInstance().get(this.agentId)
     if (!agent) throw new ObsidianNotExecuted('This agent is no longer configured')
     this.scope.entries.value = agent.scope.map((entry) => ({ ...entry }))
     this.scope.setFullVaultAccess(agent.fullVaultAccess)
     this.scope.invalidate()
-    return agent
+    const mode = sessionMode ? this.effectivePermissionMode?.() : undefined
+    return mode ? { ...agent, permissionMode: mode } : agent
   }
   private registry(): AgentTool[] {
     return [
@@ -67,8 +69,13 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       createReadResultTool(this.results),
     ]
   }
-  private asks(name: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
-    const agent = this.agent()
+  private asks(
+    name: string,
+    args?: Record<string, unknown>,
+    permissionKey?: string,
+    sessionMode = true
+  ): boolean {
+    const agent = this.agent(sessionMode)
     return ordinaryNeedsApproval(
       {
         permissionMode:
@@ -93,7 +100,7 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     )
   }
   tools(): ObsidianToolDefinition[] {
-    const agent = this.agent()
+    const agent = this.agent(false)
     const all = this.registry()
     const allowed = new Set(
       AgentRegistry.getInstance()
@@ -107,8 +114,12 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       mode: !allowed.has(tool.name)
         ? 'off'
         : agent.node && agent.toolModes[tool.permissionKey ?? tool.name] !== undefined
-          ? agent.toolModes[tool.permissionKey ?? tool.name]
-          : this.asks(tool.name, undefined, tool.permissionKey)
+          ? agent.permissionMode === 'allow-all' &&
+            [...NODE_ACTION_TOOLS, 'node_git_commit', 'node_worktree_remove'].includes(tool.name) &&
+            agent.toolModes[tool.permissionKey ?? tool.name] !== 'off'
+            ? 'auto'
+            : agent.toolModes[tool.permissionKey ?? tool.name]
+          : this.asks(tool.name, undefined, tool.permissionKey, false)
             ? 'ask'
             : 'auto',
     }))

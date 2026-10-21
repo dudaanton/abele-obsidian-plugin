@@ -16,6 +16,13 @@ export const ToolPermissionsSchema = z.object({
 })
 export type ToolPermissions = z.infer<typeof ToolPermissionsSchema>
 
+/** Ordinary delegation captures the stricter of the developer and parent effective modes. */
+export function delegatedPermissionMode(own?: string, parent?: string): string {
+  const selected = own ?? parent ?? 'confirm-all'
+  const rank: Record<string, number> = { 'confirm-all': 0, 'allow-edit': 1, 'allow-all': 2 }
+  return parent && (rank[parent] ?? 0) < (rank[selected] ?? 0) ? parent : selected
+}
+
 /** Only owner settings can authorize bypass. Missing capability is never consent. */
 export function ownerPermissionPatch(description: unknown, ownerMode?: string) {
   const envelope = description as { capabilities?: unknown } | null

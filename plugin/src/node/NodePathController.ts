@@ -16,7 +16,8 @@ import {
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { agentChoices, nodeProviders, type AgentChoice } from './providers'
-import { nodeAgentModeLabel } from './nodeAgentTools'
+import { nodeAgentModeLabel, nodeAgentOwnerMode } from './nodeAgentTools'
+import { configureOwnerPermissionMode } from './toolPermissions'
 import { openNodeAgentSettings } from './openNodeAgentSettings'
 import { preferredAgentChoices, lastNodeAgent, rememberNodeAgent } from './agentPreference'
 import { bindPathTarget } from './nodePathChat'
@@ -707,6 +708,12 @@ export function startNodePathChat(
         throw nodeActionError(error, 'Chat')
       })
     model.error.value = ''
+    await configureOwnerPermissionMode(
+      connection.client,
+      session.session_id,
+      nodeAgentOwnerMode(model.nodeId, choice.provider),
+      choice.provider
+    )
     rememberNodeAgent(model.nodeId, choice, app())
     // The returned session already carries this exact target. Refresh drawer metadata
     // in the background; recursively listing its files is not part of opening a chat.

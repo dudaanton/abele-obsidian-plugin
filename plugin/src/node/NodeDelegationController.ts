@@ -29,6 +29,7 @@ import {
   readToolPermissions,
   permissionRefusal,
   legacyProviderRefusal,
+  delegatedPermissionMode,
 } from './toolPermissions'
 
 /** Child-authored text is quoted data, including any attempted quote/block delimiters. */
@@ -129,9 +130,18 @@ export class NodeDelegationController {
       },
     ]
   }
-  async create(parent: string, raw: DelegationTaskInput, signal?: AbortSignal) {
+  async create(
+    parent: string,
+    raw: DelegationTaskInput,
+    signal?: AbortSignal,
+    parentMode?: string
+  ) {
     const input = DelegationTaskInputSchema.parse(raw)
     const description = await this.client.describe()
+    const ownerMode = delegatedPermissionMode(
+      this.ownerPermissionMode?.(input.provider),
+      parentMode
+    )
     requireGrantFreeDelegation(description)
     const key = await taskKey(parent, input.task_key)
     const retained = await readStore(this.store, (state) => state.delegation?.tasks[key]?.request)
@@ -152,7 +162,7 @@ export class NodeDelegationController {
       const { task_key: _key, ...body } = input
       const request: DelegationRequest = {
         ...body,
-        ...ownerPermissionPatch(description, this.ownerPermissionMode?.(input.provider)),
+        ...ownerPermissionPatch(description, ownerMode),
         parent_id: parent,
         delegation_key: key,
         ...(obsidian ? { obsidian_tools: obsidian } : {}),
@@ -192,11 +202,7 @@ export class NodeDelegationController {
       )
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       if (!available) throw new Error('Provider unavailable on this node')
-      const refusal = legacyProviderRefusal(
-        description,
-        input.provider,
-        this.ownerPermissionMode?.(input.provider)
-      )
+      const refusal = legacyProviderRefusal(description, input.provider, ownerMode)
       if (refusal) throw new Error(refusal)
       // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
       child = await this.client.createDelegation(request)
@@ -413,24 +419,6 @@ export class NodeDelegationController {
         'The delegated chat target is not ready. Nothing was sent. Check its status before sending again.'
       )
     }
-    const provider = await readStore(
-      this.store,
-      (s) =>
-        Object.values(s.delegation?.tasks ?? {}).find((task) => task.child?.delegation_id === id)
-          ?.input.provider
-    )
-    const permissions = ownerPermissionPatch(
-      description,
-      provider ? this.ownerPermissionMode?.(provider) : undefined
-    )
-    const refusal =
-      provider && legacyProviderRefusal(description, provider, this.ownerPermissionMode?.(provider))
-    if (refusal) throw new Error(refusal)
-    if (permissions.permission_mode)
-      await this.client.configureSession(child.session_id, {
-        permission_mode: permissions.permission_mode as 'manual' | 'bypassPermissions',
-      })
-    if (signal?.aborted) throw new Error('Delegation call cancelled')
     const status = await this.client.delegationStatus(id)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
     const result =

@@ -235,7 +235,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         },
         required: ['node', 'task_key', 'provider', 'title', 'text'],
       },
-      async (parent, params, _service, signal, _chat, guard, resolvedConnection) => {
+      async (parent, params, _service, signal, chat, guard, resolvedConnection) => {
         const { node: _node, ...input } = Create.parse(params)
         const connection = resolvedConnection!
         await connection.connect()
@@ -244,7 +244,12 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         guard?.()
         checkCancelled(signal)
         try {
-          const child = await connection.delegation.create(parent, input, signal)
+          const child = await connection.delegation.create(
+            parent,
+            input,
+            signal,
+            chat?.permissionMode.value
+          )
           if (signal?.aborted && 'delegation_id' in child) {
             await connection.delegation.cancel(parent, child.delegation_id).catch(() => {})
             checkCancelled(signal)

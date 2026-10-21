@@ -196,9 +196,15 @@
             "
           >
             <Dropdown
-              :model-value="agent.permissionMode"
+              :model-value="
+                agent.node &&
+                !agent.node.permissionModeConfigured &&
+                agent.permissionMode === 'confirm-all'
+                  ? 'inherit'
+                  : agent.permissionMode
+              "
               :options="agent.node ? nodePermissionOptions : PERMISSION_OPTIONS"
-              @update:model-value="patch({ permissionMode: $event as PermissionMode })"
+              @update:model-value="patchPermissionMode"
             />
           </Setting>
           <template v-if="!agent.node">
@@ -463,6 +469,7 @@ const DEPTH_OPTIONS = [
 
 const registry = AgentRegistry.getInstance()
 const nodePermissionOptions = computed(() => [
+  { value: 'inherit', display: t('streamB.permissionInherit') },
   { value: 'confirm-all', display: t('streamB.permissionAsk') },
   { value: 'allow-all', display: t('streamB.permissionBypass') },
 ])
@@ -522,6 +529,14 @@ const nodeToolRegistry = computed(() => {
 function patch(fields: Partial<AgentDefinition>): void {
   registry.update(props.agentId, fields)
   persist()
+}
+function patchPermissionMode(value: string): void {
+  patch({
+    permissionMode: (value === 'inherit' ? 'confirm-all' : value) as PermissionMode,
+    ...(agent.value?.node
+      ? { node: { ...agent.value.node, permissionModeConfigured: value !== 'inherit' } }
+      : {}),
+  })
 }
 
 const persist = (): void => {

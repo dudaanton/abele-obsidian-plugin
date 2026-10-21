@@ -31,6 +31,17 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       await shot('picker');
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(150);
       await api.closeNodeSessionFixture();
+      await api.openNodeSessionFixture('letter');
+      const overridden=chats.getNodeSession(chats.activeTabId.value);
+      await overridden.control.change({mode:'plan'});
+      await overridden.send('Continue the sample plan.');
+      const configurations=api.nodeSessionCalls.filter(call=>call.method==='session.configure');
+      states.sessionOverride=configurations.length===1 && configurations[0].params[1].permission_mode==='plan';
+      await api.closeNodeSessionFixture();
+      api.openDialog('node-agent-permissions',{agentInherit:true});
+      const inherited=await until(()=>document.querySelector('.abele-agent-editor'));
+      states.inherit=[...inherited.querySelectorAll('select')].some(select=>select.value==='inherit');
+      await shot('agent-settings-inherited');await close();
       api.openDialog('node-agent-permissions');
       const settings=await until(()=>document.querySelector('.abele-agent-editor'));
       states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('confined to that folder');
@@ -60,6 +71,8 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
     picker: true,
     settings: true,
     ownerChoice: true,
+    sessionOverride: true,
+    inherit: true,
     refused: true,
     'node-opt-in': true,
     running: true,

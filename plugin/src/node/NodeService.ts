@@ -50,7 +50,10 @@ export class NodeConnection {
     this.delegation.ownerNodeId = tools?.nodeId
     this.delegation.ownerPermissionMode = (provider) => {
       if (!this.tools) return undefined
-      return ensureNodeAgents(this.tools.nodeId, this.tools.label, [provider])[0]?.permissionMode
+      const agent = ensureNodeAgents(this.tools.nodeId, this.tools.label, [provider])[0]
+      return agent?.node?.permissionModeConfigured || agent?.permissionMode !== 'confirm-all'
+        ? agent?.permissionMode
+        : undefined
     }
     // The SDK supplies wire deadlines. This host deadline also bounds timer grace
     // while backgrounded, and publishes failure before callers render their error.

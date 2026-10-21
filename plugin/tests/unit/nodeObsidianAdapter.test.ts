@@ -37,6 +37,26 @@ const call = (tool_name: string, args: Record<string, unknown>): ObsidianInvocat
   created_at: 1,
   action: 'claim',
 })
+it('uses the session effective mode for action preparation without changing the agent advertisement', async () => {
+  adapter.destroy()
+  let mode: 'allow-all' | 'confirm-all' = 'allow-all'
+  adapter = new NodeObsidianAdapter(
+    agentId,
+    'revision-1',
+    async () => [],
+    undefined,
+    () => mode
+  )
+  expect(adapter.tools().find((tool) => tool.name === 'create')?.mode).toBe('ask')
+  expect(
+    (await adapter.prepare(call('create', { path: 'created.md', content: 'Sample' }))).needsApproval
+  ).toBe(false)
+  expect(adapter.tools().find((tool) => tool.name === 'fetch')?.mode).toBe('off')
+  mode = 'confirm-all'
+  expect(
+    (await adapter.prepare(call('create', { path: 'created.md', content: 'Sample' }))).needsApproval
+  ).toBe(true)
+})
 it('exports ordinary schemas and effective core permissions, including default-Off feature tools', () => {
   const snapshot = adapter.tools()
   expect(snapshot.find((tool) => tool.name === 'read')?.mode).toBe('auto')

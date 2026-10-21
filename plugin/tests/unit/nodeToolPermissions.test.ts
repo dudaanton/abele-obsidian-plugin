@@ -8,6 +8,7 @@ import {
   ownerPermissionPatch,
   readToolPermissions,
   configureOwnerPermissionMode,
+  delegatedPermissionMode,
 } from '@/node/toolPermissions'
 import {
   DelegationSchema,
@@ -15,6 +16,11 @@ import {
   SessionSchema,
   LiveSessionStateSchema,
 } from '@abele/node-protocol'
+it('inherits the parent effective mode and preserves an explicit stricter delegate mode', () => {
+  expect(delegatedPermissionMode(undefined, 'allow-all')).toBe('allow-all')
+  expect(delegatedPermissionMode('confirm-all', 'allow-all')).toBe('confirm-all')
+  expect(delegatedPermissionMode('allow-all', 'confirm-all')).toBe('confirm-all')
+})
 it('configures sessions from owner settings only when the node supports the contract', async () => {
   const client = { describe: vi.fn(), configureSession: vi.fn() }
   client.describe.mockResolvedValue({})

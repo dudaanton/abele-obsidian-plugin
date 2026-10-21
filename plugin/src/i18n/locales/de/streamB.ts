@@ -3,6 +3,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Der Worktree wird gelöscht. Aktualisieren Sie den Ordner, um das Ergebnis zu prüfen.',
   'streamB.providerUnavailable': 'Der Modellanbieter ist vorübergehend nicht verfügbar.',
+  'streamB.permissionInherit':
+    'Beim Delegieren vom übergeordneten Chat übernehmen (in neuen Chats nachfragen)',
   'streamB.permissionUpdateNode':
     'Aktualisieren Sie diesen Knoten, damit er Berechtigungsmodi meldet und durchsetzt, bevor Sie diesen Anbieter starten.',
   'streamB.permissionAsk': 'Nachfragen',

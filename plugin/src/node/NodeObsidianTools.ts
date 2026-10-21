@@ -18,6 +18,8 @@ import { obsidianDeviceName } from './obsidianDevice'
 import { ensureNodeAgents, nodeToolRunners } from './nodeAgentTools'
 import { nodeProviders } from './providers'
 import { nodeAdvertisesMethod } from './advertisedMethods'
+import { ownerPermissionPatch, readToolPermissions } from './toolPermissions'
+import type { PermissionMode } from '@/ai/types'
 
 const Config = z.object({
   max_delegate_depth: z.number().optional(),
@@ -81,6 +83,8 @@ export class NodeObsidianTools {
   private busy?: Promise<void>
   private readonly adapters = new Map<string, NodeObsidianAdapter>()
   private readonly sessions = new Map<string, string>()
+  private permissionSnapshots = false
+  private readonly sessionModes = new Map<string, PermissionMode>()
   private readonly sessionRevisions = new Map<string, string>()
   private readonly snapshots = new Map<string, { fingerprint: string; revision: string }>()
   private readonly preparing = new Map<string, Promise<void>>()
@@ -88,6 +92,7 @@ export class NodeObsidianTools {
   private lastDiscovery = 0
   private async forget(session: string): Promise<void> {
     this.sessions.delete(session)
+    this.sessionModes.delete(session)
     this.sessionRevisions.delete(session)
     await this.store.transaction((state) => {
       delete state.obsidianSessions?.[session]
@@ -185,7 +190,8 @@ export class NodeObsidianTools {
                   Array.isArray(receipt.result.content)
               )
               .map((receipt) => receipt.result as unknown as AgentToolResult)
-          )
+          ),
+        () => this.sessionModes.get(session)
       )
       this.adapters.set(key, adapter)
     }
@@ -194,6 +200,24 @@ export class NodeObsidianTools {
   private async snapshot(session: string, agentId: string) {
     const agent = AgentRegistry.getInstance().get(agentId)
     if (!agent) throw new Error('This node agent is no longer configured')
+    if (this.permissionSnapshots && !['delegate-target', 'delegation'].includes(session)) {
+      try {
+        const policy = readToolPermissions(await this.client.sessionState(session))
+        if (policy)
+          this.sessionModes.set(
+            session,
+            policy.permission_mode === 'bypassPermissions' && policy.status === 'supported'
+              ? 'allow-all'
+              : policy.permission_mode === 'acceptEdits'
+                ? 'allow-edit'
+                : 'confirm-all'
+          )
+        else this.sessionModes.delete(session)
+      } catch (error) {
+        this.sessionModes.delete(session)
+        console.debug('[Abele node] session permission snapshot unavailable', error)
+      }
+    }
     const tools = this.adapter(session, agentId, 'snapshot').tools()
     const conversation = nodeConversation(agent)
     const max_delegate_depth = Math.min(3, Math.max(0, Math.floor(agent.maxDelegateDepth ?? 0)))
@@ -224,6 +248,8 @@ export class NodeObsidianTools {
   }
   async connectionChanged(description: unknown): Promise<void> {
     this.connected = false
+    this.permissionSnapshots = !!ownerPermissionPatch(description).permission_mode
+    this.sessionModes.clear()
     if (!nodeAdvertisesMethod(this.client, prefix + 'advertise')) return
     const before = AgentRegistry.getInstance().list({
       includeUtility: true,

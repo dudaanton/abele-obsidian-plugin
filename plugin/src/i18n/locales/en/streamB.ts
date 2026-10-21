@@ -3,6 +3,7 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Worktree deletion is in progress. Refresh the folder to check its result.',
   'streamB.providerUnavailable': 'The model provider is temporarily unavailable.',
+  'streamB.permissionInherit': 'Inherit parent for delegation (Ask for new chats)',
   'streamB.permissionUpdateNode':
     'Update this node to report and enforce provider permission modes before starting this provider.',
   'streamB.permissionAsk': 'Ask',

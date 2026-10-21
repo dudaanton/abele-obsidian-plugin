@@ -3,6 +3,7 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
   'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
+  'streamB.permissionInherit': 'Deleģēšanā mantot vecāka režīmu (jaunos čatos jautāt)',
   'streamB.permissionUpdateNode':
     'Pirms šī pakalpojuma sniedzēja palaišanas atjauniniet mezglu, lai tas ziņotu par atļauju režīmiem un tos ievērotu.',
   'streamB.permissionAsk': 'Jautāt',
