@@ -148,11 +148,6 @@ const current = computed(() =>
     gap: var(--size-2-1);
   }
 
-  /* Dots, narrower than the glyphs beside them, as in the bar for selected words. */
-  &__swatch.abele-obsidian-icon {
-    padding-inline: var(--size-2-1);
-  }
-
   &__swatch svg {
     fill: currentColor;
   }

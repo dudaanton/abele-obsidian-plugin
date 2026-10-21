@@ -23,8 +23,37 @@ import { initCompiler } from 'sass-embedded'
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
 const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
 
+/** Obsidian's clickable-icon inset is 4px vertically and 6px horizontally.
+ * Resolve its size tokens rather than treating a nonzero inset as sufficient. */
+function shrinksGlyphBox(property: string, value: string): boolean {
+  if (['auto', 'none', 'revert', 'revert-layer'].includes(value)) return false
+  if (!property.startsWith('padding')) return true
+  const lengths = value.match(/var\(--size-[24]-\d+\)|\d*\.?\d+(?:px|rem|em)?/g) ?? []
+  const pixels = lengths.map((length) => {
+    const token = /^var\(--size-([24])-(\d+)\)$/.exec(length)
+    if (token) return Number(token[1]) * Number(token[2])
+    if (/(?:rem|em)$/.test(length)) return parseFloat(length) * 16
+    return parseFloat(length)
+  })
+  const horizontal = /(?:inline|left|right)/.test(property)
+  if (property !== 'padding') return pixels.some((size) => size < (horizontal ? 6 : 4))
+  const [top, right = top, bottom = top, left = right] = pixels
+  return [top, right, bottom, left].some((size, index) => size < (index % 2 ? 6 : 4))
+}
+
 describe('glyph button boxes', () => {
-  it('never zeroes the padding of an interactive glyph', () => {
+  it.each([
+    ['padding', '1px'],
+    ['padding-inline', 'var(--size-2-1)'],
+    ['padding', 'var(--size-2-2) var(--size-2-2)'],
+    ['height', 'var(--icon-size)'],
+    ['max-height', '1lh'],
+    ['block-size', '1rem'],
+  ])('rejects %s: %s', (property, value) => {
+    expect(shrinksGlyphBox(property, value)).toBe(true)
+  })
+
+  it('preserves native padding and height on interactive glyphs', () => {
     const failures: string[] = []
     const compiler = initCompiler()
     try {
@@ -68,11 +97,24 @@ describe('glyph button boxes', () => {
             (buttonNames.has(node.tag) && plain)
           )
             el.classList.add('clickable-icon')
+          if (iconNames.has(node.tag)) el.dataset.glyph = 'true'
+          if (
+            buttonNames.has(node.tag) &&
+            node.props.some((prop) =>
+              prop.type === NodeTypes.ATTRIBUTE
+                ? prop.name === 'icon'
+                : prop.type === NodeTypes.DIRECTIVE &&
+                  prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
+                  prop.arg.content === 'icon'
+            )
+          )
+            el.dataset.glyph = 'true'
           parent.append(el)
           // Kit slots may receive interactive metadata/actions from a caller.
           if (path.includes(`${join('components', 'obsidian')}/`) && node.tag === 'slot') {
             const glyph = document.createElement('button')
             glyph.className = 'abele-obsidian-icon clickable-icon'
+            glyph.dataset.glyph = 'true'
             el.append(glyph)
           }
           node.children.forEach((child) => add(child, el))
@@ -91,22 +133,25 @@ describe('glyph button boxes', () => {
             !rule.nodes.some(
               (node) =>
                 node.type === 'decl' &&
-                node.prop.startsWith('padding') &&
-                /(?:^|\s)0(?:px)?(?:\s|$)/.test(node.value)
+                /^(?:padding|height$|max-height$|block-size$|max-block-size$)/.test(node.prop)
             )
           )
             return
-          const targetsGlyph = ['', 'is-phone is-mobile'].some((mode) => {
+          const glyphs = ['', 'is-phone is-mobile'].flatMap((mode) => {
             root.className = mode
-            return [...root.querySelectorAll('.clickable-icon')].some((el) =>
+            return [...root.querySelectorAll('.clickable-icon')].filter((el) =>
               rule.selectors.some((selector) => !selector.includes('::') && el.matches(selector))
             )
           })
-          if (!targetsGlyph) return
+          if (!glyphs.length) return
           rule.walkDecls(
-            /^padding(?:-(?:block|inline)(?:-start|-end)?|-(?:top|right|bottom|left))?$/,
+            /^(?:padding(?:-(?:block|inline)(?:-start|-end)?|-(?:top|right|bottom|left))?|height|max-height|block-size|max-block-size)$/,
             (decl) => {
-              if (/(?:^|\s)0(?:px)?(?:\s|$)/.test(decl.value))
+              if (
+                (decl.prop.startsWith('padding') && /(?:^|\s)0(?:px)?(?:\s|$)/.test(decl.value)) ||
+                (glyphs.some((el) => el.hasAttribute('data-glyph')) &&
+                  shrinksGlyphBox(decl.prop, decl.value))
+              )
                 failures.push(`${name(path)}: ${rule.selector} { ${decl.prop}: ${decl.value} }`)
             }
           )

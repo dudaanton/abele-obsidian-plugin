@@ -80,7 +80,7 @@ const emit = defineEmits<{
 
   .abele-obsidian-icon {
     align-self: flex-start;
-    height: var(--input-height);
+    min-height: var(--input-height);
   }
 }
 
