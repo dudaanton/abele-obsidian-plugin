@@ -14,6 +14,39 @@ const receipt = {
   stdout_truncated: false,
   stderr_truncated: false,
 }
+
+it('reports a retained developer worktree only after its integration succeeds, without removing it', async () => {
+  const f = fixture()
+  try {
+    await f.store.transaction((state) => {
+      state.results['sample-integration'] = { result: { ...receipt, method: 'git.v1.integrate' } }
+      state.managerOperations = {
+        'sample-integration': {
+          parent: 'sample-parent',
+          method: 'git.v1.integrate',
+          params: {
+            project_id: 'sample-project',
+            source_worktree_id: 'sample-source',
+            source_branch: 'work/sample',
+          },
+          run: { ...receipt, method: 'git.v1.integrate', state: 'running' } as never,
+        },
+      }
+    })
+    expect(await f.controller.cleanupFor('sample-parent', 'sample-run')).toBeUndefined()
+    await f.store.transaction((state) => {
+      state.managerOperations!['sample-integration'].run!.state = 'applied'
+    })
+    expect(await f.controller.cleanupFor('sample-parent', 'sample-run')).toMatchObject({
+      worktree_id: 'sample-source',
+      owner_approval_required: true,
+    })
+    expect(await f.controller.cleanupFor('other-parent', 'sample-run')).toBeUndefined()
+    expect(f.client.request).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
 function fixture(supported = true) {
   const store = new NodeClientStore(crypto.randomUUID(), new IDBFactory())
   const client = {

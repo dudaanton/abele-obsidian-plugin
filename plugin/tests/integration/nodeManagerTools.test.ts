@@ -91,7 +91,14 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
       }),
     },
     connect: async () => {},
-    manager: { mutate, status },
+    manager: {
+      mutate,
+      status,
+      cleanupFor: vi.fn(async () => ({
+        worktree_id: 'sample-source',
+        owner_approval_required: true,
+      })),
+    },
     refreshDelegations: refresh,
   }
   vi.spyOn(NodeService, 'getInstance').mockReturnValue({
@@ -137,6 +144,17 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
   })
   expect(mutate.mock.calls[1][1]).toBe('git.v1.integrate')
   expect(refresh).toHaveBeenCalledTimes(3)
+  status.mockResolvedValueOnce({
+    run_id: 'sample-run',
+    method: 'git.v1.integrate',
+    state: 'applied',
+  } as never)
+  const completed = await tools[1].execute('sample-final-status', { ...base, run_id: 'sample-run' })
+  expect(JSON.parse(completed.content[0].text).worktree_cleanup).toMatchObject({
+    worktree_id: 'sample-source',
+    owner_approval_required: true,
+  })
+  expect(connection.manager.cleanupFor).toHaveBeenCalledWith('sample-parent', 'sample-run')
 })
 it('never enqueues execution after the parent stops while connecting', async () => {
   const signal = new AbortController()

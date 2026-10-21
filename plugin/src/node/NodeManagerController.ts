@@ -59,6 +59,23 @@ export class NodeManagerController {
         if (entry.parent === parent) entry.notified = true
     })
   }
+  async cleanupFor(parent: string, run: string) {
+    const card = (await this.cards(parent)).find((entry) => entry.run.run_id === run)
+    if (card?.run.method !== 'git.v1.integrate' || card.run.state !== 'applied') return
+    return this.store.read((state) => {
+      const params = state.managerOperations?.[card.operation]?.params
+      const worktree = params?.source_worktree_id
+      if (typeof worktree !== 'string') return
+      return {
+        worktree_id: worktree,
+        project_id: params.project_id,
+        branch: params.source_branch,
+        owner_approval_required: true,
+        instruction:
+          'The developer worktree remains on the node. Report its location from list_node_worktrees and offer removal. Only remove it if the owner approves; get fresh node_git_status preconditions before node_worktree_remove. The branch is retained.',
+      }
+    })
+  }
   async wakeDelivered(wake: (parent: string, notice: string) => boolean) {
     const entries = await this.store.transaction((s) =>
       Object.entries(s.managerOperations ?? {}).filter(

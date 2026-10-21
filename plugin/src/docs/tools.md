@@ -962,8 +962,9 @@ own permissions and cannot move them to a similarly named server.
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
 Delegation and command tools are Off by default. Enable them through the ordinary agent or
 chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
-cannot enable these tools. Ask prompts before starting a delegation (`node_delegate`), running a
-command (`node_command_run`) and integrating (`node_git_integrate`). Sending new instructions
+cannot enable these tools. Ask prompts before starting a delegation (`node_delegate`). Commands (`node_command_run`)
+and integration (`node_git_integrate`) use one exact owner approval from the node, without a
+second plugin prompt. Sending new instructions
 (`node_delegation_send`) copies `node_delegate` exactly: Ask prompts, Auto sends without a
 prompt, Off disables sending. The tools that list, check status or cancel that work
 (`node_delegations`, `node_delegation_status`,
@@ -1353,7 +1354,11 @@ in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
 `outcome_unknown` directly; inspect both heads before another attempt. Never retry
 blindly or clean up an uncertain integration. Older nodes keep the existing Git tools.
 
-Run → check output and diff → integrate → remove the clean developer worktree.
+Use node_git_status, node_git_diff and node_git_log for read-only Git inspection instead of
+generic commands. The commit approval lists staged files with folded patches.
+Run → check output and diff → integrate → report the retained developer worktree and offer
+removal. Successful integration status includes worktree_cleanup. Never remove the worktree
+without the owner; inspect its fresh node_git_status preconditions before node_worktree_remove.
 Retain the same exact arguments and operation ID to recover a lost receipt.
 The parent receives automatic attention notices for child prompts, pauses, failures and
 delivered results, and when its command ends. Notices are deduplicated and respect Stop.
