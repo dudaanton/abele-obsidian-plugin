@@ -54,6 +54,7 @@
       />
       <div v-if="managerApproval" data-manager-approval>
         <code data-manager-command>{{ managerApproval.command }}</code>
+        <p v-if="managerApproval.reason">{{ managerApproval.reason }}</p>
         <MetaLine :facts="managerApproval.facts" />
         <Disclosure
           v-model="originalOpen"
@@ -126,6 +127,30 @@
       ><code><SyntaxText :text="String(params.content || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
     </template>
 
+    <template v-else-if="message.toolName === 'node_git_commit'">
+      <p>{{ params.message }}</p>
+      <p v-if="commitPreviewError" role="status">{{ commitPreviewError }}</p>
+      <p v-else-if="!commitPreview">{{ t('kit.loading') }}</p>
+      <template v-else>
+        <p>{{ t('node.files.fileCount', { count: commitPreview.files.length }) }}</p>
+        <Disclosure
+          v-for="file in commitPreview.files"
+          :key="file.path"
+          :label="file.path"
+          :model-value="!!commitDiffs[file.path]"
+          data-node-commit-diff
+          @update:model-value="commitDiffs[file.path] = $event"
+        >
+          <p v-if="file.error">{{ nodeErrorDetails(file.error) }}</p>
+          <pre class="abele-tool-approval__code"><code>{{ file.patch }}</code></pre>
+        </Disclosure>
+      </template>
+      <Disclosure v-model="originalOpen" :label="t('node.manager.evidence')">
+        <pre
+          class="abele-tool-approval__code"
+        ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
+      </Disclosure>
+    </template>
     <template v-else-if="message.toolName === 'node_delegate'">
       <Setting
         :name="promptString(params.title)"
@@ -401,6 +426,8 @@ import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
 import HttpSendPreview from './debugger/http/HttpSendPreview.vue'
 import Setting from './obsidian/Setting.vue'
 import MetaLine from './obsidian/MetaLine.vue'
+import { nodeCommitPreview } from '@/node/nodeCommitPreview'
+import { nodeErrorDetails } from '@/node/errorWords'
 import { providerLabel } from '@/node/providers'
 /** A saved request as an agent's send would put it on the wire, for its card. */
 const readHttpSend = (id: string, environment?: string) =>
@@ -434,6 +461,20 @@ const visibleText = (value: string): string =>
   )
 const managerApproval = computed(() => {
   const input = props.nodePrompt?.input
+  if (input && props.nodePrompt?.tool_name === 'codex.command') {
+    return {
+      command: visibleText(promptString(input.command)),
+      reason: visibleText(promptString(input.reason)),
+      facts: [
+        {
+          key: 'cwd',
+          label: t('node.manager.folder'),
+          value: visibleText(promptString(input.cwd)),
+        },
+      ],
+      evidence: visibleJson(input, 2),
+    }
+  }
   if (!input || !['command.v1.run', 'git.v1.integrate'].includes(promptString(input.method)))
     return undefined
   const params = input.params as Record<string, unknown> | undefined
@@ -481,6 +522,7 @@ const managerApproval = computed(() => {
     add(t('node.manager.session'), params.session_id)
   if (typeof input.cwd === 'string') add(t('node.manager.folder'), input.cwd)
   return {
+    reason: '',
     command: rows[0]?.value ?? '',
     facts: rows
       .slice(1)
@@ -512,6 +554,9 @@ watch(
 )
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const commitPreview = ref<Awaited<ReturnType<typeof nodeCommitPreview>> | null>(null)
+const commitPreviewError = ref('')
+const commitDiffs = ref<Record<string, boolean>>({})
 const questionList = computed(() =>
   Array.isArray(params.value.questions)
     ? params.value.questions.flatMap((value) => {
@@ -564,6 +609,41 @@ const effectiveParams = computed(() => {
     return {}
   }
 })
+watch(
+  [
+    session,
+    () =>
+      JSON.stringify(
+        ['node', 'project', 'workspace', 'target_kind', 'expected_head'].map(
+          (key) => effectiveParams.value[key]
+        )
+      ),
+    () => props.message.toolName,
+  ],
+  async ([owner, _target, name], _previous, cleanup) => {
+    commitPreview.value = null
+    commitDiffs.value = {}
+    commitPreviewError.value = ''
+    if (!owner || name !== 'node_git_commit') return
+    const controller = new AbortController()
+    cleanup(() => controller.abort())
+    try {
+      const preview = await nodeCommitPreview(
+        owner,
+        { ...effectiveParams.value },
+        undefined,
+        controller.signal
+      )
+      if (!controller.signal.aborted) commitPreview.value = preview
+    } catch (error) {
+      if (!controller.signal.aborted)
+        commitPreviewError.value = nodeErrorDetails(
+          error instanceof Error ? error.message : String(error)
+        )
+    }
+  },
+  { immediate: true }
+)
 // The summary and action share the same unresolved snapshot. Unsaved MCP edits must
 // not silently replace the request the person saw before clicking trust.
 const resolvedKeyRequest = computed(() => {
@@ -713,6 +793,7 @@ function moreMenu(event?: MouseEvent) {
 
 const headerText = computed(() => {
   if (props.nodePrompt && !obsidianCall.value) {
+    if (props.nodePrompt.tool_name === 'codex.command') return t('node.manager.command')
     const title = props.nodePrompt.title || props.nodePrompt.tool_name
     return managerApproval.value ? visibleText(title) : title
   }

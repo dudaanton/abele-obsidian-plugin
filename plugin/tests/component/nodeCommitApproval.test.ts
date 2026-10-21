@@ -1,0 +1,117 @@
+import { mount, flushPromises } from '@vue/test-utils'
+import { afterEach, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
+import AiToolApproval from '@/components/AiToolApproval.vue'
+import { ChatService } from '@/ai/ChatService'
+import { nodeCommitPreview } from '@/node/nodeCommitPreview'
+import type { ChatMessage } from '@/ai/types'
+import { useVault } from '../helpers/testEnv'
+import { chooseApproval } from '../helpers/approvalCard'
+
+vi.mock('@/node/nodeCommitPreview', () => ({ nodeCommitPreview: vi.fn() }))
+afterEach(() => vi.restoreAllMocks())
+
+it('refreshes the staged evidence when the owner edits the commit target', async () => {
+  useVault([])
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: {
+      permissionMode: ref('confirm-all'),
+      getToolMode: () => 'ask',
+    },
+  } as never)
+  vi.mocked(nodeCommitPreview).mockImplementation(async (_owner, args) => ({
+    files: [{ path: `${args.workspace}/sample.ts`, patch: 'sample patch' }],
+  }))
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      message: {
+        id: 'sample-commit',
+        role: 'tool-call',
+        toolName: 'node_git_commit',
+        toolStatus: 'pending',
+        toolParams: { workspace: 'sample-first' },
+        content: '',
+        timestamp: 1,
+      } as ChatMessage,
+    },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.text()).toContain('sample-first/sample.ts')
+    await chooseApproval(wrapper, 'Edit before allowing')
+    await wrapper.get('textarea').setValue(JSON.stringify({ workspace: 'sample-second' }))
+    await flushPromises()
+    expect(wrapper.text()).toContain('sample-second/sample.ts')
+    expect(wrapper.text()).not.toContain('sample-first/sample.ts')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('shows a provider escalation as command, folder and reason with protocol identifiers folded', async () => {
+  useVault([])
+  const input = {
+    command: "npm test -- 'sample case'",
+    cwd: '/sample/project',
+    reason: 'Run the sample checks',
+    request_id: 42,
+    thread_id: 'sample-hidden-thread',
+  }
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      nodePrompt: {
+        prompt_id: 'sample',
+        tool_name: 'codex.command',
+        kind: 'permission',
+        input,
+        state: 'pending',
+      } as never,
+      message: { toolName: 'codex.command', toolParams: input } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain(input.command)
+    expect(wrapper.text()).toContain(input.cwd)
+    expect(wrapper.text()).toContain(input.reason)
+    expect(wrapper.text()).not.toContain(input.thread_id)
+    await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+    expect(wrapper.text()).toContain(input.thread_id)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('shows staged files on the commit approval with patches folded until opened', async () => {
+  useVault([])
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: {
+      permissionMode: ref('confirm-all'),
+      getToolMode: () => 'ask',
+    },
+  } as never)
+  vi.mocked(nodeCommitPreview).mockResolvedValue({
+    files: [{ path: 'src/sample.ts', patch: '-before\n+after' }],
+  })
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      message: {
+        id: 'sample-commit',
+        role: 'tool-call',
+        toolName: 'node_git_commit',
+        toolStatus: 'pending',
+        toolParams: { message: 'Sample change' },
+        content: '',
+        timestamp: 1,
+      } as ChatMessage,
+    },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.text()).toContain('src/sample.ts')
+    expect(wrapper.text()).not.toContain('+after')
+    await wrapper.get('[data-node-commit-diff] .abele-disclosure__control').trigger('click')
+    expect(wrapper.text()).toContain('+after')
+  } finally {
+    wrapper.unmount()
+  }
+})
