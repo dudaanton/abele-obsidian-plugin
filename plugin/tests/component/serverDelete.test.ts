@@ -203,7 +203,7 @@ describe('ServerDeleteModal', () => {
     try {
       press('Delete from the server').click()
       await flushPromises()
-      expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      expect(document.querySelector('[role="alert"]')?.textContent).toBe(
         'This connection does not allow that action.'
       )
       expect(view.text()).not.toContain('untrusted response detail')
