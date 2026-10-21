@@ -26,4 +26,7 @@ it('selects the recording at the request destination rather than the displayed s
   expect(recordingOf(context, 'http://localhost:9999/items')).toBeUndefined()
   state.bindings.push(state.bindings[1])
   expect(recordingOf(context, 'http://localhost:4567/items')).toBeUndefined()
+  state.bindings = [state.bindings[1]]
+  state.bindings[0].controller.session.output = ''
+  expect(recordingOf(context, 'http://localhost:4567/items')?.sessionId).toBe('sample-server')
 })

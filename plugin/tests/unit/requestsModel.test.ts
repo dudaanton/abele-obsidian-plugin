@@ -8,17 +8,18 @@ import {
 import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 
 beforeEach(() => forgetRequestSecrets())
-it('recovers a timed-out status read without resending a held request', async () => {
-  const node = fakeNode()
-  const model = new RequestsModel(node.rpc, 'project-1', ports())
-  await model.load()
-  vi.spyOn(node.rpc, 'status').mockRejectedValueOnce(
-    Object.assign(new Error('request_timeout'), { code: 'request_timeout' })
-  )
-  const outcome = await model.send('Samples/Create sample.http', { interactive: true })
-  expect(outcome.kind).toBe('answered')
-  expect(node.sent).toHaveLength(1)
-})
+it.each(['request_timeout', 'outcome_unknown'])(
+  'recovers a %s status read without resending a held request',
+  async (code) => {
+    const node = fakeNode()
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.load()
+    vi.spyOn(node.rpc, 'status').mockRejectedValueOnce(Object.assign(new Error(code), { code }))
+    const outcome = await model.send('Samples/Create sample.http', { interactive: true })
+    expect(outcome.kind).toBe('answered')
+    expect(node.sent).toHaveLength(1)
+  }
+)
 
 it('refreshes externally copied request files and stops following when the view closes', async () => {
   vi.useFakeTimers()

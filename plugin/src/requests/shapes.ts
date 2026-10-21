@@ -115,10 +115,15 @@ export async function followSend(
       status = await rpc.status(projectId, sendId)
     } catch (e) {
       console.debug('[requests] Send not followed', e)
-      const code = e && typeof e === 'object' && 'code' in e ? e.code : undefined
+      const code =
+        e && typeof e === 'object' && 'code' in e
+          ? e.code
+          : e instanceof Error
+            ? e.message
+            : undefined
       if (
         !signal?.aborted &&
-        (code === 'request_timeout' || (e instanceof Error && e.message === 'request_timeout')) &&
+        (code === 'request_timeout' || code === 'outcome_unknown') &&
         ++failedReads <= 2
       ) {
         // Read the existing send again; never dispatch the HTTP request a second time.
