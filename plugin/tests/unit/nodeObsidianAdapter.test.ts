@@ -65,3 +65,28 @@ it('rejects disabled tools even in bypass and rechecks source before an edit', a
     adapter.execute({ ...edit, preview: prepared.preview }, false, new AbortController().signal)
   ).rejects.toThrow(/read first/i)
 })
+
+// BUG: the node executor contract has no owner-question creation/result transport.
+// The ordinary handler requires a conversation host; an active vault chat is not that host.
+it.fails('executes an enabled ordinary questionnaire in its own node conversation', async () => {
+  AgentRegistry.getInstance().update(agentId, { toolModes: { questions: 'auto' } })
+  const invocation = call('questions', {
+    questions: [{ question: 'Choose a sample option', options: ['First', 'Second'] }],
+  })
+  await expect(
+    adapter.execute(invocation, true, new AbortController().signal)
+  ).resolves.toMatchObject({ content: expect.any(Array) })
+})
+
+// BUG: local delegation also needs a conversation host, including its depth and root budget.
+// A missing target proves host admission without starting any provider executable.
+it.fails('admits an enabled local delegation through the ordinary target resolver', async () => {
+  AgentRegistry.getInstance().update(agentId, { toolModes: { delegate: 'auto' } })
+  await expect(
+    adapter.execute(
+      call('delegate', { agent: 'Missing sample agent', task: 'A sample task' }),
+      true,
+      new AbortController().signal
+    )
+  ).rejects.toThrow(/not found/i)
+})

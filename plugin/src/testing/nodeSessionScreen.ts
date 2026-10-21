@@ -30,6 +30,7 @@ export const NODE_SESSION_SCREENS = [
   'agent',
   'agent-asking',
   'letter',
+  'obsidian-tools',
 ] as const
 export type NodeSessionScreen = (typeof NODE_SESSION_SCREENS)[number]
 
@@ -79,6 +80,101 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
     900
   )
   if (state === 'letter') return [created]
+  if (state === 'obsidian-tools') {
+    const create = {
+      invocation_id: 'sample-create',
+      session_id: SESSION,
+      tool_name: 'create',
+      arguments: { path: 'sample-note.md', content: 'A sample note created through Obsidian.' },
+      preview: {
+        path: 'sample-note.md',
+        device: 'Sample desktop',
+        diff: { old: '', new: 'A sample note created through Obsidian.' },
+      },
+    }
+    const edit = {
+      invocation_id: 'sample-edit',
+      session_id: SESSION,
+      tool_name: 'edit',
+      arguments: {
+        path: 'sample-note.md',
+        old_string: 'A sample note',
+        new_string: 'An updated sample note',
+      },
+      preview: {
+        path: 'sample-note.md',
+        device: 'Sample desktop',
+        diff: {
+          old: 'A sample note created through Obsidian.',
+          new: 'An updated sample note created through Obsidian.',
+        },
+      },
+    }
+    const pending = {
+      invocation_id: 'sample-pending',
+      session_id: SESSION,
+      tool_name: 'create',
+      arguments: { path: 'another-sample.md', content: 'Text waiting for approval.' },
+      preview: {
+        path: 'another-sample.md',
+        device: 'Sample desktop',
+        content: 'Text waiting for approval.',
+        diff: { old: '', new: 'Text waiting for approval.' },
+      },
+    }
+    return [
+      created,
+      e(
+        'input.accepted',
+        { input_id: 'sample-input', text: 'Create a note and update its text.' },
+        5
+      ),
+      e(
+        'obsidian.tools.updated',
+        {
+          ...create,
+          state: 'succeeded',
+          result: {
+            content: [{ type: 'text', text: 'Created: sample-note.md' }],
+            details: { path: 'sample-note.md', diff: create.preview.diff },
+          },
+        },
+        4
+      ),
+      e(
+        'obsidian.tools.updated',
+        {
+          ...edit,
+          state: 'succeeded',
+          result: {
+            content: [{ type: 'text', text: 'Edited: sample-note.md' }],
+            details: { path: 'sample-note.md', diff: edit.preview.diff },
+          },
+        },
+        3
+      ),
+      e('obsidian.tools.updated', { ...pending, state: 'awaiting_approval' }, 1),
+      e(
+        'prompt.requested',
+        {
+          kind: 'permission',
+          prompt_id: 'sample-obsidian-prompt',
+          session_id: SESSION,
+          run_id: 'obsidian:sample-pending',
+          revision: 1,
+          action_digest: 'a'.repeat(64),
+          expires_at: Number.MAX_SAFE_INTEGER,
+          state: 'pending',
+          choice: null,
+          installation_id: null,
+          delivered: false,
+          tool_name: 'create',
+          input: { ...pending, vault_id: 'sample-vault', revision: 'sample-revision' },
+        },
+        1
+      ),
+    ]
+  }
   // Records as the node writes them, every field present: earlier pages are checked against
   // the node's schemas when they arrive.
   const done = (turn: string, inputs: string[], ago: number) =>

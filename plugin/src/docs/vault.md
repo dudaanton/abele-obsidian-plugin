@@ -3057,3 +3057,14 @@ keyed by invocation ID. An `executing` receipt records intent before the handler
 effect; a final receipt retains its structured result. A missing or unfinished receipt
 after a node claim means the outcome is unknown, never permission to repeat the handler.
 These receipts are device-local recovery evidence, not vault files or transferable settings.
+
+Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
+(node ID, display name and provider). Their ordinary permission mode, scope and tool modes
+travel through the Agents settings-transfer section. They are excluded from vault model
+pickers and cannot become the default vault agent.
+
+The node client store also retains configured session-to-agent bindings. Delegation requests
+retain their exact trusted tool snapshot with the ordinary idempotent creation intent; the
+node atomically installs it before the child's first turn. These local recovery bindings
+do not travel with settings. Execution-client IDs are installation-local; same-vault routing
+uses the sync vault identity when available, otherwise a device-local vault identity.

@@ -65,6 +65,7 @@ import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { collectEntries as collectTransferEntries } from '@/transfer/entries'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { nodeToolRunners } from '@/node/nodeAgentTools'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { originalNotePlaceHookTypes } from './notePlaceHooks'
 import { secrets } from '@/secrets/SecretStore'
@@ -340,6 +341,7 @@ interface AbeleTestApi {
   ChatSearchIndex: typeof ChatSearchIndex
   CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
+  nodeToolRunners: typeof nodeToolRunners
   GlobalStore: typeof GlobalStore
   collectTransferEntries: typeof collectTransferEntries
   Log: typeof Log
@@ -1009,6 +1011,7 @@ export function exposeTestApi(plugin: Plugin): void {
     ChatSearchIndex,
     CommentService,
     AgentRegistry,
+    nodeToolRunners,
     GlobalStore,
     collectTransferEntries,
     Log,

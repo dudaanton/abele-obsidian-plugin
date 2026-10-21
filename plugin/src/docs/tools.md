@@ -5,7 +5,8 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 
 ## Node session boundary
 
-Node chats use AbeleNode's authenticated client API, not this vault tool catalogue. Local-token
+Node chats use AbeleNode's authenticated client API. Nodes advertising `obsidian.tools.v1`
+can also use the ordinary vault catalogue through an explicitly configured executor. Local-token
 connections remain loopback-only. Remote devices enroll independently with invitations, pinned
 application keys and owner-confirmed non-extractable device keys over paired WSS/Tailscale Serve.
 Private keys and pending invitation secrets live in device-local IndexedDB; see [Vault](vault).
@@ -1371,3 +1372,25 @@ string for an unfiled chat. This is independent of the transcript file directory
 Sending is unavailable in delegated, sub-agent, script and letter-triggered turns. A target with broader automatic tool or file permissions always requires owner approval, even when sending is set to automatic; the approval shows the additional capabilities. Node destinations always require owner approval. Incoming letters retain sender provenance and use the target's ordinary tool approval queue.
 
 Local and connected node destinations accept messages. Busy targets are queued. Node delivery uses the existing session turn API, with sender links retained on this plugin device. The answer is matched to the admitted input and completed turn and returned only to that sending tool call. A combined turn consuming several inputs cannot provide a separate reply and ends with a plain explanation. A disconnected or missing node session refuses delivery. Interrupted submissions are never resent after reload, even if the node may already have accepted them; inspect the target before sending a new request. Node agents calling these plugin tools require the separate plugin-tool executor bridge.
+
+## Obsidian tools for node agents
+
+When a node supports `obsidian.tools.v1`, its agents can call `obsidian_<tool>` versions
+of the ordinary Obsidian tools. Schemas and handlers come from the same registry as vault
+agents. Their Off / Ask / Auto controls are in Settings → AI → Agents, beside vault agents.
+Native files and commands on the node still follow the node session's own permission mode.
+An outside-scope vault path is an ordinary per-action approval; bypass skips questions but
+never enables an Off tool. No folder or delegation grant is needed.
+
+Calls run on a connected client of the same vault, preferring a desktop. The agent editor
+shows the execution device or that no device is connected. Calls and exact approvals appear
+in the node chat, including created text and edit diffs. Pending approvals have no deadline.
+Stop cancels the invocation; cancellation never implies that an already-running write was
+rolled back. Reconnect reconciles durable execution receipts and never repeats a claimed
+mutation. An unknown outcome requires checking the affected files before requesting another
+action. Oversized previews or results ask for a smaller page or passage.
+
+Conversation-host tools such as `questions` and local `delegate` still require a vault
+conversation context. Enabling their modes does not currently supply that context to a
+node executor; they cannot complete there yet. Native node tools keep their existing
+session context and permissions.
