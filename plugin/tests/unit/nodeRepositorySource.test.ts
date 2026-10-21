@@ -34,6 +34,27 @@ describe('node repository source through the validated client contract', () => {
     expect(await source.resolve(WORKING_TREE)).not.toBe(first)
     source.dispose()
   })
+  it('collects blame across pages for files longer than one response', async () => {
+    const { source, client } = fixture()
+    const blame = vi.spyOn(client.repository, 'blame').mockImplementation(async ({ cursor }) => ({
+      cursor: cursor ? null : 'next-page',
+      incomplete: false,
+      omissions: [],
+      content_id: 'sample-content',
+      entries: Array.from({ length: cursor ? 1 : 1500 }, (_, index) => ({
+        line: (cursor ? 1501 : 1) + index,
+        original_line: (cursor ? 1501 : 1) + index,
+        commit: null,
+        author: 'Sample author',
+        text: 'sample',
+      })),
+    }))
+    await expect(source.blame(WORKING_TREE, 'sample.ts')).resolves.toMatchObject([
+      { start: 1, end: 1501, commit: { author: 'Uncommitted' } },
+    ])
+    expect(blame).toHaveBeenCalledTimes(2)
+    source.dispose()
+  })
   it('fills committed blame dates and full messages once per distinct commit', async () => {
     const { source, client } = fixture()
     vi.spyOn(client.repository, 'blame').mockResolvedValue({

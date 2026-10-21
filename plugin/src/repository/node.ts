@@ -660,7 +660,8 @@ export class NodeRepositorySource implements RepositorySource {
           count: 1500,
           cursor,
         }),
-      1500
+      // The protocol limits each page, not the complete file attribution.
+      100000
     )
     // Blame lines carry identities and authors only. Read immutable commit metadata without
     // loading each commit's changed files, and share it across every range of that commit.
