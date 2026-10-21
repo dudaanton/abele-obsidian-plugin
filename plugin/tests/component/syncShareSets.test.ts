@@ -321,6 +321,9 @@ describe('shared item screens', () => {
       await wrapper.vm.$nextTick()
       wrapper.getComponent(ShareDetail).vm.$emit('delete', item)
       await wrapper.vm.$nextTick()
+      expect(wrapper.getComponent(ServerDeleteModal).props('note')).toContain(
+        'Your other connected devices remove theirs'
+      )
       wrapper.getComponent(ServerDeleteModal).vm.$emit('close')
       await wrapper.vm.$nextTick()
       expect(closeDeletePreview).toHaveBeenCalledWith('share-a')

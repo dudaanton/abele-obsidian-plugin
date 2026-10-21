@@ -2926,6 +2926,17 @@ a complete paged manifest releases surviving paths and moves deleted paths to
 publication and incoming changes. Engines restart and sync other paths normally. The exclusion
 survives plugin restart and also holds subsequent edits to the kept copy; it is not a conflict,
 a new upload or a local deletion. Disconnecting the connection retires its device-only list.
+Vault rename events transfer retained copies into device-wide identities under
+`abele-sync-local-only-copies-v1`, preserving the identity through file and folder moves,
+including moves into another shared folder. These identities survive disconnection and restart.
+Edits remain local-only until a successful explicit share of that file, its containing folder,
+or the vault releases the selected exclusion; unrelated shares leave it intact.
+Before fencing, a pending publication batch touching retained paths is quarantined intact in
+ledger metadata `local-only-publication-journal:<idempotencyKey>` before clearing its replay slot.
+Startup and runtime journal reads enforce the same rule. Mixed batches are never split or
+replayed with a different receipt key; normal scanning regenerates unrelated work.
+Only the deleting device keeps its copies: other connected devices apply the server deletion.
+The server retains deleted content in trash for 30 days.
 An uncertain request retains its candidate exclusions rather than risking a destructive replay.
 Item deletion cannot be replayed as whole-scope deletion. Whole-token deletion from Share access
 uses the same protection. Deleting a connection itself still disconnects its revoked token while

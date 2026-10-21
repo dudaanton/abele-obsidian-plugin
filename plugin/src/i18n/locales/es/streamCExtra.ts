@@ -1,4 +1,11 @@
 export const extra = {
+  'sync.deleteChoice': 'Qué eliminar',
+  'sync.readOnly': 'Solo lectura',
+  'sync.overlapGroup':
+    '{name} también se comparte en el grupo {group}. Al eliminarlo aquí, se elimina del servidor también para ese grupo.',
+  'sync.overlapCount':
+    '{name} también se comparte mediante otros accesos: {count}. Al eliminarlo aquí, se elimina del servidor también para ellos.',
+  'sync.overlapMore': 'También pueden verse afectados otros archivos o grupos compartidos.',
   'requests.include': 'Incluir {name}',
   'requests.record': 'Grabar solicitud',
   'requests.timeout': 'Esperar respuesta',
@@ -1439,7 +1446,7 @@ export const extra = {
   'streamC.f329145399987d0f': 'una fecha que elija',
   'streamC.1acc804ac37f32e3': 'Accesos que se cerrarán',
   'streamC.ad151a07bc5a6fa5':
-    'Los archivos permanecen en la papelera del servidor durante 30 días. Este dispositivo se desconecta y conserva todos los archivos. Los dispositivos con ese acceso dejan de sincronizar y conservan sus copias.',
+    'Este dispositivo conserva todos los archivos. Tus otros dispositivos conectados eliminan sus copias; el servidor las guarda en la papelera durante 30 días.',
   'streamC.43b5894c3e4e2b24': 'Eliminando…',
   'streamC.d8b8392e2c542950': 'Volver a intentar',
   'streamC.2bf85fe0a42ff813': 'Eliminar del servidor',

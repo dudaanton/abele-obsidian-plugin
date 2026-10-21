@@ -1,4 +1,11 @@
 export const extra = {
+  'sync.deleteChoice': 'What to delete',
+  'sync.readOnly': 'Read only',
+  'sync.overlapGroup':
+    '{name} is also shared in group {group}. Deleted here, it leaves the server for that group too.',
+  'sync.overlapCount':
+    '{name} is also shared through {count} other accesses. Deleted here, it leaves the server for those accesses too.',
+  'sync.overlapMore': 'More shared files or groups may also be affected.',
   'requests.include': 'Include {name}',
   'requests.record': 'Record request',
   'requests.timeout': 'Wait for an answer',
@@ -1405,7 +1412,7 @@ export const extra = {
   'streamC.f329145399987d0f': 'a time I choose',
   'streamC.1acc804ac37f32e3': 'Access closed',
   'streamC.ad151a07bc5a6fa5':
-    "The files stay in the server's trash for 30 days. This device disconnects and keeps every file. Devices with that access stop and keep their copies.",
+    'This device keeps every file. Your other connected devices remove theirs; the server keeps them in trash for 30 days.',
   'streamC.43b5894c3e4e2b24': 'Deleting…',
   'streamC.d8b8392e2c542950': 'Try again',
   'streamC.2bf85fe0a42ff813': 'Delete from the server',

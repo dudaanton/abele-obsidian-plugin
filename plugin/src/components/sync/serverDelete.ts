@@ -7,6 +7,8 @@ import { ExternalRecoveryRequired } from '@/sync/external/recovery'
  */
 import { shallowRef } from 'vue'
 
+export const SERVER_DELETE_DEVICE_NOTE = 'streamC.ad151a07bc5a6fa5'
+
 export interface ServerDeleteFacts {
   files: number
   bytes: number

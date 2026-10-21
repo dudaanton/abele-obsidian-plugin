@@ -31,8 +31,8 @@
         </dd>
         <dd v-else>{{ scopeName(preview.scope) }}</dd>
         <template v-if="setPreview?.readOnly">
-          <dt>Access</dt>
-          <dd>Read only</dd>
+          <dt>{{ t('settings.ai.AgentEditorModal.access.ec5ba0ab') }}</dt>
+          <dd>{{ t('sync.readOnly') }}</dd>
         </template>
       </dl>
     </Section>

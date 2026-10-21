@@ -633,6 +633,12 @@ describe('connection item sets', () => {
       size: original.length,
       mtime: 1,
     })
+    await state.setJournal({
+      batchId: 'pending-batch',
+      idempotencyKey: 'pending-create',
+      startedAt: new Date().toISOString(),
+      ops: [{ op: 'create', path, sha: hash, size: original.length, mtime: 1 }],
+    })
     await state.setCursor(1)
     await fs.writeAtomic(path, new TextEncoder().encode('local edit'), 2)
     const scope = { kind: 'file' as const, id: 'file-a', path }
@@ -717,6 +723,8 @@ describe('connection item sets', () => {
       await runtime.sync()
       expect(requests).toContain('/v2/changes')
       expect(requests).not.toContain('/v2/commit')
+      expect(await state.getJournal()).toBe(null)
+      expect(await state.getMeta('local-only-publication-journal:pending-create')).not.toBe(null)
       expect(await fs.read(path)).toEqual(new TextEncoder().encode('local edit'))
       departed = true
       await runtime.sync()

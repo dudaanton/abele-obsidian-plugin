@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LOCAL_ONLY_COPIES } from '../sync/localOnlyCopies'
 import { EXTERNAL_ACTIVATION_KEY } from '../sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY } from '../sync/external/connectionSwitch'
 import type { LocalStorage } from '../sync/ledgerId'
@@ -19,7 +20,10 @@ const envelope = z
 
 /** Only proofs of token databases in the guarded reset's ownership journal are removed. */
 export function tokenPoolMarkers(storage: LocalStorage, owned: readonly string[]): () => void {
-  const plans = [EXTERNAL_ACTIVATION_KEY, EXTERNAL_RETIRED_KEY].map((key) => {
+  const plans: { key: string; before: unknown; after: unknown }[] = [
+    EXTERNAL_ACTIVATION_KEY,
+    EXTERNAL_RETIRED_KEY,
+  ].map((key) => {
     const before = storage.loadLocalStorage(key) ?? null
     if (before === null) return { key, before, after: null }
     const groups =
@@ -42,6 +46,19 @@ export function tokenPoolMarkers(storage: LocalStorage, owned: readonly string[]
       before,
       after: remaining.length ? (key === EXTERNAL_ACTIVATION_KEY ? remaining[0] : remaining) : null,
     }
+  })
+  const copiesBefore = storage.loadLocalStorage(LOCAL_ONLY_COPIES) ?? null
+  const copies =
+    copiesBefore === null
+      ? []
+      : z
+          .array(z.object({ id: z.string(), path: z.string(), ledgerId: z.string() }).loose())
+          .parse(copiesBefore)
+  const remaining = copies.filter((one) => !owned.includes(one.ledgerId))
+  plans.push({
+    key: LOCAL_ONLY_COPIES,
+    before: copiesBefore,
+    after: remaining.length ? remaining : null,
   })
   return () => {
     for (const { key, before } of plans)

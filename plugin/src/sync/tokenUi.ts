@@ -309,6 +309,9 @@ export class TokenUi {
     assertCurrent?: () => void,
     scope?: V2Scope
   ) => Promise<void> = async () => {}
+  localOnlyChanged: () => void = () => {}
+  releaseLocalOnly: (id: string, paths: string[]) => void = () => {}
+  fencePublicationJournal: (id: string, paths: string[]) => Promise<void> = async () => {}
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
@@ -973,10 +976,13 @@ export class TokenUi {
       const previous = (storage.loadLocalStorage(heldSlot) ?? []) as string[]
       previousHolds.set(record.id, previous)
       const held = inventories.get(record.id) ?? []
+      await this.fencePublicationJournal(record.id, held)
+      assertCurrent(record.id)
       storage.saveLocalStorage(pendingSlot, held)
       if (JSON.stringify(storage.loadLocalStorage(pendingSlot)) !== JSON.stringify(held))
         throw new Error('Could not retain local-only paths')
     }
+    this.localOnlyChanged()
     // Once every path fence is durable, restart is safe even if the HTTP result is lost.
     for (const record of records) this.registry.storage(record.id).saveLocalStorage(slot, null)
     return async (completed) => {
@@ -1016,6 +1022,7 @@ export class TokenUi {
         this.registry.setStatus(record.id, 'idle')
         this.publish(record.id, { error: undefined })
       }
+      this.localOnlyChanged()
       await this.connectionsChanged()
       if (failure) throw failure
     }

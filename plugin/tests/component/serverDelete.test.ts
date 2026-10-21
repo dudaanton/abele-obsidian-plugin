@@ -196,6 +196,20 @@ describe('ServerDeleteModal', () => {
     expect(view.emitted('done')).toBeUndefined()
     view.unmount()
   })
+  it('distinguishes this kept copy from deletion on other connected devices', async () => {
+    const view = open(async () => {})
+    try {
+      await flushPromises()
+      expect(document.querySelector('.abele-server-delete__note')?.textContent).toContain(
+        'This device keeps every file.'
+      )
+      expect(document.querySelector('.abele-server-delete__note')?.textContent).toContain(
+        'Your other connected devices remove theirs; the server keeps them in trash for 30 days.'
+      )
+    } finally {
+      view.unmount()
+    }
+  })
   it('explains a typed forbidden confirmation without exposing server text', async () => {
     const view = open(async () => {
       throw new AbeleError('forbidden', 'untrusted response detail')

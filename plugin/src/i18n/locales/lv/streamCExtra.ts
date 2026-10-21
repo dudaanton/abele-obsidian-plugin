@@ -1,4 +1,11 @@
 export const extra = {
+  'sync.deleteChoice': 'Ko dzēst',
+  'sync.readOnly': 'Tikai lasāms',
+  'sync.overlapGroup':
+    '{name} ir kopīgots arī grupā {group}. Dzēšot šeit, tas pazūd no servera arī šai grupai.',
+  'sync.overlapCount':
+    '{name} ir kopīgots arī caur citām piekļuvēm: {count}. Dzēšot šeit, tas pazūd no servera arī tām.',
+  'sync.overlapMore': 'Var tikt ietekmēti arī citi kopīgotie faili vai grupas.',
   'requests.include': 'Iekļaut {name}',
   'requests.record': 'Ierakstīt pieprasījumu',
   'requests.timeout': 'Gaidīt atbildi',
@@ -1416,7 +1423,7 @@ export const extra = {
   'streamC.f329145399987d0f': 'izvēlētā laika',
   'streamC.1acc804ac37f32e3': 'Piekļuve tiek slēgta',
   'streamC.ad151a07bc5a6fa5':
-    'Faili servera atkritnē paliek 30 dienas. Šī ierīce atvienojas un patur visus failus. Ierīces ar šo piekļuvi pārtrauc apmaiņu un patur savas kopijas.',
+    'Šajā ierīcē paliek visi faili. Pārējās jūsu savienotās ierīces dzēš savas kopijas; serveris tās glabā atkritnē 30 dienas.',
   'streamC.43b5894c3e4e2b24': 'Dzēš…',
   'streamC.d8b8392e2c542950': 'Mēģināt vēlreiz',
   'streamC.2bf85fe0a42ff813': 'Dzēst no servera',

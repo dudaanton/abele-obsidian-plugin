@@ -1,3 +1,4 @@
+import { localOnlyJournalState } from './localOnlyJournal'
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
@@ -271,6 +272,16 @@ export class TokenEngineRuntime
   private readonly serverPaths?: ServerFolderPaths
   private readonly localFs: FileSystem
   constructor(private readonly options: TokenEngineOptions) {
+    if (options.localOnly) {
+      const held = (path: string) => options.localOnly?.(path) ?? false
+      const original = options.state
+      options.state = localOnlyJournalState(original, held)
+      if (options.engineState)
+        options.engineState =
+          options.engineState === original
+            ? options.state
+            : localOnlyJournalState(options.engineState, held)
+    }
     const item = options.item
     if (item) {
       const fetcher = options.fetch

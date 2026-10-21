@@ -6,7 +6,7 @@
     phone-sheet
     @close="close"
   >
-    <Setting v-if="choices?.length" name="What to delete">
+    <Setting v-if="choices?.length" :name="t('sync.deleteChoice')">
       <Dropdown
         :model-value="choice ?? ''"
         :disabled="busy"
@@ -37,19 +37,26 @@
       class="abele-server-delete__also mod-warning"
     >
       <template v-if="one.group">
-        {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared in group
-        {{ one.group }}. Deleted here, it leaves the server for that group too.
+        {{
+          t('sync.overlapGroup', {
+            name: one.path.split('/').pop()?.replace(/\.md$/, '') ?? '',
+            group: one.group,
+          })
+        }}
       </template>
       <template v-else>
-        {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared through
-        {{ one.overlapCount }} other {{ one.overlapCount === 1 ? 'access' : 'accesses' }}. Deleted
-        here, it leaves the server for those accesses too.
+        {{
+          t('sync.overlapCount', {
+            name: one.path.split('/').pop()?.replace(/\.md$/, '') ?? '',
+            count: String(one.overlapCount),
+          })
+        }}
       </template>
     </p>
     <p v-if="facts.alsoMore" class="abele-server-delete__also mod-warning">
-      More shared files or groups may also be affected.
+      {{ t('sync.overlapMore') }}
     </p>
-    <p class="abele-server-delete__note">{{ note || t('streamC.ad151a07bc5a6fa5') }}</p>
+    <p class="abele-server-delete__note">{{ note || t(SERVER_DELETE_DEVICE_NOTE) }}</p>
     <p v-if="facts.unavailableReason" class="abele-server-delete__error" role="alert">
       {{ facts.unavailableReason }}
     </p>
@@ -85,7 +92,12 @@ import Modal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
-import { folderSize, serverDeleteFailure, type ServerDeleteFacts } from './serverDelete'
+import {
+  folderSize,
+  serverDeleteFailure,
+  SERVER_DELETE_DEVICE_NOTE,
+  type ServerDeleteFacts,
+} from './serverDelete'
 
 const props = defineProps<{
   name: string

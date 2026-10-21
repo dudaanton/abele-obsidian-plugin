@@ -101,6 +101,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { SERVER_DELETE_DEVICE_NOTE } from './serverDelete'
 /**
  * Share access, where the server keeps sets: several folders, groups and files in one token,
  * read only or not, and the tokens given as rows; each opens its own window to add to it, take
@@ -179,12 +181,9 @@ const deleteChoices = computed(() =>
       ]
     : []
 )
-const deleteNote = computed(() => {
-  const who = openedShare.value?.label || 'They'
-  return deleting.value?.item
-    ? `The files stay in the server's trash for 30 days. ${who} stops getting it and keeps their copy. This device keeps every file.`
-    : `The files stay in the server's trash for 30 days and the token is revoked. ${who} keeps their copy. This device keeps every file.`
-})
+const deleteNote = computed(
+  () => (deleting.value?.item ? '' : 'The token is revoked. ') + t(SERVER_DELETE_DEVICE_NOTE)
+)
 const deleteName = computed(() => {
   const item = openedShare.value?.items.find((one) => one.id === deleting.value?.item)
   return item ? `“${itemLabel(item).split(': ')[1]}”` : `“${openedShare.value?.label}”`

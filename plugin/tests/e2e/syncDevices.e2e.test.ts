@@ -15,6 +15,27 @@ import {
 import { closeSyncScreens, captureSyncScreen } from './helpers/syncScreens'
 import { SHARE_SET_PICKER } from './helpers/shareSetPicker'
 const fixture = liveSuite()
+it('server item deletion removes the copy on another device of the owner', async () => {
+  const s = fixture(),
+    owner = s.primary,
+    other = s.peer!
+  const id = await s.connect(),
+    otherId = await s.connect(other)
+  const path = s.root + '/Other device deletion.md'
+  owner.create(path, 'unchanged on both devices')
+  await owner.syncNow(id)
+  await other.syncNow(otherId)
+  expect(other.read(path)).toBe('unchanged on both devices')
+  await owner.shareSet(id, ['File: ' + path], 'Sample owner device share')
+  await owner.long(
+    'delete shared server content on this device',
+    `const shares=await svc.itemSets.shares(${JSON.stringify(id)});const share=shares.find(one=>one.label==='Sample owner device share');if(!share)throw new Error('Share unavailable');const item=share.items[0];await poll(()=>svc.itemSets.deleteFacts(share.id,item.id)?.canWrite);await svc.itemSets.deleteFromServer(share.id,item.id);return true`
+  )
+  await other.syncNow(otherId)
+  expect(other.read(path)).toBe(null)
+  expect(owner.read(path)).toBe('unchanged on both devices')
+  expect((await s.items()).some((one) => one.path === path)).toBe(false)
+}, 180000)
 it('multi-scope S6: deleting one file item leaves the other item connected', async () => {
   const s = fixture(),
     owner = s.primary,
@@ -35,6 +56,12 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
     'Sample deletion share'
   )
   const receiverId = await s.connect(receiver, issued.token)
+  const pendingKey = 'sample-kept-create-' + ownerId
+  const originalSha = await sha256(new TextEncoder().encode('server delete candidate'))
+  await owner.long(
+    'leave an unsent create before item deletion',
+    `const runtime=svc.runtimes.get(${JSON.stringify(ownerId)});if(!runtime)throw new Error('Owner runtime unavailable');await runtime.engine.stop();await runtime.options.state.setJournal({batchId:'sample-pending-batch',idempotencyKey:${JSON.stringify(pendingKey)},startedAt:new Date().toISOString(),ops:[{op:'create',path:${JSON.stringify(single)},sha:${JSON.stringify(originalSha)},size:23,mtime:1}]});return true`
+  )
   await owner.long(
     'open single-file deletion preview',
     `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample deletion share'));row.click();await poll(()=>modal('Sample deletion share'));const detail=modal('Sample deletion share');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('Delete one')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'),undefined,'DOM item deletion menu action');action.click();await poll(()=>inWindows('.abele-server-delete__facts'),undefined,'single-file deletion facts');return true`
@@ -68,9 +95,18 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   await owner.syncNow(ownerId)
   expect(owner.read(folder + '/kept.md')).toBe('other item still writes')
   owner.create(single, 'kept local edit')
+  const moved = folder + '/Kept local copy.md'
+  await owner.long(
+    'move a kept copy into a shared folder',
+    `await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(single)}),${JSON.stringify(moved)});return true`
+  )
+  await owner.long(
+    'quarantined unsent publication evidence',
+    `const runtime=svc.runtimes.get(${JSON.stringify(ownerId)});const evidence=await runtime.options.state.getMeta('local-only-publication-journal:'+${JSON.stringify(pendingKey)});if(!evidence||JSON.parse(evidence).ops[0].op!=='create')throw new Error('Pending create evidence unavailable');return true`
+  )
   owner.create(folder + '/kept.md', 'owner still writes')
   await owner.syncNow(ownerId)
-  expect((await s.items()).some((item) => item.path === single)).toBe(false)
+  expect((await s.items()).some((item) => item.path === single || item.path === moved)).toBe(false)
   expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
     sha: await sha256(new TextEncoder().encode('owner still writes')),
   })
@@ -79,8 +115,8 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   )
   await owner.waitIdle(ownerId)
   await owner.syncNow(ownerId)
-  expect(owner.read(single)).toBe('kept local edit')
-  expect((await s.items()).some((item) => item.path === single)).toBe(false)
+  expect(owner.read(moved)).toBe('kept local edit')
+  expect((await s.items()).some((item) => item.path === single || item.path === moved)).toBe(false)
   owner.create(folder + '/kept.md', 'owner writes after restart')
   await owner.syncNow(ownerId)
   expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({

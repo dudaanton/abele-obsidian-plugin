@@ -6585,7 +6585,7 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "streamC.ad151a07bc5a6fa5": {
-    "englishHash": "16c166dc697b79b45b5026b813fbc93b40d131ebba42b52f8ba3f01826a7d5c1",
+    "englishHash": "85b3920a38681d3b4ee3c84daa72736d519067a26df659aedf6a460726ba3199",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
@@ -7662,6 +7662,31 @@
   "node.error.runMissing": {
     "englishHash": "f8de769d6ba9d4d8e5f36fb1f67cf91053633f682047595ce5d5239876b27842",
     "context": "HTTP request inclusion, recording, timeout and paused debugger navigation; missing recording explanation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.deleteChoice": {
+    "englishHash": "9c4f8651b3048e1465b089b51295cba587270d1ff47eaaacf6b6b4a3d752bc57",
+    "context": "Sync deletion and access confirmation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.readOnly": {
+    "englishHash": "52805c75c6883ff24a5f0731425cae4dcce3fc693c07a86f402c419bb3e864b7",
+    "context": "Sync deletion and access confirmation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.overlapGroup": {
+    "englishHash": "9cae5a8c37365b09e9fc5a672f09fd06fde5d3efaed8fa6e6f2b92dff6ff56d0",
+    "context": "Sync deletion and access confirmation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.overlapCount": {
+    "englishHash": "9350440d1c19798eb2096c4274a1b7ec5c24985efede0a63c216472796c07ef1",
+    "context": "Sync deletion and access confirmation",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.overlapMore": {
+    "englishHash": "0b43d74d36c78a7ed71f6708a986493492e6521937b9cba40a6425263d449d2e",
+    "context": "Sync deletion and access confirmation",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

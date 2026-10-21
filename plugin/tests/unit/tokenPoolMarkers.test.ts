@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest'
+import { LOCAL_ONLY_COPIES } from '@/sync/localOnlyCopies'
 import { tokenPoolMarkers } from '@/testing/tokenPoolMarkers'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY } from '@/sync/external/connectionSwitch'
@@ -16,7 +17,10 @@ it('removes only journal-owned token proofs and preserves foreign activation and
     phase: 'active',
   }
   const legacy = { ...owned, binding: { mode: 'personal' } }
+  const kept = { id: 'sample-copy', path: 'Shared/kept.md', ledgerId: 'owned' }
+  const foreignCopy = { ...kept, id: 'foreign-copy', ledgerId: 'foreign' }
   const data = new Map<string, unknown>([
+    [LOCAL_ONLY_COPIES, [kept, foreignCopy]],
     [EXTERNAL_ACTIVATION_KEY, { schema: 1, ledgers: [owned, foreign, legacy] }],
     [
       EXTERNAL_RETIRED_KEY,
@@ -35,6 +39,7 @@ it('removes only journal-owned token proofs and preserves foreign activation and
     },
     ['owned']
   )()
+  expect(data.get(LOCAL_ONLY_COPIES)).toEqual([foreignCopy])
   expect(data.get(EXTERNAL_ACTIVATION_KEY)).toEqual({ schema: 1, ledgers: [foreign, legacy] })
   expect(data.get(EXTERNAL_RETIRED_KEY)).toEqual([{ schema: 1, ledgers: [foreign] }])
 })

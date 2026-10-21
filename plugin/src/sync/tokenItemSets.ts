@@ -594,6 +594,10 @@ export class TokenItemSets implements ShareSetSource {
     })
     for (const item of set.items.slice(1))
       await client.itemClient().addItem(issued.info.id, selector(item))
+    this.ui.releaseLocalOnly(
+      connectionId,
+      set.items.map((one) => one.path)
+    )
     const token = decodeAccessToken(issued.token)
     const inventory = await new V2Client(decodeAccessToken(issued.token), this.transport)
       .itemClient()
@@ -626,6 +630,10 @@ export class TokenItemSets implements ShareSetSource {
         kind: item.kind === 'vault' ? 'folder' : item.kind,
         id: item.id,
       })
+    this.ui.releaseLocalOnly(
+      this.selected(id),
+      items.map((one) => one.path)
+    )
     this.facts.clear()
   }
   async remove(id: string | undefined, shareId: string, itemId: string): Promise<void> {

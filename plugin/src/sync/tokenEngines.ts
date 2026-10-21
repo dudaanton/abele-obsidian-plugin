@@ -1,3 +1,5 @@
+import { LocalOnlyCopies } from './localOnlyCopies'
+import { quarantineLocalOnlyJournal } from './localOnlyJournal'
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
@@ -77,6 +79,7 @@ export class TokenEngines {
   private closing: Promise<void> | undefined
   private rebuilding: Promise<void> = Promise.resolve()
   private readonly localFiles: TokenAttachmentHost
+  private readonly localOnly: LocalOnlyCopies
   private readonly renameEvent: EventRef
   constructor(
     private readonly app: App,
@@ -86,6 +89,30 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
+    this.localOnly = new LocalOnlyCopies(ui.registry)
+    ui.localOnlyChanged = () => this.localOnly.refresh()
+    ui.releaseLocalOnly = (id, paths) => this.localOnly.releaseSelected(id, paths)
+    ui.fencePublicationJournal = async (id, paths) => {
+      const record = ui.registry.records().find((one) => one.id === id)
+      if (!record) throw new Error('Connection unavailable')
+      const store = await openTokenLedger(factoryOf(this.deps), ui.registry, record, () => {
+        if (
+          this.closed ||
+          !ui.registry.records().some((one) => one.id === id && one.ledgerId === record.ledgerId)
+        )
+          throw new Error('Connection changed')
+      })
+      try {
+        await quarantineLocalOnlyJournal(store, (path) =>
+          paths.some(
+            (root) =>
+              caseKey(path) === caseKey(root) || caseKey(path).startsWith(caseKey(root) + '/')
+          )
+        )
+      } finally {
+        store.close()
+      }
+    }
     ui.itemSets.install()
     ui.itemSets.copyCounts = (id) => this.detachedCopies(id, false)
     ui.itemSets.removeLocal = async (id) => {
@@ -96,6 +123,7 @@ export class TokenEngines {
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
     )
     this.renameEvent = app.vault.on('rename', (file, from) => {
+      this.localOnly.renamed(from, file.path)
       this.localFiles.renamed(from, file.path)
       const pins = this.devicePins()
       const moved = pins.map((path) =>
@@ -613,6 +641,10 @@ export class TokenEngines {
         record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, localRoot)
           : undefined
+      this.localOnly.refresh()
+      await quarantineLocalOnlyJournal(state, (path) =>
+        this.localOnly.has(externalPlacement?.toLocal(path) ?? path)
+      )
       const discoveryRoots = record.scope.kind === 'folder' ? [localRoot] : []
       const discovery =
         record.scope.kind === 'folder' && record.scope.path === '/'
@@ -793,14 +825,7 @@ export class TokenEngines {
         if (!this.ui.reviews) throw new Error('Device reviews are not available')
         const current = this.ui.registry.records().find((one) => one.id === record.id)
         fence.assertReady()
-        const localOnly = [
-          ...((this.ui.registry
-            .storage(record.id)
-            .loadLocalStorage('abele-sync-token-state:local-only') ?? []) as string[]),
-          ...((this.ui.registry
-            .storage(record.id)
-            .loadLocalStorage('abele-sync-token-state:local-only-pending') ?? []) as string[]),
-        ]
+        this.localOnly.refresh()
         runtime = new TokenEngineRuntime({
           transferBudget: transferBudgetOf(this.app.vault),
           mobile: Platform.isMobile,
@@ -813,8 +838,7 @@ export class TokenEngines {
           item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
           scope: record.scope,
           retainedChanged: (items) => this.ui.itemSets.retainedChanged(record.id, items),
-          localOnly: (path) =>
-            localOnly.some((root) => path === root || path.startsWith(root + '/')),
+          localOnly: (path) => this.localOnly.has(externalPlacement?.toLocal(path) ?? path),
           uploadAllowed: (path) => {
             const physical = externalPlacement?.toLocal(path) ?? path
             return this.ui.itemSets.mayUpload(record.id, physical, (id, candidate) => {
