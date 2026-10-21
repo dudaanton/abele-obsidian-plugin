@@ -1248,14 +1248,23 @@ export class DebuggerController {
       )
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
-      if (result.outcome === 'completed' && this.session.status === 'paused') {
+      const settled = result.outcome === 'completed' || result.outcome === 'failed'
+      if (result.outcome === 'failed') {
+        const watch = this.session.watches.find((value) => value.expression === expression)
+        if (watch) {
+          watch.value = receiptMessage(result.code ?? result.outcome)
+          watch.stale = false
+        }
+        this.inspections.delete(operation_id)
+      }
+      if (settled && this.session.status === 'paused') {
         await this.loadStack(false, current.frame)
         if (/\bstale_state\b/.test(this.error) || this.error === t('streamC.8f55c062960e8261'))
           this.error = ''
       }
       await this.refreshApprovals()
       await this.refreshHistory()
-      if (result.outcome === 'completed' && this.session.status === 'paused') {
+      if (settled && this.session.status === 'paused') {
         this.watchesEpoch = this.snapshot?.stop_epoch
         this.notify()
         return this.watchesEpoch

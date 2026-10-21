@@ -8,9 +8,13 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
-it.each([false, true])(
-  'refreshes expired handles without reevaluation loops (epoch advances: %s)',
-  async (advanceEpoch) => {
+it.each([
+  [false, 'completed'],
+  [true, 'completed'],
+  [true, 'failed'],
+])(
+  'refreshes expired handles without reevaluation loops (epoch advances: %s, outcome: %s)',
+  async (advanceEpoch, outcome) => {
     const { model, rpc, command } = fixture()
     model.actions = []
     model.error = 'stale_state'
@@ -41,7 +45,7 @@ it.each([false, true])(
       expect(valid).toBe(true)
       expect(params.frame_handle).toBe(`frame-${handles}`)
       valid = false
-      return receipt('completed', {
+      return receipt(outcome as string, {
         snapshot: advanceEpoch
           ? snapshot({
               stop_epoch: model.snapshot!.stop_epoch + 1,
