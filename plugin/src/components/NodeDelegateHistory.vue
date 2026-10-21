@@ -20,13 +20,12 @@
     <NodeErrorText v-if="error" :error="error" />
     <template v-for="branch in branches" :key="branch.id">
       <p v-if="branches.length > 1" class="abele-node-message-note">{{ branch.item }}</p>
-      <AiChatMessage
-        v-for="answer in branch.messages"
-        :key="answer.id"
-        :message="answer"
-        read-only-history
-        :resource-opener="openResource"
-      />
+      <template v-for="answer in branch.messages" :key="answer.id">
+        <div v-if="answer.role === 'assistant'" class="abele-chat-letter__reply">
+          <Markdown :text="answer.content" :resource-opener="openResource" />
+        </div>
+        <AiChatMessage v-else :message="answer" read-only-history :resource-opener="openResource" />
+      </template>
     </template>
   </TreeItem>
 </template>
@@ -41,6 +40,7 @@ import { foldDelegateHistory } from '@/node/obsidianDelegateHistory'
 import TreeItem from './obsidian/TreeItem.vue'
 import { callState } from '@/ai/toolRuns'
 import AiChatMessage from './AiChatMessage.vue'
+import Markdown from './obsidian/Markdown.vue'
 import NodeErrorText from './NodeErrorText.vue'
 const props = defineProps<{
   client: NodeClient

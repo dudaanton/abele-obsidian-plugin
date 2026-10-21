@@ -108,6 +108,14 @@ it.each(onPhone() ? [true] : [false, true])(
         const nodeIncoming=root().querySelector('.abele-chat-msg__from').textContent;
         const received=node.messages.value.find(m=>m.role==='user'&&m.content.includes('Check the sample request'));
         if(received?.fromSession?.id!==caller.id)throw Error('Missing node sender provenance');
+        const secondState=await node.connection.client.store.transaction(state=>({events:structuredClone(state.events),cursors:{...state.cursors},results:{},outbox:[]}));
+        await chats.closeTab(nodeId);
+        node.connection.client={...node.connection.client,store:{transaction:async fn=>fn(secondState)},cursor:async id=>secondState.cursors[id]||0,operationResult:async id=>secondState.results[id]};
+        await chats.openNodeSession(node.reference);
+        const second=chats.getNodeSession(chats.activeTabId.value);
+        await until(()=>root().querySelector('.abele-chat-msg__from')?.textContent.includes('Sample request'));
+        if(second.messages.value.find(m=>m.role==='user'&&m.content.includes('Check the sample request'))?.fromSession?.id!==caller.id)throw Error('Second client lost journal sender');
+        root().querySelector('.abele-chat-msg__from').scrollIntoView({block:'center'});await shot('node-second-client-incoming');
         chats.switchTab(caller.id);await until(()=>root().querySelector('[data-message-id="node-answer"] .abele-chat-letter'));
         root().querySelector('[data-message-id="node-answer"] .tree-item-self').click();
         await until(()=>root().querySelector('[data-message-id="node-answer"] .abele-chat-letter__reply'));
@@ -116,6 +124,12 @@ it.each(onPhone() ? [true] : [false, true])(
         if(answerRect.left<0||answerRect.right>innerWidth||answerRect.top<0||answerRect.bottom>innerHeight)throw Error('Node reply is not visible in the captured viewport');
         await shot('node-answer-expanded');
         const nodeAnswer=caller.messages.value.find(m=>m.id==='node-answer').chatLetter.reply;
+        await T.closeNodeSessionFixture();nodeFixture=false;
+        await T.openNodeSessionFixture('obsidian-tools',true,false);nodeFixture=true;
+        await until(()=>root().querySelector('.abele-run .tree-item-self'));
+        root().querySelector('.abele-run .tree-item-self').click();
+        await until(()=>root().querySelector('.abele-run .abele-chat-letter__reply')?.textContent.includes('retained sample answer'));
+        root().querySelector('.abele-run .abele-chat-letter__reply').scrollIntoView({block:'center'});await shot('node-delegate-answer');
         await T.closeNodeSessionFixture();nodeFixture=false;
         originalDirectory=chats.listOpenChats;
         chats.listOpenChats=function(){return [...originalDirectory.call(this),{id:'sample-node',title:'Sample node chat',folder:'Examples',agent:null,state:'idle'}]};
