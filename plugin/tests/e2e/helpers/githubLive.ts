@@ -48,6 +48,7 @@ export async function startFakeGithub(
       | 'no-archive'
       | 'forgejo'
       | 'gitea'
+      | 'long-author'
   } = {}
 ): Promise<FakeGithub> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-fake-github-'))

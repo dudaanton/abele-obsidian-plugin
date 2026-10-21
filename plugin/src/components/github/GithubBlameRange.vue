@@ -124,7 +124,10 @@ onBeforeUnmount(() => {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
 
-  .cm-gutterElement {
+  &.cm-gutter {
+    padding-inline: 0;
+  }
+  &.cm-gutter .cm-gutterElement {
     padding: 0;
     text-align: start;
   }
@@ -144,6 +147,8 @@ onBeforeUnmount(() => {
     gap: var(--size-2-2);
     width: max-content;
     margin-block: calc(-1 * var(--size-2-2));
+    // The native inset is an outset, rather than room taken from the author's name.
+    margin-inline: calc(-1 * var(--size-2-3));
     font-size: inherit;
     color: var(--text-muted);
     > .abele-obsidian-button__label {
@@ -164,8 +169,7 @@ onBeforeUnmount(() => {
     overflow: hidden;
     .abele-github-user {
       min-width: 0;
-      // Reserve the native button inset inside the compact attribution column.
-      max-width: 9ch;
+      max-width: 14ch;
     }
     .abele-github-user__label {
       overflow: hidden;
@@ -180,7 +184,7 @@ onBeforeUnmount(() => {
   }
   &__name {
     min-width: 0;
-    max-width: 9ch;
+    max-width: 14ch;
     overflow: hidden;
     text-overflow: ellipsis;
   }

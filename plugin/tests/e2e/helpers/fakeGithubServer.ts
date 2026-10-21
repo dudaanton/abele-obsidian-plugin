@@ -520,7 +520,11 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
         oid: i % 2 ? FIRST_SHA : HEAD_SHA,
         message: `Sample attribution ${i + 1}\n\nFull sample explanation for this range.`,
         committedDate: '2025-03-04T12:00:00Z',
-        author: { name: 'Sample Author', user: null, avatarUrl: `${web}/avatars/u/sample-author` },
+        author: {
+          name: mode === 'long-author' ? 'Alexandria Montgomery-Whitfield' : 'Sample Author',
+          user: null,
+          avatarUrl: `${web}/avatars/u/sample-author`,
+        },
       },
     }))
     return send(res, 200, { data: { repository: { object: { blame: { ranges } } } } })
