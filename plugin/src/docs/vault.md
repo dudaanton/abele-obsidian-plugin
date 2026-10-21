@@ -2917,12 +2917,20 @@ the server receipt in that connection's state before disconnecting. An uncertain
 stopped across restart and retries the same request; it never removes local files. A server
 `scope_deleted` refusal likewise persists a stopped marker until explicit disconnect.
 
-Deleting server items from an issued share also protects the issuer's local files: connections
-to that server space persist an `itemDeletion` stop discriminator in the existing server-delete
-state before their runtimes drain. That protection survives failure and restart and remains until
-explicit disconnect; it cannot be replayed as a whole-scope delete. Explicit local-copy removal
-keeps a file when another persisted connection might cover it but its group membership cannot
-currently be established, including while offline after restart.
+Deleting server items from an issued share drains issuer connections in the same server space.
+Before the request, candidate paths are persisted in each connection's device-only
+`abele-sync-token-state:local-only-pending` list under the existing deletion barrier. Once
+that list is durable, the barrier can be cleared safely, including across restart. After confirmation,
+a complete paged manifest releases surviving paths and moves deleted paths to
+`abele-sync-token-state:local-only`; these stay excluded from both local
+publication and incoming changes. Engines restart and sync other paths normally. The exclusion
+survives plugin restart and also holds subsequent edits to the kept copy; it is not a conflict,
+a new upload or a local deletion. Disconnecting the connection retires its device-only list.
+An uncertain request retains its candidate exclusions rather than risking a destructive replay.
+Item deletion cannot be replayed as whole-scope deletion. Whole-token deletion from Share access
+uses the same protection. Deleting a connection itself still disconnects its revoked token while
+protecting and resuming other connections to that server space. Explicit local-copy removal
+keeps a file when another saved connection has unknown coverage, including offline group membership.
 
 ## Node chat drafts and preferences
 

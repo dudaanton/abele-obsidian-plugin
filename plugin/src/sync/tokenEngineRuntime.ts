@@ -78,6 +78,7 @@ export interface TokenEngineOptions {
   item?: string
   /** Persisted server selector; v2 token previews carry scope identities, not target IDs. */
   scope?: V2Connection['scope']
+  localOnly?(path: string): boolean
   uploadAllowed?(path: string): boolean
   retainedChanged?(items: ConnectionItem[]): void
   fs: FileSystem
@@ -1498,6 +1499,7 @@ export class TokenEngineRuntime
     // Core asks about directory prefixes as well as concrete paths.
     if (path.endsWith('/')) path = path.slice(0, -1)
     return (
+      this.options.localOnly?.(path) === true ||
       this.outsideScope(path) ||
       (this.ignore?.ignores(this.placement?.toLocal(path) ?? path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
@@ -2144,7 +2146,7 @@ export class TokenEngineRuntime
     return this.covers(path) && !this.localExcluded(this.placement?.toServer(path) ?? path, size)
   }
   private localExcluded(path: string, size: number): boolean {
-    if (this.outsideScope(path)) return true
+    if (this.options.localOnly?.(path) || this.outsideScope(path)) return true
     path = this.placement?.toLocal(path) ?? path
     return (
       (this.ignore?.ignores(path) ?? false) ||

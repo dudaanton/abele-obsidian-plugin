@@ -732,7 +732,13 @@ export class TokenItemSets implements ShareSetSource {
     }
   }
 
-  async deleteFromServer(shareId: string, itemId: string | null): Promise<void> {
+  private deletionWork: Promise<void> = Promise.resolve()
+  deleteFromServer(shareId: string, itemId: string | null): Promise<void> {
+    const work = this.deletionWork.then(() => this.performItemDeletion(shareId, itemId))
+    this.deletionWork = work.catch(() => {})
+    return work
+  }
+  private async performItemDeletion(shareId: string, itemId: string | null): Promise<void> {
     const issued = this.issued.get(shareId)
     if (!issued) throw new Error('Only the issuer may delete this share from the server')
     const facts = this.deleteFacts(shareId, itemId)
@@ -741,17 +747,38 @@ export class TokenItemSets implements ShareSetSource {
     const items = (await client.ownedItems(shareId)).items
       .filter(visible)
       .filter((one) => itemId === null || one.id === itemId)
-    await this.ui.protectLocalFilesForItemDeletion(issued.connectionId)
-    const local = this.ui.registry.localStorage
-    for (const item of items) {
-      const key = 'abele-sync-item-delete:' + shareId + ':' + item.id
-      const saved = local.loadLocalStorage(key)
-      const requestId = typeof saved === 'string' ? saved : crypto.randomUUID()
-      local.saveLocalStorage(key, requestId)
-      if (local.loadLocalStorage(key) !== requestId)
-        throw new Error('Could not retain deletion retry identity')
-      await client.itemClient().deleteItem(item.id, requestId)
+    const preview =
+      itemId === null
+        ? await client.previewToken(shareId)
+        : await client.previewTokenItem(shareId, itemId)
+    const previews = 'items' in preview ? preview.items.filter(visible) : [preview]
+    const complete = previews.every(
+      (one) => one.scope.kind !== 'group' || one.files.length === one.file_count
+    )
+    const affected = complete
+      ? previews.flatMap((one) =>
+          one.scope.kind === 'group'
+            ? [one.scope.path, ...one.files.map((file) => file.path)]
+            : [one.scope.path]
+        )
+      : undefined
+    const resume = await this.ui.protectLocalFilesForItemDeletion(issued.connectionId, [], affected)
+    let completed = false
+    try {
+      const local = this.ui.registry.localStorage
+      for (const item of items) {
+        const key = 'abele-sync-item-delete:' + shareId + ':' + item.id
+        const saved = local.loadLocalStorage(key)
+        const requestId = typeof saved === 'string' ? saved : crypto.randomUUID()
+        local.saveLocalStorage(key, requestId)
+        if (local.loadLocalStorage(key) !== requestId)
+          throw new Error('Could not retain deletion retry identity')
+        await client.itemClient().deleteItem(item.id, requestId)
+      }
+      if (itemId === null) await client.revoke(shareId)
+      completed = true
+    } finally {
+      await resume(completed)
     }
-    if (itemId === null) await client.revoke(shareId)
   }
 }

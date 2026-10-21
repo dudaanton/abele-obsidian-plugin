@@ -793,6 +793,14 @@ export class TokenEngines {
         if (!this.ui.reviews) throw new Error('Device reviews are not available')
         const current = this.ui.registry.records().find((one) => one.id === record.id)
         fence.assertReady()
+        const localOnly = [
+          ...((this.ui.registry
+            .storage(record.id)
+            .loadLocalStorage('abele-sync-token-state:local-only') ?? []) as string[]),
+          ...((this.ui.registry
+            .storage(record.id)
+            .loadLocalStorage('abele-sync-token-state:local-only-pending') ?? []) as string[]),
+        ]
         runtime = new TokenEngineRuntime({
           transferBudget: transferBudgetOf(this.app.vault),
           mobile: Platform.isMobile,
@@ -805,6 +813,8 @@ export class TokenEngines {
           item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
           scope: record.scope,
           retainedChanged: (items) => this.ui.itemSets.retainedChanged(record.id, items),
+          localOnly: (path) =>
+            localOnly.some((root) => path === root || path.startsWith(root + '/')),
           uploadAllowed: (path) => {
             const physical = externalPlacement?.toLocal(path) ?? path
             return this.ui.itemSets.mayUpload(record.id, physical, (id, candidate) => {

@@ -861,9 +861,18 @@ export class TokenUi {
       !!this.registry.records().find((one) => one.id === id)?.state[
         'abele-sync-token-state:server-delete'
       ]
-    const work = this.performServerDeletion(id, () => {
-      requested = true
-    })
+    const work = (async () => {
+      const resumeOthers = await this.protectLocalFilesForItemDeletion(id, [id])
+      let completed = false
+      try {
+        await this.performServerDeletion(id, () => {
+          requested = true
+        })
+        completed = true
+      } finally {
+        await resumeOthers(completed)
+      }
+    })()
       .catch((error: unknown) => {
         throw Object.assign(error instanceof Error ? error : new Error('Server deletion failed'), {
           deletionOutcome: requested ? 'unknown' : 'not-deleted',
@@ -873,49 +882,142 @@ export class TokenUi {
     this.deletions.set(id, work)
     return work
   }
-  /** An item delete must not arrive as an ordinary remote deletion on this device. */
-  async protectLocalFilesForItemDeletion(id: string): Promise<void> {
+  /** Drain writers, then durably fence candidates before any destructive request. */
+  async protectLocalFilesForItemDeletion(
+    id: string,
+    excluded: string[] = [],
+    affected?: string[]
+  ): Promise<(completed: boolean) => Promise<void>> {
     const issuer = this.registry.records().find((one) => one.id === id)
     if (!issuer) throw new Error('Connection is unavailable')
     const records = this.registry
       .records()
-      .filter((one) => one.address === issuer.address && one.spaceId === issuer.spaceId)
+      .filter(
+        (one) =>
+          one.address === issuer.address &&
+          one.spaceId === issuer.spaceId &&
+          !excluded.includes(one.id)
+      )
+    if (!records.length) return async () => {}
+    const identities = new Map(
+      records.map((record) => [
+        record.id,
+        JSON.stringify([
+          record.address,
+          record.spaceId,
+          record.tokenId,
+          record.ledgerId,
+          record.scope,
+          record.secretReference,
+        ]),
+      ])
+    )
+    const assertCurrent = (recordId: string) => {
+      const record = this.registry.records().find((one) => one.id === recordId)
+      if (
+        !record ||
+        JSON.stringify([
+          record.address,
+          record.spaceId,
+          record.tokenId,
+          record.ledgerId,
+          record.scope,
+          record.secretReference,
+        ]) !== identities.get(recordId)
+      )
+        throw new Error('Connection changed during deletion')
+    }
     const slot = 'abele-sync-token-state:server-delete'
-    const identity = (record: TokenConnectionRecord) =>
-      JSON.stringify({
-        address: record.address,
-        spaceId: record.spaceId,
-        tokenId: record.tokenId,
-        ledgerId: record.ledgerId,
-        scope: record.scope,
-        secretReference: record.secretReference,
-      })
-    const identities = new Map(records.map((record) => [record.id, identity(record)]))
+    const heldSlot = 'abele-sync-token-state:local-only'
+    const pendingSlot = 'abele-sync-token-state:local-only-pending'
+    const inventories = new Map<string, string[]>()
+    const previousHolds = new Map<string, string[]>()
+    const inventory = async (recordId: string, allowGone = false) => {
+      const paths: string[] = []
+      let next: string | null = null
+      do {
+        const page = await this.client(recordId)
+          .manifest(next)
+          .catch((error: unknown) => {
+            if (allowGone && (error as { code?: string })?.code === 'scope_deleted')
+              return { items: [], next: null }
+            throw error
+          })
+        paths.push(...page.items.map((one) => one.path))
+        next = page.next
+      } while (next !== null)
+      return paths
+    }
     for (const record of records) {
       const storage = this.registry.storage(record.id)
-      const previous = storage.loadLocalStorage(slot) as {
-        itemDeletion?: boolean
-        key?: string
-      } | null
+      const previous = storage.loadLocalStorage(slot) as { itemDeletion?: boolean } | null
       if (previous && !previous.itemDeletion)
         throw new Error('An earlier server deletion is unresolved')
-      const marker = previous ?? { key: crypto.randomUUID(), itemDeletion: true }
-      storage.saveLocalStorage(slot, marker)
-      const saved = storage.loadLocalStorage(slot) as typeof marker
-      if (!saved?.key || saved.key !== marker.key || saved.itemDeletion !== true)
+      storage.saveLocalStorage(slot, { key: crypto.randomUUID(), itemDeletion: true })
+      if (!(storage.loadLocalStorage(slot) as { itemDeletion?: boolean })?.itemDeletion)
         throw new Error('Could not retain local-copy protection')
-      this.registry.setStatus(record.id, 'error')
-      this.publish(record.id, {
-        error:
-          'Local files are protected for a server item deletion. Disconnect this connection before starting it again.',
-      })
     }
     for (const record of records) {
       await this.stopForDeletion(record.id)
       await this.waitForDeletion(this.connectionChangeGuard(record.id), 'safety')
-      const current = this.registry.records().find((one) => one.id === record.id)
-      if (!current || identity(current) !== identities.get(record.id))
-        throw new Error('Connection changed; open its deletion confirmation again.')
+      assertCurrent(record.id)
+      const storage = this.registry.storage(record.id)
+      const paths = (await inventory(record.id)).filter(
+        (path) =>
+          !affected ||
+          affected.some((root) => root === '/' || path === root || path.startsWith(root + '/'))
+      )
+      assertCurrent(record.id)
+      const pending = (storage.loadLocalStorage(pendingSlot) ?? []) as string[]
+      inventories.set(record.id, [...new Set([...pending, ...paths])])
+      const previous = (storage.loadLocalStorage(heldSlot) ?? []) as string[]
+      previousHolds.set(record.id, previous)
+      const held = inventories.get(record.id) ?? []
+      storage.saveLocalStorage(pendingSlot, held)
+      if (JSON.stringify(storage.loadLocalStorage(pendingSlot)) !== JSON.stringify(held))
+        throw new Error('Could not retain local-only paths')
+    }
+    // Once every path fence is durable, restart is safe even if the HTTP result is lost.
+    for (const record of records) this.registry.storage(record.id).saveLocalStorage(slot, null)
+    return async (completed) => {
+      let failure: unknown
+      for (const record of records) {
+        if (!this.registry.records().some((one) => one.id === record.id)) continue
+        assertCurrent(record.id)
+        const storage = this.registry.storage(record.id)
+        // An uncertain request keeps every candidate fenced. A successful response lets
+        // the authoritative manifest release only paths that are still on the server.
+        try {
+          if (completed) {
+            const remaining = new Set(await inventory(record.id, true))
+            assertCurrent(record.id)
+            const held = [
+              ...new Set([
+                ...(previousHolds.get(record.id) ?? []),
+                ...(inventories.get(record.id) ?? []).filter((path) => !remaining.has(path)),
+              ]),
+            ]
+            storage.saveLocalStorage(heldSlot, held)
+            if (JSON.stringify(storage.loadLocalStorage(heldSlot)) !== JSON.stringify(held))
+              throw new Error('Could not retain local-only paths')
+            storage.saveLocalStorage(pendingSlot, null)
+          }
+        } catch (error) {
+          console.debug(
+            '[Abele Sync] Keeping pending local-only paths after deletion',
+            record.id,
+            error
+          )
+          failure ??= error
+        }
+        storage.saveLocalStorage(slot, null)
+        await this.disconnectRuntime(record.id)
+        this.deletionStops.delete(record.id)
+        this.registry.setStatus(record.id, 'idle')
+        this.publish(record.id, { error: undefined })
+      }
+      await this.connectionsChanged()
+      if (failure) throw failure
     }
   }
   private async performServerDeletion(id: string, requesting: () => void): Promise<void> {

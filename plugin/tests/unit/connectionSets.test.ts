@@ -101,78 +101,119 @@ describe('connection item sets', () => {
       { kind: 'group', id: 'note-a', path: 'Garden/Flowers.md' },
     ])
   })
-  it('keeps confirmed deletion facts until the confirmation has finished closing', async () => {
-    const { storage, data } = setup()
-    data.delete(TOKEN_REGISTRY_KEY)
-    const registry = TokenConnectionRegistry.open(storage),
-      key = 'a'.repeat(43)
-    const secrets = { get: () => key, set: () => {}, remove: () => {} }
-    const scope = { kind: 'folder' as const, id: 'root-a', path: '/' },
-      id = registry.add()
-    registry.attach(
-      id,
-      { v: 1, address: 'https://sync.example', key, scope },
-      { protocol: 2, token_id: 'owner-a', space_id: 'space-a', scope, status: 'active' },
-      secrets
-    )
-    const ui = new TokenUi(registry, secrets, async () => {
-      throw new Error('Use the item port')
-    })
-    const item = {
-      id: 'item-a',
-      scope_id: 'scope-a',
-      scope: { kind: 'file', id: 'file-a', path: 'Sample.md' },
-      removed_at: null,
-    }
-    const stopped = vi.fn(async () => {})
-    ui.stopRuntime = stopped
-    const remove = vi.fn(async () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+  ])(
+    'resumes the issuer with durable kept paths after deletion (whole=%s, uncertain=%s)',
+    async (whole, uncertain) => {
+      const { storage, data } = setup()
+      data.delete(TOKEN_REGISTRY_KEY)
+      const registry = TokenConnectionRegistry.open(storage),
+        key = 'a'.repeat(43)
+      const secrets = { get: () => key, set: () => {}, remove: () => {} }
+      const scope = { kind: 'folder' as const, id: 'root-a', path: '/' },
+        id = registry.add()
+      registry.attach(
+        id,
+        { v: 1, address: 'https://sync.example', key, scope },
+        { protocol: 2, token_id: 'owner-a', space_id: 'space-a', scope, status: 'active' },
+        secrets
+      )
+      const ui = new TokenUi(registry, secrets, async () => {
+        throw new Error('Use the item port')
+      })
+      const item = {
+        id: 'item-a',
+        scope_id: 'scope-a',
+        scope: { kind: 'file', id: 'file-a', path: 'Sample.md' },
+        removed_at: null,
+      }
+      const stopped = vi.fn(async () => {})
+      ui.stopRuntime = stopped
+      ui.disconnectRuntime = vi.fn(async () => {})
+      ui.connectionsChanged = vi.fn(async () => {})
+      let deleted = false
+      const remove = vi.fn(async () => {
+        deleted = true
+        expect(
+          registry.storage(id).loadLocalStorage('abele-sync-token-state:local-only-pending')
+        ).toEqual(['Sample.md'])
+        expect(stopped).toHaveBeenCalledWith(id)
+        if (uncertain && remove.mock.calls.length === 1) throw new Error('Response lost')
+      })
+      vi.spyOn(ui.itemSets, 'client').mockReturnValue({
+        tokens: async () => ({
+          items: [
+            {
+              id: 'share-a',
+              scope: item.scope,
+              label: 'Sample share',
+              read_only: false,
+              created_at: '2025-01-01T00:00:00Z',
+              revoked_at: null,
+            },
+          ],
+        }),
+        ownedItems: async () => ({ items: [item] }),
+        revoke: async () => {},
+        manifest: async () => ({
+          items: deleted ? [] : [{ kind: 'note', file_id: 'file-a', path: 'Sample.md', size: 10 }],
+          next: null,
+        }),
+        connection: async () => ({ read_only: false }),
+        previewToken: async () => ({
+          items: [{ ...item, status: 'active', file_count: 1, total_bytes: 10, files: [] }],
+        }),
+        previewTokenItem: async () => ({
+          ...item,
+          status: 'active',
+          file_count: 1,
+          total_bytes: 10,
+          files: [],
+        }),
+        itemClient: () => ({ deleteItem: remove }),
+      } as unknown as ReturnType<TokenUi['client']>)
+      vi.spyOn(ui, 'client').mockImplementation(() => ui.itemSets.client(id))
+      await ui.itemSets.shares(id)
+      const mountedPreview = computed(() => ui.itemSets.deleteFacts('share-a', 'item-a'))
+      expect(mountedPreview.value).toBe(null)
+      await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')?.files).toBe(1))
+      expect(mountedPreview.value?.files).toBe(1)
+      const facts = ui.itemSets.deleteFacts('share-a', 'item-a')
+      if (whole) {
+        ui.itemSets.deleteFacts('share-a', null)
+        await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', null)).not.toBe(null))
+      }
+      if (uncertain) {
+        await expect(ui.itemSets.deleteFromServer('share-a', 'item-a')).rejects.toThrow(
+          'Response lost'
+        )
+        const reopened = TokenConnectionRegistry.open(storage).storage(id)
+        expect(reopened.loadLocalStorage('abele-sync-token-state:server-delete')).toBe(null)
+        expect(reopened.loadLocalStorage('abele-sync-token-state:local-only-pending')).toEqual([
+          'Sample.md',
+        ])
+        expect(ui.connectionsChanged).toHaveBeenCalled()
+      }
+      await ui.itemSets.deleteFromServer('share-a', whole ? null : 'item-a')
+      expect(remove).toHaveBeenCalledTimes(uncertain ? 2 : 1)
+      expect(registry.storage(id).loadLocalStorage('abele-sync-token-state:server-delete')).toBe(
+        null
+      )
+      expect(ui.connectionsChanged).toHaveBeenCalled()
       expect(
-        registry.storage(id).loadLocalStorage('abele-sync-token-state:server-delete')
-      ).toBeTruthy()
-      expect(stopped).toHaveBeenCalledWith(id)
-    })
-    vi.spyOn(ui.itemSets, 'client').mockReturnValue({
-      tokens: async () => ({
-        items: [
-          {
-            id: 'share-a',
-            scope: item.scope,
-            label: 'Sample share',
-            read_only: false,
-            created_at: '2025-01-01T00:00:00Z',
-            revoked_at: null,
-          },
-        ],
-      }),
-      ownedItems: async () => ({ items: [item] }),
-      manifest: async () => ({
-        items: [{ kind: 'note', file_id: 'file-a', path: 'Sample.md', size: 10 }],
-        next: null,
-      }),
-      connection: async () => ({ read_only: false }),
-      previewTokenItem: async () => ({
-        ...item,
-        status: 'active',
-        file_count: 1,
-        total_bytes: 10,
-        files: [],
-      }),
-      itemClient: () => ({ deleteItem: remove }),
-    } as unknown as ReturnType<TokenUi['client']>)
-    await ui.itemSets.shares(id)
-    const mountedPreview = computed(() => ui.itemSets.deleteFacts('share-a', 'item-a'))
-    expect(mountedPreview.value).toBe(null)
-    await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')?.files).toBe(1))
-    expect(mountedPreview.value?.files).toBe(1)
-    const facts = ui.itemSets.deleteFacts('share-a', 'item-a')
-    await ui.itemSets.deleteFromServer('share-a', 'item-a')
-    expect(remove).toHaveBeenCalledOnce()
-    expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(facts)
-    ui.itemSets.closeDeletePreview('share-a')
-    expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(null)
-    await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')).not.toBe(null))
-  })
+        TokenConnectionRegistry.open(storage)
+          .storage(id)
+          .loadLocalStorage('abele-sync-token-state:local-only')
+      ).toEqual(['Sample.md'])
+      expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(facts)
+      ui.itemSets.closeDeletePreview('share-a')
+      expect(ui.itemSets.deleteFacts('share-a', 'item-a')).toBe(null)
+      await vi.waitFor(() => expect(ui.itemSets.deleteFacts('share-a', 'item-a')).not.toBe(null))
+    }
+  )
   it('keeps the selected item on direct rename confirmation requests', async () => {
     const scope = { kind: 'folder' as const, id: 'folder-a', path: 'Shared' }
     const state = new MemoryStateStore(),
@@ -549,6 +590,118 @@ describe('connection item sets', () => {
       expect(await fs.read(path)).toEqual(new TextEncoder().encode('local edit'))
       expect(await state.get(path)).toBe(null)
       expect((await new RetainedShareCopies(state).read())[0]?.sha).toBe(hash)
+    } finally {
+      await runtime.close()
+    }
+  })
+  it('keeps an edited local-only copy through deletion, sync and runtime restart', async () => {
+    const path = 'Sample.md',
+      original = new TextEncoder().encode('baseline')
+    const hash = await sha256(original),
+      state = new MemoryStateStore(),
+      fs = new MemoryFileSystem()
+    await state.put({
+      path,
+      wirePath: path,
+      fileId: 'file-a',
+      versionId: 'version-a',
+      sha: hash,
+      size: original.length,
+      mtime: 1,
+    })
+    await state.setCursor(1)
+    await fs.writeAtomic(path, new TextEncoder().encode('local edit'), 2)
+    const scope = { kind: 'file' as const, id: 'file-a', path }
+    const requests: string[] = []
+    let departed = false
+    const fetcher: typeof fetch = async (input, init) => {
+      const route = new URL(String(input)).pathname
+      expect(new Headers(init?.headers).get('abele-scope-item')).toBe('item-a')
+      requests.push(route)
+      if (route === '/v2/connection')
+        return Response.json({
+          protocol: 2,
+          token_id: 'token-a',
+          space_id: 'space-a',
+          scope,
+          status: 'active',
+          limits: { max_file_bytes: 1000, quota_bytes: null },
+        })
+      if (route === '/v2/manifest')
+        return Response.json({
+          items: [
+            {
+              file_id: 'file-a',
+              version_id: 'version-a',
+              path,
+              sha: hash,
+              size: original.length,
+              mtime: 1,
+              kind: 'note',
+            },
+          ],
+          cursor: 1,
+          next: null,
+        })
+      if (route === '/v2/changes')
+        return Response.json({
+          items:
+            departed && Number(new URL(String(input)).searchParams.get('since')) < 2
+              ? [
+                  {
+                    cursor: 2,
+                    at: '2025-01-01T00:00:00Z',
+                    type: 'delete',
+                    version_id: 'version-b',
+                    file_id: 'file-a',
+                    path,
+                  },
+                ]
+              : [],
+          cursor: departed ? 2 : 1,
+          next: null,
+        })
+      if (route.includes('/content')) return new Response(original)
+      throw new Error('Unexpected publication: ' + route)
+    }
+    const meta = new MemoryStateStore()
+    const open = () =>
+      new TokenEngineRuntime({
+        id: 'record-a',
+        encoded: encodeAccessToken({
+          v: 2,
+          address: 'https://sync.example',
+          key: 'a'.repeat(43),
+          items: [{ id: 'item-a', kind: 'file', scope_id: scope.id, path }],
+        }),
+        item: 'item-a',
+        fs,
+        state,
+        fetch: fetcher,
+        localOnly: (candidate) => candidate === path,
+        reviews: {
+          executables: new ExecutableReview(meta),
+          attachments: new AttachmentConsent(meta),
+          close: () => {},
+        },
+        changed: () => {},
+        failed: () => {},
+        covers: async () => false,
+      })
+    let runtime = open()
+    try {
+      await runtime.sync()
+      expect(requests).toContain('/v2/changes')
+      expect(requests).not.toContain('/v2/commit')
+      expect(await fs.read(path)).toEqual(new TextEncoder().encode('local edit'))
+      departed = true
+      await runtime.sync()
+      expect(await fs.read(path)).toEqual(new TextEncoder().encode('local edit'))
+      await runtime.close()
+      runtime = open()
+      await runtime.sync()
+      expect(await fs.read(path)).toEqual(new TextEncoder().encode('local edit'))
+      expect(requests).not.toContain('/v2/commit')
     } finally {
       await runtime.close()
     }

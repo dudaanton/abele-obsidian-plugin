@@ -65,7 +65,49 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
     await sha256(new TextEncoder().encode('other item still writes'))
   )
   expect(owner.read(single)).toBe('server delete candidate')
-}, 180000)
+  owner.create(single, 'kept local edit')
+  owner.create(folder + '/kept.md', 'owner still writes')
+  await owner.syncNow(ownerId)
+  expect((await s.items()).some((item) => item.path === single)).toBe(false)
+  expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
+    sha: await sha256(new TextEncoder().encode('owner still writes')),
+  })
+  owner.run(
+    `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
+  )
+  await owner.waitIdle(ownerId)
+  await owner.syncNow(ownerId)
+  expect(owner.read(single)).toBe('kept local edit')
+  expect((await s.items()).some((item) => item.path === single)).toBe(false)
+  owner.create(folder + '/kept.md', 'owner writes after restart')
+  await owner.syncNow(ownerId)
+  expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
+    sha: await sha256(new TextEncoder().encode('owner writes after restart')),
+  })
+
+  const wholePath = s.root + '/Whole token file.md'
+  owner.create(wholePath, 'whole token kept bytes')
+  await owner.syncNow(ownerId)
+  await owner.shareSet(ownerId, ['File: ' + wholePath], 'Sample whole deletion')
+  await owner.long(
+    'delete the whole issued token',
+    `const shares=await svc.itemSets.shares(${JSON.stringify(ownerId)});const share=shares.find(one=>one.label==='Sample whole deletion');if(!share)throw new Error('Share unavailable');await poll(()=>svc.itemSets.deleteFacts(share.id,null)?.canWrite);await svc.itemSets.deleteFromServer(share.id,null);return true`
+  )
+  await owner.syncNow(ownerId)
+  expect(owner.read(wholePath)).toBe('whole token kept bytes')
+  expect((await s.items()).some((item) => item.path === wholePath)).toBe(false)
+  owner.run(
+    `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
+  )
+  await owner.waitIdle(ownerId)
+  owner.create(folder + '/kept.md', 'owner writes after whole deletion')
+  await owner.syncNow(ownerId)
+  expect(owner.read(wholePath)).toBe('whole token kept bytes')
+  expect((await s.items()).some((item) => item.path === wholePath)).toBe(false)
+  expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
+    sha: await sha256(new TextEncoder().encode('owner writes after whole deletion')),
+  })
+}, 300000)
 it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uploader', async () => {
   const s = fixture(),
     owner = s.primary,
