@@ -365,6 +365,20 @@ export class DebuggerService {
   static readonly instance = new DebuggerService()
   readonly sourceRevision = shallowRef(0)
   private stopped = false
+  private initialSelection: unknown
+  preferSelection(selection: unknown) {
+    this.initialSelection = selection
+    return () => {
+      if (this.initialSelection === selection) this.initialSelection = undefined
+    }
+  }
+  private selectionTarget(selection: unknown) {
+    if (!selection || typeof selection !== 'object') return undefined
+    const target = (selection as { target?: Partial<PathTarget> }).target
+    return target && typeof target === 'object'
+      ? JSON.stringify([target.registrationId, target.nodeId, target.kind, target.id])
+      : undefined
+  }
   private readonly folders = new Map<DebuggerBinding, { sessionId: string; target: PathTarget }>()
   private readonly selectedFolders = new Map<string, DebuggerBinding>()
   private folderKey(target: PathTarget) {
@@ -597,6 +611,16 @@ export class DebuggerService {
     }
   }
   async restoreSelection(raw: unknown, ownerOf: (target: PathTarget) => DebugOwner) {
+    const target = this.selectionTarget(raw)
+    if (
+      this.initialSelection !== undefined &&
+      raw &&
+      typeof raw === 'object' &&
+      'sessionId' in raw &&
+      (this.initialSelection === null ||
+        (target !== undefined && target === this.selectionTarget(this.initialSelection)))
+    )
+      raw = this.initialSelection
     const parsed = z
       .object({
         sessionId: z.string().min(1).max(128),
@@ -1047,6 +1071,7 @@ export class DebuggerService {
   }
   destroy() {
     this.stopped = true
+    this.initialSelection = undefined
     for (const binding of this.bindings.values()) binding.destroy()
     this.bindings.clear()
     this.sources.clear()

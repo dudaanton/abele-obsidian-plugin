@@ -8,6 +8,10 @@ const SELECTION_KEY = 'abele-debug-selection'
  * layout too; restoring a leaf only observes the retained session, never starts a program. */
 export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
   const service = DebuggerService.instance
+  // Capture before layout restoration can publish its older watch intents back to storage.
+  const saved: unknown = plugin.app.loadLocalStorage(SELECTION_KEY)
+  const releasePreference = service.preferSelection(saved)
+  plugin.register(releasePreference)
   let previous: string | undefined
   let established = false
   plugin.register(
@@ -31,13 +35,12 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
     )
   )
   plugin.app.workspace.onLayoutReady(async () => {
-    const leaves = plugin.app.workspace.getLeavesOfType(viewType)
-    for (const duplicate of leaves.slice(1)) duplicate.detach()
-    const saved: unknown = plugin.app.loadLocalStorage(SELECTION_KEY)
-    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
-    const workspace = plugin.app.workspace
-    const existing = workspace.getLeavesOfType(viewType)[0]
     try {
+      const leaves = plugin.app.workspace.getLeavesOfType(viewType)
+      for (const duplicate of leaves.slice(1)) duplicate.detach()
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
+      const workspace = plugin.app.workspace
+      const existing = workspace.getLeavesOfType(viewType)[0]
       await existing?.loadIfDeferred?.()
       if (existing && service.active.value) return
       const leaf = existing ?? workspace.getRightLeaf(false)
@@ -46,6 +49,8 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
       await leaf.loadIfDeferred?.()
     } catch (error) {
       console.debug('[debugger] Retained selection could not be opened', error)
+    } finally {
+      releasePreference()
     }
   })
 }

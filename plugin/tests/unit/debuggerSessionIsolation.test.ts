@@ -9,6 +9,42 @@ vi.mock('@/stores/GlobalStore', () => ({
 }))
 
 const service = new DebuggerService()
+it('does not restore a removed watch from an older workspace layout', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  const owner = {
+    kind: 'folder-debug',
+    target,
+    connection: { state: ref('connected'), connect: async () => {} },
+  } as unknown as FolderDebugOwner
+  const binding = service.binding(owner, 'sample-debug')
+  vi.spyOn(binding, 'open').mockImplementation(async () => {
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+  })
+  vi.spyOn(service, 'discover').mockResolvedValue()
+  const current = {
+    sessionId: 'sample-debug',
+    sessions: ['sample-debug'],
+    target,
+    watches: [],
+    sources: [],
+  }
+  const release = service.preferSelection(current)
+  try {
+    await service.restoreSelection(
+      { ...current, watches: [{ sessionId: 'sample-debug', expression: 'removed.count' }] },
+      () => owner
+    )
+    expect(binding.controller.session.watches).toEqual([])
+  } finally {
+    release()
+  }
+})
 it('retains breakpoint paths learned from stack metadata without requiring an open file tab', () => {
   const owner = {
     kind: 'folder-debug',
