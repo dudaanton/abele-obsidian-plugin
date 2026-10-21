@@ -74,7 +74,7 @@ it.each([false, true])(
       changedText='export const sample = "external"'+String.fromCharCode(10);
       client.repository.blob=async()=>({...await blob(),content_id:'3'.repeat(64),size:changedText.length});
       await model.reloadTarget(model.current.value);
-      await until(()=>fileLeaf.view.contentEl.textContent.includes('Changed on disk'));
+      await until(()=>editor.document.value?.contentId==='3'.repeat(64)&&fileLeaf.view.contentEl.textContent.includes('Changed on disk'));
       if(!editor.draftText.value.includes('local'))throw Error('External change replaced local draft');
       await shot('editor-changed-on-disk');
       fileLeaf.detach();fileLeaf=null;
