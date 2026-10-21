@@ -49,6 +49,7 @@
           @shown="inDrawer = $event"
         />
         <ChatSwitcher :title="tabInfos.find((tab) => tab.isActive)?.label ?? ''" />
+        <AiCommentTrail v-if="session" :session="session" />
         <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
              Everything else this chat is set up with is in ⋯. Other chats waiting for you show
              as a count only while they are waiting. -->
@@ -137,9 +138,6 @@
         @reply="(id, quote, start) => onReply({ messageId: id, quote, start })"
         @highlight="onHighlight"
       />
-
-      <!-- Over a comment on a message: the way down to it, every level a way back. -->
-      <AiCommentTrail v-if="session" v-show="!composing" :session="session" />
 
       <ChatBindingState v-if="session?.bindingRecoveries" v-show="!composing" :session="session" />
 

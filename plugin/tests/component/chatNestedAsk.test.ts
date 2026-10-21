@@ -1,11 +1,5 @@
 /**
- * "Ask here" in a comment's own tab, and the trail back up from it.
- *
- * A comment used to be the one place in the sidebar where a selection in a message offered
- * nothing: its tab was the one tab a new comment replaces, so asking there was switched off.
- * Now a comment is asked about like any chat, and what makes that bearable is the trail over
- * the messages — the chat or note it all started from, every comment in between, this one last —
- * each level a way back to the place the next one hangs on.
+ * Nested chats keep Ask here and offer one step back to the immediate parent.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -30,11 +24,15 @@ const messages = ref<ChatMessage[]>([
   { id: 'a', role: 'assistant', content: 'Yes, two classes of couchette.', timestamp: 2 },
 ])
 
-const SECOND: CommentAnchor = { note: 'AI/Comments/first1.abchat', quote: 'Baltic', message: 'c1a' }
-const FIRST: CommentAnchor = { note: 'AI/Chats/Riga.abchat', quote: 'night train', message: 'a1' }
+const SECOND: CommentAnchor = {
+  note: 'AI/Comments/first1.abchat',
+  quote: 'sample route',
+  message: 'c1a',
+}
+const FIRST: CommentAnchor = { note: 'AI/Chats/Sample.abchat', quote: 'night train', message: 'a1' }
 
 const TRAIL: TrailStep[] = [
-  { kind: 'chat', path: 'AI/Chats/Riga.abchat', title: 'Riga trip' },
+  { kind: 'chat', path: 'AI/Chats/Sample.abchat', title: 'Sample trip' },
   {
     kind: 'comment',
     path: 'AI/Comments/first1.abchat',
@@ -88,32 +86,40 @@ describe('a comment in its tab', () => {
     for (const row of rows) expect(row.props('canComment')).toBe(true)
   })
 
-  it('draws the trail from the chat it started in down to itself', async () => {
+  it('replaces the trail with a reader-style Back button beside the chooser', async () => {
     const wrapper = mountWith('comment', SECOND)
     await flushPromises()
 
-    const crumbs = wrapper.findAll('.abele-breadcrumbs__item')
-    expect(crumbs.map((c) => c.text())).toEqual(['Riga trip', 'Which train?', 'Sleeping cars?'])
-    expect(crumbs[2].classes()).toContain('abele-breadcrumbs__item_current')
+    expect(wrapper.find('.abele-breadcrumbs').exists()).toBe(false)
+    const back = wrapper.find('.abele-chat-parent-back')
+    expect(back.classes()).toContain('clickable-icon')
+    expect(back.attributes('aria-label')).toContain('Which train?')
+    expect(back.element.previousElementSibling?.classList.contains('abele-chat-switch')).toBe(true)
   })
 
-  it('goes back to a level by opening it at the place the next one hangs on', async () => {
+  it('opens only the immediate parent at the anchored message', async () => {
     const wrapper = mountWith('comment', SECOND)
     await flushPromises()
 
-    await wrapper.findAll('.abele-breadcrumbs__item')[0].trigger('click')
-    expect(revealAnchor).toHaveBeenLastCalledWith('first1', FIRST)
-
-    await wrapper.findAll('.abele-breadcrumbs__item')[1].trigger('click')
-    expect(revealAnchor).toHaveBeenLastCalledWith('second', SECOND)
+    await wrapper.find('.abele-chat-parent-back').trigger('click')
+    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND)
   })
 
-  it('does nothing when the level in front is pressed', async () => {
+  it('names the root parent when it is the immediate parent', async () => {
+    vi.mocked(CommentService.getInstance().trail).mockResolvedValue([TRAIL[0], TRAIL[2]])
     const wrapper = mountWith('comment', SECOND)
     await flushPromises()
 
-    await wrapper.findAll('.abele-breadcrumbs__item')[2].trigger('click')
-    expect(revealAnchor).not.toHaveBeenCalled()
+    expect(wrapper.find('.abele-chat-parent-back').attributes('aria-label')).toContain(
+      TRAIL[0].title
+    )
+  })
+
+  it('offers Back for a nested ordinary chat too', async () => {
+    const wrapper = mountWith('chat', SECOND)
+    await flushPromises()
+    await wrapper.find('.abele-chat-parent-back').trigger('click')
+    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND)
   })
 
   it('draws no trail for a comment on a note, which has the way back already', async () => {
@@ -121,6 +127,7 @@ describe('a comment in its tab', () => {
     await flushPromises()
 
     expect(wrapper.find('.abele-breadcrumbs').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-parent-back').exists()).toBe(false)
   })
 })
 
@@ -130,5 +137,6 @@ describe('an ordinary chat', () => {
     await flushPromises()
 
     expect(wrapper.find('.abele-breadcrumbs').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-parent-back').exists()).toBe(false)
   })
 })

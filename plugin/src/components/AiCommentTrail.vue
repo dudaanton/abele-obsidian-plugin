@@ -1,46 +1,32 @@
 <template>
-  <Breadcrumbs v-if="crumbs.length > 1" class="abele-comment-trail" :items="crumbs" @select="go" />
+  <Icon v-if="parent" icon="undo-2" class="abele-chat-parent-back" :tooltip="tooltip" @click="go" />
 </template>
 
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { computed, ref, watch } from 'vue'
-import Breadcrumbs, { type Crumb } from './obsidian/Breadcrumbs.vue'
+import Icon from './obsidian/Icon.vue'
 import { CommentService, type TrailStep } from '@/ai/CommentService'
 import { revealAnchor } from '@/ai/openChat'
 import type { ChatSession } from '@/ai/ChatSession'
 
 /**
- * Where a comment on a message sits: the chat or note it all started from, every comment in
- * between, and this one last. Each level is a way back to it, opened at the place the level
- * below it hangs on — which is what makes asking inside an answer inside an answer something a
- * person can find their way out of.
- *
- * Only over a comment on a message. A comment on a note has one level above it and a back
- * button for it already; a trail of two there would be the same button twice.
+ * One step back from a nested chat to its parent, at the anchored message. A comment on a
+ * note already has its own way back to the passage, so it needs no parent-chat button.
  */
 const props = defineProps<{ session: ChatSession }>()
 
 const steps = ref<TrailStep[]>([])
 
-const TOOLTIP: Record<TrailStep['kind'], string> = {
-  note: t('streamB.backToTheNoteAtThePassage.63dae5'),
-  chat: t('streamB.backToTheChatAtTheMessage.eea9db'),
-  comment: t('streamB.backToThisSideDiscussionAtThe.5757e9'),
-}
-
-const crumbs = computed<Crumb[]>(() =>
-  steps.value.map((step) => ({
-    label: step.missing
-      ? t('streamB.deleted.4e0f0d', { v0: presentUiField(step, 'title') })
-      : presentUiField(step, 'title'),
-    tooltip: step.missing ? t('streamB.thisHasBeenDeleted.ede806') : TOOLTIP[step.kind],
-  }))
+const parent = computed(() => (steps.value.length > 1 ? steps.value[steps.value.length - 2] : null))
+const tooltip = computed(() =>
+  parent.value
+    ? `${t('streamB.backToTheChatAtTheMessage.eea9db')}: ${presentUiField(parent.value, 'title')}`
+    : ''
 )
 
-// Walked again whenever what it is drawn from moves: another session in the tab, the anchor
-// followed to a renamed chat, or the first question arriving — that is the current level's name.
+// Resolve again when the session, anchor, file or current title changes.
 let generation = 0
 watch(
   () => {
@@ -66,17 +52,10 @@ watch(
   { immediate: true }
 )
 
-/** A level pressed: opened at the place the level below it hangs on. */
-function go(index: number): void {
-  const step = steps.value[index]
-  const below = steps.value[index + 1]
-  if (!step || step.missing || !below?.id || !below.anchor) return
-  void revealAnchor(below.id, below.anchor)
+/** Open the parent at the message this chat hangs on. */
+function go(): void {
+  const current = steps.value[steps.value.length - 1]
+  if (!parent.value || !current?.id || !current.anchor) return
+  void revealAnchor(current.id, current.anchor)
 }
 </script>
-
-<style lang="scss">
-.abele-comment-trail {
-  padding: 0 var(--size-4-2) var(--size-4-1);
-}
-</style>
