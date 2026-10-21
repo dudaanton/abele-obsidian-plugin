@@ -171,6 +171,7 @@ export const chat = {
   'chat.compacting': 'Сжатие…',
   'chat.woke': 'Возобновлено: {text}',
   'chat.backgroundEnded': 'фоновая задача завершилась',
+  'chat.nodeActivityNotice': 'Обновление с ноды',
   'chat.compactFailed': 'Не удалось сжать контекст{reason}',
   'chat.compactedCounts': 'Контекст сжат · {before} → {after}',
   'chat.compacted': 'Контекст сжат',

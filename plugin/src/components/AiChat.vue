@@ -264,7 +264,7 @@
           <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
             <SessionMarkLine
               v-if="q.delegationWake"
-              :mark="{ kind: 'notice', text: t('chat.backgroundEnded') }"
+              :mark="{ kind: 'notice', text: t('chat.nodeActivityNotice') }"
             />
             <template v-else>
               <Icon

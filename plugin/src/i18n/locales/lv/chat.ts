@@ -172,6 +172,7 @@ export const chat = {
   'chat.compacting': 'Saspiež…',
   'chat.woke': 'Atsākta darbība: {text}',
   'chat.backgroundEnded': 'fona uzdevums ir beidzies',
+  'chat.nodeActivityNotice': 'Jauna aktivitāte mezglā',
   'chat.compactFailed': 'Konteksta saspiešana neizdevās{reason}',
   'chat.compactedCounts': 'Konteksts saspiests · {before} → {after}',
   'chat.compacted': 'Konteksts saspiests',

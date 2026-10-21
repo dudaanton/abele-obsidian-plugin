@@ -17,7 +17,7 @@ async function inspect(label: string) {
       const previous=session.messages.value.length;
       session.wakeDelegationResult('sample-hidden-id','Read node_command_status for sample-hidden-id');
       for(let i=0;i<100;i++){
-        if(session.messages.value.length>previous&&[...document.querySelectorAll('.abele-ai-chat .abele-chat-msg')].at(-1)?.textContent.includes('background task ended'))break;
+        if(session.messages.value.length>previous&&[...document.querySelectorAll('.abele-ai-chat .abele-chat-msg')].at(-1)?.textContent.includes('Node activity update'))break;
         await new Promise(r=>setTimeout(r,50));
       }
       const rows=[...document.querySelectorAll('.abele-ai-chat .abele-chat-msg')],row=rows.at(-1);
@@ -27,7 +27,7 @@ async function inspect(label: string) {
     ) as { system: boolean; text: string; overflow: boolean }
     expect(report.system).toBe(true)
     expect(report.text).not.toContain('sample-hidden-id')
-    expect(report.text).toContain('background task ended')
+    expect(report.text).toContain('Node activity update')
     expect(report.overflow).toBe(false)
     columnShot(`${shots}/${label}-wake.png`)
     const queued = await evalLong(`(async()=>{
@@ -37,7 +37,7 @@ async function inspect(label: string) {
       await new Promise(r=>setTimeout(r,100));
       return document.querySelector('.abele-ai-chat__queued')?.textContent??'';
     })()`)
-    expect(queued).toContain('background task ended')
+    expect(queued).toContain('Node activity update')
     expect(queued).not.toContain('sample-hidden-queued-id')
     columnShot(`${shots}/${label}-queued-wake.png`)
     await evalLong(

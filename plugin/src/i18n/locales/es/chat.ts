@@ -173,6 +173,7 @@ export const chat = {
   'chat.compacting': 'Compactando…',
   'chat.woke': 'Reanudada: {text}',
   'chat.backgroundEnded': 'terminó una tarea en segundo plano',
+  'chat.nodeActivityNotice': 'Actualización de actividad del nodo',
   'chat.compactFailed': 'Error al compactar{reason}',
   'chat.compactedCounts': 'Compactado · {before} → {after}',
   'chat.compacted': 'Compactado',

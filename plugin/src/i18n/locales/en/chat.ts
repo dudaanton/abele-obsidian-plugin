@@ -172,6 +172,7 @@ export const chat = {
   'chat.compacting': 'Compacting…',
   'chat.woke': 'Woke: {text}',
   'chat.backgroundEnded': 'a background task ended',
+  'chat.nodeActivityNotice': 'Node activity update',
   'chat.compactFailed': 'Compacting failed{reason}',
   'chat.compactedCounts': 'Compacted · {before} → {after}',
   'chat.compacted': 'Compacted',

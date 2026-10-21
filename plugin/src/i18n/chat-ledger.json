@@ -637,5 +637,8 @@
   },
   "chatTree.nodesHeadingTip": {
     "englishHash": "3257f2e1a7194a98582bea4b57e35eb591e56a7268657d2211cd3795111024c9"
+  },
+  "chat.nodeActivityNotice": {
+    "englishHash": "a54f26075b975e3ca0b7712ca5918139ba9945517defce5f81c4a3b2f1f078e5"
   }
 }

@@ -174,6 +174,7 @@ export const chat = {
   'chat.compacting': 'Wird komprimiert…',
   'chat.woke': 'Fortgesetzt: {text}',
   'chat.backgroundEnded': 'eine Hintergrundaufgabe wurde beendet',
+  'chat.nodeActivityNotice': 'Neue Aktivität auf dem Knoten',
   'chat.compactFailed': 'Komprimierung fehlgeschlagen{reason}',
   'chat.compactedCounts': 'Komprimiert · {before} → {after}',
   'chat.compacted': 'Komprimiert',

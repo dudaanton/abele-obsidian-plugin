@@ -2900,7 +2900,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       id: nanoid(),
       role: automaticNotice ? 'system' : 'user',
       ...(automaticNotice
-        ? { sessionMark: { kind: 'notice' as const, text: t('chat.backgroundEnded') } }
+        ? { sessionMark: { kind: 'notice' as const, text: t('chat.nodeActivityNotice') } }
         : {}),
       ...(fromChat ? { fromSession: fromChat } : {}),
       content,
