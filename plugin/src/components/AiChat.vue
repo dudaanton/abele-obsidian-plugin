@@ -262,29 +262,40 @@
         <!-- Waiting to be sent: typed while the agent was working -->
         <div v-if="queuedMessages.length" class="abele-ai-chat__queued">
           <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
-            <Icon icon="clock" size="xs" :interactive="false" class="abele-ai-chat__queued-icon" />
-            <!-- Words and attachments each cut themselves off: a name inside the cut words
+            <SessionMarkLine
+              v-if="q.delegationWake"
+              :mark="{ kind: 'notice', text: t('chat.backgroundEnded') }"
+            />
+            <template v-else>
+              <Icon
+                icon="clock"
+                size="xs"
+                :interactive="false"
+                class="abele-ai-chat__queued-icon"
+              />
+              <!-- Words and attachments each cut themselves off: a name inside the cut words
                  would lie past the row's end, unseen. -->
-            <span class="abele-ai-chat__queued-line">
-              <span class="abele-ai-chat__queued-text">{{ q.content }}</span>
-              <span v-if="q.attachments?.length" class="abele-ai-chat__queued-files">
-                {{ q.attachments.map((path) => path.split('/').pop()).join(', ') }}
+              <span class="abele-ai-chat__queued-line">
+                <span class="abele-ai-chat__queued-text">{{ q.content }}</span>
+                <span v-if="q.attachments?.length" class="abele-ai-chat__queued-files">
+                  {{ q.attachments.map((path) => path.split('/').pop()).join(', ') }}
+                </span>
               </span>
-            </span>
-            <Icon
-              icon="pencil"
-              size="xs"
-              :tooltip="t('streamB.editQueuedMessage.250ac6')"
-              class="abele-ai-chat__queued-edit"
-              @click="onEditQueued(q.id)"
-            />
-            <Icon
-              icon="x"
-              size="xs"
-              :tooltip="t('streamB.removeFromTheQueue.b7ff8b')"
-              class="abele-ai-chat__queued-remove"
-              @click="onRemoveQueued(q.id)"
-            />
+              <Icon
+                icon="pencil"
+                size="xs"
+                :tooltip="t('streamB.editQueuedMessage.250ac6')"
+                class="abele-ai-chat__queued-edit"
+                @click="onEditQueued(q.id)"
+              />
+              <Icon
+                icon="x"
+                size="xs"
+                :tooltip="t('streamB.removeFromTheQueue.b7ff8b')"
+                class="abele-ai-chat__queued-remove"
+                @click="onRemoveQueued(q.id)"
+              />
+            </template>
           </div>
         </div>
 
@@ -575,6 +586,7 @@ import NodeSidebarChat from './NodeSidebarChat.vue'
 import NodeDelegations from './NodeDelegations.vue'
 import { nodeCardPlacement } from '@/node/cardPlacement'
 import AiToolApproval from './AiToolApproval.vue'
+import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import ChatOutlineDialog from './chatOutline/ChatOutlineDialog.vue'

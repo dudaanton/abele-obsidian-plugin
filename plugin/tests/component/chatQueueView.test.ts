@@ -75,6 +75,17 @@ const textarea = (wrapper: ReturnType<typeof open>) =>
   wrapper.get('.abele-chat-input__textarea').element as HTMLTextAreaElement
 
 describe('a message waiting its turn', () => {
+  it('shows an automatic wake as a system row without exposing or editing its model instructions', () => {
+    queued.value = [{ id: 'sample-wake', content: 'Read node_command_status for sample-hidden-id',
+      delegationWake: {sessionId:'sample-session',generation:1,stopEpoch:0} }]
+    const wrapper = open()
+    try {
+      expect(wrapper.find('.abele-session-mark_notice').exists()).toBe(true)
+      expect(wrapper.text()).not.toContain('sample-hidden-id')
+      expect(wrapper.find('.abele-ai-chat__queued-edit').exists()).toBe(false)
+      expect(wrapper.find('.abele-ai-chat__queued-remove').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
   it('is shown, so nobody is left wondering where it went', () => {
     queued.value = [{ id: 'q1', content: 'and also check the dates' }]
 
