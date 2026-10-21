@@ -170,7 +170,7 @@ export class NodeScopeLedger {
     const sources = [
       {
         identity: chat.nodeScopeIdentity,
-        entries: NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? []),
+        entries: nodeScopeEntries(chat),
       },
       ...(chat.inheritedNodeScopes ?? []),
     ]

@@ -181,11 +181,36 @@ export function setObsidianChatNodeScope(
  * Owner UI only: confirms on this device the chosen entries the chat already has, leaving its
  * access as it is. A refused call's Approve names exactly these before it is pressed.
  */
-export function approveObsidianChatNodeAccess(
+export async function approveObsidianChatNodeAccess(
   session: NodeScopeOwner,
   chosen: NodeScopeEntry[]
 ): Promise<void> {
-  return saveNodeScope(session, nodeScopeEntries(session), chosen)
+  const version = session.conversationVersion.value
+  const scope = JSON.stringify(nodeScopeEntries(session))
+  const host = await nodeAgentHost()
+  const entries = chosen.map((entry) => NodeScopeEntrySchema.parse(entry))
+  const connections = new Map(
+    entries.map((entry) => [entry.node_id, host.connection(entry.node_id, session)])
+  )
+  const principals = Object.fromEntries(
+    [...connections].map(([id, connection]) => [id, connection.principal()])
+  )
+  const generations = new Map(
+    [...connections].map(([id, connection]) => [id, connection.authorizationGeneration])
+  )
+  await session.ensureDelegationParentId()
+  if (
+    session.conversationVersion.value !== version ||
+    JSON.stringify(nodeScopeEntries(session)) !== scope
+  )
+    throw new Error('Node scope changed while approving access')
+  for (const [id, connection] of connections)
+    if (
+      connection.principal() !== principals[id] ||
+      connection.authorizationGeneration !== generations.get(id)
+    )
+      throw new Error('Node identity changed during scope approval')
+  host.ledger.approve(session, principals, entries)
 }
 async function saveNodeScope(
   session: NodeScopeOwner,

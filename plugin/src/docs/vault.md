@@ -1262,6 +1262,8 @@ Folder confirmations use stable folder identities in the same device-local node 
 ledger as chat confirmations. A synced catalog carries configuration only: an exact entry
 and the registered installation must have been explicitly approved on this device before
 file tools can use it. Changing or removing an entry prunes its local confirmation.
+Confirming inherited access from a chat binds that confirmation only to that chat; it never
+copies folder entries into the chat's own overrides or gives access to sibling chats.
 
 `_folders.abelechats` in the configured chat root is a synced JSON catalog (version 1): folder
 records contain a stable `id`, `name`, parent id, `order`, and additive `access` modes. The

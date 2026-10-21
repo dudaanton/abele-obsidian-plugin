@@ -34,6 +34,22 @@ it('requires a live local folder approval for inherited scope', () => {
   expect(() => ledger.guard(session, target, 'pin:1', 'read')).toThrow()
 })
 
+it('can confirm inherited access for just one chat without copying its folder configuration', () => {
+  const ledger = new NodeScopeLedger()
+  const session = chat()
+  session.overrides.value.nodeScope = []
+  const sources = [{ identity: 'folder:sample', entries: [entry] }]
+  Object.assign(session, { inheritedNodeScopes: sources })
+  ledger.approve(session, { 'sample-node': 'pin:1' }, [entry])
+  const check = ledger.guard(session, target, 'pin:1', 'edit')
+  expect(session.overrides.value.nodeScope).toEqual([])
+  const sibling = { ...session, nodeScopeIdentity: 'sibling-chat' }
+  expect(() => ledger.guard(sibling, target, 'pin:1', 'read')).toThrow()
+  sources.splice(0)
+  expect(check).toThrow()
+  expect(() => ledger.guard(session, target, 'pin:1', 'read')).toThrow()
+})
+
 it('keeps ancestor reads and own edits additive and fences moving between equal folder scopes', () => {
   const ledger = new NodeScopeLedger()
   const folder = chat('folder:sample')
