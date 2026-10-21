@@ -93,6 +93,9 @@ export class TokenEngines {
     ui.localOnlyChanged = () => this.localOnly.refresh()
     ui.releaseLocalOnly = async (id, paths) => {
       try {
+        await this.localOnly.assertPublishSafe(
+          async (path) => !!(await vaultDisk(this.app.vault).stat(path))
+        )
         await this.localOnly.releaseSelected(id, paths, async (held) => {
           // Every connection may have seen this physical copy before it became local-only.
           // Keep its exclusion until all stopped ledgers have retired the old server identity.
@@ -673,7 +676,11 @@ export class TokenEngines {
         record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, localRoot)
           : undefined
-      this.localOnly.refresh()
+      await stage('Checking kept copies', () =>
+        this.localOnly.assertPublishSafe(
+          async (path) => !!(await vaultDisk(this.app.vault).stat(path))
+        )
+      )
       await quarantineLocalOnlyJournal(state, (path) =>
         this.localOnly.has(externalPlacement?.toLocal(path) ?? path)
       )

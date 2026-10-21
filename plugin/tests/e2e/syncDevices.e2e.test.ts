@@ -146,6 +146,25 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
     sha: await sha256(new TextEncoder().encode('owner writes after whole deletion')),
   })
+  const unresolved = folder + '/Unresolved kept copy.md'
+  await owner.long(
+    'move retained copy while identity persistence fails',
+    `const storage=svc.registry.localStorage;const save=storage.saveLocalStorage;storage.saveLocalStorage=function(key,value){if(key==='abele-sync-local-only-copies-v1')throw new Error('Synthetic storage failure');return save.call(this,key,value)};try{await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(moved)}),${JSON.stringify(unresolved)})}catch{}finally{storage.saveLocalStorage=save}return true`
+  )
+  expect(owner.read(unresolved)).toBe('kept local edit')
+  owner.run(
+    `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
+  )
+  await owner.long(
+    'restart refuses publication with an unresolved kept-copy location',
+    `await poll(()=>svc.rows.value.some(one=>one.id===${JSON.stringify(ownerId)}&&one.status==='error')&&String(svc.activity.value[${JSON.stringify(ownerId)}]?.error).includes('kept-copy'));if(host.live.has(${JSON.stringify(ownerId)}))throw new Error('Unsafe publisher started');return true`
+  )
+  expect((await s.items()).some((item) => item.path === unresolved)).toBe(false)
+  await owner.long(
+    'restore the known kept-copy location before retry',
+    `await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(unresolved)}),${JSON.stringify(moved)});await svc.connectionsChanged();return true`
+  )
+  await owner.waitIdle(ownerId)
   await owner.shareSet(ownerId, ['Folder: ' + s.root], 'Sample explicit re-share')
   expect(owner.read(wholePath)).toBe('whole token kept bytes')
   await owner.syncNow(ownerId)

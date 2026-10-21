@@ -2937,6 +2937,12 @@ deleted server identity. Failed retirement leaves the exclusion in place and res
 Rename destinations are fenced in memory before saving their identities. Failed writes or
 readback verification retain that fence across later scans and refreshes; a later successful
 save makes the moved identity durable. Re-sharing cannot release an unsaved rename fence.
+Before engine construction or journal recovery, startup verifies that every persisted kept-copy
+path still exists. A missing path may be an unrecorded move anywhere in the vault, so all
+connections stop with a visible error rather than publish an unknown destination. Restoring the
+known location allows retry. An existing host retries pending rename metadata before startup;
+no content or basename guessing is used. If all identity writes fail, the new location cannot
+survive process loss; safety then depends on the old persisted path being detectably missing.
 Before fencing, a pending publication batch touching retained paths is quarantined intact in
 ledger metadata `local-only-publication-journal:<idempotencyKey>` before clearing its replay slot.
 Startup and runtime journal reads enforce the same rule. Mixed batches are never split or

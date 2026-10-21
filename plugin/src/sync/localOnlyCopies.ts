@@ -12,6 +12,7 @@ interface Copy {
 export class LocalOnlyCopies {
   private paths: string[] = []
   private unsaved?: Copy[]
+  private pendingChanges: { id: string; slot: string; paths: string[] }[] = []
   constructor(private registry: TokenConnectionRegistry) {
     this.refresh()
   }
@@ -51,6 +52,18 @@ export class LocalOnlyCopies {
         caseKey(path).startsWith(caseKey(root) + '/')
     )
   }
+  async assertPublishSafe(exists: (path: string) => Promise<boolean>): Promise<void> {
+    if (this.unsaved || this.pendingChanges.length) this.persistRename(this.copies())
+    this.refresh()
+    // A lost rename destination can be anywhere in the vault, including another connection.
+    // Do not guess from a basename or allow any engine to publish before it is resolved.
+    for (const path of new Set(this.paths))
+      if (!(await exists(path)))
+        throw new Error(
+          'Cannot sync: a saved kept-copy path is missing; its location must be resolved before syncing: ' +
+            path
+        )
+  }
   renamed(from: string, to: string): void {
     const matches = (path: string) =>
       caseKey(path) === caseKey(from) || caseKey(path).startsWith(caseKey(from) + '/')
@@ -75,9 +88,23 @@ export class LocalOnlyCopies {
           changes.push({ id: record.id, slot, paths: remaining })
       }
     if (!changes.length && JSON.stringify(copies) === JSON.stringify(original)) return
+    for (const change of changes) {
+      this.pendingChanges = this.pendingChanges.filter(
+        (one) => one.id !== change.id || one.slot !== change.slot
+      )
+      this.pendingChanges.push(change)
+    }
+    this.persistRename(copies)
+  }
+  private persistRename(copies: Copy[]): void {
     this.save(copies)
-    for (const change of changes)
-      this.registry.storage(change.id).saveLocalStorage(change.slot, change.paths)
+    for (const change of this.pendingChanges) {
+      const storage = this.registry.storage(change.id)
+      storage.saveLocalStorage(change.slot, change.paths)
+      if (JSON.stringify(storage.loadLocalStorage(change.slot)) !== JSON.stringify(change.paths))
+        throw new Error('Could not retain kept-copy paths')
+    }
+    this.pendingChanges = []
     this.refresh()
   }
   private save(copies: Copy[]): void {
@@ -98,7 +125,7 @@ export class LocalOnlyCopies {
     retire: (selected: (path: string) => boolean) => Promise<void> = async () => {}
   ): Promise<void> {
     // A failed rename must become durable before any exclusion can be released.
-    if (this.unsaved) this.save(this.unsaved)
+    if (this.unsaved || this.pendingChanges.length) this.persistRename(this.copies())
     const issuer = this.registry.records().find((one) => one.id === id)
     if (!issuer) throw new Error('Connection unavailable')
     const roots = paths.map((path) => this.physical(issuer, path))

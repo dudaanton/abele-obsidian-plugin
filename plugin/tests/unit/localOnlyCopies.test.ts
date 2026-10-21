@@ -44,7 +44,7 @@ it('follows a kept identity into another shared folder and through folder rename
 
 it.each(['throw', 'lost-write'])(
   'keeps a moved copy fenced when identity storage has a %s failure',
-  (failure) => {
+  async (failure) => {
     const values = new Map<string, unknown>()
     let broken = false
     const local = {
@@ -66,11 +66,20 @@ it.each(['throw', 'lost-write'])(
     expect(copies.has('Shared/Kept.md')).toBe(true)
     copies.refresh()
     expect(copies.has('Shared/Kept.md')).toBe(true)
+    const restarted = new LocalOnlyCopies(TokenConnectionRegistry.open(local))
+    await expect(
+      restarted.assertPublishSafe(async (path) => path === 'Shared/Kept.md')
+    ).rejects.toThrow('kept-copy')
     broken = false
     copies.renamed('Shared/Kept.md', 'Shared/Again.md')
     expect(copies.has('Shared/Again.md')).toBe(true)
     expect(new LocalOnlyCopies(TokenConnectionRegistry.open(local)).has('Shared/Again.md')).toBe(
       true
     )
+    await expect(
+      new LocalOnlyCopies(TokenConnectionRegistry.open(local)).assertPublishSafe(
+        async (path) => path === 'Shared/Again.md'
+      )
+    ).resolves.toBeUndefined()
   }
 )
