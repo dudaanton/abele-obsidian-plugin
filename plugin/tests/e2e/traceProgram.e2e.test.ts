@@ -400,6 +400,10 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       const offered=[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].map(r=>({title:r.querySelector('.suggestion-title')?.textContent.trim()??'',note:r.querySelector('.suggestion-note')?.textContent.trim()??''}));
       await shot('2026-10-14-trace4-picker-phone');
       press([...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()==='src/total.js'));
+      await until(()=>document.querySelector('.modal.abele-modal'),'launch options');
+      const stopAtStart=document.querySelector('.modal.abele-modal [role="checkbox"][aria-label="Stop at start"]');
+      if(stopAtStart?.getAttribute('aria-checked')==='false') press(stopAtStart);
+      press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
       await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);
       await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
