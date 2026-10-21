@@ -11,12 +11,19 @@ import {
 it.each(
   [false, true].flatMap((bounded) =>
     [false, true].flatMap((preserveStamp) =>
-      [false, true].map((knownCopy) => ({ bounded, preserveStamp, knownCopy }))
+      [false, true].flatMap((knownCopy) =>
+        ['sample.md', 'renamed.md', 'Moved/sample.md'].map((localPath) => ({
+          bounded,
+          preserveStamp,
+          knownCopy,
+          localPath,
+        }))
+      )
     )
   )
 )(
   'holds offline edits across equal and later remote pages ($bounded, $preserveStamp, $knownCopy)',
-  async ({ bounded, preserveStamp, knownCopy }) => {
+  async ({ bounded, preserveStamp, knownCopy, localPath }) => {
     const fs = new MemoryFileSystem(),
       state = new MemoryStateStore()
     const a = new TextEncoder().encode('sample A')
@@ -48,8 +55,9 @@ it.each(
       })
     }
     await state.setCursor(1)
-    await fs.writeAtomic('sample.md', b, preserveStamp ? 1000 : 2000)
-    const before = await fs.stat('sample.md')
+    if (localPath !== base.path) await fs.move(base.path, localPath)
+    await fs.writeAtomic(localPath, b, preserveStamp ? 1000 : 2000)
+    const before = await fs.stat(localPath)
     const write = vi.spyOn(fs, 'writeAtomic'),
       move = vi.spyOn(fs, 'move'),
       remove = vi.spyOn(fs, 'remove')
@@ -72,7 +80,7 @@ it.each(
       seq,
       file_id: base.fileId,
       version_id: version,
-      path: base.path,
+      path: localPath,
       prev_path: null,
       op: 'modify',
       kind: 'note',
@@ -108,14 +116,14 @@ it.each(
       expected: new ExpectedWrites(),
     })
     expect(changes.mock.calls.map(([since]) => since)).toEqual([1, 2])
-    expect(await fs.read(base.path)).toEqual(b)
+    expect(await fs.read(localPath)).toEqual(b)
     // Equal bytes on page one must not acknowledge an unpushed edit as a clean base.
     expect(afterEqual).toEqual(base)
     expect(result.held).toEqual(
       expect.arrayContaining([expect.objectContaining({ seq: 3, version_id: 'version-c' })])
     )
     expect(await state.byFileId(base.fileId)).toEqual(base)
-    expect(await fs.stat(base.path)).toEqual(before)
+    expect(await fs.stat(localPath)).toEqual(before)
     expect(write).not.toHaveBeenCalled()
     expect(move).not.toHaveBeenCalled()
     expect(remove).not.toHaveBeenCalled()

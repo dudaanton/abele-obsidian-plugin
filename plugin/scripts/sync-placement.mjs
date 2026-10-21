@@ -350,6 +350,19 @@ export function syncPlacementPlugin() {
           return null;
         }
         async placeObserved(change, sha, entry, fetched, local) {
+          // A missing old name may be an offline move plus edit. Its destination
+          // must still match the recorded base before any adoption or replacement.
+          if (entry && entry.wirePath !== change.path && await this.fs.stat(entry.path) === null) {
+            let target;
+            try { target = await resolveLocalFile(this.fs, this.state, change.path); }
+            catch { return false; }
+            if (await this.fs.stat(target) !== null) {
+              try {
+                if ((await fingerprintPlacementFile(this.fs, target, this.hash)).sha !== entry.sha)
+                  return false;
+              } catch { return false; }
+            }
+          }
           // An own commit may precede its local receipt. Verify and adopt existing bytes before
           // fetching them again, without settling an interrupted pull's retained write intent.
           if (change.op !== 'move' && this.adoptionCandidates?.get(change.file_id) !== false &&
