@@ -47,7 +47,12 @@ export function serverDeleteFailure(host: string, error: unknown): string {
   const notDeleted =
     (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
   let reason: string | undefined
-  if (error instanceof ServerDeleteWait) reason = error.message
+  if (
+    (error as { code?: string })?.code === 'forbidden' ||
+    (error as { status?: number })?.status === 403
+  )
+    reason = 'This connection does not allow that action.'
+  else if (error instanceof ServerDeleteWait) reason = error.message
   else if (error instanceof ExternalRecoveryRequired)
     // Render only locally defined reasons, never arbitrary exception or server response text.
     reason = error.message.includes('installation or retained-byte recovery is unfinished')

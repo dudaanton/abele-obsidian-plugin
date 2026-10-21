@@ -4,6 +4,7 @@
  * offers retry. (Was the per-folder picker's test; the action moved to the connection.)
  */
 import { afterEach, describe, it, expect, vi } from 'vitest'
+import { AbeleError } from '@abele/sync-sdk/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 import ServerDeleteModal from '@/components/sync/ServerDeleteModal.vue'
 import type { ServerDeleteFacts } from '@/components/sync/serverDelete'
@@ -194,6 +195,22 @@ describe('ServerDeleteModal', () => {
     expect(press('Try again')).toBeTruthy()
     expect(view.emitted('done')).toBeUndefined()
     view.unmount()
+  })
+  it('explains a typed forbidden confirmation without exposing server text', async () => {
+    const view = open(async () => {
+      throw new AbeleError('forbidden', 'untrusted response detail')
+    })
+    try {
+      press('Delete from the server').click()
+      await flushPromises()
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+        'This connection does not allow that action.'
+      )
+      expect(view.text()).not.toContain('untrusted response detail')
+      expect(view.emitted('done')).toBeUndefined()
+    } finally {
+      view.unmount()
+    }
   })
   it('names a known failure without exposing transport code and keeps retry warning-coloured', async () => {
     const view = open(async () => {
