@@ -63,6 +63,10 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       for(const state of ['refused','node-opt-in','running','unknown']) {
         api.openDialog('node-delegation-card',{permissionState:state});
         const card=await until(()=>document.querySelector('.abele-node-delegation'));await wait(150);
+        const child=card.querySelector('[aria-label="Open child chat"]');
+        const info=card.querySelector('.setting-item-info');
+        if(child && info && child.getBoundingClientRect().top>=info.getBoundingClientRect().bottom)throw Error('Child action moved below the card header');
+        if(card.querySelector('details'))throw Error('Delegation details bypass the shared Disclosure');
         const text=card.textContent;
         states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))
           : state==='node-opt-in' ? text.includes('On the node, allow running without asking:')
