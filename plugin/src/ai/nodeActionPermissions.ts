@@ -68,7 +68,12 @@ export function requireNodeActionPermission(
     throw new Error('Node tool is off in this device’s tool permissions')
   if (
     mode === 'ask' &&
-    !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(name) &&
+    ![
+      'node_delegations',
+      'node_delegation_status',
+      'node_command_status',
+      'node_command_run',
+    ].includes(name) &&
     !approved
   )
     throw new Error('Node tool requires approval')

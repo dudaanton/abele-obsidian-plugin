@@ -1,6 +1,19 @@
 import { expect, it } from 'vitest'
 import { ordinaryNeedsApproval } from '@/ai/ordinaryToolPolicy'
 
+it('leaves command approval to the exact node card while keeping other actions gated', () => {
+  const policy = {
+    permissionMode: 'confirm-all' as const,
+    outOfScopePath: () => null,
+    getToolMode: () => 'ask' as const,
+    toolModes: {},
+    bookAnchored: false,
+    skillNeedsApproval: () => false,
+  }
+  expect(ordinaryNeedsApproval(policy, 'node_command_run')).toBe(false)
+  expect(ordinaryNeedsApproval(policy, 'node_delegate')).toBe(true)
+})
+
 it('exports core read/write policy without treating a missing feature mode as core Off', () => {
   const policy = {
     permissionMode: 'confirm-all' as const,

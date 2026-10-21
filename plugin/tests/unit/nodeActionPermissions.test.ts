@@ -38,7 +38,14 @@ it('defaults every node action off', () => {
 it('requires approval for Ask actions and refuses Off even with an old approval', () => {
   const session = { getToolMode: () => 'ask' } as unknown as ChatSession
   for (const name of actions) {
-    if (['node_delegations', 'node_delegation_status', 'node_command_status'].includes(name))
+    if (
+      [
+        'node_delegations',
+        'node_delegation_status',
+        'node_command_status',
+        'node_command_run',
+      ].includes(name)
+    )
       expect(() => requireNodeActionPermission(session, name)).not.toThrow()
     else expect(() => requireNodeActionPermission(session, name)).toThrow(/approval/)
     expect(() => requireNodeActionPermission(session, name, true)).not.toThrow()
@@ -58,7 +65,13 @@ it('asks before every mutating node action in ask mode, even in bypass', () => {
     skillNeedsApproval: () => false,
   }
   for (const name of actions.filter(
-    (n) => !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(n)
+    (n) =>
+      ![
+        'node_delegations',
+        'node_delegation_status',
+        'node_command_status',
+        'node_command_run',
+      ].includes(n)
   ))
     expect(ordinaryNeedsApproval(policy, name)).toBe(true)
 })
