@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { t } from '@/i18n'
 
 const Capability = z.union([
-  z.object({ status: z.literal('supported'), evidence: z.string() }),
+  z.object({ status: z.literal('supported'), evidence: z.string().optional() }),
   z.object({ status: z.enum(['unsupported', 'unverified']), reason: z.string() }),
 ])
 /** An agent a provider hosts (ACP: Gemini, OpenCode…), by the name sessions are made with. */

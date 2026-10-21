@@ -33,6 +33,7 @@ it('answers on a token node using its authenticated store identity when no expec
   const { answerOwnerPrompt } = await import('@/node/promptAnswers')
   const { first } = await fixture()
   try {
+    Object.assign(first.client.target, { expected_node_id: undefined })
     await answerOwnerPrompt(first.client, undefined, prompt, 'allow').catch(() => {})
     expect(
       (await first.client.pending()).filter((entry) => entry.method === 'prompt.answer')
@@ -42,6 +43,36 @@ it('answers on a token node using its authenticated store identity when no expec
     first.store.close()
   }
 })
+it.each(['missing', 'changed'])(
+  'refuses an answer when authenticated node identity is %s',
+  async (identity) => {
+    const { answerOwnerPrompt } = await import('@/node/promptAnswers')
+    const { first } = await fixture()
+    try {
+      if (identity === 'missing') {
+        Object.assign(first.client.target, { expected_node_id: undefined })
+        await first.store.transaction((s) => {
+          delete s.node_id
+        })
+      } else
+        await first.store.transaction((s) => {
+          s.node_id = 'other-node'
+        })
+      await expect(
+        answerOwnerPrompt(
+          first.client,
+          identity === 'missing' ? undefined : reference.nodeId,
+          prompt,
+          'allow'
+        )
+      ).rejects.toThrow('node_identity_mismatch')
+      expect(await first.client.pending()).toEqual([])
+    } finally {
+      first.presenter.destroy()
+      first.store.close()
+    }
+  }
+)
 async function fixture() {
   const factory = new IDBFactory()
   const make = () => {

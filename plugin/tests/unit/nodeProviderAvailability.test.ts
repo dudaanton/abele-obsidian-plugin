@@ -14,3 +14,11 @@ it('keeps an available provider when optional configuration contains null defaul
   })
   expect(agentChoices(providers).find((p) => p.provider === 'codex')?.unavailable).toBe('')
 })
+it('does not hide a provider when a supported capability has no diagnostic evidence', () => {
+  const providers = nodeProviders({
+    providers: [
+      { provider: 'codex', available: true, capabilities: { sessions: { status: 'supported' } } },
+    ],
+  })
+  expect(agentChoices(providers).find((p) => p.provider === 'codex')?.unavailable).toBe('')
+})
