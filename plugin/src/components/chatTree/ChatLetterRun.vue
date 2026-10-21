@@ -109,7 +109,7 @@ onUnmounted(() => observer?.disconnect())
 </script>
 
 <style lang="scss">
-.abele-chat-letter > .abele-tree-item__self > .abele-tree-item__inner {
+.abele-chat-letter.abele-chat-run > .abele-tree-item__self > .abele-tree-item__inner {
   flex: 1 1 auto;
 }
 .abele-chat-letter > .tree-item-children {
