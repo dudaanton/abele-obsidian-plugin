@@ -52,7 +52,11 @@
     <!-- Where the agent works, quietly under the header: the folder and worktree (pressed, moved
          to another), the node in the tooltip, a red dot while the node cannot be reached, and
          the way back to the session that started this one. -->
-    <div class="abele-node-chat__place" :title="placeTip">
+    <div
+      v-if="offline || worktree || live?.parent"
+      class="abele-node-chat__place"
+      :title="placeTip"
+    >
       <span v-if="offline" class="abele-node-chat__offline" role="status" :aria-label="status" />
       <WorktreeChip
         v-if="worktree"
@@ -67,7 +71,6 @@
         "
         @choose="emit('choose-worktree')"
       />
-      <span v-else class="abele-node-chat__node">{{ nodeLabel }}</span>
       <ParentLink
         v-if="live?.parent"
         :title="live.parent.title"

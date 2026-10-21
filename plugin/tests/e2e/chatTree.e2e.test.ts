@@ -280,6 +280,36 @@ const probe = (label: string) => `(async () => {
 })()`
 
 describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', () => {
+  it.skipIf(onPhone())(
+    'keeps the node in the switcher on desktop and at 390 by 844',
+    async () => {
+      const header = (label: string) => `(async () => {
+      try {
+        await window.__abeleTest.openNodeSessionFixture('empty');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const root = document.querySelector('.abele-node-chat');
+        const current = root.querySelector('.abele-chat-switch__current');
+        if (!current?.getAttribute('aria-label')?.startsWith('Sample node / ')) throw Error('Node missing from switcher');
+        if (root.querySelector('.abele-node-chat__node')) throw Error('Separate node label remains');
+        const bounds = current.getBoundingClientRect();
+        if (bounds.width <= 0 || bounds.right > innerWidth + 1) throw Error('Node header is clipped');
+        const path = ${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-node-header.png';
+        if (window.__e2eHost) await window.__e2eHost.shot(path);
+        else {
+          const image = await require('@electron/remote').getCurrentWebContents().capturePage();
+          require('fs').writeFileSync(path, image.toPNG());
+        }
+        return JSON.stringify(true);
+      } finally { await window.__abeleTest.closeNodeSessionFixture(); }
+    })()`
+      expect(JSON.parse(await evalLong(header('desktop'), 30_000))).toBe(true)
+      await withEmulatedPhone(async () => {
+        expect(JSON.parse(await evalLong(header('emulated-phone'), 30_000))).toBe(true)
+      })
+    },
+    90_000
+  )
+
   it('shows folders, nested and closed chats, search and additive access', async () => {
     const result = JSON.parse(await evalLong(probe(onPhone() ? 'phone' : 'desktop'), 120_000))
     expect(result.closedTogether).toBe(true)

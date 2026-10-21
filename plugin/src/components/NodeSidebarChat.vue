@@ -12,7 +12,9 @@
     <template #lead
       ><DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')"
     /></template>
-    <template #navigation><ChatSwitcher :title="presenter.label.value" /></template>
+    <template #navigation
+      ><ChatSwitcher :title="presenter.label.value" :location="nodeLabel"
+    /></template>
   </NodeChatView>
 </template>
 
@@ -26,11 +28,23 @@ import ChatSwitcher from './chatTree/ChatSwitcher.vue'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { NodePathModel, PathTarget } from '@/node/NodePathModel'
 import { NodePathService } from '@/node/NodePathService'
+import { NodeService } from '@/node/NodeService'
 import { nodeChatPlace, openNodeChatResource } from '@/node/nodeChatPlace'
 import type { AgentChoice } from '@/node/providers'
 
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
+const nodeLabel = computed(() => {
+  try {
+    return (
+      NodeService.getInstance().nodes.value.find(
+        (node) => node.id === props.presenter.reference.registrationId
+      )?.label ?? t('streamB.node.e93372')
+    )
+  } catch {
+    return t('streamB.node.e93372')
+  }
+})
 
 /** The node panel's model of this node; none while the node's registration cannot be read. */
 const model = (() => {

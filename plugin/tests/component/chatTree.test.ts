@@ -10,6 +10,14 @@ import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
 const views: ReturnType<typeof mount>[] = []
+it('shows the node as the quiet switcher location', () => {
+  const view = mount(ChatSwitcher, { props: { title: 'Sample chat', location: 'Sample node' } })
+  views.push(view)
+  expect(view.get('.abele-chat-switch__where').text()).toBe('Sample node')
+  expect(view.get('.abele-chat-switch__current').attributes('aria-label')).toBe(
+    'Sample node / Sample chat'
+  )
+})
 beforeEach(() => {
   useVault([])
   source = {

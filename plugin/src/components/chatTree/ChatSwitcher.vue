@@ -46,7 +46,7 @@ import { useChatTreeSource, folderPathOf, chatsOf } from '@/chats/chatTree'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 
-const props = defineProps<{ title: string }>()
+const props = defineProps<{ title: string; location?: string }>()
 
 const phone = Platform.isPhone
 const open = ref(false)
@@ -72,6 +72,7 @@ const nested = computed(() => {
 })
 /** The folder the chat in front is in, the nearest one: the rest is in the tree. */
 const where = computed(() => {
+  if (props.location) return props.location
   const tree = source.value
   const id = tree?.activeId.value
   return tree && id ? folderPathOf(tree.root.value, id).at(-1)?.name : undefined
