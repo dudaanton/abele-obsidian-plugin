@@ -38,6 +38,7 @@ export interface DialogFixtureOptions {
     | 'warning'
     | 'prompt'
     | 'answering'
+  permissionState?: 'running' | 'refused' | 'node-opt-in' | 'unknown'
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
   agentsState?: import('./agentsFixture').AgentsFixtureState
@@ -55,7 +56,7 @@ import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeManagerRunCard from '@/components/NodeManagerRunCard.vue'
 import { nodeManagerFixture } from './nodeManagerFixture'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
-import { nodeDelegationCardFixture } from './nodeDelegationFixture'
+import { nodeDelegationCardFixture, nodePermissionCardFixture } from './nodeDelegationFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { nodePairingFixture } from './nodePairingFixture'
@@ -467,10 +468,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
               {
                 default: () =>
                   h(NodeDelegationCard, {
-                    card: nodeDelegationCardFixture(
-                      options?.delegationState,
-                      options?.delegationCommand
-                    ),
+                    card: options?.permissionState
+                      ? nodePermissionCardFixture(options.permissionState)
+                      : nodeDelegationCardFixture(
+                          options?.delegationState,
+                          options?.delegationCommand
+                        ),
                     nodeLabel: 'Sample node',
                   }),
               }
@@ -925,6 +928,31 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }),
   'agent-editor': () =>
     mountAlone(AgentEditorModal, { agentId: AgentRegistry.getInstance().list()[0]?.id ?? '' }),
+  'node-agent-permissions': () => {
+    const config = AbeleConfig.getInstance(),
+      registry = AgentRegistry.getInstance()
+    const save = config.saveSettings
+    config.saveSettings = async () => {
+      config.version.value++
+    }
+    const agent = registry.create({
+      name: 'Sample code agent',
+      utility: true,
+      node: { id: 'sample-permission-node', name: 'Sample node', provider: 'codex' },
+    })
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup(_props, { emit }) {
+          onUnmounted(() => {
+            registry.remove(agent.id)
+            config.saveSettings = save
+          })
+          return () => h(AgentEditorModal, { agentId: agent.id, onClose: () => emit('close') })
+        },
+      })
+    )
+  },
   // An agent's tools offered by section, on its Access tab with the node section in view: one
   // section standing open, one in the agent's own words, the node's actions set unevenly.
   'agent-tools': () => {

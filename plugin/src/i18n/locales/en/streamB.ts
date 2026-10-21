@@ -3,6 +3,19 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Worktree deletion is in progress. Refresh the folder to check its result.',
   'streamB.providerUnavailable': 'The model provider is temporarily unavailable.',
+  'streamB.permissionUpdateNode':
+    'Update this node to report and enforce provider permission modes before starting this provider.',
+  'streamB.permissionAsk': 'Ask',
+  'streamB.permissionBypass': 'Without asking',
+  'streamB.permissionUnknown': 'Permission mode not reported',
+  'streamB.permissionNeedsBypass':
+    'This provider cannot ask before each action. Choose Without asking in its agent settings to enable it.',
+  'streamB.permissionNodeOptIn': 'The node operator must enable --claude-allow-bypass on the node.',
+  'streamB.permissionOpenSettings': 'Agent permission settings',
+  'streamB.permissionCodexFolder':
+    'This provider cannot ask before each action. Without asking allows edits in its folder without prompts; it stays confined to that folder. The node operator must also enable --claude-allow-bypass.',
+  'streamB.permissionOwnerChoice':
+    'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',
   'streamB.accessRunsWithoutAsking': 'Runs everything without asking',
   'streamB.actionDenied': 'Denied: {action} · {reason}',

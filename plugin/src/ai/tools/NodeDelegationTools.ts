@@ -245,7 +245,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         checkCancelled(signal)
         try {
           const child = await connection.delegation.create(parent, input, signal)
-          if (signal?.aborted) {
+          if (signal?.aborted && 'delegation_id' in child) {
             await connection.delegation.cancel(parent, child.delegation_id).catch(() => {})
             checkCancelled(signal)
           }

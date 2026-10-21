@@ -221,6 +221,7 @@ const DIALOGS = [
   'github-connections',
   'github-connection',
   'agent-editor',
+  'node-agent-permissions',
   'agent-tools',
   'lint-rule',
   'ask-name',

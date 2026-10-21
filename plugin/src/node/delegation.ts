@@ -1,4 +1,5 @@
 import { testNodeProvidersEnabled } from './providers'
+import type { ToolPermissions } from './toolPermissions'
 import type { Prompt } from '@abele/node-client'
 import type { PromptAnswerState } from './promptAnswers'
 import { t } from '@/i18n'
@@ -33,6 +34,7 @@ const RequestSchema = RetainedTaskInputSchema.omit({ task_key: true })
     delegation_key: z.string().min(1).max(128),
     // Retained requests may contain an old node receipt reference. Never select it.
     grant_id: z.string().optional(),
+    permission_mode: z.enum(['manual', 'bypassPermissions']).optional(),
     obsidian_tools: z
       .custom<ObsidianToolsSnapshot>(
         (value) => ObsidianToolsSnapshotSchema.safeParse(value).success
@@ -58,6 +60,7 @@ export const DelegationStorageSchema = z
           cancelSettled: z.boolean().optional(),
           awaitingResult: z.boolean().optional(),
           notifiedAttention: z.string().optional(),
+          permissionRefusal: z.string().optional(),
           parentStopped: z.boolean().optional(),
           followupMailboxSeq: z.number().int().nonnegative().optional(),
           followupAcceptedSeq: z.number().int().nonnegative().optional(),
@@ -86,6 +89,7 @@ export function delegationBranchLabel(branch?: string | null): string | undefine
     : undefined
 }
 export interface DelegationCard {
+  toolPermissions?: ToolPermissions
   taskKey?: string
   delegationId?: string
   sessionId?: string

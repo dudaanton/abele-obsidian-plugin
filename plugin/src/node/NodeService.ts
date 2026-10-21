@@ -16,6 +16,7 @@ import { NodeManagerController } from './NodeManagerController'
 import type { DelegationCard } from './delegation'
 import { NodeObsidianTools } from './NodeObsidianTools'
 import { nodeAdvertisesMethod } from './advertisedMethods'
+import { ensureNodeAgents } from './nodeAgentTools'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
@@ -46,6 +47,11 @@ export class NodeConnection {
   ) {
     this.manager = new NodeManagerController(client, store)
     this.delegation = new NodeDelegationController(client, store)
+    this.delegation.ownerNodeId = tools?.nodeId
+    this.delegation.ownerPermissionMode = (provider) => {
+      if (!this.tools) return undefined
+      return ensureNodeAgents(this.tools.nodeId, this.tools.label, [provider])[0]?.permissionMode
+    }
     // The SDK supplies wire deadlines. This host deadline also bounds timer grace
     // while backgrounded, and publishes failure before callers render their error.
     const request = client.request?.bind(client)

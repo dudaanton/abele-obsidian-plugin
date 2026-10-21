@@ -24,6 +24,12 @@ import { delegatable, nodeProviders, providerAvailable } from './providers'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { openWindow, catchUp } from './sessionWindow'
+import {
+  ownerPermissionPatch,
+  readToolPermissions,
+  permissionRefusal,
+  legacyProviderRefusal,
+} from './toolPermissions'
 
 /** Child-authored text is quoted data, including any attempted quote/block delimiters. */
 function developerData(value: string): string {
@@ -50,6 +56,8 @@ async function taskKey(parent: string, key: string): Promise<string> {
 
 /** Provider-neutral trusted controller. No Obsidian, secrets, generic RPC or prompt answers. */
 export class NodeDelegationController {
+  ownerPermissionMode?: (provider: string) => string | undefined
+  ownerNodeId?: string
   /** Trusted owner snapshot; never read from the model's delegation arguments. */
   obsidianSnapshot?: (
     parent: string,
@@ -144,6 +152,7 @@ export class NodeDelegationController {
       const { task_key: _key, ...body } = input
       const request: DelegationRequest = {
         ...body,
+        ...ownerPermissionPatch(description, this.ownerPermissionMode?.(input.provider)),
         parent_id: parent,
         delegation_key: key,
         ...(obsidian ? { obsidian_tools: obsidian } : {}),
@@ -183,11 +192,18 @@ export class NodeDelegationController {
       )
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       if (!available) throw new Error('Provider unavailable on this node')
+      const refusal = legacyProviderRefusal(
+        description,
+        input.provider,
+        this.ownerPermissionMode?.(input.provider)
+      )
+      if (refusal) throw new Error(refusal)
       // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
       child = await this.client.createDelegation(request)
       await this.store.transaction((s) => {
         const task = storage(s).tasks[key]
         if (!task.cancelSettled) task.child = child
+        delete task.permissionRefusal
       })
       await this.configureChildTools?.(child.session_id, input.provider)
       if (signal?.aborted) throw new Error('Delegation call cancelled')
@@ -201,6 +217,13 @@ export class NodeDelegationController {
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       return { ...this.publicChild(child), project_id: input.project_id, title: input.title }
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      if (!child && permissionRefusal(reason)) {
+        await this.store.transaction((s) => {
+          storage(s).tasks[key].permissionRefusal = reason
+        })
+        return { state: 'unsupported', reason }
+      }
       if (
         !child &&
         error instanceof Error &&
@@ -254,6 +277,7 @@ export class NodeDelegationController {
       session_id: child.session_id,
       delegation_id: child.delegation_id,
       state: child.state,
+      tool_permissions: readToolPermissions(child),
       workspace_id: child.workspace_id ?? null,
       worktree_id: (() => {
         const binding = this.targets.get(child.delegation_id)?.target
@@ -381,13 +405,32 @@ export class NodeDelegationController {
     const expected = displayed && structuredClone(displayed)
     const child = await this.owned(parent, id, 'send')
     if (signal?.aborted) throw new Error('Delegation call cancelled')
-    const guarded = supportsExpectedTarget(await this.client.describe())
+    const description = await this.client.describe()
+    const guarded = supportsExpectedTarget(description)
     if (guarded && displayed === undefined) {
       await this.observeTarget(id, child.session_id)
       throw new Error(
         'The delegated chat target is not ready. Nothing was sent. Check its status before sending again.'
       )
     }
+    const provider = await readStore(
+      this.store,
+      (s) =>
+        Object.values(s.delegation?.tasks ?? {}).find((task) => task.child?.delegation_id === id)
+          ?.input.provider
+    )
+    const permissions = ownerPermissionPatch(
+      description,
+      provider ? this.ownerPermissionMode?.(provider) : undefined
+    )
+    const refusal =
+      provider && legacyProviderRefusal(description, provider, this.ownerPermissionMode?.(provider))
+    if (refusal) throw new Error(refusal)
+    if (permissions.permission_mode)
+      await this.client.configureSession(child.session_id, {
+        permission_mode: permissions.permission_mode as 'manual' | 'bypassPermissions',
+      })
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     const status = await this.client.delegationStatus(id)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
     const result =
@@ -405,6 +448,7 @@ export class NodeDelegationController {
     await this.store.transaction((s) => {
       const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
       delete task.status
+      Object.assign(task.child!, { tool_permissions: readToolPermissions(status) })
       task.child!.state = 'running'
       task.cancelled = false
       task.cancelSettled = false
@@ -668,7 +712,10 @@ export class NodeDelegationController {
         const child = t.child
         const events = child ? (s.events[child.mailbox_stream_id] ?? []) : []
         const reports: DelegationCard['reports'] = []
-        let state: string = t.status?.state ?? child?.state ?? 'outcome unknown'
+        let state: string =
+          t.status?.state ??
+          child?.state ??
+          (t.permissionRefusal ? 'unsupported' : 'outcome unknown')
         // Session status can arrive before the independent mailbox replay. Do not
         // announce settled parent delivery while its result/terminal bytes are still
         // outstanding; the mailbox's committed terminal event settles this card.
@@ -679,7 +726,7 @@ export class NodeDelegationController {
           (s.cursors[child.mailbox_stream_id] ?? 0) < t.status.mailbox_head_seq
         )
           state = `${t.status.state} · receiving mailbox`
-        let reason: string | undefined = t.status?.reason
+        let reason: string | undefined = t.status?.reason ?? t.permissionRefusal
         for (const event of events) {
           const data = event.data as {
             delegation_id?: string
@@ -727,9 +774,10 @@ export class NodeDelegationController {
           title: t.input.title,
           taskKey: t.input.task_key,
           provider: t.input.provider,
+          toolPermissions: readToolPermissions(t.status ?? child),
           delegationId: child?.delegation_id,
           sessionId: child?.session_id,
-          nodeId: child?.node_id,
+          nodeId: child?.node_id ?? this.ownerNodeId,
           projectId: t.input.project_id,
           workspaceId: child?.workspace_id ?? undefined,
           branch: workspace?.branch,

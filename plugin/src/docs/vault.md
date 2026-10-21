@@ -31,6 +31,11 @@ An explicitly confirmed item deletion retains its retry identity under
 `abele-sync-item-delete:<token-id>:<item-id>` in device-local storage. Retrying the same
 deletion reuses that identity rather than creating another server operation.
 
+Node delegation records retain the owner's permission mode in the exact create request and
+the node's effective tool-permission snapshot with the child and latest status. Missing
+snapshots on older nodes remain unknown. Refusals retain their status reason; they never
+authorize changing the owner's agent settings.
+
 The node panel keeps comparison-base refs per worktree in its device-local presentation
 snapshot. These choices survive panel reloads and do not grant chat access or change Git.
 

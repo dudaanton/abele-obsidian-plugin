@@ -3,6 +3,19 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Рабочая копия удаляется. Обновите папку, чтобы проверить результат.',
   'streamB.providerUnavailable': 'Сервис модели временно недоступен.',
+  'streamB.permissionUpdateNode':
+    'Обновите ноду, чтобы она сообщала и соблюдала режимы разрешений, прежде чем запускать этого провайдера.',
+  'streamB.permissionAsk': 'Спрашивать',
+  'streamB.permissionBypass': 'Без вопросов',
+  'streamB.permissionUnknown': 'Режим разрешений не сообщён',
+  'streamB.permissionNeedsBypass':
+    'Этот провайдер не может спрашивать перед каждым действием. Чтобы включить его, выберите «Без вопросов» в настройках агента.',
+  'streamB.permissionNodeOptIn': 'Оператор ноды должен включить на ноде --claude-allow-bypass.',
+  'streamB.permissionOpenSettings': 'Разрешения агента',
+  'streamB.permissionCodexFolder':
+    'Этот провайдер не может спрашивать перед каждым действием. «Без вопросов» разрешает правки в его папке без подтверждений; доступ остаётся ограничен этой папкой. Оператор ноды также должен включить --claude-allow-bypass.',
+  'streamB.permissionOwnerChoice':
+    '«Спрашивать» требует подтверждения каждого действия. «Без вопросов» разрешает инструменты агента без подтверждений, в том числе вне его папки.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',
   'streamB.accessRunsWithoutAsking': 'Выполняет всё без запроса',
   'streamB.actionDenied': 'Отклонено: {action} · {reason}',

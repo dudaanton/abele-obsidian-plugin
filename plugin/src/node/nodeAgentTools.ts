@@ -2,6 +2,16 @@ import { reactive } from 'vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { contentHash } from '@/ai/readGuard'
 import { providerLabel } from './providers'
+import { t } from '@/i18n'
+
+export function nodeAgentModeLabel(nodeId: string, provider: string): string {
+  const mode = nodeAgentOwnerMode(nodeId, provider)
+  if (!mode) return t('streamB.permissionUnknown')
+  return t(mode === 'allow-all' ? 'streamB.permissionBypass' : 'streamB.permissionAsk')
+}
+export function nodeAgentOwnerMode(nodeId: string, provider: string): string | undefined {
+  return AgentRegistry.getInstance().get(`node_${contentHash(nodeId)}_${provider}`)?.permissionMode
+}
 
 export interface ObsidianRunner {
   state: 'device' | 'none'

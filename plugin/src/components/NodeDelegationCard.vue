@@ -16,6 +16,13 @@
         @click="emit('open')"
       />
     </Setting>
+    <NodeToolPermissions
+      :policy="card.toolPermissions"
+      :reason="card.reason"
+      :node-id="card.nodeId"
+      :node-label="nodeLabel"
+      :provider="card.provider"
+    />
     <p
       v-if="card.state === 'stopped' && card.reason === 'time_limit'"
       class="abele-node-delegation__metadata"
@@ -90,6 +97,7 @@
 </template>
 <script setup lang="ts">
 import AiToolApproval from './AiToolApproval.vue'
+import NodeToolPermissions from './NodeToolPermissions.vue'
 import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
 import NodeQuestionnaire from './NodeQuestionnaire.vue'
 import { obsidianPromptCall } from '@/node/obsidianPresentation'
@@ -108,15 +116,21 @@ const activityPreview = computed(() => {
   return characters.length > 320 ? `…${characters.slice(-320).join('')}` : text
 })
 const finished = computed(() =>
-  ['completed', 'failed', 'cancelled', 'unknown', 'stopped', 'grant revoked'].includes(
-    props.card.state
-  )
+  [
+    'completed',
+    'failed',
+    'unsupported',
+    'cancelled',
+    'unknown',
+    'stopped',
+    'grant revoked',
+  ].includes(props.card.state)
 )
 const stateLabel = computed(() => {
   const state = props.card.state
   if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
-  if (state === 'failed') return t('streamB.failed.031a8f')
+  if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')
   if (state === 'cancelled') return t('streamBMeta.8b47045eb7')
   if (state === 'grant revoked') return t('streamB.revoked.f6f738')
   if (state === 'running') return t('node.delegation.working')

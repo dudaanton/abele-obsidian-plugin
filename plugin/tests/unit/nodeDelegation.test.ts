@@ -344,6 +344,7 @@ function fixture() {
   const store = new NodeClientStore('sample-delegation', factory)
   const client = {
     connected: true,
+    configureSession: vi.fn(async () => ({})),
     store,
     listProjects: vi.fn(async (after?: string) =>
       after
@@ -418,8 +419,14 @@ describe('trusted node delegation controller', () => {
     expect((await f.controller.destinations('parent'))[0].providers).toEqual([])
     await expect(f.controller.create('parent', input)).rejects.toThrow(/unavailable/i)
     expect(f.client.createDelegation).not.toHaveBeenCalled()
+    f.controller.ownerPermissionMode = () => 'allow-all'
     f.client.describe.mockResolvedValue({
-      capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+      capabilities: {
+        capabilities: {
+          delegation_without_grant: { status: 'supported' },
+          'tool.permissions.v1': { status: 'supported' },
+        },
+      },
       version: undefined,
       providers: [{ provider: 'codex', available: true }],
     })
@@ -1131,4 +1138,149 @@ it('retains an outstanding cancellation while recovering an accepted follow-up',
     await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].awaitingResult)
   ).toBe(false)
   f.store.close()
+})
+
+it('takes delegation permission mode from owner configuration only', async () => {
+  const f = fixture()
+  const description = await f.client.describe()
+  f.client.describe.mockResolvedValue({
+    ...description,
+    capabilities: {
+      ...description.capabilities,
+      capabilities: {
+        ...description.capabilities.capabilities,
+        'tool.permissions.v1': { status: 'supported' },
+      },
+    },
+  })
+  f.controller.ownerPermissionMode = () => 'allow-all'
+  try {
+    await f.controller.create('parent', task)
+    expect(f.client.createDelegation).toHaveBeenCalledWith(
+      expect.objectContaining({ permission_mode: 'bypassPermissions' })
+    )
+    await expect(
+      f.controller.create('parent', {
+        ...task,
+        task_key: 'injected',
+        permission_mode: 'bypassPermissions',
+      } as never)
+    ).rejects.toThrow()
+  } finally {
+    f.store.close()
+  }
+})
+
+it.each(['interactive_approval_unsupported', 'bypass_not_allowed'])(
+  'retains %s as refusal status without changing owner mode',
+  async (reason) => {
+    const f = fixture()
+    const owner = vi.fn(() => 'confirm-all')
+    f.controller.ownerPermissionMode = owner
+    f.controller.ownerNodeId = 'sample-node'
+    f.client.createDelegation.mockRejectedValueOnce(new Error(reason))
+    try {
+      expect(await f.controller.create('parent', task)).toEqual({ state: 'unsupported', reason })
+      expect((await f.controller.cards('parent'))[0]).toMatchObject({
+        state: 'unsupported',
+        reason,
+        nodeId: 'sample-node',
+      })
+      expect(owner).toHaveReturnedWith('confirm-all')
+      expect(f.client.createDelegation).toHaveBeenCalledTimes(1)
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
+it('does not send owner mode to older nodes', async () => {
+  const f = fixture()
+  f.controller.ownerPermissionMode = () => 'allow-all'
+  try {
+    await f.controller.create('parent', task)
+    expect(f.client.createDelegation.mock.calls[0][0]).not.toHaveProperty('permission_mode')
+  } finally {
+    f.store.close()
+  }
+})
+
+it('applies a later owner mode change before sending a delegated follow-up', async () => {
+  const f = fixture()
+  const description = await f.client.describe()
+  f.client.describe.mockResolvedValue({
+    ...description,
+    capabilities: {
+      capabilities: {
+        ...description.capabilities.capabilities,
+        'tool.permissions.v1': { status: 'supported' },
+      },
+    },
+  })
+  let mode = 'confirm-all'
+  f.controller.ownerPermissionMode = () => mode
+  const manual = {
+    permission_mode: 'manual',
+    per_action_approval: false,
+    status: 'unsupported',
+    reason: 'interactive_approval_unsupported',
+  }
+  const bypass = {
+    permission_mode: 'bypassPermissions',
+    per_action_approval: false,
+    status: 'supported',
+  }
+  f.client.createDelegation.mockImplementationOnce(async (request) => ({
+    ...child,
+    delegation_key: request.delegation_key,
+    tool_permissions: manual,
+  }))
+  f.client.delegationStatus.mockResolvedValueOnce({
+    ...child,
+    session_head_seq: 17,
+    mailbox_head_seq: 2,
+    pending_human_prompts: 0,
+    tool_permissions: bypass,
+  } as never)
+  try {
+    await f.controller.create('parent', task)
+    expect((await f.controller.cards('parent'))[0].toolPermissions).toEqual(manual)
+    mode = 'allow-all'
+    await f.controller.send('parent', 'delegation', 'Continue the sample task')
+    expect(f.client.configureSession).toHaveBeenCalledWith('child', {
+      permission_mode: 'bypassPermissions',
+    })
+    expect(f.client.configureSession.mock.invocationCallOrder[0]).toBeLessThan(
+      f.client.sendDelegation.mock.invocationCallOrder[0]
+    )
+    expect(f.client.configureSession.mock.invocationCallOrder[0]).toBeLessThan(
+      f.client.delegationStatus.mock.invocationCallOrder[0]
+    )
+    expect((await f.controller.cards('parent'))[0].toolPermissions).toEqual(bypass)
+  } finally {
+    f.store.close()
+  }
+})
+
+it('does not launch a provider that cannot ask on a node without permission enforcement', async () => {
+  const f = fixture()
+  const description = await f.client.describe()
+  f.client.describe.mockResolvedValue({
+    ...description,
+    providers: [{ provider: 'codex', available: true }],
+  })
+  try {
+    expect(await f.controller.create('parent', { ...task, provider: 'codex' })).toEqual({
+      state: 'unsupported',
+      reason: 'interactive_approval_unsupported',
+    })
+    expect(f.client.createDelegation).not.toHaveBeenCalled()
+    f.controller.ownerPermissionMode = () => 'allow-all'
+    expect(
+      await f.controller.create('parent', { ...task, task_key: 'bypass-task', provider: 'codex' })
+    ).toEqual({ state: 'unsupported', reason: 'tool_permissions_unavailable' })
+    expect(f.client.createDelegation).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
 })

@@ -3,6 +3,20 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Der Worktree wird gelöscht. Aktualisieren Sie den Ordner, um das Ergebnis zu prüfen.',
   'streamB.providerUnavailable': 'Der Modellanbieter ist vorübergehend nicht verfügbar.',
+  'streamB.permissionUpdateNode':
+    'Aktualisieren Sie diesen Knoten, damit er Berechtigungsmodi meldet und durchsetzt, bevor Sie diesen Anbieter starten.',
+  'streamB.permissionAsk': 'Nachfragen',
+  'streamB.permissionBypass': 'Ohne Nachfrage',
+  'streamB.permissionUnknown': 'Berechtigungsmodus nicht gemeldet',
+  'streamB.permissionNeedsBypass':
+    'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren.',
+  'streamB.permissionNodeOptIn':
+    'Der Knotenbetreiber muss --claude-allow-bypass auf dem Knoten aktivieren.',
+  'streamB.permissionOpenSettings': 'Agentenberechtigungen',
+  'streamB.permissionCodexFolder':
+    'Dieser Anbieter kann nicht vor jeder Aktion fragen. «Ohne Nachfrage» erlaubt Änderungen in seinem Ordner ohne Bestätigung; er bleibt auf diesen Ordner beschränkt. Der Knotenbetreiber muss außerdem --claude-allow-bypass aktivieren.',
+  'streamB.permissionOwnerChoice':
+    '«Nachfragen» verlangt eine Bestätigung für jede Aktion. «Ohne Nachfrage» erlaubt die Werkzeuge des Agenten ohne Bestätigung, auch außerhalb seines Ordners.',
   'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',
   'streamB.accessRunsWithoutAsking': 'Führt alles ohne Nachfrage aus',
   'streamB.actionDenied': 'Abgelehnt: {action} · {reason}',

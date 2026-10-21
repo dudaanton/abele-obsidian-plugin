@@ -1,6 +1,8 @@
 import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
+import { configureOwnerPermissionMode } from './toolPermissions'
+import { nodeAgentOwnerMode } from './nodeAgentTools'
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
@@ -981,6 +983,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
             throw new UiError(uiMessage('streamB.theSessionWorktreeChangedReviewTheCurrent.9cd2c5'))
         }
       }
+      await configureOwnerPermissionMode(
+        client,
+        this.reference.sessionId,
+        nodeAgentOwnerMode(this.reference.nodeId, this.provider.value),
+        this.provider.value
+      )
       await this.connection.obsidian?.ensureSession(this.reference.sessionId, this.provider.value)
       const observed_seq = await client.cursor(this.reference.sessionId)
       const params = validateParams('session.send', {

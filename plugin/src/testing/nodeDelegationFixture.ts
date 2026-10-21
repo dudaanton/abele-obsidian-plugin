@@ -1,4 +1,29 @@
 import type { DelegationCard } from '@/node/delegation'
+export function nodePermissionCardFixture(
+  state: 'running' | 'refused' | 'node-opt-in' | 'unknown'
+): DelegationCard {
+  const running = state === 'running'
+  return {
+    ...nodeDelegationCardFixture('working'),
+    provider: 'codex',
+    state: running ? 'running' : 'failed',
+    pendingHumanPrompts: 0,
+    toolPermissions:
+      state === 'unknown'
+        ? undefined
+        : {
+            permission_mode: state === 'refused' ? 'manual' : 'bypassPermissions',
+            per_action_approval: false,
+            status: running ? 'supported' : 'unsupported',
+            reason: running
+              ? undefined
+              : state === 'refused'
+                ? 'interactive_approval_unsupported'
+                : 'bypass_not_allowed',
+          },
+    reports: [],
+  }
+}
 export function nodeDelegationCardFixture(
   state?:
     | 'working'

@@ -16,6 +16,8 @@ import {
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { agentChoices, nodeProviders, type AgentChoice } from './providers'
+import { nodeAgentModeLabel } from './nodeAgentTools'
+import { openNodeAgentSettings } from './openNodeAgentSettings'
 import { preferredAgentChoices, lastNodeAgent, rememberNodeAgent } from './agentPreference'
 import { bindPathTarget } from './nodePathChat'
 import { NodePathMutations } from './NodePathMutations'
@@ -604,7 +606,10 @@ export function agentSuggestions(choices: AgentChoice[]) {
   return choices.map((c) => ({
     id: agentChoiceId(c),
     title: c.label,
-    ...(c.unavailable ? { note: c.unavailable, disabled: c.unavailable } : {}),
+    ...(c.permissionNote || c.unavailable
+      ? { note: [c.permissionNote, c.unavailable].filter(Boolean).join(' · ') }
+      : {}),
+    ...(c.unavailable ? { disabled: c.unavailable } : {}),
     icon: agentIcon(c.provider),
     kind: c.agent ? t('streamB.pickerAcpAgent') : t('streamB.agent.11b39c'),
   }))
@@ -634,9 +639,33 @@ export async function newNodePathChat(
   )
   new NodeSuggestModal(
     app(),
-    agentSuggestions(choices),
+    agentSuggestions(choices).flatMap((item, index) => {
+      const choice = choices[index]
+      const row = {
+        ...item,
+        note: [nodeAgentModeLabel(model.nodeId, choice.provider), item.note]
+          .filter(Boolean)
+          .join(' · '),
+      }
+      return choice.permissionNote
+        ? [
+            row,
+            {
+              id: `settings:${agentChoiceId(choice)}`,
+              title: `${choice.label} · ${t('streamB.permissionOpenSettings')}`,
+              icon: 'settings',
+              kind: t('streamB.permissionOpenSettings'),
+            },
+          ]
+        : [row]
+    }),
     t('streamB.chooseTheAgent.8f3bf5'),
     (item) => {
+      if (item.id.startsWith('settings:')) {
+        const choice = choices.find((c) => `settings:${agentChoiceId(c)}` === item.id)
+        if (choice) void openNodeAgentSettings(model.nodeId, model.nodeId, choice.provider)
+        return
+      }
       const choice = choices.find((c) => agentChoiceId(c) === item.id && !c.unavailable)
       startNodePathChat(model, bound, choice, initialText)
     }

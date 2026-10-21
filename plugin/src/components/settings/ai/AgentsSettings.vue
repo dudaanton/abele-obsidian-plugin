@@ -132,7 +132,12 @@ function starTooltip(agent: AgentDefinition): string {
 }
 
 function metaFor(agent: AgentDefinition): string[] {
-  if (agent.node) return []
+  if (agent.node)
+    return [
+      t(
+        agent.permissionMode === 'allow-all' ? 'streamB.permissionBypass' : 'streamB.permissionAsk'
+      ),
+    ]
   return [modelLabel(agent), promptLabel(agent), scopeLabel(agent)]
 }
 

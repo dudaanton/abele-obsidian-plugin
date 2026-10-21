@@ -77,6 +77,13 @@
         @open="live.open(live.parent.id)"
       />
     </div>
+    <NodeToolPermissions
+      :policy="readToolPermissions(presenter.control?.state.value)"
+      :reason="presenter.error.value || presenter.connection.error.value"
+      :node-id="presenter.reference.nodeId"
+      :node-label="nodeLabel"
+      :provider="presenter.provider?.value ?? ''"
+    />
     <div
       v-if="presenter.error.value || presenter.connection.error.value"
       class="abele-ai-chat__error"
@@ -327,6 +334,10 @@ import { Menu, Notice, Platform } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
+import NodeToolPermissions from './NodeToolPermissions.vue'
+import { readToolPermissions } from '@/node/toolPermissions'
+import { nodeAgentModeLabel } from '@/node/nodeAgentTools'
+import { openNodeAgentSettings } from '@/node/openNodeAgentSettings'
 import { nodeAttachmentText } from '@/node/nodeChatAttachments'
 import type { NodeHistoryAction } from '@/node/NodeChatHistory'
 import NodeChatHistoryDialog from './NodeChatHistoryDialog.vue'
@@ -447,13 +458,35 @@ const chooseAgent = () => {
     const current = choice.provider === provider && (choice.agent ?? '') === agent
     menu.addItem((i) =>
       i
-        .setTitle(choice.unavailable ? `${choice.label} · ${choice.unavailable}` : choice.label)
+        .setTitle(
+          [
+            choice.label,
+            nodeAgentModeLabel(props.presenter.reference.nodeId, choice.provider),
+            choice.permissionNote,
+            choice.unavailable,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        )
         .setChecked(current)
         .setDisabled(!!choice.unavailable)
         .onClick(() => {
           if (!current) emit('start-with', choice)
         })
     )
+    if (choice.permissionNote)
+      menu.addItem((i) =>
+        i
+          .setTitle(`${choice.label} · ${t('streamB.permissionOpenSettings')}`)
+          .setIcon('settings')
+          .onClick(() =>
+            openNodeAgentSettings(
+              props.presenter.reference.nodeId,
+              nodeLabel.value,
+              choice.provider
+            )
+          )
+      )
   }
   const rect = button.getBoundingClientRect()
   menu.showAtPosition({ x: rect.left, y: rect.bottom })

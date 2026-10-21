@@ -3,6 +3,19 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
   'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
+  'streamB.permissionUpdateNode':
+    'Pirms šī pakalpojuma sniedzēja palaišanas atjauniniet mezglu, lai tas ziņotu par atļauju režīmiem un tos ievērotu.',
+  'streamB.permissionAsk': 'Jautāt',
+  'streamB.permissionBypass': 'Bez jautāšanas',
+  'streamB.permissionUnknown': 'Atļauju režīms nav norādīts',
+  'streamB.permissionNeedsBypass':
+    'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas».',
+  'streamB.permissionNodeOptIn': 'Mezgla operatoram mezglā jāiespējo --claude-allow-bypass.',
+  'streamB.permissionOpenSettings': 'Aģenta atļauju iestatījumi',
+  'streamB.permissionCodexFolder':
+    'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. «Bez jautāšanas» atļauj labojumus tā mapē bez apstiprinājuma; piekļuve paliek šīs mapes robežās. Mezgla operatoram arī jāiespējo --claude-allow-bypass.',
+  'streamB.permissionOwnerChoice':
+    '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',
   'streamB.accessRunsWithoutAsking': 'Izpilda visu bez jautāšanas',
   'streamB.actionDenied': 'Noraidīts: {action} · {reason}',

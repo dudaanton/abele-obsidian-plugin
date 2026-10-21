@@ -5439,5 +5439,32 @@
       "es",
       "de"
     ]
+  },
+  "streamB.permissionAsk": {
+    "englishHash": "5632aefc70ebd0e581592139d0046b2db0c54a41ac3ebef38b5787e9e2252e08"
+  },
+  "streamB.permissionBypass": {
+    "englishHash": "38bc2437c71f6443870c8ba419b0e18dc8f3c7c06a9245c3d27f011ca3ac9f64"
+  },
+  "streamB.permissionUnknown": {
+    "englishHash": "4b9c5b273bc38783dd33f795887cb4bc9b7098fa7aa1df7cefcbca67c5add1b7"
+  },
+  "streamB.permissionNeedsBypass": {
+    "englishHash": "5dab43c38846650ba587fe5ad04f4c490530b24ffbaaeb5ad570c94bfa331bb1"
+  },
+  "streamB.permissionNodeOptIn": {
+    "englishHash": "8ae5b29f5a99866e842781aa6eee91279d67068bf43f0749336b9328ed3131fa"
+  },
+  "streamB.permissionOpenSettings": {
+    "englishHash": "d7a52e5b58087e582beae77cccca510256c5abc84df9f5e69406a119cfe96685"
+  },
+  "streamB.permissionCodexFolder": {
+    "englishHash": "db0118157aa3b001d528a7f14059e11c05e5e470ec49594f1a316e5120df87e4"
+  },
+  "streamB.permissionOwnerChoice": {
+    "englishHash": "eb5493a6c674ed2389f5109ae6d68bdda42aaa5ab1b48a2473f9733f337eee83"
+  },
+  "streamB.permissionUpdateNode": {
+    "englishHash": "7a6cdd0108ced38dcdee0d922f823bc4e64c417a59a8e049d17eea926d38361c"
   }
 }

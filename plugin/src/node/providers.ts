@@ -44,6 +44,7 @@ const Provider = z.object({
       accounts: z.array(z.string()).optional(),
       efforts: z.array(z.string()).optional(),
       permission_modes: z.array(z.string()).optional(),
+      per_action_approval: z.boolean().optional(),
     })
     .optional(),
   capabilities: z.record(z.string(), Capability).default({}),
@@ -102,6 +103,7 @@ export function capabilityReason(provider: NodeProvider | undefined, feature: st
 
 /** One agent a new session can run: a provider, or one agent a provider hosts. */
 export interface AgentChoice {
+  permissionNote?: string
   provider: NodeProviderName
   /** The hosted agent's id, for a provider that hosts several. */
   agent?: string
@@ -131,6 +133,10 @@ export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] 
     return {
       provider: name,
       label: providerLabel(name),
+      permissionNote:
+        p?.configuration?.per_action_approval === false
+          ? t('streamB.permissionNeedsBypass')
+          : undefined,
       unavailable: !p
         ? 'This node does not offer it yet'
         : providerAvailable(p)

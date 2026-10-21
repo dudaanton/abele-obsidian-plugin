@@ -183,18 +183,25 @@
 
         <!-- Access -->
         <template v-else-if="section === 'access'">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
+            :desc="
+              agent.node
+                ? t(
+                    agent.node.provider === 'codex'
+                      ? 'streamB.permissionCodexFolder'
+                      : 'streamB.permissionOwnerChoice'
+                  )
+                : t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')
+            "
+          >
+            <Dropdown
+              :model-value="agent.permissionMode"
+              :options="agent.node ? nodePermissionOptions : PERMISSION_OPTIONS"
+              @update:model-value="patch({ permissionMode: $event as PermissionMode })"
+            />
+          </Setting>
           <template v-if="!agent.node">
-            <Setting
-              :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
-              :desc="t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')"
-            >
-              <Dropdown
-                :model-value="agent.permissionMode"
-                :options="PERMISSION_OPTIONS"
-                @update:model-value="patch({ permissionMode: $event as PermissionMode })"
-              />
-            </Setting>
-
             <Section
               :title="t('settings.git.repositoryConnections')"
               :desc="t('settings.ai.AgentEditorModal.off_no_access_ask_approve.d4da8c61')"
@@ -455,6 +462,10 @@ const DEPTH_OPTIONS = [
 ]
 
 const registry = AgentRegistry.getInstance()
+const nodePermissionOptions = computed(() => [
+  { value: 'confirm-all', display: t('streamB.permissionAsk') },
+  { value: 'allow-all', display: t('streamB.permissionBypass') },
+])
 const config = AbeleConfig.getInstance()
 
 /** The stored, reactive agent — edits reach open chats as they are typed. */

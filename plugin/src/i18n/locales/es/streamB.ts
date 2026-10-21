@@ -3,6 +3,20 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',
   'streamB.providerUnavailable': 'El proveedor del modelo no está disponible temporalmente.',
+  'streamB.permissionUpdateNode':
+    'Actualice este nodo para que indique y aplique los modos de permisos antes de iniciar este proveedor.',
+  'streamB.permissionAsk': 'Preguntar',
+  'streamB.permissionBypass': 'Sin preguntar',
+  'streamB.permissionUnknown': 'Modo de permisos no indicado',
+  'streamB.permissionNeedsBypass':
+    'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente.',
+  'streamB.permissionNodeOptIn':
+    'El operador del nodo debe activar --claude-allow-bypass en el nodo.',
+  'streamB.permissionOpenSettings': 'Permisos del agente',
+  'streamB.permissionCodexFolder':
+    'Este proveedor no puede preguntar antes de cada acción. «Sin preguntar» permite editar en su carpeta sin confirmación; sigue limitado a esa carpeta. El operador del nodo también debe activar --claude-allow-bypass.',
+  'streamB.permissionOwnerChoice':
+    '«Preguntar» requiere aprobar cada acción. «Sin preguntar» permite ejecutar las herramientas del agente sin aprobación, también fuera de su carpeta.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',
   'streamB.accessRunsWithoutAsking': 'Ejecuta todo sin preguntar',
   'streamB.actionDenied': 'Denegado: {action} · {reason}',
