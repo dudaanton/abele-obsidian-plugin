@@ -5,6 +5,23 @@ import { externalActionsOf } from '@/sync/external/actionHost'
 import { externalFileFixture } from './externalFileFollowupFixture'
 import * as kit from '@/components/obsidian/mount'
 
+it('does not open a hydrated file merely because its card is restored or refreshed', async () => {
+  const s = await externalFileFixture('Media/sample-document.bin')
+  const openFile = vi.fn(async () => {})
+  const tab = new ExternalFileTab({ openFile } as never)
+  Object.assign(tab, { app: s.app })
+  Object.defineProperty(tab, 'contentEl', { value: document.createElement('div') })
+  try {
+    await tab.setState({ path: s.path }, {} as never)
+    await flushPromises()
+    expect(openFile).not.toHaveBeenCalled()
+  } finally {
+    await tab.onClose()
+    tab.unload()
+    s.close()
+  }
+})
+
 it('fully unmounts its kit and stops presentation updates when the card closes', async () => {
   const s = await externalFileFixture()
   const mount = vi.spyOn(kit, 'mountKit')

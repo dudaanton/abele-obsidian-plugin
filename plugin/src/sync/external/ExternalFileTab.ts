@@ -42,6 +42,7 @@ export class ExternalFileTab extends ItemView {
     this.clear()
     this.path = path
     this.subpath = state.subpath ?? ''
+    let openRequested = false
     const presentation = new ExternalPresentation(manager, path, undefined, (key) =>
       externalPreview(this.app, key)
     )
@@ -49,7 +50,7 @@ export class ExternalFileTab extends ItemView {
     const value = shallowRef(presentation.value)
     const sync = () => {
       value.value = presentation.value
-      if (value.value.hydrated && !this.opening) {
+      if (openRequested && value.value.hydrated && !this.opening) {
         const file = this.app.vault.getFileByPath(path)
         if (file) {
           this.opening = true
@@ -64,12 +65,18 @@ export class ExternalFileTab extends ItemView {
     for (const ref of [this.app.vault.on('create', sync), this.app.vault.on('rename', sync)]) {
       this.stateOff.push(() => this.app.vault.offref(ref))
     }
-    const keep = () =>
-      presentation.download(async () => {
+    const download = () => {
+      openRequested = true
+      return presentation.download()
+    }
+    const keep = () => {
+      openRequested = true
+      return presentation.download(async () => {
         const host = externalActionsOf.get(this.app.vault)
         if (!host) throw new Error('Connections are unavailable')
         await host.pin(path, true)
       })
+    }
     this.mounted = mountKit(
       this.contentEl,
       {
@@ -80,8 +87,8 @@ export class ExternalFileTab extends ItemView {
             progress: value.value.progress,
             error: value.value.error,
             narrow: Platform.isMobile,
-            onDownload: (): void => void presentation.download(),
-            onRetry: (): void => void presentation.download(),
+            onDownload: (): void => void download(),
+            onRetry: (): void => void download(),
             onKeep: (): void => void keep(),
             onCancel: () => presentation.cancel(),
           }),
