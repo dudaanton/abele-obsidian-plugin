@@ -62,6 +62,12 @@ export class ChatFolders {
       this.events.push(
         app.vault.on(event as 'create', (file) => {
           if (file instanceof TFile) this.metadata.delete(file)
+          if (file instanceof TFile && file.extension === 'abchat') {
+            const entry = ChatStorage.getInstance()
+              .getHistory()
+              .find((entry) => entry.path === file.path)
+            if (entry) entry.treeFolderIndexed = false
+          }
           if (file instanceof TFile && (file.extension === 'abchat' || file.name === CATALOG_FILE))
             void this.reload().catch((error) =>
               console.debug('[Abele] Could not reload chat folders', error)
@@ -97,6 +103,7 @@ export class ChatFolders {
     return this.catalog.nodes[key]
   }
   noteFile(file: TFile, folder: string | null | undefined): void {
+    ChatStorage.getInstance().noteTreeFolder(file.path, folder)
     const previous = this.membership.get(file.path)
     const session = this.service.getSessionByFile(file.path)
     if (session) this.membership.delete(session.id)
@@ -147,8 +154,20 @@ export class ChatFolders {
     const membership = new Map(
       [...this.membership].filter(([key]) => !!this.service.getSession(key))
     )
+    const indexed = new Map(
+      (await ChatStorage.getInstance().refreshHistory()).map((entry) => [entry.path, entry])
+    )
     for (const chat of this.app.vault.getFiles()) {
       if (chat.extension !== 'abchat') continue
+      const entry = indexed.get(chat.path)
+      if (
+        entry?.treeFolderIndexed &&
+        entry.mtime === chat.stat.mtime &&
+        entry.size === chat.stat.size
+      ) {
+        membership.set(chat.path, entry.treeFolderId)
+        continue
+      }
       let cached = this.metadata.get(chat)
       if (!cached || cached.mtime !== chat.stat.mtime || cached.size !== chat.stat.size) {
         const metadata = parseChatMetadata(await ChatStorage.getInstance().readNavigationFile(chat))
@@ -268,6 +287,7 @@ export class ChatFolders {
         : content + serializeMetadata(metadata)
     })
     this.membership.set(file.path, id)
+    ChatStorage.getInstance().noteTreeFolder(file.path, id)
     this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder: id })
   }
   rename(folder: string, name: string): Promise<void> {

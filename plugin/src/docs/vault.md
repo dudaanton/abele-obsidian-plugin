@@ -1441,6 +1441,9 @@ device keeps its own and rebuilds it from the chat files it holds, so a chat tha
 another device joins the list on its own. It is a cache: do not read it to find chats (list the
 chat folder instead) and never write it. One that would not parse is kept beside it as
 `chat-index.broken.json` for the person to look at, and a fresh one is built.
+The index also caches logical chat placement (`treeFolderId`), with a migration marker and
+the observed file size and modification time. Navigation reads unchanged placements from
+this local cache; changed transcripts, including changes from another device, refresh it.
 
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and

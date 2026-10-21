@@ -108,6 +108,10 @@ export interface TouchedNote {
 }
 
 export interface AiChatHistoryEntry {
+  /** Mirrored logical placement; the marker distinguishes old entries from unfiled chats. */
+  treeFolderId?: string | null
+  treeFolderIndexed?: boolean
+  size?: number
   path: string
   title: string
   created: string

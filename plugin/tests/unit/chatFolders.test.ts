@@ -15,6 +15,39 @@ import { chatsOf } from '@/chats/chatTree'
 let service: ChatService
 let folders: ChatFolders
 let app: FakeApp
+it('reuses persisted placement for thousands of unchanged chats and refreshes a remote edit', async () => {
+  await folders.reload()
+  folders.destroy()
+  const content = serializeChat({
+    metadata: {
+      type: 'abele-chat',
+      title: 'Synthetic',
+      created: '',
+      providerId: '',
+      modelId: '',
+      treeFolderId: 'first',
+    },
+    messages: [],
+    internalMessages: [],
+  })
+  const files = await Promise.all(
+    Array.from({ length: 2000 }, (_, i) =>
+      app.vault.create(`AI/Chats/synthetic-${i}.abchat`, content)
+    )
+  )
+  await ChatStorage.getInstance().refreshHistory()
+  const read = vi.spyOn(app.vault, 'read')
+  folders = new ChatFolders(app as never, service)
+  await folders.reload()
+  expect(read.mock.calls.filter(([file]) => file.extension === 'abchat')).toHaveLength(0)
+  expect(folders.membershipOf(files[0].path)).toBe('first')
+  await app.vault.modify(files[0], content.replace('first', 'second'))
+  files[0].stat.mtime += 1000
+  app.emit('vault', 'modify', files[0])
+  await folders.reload()
+  expect(folders.membershipOf(files[0].path)).toBe('second')
+  expect(read.mock.calls.filter(([file]) => file.extension === 'abchat')).toHaveLength(1)
+})
 it('stores tree folders without creating disk directories', async () => {
   await folders.create('', 'Collection')
   expect(app.vault.getAbstractFileByPath('AI/Chats/Collection')).toBeNull()

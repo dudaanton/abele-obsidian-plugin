@@ -849,6 +849,15 @@ export class ChatStorage {
     return AbeleConfig.getInstance().ai.chatHistory || []
   }
 
+  /** A confirmed local placement write updates the same device-local cache as a remote edit. */
+  noteTreeFolder(path: string, folder: string | null | undefined): void {
+    const entry = this.getHistory().find((entry) => entry.path === path)
+    if (!entry || (entry.treeFolderIndexed && entry.treeFolderId === folder)) return
+    entry.treeFolderId = folder
+    entry.treeFolderIndexed = true
+    this.saveHistory()
+  }
+
   /**
    * Walks the chat folder: adds what is not in the index, and re-reads what has changed.
    *
@@ -911,6 +920,8 @@ export class ChatStorage {
         // An entry from before the dates were kept is read once more to fill them in.
         if (
           entry.mtime === file.stat.mtime &&
+          entry.size === file.stat.size &&
+          entry.treeFolderIndexed === true &&
           entry.lastMessageAt !== undefined &&
           entry.messageTimesVersion === MESSAGE_TIMES_VERSION
         )
@@ -939,6 +950,9 @@ export class ChatStorage {
           lastMessageAt: times.last,
           messageTimesVersion: MESSAGE_TIMES_VERSION,
           mtime: file.stat.mtime,
+          size: file.stat.size,
+          treeFolderId: metadata.treeFolderId,
+          treeFolderIndexed: true,
         })
         added++
       } catch {
@@ -971,7 +985,10 @@ export class ChatStorage {
     const entry = config.ai.chatHistory?.find((e) => e.path === file.path)
     if (
       !entry ||
-      (entry.mtime === file.stat.mtime && entry.messageTimesVersion === MESSAGE_TIMES_VERSION)
+      (entry.mtime === file.stat.mtime &&
+        entry.size === file.stat.size &&
+        entry.treeFolderIndexed === true &&
+        entry.messageTimesVersion === MESSAGE_TIMES_VERSION)
     )
       return
 
@@ -1002,7 +1019,9 @@ export class ChatStorage {
     // The clock is recorded either way: a file that cannot be parsed as a chat is not a file
     // to try again on every refresh.
     const seen = entry.mtime
+    const seenSize = entry.size
     entry.mtime = file.stat.mtime
+    entry.size = file.stat.size
     if (metadata?.type !== 'abele-chat') return seen === undefined
 
     // The three the type calls mirrored, and not the title: a chat renamed here has its new
@@ -1020,6 +1039,8 @@ export class ChatStorage {
       entry.recap === recap &&
       entry.summary === summary &&
       entry.agentId === agentId &&
+      entry.treeFolderIndexed === true &&
+      entry.treeFolderId === metadata.treeFolderId &&
       entry.firstMessageAt === times.first &&
       entry.lastMessageAt === times.last &&
       entry.messageTimesVersion === MESSAGE_TIMES_VERSION
@@ -1031,8 +1052,10 @@ export class ChatStorage {
     entry.recap = recap
     entry.summary = summary
     entry.agentId = agentId
+    entry.treeFolderId = metadata.treeFolderId
+    entry.treeFolderIndexed = true
 
-    return !same || seen === undefined
+    return !same || seen !== entry.mtime || seenSize !== entry.size
   }
 
   async renameChat(file: TFile, newTitle: string): Promise<TFile | null> {
