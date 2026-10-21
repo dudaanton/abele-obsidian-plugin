@@ -128,7 +128,9 @@ export class NodeManagerController {
     if (!receipt) throw new Error(`outcome_unknown: retain operation_id ${operation}`)
     if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
     const run = ManagerRunSchema.parse(receipt.result)
-    await this.client.subscribe(run.session_id)
+    await this.client.subscribe(run.session_id).catch((error) => {
+      console.debug('[Abele node] accepted command awaits activity refresh', error)
+    })
     return run
   }
   async status(parent: string, session: string, run: string) {

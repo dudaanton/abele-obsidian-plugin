@@ -90,6 +90,26 @@ it('explains invalid command input before enqueueing rather than exposing raw va
   expect(f.client.flush).not.toHaveBeenCalled()
   f.store.close()
 })
+it('returns an accepted command receipt even when subscribing to its updates is busy', async () => {
+  const f = fixture()
+  f.client.subscribe.mockRejectedValueOnce(new Error('resource_busy'))
+  try {
+    expect(
+      await f.controller.mutate(
+        'sample-parent',
+        'command.v1.run',
+        {
+          session_id: 'sample-session',
+          project_id: 'sample-project',
+          argv: ['pwd'],
+        },
+        'sample-operation'
+      )
+    ).toEqual(receipt)
+  } finally {
+    f.store.close()
+  }
+})
 it('retains exact operations and never answers owner prompts', async () => {
   const f = fixture()
   const params = {
