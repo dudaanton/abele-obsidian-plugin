@@ -15,6 +15,7 @@ export class TraceRunModel {
   error = ''
   valueMatches: string[] = []
   private searchGeneration = 0
+  private trailGeneration = 0
   private loadedSteps = new Set<string>()
   private timer?: number
   private disposed = false
@@ -53,6 +54,7 @@ export class TraceRunModel {
       this.valueMatches = []
       this.loadedSteps.clear()
       ++this.searchGeneration
+      ++this.trailGeneration
       this.error = e instanceof Error ? nodeErrorWords(e.message) : t('streamC.77490b1334072a11')
       console.debug('[trace] Run unavailable', e)
     } finally {
@@ -65,6 +67,7 @@ export class TraceRunModel {
 
   dispose() {
     this.disposed = true
+    ++this.trailGeneration
     window.clearTimeout(this.timer)
   }
 
@@ -106,6 +109,7 @@ export class TraceRunModel {
 
   async pick(id: string | undefined) {
     this.picked = id
+    ++this.trailGeneration
     this.trail = undefined
     this.changed()
     if (id) await this.fill(id)
@@ -140,6 +144,7 @@ export class TraceRunModel {
   }
 
   async follow(value: string) {
+    const generation = ++this.trailGeneration
     try {
       let needle: string | number = value
       try {
@@ -149,14 +154,18 @@ export class TraceRunModel {
       } catch {
         // Plain text values need not be JSON literals.
       }
-      this.trail = trail(await this.rpc.follow(this.projectId, this.runId, needle))
+      const result = await this.rpc.follow(this.projectId, this.runId, needle)
+      if (generation !== this.trailGeneration || this.disposed) return
+      this.trail = trail(result)
     } catch (e) {
+      if (generation !== this.trailGeneration || this.disposed) return
       this.error = e instanceof Error ? e.message : t('streamC.d7e1cbd199d663cc')
     }
     this.changed()
   }
 
   unfollow() {
+    ++this.trailGeneration
     this.trail = undefined
     this.changed()
   }

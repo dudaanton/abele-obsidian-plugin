@@ -2,6 +2,28 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceRunModel } from '@/debugger/trace/TraceRunModel'
 import { TraceRpc } from '@/debugger/trace/wire'
 
+it('does not restore a late value trail after the run disappears', async () => {
+  const n = node()
+  const model = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+  await model.load()
+  const result = await n.rpc.follow('project-1', 'run-1', 'sample')
+  let finish!: (value: typeof result) => void
+  vi.spyOn(n.rpc, 'follow').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  const pending = model.follow('sample')
+  vi.spyOn(n.rpc, 'wholeRun').mockRejectedValue(new Error('trace_run_not_found'))
+  await model.load()
+  finish(result)
+  await pending
+  expect(model.trail).toBeUndefined()
+  expect(model.error).toBe('This run is no longer on the node.')
+  model.dispose()
+})
+
 it('clears previously loaded evidence when the run is removed', async () => {
   const n = node()
   const model = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
