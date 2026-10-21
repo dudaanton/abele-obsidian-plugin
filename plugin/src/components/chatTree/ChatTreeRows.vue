@@ -1,14 +1,25 @@
 <template>
-  <div v-if="draft?.parent === props.folder" class="tree-item-self">
-    <Icon icon="folder" :interactive="false" />
-    <Input
-      :model-value="draft.name"
-      :aria-label="t('chatTree.folderName')"
-      :placeholder="t('chatTree.folderName')"
-      @update:model-value="emit('draftName', $event)"
-      @keydown.enter.prevent.stop="emit('commitFolder')"
-      @keydown.esc.prevent.stop="emit('cancelFolder')"
-    />
+  <!-- A new folder's row, as the file explorer starts one: a folder row whose name is typed in
+       place, ringed while it is edited. Enter or a click elsewhere keeps it, Esc drops it. -->
+  <div v-if="draft?.parent === props.folder" class="tree-item abele-tree-item">
+    <div class="tree-item-self abele-tree-item__self mod-collapsible is-being-renamed abele-chat-tree__draft">
+      <div :ref="chevron" class="tree-item-icon collapse-icon abele-tree-item__toggle" aria-hidden="true" />
+      <div class="tree-item-inner abele-tree-item__inner">
+        <span class="abele-tree-item__glyph" aria-hidden="true" />
+        <span
+          class="abele-tree-item__text"
+          contenteditable="plaintext-only"
+          role="textbox"
+          spellcheck="false"
+          :aria-label="t('chatTree.folderName')"
+          :data-placeholder="t('chatTree.folderName')"
+          @input="emit('draftName', ($event.target as HTMLElement).textContent ?? '')"
+          @keydown.enter.prevent.stop="emit('commitFolder')"
+          @keydown.esc.prevent.stop="emit('cancelFolder')"
+          @blur="emit('commitFolder')"
+        />
+      </div>
+    </div>
   </div>
   <!-- One level of the chat tree, as the file explorer draws one: folders first, then the open
        chats, then the closed ones folded into one quiet «Closed» branch. A chat's nested chats
@@ -118,10 +129,9 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, ref } from 'vue'
-import { Menu } from 'obsidian'
+import { Menu, setIcon } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
-import Input from '../obsidian/Input.vue'
 import ChatTreeChatRow from './ChatTreeChatRow.vue'
 import {
   chatsOf,
@@ -151,6 +161,10 @@ const emit = defineEmits<{
   cancelFolder: []
 }>()
 
+/** The new folder's fold arrow, drawn as a folder row's, so its name starts where theirs do. */
+const chevron = (el: unknown) => {
+  if (el instanceof HTMLElement && !el.firstChild) setIcon(el, 'right-triangle')
+}
 const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)
 const searching = computed(() => !!props.query.trim())

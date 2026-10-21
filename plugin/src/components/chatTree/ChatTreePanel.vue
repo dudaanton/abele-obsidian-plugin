@@ -148,7 +148,7 @@ const newFolder = async (parent: string) => {
   for (const path of [...folded])
     if (parent === path || parent.startsWith(`${path}/`)) folded.delete(path)
   await nextTick()
-  list.value?.querySelector<HTMLInputElement>('input')?.focus()
+  list.value?.querySelector<HTMLElement>('.abele-chat-tree__draft [contenteditable]')?.focus()
 }
 
 const dropTop = ref(false)
@@ -163,6 +163,18 @@ const dropAtTop = () => {
 </script>
 
 <style lang="scss">
+// The name of a new folder, typed in its row: empty, it shows what goes there.
+.abele-chat-tree__draft [contenteditable] {
+  flex: 1 1 auto;
+  min-width: 0;
+  outline: none;
+
+  &:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-faint);
+  }
+}
+
 .abele-chat-tree {
   display: flex;
   flex: 1 1 auto;

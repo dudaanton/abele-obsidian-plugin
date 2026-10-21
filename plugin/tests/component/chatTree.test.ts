@@ -118,13 +118,38 @@ it('leaves no time column for a new chat and no extra creation action beside sea
   expect(view.find('.abele-chat-tree__head [aria-label="New chat"]').exists()).toBe(false)
 })
 
-it('creates a folder through an inline name field', async () => {
+it('names a new folder in its own row, as the file explorer does', async () => {
   const view = show()
   await view.get('[aria-label="New folder"]').trigger('click')
-  const input = view.get('input[aria-label="Folder name"]')
-  await input.setValue('Projects')
-  await input.trigger('keydown', { key: 'Enter' })
+  expect(view.find('input[aria-label="Folder name"]').exists()).toBe(false)
+  const row = view.get('.abele-chat-tree__draft')
+  expect(row.classes()).toContain('is-being-renamed')
+  const name = row.get('[contenteditable][aria-label="Folder name"]')
+  expect(document.activeElement).toBe(name.element)
+  name.element.textContent = 'Projects'
+  await name.trigger('input')
+  await name.trigger('keydown', { key: 'Enter' })
   expect(source.newFolder).toHaveBeenCalledWith('', 'Projects')
+  expect(view.find('.abele-chat-tree__draft').exists()).toBe(false)
+})
+
+it('keeps a typed folder name on leaving the row and drops it on Esc', async () => {
+  const view = show()
+  await view.get('[aria-label="New folder"]').trigger('click')
+  let name = view.get('.abele-chat-tree__draft [contenteditable]')
+  name.element.textContent = 'Kept'
+  await name.trigger('input')
+  await name.trigger('blur')
+  expect(source.newFolder).toHaveBeenCalledWith('', 'Kept')
+  vi.mocked(source.newFolder).mockClear()
+  await view.get('[aria-label="New folder"]').trigger('click')
+  name = view.get('.abele-chat-tree__draft [contenteditable]')
+  name.element.textContent = 'Dropped'
+  await name.trigger('input')
+  await name.trigger('keydown', { key: 'Escape' })
+  await name.trigger('blur')
+  expect(source.newFolder).not.toHaveBeenCalled()
+  expect(view.find('.abele-chat-tree__draft').exists()).toBe(false)
 })
 
 it('uses the tree and actions belonging to its own pane', async () => {
