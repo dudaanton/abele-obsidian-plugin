@@ -497,6 +497,9 @@
   "chatTree.additive": {
     "englishHash": "d5d48f59627b80ad02d5715be383a71f98c16e951272e904acd55f49abb02038"
   },
+  "chatTree.backToParent": {
+    "englishHash": "6389002e821216543d84bab644a786b2f13f040c30f95168a3bb3fc17d56d94c"
+  },
   "chatTree.accessHint": {
     "englishHash": "12045fd0328583b2a30a8426a17513ef87be4a0031084e280c1a34ddcf7ea081"
   },
