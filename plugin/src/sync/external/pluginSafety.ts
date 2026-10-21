@@ -265,8 +265,10 @@ export async function recoverOrphanPrivateArtifacts(
     [directory],
     async () => {
       assertCurrent()
-      await showPrivateRecoveryNotice(app)
-      if (!(await disk.exists(directory))) return
+      if (!(await disk.exists(directory))) {
+        await showPrivateRecoveryNotice(app)
+        return
+      }
       // Snapshot candidates first, then read fresh ownership. Newly created work is
       // either absent from this list or already journaled/reserved before creation.
       const files: string[] = []
@@ -330,6 +332,7 @@ export async function recoverOrphanPrivateArtifacts(
         for (const op of doc.operations)
           for (const artifact of op.ownedArtifacts) protect(artifact.path)
       }
+      const orphans: string[] = []
       for (const path of files) {
         assertCurrent()
         if (
@@ -345,8 +348,12 @@ export async function recoverOrphanPrivateArtifacts(
           continue
         await assertVaultPath(vaultDisk(app.vault), path)
         console.debug('[abele-sync] preserving orphan private work', path)
-        await preservePrivateArtifacts(app, [path], assertCurrent)
+        orphans.push(path)
       }
+      // Preserve the pass as one event. The batch also reports copies already moved
+      // if a later move fails, without creating a persistent notice for every file.
+      await preservePrivateArtifacts(app, orphans, assertCurrent)
+      await showPrivateRecoveryNotice(app)
     },
     assertCurrent
   )

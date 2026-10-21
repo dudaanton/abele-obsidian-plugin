@@ -4,6 +4,60 @@ import { preservePrivateArtifacts, showPrivateRecoveryNotice } from '@/sync/priv
 import { makeParents } from '@/sync/vaultFolders'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sha256 } from '@abele/sync-sdk/core'
+import { IDBFactory } from 'fake-indexeddb'
+import { recoverOrphanPrivateArtifacts } from '@/sync/external/pluginSafety'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { WriteJournal } from '@/sync/writeJournal'
+
+it('keeps an interrupted target stage journal-owned across filesystem restart', async () => {
+  const app = buildFakeVault([
+    { path: 'Media/sample.bin', content: 'original user bytes' },
+  ]) as unknown as App
+  const fs = new ObsidianFileSystem(app)
+  const bytes = new TextEncoder().encode('partial incoming bytes')
+  const stage = await fs.beginAtomicWrite('Media/sample.bin', 1000, null)
+  await stage.append(0, bytes)
+  const count = Notice.shown.length
+  const restarted = new ObsidianFileSystem(app)
+  await restarted.recover()
+  await recoverOrphanPrivateArtifacts(app, new IDBFactory())
+  expect(new WriteJournal(app).entries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ temp: stage.id, target: 'Media/sample.bin' }),
+    ])
+  )
+  expect((await restarted.reopenStage(stage.id)).offset).toBe(bytes.length)
+  expect(new Uint8Array(await app.vault.adapter.readBinary(stage.id))).toEqual(bytes)
+  expect(await app.vault.adapter.read('Media/sample.bin')).toBe('original user bytes')
+  expect(Notice.shown.length).toBe(count)
+})
+
+it('announces one orphan recovery pass once while keeping every private copy', async () => {
+  const app = buildFakeVault([
+    { path: 'Notes/sample.md', content: 'user content' },
+  ]) as unknown as App
+  const paths = ['first.bin', 'second.bin', 'third.bin'].map(
+    (name) => '.obsidian/plugins/abele/sync-staging/' + name
+  )
+  for (const path of paths) {
+    await makeParents(app.vault.adapter, path)
+    await app.vault.adapter.write(path, path)
+  }
+  const before = await app.vault.adapter.stat('Notes/sample.md')
+  const count = Notice.shown.length
+  await recoverOrphanPrivateArtifacts(app, new IDBFactory())
+  expect(Notice.shown.length).toBe(count + 1)
+  for (const path of paths) {
+    expect(await app.vault.adapter.exists(path)).toBe(false)
+    expect(await app.vault.adapter.read(path.replace('/sync-staging/', '/sync-recovery/'))).toBe(
+      path
+    )
+  }
+  expect(await app.vault.adapter.read('Notes/sample.md')).toBe('user content')
+  expect(await app.vault.adapter.stat('Notes/sample.md')).toEqual(before)
+  await recoverOrphanPrivateArtifacts(app, new IDBFactory())
+  expect(Notice.shown.length).toBe(count + 1)
+})
 
 it('announces a changed displaced routine copy even after an earlier notice', async () => {
   const app = buildFakeVault([]) as unknown as App
