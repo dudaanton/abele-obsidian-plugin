@@ -221,22 +221,6 @@ it('finishes rapid moves in the order they were requested', async () => {
   expect(folders.folderOf(file.path)).toBe('Second')
 })
 
-it('migrates marked folders once, preserves permissions and ignores template directories', async () => {
-  await app.vault.createFolder('AI/Chats/2025-03')
-  await app.vault.createFolder('AI/Chats/Legacy')
-  const file = app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile
-  await app.fileManager.renameFile(file, 'AI/Chats/Legacy/sample.abchat')
-  await app.vault.create('AI/Chats/Legacy/_folder.abeleaccess', '{"web_search":"auto"}')
-  await folders.reload()
-  expect(folders.paths).toEqual(['Legacy'])
-  expect(folders.folderOf(file.path)).toBe('Legacy')
-  await folders.rename('Legacy', 'Migrated')
-  await folders.reload()
-  expect(folders.folderOf(file.path)).toBe('Migrated')
-  expect(file.path).toBe('AI/Chats/Legacy/sample.abchat')
-  expect(folders.accessFor(file.path, {}).modes.web_search).toBe('auto')
-})
-
 it('deleting a nonempty folder reparents chats and survives reload', async () => {
   await folders.create('', 'Projects')
   await folders.create('Projects', 'Drafts')
@@ -266,22 +250,6 @@ it('hides template directories and places unfiled chats at root', async () => {
   await folders.reload()
   await service.tree.refresh()
   expect(service.tree.root.value.every((entry) => entry.kind === 'chat')).toBe(true)
-})
-
-it('migrates nesting and uses the deepest marked folder without changing transcript paths', async () => {
-  await app.vault.createFolder('AI/Chats/Legacy/Nested')
-  const file = app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile
-  await app.fileManager.renameFile(file, 'AI/Chats/Legacy/Nested/sample.abchat')
-  await app.vault.create('AI/Chats/Legacy/_folder.abeleaccess', '{"web_search":"auto"}')
-  await app.vault.create('AI/Chats/Legacy/Nested/_folder.abeleaccess', '{"fetch_url":"auto"}')
-  await folders.reload()
-  expect(folders.folderOf(file.path)).toBe('Legacy/Nested')
-  expect(folders.accessFor(file.path, {}).modes).toEqual({ web_search: 'auto', fetch_url: 'auto' })
-  await folders.remove('Legacy/Nested')
-  await folders.reload()
-  expect(folders.paths).toEqual(['Legacy'])
-  expect(folders.folderOf(file.path)).toBe('Legacy')
-  expect(file.path).toBe('AI/Chats/Legacy/Nested/sample.abchat')
 })
 
 it('files an unsaved tab without creating a chat file', async () => {
@@ -324,4 +292,61 @@ it('reports current membership after moving a chat that was filed before its fir
   await service.getSession(id)!.addUserNote('Sample question')
   await folders.move(id, 'Second')
   expect(service.listOpenChats().find((chat) => chat.id === id)?.folder).toBe('Second')
+})
+
+it('ignores existing disk folders and access markers without writing any files', async () => {
+  await app.vault.createFolder('AI/Chats/Existing/Nested')
+  const chat = app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile
+  await app.fileManager.renameFile(chat, 'AI/Chats/Existing/Nested/sample.abchat')
+  await app.vault.create('AI/Chats/Existing/_folder.abeleaccess', '{"web_search":"auto"}')
+  await app.vault.create('AI/Chats/Existing/Nested/_folder.abeleaccess', '{"fetch_url":"auto"}')
+  const before = await Promise.all(
+    app.vault.getFiles().map(async (file) => [file.path, await app.vault.read(file)])
+  )
+  const rename = vi.spyOn(app.fileManager, 'renameFile')
+  const trash = vi.spyOn(app.fileManager, 'trashFile')
+  await folders.reload()
+  expect(folders.paths).toEqual([])
+  expect(folders.folderOf(chat.path)).toBe('')
+  expect(folders.accessFor(chat.path, {}).modes).toEqual({})
+  expect(app.vault.getAbstractFileByPath('AI/Chats/_folders.abelechats')).toBeNull()
+  expect(
+    await Promise.all(
+      app.vault.getFiles().map(async (file) => [file.path, await app.vault.read(file)])
+    )
+  ).toEqual(before)
+  expect(app.vault.getAbstractFileByPath('AI/Chats/Existing/Nested')).toBeTruthy()
+  expect(rename).not.toHaveBeenCalled()
+  expect(trash).not.toHaveBeenCalled()
+  await service.tree.refresh()
+  expect(service.tree.root.value.every((entry) => entry.kind === 'chat')).toBe(true)
+})
+
+it('stores membership in the transcript and shows unknown folder ids at root', async () => {
+  await folders.create('', 'Projects')
+  const file = app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile
+  await folders.move(file.path, 'Projects')
+  const metadata = parseChatMetadata(await app.vault.read(file))!
+  const catalog = app.vault.getAbstractFileByPath('AI/Chats/_folders.abelechats') as TFile
+  const data = JSON.parse(await app.vault.read(catalog))
+  expect(metadata.treeFolderId).toBe(
+    data.folders.find((folder: { name: string }) => folder.name === 'Projects').id
+  )
+  expect(await app.vault.read(catalog)).not.toContain(file.path)
+  await app.vault.modify(
+    file,
+    serializeChat({
+      metadata: { ...metadata, treeFolderId: 'unknown-folder' },
+      messages: [],
+      internalMessages: [],
+    })
+  )
+  app.emit('vault', 'modify', file)
+  await folders.reload()
+  expect(folders.folderOf(file.path)).toBe('')
+  await service.tree.refresh()
+  expect(service.tree.root.value).toContainEqual(
+    expect.objectContaining({ kind: 'chat', id: file.path })
+  )
+  expect(parseChatMetadata(await app.vault.read(file))?.treeFolderId).toBe('unknown-folder')
 })

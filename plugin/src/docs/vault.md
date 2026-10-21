@@ -1236,19 +1236,19 @@ at the tree root, even when their files live in template directories.
 
 `_folders.abelechats` in the configured chat root is a synced JSON catalog (version 1): folder
 records contain a stable `id`, `name`, parent id, `order`, and additive `access` modes. The
-catalog also retains migrated legacy marker paths and node-session membership by stable node
-reference. A local transcript stores its folder id as `treeFolderId` in `.abchat` metadata;
-`null` means unfiled. This survives transcript renames and moves. Folder names and paths are
+catalog also retains node-session membership by stable node reference. A local transcript
+stores its folder id as `treeFolderId` in `.abchat` metadata;
+`null` means unfiled. An unknown folder id appears at the tree root and is retained in the
+transcript. This survives transcript renames and moves. Folder names and paths are
 presentation only. Folder access raises agent/default modes for every descendant, is resolved
 at use time, and is never copied into chat overrides. Leaving a folder removes its contribution.
 The catalog travels in settings transfer's **Chat folder access** file section.
 
-On discovery, legacy directories marked by `_folder.abeleaccess` become logical folders with
-the same nesting and permissions. Their chats gain metadata membership without moving files.
-Unmarked storage directories do not become folders; ancestors needed for a marked folder's
-nesting are retained. Migration records prevent old markers from recreating renamed or deleted
-folders. Deleting a logical folder keeps its chats and child folders in its parent (or root).
-Nonempty folder deletion asks for confirmation.
+Existing disk directories and their `_folder.abeleaccess` files are ignored and left unchanged.
+They are never converted to logical folders, and no chat membership is inferred from disk
+placement. The tree starts with no logical folders until the person creates them. Deleting a
+logical folder keeps its chats and child folders in its parent (or root). Nonempty folder
+deletion asks for confirmation.
 
 Closing a parent closes its nested presentations without restoring files. Helper transcripts
 remain in their sidecars. The device-local chat layout retains closed node references, local

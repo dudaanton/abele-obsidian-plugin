@@ -20,7 +20,7 @@ it('transfers the logical folder catalog beside the receiving chats', async () =
   const app = useVault([
     {
       path: 'AI/Chats/_folders.abelechats',
-      content: '{"version":1,"folders":[],"migrated":[],"nodes":{}}',
+      content: '{"version":1,"folders":[],"nodes":{}}',
     },
   ])
   const entries = await collectFiles(app as never, '', 'AI/Chats')

@@ -23,6 +23,10 @@ const probe = (label: string) => `(async () => {
   if (service.folders.paths.includes(folder)) throw Error('Synthetic folder already exists')
   if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic storage directory already exists')
   await app.vault.createFolder(path)
+  const markerContent = '{"fetch_url":"auto"}'
+  const marker = await app.vault.create(path + '/_folder.abeleaccess', markerContent)
+  await service.folders.reload()
+  if (service.folders.paths.includes('2099-02')) throw Error('Disk folder became a logical folder')
   const created = [], files = []
   let leaf, narrowLeaf, ownsLeaf = false, pictureCount = 0
   const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
@@ -249,6 +253,7 @@ const probe = (label: string) => `(async () => {
     ;[...document.querySelectorAll('.suggestion-item')].find(item => item.textContent.includes('Chats (top)')).click()
     await until(() => files.every(file => !service.folders.folderOf(file.path)))
     if (!files.every(file => file.path.startsWith(path + '/'))) throw Error('Tree action moved a transcript')
+    if (await app.vault.read(marker) !== markerContent) throw Error('Tree action changed a disk folder access file')
     // An empty selection queues behind the requested move before fixture files are released.
     await service.folders.moveMany([], '')
     return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }

@@ -8,7 +8,6 @@ import { withFolderAccess, type ChatTreeFolder } from './chatTree'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { parseChat, parseChatMetadata, serializeMetadata, serializeChat } from '@/ai/ChatLog'
 
-const ACCESS_FILE = '_folder.abeleaccess'
 const validName = (name: string) =>
   !!name.trim() &&
   !/[\\/:*?"<>|]/.test(name) &&
@@ -25,16 +24,15 @@ interface FolderRecord {
 interface Catalog {
   version: 1
   folders: FolderRecord[]
-  migrated: string[]
   nodes: Record<string, string | null>
 }
 const CATALOG_FILE = '_folders.abelechats'
 
-/** Synced logical folders; storage directories never determine placement after migration. */
+/** Synced logical folders; storage directories never determine placement. */
 export class ChatFolders {
   readonly access = shallowRef<Record<string, Record<string, ToolMode>>>({})
   readonly revision = shallowRef(0)
-  private catalog: Catalog = { version: 1, folders: [], migrated: [], nodes: {} }
+  private catalog: Catalog = { version: 1, folders: [], nodes: {} }
   private membership = new Map<string, string | null>()
   private metadata = new Map<TFile, { mtime: number; size: number; folder?: string | null }>()
   private events: EventRef[] = []
@@ -64,10 +62,7 @@ export class ChatFolders {
       this.events.push(
         app.vault.on(event as 'create', (file) => {
           if (file instanceof TFile) this.metadata.delete(file)
-          if (
-            file instanceof TFile &&
-            (file.extension === 'abchat' || file.name === CATALOG_FILE || file.name === ACCESS_FILE)
-          )
+          if (file instanceof TFile && (file.extension === 'abchat' || file.name === CATALOG_FILE))
             void this.reload().catch((error) =>
               console.debug('[Abele] Could not reload chat folders', error)
             )
@@ -137,26 +132,20 @@ export class ChatFolders {
   private async load(): Promise<void> {
     if (this.dead) return
     if (this.loadedRoot !== this.root.value) {
-      this.catalog = { version: 1, folders: [], migrated: [], nodes: {} }
+      this.catalog = { version: 1, folders: [], nodes: {} }
       this.membership.clear()
       this.loadedRoot = this.root.value
     }
     const file = this.app.vault.getAbstractFileByPath(`${this.root.value}/${CATALOG_FILE}`)
     if (file instanceof TFile) {
       const data = JSON.parse(await ChatStorage.getInstance().readNavigationFile(file)) as Catalog
-      if (
-        data.version !== 1 ||
-        !Array.isArray(data.folders) ||
-        !Array.isArray(data.migrated) ||
-        !data.nodes
-      )
+      if (data.version !== 1 || !Array.isArray(data.folders) || !data.nodes)
         throw new Error('Invalid chat folder catalog')
       this.catalog = data
     }
     const membership = new Map(
       [...this.membership].filter(([key]) => !!this.service.getSession(key))
     )
-    const chats: Array<{ file: TFile; folder?: string | null }> = []
     for (const chat of this.app.vault.getFiles()) {
       if (chat.extension !== 'abchat') continue
       let cached = this.metadata.get(chat)
@@ -167,61 +156,12 @@ export class ChatFolders {
         this.metadata.set(chat, cached)
       }
       membership.set(chat.path, cached.folder ?? null)
-      chats.push({ file: chat, folder: cached.folder })
     }
     const present = new Set(this.app.vault.getFiles())
     for (const cached of this.metadata.keys())
       if (!present.has(cached)) this.metadata.delete(cached)
     this.membership = membership
-    let migrated = 0
-    const legacy = this.app.vault
-      .getFiles()
-      .filter((entry) => entry.name === ACCESS_FILE && entry.path.startsWith(`${this.root.value}/`))
-    for (const marker of legacy) {
-      const relative = marker.path.slice(this.root.value.length + 1, -`/${ACCESS_FILE}`.length)
-      if (!relative || this.catalog.migrated.includes(relative)) continue
-      const modes = JSON.parse(
-        await ChatStorage.getInstance().readNavigationFile(marker)
-      ) as Record<string, ToolMode>
-      let parent: string | null = null
-      const parts = relative.split('/')
-      for (let index = 0; index < parts.length; index++) {
-        const path = parts.slice(0, index + 1).join('/')
-        let folder = this.record(path)
-        if (!folder) {
-          folder = {
-            id: `legacy:${path}`,
-            name: parts[index],
-            parent,
-            order: this.catalog.folders.length,
-          }
-          this.catalog.folders.push(folder)
-        }
-        parent = folder.id
-      }
-      this.record(relative)!.access = Object.fromEntries(
-        Object.entries(modes).filter(([, mode]) => ['off', 'ask', 'auto'].includes(mode))
-      )
-      for (const chat of chats) {
-        if (chat.folder !== undefined || !chat.file.path.startsWith(`${marker.parent!.path}/`))
-          continue
-        const deeper = legacy.some(
-          (other) =>
-            other !== marker &&
-            other.parent!.path.startsWith(`${marker.parent!.path}/`) &&
-            chat.file.path.startsWith(`${other.parent!.path}/`)
-        )
-        if (!deeper) await this.assignFile(chat.file, parent)
-      }
-      this.catalog.migrated.push(relative)
-      migrated++
-    }
-    if (migrated) {
-      await this.persist()
-      console.debug('[Abele] Migrated chat tree folders without moving files', {
-        folders: migrated,
-      })
-    } else this.publish()
+    this.publish()
   }
   accessFor(path: string, base: Record<string, ToolMode>) {
     return this.accessForFolder(this.folderOf(path), base)
