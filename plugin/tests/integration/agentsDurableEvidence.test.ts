@@ -251,6 +251,11 @@ describe('durable attention evidence', () => {
       await running
       await session.save()
     }
+    expect(agents.badge.value.attention).toBe(0)
+    expect(
+      agents.rows.value.flatMap((row) => row.reasons).some((reason) => reason.kind === 'approval')
+    ).toBe(false)
+    expect(agents.rows.value.some((row) => row.uncertain)).toBe(false)
   })
   it('does not admit a tool when its accepted identity cannot be saved', async () => {
     const app = useVault([
