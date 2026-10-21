@@ -525,7 +525,11 @@ export class ChatTreeModel implements ChatTreeSource {
   rename(id: string): void {
     this.run(async () => {
       const chat = chatsOf(this.root.value).find((entry) => entry.id === id)
-      const title = await promptDialog({ title: t('chatTree.renameChat'), value: chat?.title })
+      const title = await promptDialog({
+        title: t('chatTree.renameChat'),
+        value: chat?.title,
+        submitText: t('node.files.renameAction'),
+      })
       if (!title) return
       const node = this.nodeReference(id)
       if (node) {

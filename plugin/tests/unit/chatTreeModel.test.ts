@@ -162,6 +162,7 @@ it('renames and deletes a closed node session through its own node while retaini
       expect(service.closedNodeChats.value[0].reference.title).toBe('Renamed sample')
     )
     expect(client.renameSession).toHaveBeenCalledWith(reference.sessionId, 'Renamed sample')
+    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ submitText: 'Rename' }))
     service.tree.delete(id)
     await vi.waitFor(() => expect(service.closedNodeChats.value).toEqual([]))
     expect(client.deleteSession).toHaveBeenCalledWith(reference.sessionId)
