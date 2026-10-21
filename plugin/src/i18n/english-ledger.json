@@ -26600,7 +26600,7 @@
     ]
   },
   "node.error.busy": {
-    "englishHash": "06e027fa7a9a062f010767d3cc258ef4f66193e4548b186256a4786aac7e9027",
+    "englishHash": "20b1a4c2eb76c0958b42af1b93398fb3ba18e1f888ff97a608508621a5b857db",
     "context": "Node file and folder operations",
     "reviewedLocales": [
       "ru",
@@ -27092,6 +27092,46 @@
   "node.delegation.updateRequired": {
     "englishHash": "e4b489a5120ce77bb92c9a1edabba3fac4c8ede43ddec56c435d165033e4df4b",
     "context": "Older node refusal for chat delegation and manager tools",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.refresh": {
+    "englishHash": "499276dfea4461badfc17e67cc1d5a88360b0709a2d64752de331ce0b715a9b1",
+    "context": "Debugger launch, value trail or requests refresh explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchUnknown": {
+    "englishHash": "95572a48111b025d0b0219c13ed7ebe755318764645c511b667076c3c87feab0",
+    "context": "Debugger launch, value trail or requests refresh explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchMissing": {
+    "englishHash": "454933cf7dbd01821ed55aa8be6ad827bbe260579d79490525cc3cbb712e4910",
+    "context": "Debugger launch, value trail or requests refresh explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.followNoMatches": {
+    "englishHash": "231dc9b9e0d7026d51db70ea3f92ce8aa011890eda8704d4bdc67775b90b3dde",
+    "context": "Debugger launch, value trail or requests refresh explanation",
     "reviewedLocales": [
       "ru",
       "lv",

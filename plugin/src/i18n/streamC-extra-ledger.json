@@ -5910,7 +5910,7 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "streamC.4fc04649a9497a39": {
-    "englishHash": "ed586de458e0ebdfc8c9ca1b02015d64ab42e0b9295474be5598aaee571fdcb2",
+    "englishHash": "5b1ffbc1f9a42826d64a4f4a15a25c46898187a34661abb84e01db2ee469a12e",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
