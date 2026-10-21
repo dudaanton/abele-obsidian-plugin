@@ -29,8 +29,8 @@ describe('chat letters', () => {
   })
   it('refuses self, unknown and closed targets', async () => {
     const letters = new ChatLetters(() => [endpoint('a')])
-    await expect(letters.send('a', 'a', 'Question')).rejects.toThrow('own chat')
-    await expect(letters.send('a', 'missing', 'Question')).rejects.toThrow('closed or unknown')
+    await expect(letters.send('a', 'a', 'Question')).rejects.toThrow('That is this chat.')
+    await expect(letters.send('a', 'missing', 'Question')).rejects.toThrow('No chat by that name.')
   })
   it('rejects cycles and queues concurrent asks to the same target without overlap', async () => {
     let finish!: (value: string) => void

@@ -4,6 +4,26 @@ export interface LetterChat {
   title: string
   folder?: string
   path?: string
+  unknown?: boolean
+}
+
+export class LetterRefusal extends Error {
+  constructor(
+    readonly reason: 'self' | 'unknown' | 'closed' | 'cycle' | 'node',
+    readonly title = ''
+  ) {
+    super(
+      reason === 'self'
+        ? 'That is this chat.'
+        : reason === 'unknown'
+          ? 'No chat by that name.'
+          : reason === 'closed'
+            ? `${title} is closed. Open it from the chat tree first.`
+            : reason === 'cycle'
+              ? `${title} is waiting on this chat; asking it back would go in a circle.`
+              : "Chats on a node can't be asked yet."
+    )
+  }
 }
 
 export interface ChatLetter {
@@ -22,7 +42,10 @@ export class ChatLetters {
   private readonly waiting = new Map<string, Map<string, number>>()
   private readonly receiving = new Map<string, Promise<void>>()
 
-  constructor(private readonly openChats: () => LetterEndpoint[]) {}
+  constructor(
+    private readonly openChats: () => LetterEndpoint[],
+    private readonly knownChat: (id: string) => LetterChat | undefined = () => undefined
+  ) {}
 
   list(caller: string): Omit<LetterEndpoint, 'receive'>[] {
     return this.openChats()
@@ -43,18 +66,21 @@ export class ChatLetters {
     message: string,
     signal?: AbortSignal
   ): Promise<string> {
-    if (caller === target) throw new Error('Cannot send a message to your own chat')
+    if (caller === target) throw new LetterRefusal('self')
     const chats = this.openChats()
     const from = chats.find((chat) => chat.id === caller)
     const to = chats.find((chat) => chat.id === target)
-    if (!from || !to) throw new Error('The chat is closed or unknown')
+    if (!from || !to) {
+      const known = this.knownChat(target)
+      throw new LetterRefusal(known ? 'closed' : 'unknown', known?.title)
+    }
     if (!message.trim()) throw new Error('The message is empty')
     const seen = new Set<string>()
     const pending = [target]
     while (pending.length) {
       const next = pending.pop()
       if (next === undefined) continue
-      if (next === caller) throw new Error('The target chat is waiting for this chat')
+      if (next === caller) throw new LetterRefusal('cycle', to.title)
       if (seen.has(next)) continue
       seen.add(next)
       pending.push(...(this.waiting.get(next)?.keys() ?? []))
@@ -68,7 +94,7 @@ export class ChatLetters {
       if (signal?.aborted) throw new Error('Message cancelled')
       const open = this.openChats()
       if (!open.some((chat) => chat.id === caller) || !open.some((chat) => chat.id === target))
-        throw new Error('The chat is closed or unknown')
+        throw new LetterRefusal('closed', to.title)
       return to.receive(
         message,
         { id: from.id, title: from.title, folder: from.folder, path: from.path },

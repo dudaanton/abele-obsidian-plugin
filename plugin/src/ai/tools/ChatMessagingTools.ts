@@ -1,7 +1,8 @@
 import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
-import { chatMessaging, openMessagingChats } from '../chatMessaging'
-import type { LetterChat } from '@/chats/chatLetters'
+import { chatMessaging, resolveLetterChat } from '../chatMessaging'
+import { LetterRefusal, type LetterChat } from '@/chats/chatLetters'
+import { t } from '@/i18n'
 
 export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
   return [
@@ -35,10 +36,10 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
         if (!session) throw new Error('No active chat')
         if (typeof params.chat_id !== 'string' || typeof params.message !== 'string')
           throw new Error('chat_id and message must be strings')
-        const target = openMessagingChats().find((chat) => chat.id === params.chat_id)
+        const target = resolveLetterChat(params.chat_id)
         const to: LetterChat = target
           ? { id: target.id, title: target.title, folder: target.folder, path: target.path }
-          : { id: params.chat_id, title: params.chat_id }
+          : { id: params.chat_id, title: t('chat.letterUnknown'), unknown: true }
         session.attachChatLetter(id, { to })
         await session.save()
         try {
@@ -48,11 +49,17 @@ export function createChatMessagingTools(owner?: ChatSession): AgentTool[] {
           session.attachChatLetter(id, { to, reply })
           return { content: [{ type: 'text', text: reply }] }
         } catch (error) {
+          const refusal =
+            error instanceof LetterRefusal
+              ? t(`chat.letterRefusal.${error.reason}`, { title: error.title })
+              : error instanceof Error
+                ? error.message
+                : String(error)
           session.attachChatLetter(id, {
             to,
-            refusal: error instanceof Error ? error.message : String(error),
+            refusal,
           })
-          throw error
+          throw new Error(refusal)
         } finally {
           await session.save()
         }

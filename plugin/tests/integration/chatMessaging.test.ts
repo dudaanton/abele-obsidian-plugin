@@ -5,7 +5,12 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { createChatMessagingTools } from '@/ai/tools/ChatMessagingTools'
-import { chatMessaging, openMessagingChats, openLetterChat } from '@/ai/chatMessaging'
+import {
+  chatMessaging,
+  openMessagingChats,
+  openLetterChat,
+  canOpenLetterChat,
+} from '@/ai/chatMessaging'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import type { Message } from '@/ai/client'
@@ -82,6 +87,33 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+it('distinguishes a closed destination from an unknown one and retains its reopen path', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  target.chatTitle.value = 'Sample reference'
+  await target.addUserNote('Sample context')
+  const path = target.currentChatFile.value!.path
+  openMessagingChats()
+  await service.closeTab(target.id)
+  const attach = vi.spyOn(caller, 'attachChatLetter')
+  const send = createChatMessagingTools(caller).find(
+    (tool) => tool.name === 'send_message_to_chat'
+  )!
+  await expect(
+    send.execute('closed', { chat_id: target.id, message: 'Sample question' })
+  ).rejects.toThrow('Sample reference is closed. Open it from the chat tree first.')
+  const closed = attach.mock.calls.at(-1)![1]
+  expect(closed.to).toMatchObject({ title: 'Sample reference', path })
+  expect(canOpenLetterChat(closed.to)).toBe(true)
+  await expect(
+    send.execute('unknown', { chat_id: 'missing-chat', message: 'Sample question' })
+  ).rejects.toThrow('No chat by that name.')
+  const unknown = attach.mock.calls.at(-1)![1]
+  expect(unknown.to).toEqual({ id: 'missing-chat', title: 'an unknown chat', unknown: true })
+  expect(canOpenLetterChat(unknown.to)).toBe(false)
+})
+
 it('uses the tree directory metadata and includes node chats without adding hidden sessions', async () => {
   const service = ChatService.getInstance()
   const local = service.getSession(service.createTab())!
@@ -108,9 +140,9 @@ it('uses the tree directory metadata and includes node chats without adding hidd
   )
   expect(list).toHaveBeenCalled()
   expect(chatMessaging.list(local.id)).toEqual([directory[1]])
-  await expect(
-    chatMessaging.send(local.id, 'node-chat', 'Sample remote request')
-  ).rejects.toThrow('cannot receive cross-chat messages')
+  await expect(chatMessaging.send(local.id, 'node-chat', 'Sample remote request')).rejects.toThrow(
+    "Chats on a node can't be asked yet."
+  )
 })
 
 it('opens a node letter destination through its existing tab', async () => {
@@ -131,12 +163,12 @@ it('keeps the caller title on a refused self-addressed letter', async () => {
   )!
   await expect(
     send.execute('self-call', { chat_id: caller.id, message: 'Sample self request' })
-  ).rejects.toThrow('own chat')
+  ).rejects.toThrow('That is this chat.')
   expect(attach).toHaveBeenLastCalledWith(
     'self-call',
     expect.objectContaining({
       to: expect.objectContaining({ id: caller.id, title: 'Sample caller' }),
-      refusal: expect.stringContaining('own chat'),
+      refusal: 'That is this chat.',
     })
   )
 })

@@ -562,5 +562,29 @@
   },
   "chat.chatsListed": {
     "englishHash": "0807dad1f57e13ff7b10916d26c5b5f9e7400a4da2a7980a5990dca482bec3fa"
+  },
+  "chat.letterUnknown": {
+    "englishHash": "851544080b569a1782010ef04748c5e2961085c55fa43aaa2163b45185c65aef"
+  },
+  "chat.letterWorking": {
+    "englishHash": "85ec17e30a84827823d0382135fd41995c1ddc793b9480470272606e07cebb20"
+  },
+  "chat.letterWaiting": {
+    "englishHash": "df225f08f5746358a69e3c63e93ce681198ff0ab174aa3416785fd8e9ffb5596"
+  },
+  "chat.letterRefusal.self": {
+    "englishHash": "0f5c3285d4d50b136ed25b59d5bcd7c51cc7da212b9a43a61902ed1159fc7d0f"
+  },
+  "chat.letterRefusal.unknown": {
+    "englishHash": "a4dbc4b56072ee08e1a9484ec4420c80924241a80c33f87fd9d3c1750870eb74"
+  },
+  "chat.letterRefusal.closed": {
+    "englishHash": "70a149dd7810230d68767c5bdf6e4809134d16e3c08ebad3dd9e08ec2935e5eb"
+  },
+  "chat.letterRefusal.cycle": {
+    "englishHash": "85018563164b466a7a582b461354fc3ff2b9b542a3dbf79ad5cba5b05e5868af"
+  },
+  "chat.letterRefusal.node": {
+    "englishHash": "252cc030b3fa23362a0931a9c71906ec7584042d2349fd0e1614d909127bb5fd"
   }
 }

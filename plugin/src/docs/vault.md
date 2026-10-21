@@ -3028,4 +3028,4 @@ The agent’s ordinary tool modes remain in plugin settings; unset node action m
 
 # Messages between chats
 
-Chat records retain the target reference, reply or refusal on a cross-chat tool call (`chatLetter`), the source reference on an incoming message (`fromSession`), and the destination reference on the answering message (`sentTo`). References include the saved chat path so links can reopen chats after a reload. An interrupted request is not automatically replayed.
+Chat records retain the target reference, reply or refusal on a cross-chat tool call (`chatLetter`), the source reference on an incoming message (`fromSession`), and the destination reference on the answering message (`sentTo`). References include the saved chat path so links can reopen chats after a reload. An unresolved target carries `unknown: true`; its identifier is diagnostic metadata, not its display title. An interrupted request is not automatically replayed.
