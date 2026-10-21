@@ -3,7 +3,7 @@ import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, realpathSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { createServer } from 'node:http'
 import { connect, type Socket } from 'node:net'
 import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
@@ -15,14 +15,13 @@ targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const shots = process.env.ABELE_NODE_PATH_SCREENSHOTS ?? process.env.ABELE_E2E_SHOTS
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const tab=m=>visible('.abele-node-modes [role="tab"][aria-label^="'+m+'"]');const shownMode=m=>tab(m)?.getAttribute('aria-selected')==='true';const pickMode=async m=>{await until(()=>tab(m));if(!shownMode(m))tab(m).click();await until(()=>shownMode(m))};const menuItem=t=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes(t));const placeMenu=async t=>{visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const nodeMenu=async t=>{const own=visible('.abele-node-panel__node-menu');if(own)own.click();else visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const closePrompt=async()=>{const input=document.querySelector('.prompt-input');input?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await wait(150);if(document.querySelector('.prompt'))document.querySelector('.modal-container .modal-bg')?.click();await until(()=>!document.querySelector('.prompt'))};`
+const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const tab=m=>visible('.abele-node-modes [role="tab"][aria-label^="'+m+'"]');const shownMode=m=>tab(m)?.getAttribute('aria-selected')==='true';const nodeControls=async()=>{if(visible('.abele-node-panel_ready')&&(!app.isMobile||app.workspace.leftSplit.collapsed===false))return;const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0];if(!leaf)throw Error('Node drawer leaf missing');await leaf.setViewState({type:'abele-node-sidebar',active:true,state:leaf.view.getState()});await app.workspace.revealLeaf(leaf);app.workspace.setActiveLeaf(leaf,{focus:true});app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready'))};const pickMode=async m=>{await nodeControls();await until(()=>tab(m));if(!shownMode(m))tab(m).click();await until(()=>shownMode(m))};const menuItem=t=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes(t));const placeMenu=async t=>{await nodeControls();visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const nodeMenu=async t=>{await nodeControls();const own=visible('.abele-node-panel__node-menu');if(own)own.click();else visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const closePrompt=async()=>{const input=document.querySelector('.prompt-input');input?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await wait(150);if(document.querySelector('.prompt'))document.querySelector('.modal-container .modal-bg')?.click();await until(()=>!document.querySelector('.prompt'))};`
 async function capture(name: string) {
   if (!shots) return
   await evalLong(
     `(async()=>{await new Promise(r=>setTimeout(r,250));const path=${JSON.stringify(resolve(shots, name + '.png'))};require('fs').mkdirSync(require('path').dirname(path),{recursive:true});const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(path,image.toPNG());return 'captured'})()`
   )
 }
-
 async function checkCodeCitation(shell: 'desktop' | 'phone') {
   // The desktop editor saves the next working version before the phone phase begins.
   const expected = shell === 'phone' ? 'value = 4' : 'value = 3'
@@ -90,7 +89,7 @@ async function checkFileLookup(prefix: 'desktop' | 'phone') {
   )
   await checkFileSearch(prefix, 'tree')
   await evalLong(
-    `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType("abele-node-file").find(l=>l.view.contentEl.contains(visible(".abele-file-view")));leaf.detach();await app.workspace.revealLeaf(app.workspace.getLeavesOfType("abele-node-sidebar")[0]);app.workspace.leftSplit.expand();await pickMode("Changes");return "changes restored"})()`
+    `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType("abele-node-file").find(l=>l.view.contentEl.contains(visible(".abele-file-view")));leaf.detach();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const sidebar=app.workspace.getLeavesOfType("abele-node-sidebar")[0];await sidebar.setViewState({type:"abele-node-sidebar",active:true,state:sidebar.view.getState()});await app.workspace.revealLeaf(sidebar);app.workspace.setActiveLeaf(sidebar,{focus:true});app.workspace.leftSplit.expand();await pickMode("Changes");return "changes restored"})()`
   )
 }
 async function checkMixedCommit() {
@@ -264,6 +263,11 @@ it('pairs and opens target-bound node files history editor and fake chats in the
   const env = {
     ...process.env,
     HOME: home,
+    // Keep the fixture independent of host-installed provider and language CLIs.
+    PATH:
+      process.platform === 'win32'
+        ? process.env.PATH
+        : [dirname(process.execPath), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
     ABELE_CLAUDE_PATH: resolve('tests/fixtures/nodeClaude.mjs'),
     ABELE_CODEX_PATH: '',
   }
