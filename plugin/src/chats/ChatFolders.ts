@@ -33,7 +33,7 @@ export class ChatFolders {
   readonly access = shallowRef<Record<string, Record<string, ToolMode>>>({})
   readonly revision = shallowRef(0)
   private catalog: Catalog = { version: 1, folders: [], nodes: {} }
-  private membership = new Map<string, string | null>()
+  private membership = new Map<string, string | null | undefined>()
   private metadata = new Map<TFile, { mtime: number; size: number; folder?: string | null }>()
   private events: EventRef[] = []
   private loadedRoot = ''
@@ -100,9 +100,10 @@ export class ChatFolders {
     const previous = this.membership.get(file.path)
     const session = this.service.getSessionByFile(file.path)
     if (session) this.membership.delete(session.id)
-    this.membership.set(file.path, folder ?? null)
-    this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder })
-    if (previous !== (folder ?? null)) this.revision.value++
+    // Keep an absent placement absent, so saving an unfiled chat does not rewrite its metadata.
+    this.membership.set(file.path, folder)
+    if (file.stat) this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder })
+    if (previous !== folder) this.revision.value++
   }
   folderOf(key: string): string {
     return this.folderPath(this.membershipOf(key))
@@ -155,7 +156,7 @@ export class ChatFolders {
         cached = { mtime: chat.stat.mtime, size: chat.stat.size, folder: metadata.treeFolderId }
         this.metadata.set(chat, cached)
       }
-      membership.set(chat.path, cached.folder ?? null)
+      membership.set(chat.path, cached.folder)
     }
     const present = new Set(this.app.vault.getFiles())
     for (const cached of this.metadata.keys())
