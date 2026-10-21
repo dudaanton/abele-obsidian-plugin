@@ -40,6 +40,16 @@ function fixture(supported = true) {
     controller: new NodeManagerController(client as unknown as NodeClient, store),
   }
 }
+it('reads command cards without rewriting the entire node store', async () => {
+  const f = fixture()
+  const write = vi.spyOn(f.store, 'transaction')
+  try {
+    expect(await f.controller.cards('sample-parent')).toEqual([])
+    expect(write).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
 it('wakes the parent once after a command ends and persists delivery across reload', async () => {
   const f = fixture()
   await f.controller.mutate(
@@ -66,6 +76,7 @@ it('wakes the parent once after a command ends and persists delivery across relo
   const restored = new NodeManagerController(f.client as never, f.store)
   await restored.wakeDelivered(wake)
   expect(wake).toHaveBeenCalledTimes(1)
+  expect((wake.mock.calls[0] as unknown as string[])[1]).not.toContain('sample-run')
   expect(wake.mock.calls[0]).toEqual([
     'sample-parent',
     expect.stringContaining('node_command_status'),

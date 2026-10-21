@@ -71,7 +71,7 @@ export class NodeManagerController {
       if (
         wake(
           entry.parent,
-          `Node command ${card.run.run_id} ended: ${card.run.state}. Read node_command_status with session_id ${card.run.session_id} and run_id ${card.run.run_id} for its output and exit code.`
+          `Command “${card.title}” ended: ${card.run.state}. Read node_command_status using the command receipt for its output and exit code.`
         )
       )
         await this.store.transaction((s) => {
@@ -205,7 +205,7 @@ export class NodeManagerController {
     }
   }
   async cards(parent: string) {
-    return this.store.transaction((s) =>
+    return this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
         const receipt = ManagerRunSchema.safeParse(s.results[operation]?.result)

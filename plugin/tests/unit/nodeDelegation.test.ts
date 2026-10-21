@@ -43,6 +43,17 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it('reads delegation cards without rewriting the entire node store', async () => {
+  const f = fixture()
+  await f.controller.create('parent', task)
+  const write = vi.spyOn(f.store, 'transaction')
+  try {
+    expect((await f.controller.snapshot()).parent).toHaveLength(1)
+    expect(write).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
 it('wakes for paused or failed transitions but not owner approvals', async () => {
   const f = fixture()
   await f.controller.create('parent', task)

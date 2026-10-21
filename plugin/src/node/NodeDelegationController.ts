@@ -604,8 +604,7 @@ export class NodeDelegationController {
       const terminal = ['failed', 'stopped', 'cancelled', 'unknown'].includes(card.state)
       const question = card.reports.findLast(
         (report) =>
-          report.kind === 'question' &&
-          !report.text.startsWith('Waiting for owner approval.')
+          report.kind === 'question' && !report.text.startsWith('Waiting for owner approval.')
       )
       const attention = completed
         ? 'result'
@@ -625,7 +624,7 @@ export class NodeDelegationController {
           parent,
           id,
           completed
-            ? undefined
+            ? `Developer “${card.title}” finished. Read node_delegation_status for the durable report.`
             : question && !terminal
               ? `Developer “${card.title}” asks: ${question.text}`
               : `Developer “${card.title}” ${card.state}${card.reason ? ` (${card.reason})` : ''}. Read node_delegation_status for details.`
@@ -639,8 +638,8 @@ export class NodeDelegationController {
   }
 
   async snapshot(): Promise<Record<string, DelegationCard[]>> {
-    const parents = await this.store.transaction((s) => [
-      ...new Set(Object.values(storage(s).tasks).map((t) => t.parentId)),
+    const parents = await readStore(this.store, (s) => [
+      ...new Set(Object.values(s.delegation?.tasks ?? {}).map((t) => t.parentId)),
     ])
     return Object.fromEntries(
       await Promise.all(parents.map(async (parent) => [parent, await this.cards(parent)]))
@@ -648,8 +647,8 @@ export class NodeDelegationController {
   }
   /** Replaceable projection: replay never appends a second parent message/result. */
   cards(parent: string): Promise<DelegationCard[]> {
-    return this.store.transaction((s) =>
-      Object.values(storage(s).tasks)
+    return readStore(this.store, (s) =>
+      Object.values(s.delegation?.tasks ?? {})
         .filter((t) => t.parentId === parent)
         .map((t) => {
           const child = t.child
