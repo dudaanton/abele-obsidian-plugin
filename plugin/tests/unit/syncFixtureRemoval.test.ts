@@ -14,7 +14,7 @@ interface Node {
   children?: Node[]
   parent?: Node
 }
-function fakeVault(files: string[], costMs: number) {
+function fakeVault(files: string[], removedNote = () => {}) {
   const index = new Map<string, Node>()
   const root: Node = { path: '', children: [] }
   const folder = (path: string): Node => {
@@ -33,15 +33,9 @@ function fakeVault(files: string[], costMs: number) {
     parent.children!.push(made)
     index.set(path, made)
   }
-  const busy = (ms: number) => {
-    const until = Date.now() + ms
-    while (Date.now() < until) {
-      /* the page's main thread at work */
-    }
-  }
   const drop = (node: Node) => {
     for (const child of [...(node.children ?? [])]) drop(child)
-    if (!node.children) busy(costMs)
+    if (!node.children) removedNote()
     index.delete(node.path)
     node.parent!.children = node.parent!.children!.filter((one) => one !== node)
   }
@@ -91,7 +85,7 @@ const tree = (count: number) =>
   )
 
 it('acts like a user on remove(): one native folder deletion with its notes still inside', async () => {
-  const { app, index, folderDeletes } = fakeVault(tree(12), 0)
+  const { app, index, folderDeletes } = fakeVault(tree(12))
   const { driver, sent } = driverOn(app)
   driver.remove(['Sync fixtures sample'])
   await Promise.all(sent)
@@ -100,25 +94,41 @@ it('acts like a user on remove(): one native folder deletion with its notes stil
 })
 
 it('tears a large fixture tree down note by note, so no single step holds the page', async () => {
-  const { app, index, folderDeletes } = fakeVault(tree(60), 5)
+  let clock = 0
+  let removedSinceYield = 0
+  const batches: number[] = []
+  const { app, index, folderDeletes } = fakeVault(tree(60), () => {
+    clock += 5
+    removedSinceYield++
+  })
   const { driver } = driverOn(app)
-  // A timer set when removal starts stands for the next CLI call the test sends the page.
-  let answeredAfter: number | null = null
-  const started = Date.now()
-  setTimeout(() => (answeredAfter = Date.now() - started), 0)
-  await driver.removeTree(['Sync fixtures sample'], true)
-  expect(index.size).toBe(0)
-  // Folders go only once nothing indexed is left under them.
-  expect(folderDeletes.length).toBeGreaterThan(0)
-  for (const one of folderDeletes) expect(one.indexedFilesInside).toBe(0)
-  // 60 notes at 5 ms each is 300 ms of work; the page answers within a step or two of it.
-  expect(answeredAfter).not.toBeNull()
-  expect(answeredAfter!).toBeLessThan(150)
+  // Model five milliseconds of index work per note, independent of host load.
+  // Only a page timer counts as a yield; awaiting vault.delete alone does not.
+  vi.spyOn(Date, 'now').mockImplementation(() => clock)
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((resume: () => void) => {
+    batches.push(removedSinceYield)
+    removedSinceYield = 0
+    queueMicrotask(resume)
+    return 0
+  }) as never)
+  try {
+    await driver.removeTree(['Sync fixtures sample'], true)
+    batches.push(removedSinceYield)
+    expect(index.size).toBe(0)
+    // Folders go only once nothing indexed is left under them.
+    expect(folderDeletes.length).toBeGreaterThan(0)
+    for (const one of folderDeletes) expect(one.indexedFilesInside).toBe(0)
+    expect(batches.reduce((sum, count) => sum + count, 0)).toBe(60)
+    // The 50 ms page budget permits at most ten notes before a timer yield.
+    expect(Math.max(...batches)).toBeLessThanOrEqual(10)
+  } finally {
+    vi.restoreAllMocks()
+  }
 })
 
 it('removes a single note and refuses an unindexed directory on both paths', async () => {
   for (const teardown of [false, true]) {
-    const { app, index } = fakeVault(['Lone/Sample.md'], 0)
+    const { app, index } = fakeVault(['Lone/Sample.md'])
     const { driver, sent } = driverOn(app)
     const remove = async (paths: string[]) => {
       if (teardown) return driver.removeTree(paths, true)
