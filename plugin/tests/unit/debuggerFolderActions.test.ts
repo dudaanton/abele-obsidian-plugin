@@ -13,7 +13,10 @@ import { startProgram } from '@/debugger/startProgram'
 import { attachToProgram } from '@/debugger/attachProgram'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { FolderDebugOwner } from '@/debugger/owner'
-const selected = vi.hoisted(() => ({ view: null as null | { type: string; state: unknown } }))
+const selected = vi.hoisted(() => ({
+  view: null as null | { type: string; state: unknown },
+  sidebar: undefined as string | undefined,
+}))
 
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: {
@@ -21,7 +24,10 @@ vi.mock('@/stores/GlobalStore', () => ({
       app: {
         workspace: {
           getMostRecentLeaf: () => (selected.view ? { getViewState: () => selected.view } : null),
-          getLeavesOfType: () => [],
+          getLeavesOfType: () =>
+            selected.sidebar
+              ? [{ getViewState: () => ({ state: { registrationId: selected.sidebar } }) }]
+              : [],
         },
       },
     }),
@@ -34,8 +40,24 @@ vi.mock('@/node/nodePathNavigation', () => ({
 }))
 afterEach(() => {
   selected.view = null
+  selected.sidebar = undefined
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
+})
+it('ignores a stale sidebar registration before its view has opened', async () => {
+  const target = owner().target
+  selected.sidebar = 'sample-removed'
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    ready: vi.fn(async () => {}),
+    model: (id: string) => {
+      if (id !== target.registrationId) throw new Error('registration is missing')
+      return { current: ref(target) }
+    },
+  } as never)
+  expect(await commandTarget()).toEqual(target)
 })
 it('falls back to the connected panel folder when a restored file belongs to a removed registration', async () => {
   const target = owner().target

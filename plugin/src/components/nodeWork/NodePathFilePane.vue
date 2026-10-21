@@ -109,11 +109,13 @@ provide(FILE_NAVIGATION, (url) => {
 })
 const admissionReason = ref('')
 const admissionCode = ref('')
+const checkingSource = ref(false)
 const effectiveDebug = computed(() => {
   void service.sourceRevision.value
   const doc = props.model.document.value
   if (!doc) return undefined
   if (!doc.target) return props.debug
+  if (checkingSource.value || admissionReason.value) return undefined
   // Observe this folder's session revision as well as its mapping changes.
   const binding = service.folderBinding(doc.target)
   const debug = service.debugFor(doc.target, doc.path)
@@ -139,7 +141,6 @@ watch(
 watch(
   [
     () => props.model.document.value,
-    () => effectiveDebug.value?.sourceId,
     () => {
       const target = props.model.document.value?.target
       const binding = target && service.folderBinding(target)
@@ -156,15 +157,18 @@ watch(
     const doc = props.model.document.value
     admissionReason.value = ''
     admissionCode.value = ''
-    if (!doc?.target || effectiveDebug.value || !service.folderBinding(doc.target)) return
+    checkingSource.value = false
+    if (!doc?.target || !service.folderBinding(doc.target)) return
+    checkingSource.value = true
     let cancelled = false
     cleanup(() => {
       cancelled = true
     })
-    void service.admitFile(doc.target, doc.path).then((reason) => {
+    void service.admitFile(doc.target, doc.path, true).then((reason) => {
       if (!cancelled) {
         admissionReason.value = reason.message
         admissionCode.value = reason.code ?? ''
+        checkingSource.value = false
       }
     })
   },

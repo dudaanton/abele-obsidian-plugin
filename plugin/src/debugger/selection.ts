@@ -26,10 +26,13 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
         if (serialized === previous) return
         previous = serialized
         plugin.app.saveLocalStorage(SELECTION_KEY, 'sessionId' in selection ? selection : null)
+        plugin.app.workspace.requestSaveLayout?.()
       }
     )
   )
   plugin.app.workspace.onLayoutReady(async () => {
+    const leaves = plugin.app.workspace.getLeavesOfType(viewType)
+    for (const duplicate of leaves.slice(1)) duplicate.detach()
     const saved: unknown = plugin.app.loadLocalStorage(SELECTION_KEY)
     if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
     const workspace = plugin.app.workspace

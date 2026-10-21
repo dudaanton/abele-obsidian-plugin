@@ -316,7 +316,7 @@ export class DebuggerBinding {
           request?.registrationId === this.registrationId &&
           request.projectId === this.controller.snapshot?.target.project_id
         if (f && !keepRequest && DebuggerService.instance.active.value === this)
-          DebuggerService.instance.reveal(this, f.file, f.line)
+          DebuggerService.instance.reveal(this, f.file, f.line, Platform.isPhone)
       }
     })().finally(() => {
       this.refreshing = undefined
@@ -411,9 +411,13 @@ export class DebuggerService {
     }
     return undefined
   }
-  async admitFile(target: PathTarget, path: string): Promise<SourceAdmission> {
+  async admitFile(target: PathTarget, path: string, recheck = false): Promise<SourceAdmission> {
     const binding = this.folderBinding(target)
-    if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) || this.debugFor(target, path))
+    if (
+      !binding ||
+      !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) ||
+      (!recheck && this.debugFor(target, path))
+    )
       return { message: '' }
     if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
     const sessionId = binding.sessionId
@@ -487,6 +491,16 @@ export class DebuggerService {
     return attempt
   }
   readonly active = shallowRef<DebuggerBinding | null>(null)
+  projectBindings(registrationId: string, projectId: string) {
+    void this.sourceRevision.value
+    return [...this.bindings.values()].filter((binding) => {
+      void binding.revision.value
+      return (
+        binding.registrationId === registrationId &&
+        binding.controller.snapshot?.target.project_id === projectId
+      )
+    })
+  }
   private readonly bindings = new Map<string, DebuggerBinding>()
   private readonly owners = new WeakMap<DebuggerBinding, DebugOwner>()
   private readonly preferredSessions = new Set<string>()
@@ -926,7 +940,7 @@ export class DebuggerService {
         (id === file || mapping.path === file)
     )?.[0]
   }
-  reveal(binding: DebuggerBinding, file: string, line: number) {
+  reveal(binding: DebuggerBinding, file: string, line: number, keepControls = false) {
     console.debug('[debugger] Reveal source', file, line)
     let sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
     let source = [...(sources ?? [])].find(
@@ -1007,7 +1021,10 @@ export class DebuggerService {
             },
             Platform.isMobile
           )
-          closeNodePathDrawers(GlobalStore.getInstance().app.workspace, Platform.isMobile)
+          if (keepControls) {
+            const { revealSidebarView } = await import('@/views/revealSidebarView')
+            await revealSidebarView(GlobalStore.getInstance().app, 'abele-debug-view')
+          } else closeNodePathDrawers(GlobalStore.getInstance().app.workspace, Platform.isMobile)
         })
         .catch((e) => console.debug('[debugger] Source not opened', e))
       return

@@ -1107,7 +1107,7 @@ export class DebuggerController {
           : ''
         : f.source_id
           ? (this.path(f.source_id) ?? f.path ?? f.source_id)
-          : (f.path ?? ''),
+          : '',
       line: f.line,
     }))
     if (
@@ -1137,7 +1137,7 @@ export class DebuggerController {
     for (const { expression } of [...this.session.watches]) {
       if (!this.current || this.session.status !== 'paused' || this.snapshot?.stop_epoch !== epoch)
         return
-      await this.watch(expression)
+      await this.watch(expression, true)
     }
   }
   async refreshExitInfo(): Promise<void> {
@@ -1200,11 +1200,15 @@ export class DebuggerController {
     }))
     this.notify()
   }
-  watch(expression: string) {
+  watch(expression: string, retained = false) {
     return this.human(async (invocation) => {
+      if (retained && !this.session.watches.some((w) => w.expression === expression)) return
       if (!this.session.watches.some((w) => w.expression === expression))
         this.session.watches.push({ expression })
-      const frame_handle = invocation.frameHandles[invocation.frame]
+      const current = this.invocation()
+      if (current.snapshot.stop_epoch !== invocation.snapshot.stop_epoch) return
+      const frame_handle = current.frameHandles[current.frame]
+      if (frame_handle !== invocation.frameHandles[invocation.frame]) return
       if (!frame_handle) {
         this.error = t('streamC.8f55c062960e8261')
         this.notify()
@@ -1215,7 +1219,7 @@ export class DebuggerController {
       this.inspections.set(operation_id, { expression })
       const result = DebuggerReceiptSchema.parse(
         await this.ownerCommand('evaluate', {
-          ...this.precondition(invocation),
+          ...this.precondition(current),
           operation_id,
           frame_handle,
           expression,
@@ -1229,10 +1233,11 @@ export class DebuggerController {
     })
   }
   unwatch(expression: string) {
-    return this.human(async () => {
-      this.session.watches = this.session.watches.filter((w) => w.expression !== expression)
-      this.notify()
-    })
+    // Removing local intent needs no live frame or remote approval, and must take effect
+    // before an in-flight refresh advances to its next retained expression.
+    this.session.watches = this.session.watches.filter((w) => w.expression !== expression)
+    this.notify()
+    return Promise.resolve()
   }
   invalidate() {
     ++this.serial

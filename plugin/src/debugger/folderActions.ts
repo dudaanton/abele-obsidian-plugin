@@ -202,7 +202,10 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
   const registrationId = (leaf?.getViewState().state as { registrationId?: string } | undefined)
     ?.registrationId
   const paths = NodePathService.getInstance()
-  if (registrationId) {
+  if (
+    registrationId &&
+    NodeService.getInstance().nodes.value.some((node) => node.id === registrationId)
+  ) {
     const current = await availableCommandFolder(paths, registrationId)
     if (current) return current
   }

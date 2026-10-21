@@ -8,6 +8,88 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('evaluates a watch against the latest revision of the same paused frame', async () => {
+  const { model, rpc, command } = fixture()
+  model.actions = []
+  rpc.mockResolvedValueOnce({
+    data: {
+      items: [{ handle: 'sample-frame', name: 'main', source_id: 'sample-source', line: 7 }],
+    },
+  } as never)
+  await model.loadStack()
+  rpc.mockImplementation(async (method) => {
+    if (method === 'debugger.v1.approvals') {
+      model.observe({
+        observation: 'current',
+        snapshot: snapshot({ state_revision: 5, event_seq: 9 }),
+      })
+      return { proposals: [], truncated: false, next: null } as never
+    }
+    return { entries: [], truncated_before: 0 } as never
+  })
+  command.mockImplementation(async () => receipt('completed', { snapshot: model.snapshot }))
+  await model.watch('sample.count')
+  expect(command).toHaveBeenCalledWith(
+    'evaluate',
+    expect.objectContaining({ expected_state_revision: 5 })
+  )
+})
+it('does not expose unadmitted runtime paths as files on older nodes', async () => {
+  const { model, rpc } = fixture()
+  rpc.mockResolvedValueOnce({
+    data: {
+      items: [
+        {
+          handle: 'sample-runtime',
+          name: 'loader',
+          source_id: null,
+          path: '/runtime/util.js',
+          line: 1,
+        },
+        {
+          handle: 'sample-main',
+          name: 'main',
+          source_id: 'sample-source',
+          path: 'src/main.ts',
+          line: 4,
+        },
+      ],
+    },
+  } as never)
+  await model.loadStack()
+  expect(model.session.frames[0].file).toBe('')
+  expect(model.session.frame).toBe(1)
+})
+it('does not resurrect a removed watch while another evaluation is in flight', async () => {
+  const { model, rpc, command } = fixture()
+  model.actions = []
+  model.session.watches = [{ expression: 'first' }, { expression: 'second' }]
+  let finish!: () => void
+  command.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve(receipt('completed', { snapshot: model.snapshot }))
+      })
+  )
+  rpc.mockImplementation(async (method) => {
+    if (method === 'debugger.v1.stack')
+      return {
+        data: {
+          items: [{ handle: 'sample-frame', name: 'main', source_id: 'sample-source', line: 7 }],
+        },
+      } as never
+    if (method === 'debugger.v1.scopes') return { data: { items: [] } } as never
+    if (method === 'debugger.v1.history') return { entries: [], truncated_before: 0 } as never
+    return { proposals: [], truncated: false, next: null } as never
+  })
+  const loading = model.loadStack()
+  await vi.waitFor(() => expect(command).toHaveBeenCalledTimes(1))
+  const removing = model.unwatch('second')
+  finish()
+  await Promise.all([loading, removing])
+  expect(model.session.watches.map((watch) => watch.expression)).toEqual(['first'])
+  expect(command).toHaveBeenCalledTimes(1)
+})
 it('reevaluates retained watches when loading a stop and selecting another frame', async () => {
   const { model, rpc, command } = fixture()
   model.session.watches = [{ expression: 'sample.count', value: '1', stale: true }]

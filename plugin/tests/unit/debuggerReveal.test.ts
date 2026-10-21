@@ -8,7 +8,7 @@ vi.mock('@/node/nodePathNavigation', () => ({
   openNodePathTab: vi.fn(async () => {}),
   closeNodePathDrawers: vi.fn(),
 }))
-import { openNodePathTab } from '@/node/nodePathNavigation'
+import { openNodePathTab, closeNodePathDrawers } from '@/node/nodePathNavigation'
 
 vi.mock('@/views/revealSidebarView', () => ({ revealSidebarView: vi.fn(async () => {}) }))
 import { revealSidebarView } from '@/views/revealSidebarView'
@@ -95,6 +95,36 @@ describe('showing a debug session', () => {
         false
       )
     )
+  })
+  it('keeps the debugger controls visible after automatic phone source navigation', async () => {
+    const service = DebuggerService.instance
+    const folder = {
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      kind: 'workspace' as const,
+      id: 'sample-folder',
+    }
+    const binding = service.binding({
+      reference: { registrationId: folder.registrationId, sessionId: 'sample-chat' },
+      connection: { state: ref('connected') },
+    } as never)
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    service.registerSource(
+      folder.registrationId,
+      'sample-chat',
+      'sample-source',
+      'sample.ts',
+      'sample-debug',
+      'sample-incarnation',
+      folder
+    )
+    const app = { workspace: {} }
+    ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = app
+    vi.mocked(closeNodePathDrawers).mockClear()
+    vi.mocked(revealSidebarView).mockClear()
+    service.reveal(binding, 'sample.ts', 12, true)
+    await vi.waitFor(() => expect(revealSidebarView).toHaveBeenCalledWith(app, DEBUG_VIEW_TYPE))
+    expect(closeNodePathDrawers).not.toHaveBeenCalled()
   })
   it('opens the Debug panel the way every sidebar panel opens, so a phone’s drawer shows it too', async () => {
     const app = { workspace: {} }

@@ -10,6 +10,31 @@ import { NodeClient } from '@abele/node-client'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 const fileViewStub = { template: '<div><slot name="code" /></div>' }
 
+it('revalidates an admitted source after its document changes', async () => {
+  const { request } = fixture()
+  const document = ref({ target, path: 'lib/helper.ts', text: 'const sample = 1' })
+  const wrapper = mount(NodePathFilePane, {
+    props: { model: { document, mode: ref('file'), busy: ref(false), error: ref('') } as never },
+    global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(true)
+    request.mockResolvedValueOnce({
+      incarnation: 'sample-incarnation',
+      sources: [],
+      refused: [{ path: 'lib/helper.ts', code: 'debugger_source_changed' }],
+    })
+    document.value = { ...document.value, text: 'const sample = 2' }
+    await flushPromises()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toMatch(/changed since/i)
+    expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 const target = {
   registrationId: 'sample-node',
   nodeId: 'sample-node',

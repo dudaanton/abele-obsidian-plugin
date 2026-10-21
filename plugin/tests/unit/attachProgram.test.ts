@@ -212,6 +212,7 @@ describe('attaching the debugger to a running program', () => {
       })
       binding.controller.registerSource('s1', 'src/server.js')
       binding.controller.session.watches = [{ expression: 'sample.count', value: '7' }]
+      binding.controller.exceptionFilters = ['caught']
       binding.controller.observe({
         observation: 'current',
         snapshot: debuggerSnapshot({
@@ -222,7 +223,11 @@ describe('attaching the debugger to a running program', () => {
         }),
       })
       const set = vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue(undefined)
+      const exceptions = vi
+        .spyOn(binding.controller, 'setExceptionFilters')
+        .mockResolvedValue(undefined)
       await attachToProgram(presenter, { ...inFolder, pid: restarted ? 4102 : inFolder.pid }, show)
+      expect(exceptions).toHaveBeenCalledWith(['caught'])
       expect(binding.controller.session.watches).toEqual([
         { expression: 'sample.count', stale: true },
       ])

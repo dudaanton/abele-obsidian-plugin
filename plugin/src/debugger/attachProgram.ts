@@ -106,6 +106,7 @@ export async function attachToProgram(
     (point) => point.file && point.file !== point.sourceId
   )
   const recordPoints = [...(previous?.trace?.points ?? [])]
+  const exceptionFilters = [...(previous?.controller.exceptionFilters ?? [])]
   const nodeRestores = debuggerAcceptanceCapabilities(
     await presenter.connection.client.describe?.()
   ).attach_breakpoint_restore
@@ -157,6 +158,7 @@ export async function attachToProgram(
     main && readable.has(main.path) ? main.path : chatPath(program, open)
   )
   await show(started.debug_session_id)
+  if (exceptionFilters.length) await binding.controller.setExceptionFilters(exceptionFilters)
   binding.controller.session.watches = watches
   ++binding.revision.value
   for (const point of carry) {
