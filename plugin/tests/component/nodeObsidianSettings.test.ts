@@ -22,6 +22,9 @@ it('lists node agents beside vault agents and opens the shared editor with devic
   expect(list.text()).toContain('Claude Code')
   expect(list.text()).toContain('Sample node')
   expect(list.text().match(/Sample node/g)).toHaveLength(1)
+  AgentRegistry.getInstance().update(agent.id, { description: 'A custom helper description' })
+  await list.vm.$nextTick()
+  expect(list.text()).toContain('A custom helper description')
   list.unmount()
   nodeToolRunners['sample-node'] = { state: 'device', device: 'Sample desktop' }
   const editor = mount(AgentEditorModal, {

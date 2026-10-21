@@ -5,11 +5,7 @@
         v-for="agent in agents"
         :key="agent.id"
         :title="agent.name"
-        :description="
-          agent.node && agent.description === agent.node.name
-            ? ''
-            : streamBAgentDescription(agent.description)
-        "
+        :description="streamBAgentDescription(agent.description)"
         :meta="metaFor(agent)"
         clickable
         @click="editingId = agent.id"
@@ -117,7 +113,11 @@ const bump = () => revision.value++
 
 const agents = computed(() => {
   void revision.value
-  return registry.list({ includeUtility: true, includeNode: true })
+  return registry
+    .list({ includeUtility: true, includeNode: true })
+    .map((agent) =>
+      agent.node && agent.description === agent.node.name ? { ...agent, description: '' } : agent
+    )
 })
 const defaultAgentId = computed(() => {
   void revision.value

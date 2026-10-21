@@ -6,7 +6,12 @@
     :aria-label="facts"
     @click="open"
   >
-    <span ref="glyph" class="abele-session-settings__mode" aria-hidden="true" />
+    <span
+      ref="glyph"
+      class="abele-session-settings__mode"
+      :class="{ 'abele-session-settings__mode_bypass': settings.mode === 'bypass' }"
+      aria-hidden="true"
+    />
     <span v-if="!phone" class="abele-session-settings__model">{{ said }}</span>
     <ContextMeter v-if="live.context" :context="live.context" />
   </button>
