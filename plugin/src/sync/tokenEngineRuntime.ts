@@ -36,7 +36,7 @@ import {
   type PathMatcher,
 } from '@abele/sync-sdk/core'
 import { ExchangeTrace } from './exchangeTrace'
-import { SyncActivityLog, appliedActivity } from './activityLog'
+import { SyncActivityLog, appliedActivity, isSyncTriggerLine } from './activityLog'
 import { connectStage, connectionError } from './tokenUi'
 import {
   PathSchema,
@@ -1136,7 +1136,7 @@ export class TokenEngineRuntime
       },
       log: (line) => {
         this.trace.log(line)
-        options.event?.(line)
+        if (!isSyncTriggerLine(line)) options.event?.(line)
       },
     })
     this.unstatus = this.engine.onStatus((status) => {

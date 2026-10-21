@@ -1700,6 +1700,23 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
   }
 })
 
+it('keeps automatic trigger reasons in diagnostics without adding them to recent activity', async () => {
+  const wire = await server('Notes/sample.md', 'sample bytes')
+  const events: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    event: (line) => events.push(line),
+  })
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    expect(one.runtime.trace.snapshot().log).toContain('sync: start')
+    expect(events).not.toContain('sync: start')
+    expect(events).toContain('Downloaded Notes/sample.md')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it('logs confirmed downloads and aggregate phase boundaries through the runtime', async () => {
   const wire = await server('Notes/sample.md', 'sample bytes')
   const events: string[] = []

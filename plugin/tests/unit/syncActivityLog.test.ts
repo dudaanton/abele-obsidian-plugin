@@ -1,5 +1,58 @@
 import { expect, it, vi } from 'vitest'
-import { SyncActivityLog, appliedActivity } from '@/sync/activityLog'
+import { SyncActivityLog, appliedActivity, isSyncTriggerLine } from '@/sync/activityLog'
+
+it.each(['watch', 'fallback', 'events', 'retry', 'reconnect', 'start', 'keep local'])(
+  'recognizes the bare %s trigger without hiding outcomes or errors',
+  (reason) => {
+    expect(isSyncTriggerLine(`sync: ${reason}`)).toBe(true)
+    expect(isSyncTriggerLine(`sync: ${reason} failed: offline`)).toBe(false)
+    expect(isSyncTriggerLine(`Uploaded Notes/sync: ${reason}.md`)).toBe(false)
+  }
+)
+
+it('keeps diagnostic failures and useful round results visible', () => {
+  for (const line of [
+    'sync: done (pushed 2)',
+    'sync: held deletes not read: offline',
+    'scan: skipped sample.md: invalid path',
+  ])
+    expect(isSyncTriggerLine(line)).toBe(false)
+})
+
+it('does not displace file activity with phases from empty checking rounds', () => {
+  const lines: string[] = []
+  const log = new SyncActivityLog((line) => lines.push(line))
+  for (let i = 0; i < 3; i++) {
+    log.update({ stage: 'Checking the vault', completed: 0 })
+    log.update({ stage: 'Downloading', completed: 0, total: 0, totalKnown: true, bytes: 0 })
+    log.update()
+  }
+  expect(lines).toEqual([])
+})
+
+it('still reports an indeterminate phase if checking takes thirty seconds', async () => {
+  vi.useFakeTimers()
+  const lines: string[] = []
+  const log = new SyncActivityLog(
+    (line) => lines.push(line),
+    Date.now,
+    (work, delay) => {
+      const timer = setTimeout(work, delay)
+      return () => clearTimeout(timer)
+    }
+  )
+  try {
+    log.update({ stage: 'Checking the vault', completed: 0 })
+    expect(lines).toEqual([])
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(lines).toEqual(['Checking the vault: started · Checking the vault'])
+    log.update()
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    log.update()
+    vi.useRealTimers()
+  }
+})
 
 it('logs phase boundaries and bounded aggregate updates with real byte counts', () => {
   let now = 0
