@@ -20,8 +20,10 @@ const probe = (label: string) => `(async () => {
   const path = service.folders.path(folder)
   if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic folder already exists')
   const created = [], files = []
-  let leaf
+  let leaf, narrowLeaf, pictureCount = 0
+  const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
   const shot = async name => {
+    pictureCount++
     await wait(250)
     const path = ${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-' + name + '.png'
     if (window.__e2eHost) return window.__e2eHost.shot(path)
@@ -29,8 +31,11 @@ const probe = (label: string) => `(async () => {
     require('fs').writeFileSync(path, image.toPNG())
   }
   try {
-    leaf = app.workspace.getLeaf('split')
+    leaf = app.workspace.getRightLeaf(true)
     await leaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
+    await app.workspace.revealLeaf(leaf)
+    app.workspace.rightSplit.expand()
+    if (!app.isMobile) app.workspace.rightSplit.setSize(420)
     app.workspace.setActiveLeaf(leaf, { focus: false })
     const root = leaf.view.containerEl
     const current = () => root.querySelector('.abele-chat-switch__current')
@@ -58,8 +63,20 @@ const probe = (label: string) => `(async () => {
     await child.createInDirectory(path)
     files.push(child.currentChatFile.value)
     service.switchTab(first)
+    await until(() => document.querySelector('[data-chat="' + first + '"] time')?.textContent)
     session.error.value = 'Synthetic failure'
     await shot('nested-error-long')
+    if (!app.isMobile) {
+      current().click()
+      narrowLeaf = app.workspace.getLeaf('split')
+      await narrowLeaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
+      const switcher = await until(() => narrowLeaf.view.containerEl.querySelector('.abele-chat-switch__current'))
+      switcher.click()
+      await shot('narrow-nested-error-long')
+      narrowLeaf.detach(); narrowLeaf = null
+      app.workspace.setActiveLeaf(leaf, { focus: false })
+      current().click()
+    }
     session.error.value = null
     session.pendingQuestions.value = { questions: [] }
     await shot('waiting')
@@ -116,7 +133,7 @@ const probe = (label: string) => `(async () => {
     await until(() => files.every(file => file.path.slice(0, file.path.lastIndexOf('/')) === service.folders.root.value))
     // An empty selection queues behind the requested move before fixture files are released.
     await service.folders.moveMany([], '')
-    return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, pictures: 11 }
+    return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
     for (const id of created) {
       const session = service.getSession(id)
@@ -125,7 +142,9 @@ const probe = (label: string) => `(async () => {
     for (const file of files) if (file && app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
     const directory = app.vault.getAbstractFileByPath(path)
     if (directory) await app.vault.delete(directory, true)
+    narrowLeaf?.detach()
     leaf?.detach()
+    if (!app.isMobile && priorWidth) app.workspace.rightSplit.setSize(priorWidth)
     if (prior) service.switchTab(prior)
   }
 })()`
@@ -139,7 +158,11 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(11)
+    expect(result.pictures).toBe(onPhone() ? 11 : 12)
+    if (!onPhone()) {
+      expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
+      expect(result.sidebarWidth).toBeLessThanOrEqual(422)
+    }
   }, 180_000)
 
   it.skipIf(onPhone())(

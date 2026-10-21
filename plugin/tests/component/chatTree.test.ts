@@ -41,6 +41,13 @@ const show = () => {
   return view
 }
 
+it('leaves no time column for a new chat and no extra creation action beside search', () => {
+  source.root.value = [{ kind: 'chat', id: 'new', title: 'New chat', open: true, at: 0 }]
+  const view = show()
+  expect(view.find('time').exists()).toBe(false)
+  expect(view.find('.abele-chat-tree__head [aria-label="New chat"]').exists()).toBe(false)
+})
+
 it('creates a folder through an inline name field', async () => {
   const view = show()
   await view.get('[aria-label="New folder"]').trigger('click')

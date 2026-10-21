@@ -18,7 +18,6 @@
         @click="withClosed = !withClosed"
       />
       <Icon icon="folder-plus" :label="t('chatTree.newFolder')" @click="newFolder('')" />
-      <Icon icon="square-pen" :label="t('chatTree.newChat')" @click="newTopChat" />
     </div>
     <div
       ref="list"
@@ -65,10 +64,6 @@ import { chatsOf, useChatTreeSource } from '@/chats/chatTree'
 import { dragged, matches } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
-const newTopChat = () => {
-  source.value.newChat('')
-  emit('close')
-}
 
 const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)

@@ -203,15 +203,14 @@ describe('the cursor in the composer', () => {
     }
   })
 
-  it('is asked for by New chat in the navigation tree', async () => {
-    const newTab = vi.spyOn(service, 'newTab').mockReturnValue('tab-b')
+  it('is asked for by the header new-chat action', async () => {
+    const start = vi.spyOn(service, 'startNewChat').mockResolvedValue()
     const create = vi.spyOn(service, 'createTab')
     const wrapper = open()
 
-    await wrapper.get('.abele-chat-switch__current').trigger('click')
-    await wrapper.get('.abele-chat-tree [aria-label="New chat"]').trigger('click')
+    await wrapper.get('[aria-label="Start a new chat"]').trigger('click')
 
-    expect(newTab).toHaveBeenCalledOnce()
+    expect(start).toHaveBeenCalledExactlyOnceWith('session-1')
     expect(create).not.toHaveBeenCalled()
   })
 })

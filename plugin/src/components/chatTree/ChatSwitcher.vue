@@ -106,7 +106,7 @@ defineExpose({ open: () => (open.value = true) })
   min-width: 0;
 }
 // Narrow, the name keeps the room; the folder is in the tree.
-@container (max-width: 420px) {
+@container (max-width: 220px) {
   .abele-chat-switch__where {
     display: none;
   }

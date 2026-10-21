@@ -22,7 +22,7 @@
     <template #end>
       <!-- Under the pointer the close glyph takes the place of these, as in any row of ours. -->
       <span class="abele-chat-tree__codes" :class="{ 'abele-tree-item__under-actions': chat.open }">
-        <time class="abele-chat-tree__time">{{ timeOf(chat.at) }}</time>
+        <time v-if="chat.at" class="abele-chat-tree__time">{{ timeOf(chat.at) }}</time>
         <span
           ref="dot"
           class="abele-chat-tree__dot"
