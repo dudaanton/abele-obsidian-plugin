@@ -1455,6 +1455,22 @@ export class ObsidianFileSystem implements FileSystem {
       if (!ready) releaseSourceStage(temp)
     }
   }
+  /** Cleanup also works after removal reached disk but journal retirement did not. */
+  async discardStage(id: string): Promise<void> {
+    this.runtimeFence?.assertReady()
+    const entry = this.journal.entries().find((one) => one.temp === id && one.streaming)
+    if (this.stageOperations.has(id) || entry?.backup || entry?.retiredGeneration)
+      throw new EngineError('io', 'stage is busy or awaiting recovery')
+    const standing = await this.rawStat(id)
+    if (standing !== null) {
+      if (!entry || standing.type !== 'file')
+        throw new EngineError('io', 'cannot discard an unowned stage')
+      await this.disk.remove(id)
+    }
+    if (entry) this.journal.drop(entry)
+    this.stages.delete(id)
+    releaseSourceStage(id)
+  }
   async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
     let entry =
       this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
@@ -1535,7 +1551,7 @@ export class ObsidianFileSystem implements FileSystem {
         finished
           ? Promise.resolve()
           : exclusive(async () => {
-              await this.disk.remove(id)
+              if ((await this.rawStat(id)) !== null) await this.disk.remove(id)
               this.journal.drop(entry)
               this.stages.delete(id)
               finished = true
