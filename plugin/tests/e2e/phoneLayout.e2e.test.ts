@@ -1668,6 +1668,10 @@ const probeScript = `(async () => {
       }
     }
 
+    // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
+    // native floating view header must be above its calendar, not painted over the first week.
+    await nodeScreens()
+    await nodePanelScreens()
     // Provider modes at phone geometry: use the real kit screens and synthetic state only.
     for (const [label, dialogName, options] of [
       ['node provider agent settings', 'node-agent-permissions', {}],
@@ -1702,10 +1706,6 @@ const probeScript = `(async () => {
       await closeDialog()
     } finally { await window.__abeleTest.closeNodeSessionFixture() }
 
-    // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
-    // native floating view header must be above its calendar, not painted over the first week.
-    await nodeScreens()
-    await nodePanelScreens()
     const timelineLeaf = app.workspace.getLeaf('tab')
     try {
       await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })

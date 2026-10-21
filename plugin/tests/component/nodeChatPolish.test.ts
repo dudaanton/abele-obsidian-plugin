@@ -12,7 +12,7 @@ import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
 const presenter = () => ({
   id: 'sample-node-tab',
-  reference: { registrationId: 'sample' },
+  reference: { nodeId: 'sample-node', registrationId: 'sample' },
   label: ref('Sample coding task'),
   provider: ref('claude'),
   nativeSessionId: ref('sample-native'),

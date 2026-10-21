@@ -51,8 +51,8 @@ describe('chat node file permissions and persistence', () => {
       session.permissionMode.value = mode
       expect(session.needsApproval('node_delegations')).toBe(false)
       expect(session.needsApproval('node_delegation_status')).toBe(false)
-      expect(session.needsApproval('node_git_commit')).toBe(true)
-      expect(session.needsApproval('node_worktree_remove')).toBe(true)
+      expect(session.needsApproval('node_git_commit')).toBe(mode !== 'allow-all')
+      expect(session.needsApproval('node_worktree_remove')).toBe(mode !== 'allow-all')
     }
     session.destroy()
   })

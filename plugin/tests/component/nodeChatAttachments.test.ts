@@ -10,6 +10,7 @@ it('attaches selected text to this node draft without creating a vault file or s
   useVault([])
   const presenter = {
     id: 'sample-chat',
+    reference: { nodeId: 'sample-node', registrationId: 'sample-registration' },
     provider: ref('pi'),
     label: ref('Sample chat'),
     projection: ref(reduceTranscript([])),

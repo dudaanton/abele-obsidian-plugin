@@ -79,6 +79,7 @@ const target = {
 function model() {
   return {
     registrationId: target.registrationId,
+    nodeId: target.nodeId,
     capabilities: ref(['node_path_execution']),
     current: ref(target),
     selected: ref('sample-tree'),
