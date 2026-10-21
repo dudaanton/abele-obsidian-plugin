@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryClientStore, NodePathClient } from '@abele/node-client'
+import { ChannelError } from '@abele/channel-protocol'
 import { applyPathChanges, type PathTreeBatch } from '@/node/nodePathChanges'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
-import { NodePathModel, type NodePathPort, type PathTarget } from '@/node/NodePathModel'
+import {
+  NodePathModel,
+  NodePathFileModel,
+  type NodePathPort,
+  type PathTarget,
+} from '@/node/NodePathModel'
 import type { TreeEntry } from '@/components/nodeWork/types'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 
@@ -298,8 +304,13 @@ describe('the path sidebar model on the change stream', () => {
       subscribe: vi.fn(async () => () => {}),
       watch: vi.fn(
         async (_target: PathTarget, _notify: () => void, apply?: (b: PathTreeBatch) => void) => {
-          changed = apply!
-          return () => {}
+          let stopped = false
+          changed = (batch) => {
+            if (!stopped) apply!(batch)
+          }
+          return () => {
+            stopped = true
+          }
         }
       ),
     }
@@ -314,8 +325,41 @@ describe('the path sidebar model on the change stream', () => {
     await model.loadFolder('src')
     port.tree.mockClear()
     port.inspect.mockClear()
-    return { model, port, changed: (batch: PathTreeBatch) => changed(batch) }
+    return { model, port, changed }
   }
+  it('keeps an open file current after the sidebar switches to another worktree, sharing its watch', async () => {
+    const { model, port, changed } = await open()
+    const other = { ...target, id: 'sample-other' }
+    port.catalogue.mockResolvedValue({
+      folders: [],
+      targets: [target, other],
+      sessions: [],
+      capabilities: [],
+    })
+    await model.refresh()
+    let text = 'before'
+    port.file.mockImplementation(async () => ({
+      target,
+      path: 'README.md',
+      text,
+      contentId: text,
+      revision,
+    }))
+    const tab = new NodePathFileModel(model, target)
+    await tab.open('README.md')
+    expect(port.watch).toHaveBeenCalledTimes(1)
+    await model.select(other.id)
+    text = 'after'
+    changed({ entries: [{ change: 'modified', entry: file('README.md') }], git: false })
+    await ticks()
+    expect(tab.document.value?.text).toBe('after')
+    port.tree.mockRejectedValueOnce(new ChannelError('stale_revision'))
+    await model.reloadTarget(target)
+    await ticks()
+    expect(port.watch).toHaveBeenCalledTimes(3)
+    tab.destroy()
+    model.destroy()
+  })
   it('invalidates open tabs after streamed file edits without rereading the tree', async () => {
     const { model, port, changed } = await open()
     const before = { ...model.fileRefresh.value }
@@ -323,6 +367,14 @@ describe('the path sidebar model on the change stream', () => {
     await ticks()
     expect(model.fileRefresh.value).not.toEqual(before)
     expect(port.tree).not.toHaveBeenCalled()
+    model.destroy()
+  })
+  it('does not reread file contents for a git-only observation that can be caused by reading a file', async () => {
+    const { model, changed } = await open()
+    const before = { ...model.fileRefresh.value }
+    changed({ entries: [], git: true })
+    await ticks()
+    expect(model.fileRefresh.value).toEqual(before)
     model.destroy()
   })
   it('starts the watch before reading the files, and reads them once', async () => {

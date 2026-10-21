@@ -2899,6 +2899,9 @@ content in the ordinary message, without creating a vault attachment or uploadin
 Node chat folder placement is device-local, stored with open and closed chat references;
 moving a node chat does not move files or sessions on the node.
 
+Node file tabs keep their target, path, selected lines and optional matched-word column and
+length in the device's workspace layout. These navigation hints do not copy file contents.
+
 Node chat checkpoints and their file snapshots remain on the node. Rewind, branch, edit and
 retry change conversation context without restoring files. Only the rewind dialog's explicit
 file switch and confirmation send the exact preview identity and ordered file hashes to the

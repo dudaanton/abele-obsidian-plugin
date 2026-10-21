@@ -1193,6 +1193,7 @@ export class NodePathClientPort implements NodePathPort {
     notify: () => void,
     changed?: (batch: PathTreeBatch) => void
   ): Promise<() => void> {
+    await this.describe()
     if (target.kind === 'workspace' && !this.capabilities.includes('node_path_v2')) return () => {}
     // A git copy and a plain folder each have their own stream on the node.
     const streaming =

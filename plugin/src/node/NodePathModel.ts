@@ -439,6 +439,11 @@ export class NodePathModel {
       Object.entries(this.cursors.value).filter(([id]) => id !== key)
     )
     this.port.invalidate?.(target)
+    for (const [watchKey, watched] of this.targetWatches) {
+      if ((JSON.parse(watchKey) as [string])[0] !== key) continue
+      this.targetWatches.delete(watchKey)
+      void watched.stop.then((stop) => stop()).catch(() => {})
+    }
     if (this.selected.value === (target.kind === 'workspace' ? target.projectId : target.id)) {
       ++this.selectionGeneration
       this.stopWatch?.()
@@ -449,7 +454,44 @@ export class NodePathModel {
       this.panelPulls.value = undefined
     }
   }
-  private watchTarget(target: PathTarget): Promise<() => void> {
+  private readonly targetWatches = new Map<string, { users: number; stop: Promise<() => void> }>()
+  /** File tabs and the selected folder share one lease; a tab outlives sidebar selection. */
+  watchFileTarget(target: PathTarget): Promise<() => void> {
+    return this.watchTarget(target)
+  }
+  fileWatchVersion(target: PathTarget): number {
+    return this.resourceEpochs.get(pathTargetKey(target)) ?? 0
+  }
+  private async watchTarget(target: PathTarget): Promise<() => void> {
+    if (this.disposed) return () => {}
+    const key = JSON.stringify([
+      pathTargetKey(target),
+      this.resourceEpochs.get(pathTargetKey(target)) ?? 0,
+    ])
+    let shared = this.targetWatches.get(key)
+    if (!shared) {
+      shared = { users: 0, stop: this.startTargetWatch(target) }
+      this.targetWatches.set(key, shared)
+    }
+    shared.users++
+    let stop: () => void
+    try {
+      stop = await shared.stop
+    } catch (error) {
+      if (this.targetWatches.get(key) === shared) this.targetWatches.delete(key)
+      throw error
+    }
+    let released = false
+    return () => {
+      if (released || this.targetWatches.get(key) !== shared) return
+      released = true
+      if (--shared.users === 0) {
+        this.targetWatches.delete(key)
+        stop()
+      }
+    }
+  }
+  private startTargetWatch(target: PathTarget): Promise<() => void> {
     const epoch = this.resourceEpochs.get(pathTargetKey(target)) ?? 0
     const current = () =>
       !this.disposed && epoch === (this.resourceEpochs.get(pathTargetKey(target)) ?? 0)
@@ -801,6 +843,9 @@ export class NodePathModel {
     if (this.current.value && pathTargetKey(this.current.value) === pathTargetKey(target))
       uiField(this.error, 'value', uiErrorMessage(''))
     const key = pathTargetKey(target)
+    this.refreshFiles(key)
+  }
+  private refreshFiles(key: string): void {
     this.fileRefresh.value = {
       ...this.fileRefresh.value,
       [key]: (this.fileRefresh.value[key] ?? 0) + 1,
@@ -849,12 +894,10 @@ export class NodePathModel {
     if (seen.recent.length > 32) seen.recent.shift()
     this.batches.set(key, seen)
     // Reads after this observe the files again.
+    const previous = this.inspections.value[key]?.revision
     this.invalidateRevision(target)
     this.patch(target, batch.entries)
-    this.fileRefresh.value = {
-      ...this.fileRefresh.value,
-      [key]: (this.fileRefresh.value[key] ?? 0) + 1,
-    }
+    if (batch.entries.length) this.refreshFiles(key)
     const listed = new Set((this.inspections.value[key]?.changes ?? []).map((c) => c.path))
     const touched = batch.entries.some((c) =>
       c.change === 'deleted'
@@ -862,9 +905,19 @@ export class NodePathModel {
         : listed.has(c.entry.path) || (c.change === 'renamed' && listed.has(c.from))
     )
     if (batch.git || touched)
-      void this.serialTarget(target, () => this.readTarget(target, false)).catch((e) =>
-        this.report(e)
-      )
+      void this.serialTarget(target, () => this.readTarget(target, false))
+        .then(() => {
+          const next = this.inspections.value[key]?.revision
+          if (
+            !this.disposed &&
+            !batch.entries.length &&
+            previous?.kind === 'working' &&
+            next?.kind === 'working' &&
+            previous.head !== next.head
+          )
+            this.refreshFiles(key)
+        })
+        .catch((e) => this.report(e))
   }
   private patch(target: PathTarget, changes: PathTreeBatch['entries']): void {
     const key = pathTargetKey(target),
@@ -1343,6 +1396,9 @@ export class NodePathModel {
     this.stopWatch?.()
     this.stopCatalog?.()
     this.stopWatch = this.stopCatalog = undefined
+    for (const watched of this.targetWatches.values())
+      void watched.stop.then((stop) => stop()).catch(() => {})
+    this.targetWatches.clear()
     this.panelHistory.value?.destroy()
     this.retained.clear()
     this.retainedBytes = 0
@@ -1358,20 +1414,43 @@ export class NodePathFileModel {
   private generation = 0
   private stage?: PathFileStage
   private stopRefresh: () => void
+  private stopTarget?: () => void
+  private disposed = false
+  private watchVersion = -1
   constructor(
     readonly pathModel: NodePathModel,
     readonly target: PathTarget
   ) {
     this.target = Object.freeze({ ...target })
     markRaw(this)
+    this.watchTarget()
     this.stopRefresh = watch(
       () => pathModel.fileRefresh?.value[pathTargetKey(this.target)],
       () => {
+        this.watchTarget()
         const doc = this.document.value
         if (!doc || doc.revision?.kind === 'commit' || typeof this.stage === 'object') return
         void this.open(doc.path, this.stage).catch(() => {})
       }
     )
+  }
+  private watchTarget(): void {
+    if (!this.pathModel.watchFileTarget) return
+    const version = this.pathModel.fileWatchVersion(this.target)
+    if (version === this.watchVersion) return
+    this.watchVersion = version
+    this.stopTarget?.()
+    void this.pathModel
+      .watchFileTarget(this.target)
+      .then((stop) => {
+        if (this.disposed || this.watchVersion !== version) stop()
+        else this.stopTarget = stop
+      })
+      .catch((error: unknown) => {
+        if (this.disposed || this.watchVersion !== version) return
+        this.watchVersion = -1
+        uiField(this.error, 'value', uiErrorMessage(error))
+      })
   }
   async refresh(): Promise<void> {
     const doc = this.document.value
@@ -1413,6 +1492,8 @@ export class NodePathFileModel {
     if (next) await this.open(next.path, this.stage)
   }
   destroy(): void {
+    this.disposed = true
+    this.stopTarget?.()
     this.stopRefresh()
     ++this.generation
   }
