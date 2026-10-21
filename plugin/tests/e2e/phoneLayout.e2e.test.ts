@@ -28,7 +28,7 @@ import { openChatSetup, waitForUiMatch } from '../helpers/chatProbeInteractions'
  * shape and why. Requires Obsidian running on a vault with the development build — see
  * docs/Testing.md.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import {
   DESKTOP_CATALOGUE_CONTRACTS,
   PHONE_CATALOGUE_CONTRACTS,
@@ -435,7 +435,7 @@ const probeScript = `(async () => {
         if (narrowed) strip.style.maxWidth = ''
       }
     } catch (e) {
-      entry.error = String((e && e.message) || e)
+      entry.error = String((e && (e.stack || e.message)) || e)
     }
     report[label] = entry
   }
@@ -834,28 +834,31 @@ const probeScript = `(async () => {
       await closeDialog()
     }
 
-    // A comment asked inside a comment: the trail over its messages, on a phone's width.
+    // Nested comments keep a compact header and reveal their ancestry in the phone tree.
     {
       const comments = window.__abeleTest.CommentService.getInstance()
       await comments.showInSidebar('pnest2')
-      await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs'), 5000)
+      await until(() => document.querySelector('.abele-ai-chat .abele-chat-switch__current'), 5000)
       await wait(400)
       const nested = document.querySelector('.abele-ai-chat')
       await screen('nested comment', nested, nested)
       await headerActions('nested comment', nested)
-      // Four levels: folded to one row, then opened by its ellipsis.
+      // Four levels: a one-row title, then the native chat tree sheet.
       await comments.showInSidebar('pnest3')
-      await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
+      await until(() => document.querySelector('.abele-ai-chat .abele-chat-switch__current'), 5000)
       await wait(400)
       const deep = document.querySelector('.abele-ai-chat')
       await screen('nested comment folded', deep, deep)
-      const trail = deep.querySelector('.abele-breadcrumbs')
+      const trail = deep.querySelector('.abele-chat-switch__current')
+      if (!trail) throw new Error('Nested comment chat switcher is missing')
       // By the middle of each piece: a glyph and a word on one row do not share a top.
       const rows = new Set([...trail.children].map((c) => { const r = c.getBoundingClientRect(); return Math.round((r.top + r.bottom) / 2) }))
       report['nested comment folded'].rows = rows.size
-      deep.querySelector('.abele-breadcrumbs__more').click()
-      await wait(400)
-      await screen('nested comment opened', deep, deep)
+      trail.click()
+      const tree = await until(() => document.querySelector('.abele-chat-tree-modal'), 5000)
+      if (!tree) throw new Error('Nested comment chat tree did not open')
+      await screen('nested comment opened', tree, tree.querySelector('.abele-modal__body'))
+      await closeDialog()
       await comments.hideFromSidebar('pnest3')
     }
     // Attaching a chat to a note: Files from this chat and the two pickers — a note for a
@@ -1182,7 +1185,7 @@ const probeScript = `(async () => {
         await panelScreen('node panel folder', panel)
       } catch (e) {
         for (const label of ${JSON.stringify(NODE_PANEL_SCREENS)})
-          if (!report[label]) report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'node panel: ' + String((e && e.message) || e) }
+          if (!report[label]) report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'node panel: ' + String((e && (e.stack || e.message)) || e) }
       } finally {
         await nodePanel.close()
       }
@@ -1645,7 +1648,7 @@ const probeScript = `(async () => {
           )
         }
       } catch (e) {
-        report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
+        report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && (e.stack || e.message)) || e) }
       } finally {
         if (restoreRecipients || fixtureCompletion) {
           const entry = report[label] ??= { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: '' }
@@ -2035,7 +2038,7 @@ const probeScript = `(async () => {
       await app.vault.delete(wordFile)
     }
   } catch (e) {
-    report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
+    report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && (e.stack || e.message)) || e) }
   } finally {
     await closeDialog()
     await unseed()
@@ -2205,6 +2208,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
     console.info('recipient action measurements', JSON.stringify(report['dialog key-destinations']))
   }, 480_000)
+
+  beforeEach((context) => {
+    if (report.run?.error && context.task.name !== 'reaches every screen')
+      context.skip('Phone layout capture failed; see reaches every screen')
+  })
 
   it('keeps card actions, removed links and binding-only recovery inside the phone viewport', async () => {
     const result = JSON.parse(
@@ -2466,7 +2474,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   })
 
   it('reaches every screen', () => {
-    expect(report.run?.error ?? '').toBe('')
+    expect(report.run?.error ?? '', 'Phone layout capture failed').toBe('')
     expect(
       ((report as unknown as { __dialogs?: string[] }).__dialogs ?? []).map((n) => `dialog ${n}`)
     ).toEqual(DIALOGS)
@@ -2752,7 +2760,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     }
   )
 
-  it('nested comment folded: a trail of four levels keeps to one row', () => {
+  it('nested comment folded: a title at four levels keeps to one row', () => {
     expect((report['nested comment folded'] as Screen & { rows?: number })?.rows).toBe(1)
   })
 
