@@ -521,6 +521,9 @@ describe('discussion identity at actual I/O boundaries', () => {
     const comments = CommentService.getInstance()
     const session = await comments.load('sample-500')
     expect(session?.currentChatFile.value?.path).toBe(specs[500].path)
+    // The chat tree's one-time folder-membership scan reads each transcript once; it is part of
+    // the cold phase, so it must finish before warm lookups are measured.
+    await ChatService.getInstance().folders.reload()
     expect(app.stats.read).toBeLessThan(count * 8)
     app.resetStats()
     expect(await comments.load('sample-500')).toBe(session)
