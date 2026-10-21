@@ -49,11 +49,12 @@ export function nodeActionModes(
     if (local[name] !== undefined || mode === 'ask' || mode === 'auto') modes[name] = mode
     else if (base[name] === 'off') modes[name] = 'off'
   }
-  // Listing, status, follow-up and cancel act only on work the parent tool started: they are
-  // available without a prompt exactly while the person has that parent tool enabled.
+  // Listing, status and cancel need no prompt while the parent is enabled.
+  // Sending new instructions must retain the parent's approval requirement.
   for (const [name, parent] of Object.entries(NODE_ACTION_PARENTS)) {
     delete modes[name]
-    if (modes[parent] === 'ask' || modes[parent] === 'auto') modes[name] = 'auto'
+    if (name === 'node_delegation_send' && modes[parent] !== undefined) modes[name] = modes[parent]
+    else if (modes[parent] === 'ask' || modes[parent] === 'auto') modes[name] = 'auto'
   }
   return modes
 }

@@ -56,7 +56,7 @@ it('asks before every mutating node action in ask mode, even in bypass', () => {
   ))
     expect(ChatSession.prototype.needsApproval.call(session, name)).toBe(true)
 })
-it('lets listing, follow-up and cancel tools follow the tool that started the work', () => {
+it('lets listing, status and cancel tools follow the tool that started the work', () => {
   const off = nodeActionModes({}, {}, {})
   for (const name of actions) expect(off[name] ?? 'off').toBe('off')
   const on = nodeActionModes(
@@ -67,7 +67,6 @@ it('lets listing, follow-up and cancel tools follow the tool that started the wo
   for (const name of [
     'node_delegations',
     'node_delegation_status',
-    'node_delegation_send',
     'node_delegation_cancel',
     'node_command_status',
     'node_command_cancel',
@@ -77,6 +76,17 @@ it('lets listing, follow-up and cancel tools follow the tool that started the wo
   const stale = nodeActionModes({}, { node_command_status: 'auto', node_command_cancel: 'ask' }, {})
   expect(stale.node_command_status ?? 'off').toBe('off')
   expect(stale.node_command_cancel ?? 'off').toBe('off')
+})
+it.each(['off', 'ask', 'auto'] as const)('keeps delegation send in parent %s mode', (mode) => {
+  const modes = nodeActionModes({}, { node_delegate: mode, node_delegation_send: 'auto' }, {})
+  expect(modes.node_delegation_send).toBe(mode)
+  const session = { getToolMode: (name: string) => modes[name] } as unknown as ChatSession
+  if (mode === 'auto')
+    expect(() => requireNodeActionPermission(session, 'node_delegation_send')).not.toThrow()
+  else
+    expect(() => requireNodeActionPermission(session, 'node_delegation_send')).toThrow(
+      mode === 'ask' ? /approval/ : /off/
+    )
 })
 it('never offers the test provider', () => {
   expect(nodeProviders({ providers: [{ provider: 'fake', available: true }] })).toEqual([])

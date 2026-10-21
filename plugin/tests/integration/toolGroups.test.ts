@@ -221,8 +221,7 @@ describe('tools offered by section', () => {
       'node_git_integrate',
     ]
     for (const tool of actions) expect(offered).not.toContain(tool)
-    // The person enables only the tools that start work; the ones that list, follow up on or
-    // cancel that work come with them and need no prompt of their own.
+    // Listing, status and cancel need no prompt; new instructions keep the parent mode.
     session.toolModes.value = {
       ...session.toolModes.value,
       node_delegate: 'ask',
@@ -235,13 +234,9 @@ describe('tools offered by section', () => {
     expect(session.getToolMode('node_command_run')).toBe('ask')
     expect(session.getToolMode('node_command_status')).toBe('auto')
     expect(session.getToolMode('node_command_cancel')).toBe('auto')
-    for (const tool of [
-      'node_delegations',
-      'node_delegation_status',
-      'node_delegation_send',
-      'node_delegation_cancel',
-    ])
+    for (const tool of ['node_delegations', 'node_delegation_status', 'node_delegation_cancel'])
       expect(session.getToolMode(tool)).toBe('auto')
+    expect(session.getToolMode('node_delegation_send')).toBe('ask')
     expect(session.getToolMode('node_git_commit')).toBe('ask')
     // A follower cannot be kept on once its parent is off.
     session.toolModes.value = {

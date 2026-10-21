@@ -962,8 +962,10 @@ A normal plugin agent can assign a bounded task to Claude Code or pi on an Abele
 Delegation and command tools are Off by default. Enable them through the ordinary agent or
 chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
 cannot enable these tools. Ask prompts before starting a delegation (`node_delegate`), running a
-command (`node_command_run`) and integrating (`node_git_integrate`). The tools that list, follow up
-on or cancel that work (`node_delegations`, `node_delegation_status`, `node_delegation_send`,
+command (`node_command_run`) and integrating (`node_git_integrate`). Sending new instructions
+(`node_delegation_send`) copies `node_delegate` exactly: Ask prompts, Auto sends without a
+prompt, Off disables sending. The tools that list, check status or cancel that work
+(`node_delegations`, `node_delegation_status`,
 `node_delegation_cancel` with `node_delegate`; `node_command_status`, `node_command_cancel` with
 `node_command_run`) follow their parent tool: available without a prompt while it is Ask or Auto,
 unavailable while it is Off. Chat files
