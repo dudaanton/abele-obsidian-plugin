@@ -586,5 +586,23 @@
   },
   "chat.letterRefusal.node": {
     "englishHash": "252cc030b3fa23362a0931a9c71906ec7584042d2349fd0e1614d909127bb5fd"
+  },
+  "chat.letterNode.stopped": {
+    "englishHash": "e0b473f54c22688b0e15659f488e69a43e1acb76590cd87bafcfc82204bfcf06"
+  },
+  "chat.letterNode.closed": {
+    "englishHash": "58a587d915074205008079ae93f75e23d01d205f60c0030f163b683f665ab3c9"
+  },
+  "chat.letterNode.offline": {
+    "englishHash": "c6ee572854cb4334b01f31c4bfb3f66f35495c5679eab35d16365b58d052524e"
+  },
+  "chat.letterNode.unaccepted": {
+    "englishHash": "599de0280b559ffe9a7b1c1ea6c5d0388bb00bcc71e94669f6257a2d19af215e"
+  },
+  "chat.letterNode.separate": {
+    "englishHash": "9b69903cb2ac6a67316d132c7ef3edb6eb4e6d2cdab3583ee421c1f327561d87"
+  },
+  "chat.letterNode.empty": {
+    "englishHash": "d23fcc736274957de778025b9c6cb44a729a3dbfc527f843ddbf4543043ec4f7"
   }
 }
