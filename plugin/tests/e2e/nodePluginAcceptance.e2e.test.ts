@@ -18,6 +18,7 @@ it.each([false, true])(
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const until = async fn => { for (let i=0;i<120;i++) { const value=fn();if(value)return value;await wait(50) } throw Error('Acceptance state missing: '+fn.toString()) };
     const shot = async name => {
+      await wait(500);
       const path=${JSON.stringify(shots)}+'/'+${JSON.stringify(phone ? 'phone' : 'desktop')}+'-'+name+'.png';
       require('fs').writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
     };
