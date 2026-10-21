@@ -9,6 +9,51 @@ import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('refuses disabled tools before contacting a node, even with a read chip', async () => {
+  const owner = {
+    getToolMode: () => 'off',
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+  } as unknown as ChatSession
+  for (const tool of createNodeDelegationTools(owner))
+    await expect(tool.execute('sample-call', { node: 'sample-node' })).rejects.toThrow(/tool.*off/i)
+})
+it('uses the exact registration for both the scope check and the connection', async () => {
+  const create = vi.fn(async () => ({ delegation_id: 'sample-child' }))
+  const connect = vi.fn(async () => {})
+  const connection = vi.fn(() => ({
+    connect,
+    client: {
+      describe: async () => ({
+        capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+      }),
+    },
+    delegation: { create },
+    refreshDelegations: async () => {},
+  }))
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: {
+      value: [
+        { id: 'other-alias', expectedNodeId: 'sample-alias' },
+        { id: 'sample-alias', expectedNodeId: 'sample-node' },
+      ],
+    },
+    connection,
+  } as never)
+  const owner = {
+    getToolMode: () => 'auto',
+    ensureDelegationParentId: async () => 'sample-parent',
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+  } as unknown as ChatSession
+  await createNodeDelegationTools(owner)[1].execute('sample-call', {
+    node: 'sample-alias',
+    task_key: 'sample-task',
+    provider: 'pi',
+    title: 'Sample task',
+    text: 'Work',
+  })
+  expect(connection).toHaveBeenCalledWith('sample-alias')
+  expect(create).toHaveBeenCalledOnce()
+})
 it('uses project scope for every child action and rechecks it after connecting', async () => {
   const owner = {
     overrides: ref({
@@ -16,6 +61,7 @@ it('uses project scope for every child action and rechecks it after connecting',
         { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
       ],
     }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession
   const delegation = {
@@ -104,6 +150,7 @@ it('lists stable IDs and resolves them for all child operations', async () => {
         { kind: 'node', node_id: 'registration', access: 'edit' },
       ],
     }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
   const listed = await tools[0].execute('list', {})
@@ -143,7 +190,7 @@ it('never creates after Stop while connecting, and cancels a child accepted conc
   const created = vi.fn(async () => ({ delegation_id: 'child' }))
   const cancel = vi.fn(async () => {})
   const service = {
-    nodes: { value: [] },
+    nodes: { value: [{ id: 'node' }] },
     connection: () => ({
       client: {
         describe: async () => ({
@@ -158,6 +205,7 @@ it('never creates after Stop while connecting, and cancels a child accepted conc
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
   const tools = createNodeDelegationTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'node', access: 'edit' }] }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
   const signal = new AbortController()
@@ -250,6 +298,7 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
         { kind: 'node', node_id: 'registration', access: 'edit' },
       ],
     }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
   expect(tools.map((t) => t.name)).toEqual([

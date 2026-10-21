@@ -7,6 +7,53 @@ import { shotDir } from './helpers/shots'
 targets('desktop', 'phone')
 const shots = shotDir('abele-node-manager')
 
+async function inspectToolPermissions(label: string) {
+  await evalLong(`window.__abeleTest.openDialog('agent-tools')`)
+  try {
+    const report = JSON.parse(
+      await evalLong(`(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      let row;
+      for (let i=0;i<100;i++) {
+        const heading = [...document.querySelectorAll('.abele-tool-modes__group > .abele-fold-heading')].find(el => el.textContent.includes('Node'));
+        if(heading?.getAttribute('aria-expanded') === 'false')heading.click();
+        row = [...document.querySelectorAll('.abele-tool-modes__action')].find(el => el.textContent.includes('Hand work'));
+        if(row)break;
+        await wait(50);
+      }
+      if(!row)throw Error('Node action permissions did not appear');
+      row.querySelector('.abele-tool-modes__members-toggle').click();
+      await wait(100);
+      row.scrollIntoView({block:'start'});
+      return JSON.stringify([...row.querySelectorAll('.abele-tool-modes__members .setting-item')].map(el => ({name:el.querySelector('code').textContent,mode:el.querySelector('select').value})));
+    })()`)
+    ) as { name: string; mode: string }[]
+    expect(report.map((row) => row.name)).toEqual(
+      expect.arrayContaining([
+        'node_delegate',
+        'node_delegations',
+        'node_delegation_send',
+        'node_delegation_status',
+        'node_delegation_cancel',
+        'node_command_run',
+        'node_command_status',
+        'node_command_cancel',
+        'node_git_integrate',
+      ])
+    )
+    expect(report.every((row) => row.mode === 'off')).toBe(true)
+    columnShot(`${shots}/${label}-node-tools-off.png`)
+    await evalLong(
+      `(() => {const rows=[...document.querySelectorAll('.abele-tool-modes__members .setting-item')];rows.at(-1)?.scrollIntoView({block:'end'});return true})()`
+    )
+    columnShot(`${shots}/${label}-node-tools-off-end.png`)
+  } finally {
+    await evalLong(
+      `(() => {document.querySelector('.abele-agent-editor')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click();return true})()`
+    )
+  }
+}
+
 async function closeFixture() {
   await evalLong(`(async () => {
     const card=document.querySelector('.abele-node-delegation,.abele-node-manager-run,.abele-agents');
@@ -131,6 +178,14 @@ it('shows durable command approvals, output and every terminal outcome', async (
   await inspectRuns(onPhone() ? 'phone' : 'desktop')
 }, 90000)
 
+it.skipIf(onPhone())(
+  'shows node actions Off in ordinary agent tool permissions',
+  async () => {
+    await inspectToolPermissions('desktop')
+  },
+  30000
+)
+
 it('shows bounded activity, prompts and collapsed terminal reports', async () => {
   await inspectCards(onPhone() ? 'phone' : 'desktop')
 }, 90000)
@@ -140,6 +195,7 @@ it.skipIf(onPhone())(
   async () => {
     try {
       await enterPhone()
+      await inspectToolPermissions('phone-emulated')
       await inspectCards('phone-emulated')
       await inspectRuns('phone-emulated')
     } finally {

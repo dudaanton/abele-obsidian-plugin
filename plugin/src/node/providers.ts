@@ -76,12 +76,12 @@ export function nodeProviders(description: unknown): NodeProvider[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((value) => {
     const result = Provider.safeParse(value)
-    return result.success ? [result.data] : []
+    return result.success && result.data.provider !== 'fake' ? [result.data] : []
   })
 }
 /** Delegated work runs on the agents that take one message per run; ACP agents do not. */
 export const delegatable = (p: NodeProvider): boolean =>
-  ['claude', 'pi', 'codex', 'fake'].includes(p.provider)
+  ['claude', 'pi', 'codex'].includes(p.provider)
 export function capabilityReason(provider: NodeProvider | undefined, feature: string): string {
   const capability = provider?.capabilities[feature]
   return capability?.status === 'supported'
@@ -111,7 +111,7 @@ const said = (diagnostic: string | null | undefined): string =>
  * Every agent a new session could run, in the order people know them: Claude Code, Codex, pi,
  * then the ACP agents the node lists. An agent this node does not report or cannot start now
  * stays in the list, unavailable with the reason, so the list does not change shape between
- * nodes. The fake agent appears only on a node that offers it.
+ * nodes. Test providers are never offered.
  */
 export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] {
   const of = (name: NodeProviderName) => providers.find((p) => p.provider === name)
@@ -134,8 +134,5 @@ export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] 
       label: agent.name || agent.id,
       unavailable: agent.available ? '' : said(agent.diagnostic),
     })
-  const fake = of('fake')
-  if (fake && providerAvailable(fake))
-    choices.push({ provider: 'fake', label: providerLabel('fake'), unavailable: '' })
   return choices
 }

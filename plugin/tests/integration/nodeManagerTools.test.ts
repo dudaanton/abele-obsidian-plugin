@@ -5,6 +5,11 @@ import { NodeService } from '@/node/NodeService'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('refuses disabled manager tools before contacting a node', async () => {
+  const owner = { getToolMode: () => 'off' } as unknown as ChatSession
+  for (const tool of createNodeManagerTools(owner))
+    await expect(tool.execute('sample-call', {})).rejects.toThrow(/tool.*off/i)
+})
 it('refuses every manager operation on an older node without sending a mutation', async () => {
   const mutate = vi.fn(),
     status = vi.fn()
@@ -18,6 +23,7 @@ it('refuses every manager operation on an older node without sending a mutation'
   } as never)
   const tools = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
   for (const tool of tools)
@@ -60,6 +66,7 @@ it('refuses a command for a project outside the chat node chips', async () => {
         { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
       ],
     }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]
   await expect(
@@ -93,6 +100,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
   } as never)
   const tools = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
   expect(tools.map((tool) => tool.name)).toEqual([
@@ -144,6 +152,7 @@ it('never enqueues execution after the parent stops while connecting', async () 
   } as never)
   const tool = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]
   await expect(

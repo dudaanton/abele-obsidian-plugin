@@ -1,3 +1,4 @@
+import { requireNodeActionPermission } from '../nodeActionPermissions'
 import { requireGrantFreeDelegation } from '@/node/delegationCapability'
 import { requireDelegationScope } from './node/delegationScope'
 import { nodeScopeEntries } from '../nodeScope'
@@ -85,7 +86,10 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       if (signal?.aborted) throw new Error('Manager call cancelled')
       const parent = context?.session ?? owner
       if (!parent) throw new Error('Manager tool requires an executing parent chat')
+      const permission = () => requireNodeActionPermission(parent, name, context?.approved === true)
+      permission()
       const parentId = await parent.ensureDelegationParentId()
+      permission()
       const { node, operation_id, ...input } = targets.parse(raw)
       const service = NodeService.getInstance()
       const matches = service.nodes.value.filter((n) => n.id === node || n.expectedNodeId === node)
@@ -109,7 +113,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         input
       )
       const sessionId = id.parse(params.session_id)
-      const guards: (() => void)[] = []
+      const guards: (() => void)[] = [permission]
       const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
       if (entries.some((entry) => entry.kind === 'node')) {
         guards.push(requireDelegationScope(parent, nodeId))

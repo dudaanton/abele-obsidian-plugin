@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import type { NodeScopeEntry, NodeScopeTarget } from '../nodeScope'
 import type { SectionOpening } from '../toolSections'
 import {
+  NODE_ACTION_DEFAULTS,
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
@@ -242,6 +243,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
       ...XLSX_TOOL_MODES,
       ...CANVAS_TOOL_MODES,
       ...TRACE_TOOL_MODES,
+      ...NODE_ACTION_DEFAULTS,
       ...LINT_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,

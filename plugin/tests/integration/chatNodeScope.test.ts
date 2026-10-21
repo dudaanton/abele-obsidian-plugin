@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { ChatSession } from '@/ai/ChatSession'
@@ -10,11 +10,41 @@ import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
 
 destroyChatsAfterEach()
+afterEach(() => vi.restoreAllMocks())
 beforeEach(() => {
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
 })
 describe('chat node file permissions and persistence', () => {
+  it('does not let a folder raise node action permissions or display them as inherited', () => {
+    const service = ChatService.getInstance()
+    vi.spyOn(service.folders, 'accessFor').mockImplementation((_path, base) => ({
+      modes: { ...base, node_delegate: 'auto' },
+      raisedBy: { node_delegate: 'Sample folder' },
+    }))
+    const session = new ChatSession(service)
+    expect(session.getToolMode('node_delegate')).toBe('off')
+    expect(session.folderToolFloor.value?.node_delegate).toBeUndefined()
+    expect(session.folderToolAccess.value.raisedBy.node_delegate).toBeUndefined()
+    session.destroy()
+  })
+  it('requires a local tool choice in addition to inherited or imported node scope', () => {
+    const session = new ChatSession(ChatService.getInstance())
+    session.overrides.value = {
+      nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
+      toolModes: { node_delegate: 'auto', node_command_run: 'auto' },
+    }
+    const offered = () =>
+      (session as unknown as { getTools(): { name: string }[] }).getTools().map((t) => t.name)
+    expect(offered()).not.toContain('node_delegate')
+    expect(offered()).not.toContain('node_command_run')
+    session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
+    expect(offered()).toContain('node_delegate')
+    expect(session.needsApproval('node_delegate')).toBe(true)
+    session.overrides.value.nodeScope = []
+    expect(offered()).not.toContain('node_delegate')
+    session.destroy()
+  })
   it('reads delegation status and destinations without asking in every permission mode', () => {
     const session = new ChatSession(ChatService.getInstance())
     for (const mode of ['confirm-all', 'allow-edit', 'allow-all'] as const) {

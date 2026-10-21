@@ -1,3 +1,9 @@
+import {
+  NODE_ACTION_TOOLS,
+  localNodeActionModes,
+  saveLocalNodeActionModes,
+  nodeActionModes,
+} from './nodeActionPermissions'
 import { NODE_COMMAND_TOOLS } from './tools/NodeManagerTools'
 import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
@@ -685,44 +691,49 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.overrides.value.permissionMode ?? this.agent.value?.permissionMode ?? 'confirm-all',
     set: (value) => this.setOverride('permissionMode', value),
   })
+  private readonly pendingNodeActionAgents = new Set<string>()
+  private bindLocalNodeActionModes(identity: string): void {
+    for (const agent of this.pendingNodeActionAgents) {
+      saveLocalNodeActionModes(identity, agent, localNodeActionModes(this.id, agent))
+      saveLocalNodeActionModes(this.id, agent, {})
+    }
+    this.pendingNodeActionAgents.clear()
+  }
   public readonly toolModes = computed<Record<string, ToolMode>>({
-    get: () => {
-      const modes = { ...this.folderToolAccess.value.modes }
-      if (this.overrides.value.nodeScope?.length) {
-        for (const name of [
-          'node_git_commit',
-          'node_worktree_remove',
-          'node_command_run',
-          'node_git_integrate',
-        ])
-          modes[name] ??= 'ask'
-        for (const name of [
-          'node_delegations',
-          'node_delegation_status',
-          'node_command_status',
-          'node_command_cancel',
-        ])
-          if (modes[name] !== 'off') modes[name] = 'auto'
-      }
-      return modes
+    get: () => this.folderToolAccess.value.modes,
+    set: (value) => {
+      if (!this.nodeScopeIdentity) this.pendingNodeActionAgents.add(this.agentId.value)
+      saveLocalNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value, value)
+      this.setOverride('toolModes', value)
     },
-    set: (value) => this.setOverride('toolModes', value),
   })
 
-  public readonly folderToolAccess = computed(() =>
-    this.chatService.folders.accessFor(
+  public readonly folderToolAccess = computed(() => {
+    const access = this.chatService.folders.accessFor(
       this.chatService.folderLocation(this),
-      this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {}
+      this.ownToolModes.value
     )
-  )
-  public readonly ownToolModes = computed(
-    () => this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {}
+    access.modes = nodeActionModes(
+      access.modes,
+      localNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value),
+      this.agent.value?.toolModes ?? {}
+    )
+    for (const name of NODE_ACTION_TOOLS) delete access.raisedBy[name]
+    return access
+  })
+  public readonly ownToolModes = computed(() =>
+    nodeActionModes(
+      this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {},
+      localNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value),
+      this.agent.value?.toolModes ?? {}
+    )
   )
   public readonly folderToolFloor = computed(() => {
     const modes = this.chatService.folders.accessFor(
       this.chatService.folderLocation(this),
       {}
     ).modes
+    for (const name of NODE_ACTION_TOOLS) delete modes[name]
     return Object.keys(modes).length ? modes : undefined
   })
   public readonly customSystemPrompt = ref('')
@@ -964,6 +975,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const next = { ...this.overrides.value }
     delete next[key]
     if (key === 'scope') delete next.fullVaultAccess
+    if (key === 'nodeScope') next.nodeScope = []
+    if (key === 'toolModes')
+      saveLocalNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value, {})
     this.overrides.value = next
 
     if (key === 'scope') this.syncScopeFromAgent()
@@ -988,7 +1002,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     this.agentId.value = agentId
     this.overrides.value =
-      options.keepNodeScope && hasNodeScope(this)
+      (options.keepNodeScope && hasNodeScope(this)) || this.overrides.value.nodeScope?.length === 0
         ? { nodeScope: this.overrides.value.nodeScope }
         : {}
     this.syncScopeFromAgent()
@@ -1431,16 +1445,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       ...NODE_COMMAND_TOOLS,
     ]
     const scopeTools = [...NODE_AGENT_TOOL_NAMES, ...delegationTools]
+    const permitted = filtered.filter(
+      (tool) => !NODE_ACTION_TOOLS.includes(tool.name) || this.getToolMode(tool.name) !== 'off'
+    )
     const scopeFiltered = this.overrides.value.nodeScope?.length
-      ? filtered
-      : filtered.filter((tool) => !delegationTools.includes(tool.name))
+      ? permitted
+      : permitted.filter((tool) => !delegationTools.includes(tool.name))
     const withNode = this.overrides.value.nodeScope?.length
       ? [
           ...scopeFiltered,
           ...allTools.filter(
             (tool) =>
               scopeTools.includes(tool.name) &&
-              this.toolModes.value[tool.name] !== 'off' &&
+              this.getToolMode(tool.name) !== 'off' &&
               !scopeFiltered.some((value) => value.name === tool.name)
           ),
         ]
@@ -1527,6 +1544,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             : tool.name === 'node_propose_edit' || NODE_MUTATION_TOOLS.includes(tool.name)
               ? structuredClone(params)
               : params
+        if (NODE_ACTION_TOOLS.includes(tool.name) && this.getToolMode(tool.name) === 'off')
+          throw new Error('Node tool is off in this device’s tool permissions')
         const ownerAgent = this.agent.value
         const version = this.conversationVersion.value
         const invocationApp = GlobalStore.getInstance().app
@@ -1632,17 +1651,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
     if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove') return true
-    if (
-      [
-        'node_delegations',
-        'node_delegation_status',
-        'node_command_run',
-        'node_command_status',
-        'node_command_cancel',
-        'node_git_integrate',
-      ].includes(toolName)
-    )
-      return false
+    if (NODE_ACTION_TOOLS.includes(toolName))
+      return (
+        !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(toolName) &&
+        this.getToolMode(toolName) !== 'auto'
+      )
     if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
     if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'
@@ -3390,6 +3403,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
     this.pendingToolCalls.value = []
+    for (const agent of this.pendingNodeActionAgents) saveLocalNodeActionModes(this.id, agent, {})
+    this.pendingNodeActionAgents.clear()
     this.currentChatFile.value = null
     this.errorPresentation.value = null
     this.error.value = null
@@ -3844,7 +3859,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   async ensureDelegationParentId(): Promise<string> {
     while (this.writing) await this.writing
-    if (this.delegationParentId) return this.delegationParentId
+    if (this.delegationParentId) {
+      this.bindLocalNodeActionModes(this.delegationParentId)
+      return this.delegationParentId
+    }
     const file = this.currentChatFile.value
     const generation = this.generation
     if (!file || this.kind === 'run') throw new UiError(uiMessage('streamBError.c93dfca065'))
@@ -3873,7 +3891,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           }
         }
         check()
-        if (!duplicated && claimDelegationIdentity(existing, file.path)) return existing
+        if (!duplicated && claimDelegationIdentity(existing, file.path)) {
+          this.bindLocalNodeActionModes(existing)
+          return existing
+        }
       }
       const chatId = crypto.randomUUID()
       const snapshot = this.snapshot()
@@ -3888,6 +3909,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
       check()
       claimDelegationIdentity(chatId, file.path)
+      this.bindLocalNodeActionModes(chatId)
       this.chatIdentity = chatId
       return chatId
     })

@@ -1,7 +1,7 @@
 import type { ChatSession } from '../../ChatSession'
 import { nodeScopeEntries } from '../../nodeScope'
 
-/** Delegation uses the chat's existing node chips, including read access. */
+/** Target scope only. Callers separately require the device-local action tool permission. */
 export function requireDelegationScope(
   chat: ChatSession,
   node: string,

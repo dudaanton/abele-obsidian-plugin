@@ -9,14 +9,18 @@ export const DelegationTaskInputSchema = z
   .object({
     task_key: z.string().min(1).max(128),
     project_id: z.string().min(1).max(128).optional(),
-    provider: z.enum(['claude', 'pi', 'codex', 'fake']),
+    provider: z.enum(['claude', 'pi', 'codex']),
     title: z.string().max(256),
     text: z.string().min(1).max(32768),
     base_ref: z.string().min(1).max(256).default('HEAD'),
   })
   .strict()
 export type DelegationTaskInput = z.input<typeof DelegationTaskInputSchema>
-const RequestSchema = DelegationTaskInputSchema.omit({ task_key: true })
+// Keep retained records readable while new requests exclude test providers.
+const RetainedTaskInputSchema = DelegationTaskInputSchema.extend({
+  provider: z.enum(['claude', 'pi', 'codex', 'fake']),
+})
+const RequestSchema = RetainedTaskInputSchema.omit({ task_key: true })
   .extend({
     parent_id: z.string().min(1).max(128).optional(),
     delegation_key: z.string().min(1).max(128),
@@ -35,7 +39,7 @@ export const DelegationStorageSchema = z
       z
         .object({
           parentId: z.string().min(1).max(128),
-          input: DelegationTaskInputSchema,
+          input: RetainedTaskInputSchema,
           request,
           child: z.custom<Delegation>((v) => DelegationSchema.safeParse(v).success).optional(),
           cancelled: z.boolean().optional(),

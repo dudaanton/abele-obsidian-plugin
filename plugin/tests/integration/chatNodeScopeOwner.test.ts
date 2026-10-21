@@ -57,6 +57,25 @@ beforeEach(() => {
 })
 
 describe('owner node scope actions', () => {
+  it('keeps a local tool choice after saving and reopening, while a copied file cannot carry it', async () => {
+    const session = new ChatSession(ChatService.getInstance())
+    session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
+    await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'read' })
+    expect(session.getToolMode('node_delegate')).toBe('ask')
+    const file = session.currentChatFile.value!
+    const { GlobalStore } = await import('@/stores/GlobalStore')
+    const app = GlobalStore.getInstance().app
+    const copied = await app.vault.create('sample-copy.abchat', await app.vault.read(file))
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+    expect(reopened.getToolMode('node_delegate')).toBe('ask')
+    const clone = new ChatSession(ChatService.getInstance())
+    await clone.load(copied)
+    expect(clone.getToolMode('node_delegate')).toBe('off')
+    session.destroy()
+    reopened.destroy()
+    clone.destroy()
+  })
   it('restores an empty scoped chat from its saved tab reference after service restart', async () => {
     const service = ChatService.getInstance()
     const id = service.newTab()

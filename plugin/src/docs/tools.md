@@ -959,8 +959,11 @@ own permissions and cannot move them to a similarly named server.
 `node_delegation_cancel`.
 
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
-The chat's node chips are the only delegation access gate: add the node or project there.
-There is no separate delegation permission in Settings. Tool permission modes still apply.
+Delegation and command tools are Off by default. Enable them through the ordinary agent or
+chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
+cannot enable these tools. Ask prompts before delegation, follow-up, cancellation, command
+execution and integration; enabled list/status tools can read without a prompt. Chat files
+and folder permissions cannot grant these action permissions on another device.
 Models cannot access credentials, send generic node requests or answer child human prompts.
 Nodes must advertise delegation_without_grant. Older nodes say they need an update to take tasks
 from chats; do not ask for a grant or create one automatically.
@@ -971,7 +974,7 @@ from chats; do not ask for a grant or create one automatically.
   this device's local registration alias; use that alias to select between installations of one node.
 - `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
   optional `base_ref` (HEAD by default). Available Claude Code, pi and Codex providers come from
-  the node; fake children are non-executing fixtures. The child gets its own
+  the node; test providers are never offered. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
 - Creation returns `node_id`, `session_id`, `delegation_id`, `state`, `project_id`, `workspace_id`
   and task `title`, not credentials. Use that project and workspace for review tools. A

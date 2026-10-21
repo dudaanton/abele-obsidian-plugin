@@ -521,6 +521,21 @@ export const ANALYTICS_TOOL_MODES: Record<string, ToolMode> = {
   analyze_data: 'auto',
 }
 
+export const NODE_ACTION_TOOLS = [
+  'node_delegations',
+  'node_delegate',
+  'node_delegation_send',
+  'node_delegation_status',
+  'node_delegation_cancel',
+  'node_command_run',
+  'node_command_status',
+  'node_command_cancel',
+  'node_git_integrate',
+]
+export const NODE_ACTION_DEFAULTS: Record<string, ToolMode> = Object.fromEntries(
+  NODE_ACTION_TOOLS.map((name) => [name, 'off'])
+)
+
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
   providers: [],
@@ -546,6 +561,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     ...XLSX_TOOL_MODES,
     ...CANVAS_TOOL_MODES,
     ...TRACE_TOOL_MODES,
+    ...NODE_ACTION_DEFAULTS,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

@@ -88,6 +88,26 @@ describe('the node section in an agent’s tools', () => {
 })
 
 describe('the node section’s actions and the old names', () => {
+  it('shows delegation and commands Off and saves their individual ordinary modes', async () => {
+    const { view, modes } = mountHost()
+    const row = view
+      .findAll('.abele-tool-modes__row')
+      .find((r) => r.text().includes('Hand work to a node agent'))!
+    expect((row.find('select').element as HTMLSelectElement).value).toBe('off')
+    await row.find('.abele-tool-modes__members-toggle').trigger('click')
+    for (const name of ['node_delegate', 'node_command_run', 'node_git_integrate']) {
+      const setting = row
+        .findAll('.setting-item')
+        .find((el) => el.find('code').exists() && el.find('code').text() === name)!
+      expect((setting.find('select').element as HTMLSelectElement).value).toBe('off')
+      await setting.find('select').setValue('ask')
+      expect(modes.value[name]).toBe('ask')
+      await setting.find('select').setValue('auto')
+      expect(modes.value[name]).toBe('auto')
+      await setting.find('select').setValue('off')
+      expect(modes.value[name]).toBe('off')
+    }
+  })
   it('shows delegation and debugger runs as actions of their own, so Read grants neither', async () => {
     const { view, modes } = mountHost()
     expect(view.text()).toContain('Hand work to a node agent')

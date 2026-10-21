@@ -2955,3 +2955,7 @@ reviving a later cancellation or an already delivered result.
 
 An unconfirmed cancellation and the parent's Stop remain durable fences during
 follow-up receipt recovery. A fresh input never silently discards an outstanding Stop.
+
+Node action tool overrides for a chat are device-local browser storage, keyed by chat identity
+and agent identity. They are not authority in a chat file or a folder permission floor.
+The agent’s ordinary tool modes remain in plugin settings; unset node action modes are Off.
