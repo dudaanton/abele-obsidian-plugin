@@ -135,7 +135,12 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
         // start, they left staging files behind that sync then announced as recovered copies.
         await tokenHost.engines.settled()
         await tokenHost.engines.reset()
-        tokenHost.deps.fetch = api.desktopTransport(undefined, host)
+        const transport = api.desktopTransport(undefined, host)
+        // UI metadata (including sync-now refresh and trash) uses its own clients.
+        // They need the same emulated native host as the restarted engines.
+        tokenHost.ui.transport = transport
+        tokenHost.ui.itemSets.transport = transport
+        tokenHost.deps.fetch = transport
         tokenHost.start()
         await tokenHost.engines.settled()
         return 'ok'
