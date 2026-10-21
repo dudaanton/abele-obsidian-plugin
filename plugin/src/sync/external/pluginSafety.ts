@@ -28,6 +28,7 @@ import { readLedgerId } from '../ledgerId'
 import { LEDGER_BOOTSTRAP_KEY, LEDGER_PROOF_KEY } from '../ledgerRecovery'
 import { ledgerCleanupIds } from '../ledgerCleanup'
 import { IGNORE_FILE } from '../scope'
+import { isDeviceLocalPluginState } from '../deviceLocalState'
 import { wait, completion } from '../idbRequests'
 import { IndexedDbStateStore, stateDatabaseName } from '../IndexedDbStateStore'
 import { WriteJournal } from '../writeJournal'
@@ -361,6 +362,7 @@ export async function projectionEvidence(
   const disk = vaultDisk(app.vault)
   const scope = inspection.scope ?? connectionRoot(app)
   const included = (path: string) =>
+    !isDeviceLocalPluginState(path, app.vault.configDir) &&
     (!scope || withinRoot(path, scope)) &&
     (inspection.roots === undefined ||
       inspection.roots.some((root) => withinRoot(path, root)) ||
@@ -381,13 +383,15 @@ export async function projectionEvidence(
   )
   const inventory = new Map<string, { path: string; size: number; mtime: number }>()
   const paths = new Set(indexed.keys())
-  for (const path of inspection.paths ?? []) paths.add(path)
+  for (const path of inspection.paths ?? [])
+    if (!isDeviceLocalPluginState(path, app.vault.configDir)) paths.add(path)
   inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
   let folders = 1
   const walk = async (folder: string): Promise<void> => {
     assertCurrent()
+    if (isDeviceLocalPluginState(folder, app.vault.configDir)) return
     // Bound alias loops by the protocol path budget, not an unrelated note-count or
     // configuration-directory depth limit that would restrict legitimate ordinary vaults.
     if (new TextEncoder().encode(folder.normalize('NFC')).byteLength > 1024 || seen.has(folder))

@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { applyStaged, ExpectedWrites, MemoryStateStore, scan, sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { ignoreFor } from '@/sync/scope'
+import { projectionEvidence } from '@/sync/external/pluginSafety'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const root = '.obsidian/plugins/abele/'
@@ -23,6 +24,39 @@ const local = [
   'future-cache/sample.json',
 ].map((name) => root + name)
 const shared = ['data.json', 'manifest.json', 'main.js', 'styles.css'].map((name) => root + name)
+
+it.each([false, true])(
+  'skips unreadable local stores during real startup inspection (exact paths: %s)',
+  async (exactPaths) => {
+    const app = buildFakeVault([...local, ...shared].map((path) => ({ path, content: '{}' })))
+    const original = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    const read = vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+      if (local.includes(path)) throw new Error('Sample local store is unreadable')
+      return original(path)
+    })
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
+    try {
+      await expect(
+        projectionEvidence(app as never, () => {}, true, new Set(), {
+          ...(exactPaths ? { roots: [], paths: [...local, ...shared] } : {}),
+          inventory: (files) => {
+            inventory = files
+          },
+        })
+      ).resolves.toBeNull()
+      expect(read.mock.calls.map(([path]) => path).sort()).toEqual([...shared].sort())
+      expect(list.mock.calls.filter(([path]) => path.startsWith(root))).toEqual([])
+      expect([...(inventory?.keys() ?? [])].sort()).toEqual([...shared].sort())
+      const fs = new ObsidianFileSystem(app as never, { startupInventory: () => inventory })
+      const listed = []
+      for await (const file of fs.list()) listed.push(file.path)
+      expect(listed.sort()).toEqual([...shared].sort())
+    } finally {
+      vi.restoreAllMocks()
+    }
+  }
+)
 
 it.each([false, true])(
   'never offers device-local plugin state to the scanner (startup inventory: %s)',
