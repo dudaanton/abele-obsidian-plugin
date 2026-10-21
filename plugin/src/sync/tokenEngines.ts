@@ -3,6 +3,7 @@ import { connectionPrivateRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey } from '@abele/sync-sdk/protocol'
+import { retainedCopyCovered } from './retainedCopyCoverage'
 import {
   V2EngineClient,
   GENERATION_KEY,
@@ -1328,7 +1329,12 @@ export class TokenEngines {
           ? new LocalFolderPlacement(record.scope.path, record.localRoot ?? record.scope.path)
           : null
       const covered = (path: string) =>
-        [...this.live.values()].some((runtime) => runtime.covers(placement?.toLocal(path) ?? path))
+        retainedCopyCovered(
+          this.ui.registry.records(),
+          this.live,
+          id,
+          placement?.toLocal(path) ?? path
+        )
       const retained = new RetainedShareCopies(store)
       const copies = new Proxy(store, {
         get(target, key) {

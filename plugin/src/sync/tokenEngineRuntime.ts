@@ -2118,6 +2118,17 @@ export class TokenEngineRuntime
   async resolve(fileId: string): Promise<ConsentTarget | null> {
     return this.options.localFiles?.resolve(fileId) ?? null
   }
+  /** A stopped or unavailable runtime cannot prove non-membership for copy removal. */
+  get coverageAvailable(): boolean {
+    return (
+      this.active &&
+      this.permitted &&
+      this.engine.status.lastSyncAt != null &&
+      !['offline', 'error', 'starting', 'joining', 'scope_unavailable', 'scope_updating'].includes(
+        this.engine.status.state
+      )
+    )
+  }
   covers(path: string): boolean {
     return (
       this.active &&

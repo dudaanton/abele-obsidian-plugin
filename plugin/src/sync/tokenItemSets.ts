@@ -13,6 +13,7 @@ import type { TokenUi } from './tokenUi'
 import type { DeviceTokenSecrets, TokenConnectionRecord } from './tokenConnectionRegistry'
 import {
   shareSetSource,
+  itemLabel,
   type ShareSetSource,
   type ShareItem,
   type ConnectionItem,
@@ -674,20 +675,47 @@ export class TokenItemSets implements ShareSetSource {
     const also = new Map<string, { path: string; group: string }>()
     const affected = new Map<string, { label: string; scope: string }>()
     const tokens = (await client.tokens()).items
-    if (itemId === null) affected.set(shareId, { label: issued.share.label, scope: 'Whole share' })
+    const deletedFiles = new Set(items.flatMap((item) => item.files.map((file) => file.file_id)))
+    const losesScope = (scope: ScopeItem['scope']) =>
+      items.some(
+        (item) =>
+          scope.id === item.scope.id ||
+          (scope.kind !== 'folder' && deletedFiles.has(scope.id)) ||
+          (item.scope.kind === 'folder' &&
+            (item.scope.path === '/' || scope.path.startsWith(item.scope.path + '/')))
+      )
+    for (const token of tokens.filter((one) => !one.revoked_at)) {
+      const scopes =
+        token.id === shareId
+          ? items.map((item) => item.scope)
+          : (await client.ownedItems(token.id)).items.filter(visible).map((item) => item.scope)
+      const losses = [
+        ...new Set(
+          scopes.filter(losesScope).map(
+            (scope) =>
+              'Loses ' +
+              itemLabel({
+                id: scope.id,
+                kind: shareKind(scope.kind, scope.path),
+                path: scope.path,
+              })
+          )
+        ),
+      ]
+      if (losses.length)
+        affected.set(token.id, {
+          label: token.label || issued.share.label,
+          scope: losses.join(' · '),
+        })
+    }
     let alsoMore = false
     for (const item of items) {
       if (item.scope.kind === 'group' && item.files.length < item.file_count) alsoMore = true
       for (const file of item.files) {
         if (file.overlap_count > file.overlaps.length) alsoMore = true
         for (const overlap of file.overlaps) {
-          const token = tokens.find((one) => one.id === overlap.token_id)
-          affected.set(overlap.token_id, {
-            label: token?.label || overlap.scope.path,
-            scope: overlap.scope.path,
-          })
           if (overlap.scope.kind === 'group') {
-            const group = overlap.scope.path.replace(/\.md$/i, '')
+            const group = overlap.scope.path.split('/').pop().replace(/\.md$/i, '')
             also.set(file.file_id + ':' + overlap.scope_id, { path: file.path, group })
           }
         }
@@ -713,6 +741,7 @@ export class TokenItemSets implements ShareSetSource {
     const items = (await client.ownedItems(shareId)).items
       .filter(visible)
       .filter((one) => itemId === null || one.id === itemId)
+    await this.ui.protectLocalFilesForItemDeletion(issued.connectionId)
     const local = this.ui.registry.localStorage
     for (const item of items) {
       const key = 'abele-sync-item-delete:' + shareId + ':' + item.id

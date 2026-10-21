@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 import { V2Client } from '../../src/sync/v2/client'
 import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 import { waitFor } from './helpers/syncVault'
-import { AccessClient } from '@abele/sync-sdk/core'
+import { AccessClient, sha256 } from '@abele/sync-sdk/core'
 import { fixtureFetch } from './helpers/syncServer'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import {
@@ -48,18 +48,23 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   expect(confirmation.clipped).toEqual([])
   await owner.long(
     'confirm single-file server deletion',
-    `const box=inWindows('.abele-server-delete__facts').closest('.modal');const facts=[...box.querySelectorAll('dt')].find(one=>textOf(one)==='Files');if(textOf(facts?.nextElementSibling)!=='1')throw new Error('Expected one file in deletion preview');const button=[...box.querySelectorAll('.abele-modal__footer button')].find(one=>one.classList.contains('mod-warning'));if(!button||button.disabled)throw new Error('Explicit deletion confirmation unavailable');button.click();await poll(()=>!document.contains(box));return true`
+    `const box=inWindows('.abele-server-delete__facts').closest('.modal');const facts=[...box.querySelectorAll('dt')].find(one=>textOf(one)==='Files');if(textOf(facts?.nextElementSibling)!=='1')throw new Error('Expected one file in deletion preview');const button=[...box.querySelectorAll('.abele-modal__footer button')].find(one=>one.classList.contains('mod-warning'));if(!button||button.disabled)throw new Error('Explicit deletion confirmation unavailable');button.click();await poll(()=>syncModalClosed(box),undefined,'single-file deletion confirmation completed');return true`
   )
   closeSyncScreens(owner)
   await receiver.syncNow(receiverId)
   expect((await s.items()).some((item) => item.path === single)).toBe(false)
   expect(receiver.read(single)).toBe('server delete candidate')
+  expect(owner.read(single)).toBe('server delete candidate')
   expect(receiver.read(folder + '/kept.md')).toBe('still shared')
   expect(receiver.rows()).toHaveLength(1)
   receiver.create(folder + '/kept.md', 'other item still writes')
   await receiver.syncNow(receiverId)
-  await owner.syncNow(ownerId)
-  expect(owner.read(folder + '/kept.md')).toBe('other item still writes')
+  expect((await s.items()).find((item) => item.path === folder + '/kept.md')?.kind).toBe('note')
+  const updated = (await s.items()).find((item) => item.path === folder + '/kept.md')
+  expect(updated && updated.kind !== 'directory' ? updated.sha : null).toBe(
+    await sha256(new TextEncoder().encode('other item still writes'))
+  )
+  expect(owner.read(single)).toBe('server delete candidate')
 }, 180000)
 it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uploader', async () => {
   const s = fixture(),

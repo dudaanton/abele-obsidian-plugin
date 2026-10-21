@@ -2917,6 +2917,13 @@ the server receipt in that connection's state before disconnecting. An uncertain
 stopped across restart and retries the same request; it never removes local files. A server
 `scope_deleted` refusal likewise persists a stopped marker until explicit disconnect.
 
+Deleting server items from an issued share also protects the issuer's local files: connections
+to that server space persist an `itemDeletion` stop discriminator in the existing server-delete
+state before their runtimes drain. That protection survives failure and restart and remains until
+explicit disconnect; it cannot be replayed as a whole-scope delete. Explicit local-copy removal
+keeps a file when another persisted connection might cover it but its group membership cannot
+currently be established, including while offline after restart.
+
 ## Node chat drafts and preferences
 
 The node chat agent picker remembers the last successfully started agent per node in device

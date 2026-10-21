@@ -31,6 +31,22 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('omits the Access closed row when no share loses its scope', () => {
+    const wrapper = mount(ServerDeleteModal, {
+      props: {
+        name: 'Example',
+        host: 'sync.example',
+        facts: { files: 1, bytes: 10, access: [], canWrite: true },
+        remove: async () => {},
+      },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      expect(wrapper.findAll('dt').some((one) => one.text() === 'Access closed')).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it.each(['share', 'connection'] as const)(
     'uses the shared DOM menu in %s item actions',
     async (screen) => {
@@ -381,7 +397,7 @@ describe('shared item screens', () => {
         ],
       },
     })
-    expect(wrapper.text()).toContain('No longer shared · copy kept')
+    expect(wrapper.text()).toContain('No longer shared · your copy stays')
     expect(wrapper.text()).toContain('Offline')
     expect(wrapper.findAll('.abele-connection-items__item_detached')).toHaveLength(1)
     wrapper.unmount()

@@ -14,6 +14,7 @@ import { reviewSourceSchema } from '@/sync/reviewState'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { computed } from 'vue'
+import { retainedCopyCovered } from '@/sync/retainedCopyCoverage'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
 function setup() {
@@ -28,6 +29,29 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('keeps a detached copy when another persisted group cannot open after restart', () => {
+    const records = [
+      { id: 'detached', scope: { kind: 'group' as const, path: 'Groups/Old.md' } },
+      { id: 'offline', scope: { kind: 'group' as const, path: 'Groups/Other.md' } },
+    ]
+    expect(retainedCopyCovered(records, new Map(), 'detached', 'Notes/Shared.md')).toBe(true)
+    expect(
+      retainedCopyCovered(
+        records,
+        new Map([['offline', { covers: () => false, coverageAvailable: false }]]),
+        'detached',
+        'Notes/Shared.md'
+      )
+    ).toBe(true)
+    expect(
+      retainedCopyCovered(
+        records,
+        new Map([['offline', { covers: () => false }]]),
+        'detached',
+        'Notes/Shared.md'
+      )
+    ).toBe(false)
+  })
   it('updates an already mounted choice consumer after the server inventory arrives', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)
@@ -100,7 +124,14 @@ describe('connection item sets', () => {
       scope: { kind: 'file', id: 'file-a', path: 'Sample.md' },
       removed_at: null,
     }
-    const remove = vi.fn(async () => {})
+    const stopped = vi.fn(async () => {})
+    ui.stopRuntime = stopped
+    const remove = vi.fn(async () => {
+      expect(
+        registry.storage(id).loadLocalStorage('abele-sync-token-state:server-delete')
+      ).toBeTruthy()
+      expect(stopped).toHaveBeenCalledWith(id)
+    })
     vi.spyOn(ui.itemSets, 'client').mockReturnValue({
       tokens: async () => ({
         items: [
@@ -271,6 +302,18 @@ describe('connection item sets', () => {
           )
         }
         if (path.endsWith('/manifest')) return Response.json({ items: [], cursor: 0, next: null })
+        if (path.endsWith('/tokens/root-token/items'))
+          return Response.json({
+            items: [
+              {
+                id: 'root-item',
+                scope_id: 'root-scope',
+                scope,
+                added_at: '2025-01-01T00:00:00Z',
+                removed_at: null,
+              },
+            ],
+          })
         if (path.endsWith('/tokens'))
           return Response.json({
             items: [
@@ -278,6 +321,14 @@ describe('connection item sets', () => {
                 id: 'issued',
                 scope: group,
                 label: 'Sample group share',
+                issued_by_token_id: 'owner',
+                created_at: '2025-01-01T00:00:00Z',
+                revoked_at: null,
+              },
+              {
+                id: 'root-token',
+                scope,
+                label: 'Whole space',
                 issued_by_token_id: 'owner',
                 created_at: '2025-01-01T00:00:00Z',
                 revoked_at: null,
@@ -304,7 +355,8 @@ describe('connection item sets', () => {
         canWrite: true,
         files: whole ? 601 : 501,
         bytes: whole ? 23456 : 12345,
-        also: [{ path: 'Notes/Shared.md', group: 'Groups/Other group' }],
+        also: [{ path: 'Notes/Shared.md', group: 'Other group' }],
+        access: [{ label: 'Sample group share', scope: 'Loses Group: Sample group' }],
         alsoMore: true,
       })
     }

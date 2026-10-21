@@ -360,8 +360,13 @@ export class TokenUi {
         continue
       }
       if (row.state['abele-sync-token-state:server-delete']) {
+        const deletion = row.state['abele-sync-token-state:server-delete'] as {
+          itemDeletion?: boolean
+        }
         activity[row.id] = {
-          error: 'Server deletion is awaiting confirmation. Retry Delete from the server.',
+          error: deletion.itemDeletion
+            ? 'Local files are protected for a server item deletion. Disconnect this connection before starting it again.'
+            : 'Server deletion is awaiting confirmation. Retry Delete from the server.',
         }
         continue
       }
@@ -868,6 +873,51 @@ export class TokenUi {
     this.deletions.set(id, work)
     return work
   }
+  /** An item delete must not arrive as an ordinary remote deletion on this device. */
+  async protectLocalFilesForItemDeletion(id: string): Promise<void> {
+    const issuer = this.registry.records().find((one) => one.id === id)
+    if (!issuer) throw new Error('Connection is unavailable')
+    const records = this.registry
+      .records()
+      .filter((one) => one.address === issuer.address && one.spaceId === issuer.spaceId)
+    const slot = 'abele-sync-token-state:server-delete'
+    const identity = (record: TokenConnectionRecord) =>
+      JSON.stringify({
+        address: record.address,
+        spaceId: record.spaceId,
+        tokenId: record.tokenId,
+        ledgerId: record.ledgerId,
+        scope: record.scope,
+        secretReference: record.secretReference,
+      })
+    const identities = new Map(records.map((record) => [record.id, identity(record)]))
+    for (const record of records) {
+      const storage = this.registry.storage(record.id)
+      const previous = storage.loadLocalStorage(slot) as {
+        itemDeletion?: boolean
+        key?: string
+      } | null
+      if (previous && !previous.itemDeletion)
+        throw new Error('An earlier server deletion is unresolved')
+      const marker = previous ?? { key: crypto.randomUUID(), itemDeletion: true }
+      storage.saveLocalStorage(slot, marker)
+      const saved = storage.loadLocalStorage(slot) as typeof marker
+      if (!saved?.key || saved.key !== marker.key || saved.itemDeletion !== true)
+        throw new Error('Could not retain local-copy protection')
+      this.registry.setStatus(record.id, 'error')
+      this.publish(record.id, {
+        error:
+          'Local files are protected for a server item deletion. Disconnect this connection before starting it again.',
+      })
+    }
+    for (const record of records) {
+      await this.stopForDeletion(record.id)
+      await this.waitForDeletion(this.connectionChangeGuard(record.id), 'safety')
+      const current = this.registry.records().find((one) => one.id === record.id)
+      if (!current || identity(current) !== identities.get(record.id))
+        throw new Error('Connection changed; open its deletion confirmation again.')
+    }
+  }
   private async performServerDeletion(id: string, requesting: () => void): Promise<void> {
     const disconnecting = this.deletionDisconnects.get(id)
     if (disconnecting !== undefined) return this.waitForDeletion(disconnecting, 'disconnect')
@@ -896,7 +946,12 @@ export class TokenUi {
       identity?: string
       result?: unknown
       facts?: import('@/components/sync/serverDelete').ServerDeleteFacts
+      itemDeletion?: boolean
     } | null
+    if (previous?.itemDeletion)
+      throw new Error(
+        'Local-copy protection is active for an item deletion; disconnect this connection to finish.'
+      )
     if (previous?.identity && previous.identity !== confirmed)
       throw new Error('Connection changed; the earlier server deletion remains unresolved.')
     const attempt = previous ?? {

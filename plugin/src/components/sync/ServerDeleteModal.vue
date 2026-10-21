@@ -21,8 +21,8 @@
       <dd>{{ facts.files.toLocaleString(currentLocale().format) }}</dd>
       <dt>{{ t('settings.ImageModelEditModal.size.1af85190') }}</dt>
       <dd>{{ folderSize(facts.bytes) }}</dd>
-      <dt>{{ t('streamC.1acc804ac37f32e3') }}</dt>
-      <dd>
+      <dt v-if="facts.access.length">{{ t('streamC.1acc804ac37f32e3') }}</dt>
+      <dd v-if="facts.access.length">
         <ul class="abele-server-delete__access">
           <li v-for="one in facts.access" :key="one.label">
             <span>{{ one.label }}</span>

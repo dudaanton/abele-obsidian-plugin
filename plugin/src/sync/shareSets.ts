@@ -134,7 +134,7 @@ export function itemLine(state: ItemState): string {
     case 'error':
       return state.reason
     case 'detached':
-      return 'No longer shared · copy kept'
+      return 'No longer shared · your copy stays'
   }
 }
 

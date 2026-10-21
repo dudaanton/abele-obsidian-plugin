@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { captureSyncFailure, SYNC_SNAPSHOT } from '../e2e/helpers/syncDiagnostics'
 import { SHARE_SET_PICKER } from '../e2e/helpers/shareSetPicker'
+import { syncModalClosed } from '../e2e/helpers/syncModal'
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>()
   const mkdirSync = vi.fn(),
@@ -15,6 +16,15 @@ vi.mock('node:fs', async (original) => {
 })
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
+
+it('waits for a confirmation in another document to actually disconnect', () => {
+  const settings = document.implementation.createHTMLDocument('Sample settings')
+  const box = settings.createElement('div')
+  settings.body.append(box)
+  expect(syncModalClosed(box)).toBe(false)
+  box.remove()
+  expect(syncModalClosed(box)).toBe(true)
+})
 
 it('selects a folder by its scope kind even when the host renders an open-folder icon', async () => {
   const box = document.createElement('div')

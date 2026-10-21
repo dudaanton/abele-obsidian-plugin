@@ -6,6 +6,11 @@
         <div class="abele-sync-window__status">
           <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
           <span class="abele-sync-window__line">{{ line }}</span>
+          <span
+            v-if="activity?.lastSync && row?.status === 'idle'"
+            class="abele-sync-window__server"
+            >· {{ settingsSyncWhen(new Date(activity.lastSync).toISOString()) }}</span
+          >
         </div>
         <span class="abele-sync-window__server">{{ host }}</span>
       </div>
@@ -124,8 +129,8 @@ import SelectiveSync from '../settings/sync/SelectiveSync.vue'
 import ConnectionEvents from './ConnectionEvents.vue'
 import ConnectionItems from './ConnectionItems.vue'
 import RemoveCopyModal from './RemoveCopyModal.vue'
-import { setTitle, setTone, setLine, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
-import { connectionName, type TokenUi } from '@/sync/tokenUi'
+import { setTone, setLine, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
+import { type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { historyConnection } from '@/sync/tokenHistory'
@@ -193,20 +198,14 @@ watch(liveActivity, (next) => {
   }, wait)
 })
 onBeforeUnmount(() => window.clearTimeout(redraw))
-const name = computed(() =>
-  setItems.value
-    ? setTitle(setItems.value, sets.value?.label(props.connectionId))
-    : row.value
-      ? connectionName(row.value, settingsSyncText).split(' · ')[0]
-      : ''
-)
+const name = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() =>
   setItems.value?.[0]?.state.kind === 'detached'
     ? setLine(
         setItems.value,
         setItems.value.every((item) => item.state.kind === 'detached')
-          ? 'No longer shared · copy kept'
+          ? 'No longer shared · your copy stays'
           : 'Synced'
       )
     : row.value

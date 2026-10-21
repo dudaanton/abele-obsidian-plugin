@@ -5,8 +5,10 @@ import { STARTUP_WAIT, waitForStartup, startupWaitFailure } from './startupWait'
 import { onPhone } from './target'
 import { TOKEN_HOST_READY } from './tokenHostReady'
 import { SHARE_SET_PICKER } from './shareSetPicker'
+import { syncModalClosed } from './syncModal'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
+ const syncModalClosed = ${syncModalClosed.toString()}
  ${STARTUP_WAIT}
  const host = app.plugins.plugins.abele.tokenEngines
  if (!host) throw new Error('Token host is not ready')
