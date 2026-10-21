@@ -13,10 +13,11 @@ import { DEFAULT_AI_SETTINGS, type ChatMessage, type CommentAnchor } from '@/ai/
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 
-const revealAnchor = vi.fn(async (_id: string, _anchor: CommentAnchor) => true)
+const revealAnchor = vi.fn(async (_id: string, _anchor: CommentAnchor, _sidebar?: boolean) => true)
 vi.mock('@/ai/openChat', async (original) => ({
   ...(await original<typeof import('@/ai/openChat')>()),
-  revealAnchor: (id: string, anchor: CommentAnchor) => revealAnchor(id, anchor),
+  revealAnchor: (id: string, anchor: CommentAnchor, sidebar?: boolean) =>
+    revealAnchor(id, anchor, sidebar),
 }))
 
 const messages = ref<ChatMessage[]>([
@@ -93,8 +94,8 @@ describe('a comment in its tab', () => {
     expect(wrapper.find('.abele-breadcrumbs').exists()).toBe(false)
     const back = wrapper.find('.abele-chat-parent-back')
     expect(back.classes()).toContain('clickable-icon')
-    expect(back.attributes('aria-label')).toContain('Which train?')
-    expect(back.element.previousElementSibling?.classList.contains('abele-chat-switch')).toBe(true)
+    expect(back.attributes('aria-label')).toBe('Back to Which train?')
+    expect(back.element.nextElementSibling?.classList.contains('abele-chat-switch')).toBe(true)
   })
 
   it('opens only the immediate parent at the anchored message', async () => {
@@ -102,7 +103,7 @@ describe('a comment in its tab', () => {
     await flushPromises()
 
     await wrapper.find('.abele-chat-parent-back').trigger('click')
-    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND)
+    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND, false)
   })
 
   it('names the root parent when it is the immediate parent', async () => {
@@ -119,7 +120,7 @@ describe('a comment in its tab', () => {
     const wrapper = mountWith('chat', SECOND)
     await flushPromises()
     await wrapper.find('.abele-chat-parent-back').trigger('click')
-    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND)
+    expect(revealAnchor).toHaveBeenCalledExactlyOnceWith('second', SECOND, false)
   })
 
   it('draws no trail for a comment on a note, which has the way back already', async () => {

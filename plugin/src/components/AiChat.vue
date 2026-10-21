@@ -48,8 +48,8 @@
           :name="t('streamB.abeleAiChat.08f891')"
           @shown="inDrawer = $event"
         />
-        <ChatSwitcher :title="tabInfos.find((tab) => tab.isActive)?.label ?? ''" />
         <AiCommentTrail v-if="session" :session="session" />
+        <ChatSwitcher :title="tabInfos.find((tab) => tab.isActive)?.label ?? ''" />
         <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
              Everything else this chat is set up with is in ⋯. Other chats waiting for you show
              as a count only while they are waiting. -->

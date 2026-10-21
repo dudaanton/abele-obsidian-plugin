@@ -1,5 +1,12 @@
 <template>
-  <Icon v-if="parent" icon="undo-2" class="abele-chat-parent-back" :tooltip="tooltip" @click="go" />
+  <Icon
+    v-if="parent"
+    icon="undo-2"
+    interactive
+    class="abele-chat-parent-back"
+    :tooltip="tooltip"
+    @click="go"
+  />
 </template>
 
 <script setup lang="ts">
@@ -21,9 +28,7 @@ const steps = ref<TrailStep[]>([])
 
 const parent = computed(() => (steps.value.length > 1 ? steps.value[steps.value.length - 2] : null))
 const tooltip = computed(() =>
-  parent.value
-    ? `${t('streamB.backToTheChatAtTheMessage.eea9db')}: ${presentUiField(parent.value, 'title')}`
-    : ''
+  parent.value ? t('chatTree.backToParent', { name: presentUiField(parent.value, 'title') }) : ''
 )
 
 // Resolve again when the session, anchor, file or current title changes.
@@ -56,6 +61,13 @@ watch(
 function go(): void {
   const current = steps.value[steps.value.length - 1]
   if (!parent.value || !current?.id || !current.anchor) return
-  void revealAnchor(current.id, current.anchor)
+  void revealAnchor(current.id, current.anchor, false)
 }
 </script>
+
+<style lang="scss">
+.abele-chat-parent-back {
+  flex-shrink: 0;
+  margin-block: calc(-1 * var(--size-4-1));
+}
+</style>

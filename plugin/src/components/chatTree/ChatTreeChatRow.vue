@@ -41,6 +41,14 @@
         @click.stop="source.close(chat.id)"
       />
       <Icon
+        v-else-if="phone"
+        icon="x"
+        size="xs"
+        :interactive="false"
+        class="clickable-icon abele-chat-tree__close-slot"
+        aria-hidden="true"
+      />
+      <Icon
         v-if="phone"
         icon="more-horizontal"
         size="xs"
@@ -199,3 +207,9 @@ function menu(event: MouseEvent) {
   m.showAtMouseEvent(event)
 }
 </script>
+
+<style lang="scss">
+.abele-chat-tree__close-slot {
+  visibility: hidden;
+}
+</style>

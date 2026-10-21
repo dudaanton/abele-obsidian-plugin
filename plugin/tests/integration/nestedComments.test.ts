@@ -413,6 +413,18 @@ describe('the trail', () => {
 })
 
 describe('the way back', () => {
+  it('can return to a parent without revealing another pane', async () => {
+    const { revealAnswer } = await import('@/ai/openChat')
+    const chats = ChatService.getInstance()
+    const parent = await show(C2)
+    const child = (await CommentService.getInstance().createOnMessage(parent, 'c2a', 'sample', 0))!
+    vi.mocked(chats.revealSidebar).mockClear()
+    expect(await revealAnswer(child.anchor.value!, child.commentId!, false)).toBe(true)
+    expect(chats.activeSession.value).toBe(parent)
+    expect(chats.pendingReveal.value).toBe('c2a')
+    expect(chats.revealSidebar).not.toHaveBeenCalled()
+  })
+
   it('leads up one level: the comment above in the tab, its message brought into view', async () => {
     const { revealAnswer } = await import('@/ai/openChat')
     const service = CommentService.getInstance()

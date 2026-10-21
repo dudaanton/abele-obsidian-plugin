@@ -205,7 +205,11 @@ export async function openSelectionLink(href: string): Promise<void> {
  * own ways of opening a file are routed here by `keepChatFilesOutOfLeaves`; everything of ours
  * that can open a chat calls this directly.
  */
-export async function openChat(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+export async function openChat(
+  file: TFile,
+  selectionReturn?: () => boolean,
+  revealSidebar = true
+): Promise<void> {
   if (selectionReturn && !selectionReturn()) return
   // File links address this exact file. ChatService classifies committed metadata through
   // storage preparation and hands discussions to their owner; basename marker lookup is not
@@ -218,7 +222,7 @@ export async function openChat(file: TFile, selectionReturn?: () => boolean): Pr
     ? await chatService.openContextualChatFile(file, selectionReturn, current)
     : await chatService.openContextualChatFile(file, undefined, current)
   if (!opened || !current()) return
-  await chatService.revealSidebar({ current })
+  if (revealSidebar) await chatService.revealSidebar({ current })
 }
 
 /** A file named in a chat — an attachment, a tool's target: a chat to the sidebar, the rest to the editor. */
@@ -267,14 +271,18 @@ export async function openLink(
  * view and flashed there — on its branch, switched to when another is showing. False, and the
  * person told, when the chat has been deleted since.
  */
-export async function revealAnswer(anchor: CommentAnchor, commentId?: string): Promise<boolean> {
+export async function revealAnswer(
+  anchor: CommentAnchor,
+  commentId?: string,
+  revealSidebar = true
+): Promise<boolean> {
   const { app } = GlobalStore.getInstance()
   const chat = app.vault.getAbstractFileByPath(anchor.note)
   if (!anchor.message || !(chat instanceof TFile)) {
     new Notice(t('streamB.theChatThisWasAskedInHas.3d88bd'))
     return false
   }
-  await openChat(chat)
+  await openChat(chat, undefined, revealSidebar)
   const service = ChatService.getInstance()
   let start: number | undefined
   if (anchor.quote && commentId) {
@@ -296,8 +304,12 @@ export async function revealAnswer(anchor: CommentAnchor, commentId?: string): P
  * its marker in a note — opened and scrolled to. The one way back, used by a comment's own back
  * button and by every level of the trail over it, each passing the level below the one it opens.
  */
-export async function revealAnchor(commentId: string, anchor: CommentAnchor): Promise<boolean> {
-  if (anchor.message) return revealAnswer(anchor, commentId)
+export async function revealAnchor(
+  commentId: string,
+  anchor: CommentAnchor,
+  revealSidebar = true
+): Promise<boolean> {
+  if (anchor.message) return revealAnswer(anchor, commentId, revealSidebar)
 
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(anchor.note)

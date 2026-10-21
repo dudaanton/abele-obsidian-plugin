@@ -5,7 +5,7 @@ import ChatTreePanel from '@/components/chatTree/ChatTreePanel.vue'
 import { CHAT_TREE_SOURCE, chatTreeSource, type ChatTreeSource } from '@/chats/chatTree'
 import { useVault } from '../helpers/testEnv'
 import ChatToolModes from '@/components/ChatToolModes.vue'
-import { Menu } from 'obsidian'
+import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
 const views: ReturnType<typeof mount>[] = []
@@ -31,9 +31,23 @@ beforeEach(() => {
   chatTreeSource.value = source
 })
 afterEach(() => {
+  Platform.isPhone = false
   views.forEach((view) => view.unmount())
   views.length = 0
   chatTreeSource.value = null
+})
+
+it('reserves an inaccessible close slot on closed phone rows', () => {
+  Platform.isPhone = true
+  source.root.value[0].children = [
+    { kind: 'chat', id: 'child', title: 'Sample child', open: false, at: 1, nested: 'discussion' },
+  ]
+  const view = show()
+  const row = view.get('[data-chat="child"] > .tree-item-self')
+  const slot = row.get('.abele-chat-tree__close-slot')
+  expect(slot.attributes('aria-hidden')).toBe('true')
+  expect(slot.attributes('tabindex')).toBeUndefined()
+  expect(row.find('[aria-label="Close"]').exists()).toBe(false)
 })
 const show = () => {
   const view = mount(ChatTreePanel, { attachTo: document.body })
