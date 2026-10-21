@@ -38,6 +38,7 @@ it('uses ordinary question cards for single, multi and text answers in question 
       .find((button) => button.text() === 'Answer')!
       .trigger('click')
     await view.find('textarea').setValue('Sample text')
+    expect(view.find('textarea').element.closest('.abele-chat-question')).not.toBeNull()
     await view
       .findAll('button')
       .find((button) => button.text() === 'Answer')!

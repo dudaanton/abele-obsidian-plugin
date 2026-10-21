@@ -93,6 +93,11 @@ it.skipIf(!available).each([
       const option = [...questionnaire.querySelectorAll('.abele-chat-question__answer')].find(el=>el.textContent==='Reference');
       if (!option) throw Error('Missing single-choice option'); option.closest('button').click(); await wait();
       const answer = root.querySelector('.abele-node-questionnaire textarea');
+      questionnaire.scrollIntoView({block:'center'});
+      await wait();
+      const action = [...questionnaire.querySelectorAll('button')].find(el=>el.textContent.trim()==='Answer');
+      const actionBox = action?.getBoundingClientRect(), viewport = root.querySelector('.abele-ai-chat__messages').getBoundingClientRect();
+      if (!actionBox || actionBox.top < viewport.top || actionBox.bottom > viewport.bottom) throw Error('Questionnaire answer action is clipped');
       await capture('questionnaire-input');
       if (!answer) throw Error('Missing text answer'); answer.value='Sample label'; answer.dispatchEvent(new Event('input',{bubbles:true})); await wait();
       await press(document,'.abele-node-questionnaire button','Answer');
@@ -100,6 +105,7 @@ it.skipIf(!available).each([
         const option = [...root.querySelectorAll('.abele-node-questionnaire .abele-chat-question__answer')].find(el=>el.textContent===name);
         if (!option) throw Error('Missing multi-choice option '+name); option.closest('button').click(); await wait();
       }
+      questionnaire.scrollIntoView({block:'center'});
       await capture('questionnaire-multi');
       await press(document,'.abele-node-questionnaire button','Answer');
       if (root.querySelector('.abele-node-questionnaire')) throw Error('Answered questionnaire is still pending');

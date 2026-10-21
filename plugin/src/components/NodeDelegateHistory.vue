@@ -2,7 +2,7 @@
   <Disclosure v-model="open" :label="t('settings.ai.AgentEditorModal.delegation.a6d910ba')">
     <NodeErrorText v-if="error" :error="error" />
     <template v-for="branch in branches" :key="branch.id">
-      <p class="abele-node-message-note">{{ branch.item }} · {{ streamBLabel(branch.state) }}</p>
+      <p class="abele-node-message-note">{{ branch.item }} · {{ branchState(branch.state) }}</p>
       <AiChatMessage
         v-for="message in branch.messages"
         :key="message.id"
@@ -32,6 +32,18 @@ const props = defineProps<{
 }>()
 const open = ref(false),
   error = ref('')
+const branchState = (state: string) =>
+  state === 'done'
+    ? t('node.delegation.done')
+    : state === 'outcome_unknown'
+      ? t('node.delegation.unknown')
+      : state === 'aborted'
+        ? t('streamBMeta.8b47045eb7')
+        : state === 'error'
+          ? t('streamB.failed.031a8f')
+          : state === 'queued'
+            ? t('streamB.queued.661ff4')
+            : streamBLabel(state)
 const branches = ref<{ id: string; item: string; state: string; messages: ChatMessage[] }[]>([])
 let generation = 0
 watch(

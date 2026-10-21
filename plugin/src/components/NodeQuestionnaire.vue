@@ -8,30 +8,35 @@
       :index="index"
       :count="prompt.questions?.length ?? 0"
       :disabled="disabled || busy"
-      :allow-custom="question.allow_custom"
+      :allow-custom="input ? false : question.allow_custom"
       :multi="multi"
       :selected="selected"
       @answer="choose"
       @skip="!disabled && !busy && emit('answer', null)"
       @own="own = true"
-    />
-    <template v-if="question && (own || input || multi)">
-      <Input
-        v-if="own || input"
-        v-model="custom"
-        as-text-area
-        :disabled="disabled || busy"
-        :aria-label="question.question"
-        :maxlength="4096"
-      />
-      <Button
-        :text="t('streamB.answer.b2a3aa')"
-        :disabled="disabled || busy || !answerReady"
-        @click="
-          advance(multi ? [...selected, ...(custom.trim() ? [custom.trim()] : [])] : custom.trim())
-        "
-      />
-    </template>
+    >
+      <template v-if="own || input || multi">
+        <Input
+          v-if="own || input"
+          v-model="custom"
+          as-text-area
+          :disabled="disabled || busy"
+          :aria-label="question.question"
+          :maxlength="4096"
+        />
+        <div class="abele-tool-approval__actions">
+          <Button
+            :text="t('streamB.answer.b2a3aa')"
+            :disabled="disabled || busy || !answerReady"
+            @click="
+              advance(
+                multi ? [...selected, ...(custom.trim() ? [custom.trim()] : [])] : custom.trim()
+              )
+            "
+          />
+        </div>
+      </template>
+    </ChatQuestionCard>
     <NodeErrorText v-if="error" :error="error" />
   </div>
 </template>

@@ -31,7 +31,7 @@
     </div>
     <!-- The answers as rows to press: the key that picks one stands first on a computer, a
          phone has no keys and shows only the words. The last row is for an answer of your own. -->
-    <div class="abele-chat-question__options">
+    <div v-if="options.length || allowCustom !== false" class="abele-chat-question__options">
       <Button
         v-for="(option, i) in options"
         :key="i"
@@ -65,6 +65,7 @@
         <span class="abele-chat-question__answer">{{ t('chat.ownAnswer') }}</span>
       </Button>
     </div>
+    <slot />
   </RequestCard>
 </template>
 
