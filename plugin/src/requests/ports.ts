@@ -35,7 +35,7 @@ export interface RequestsPorts {
     ): Promise<RequestScriptResult | undefined>
   }
   /** The program being recorded now in this project, when one is. */
-  recording(): { sessionId: string; name: string } | undefined
+  recording(url?: string): { sessionId: string; name: string } | undefined
   prefs: { get(key: string): string | undefined; set(key: string, value: string): void }
   /** Waits between reads of a send under way; tests answer at once. */
   wait?: (ms: number) => Promise<void>

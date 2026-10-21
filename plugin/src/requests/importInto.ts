@@ -25,17 +25,22 @@ export async function importInto(
   const taken = new Set(model.state.collections.flatMap((c) => c.requests.map((r) => r.id)))
   const made: string[] = []
   const into = new Map<string, number>()
-  for (const r of imported.requests) {
-    const folder =
-      requestIdFor(collection ?? r.collection ?? imported.collection, 'x').replace(
-        /\/?x\.http$/,
-        ''
-      ) || 'Imported'
-    into.set(folder, (into.get(folder) ?? 0) + 1)
-    let name = r.doc.name
-    for (let n = 2; taken.has(requestIdFor(folder, name)); n++) name = `${r.doc.name} ${n}`
-    taken.add(requestIdFor(folder, name))
-    made.push(await model.create(folder, name, { ...r.doc, name }))
+  try {
+    for (const r of imported.requests) {
+      const folder =
+        requestIdFor(collection ?? r.collection ?? imported.collection, 'x').replace(
+          /\/?x\.http$/,
+          ''
+        ) || 'Imported'
+      into.set(folder, (into.get(folder) ?? 0) + 1)
+      let name = r.doc.name
+      for (let n = 2; taken.has(requestIdFor(folder, name)); n++) name = `${r.doc.name} ${n}`
+      taken.add(requestIdFor(folder, name))
+      made.push(await model.create(folder, name, { ...r.doc, name }, false))
+    }
+  } finally {
+    // A partial import is visible too; do not reread every saved request after each write.
+    await model.load()
   }
   const added: string[] = []
   if (imported.vars.length) {

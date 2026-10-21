@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { detectFormat, importRequests } from '@/requests/importers'
 
 it('reports response variables instead of importing unresolved expressions', () => {
@@ -413,6 +413,25 @@ describe('importing requests from other clients', () => {
 })
 
 describe('bringing imported requests into the project', () => {
+  it('refreshes the list once after importing a batch', async () => {
+    const { importInto } = await import('@/requests/importInto')
+    const { RequestsModel } = await import('@/requests/RequestsModel')
+    const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+    const node = fakeNode()
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.load()
+    const list = vi.spyOn(node.rpc, 'list')
+    await importInto(
+      model,
+      importRequests(
+        '### First\nGET https://example.test/first\n### Second\nGET https://example.test/second'
+      )
+    )
+    expect(list).toHaveBeenCalledOnce()
+    expect(
+      model.state.collections.flatMap((c) => c.requests).some((r) => r.name === 'Second')
+    ).toBe(true)
+  })
   it('makes each request under a name not taken and adds the values the environment lacks', async () => {
     const { importInto, importWords } = await import('@/requests/importInto')
     const { RequestsModel, forgetRequestSecrets } = await import('@/requests/RequestsModel')

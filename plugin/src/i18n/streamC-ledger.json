@@ -303,5 +303,10 @@
     "englishHash": "4896d12422bcc2119c8f6fa54e15fd913ddf3a08accfe65ad152d15a1326be73",
     "context": "Recorded program HTTP request metadata and navigation",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.requestsImporting": {
+    "englishHash": "8178b31523c8d1f5b11b77e816673079e7e4d09b09255f3edd3e2a1ca41ab1d4",
+    "context": "Progress while importing saved HTTP requests",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

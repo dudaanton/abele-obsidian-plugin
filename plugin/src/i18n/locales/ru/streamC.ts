@@ -1,4 +1,5 @@
 export const streamC = {
+  'debug.requestsImporting': 'Импорт запросов…',
   'debug.httpIncoming': 'Входящий',
   'debug.httpOutgoing': 'Исходящий',
   'debug.httpOpenRecorded': 'Открыть записанный запрос',

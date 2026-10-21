@@ -16,7 +16,7 @@ import {
 import { RequestsModel, forgetRequestSecrets, type RequestsPorts } from './RequestsModel'
 import type { Outgoing } from './resolve'
 import { HttpRpc, nodeHttpSupported } from './wire'
-import { distinctProjects, projectOfTab } from './projectContext'
+import { distinctProjects, projectOfTab, serverAddress } from './projectContext'
 
 export const RequestsContextSchema = z.object({
   registrationId: z.string().min(1),
@@ -129,14 +129,38 @@ export const scriptPort: RequestsPorts['scripts'] = {
 }
 
 /** The program being recorded in this project of this node, if the debugger shows one. */
-export function recordingOf(c: Pick<RequestsContext, 'registrationId' | 'projectId'>) {
-  const binding = DebuggerService.instance.active.value
-  if (!binding || binding.registrationId !== c.registrationId) return undefined
-  void binding.revision.value
+export function recordingOf(
+  c: Pick<RequestsContext, 'registrationId' | 'projectId'>,
+  url?: string
+) {
+  const origin = (value: string) => {
+    try {
+      const parsed = new URL(value)
+      if (['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname))
+        parsed.hostname = 'localhost'
+      return parsed.origin
+    } catch {
+      return undefined
+    }
+  }
+  const bindings = DebuggerService.instance
+    .projectBindings(c.registrationId, c.projectId)
+    .filter((binding) => binding.trace?.status?.recording && binding.sessionId)
+    .filter((binding) => {
+      if (!url) return true
+      const address = serverAddress(binding.controller.session.output)
+      return address && origin(address) === origin(url)
+    })
+  // Ambiguous destinations never silently record a different program.
+  if (bindings.length !== 1) return undefined
+  const binding = bindings[0]
+  const sessionId = binding.sessionId
   const snapshot = binding.controller.snapshot
-  if (!snapshot || snapshot.target.project_id !== c.projectId) return undefined
-  if (!binding.trace?.status?.recording || !binding.sessionId) return undefined
-  return { sessionId: binding.sessionId, name: snapshot.target.launch_configuration_id }
+  if (!sessionId || !snapshot) return undefined
+  return {
+    sessionId,
+    name: snapshot.target.launch_configuration_id,
+  }
 }
 
 export class RequestsService {
@@ -210,7 +234,7 @@ export class RequestsService {
       model = new RequestsModel(rpcFor(c.registrationId).rpc, c.projectId, {
         keys: keyPort,
         scripts: scriptPort,
-        recording: () => recordingOf(c),
+        recording: (url) => recordingOf(c, url),
         prefs: {
           get: (name) => {
             const v = app.loadLocalStorage(prefix + name) as unknown
@@ -226,9 +250,10 @@ export class RequestsService {
 
   /** Reactive: the recording going on in this project, for the view's quiet line and the switch. */
   recording(
-    c: Pick<RequestsContext, 'registrationId' | 'projectId'>
+    c: Pick<RequestsContext, 'registrationId' | 'projectId'>,
+    url?: string
   ): ComputedRef<{ sessionId: string; name: string } | undefined> {
-    return computed(() => recordingOf(c))
+    return computed(() => recordingOf(c, url))
   }
 
   /** Every project of every node that keeps saved requests, the connected nodes first. */

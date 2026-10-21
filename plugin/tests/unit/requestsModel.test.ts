@@ -8,6 +8,40 @@ import {
 import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 
 beforeEach(() => forgetRequestSecrets())
+it('recovers a timed-out status read without resending a held request', async () => {
+  const node = fakeNode()
+  const model = new RequestsModel(node.rpc, 'project-1', ports())
+  await model.load()
+  vi.spyOn(node.rpc, 'status').mockRejectedValueOnce(
+    Object.assign(new Error('request_timeout'), { code: 'request_timeout' })
+  )
+  const outcome = await model.send('Samples/Create sample.http', { interactive: true })
+  expect(outcome.kind).toBe('answered')
+  expect(node.sent).toHaveLength(1)
+})
+
+it('refreshes externally copied request files and stops following when the view closes', async () => {
+  vi.useFakeTimers()
+  const node = fakeNode()
+  const model = new RequestsModel(node.rpc, 'project-1', ports())
+  await model.load()
+  const list = vi.spyOn(node.rpc, 'list')
+  const stop = model.followList(() => true)
+  try {
+    node.files.set('Samples/External.http', doc({ name: 'External' }))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(
+      model.state.collections.flatMap((c) => c.requests).some((r) => r.name === 'External')
+    ).toBe(true)
+    stop()
+    const reads = list.mock.calls.length
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(list).toHaveBeenCalledTimes(reads)
+  } finally {
+    stop()
+    vi.useRealTimers()
+  }
+})
 
 describe('the requests of a project', () => {
   it('keeps an answer to a request edited during sending in history rather than under the new address', async () => {

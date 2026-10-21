@@ -279,6 +279,29 @@ export class RequestsModel {
     this.state.environments = list.environments
   }
 
+  /** Files can arrive from outside this client; follow only while the Requests view is open. */
+  followList(online: () => boolean): () => void {
+    let stopped = false
+    let timer: number | undefined
+    const schedule = () => {
+      if (!stopped) timer = window.setTimeout(() => void refresh(), 5000)
+    }
+    const refresh = async () => {
+      try {
+        if (online() && !this.state.loading) await this.refreshList()
+      } catch (error) {
+        console.debug('[requests] External changes unavailable', error)
+      } finally {
+        schedule()
+      }
+    }
+    schedule()
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+    }
+  }
+
   private collectionsWithEdits(collections: RequestList['collections']) {
     return collections.map((collection) => ({
       ...collection,
@@ -294,7 +317,7 @@ export class RequestsModel {
     await this.refreshList()
   }
 
-  async create(collection: string, name: string, doc?: Partial<RequestDoc>) {
+  async create(collection: string, name: string, doc?: Partial<RequestDoc>, refresh = true) {
     const id = requestIdFor(collection, name)
     await this.rpc.save(
       this.projectId,
@@ -311,7 +334,7 @@ export class RequestsModel {
       },
       { create: true }
     )
-    await this.refreshList()
+    if (refresh) await this.refreshList()
     return id
   }
 
@@ -409,7 +432,7 @@ export class RequestsModel {
         }
       }
       const keyed = await this.ports.keys.prepare(out, options.interactive, options.signal)
-      const recording = this.ports.recording()
+      const recording = this.ports.recording(keyed.out.url)
       const into = (options.intoRecording ?? this.state.intoRecording) && recording
       const started = await this.rpc.send(this.projectId, {
         requestId: id,

@@ -1,4 +1,5 @@
 export const streamC = {
+  'debug.requestsImporting': 'Importē pieprasījumus…',
   'debug.httpIncoming': 'Ienākošs',
   'debug.httpOutgoing': 'Izejošs',
   'debug.httpOpenRecorded': 'Atvērt ierakstīto pieprasījumu',

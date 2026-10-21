@@ -108,17 +108,28 @@ export async function followSend(
   signal?: AbortSignal
 ): Promise<SendStatus> {
   let delay = 100
+  let failedReads = 0
   for (;;) {
     let status: SendStatus
     try {
       status = await rpc.status(projectId, sendId)
     } catch (e) {
       console.debug('[requests] Send not followed', e)
+      const code = e && typeof e === 'object' && 'code' in e ? e.code : undefined
+      if (
+        !signal?.aborted &&
+        (code === 'request_timeout' || (e instanceof Error && e.message === 'request_timeout')) &&
+        ++failedReads <= 2
+      ) {
+        // Read the existing send again; never dispatch the HTTP request a second time.
+        await wait(1000)
+        continue
+      }
       return {
         send: { id: sendId, at: new Date().toISOString(), method: 'GET', url: '' },
         outcome: {
           state: 'unknown',
-          reason: `The node went away before the answer came (${reasonOf(e)}). It may have gone through; it is not sent again by itself.`,
+          reason: reasonOf(e),
           after_ms: 0,
         },
       }

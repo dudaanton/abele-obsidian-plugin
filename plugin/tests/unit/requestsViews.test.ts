@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import type { App, WorkspaceLeaf } from 'obsidian'
+import { Notice, type App, type WorkspaceLeaf } from 'obsidian'
 import { RequestsModel } from '@/requests/RequestsModel'
 import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 import { useVault } from '../helpers/testEnv'
@@ -20,9 +20,32 @@ vi.mock('@/requests/RequestsService', async () => {
   }
 })
 vi.mock('@/views/revealSidebarView', () => ({ revealSidebarView: vi.fn(async () => {}) }))
-import { RequestTab, openRequestsView } from '@/requests/views'
+import { RequestTab, openRequestsView, importFromClipboard } from '@/requests/views'
 
 beforeEach(() => useVault([]))
+
+it('shows import progress immediately and prevents a second import until it finishes', async () => {
+  let finish!: (value: string) => void
+  const readText = vi
+    .fn(async () => 'invalid sample')
+    .mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve
+        })
+    )
+  vi.stubGlobal('navigator', { clipboard: { readText } })
+  const pending = importFromClipboard()
+  try {
+    await importFromClipboard()
+    expect(readText).toHaveBeenCalledOnce()
+    expect(Notice.shown.at(-1)).toBe('Importing requests…')
+  } finally {
+    finish('invalid sample')
+    await pending
+    vi.unstubAllGlobals()
+  }
+})
 
 it('includes the collection in otherwise identical request tab titles', async () => {
   const node = fakeNode()

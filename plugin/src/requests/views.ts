@@ -43,7 +43,7 @@ import {
 } from './actions'
 import { keyPort, RequestsService, RequestsContextSchema } from './RequestsService'
 import type { RequestsModel } from './RequestsModel'
-import { pairsForView } from './resolve'
+import { addressOf, pairsForView } from './resolve'
 import type { Pair, RequestDoc } from './wire'
 import { ScriptService } from '@/scripting/ScriptService'
 import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPicker'
@@ -129,6 +129,14 @@ const Sidebar = defineComponent({
     }
     onMounted(load)
     watch(context, load)
+    watch(
+      model,
+      (current, _previous, cleanup) => {
+        if (current)
+          cleanup(current.followList(() => connection.value?.state.value === 'connected'))
+      },
+      { immediate: true }
+    )
     watch(
       () => connection.value?.state.value,
       (state, was) => {
@@ -362,7 +370,7 @@ export class RequestTab extends ItemView {
             const entry = model.entry(s.id)
             const doc = entry.doc
             if (!doc) return h(EmptyState, { text: entry.error ?? 'Reading the request…' })
-            const recording = service.recording(s).value
+            const recording = service.recording(s, addressOf(doc, model.vars(doc, true))).value
             const binding = DebuggerService.instance.active.value
             if (binding) void binding.revision.value
             const session =
@@ -512,13 +520,17 @@ export async function openRequestsView(obsidian: App = app(), pickOpenProject = 
 
 /** A .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request copied:
  * into the project the Requests view shows. */
-async function importFromClipboard() {
+let importing = false
+export async function importFromClipboard() {
+  if (importing) return
   const service = RequestsService.instance()
   const c = service.context.value
   if (!c) {
     new Notice('Choose a project in the requests view first')
     return
   }
+  importing = true
+  const progress = new Notice(t('debug.requestsImporting'), 0)
   try {
     const text = await navigator.clipboard.readText()
     const { importRequests } = await import('./importers')
@@ -537,5 +549,8 @@ async function importFromClipboard() {
     new Notice(importWords(outcome, model.state.environment), 10000)
   } catch (e) {
     say(e, 'Nothing imported')
+  } finally {
+    importing = false
+    progress.hide()
   }
 }
