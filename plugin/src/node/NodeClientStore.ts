@@ -226,7 +226,12 @@ export class NodeClientStore implements ClientStore {
           flush = db.transaction('client', 'readwrite', { durability: 'strict' })
         } catch (error) {
           // A handler may start only after its receipt has reached a strict commit.
-          if (executionIntent) return reject(error)
+          if (executionIntent)
+            return reject(
+              error instanceof Error
+                ? error
+                : new Error('Node receipt flush failed', { cause: error })
+            )
           // The store is closing: the commit happened, the flush is up to the browser now.
           return resolve(result)
         }
