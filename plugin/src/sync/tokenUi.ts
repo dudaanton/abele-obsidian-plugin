@@ -938,9 +938,9 @@ export class TokenUi {
       do {
         const page = await this.client(recordId)
           .manifest(next)
-          .catch((error: unknown) => {
+          .catch((error: unknown): { items: { path: string }[]; next: string | null } => {
             if (allowGone && (error as { code?: string })?.code === 'scope_deleted')
-              return { items: [] as { path: string }[], next: null as string | null }
+              return { items: [], next: null }
             throw error
           })
         paths.push(...page.items.map((one) => one.path))
