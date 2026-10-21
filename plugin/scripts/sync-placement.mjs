@@ -36,9 +36,9 @@ async function* inventoryDirectories(fs) {
   if (read) yield* await read.call(fs, true);
   else yield* fs.listDirectories();
 }
-async function inventoryChildren(fs, parent, path) {
+async function inventoryChildren(fs, parent, path, filesOnly = false) {
   const read = fs[Symbol.for('abele.sync.inventory-children-v1')];
-  return read ? read.call(fs, parent, path) : fs.listChildren(parent);
+  return read ? read.call(fs, parent, path, filesOnly) : fs.listChildren(parent);
 }
 `
 export function syncPlacementPlugin() {
@@ -106,6 +106,7 @@ export function syncPlacementPlugin() {
           this.placer.adoptionCandidates ??= new Map();
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
             const wanted = [];
+            const siblings = new Map();
             for (const change of changes) {
               if (change.sha === null || change.op === 'delete' || change.size === null ||
                   change.size > this.placer.budget.maxChunkBytes || this.passedOver(change)) continue;
@@ -121,7 +122,19 @@ export function syncPlacementPlugin() {
                 let target;
                 try { target = inventory.resolve(change.path, 'file'); }
                 catch { continue; }
-                const exists = await this.fs.stat(target) !== null;
+                let exists;
+                if (this.fs[Symbol.for('abele.sync.inventory-children-v1')]) {
+                  const parent = target.slice(0, Math.max(0, target.lastIndexOf('/')));
+                  let names = siblings.get(parent);
+                  if (!names) {
+                    // Reuse the pull's parent inventory once, rather than adding a bridge
+                    // stat for every absent target. Placement still performs live checks.
+                    names = new Set((await inventoryChildren(this.fs, parent, target, true))
+                      .map((child) => child.path.normalize('NFC').toLowerCase()));
+                    siblings.set(parent, names);
+                  }
+                  exists = names.has(target.normalize('NFC').toLowerCase());
+                } else exists = await this.fs.stat(target) !== null;
                 this.placer.adoptionCandidates.set(change.file_id, exists);
                 if (exists) continue;
               }

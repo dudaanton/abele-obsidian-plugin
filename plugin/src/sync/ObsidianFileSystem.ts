@@ -294,15 +294,19 @@ export class ObsidianFileSystem implements FileSystem {
   }
   async [Symbol.for('abele.sync.inventory-children-v1')](
     parent: string,
-    target: string
+    target: string,
+    filesOnly = false
   ): Promise<InventoryChild[]> {
     const inventory = this.inventory
     if (!inventory || normalizationPossible(target) || inventory.listings.has(parent))
       return this.listChildren(parent)
-    let children = inventory.indexedChildren.get(parent)
+    let children = filesOnly ? undefined : inventory.indexedChildren.get(parent)
     if (children === undefined) {
       children = (async () => {
-        const directories = await this[INVENTORY_DIRECTORIES]()
+        // Download preflight needs only file membership, not directory identities.
+        // Do not populate the full placement inventory with this narrower snapshot.
+        const indexedOnly = filesOnly && !target.split('/').some((part) => part.startsWith('.'))
+        const directories = indexedOnly ? [] : await this[INVENTORY_DIRECTORIES]()
         // Discovery may itself have revealed a Unicode alias at this parent.
         if (inventory.listings.has(parent)) return this.listChildren(parent)
         const node = (
@@ -335,7 +339,7 @@ export class ObsidianFileSystem implements FileSystem {
             .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
         ]
       })()
-      inventory.indexedChildren.set(parent, children)
+      if (!filesOnly) inventory.indexedChildren.set(parent, children)
     }
     return (await children).map((one) => ({ ...one }))
   }
