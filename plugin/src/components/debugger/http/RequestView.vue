@@ -361,9 +361,8 @@
           role="status"
         >
           <Icon icon="circle-help" size="xs" no-hover />
-          <span>{{
-            outcome.reason ?? t('streamC.c43b098892a1b5a1', { v1: String(outcome.after) })
-          }}</span>
+          <NodeErrorText v-if="outcome.reason" :error="outcome.reason" />
+          <span v-else>{{ t('streamC.c43b098892a1b5a1', { v1: String(outcome.after) }) }}</span>
         </div>
         <div
           v-else-if="outcome?.kind === 'sending'"

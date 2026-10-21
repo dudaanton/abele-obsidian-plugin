@@ -255,6 +255,19 @@ describe('a saved request in its tab', () => {
     })
     expect(view.text()).toContain('it is not sent again by itself')
   })
+  it('explains an uncertain channel result and retains its diagnostic code', () => {
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        outcome: { kind: 'unknown', after: 'time', reason: 'outcome_unknown' },
+      },
+    })
+    expect(view.get('.abele-http-request__notice').text()).toContain('result')
+    expect(view.get('.abele-http-request__notice').text()).toContain('outcome_unknown')
+    view.unmount()
+  })
 })
 
 describe('a request and a recording', () => {
