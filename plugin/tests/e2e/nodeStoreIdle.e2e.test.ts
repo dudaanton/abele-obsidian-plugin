@@ -26,7 +26,7 @@ it('measures idle polling before and after migrating a large synthetic client st
       const original=IDBObjectStore.prototype.get;
       IDBObjectStore.prototype.get=function(key){if(this.name==='client'&&key==='state')reads++;return original.call(this,key)};
       try {
-        while(performance.now()-start<2500){await tick();ticks++;peakHeap=Math.max(peakHeap??0,heap()??0);await wait(25)}
+        while(performance.now()-start<2500){await tick();ticks++;const sampled=heap();if(sampled!==null)peakHeap=Math.max(peakHeap??0,sampled);await wait(25)}
       } finally {IDBObjectStore.prototype.get=original}
       const elapsedMs=performance.now()-start,used=before?cpu.cpuUsage(before):null;
       return {ticks,reads,elapsedMs,heapBefore,heapAfter:heap(),peakHeap,cpuMs:used?(used.user+used.system)/1000:null};

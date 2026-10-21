@@ -12,10 +12,9 @@ import { shotDir } from './helpers/shots'
 targets('desktop', 'phone')
 const shots = shotDir('abele-node-commit')
 
-it('shows real staged files and folded patches, including empty and unavailable states', async () => {
+async function inspectCommit(label: string) {
   const node = await startPairedNode()
   const project = join(dirname(node.state), 'sample-project')
-  const label = onPhone() ? 'phone' : 'desktop'
   const setup = `const api=window.__abeleTest,chats=api.ChatService.getInstance(),client=api.NodeService.getInstance().connection(${JSON.stringify(node.registration)}).client;`
   try {
     const open = async () =>
@@ -67,17 +66,27 @@ it('shows real staged files and folded patches, including empty and unavailable 
       `(()=>{${setup}const session=chats.activeSession.value;session.updateChatMessage(m=>m.toolCallId==='sample-commit',m=>({...m,toolParams:{...window.__sampleCommitArgs,expected_head:'b'.repeat(40)}}));session.updateVisibleMessages()})()`
     )
     await inspect('stale', 'The folder or worktree has changed')
-    if (!onPhone()) {
-      try {
-        await enterPhone()
-        await open()
-        await inspect('phone-emulated', long)
-      } finally {
-        await reloadApp('app.emulateMobile(false)')
-      }
-    }
   } finally {
-    await evalLong('window.__abeleTest.closeRegularChatFixture();delete window.__sampleCommitArgs')
+    await evalLong(
+      '(async()=>{await window.__abeleTest.closeRegularChatFixture();delete window.__sampleCommitArgs})()'
+    )
     await node.close()
   }
+}
+
+it('shows real staged files and folded patches, including empty and unavailable states', async () => {
+  await inspectCommit(onPhone() ? 'phone' : 'desktop')
 }, 240000)
+
+it.skipIf(onPhone())(
+  'fits the phone layout',
+  async () => {
+    try {
+      await enterPhone()
+      await inspectCommit('phone-emulated')
+    } finally {
+      await reloadApp('app.emulateMobile(false)')
+    }
+  },
+  240000
+)
