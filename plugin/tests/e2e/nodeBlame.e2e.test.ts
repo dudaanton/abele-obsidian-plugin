@@ -71,8 +71,15 @@ async function scenario(layout: string) {
           const scroll=root.querySelector('.abele-node-main');
           scroll.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:100}));
           scroll.scrollTop=scroll.scrollHeight;
-          await until(()=>[...root.querySelectorAll('.abele-github-blame-range__name')].some(el=>el.textContent==='Uncommitted'),'Attribution after line 1500');
+          await until(()=>{
+            scroll.scrollTop=scroll.scrollHeight;
+            return [...root.querySelectorAll('.abele-github-blame-range__name')].some(el=>el.textContent==='Uncommitted');
+          },'Attribution after line 1500').catch(async error=>{
+            require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'-missing-final-line.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+            throw Error(String(error)+'; '+JSON.stringify({top:scroll.scrollTop,height:scroll.scrollHeight,client:scroll.clientHeight,lines:[...root.querySelectorAll('.cm-line')].map(el=>el.textContent),authors:[...root.querySelectorAll('.abele-github-blame-range__name')].map(el=>el.textContent)}));
+          });
           await until(()=>[...root.querySelectorAll('.cm-line')].some(el=>el.textContent.includes('uncommitted final line')),'Final source line');
+          require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'-last-line.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
           return JSON.stringify({author:authorName,pressed:toggle.getAttribute('aria-pressed'),errors:[...root.querySelectorAll('[role=alert]')].map(el=>el.textContent)});
         } finally {leaf.detach()}
       })()`)

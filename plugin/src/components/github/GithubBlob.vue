@@ -394,13 +394,25 @@ watch(
     props.file.path,
     props.text,
   ],
-  () => {
+  (values, previous) => {
     blameRanges.value = null
     if (rereading) return
+    const keepBlame =
+      blaming.value &&
+      source.value?.identity.provider === 'node' &&
+      values.slice(0, 4).every((value, index) => value === previous[index]) &&
+      values[5] === previous[5] &&
+      typeof values[4] === 'string' &&
+      values[4].startsWith('working-') &&
+      typeof previous[4] === 'string' &&
+      previous[4].startsWith('working-')
     ++blameRequest
-    blaming.value = false
     blameBusy.value = false
     blameError.value = ''
+    if (keepBlame) {
+      console.debug('[github] Refreshing line blame for working file', props.file.path)
+      void askBlame()
+    } else blaming.value = false
   }
 )
 onBeforeUnmount(() => {

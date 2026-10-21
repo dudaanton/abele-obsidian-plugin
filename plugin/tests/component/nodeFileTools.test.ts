@@ -218,6 +218,21 @@ describe('node file repository tools', () => {
     expect(freshBlame).toHaveBeenCalledWith('working-fresh', 'sample.ts')
     expect(view.get('[aria-label="Toggle line blame"]').attributes('aria-pressed')).toBe('true')
   })
+  it('refreshes enabled blame when the same working file receives new bytes', async () => {
+    const { view, source } = setup()
+    await flushPromises()
+    await view.get('[aria-label="Toggle line blame"]').trigger('click')
+    await flushPromises()
+    const blame = vi.fn().mockResolvedValue([])
+    await view.setProps({
+      text: 'const sample = 2\nconst added = true',
+      revision: 'working-updated',
+      repository: { ...source, cacheNamespace: 'updated-source', blame },
+    } as never)
+    await flushPromises()
+    expect(blame).toHaveBeenCalledWith('working-updated', 'sample.ts')
+    expect(view.get('[aria-label="Toggle line blame"]').attributes('aria-pressed')).toBe('true')
+  })
   it('routes rendered working-file links through the ordinary file navigation binding', async () => {
     const { source } = setup()
     const navigate = vi.fn(() => true)
