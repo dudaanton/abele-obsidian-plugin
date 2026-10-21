@@ -1,6 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { addFolderDebugMenu, folderDebugReason, commandTarget } from '@/debugger/folderActions'
+import {
+  addFolderDebugMenu,
+  folderDebugReason,
+  commandTarget,
+  registerFolderDebugCommands,
+} from '@/debugger/folderActions'
 import { NodePathService } from '@/node/NodePathService'
 import { NodeService } from '@/node/NodeService'
 import type { Menu } from 'obsidian'
@@ -62,6 +67,39 @@ it('resolves a folder for commands before the Node sidebar has ever opened', asy
     model: () => ({ current: ref(target) }),
   } as never)
   expect(await commandTarget()).toEqual(target)
+})
+
+it('uses the known folder while the initial file-tree read is still pending', async () => {
+  const target = owner().target
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    ready: vi.fn(() => new Promise<void>(() => {})),
+    model: () => ({ current: ref(target) }),
+  } as never)
+  const deadline = new Promise((resolve) => window.setTimeout(() => resolve('still waiting'), 25))
+  expect(await Promise.race([commandTarget(), deadline])).toEqual(target)
+})
+
+it('handles folder startup failures in the command instead of rejecting silently', async () => {
+  const target = owner().target
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: target.registrationId }]),
+  } as never)
+  vi.spyOn(NodePathService, 'getInstance').mockReturnValue({
+    model: () => ({ current: ref(undefined) }),
+    ready: vi.fn(async () => {
+      throw new Error('offline')
+    }),
+  } as never)
+  const commands: { id: string; callback: () => Promise<void> }[] = []
+  registerFolderDebugCommands({
+    addCommand: (command: (typeof commands)[number]) => commands.push(command),
+  } as never)
+  await expect(
+    commands.find((command) => command.id === 'node-folder-debug-attach')!.callback()
+  ).resolves.toBeUndefined()
 })
 
 // Native menus freeze their rows at show time, ignoring subsequent item mutations.

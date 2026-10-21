@@ -9,6 +9,41 @@ vi.mock('@/stores/GlobalStore', () => ({
 }))
 
 const service = new DebuggerService()
+it('retains breakpoint paths learned from stack metadata without requiring an open file tab', () => {
+  const owner = {
+    kind: 'folder-debug',
+    target: {
+      registrationId: 'sample-registration',
+      nodeId: 'sample-node',
+      projectId: 'sample-project',
+      kind: 'worktree',
+      id: 'sample-tree',
+    },
+    connection: { state: ref('connected') },
+  } as unknown as FolderDebugOwner
+  const binding = service.binding(owner, 'sample-debug')
+  binding.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-point',
+          source_id: 'sample-source',
+          line: 5,
+          status: 'verified',
+          resolved_line: 5,
+          resolved_column: null,
+          message: null,
+        },
+      ],
+    }),
+  })
+  binding.controller.registerSource('sample-source', 'src/sample.ts')
+  service.select(binding)
+  expect(service.selectionState()).toMatchObject({
+    sources: [{ sourceId: 'sample-source', path: 'src/sample.ts', sessionId: 'sample-debug' }],
+  })
+})
 it('brings a newly paused peer forward only within the selected folder', () => {
   const owner = {
     kind: 'folder-debug',

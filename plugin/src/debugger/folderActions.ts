@@ -6,6 +6,7 @@ import { NodePathService } from '@/node/NodePathService'
 import type { PathTarget } from '@/node/NodePathModel'
 import { NodePathTabSchema } from '@/node/nodePathNavigation'
 import { nodeDebuggerSupported } from '@/node/providers'
+import { nodeErrorWords } from '@/node/errorWords'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { debugOwnerParams, type FolderDebugOwner } from './owner'
 import { startNodeProgram, attachNodeProgram, openNodeDebugger } from './register'
@@ -176,6 +177,8 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
     ?.registrationId
   const paths = NodePathService.getInstance()
   if (registrationId) {
+    const known = paths.model(registrationId).current.value
+    if (known) return known
     await paths.ready(registrationId)
     const current = paths.model(registrationId).current.value
     if (current) return current
@@ -183,6 +186,8 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
   // Commands are available before the sidebar creates a path model. Restore its remembered
   // folder and load the node's folders when this device has no remembered selection yet.
   for (const node of NodeService.getInstance().nodes.value) {
+    const known = paths.model(node.id).current.value
+    if (known) return known
     await paths.ready(node.id)
     const target = paths.model(node.id).current.value
     if (target) return target
@@ -191,9 +196,14 @@ export async function commandTarget(): Promise<PathTarget | undefined> {
 }
 export function registerFolderDebugCommands(plugin: Plugin): void {
   const callback = (action: 'open' | 'run' | 'attach') => async () => {
-    const target = await commandTarget()
-    if (target) void runFolderDebug(target, action)
-    else new Notice(t('debug.noFolder'))
+    try {
+      const target = await commandTarget()
+      if (target) await runFolderDebug(target, action)
+      else new Notice(t('debug.noFolder'))
+    } catch (error) {
+      console.debug('[debugger] Folder command unavailable', error)
+      new Notice(error instanceof Error ? nodeErrorWords(error.message) : t('debug.noFolder'))
+    }
   }
   // Each name is a literal t() call so the command reference test can resolve it.
   plugin.addCommand({

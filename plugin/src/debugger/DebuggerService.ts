@@ -540,12 +540,30 @@ export class DebuggerService {
         )
         .slice(0, 256),
       sources: peers
-        .flatMap((peer) =>
-          [...(this.sources.get(this.key(peer.registrationId, peer.conversationId)) ?? [])].filter(
-            ([, source]) =>
-              source.debugSessionId === (peer === binding ? sessionId : peer.sessionId)
+        .flatMap((peer) => {
+          const id = peer === binding ? sessionId : peer.sessionId
+          const known = new Map(
+            [
+              ...(this.sources.get(this.key(peer.registrationId, peer.conversationId)) ?? []),
+            ].filter(([, source]) => source.debugSessionId === id)
           )
-        )
+          const incarnation = peer.controller.snapshot?.incarnation
+          if (id && incarnation)
+            for (const point of peer.controller.knownBreakpoints()) {
+              if (
+                known.has(point.sourceId) ||
+                point.file === point.sourceId ||
+                /^(?:\/|[a-z]+:)|(?:^|\/)\.\.(?:\/|$)/i.test(point.file)
+              )
+                continue
+              known.set(point.sourceId, {
+                path: point.file,
+                debugSessionId: id,
+                incarnation,
+              })
+            }
+          return [...known]
+        })
         .slice(0, 256)
         .map(([sourceId, source]) => ({
           sourceId,
