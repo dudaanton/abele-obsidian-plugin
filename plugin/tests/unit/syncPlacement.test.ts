@@ -58,8 +58,9 @@ it('reports a stale nested installation before trying placement boundaries', () 
   )
 })
 it.each([0, 2])('fails closed with the file, boundary and count %i', (count) => {
-  const { id } = sample()
-  expect(() => syncPlacementPlugin().transform('async cycle() {'.repeat(count), id)).toThrow(
+  const { id, input } = sample()
+  const damaged = input.replace('async cycle() {', 'async cycle() {'.repeat(count))
+  expect(() => syncPlacementPlugin().transform(damaged, id)).toThrow(
     `Unsupported sync placement boundary in ${id}: "async cycle() {"; found ${count}, expected 1`
   )
 })
