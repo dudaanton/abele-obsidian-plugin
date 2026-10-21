@@ -14,8 +14,20 @@ import { targets } from './helpers/target'
 targets('desktop')
 const available = isObsidianRunning() && hasTestApi()
 const shots = shotDir('abele-node-obsidian-tools')
+const originalBounds = available
+  ? evalJson<Record<string, number>>("require('@electron/remote').getCurrentWindow().getBounds()")
+  : undefined
 afterAll(async () => {
-  if (available && evalJson<boolean>('!!app.isMobile')) await reloadApp('app.emulateMobile(false)')
+  try {
+    if (available && evalJson<boolean>('!!app.isMobile'))
+      await reloadApp('app.emulateMobile(false)')
+  } finally {
+    if (originalBounds) {
+      evalRaw(
+        `require('@electron/remote').getCurrentWindow().setBounds(${JSON.stringify(originalBounds)})`
+      )
+    }
+  }
 })
 
 it.skipIf(!available).each([
