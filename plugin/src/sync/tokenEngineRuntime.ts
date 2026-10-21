@@ -302,6 +302,13 @@ export class TokenEngineRuntime
       }
     )
     const comparing = (value?: { completed: number; total: number }) => {
+      if (
+        value &&
+        this.progress.stage === 'Downloading' &&
+        this.progress.settled &&
+        !this.pendingFolders.size
+      )
+        this.progress.clear()
       // A local read may also happen during a pull or upload; retain that active transfer.
       if (!this.progress.stage)
         activityLog.update(

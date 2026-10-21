@@ -1700,51 +1700,65 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
   }
 })
 
-it('reports comparison phases and thirty-second updates while a local fingerprint is blocked', async () => {
-  const wire = await server('Notes/unused.md', '')
-  const send = wire.fetch.getMockImplementation()!
-  wire.fetch.mockImplementation(async (input, init) =>
-    new URL(String(input)).pathname === '/v2/manifest'
-      ? Response.json({ items: [], cursor: 1, next: null })
-      : send(input, init)
-  )
-  const fs = new MemoryFileSystem()
-  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
-  const read = fs.read.bind(fs)
-  let release!: () => void,
-    blocked = false
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  Object.assign(fs, {
-    fingerprint: async (path: string) => {
-      if (!blocked) {
-        blocked = true
-        await gate
+it.each([false, true])(
+  'reports long comparison progress after the pull (download first=%s)',
+  async (downloadFirst) => {
+    const wire = await server('Notes/remote.md', 'remote bytes')
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) =>
+      !downloadFirst && new URL(String(input)).pathname === '/v2/manifest'
+        ? Response.json({ items: [], cursor: 1, next: null })
+        : send(input, init)
+    )
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
+    const read = fs.read.bind(fs)
+    let release!: () => void,
+      blocked = false
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    Object.assign(fs, {
+      fingerprint: async (path: string) => {
+        if (path === 'Notes/local.md' && !blocked) {
+          blocked = true
+          await gate
+        }
+        const bytes = await read(path)
+        return { size: bytes.length, sha: await sha256(bytes) }
+      },
+    })
+    const events: string[] = []
+    let transfer: TransferSnapshot | undefined
+    vi.useFakeTimers()
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      event: (line) => events.push(line),
+      progress: (value) => {
+        transfer = value
+      },
+    })
+    const sync = one.runtime.sync()
+    try {
+      await vi.waitFor(() => expect(blocked).toBe(true))
+      if (downloadFirst) {
+        expect(new TextDecoder().decode(await fs.read('Notes/remote.md'))).toBe('remote bytes')
+        expect(events).toContain('Downloaded Notes/remote.md')
       }
-      const bytes = await read(path)
-      return { size: bytes.length, sha: await sha256(bytes) }
-    },
-  })
-  const events: string[] = []
-  vi.useFakeTimers()
-  const one = runtime(wire, fs, undefined, undefined, null, { event: (line) => events.push(line) })
-  const sync = one.runtime.sync()
-  try {
-    await vi.waitFor(() => expect(blocked).toBe(true))
-    expect(events).toContainEqual(expect.stringContaining('Comparing files: started'))
-    await vi.advanceTimersByTimeAsync(31000)
-    expect(events).toContainEqual(expect.stringMatching(/^Comparing files · 0 of 1 file$/))
-    release()
-    await sync
-    expect(events).toContainEqual(expect.stringContaining('Comparing files: ended'))
-  } finally {
-    release()
-    await sync.catch(() => {})
-    await one.runtime.close()
-    vi.useRealTimers()
+      expect(events).toContainEqual(expect.stringContaining('Comparing files: started'))
+      expect(transfer).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(31000)
+      expect(events.at(-1)).toBe(`Comparing files · 0 of ${downloadFirst ? '2 files' : '1 file'}`)
+      release()
+      await sync
+      expect(events).toContainEqual(expect.stringContaining('Comparing files: ended'))
+    } finally {
+      release()
+      await sync.catch(() => {})
+      await one.runtime.close()
+      vi.useRealTimers()
+    }
   }
-})
+)
 
 it('does not invent a local match when applying a new empty remote file', async () => {
   const wire = await server('Notes/empty.md', '')

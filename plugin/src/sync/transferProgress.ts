@@ -38,6 +38,10 @@ export class TransferProgress {
   get stage(): string | undefined {
     return this.snapshot?.stage
   }
+  get settled(): boolean {
+    const one = this.snapshot
+    return one?.totalKnown === true && one.total !== undefined && one.completed >= one.total
+  }
   phase(stage: string): void {
     if (!this.snapshot) return
     this.snapshot.stage = stage
