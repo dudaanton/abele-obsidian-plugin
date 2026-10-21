@@ -123,14 +123,26 @@ export class NodeObsidianExecutor {
       else if (this.host.hosted) await this.host.hosted(i, signal)
       else throw new Error('The node conversation host is unavailable')
     }
-    // Hosted calls own their terminal result on the node, including the claim/open crash gap.
-    if (hosted && ['reconcile', 'hosted', 'cancel'].includes(i.action)) {
+    const saved = await this.host.receipt(i.invocation_id)
+    // Only locally admitted work can resume across the claim/open crash gap.
+    // A hosted envelope alone is not evidence that this device checked policy.
+    if (
+      hosted &&
+      saved?.state === 'executing' &&
+      saved.sessionId === i.session_id &&
+      saved.runId === i.run_id &&
+      ['reconcile', 'hosted', 'cancel'].includes(i.action)
+    ) {
+      signal.throwIfAborted()
       if (i.action !== 'cancel' && !i.cancel_requested) await openHosted()
       else if (i.tool_name === 'delegate') await this.host.hosted?.(i, signal)
       return
     }
-    const saved = await this.host.receipt(i.invocation_id)
-    if (saved || i.action === 'reconcile' || (i.action === 'cancel' && i.state === 'executing')) {
+    if (
+      saved ||
+      i.action === 'reconcile' ||
+      ((i.action === 'cancel' || i.cancel_requested) && i.state === 'executing')
+    ) {
       const receipt =
         saved && saved.state !== 'executing'
           ? saved

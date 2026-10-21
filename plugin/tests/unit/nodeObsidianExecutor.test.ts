@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   NodeObsidianExecutor,
+  ObsidianNotExecuted,
   type ObsidianInvocation,
   type ObsidianExecutionReceipt,
   type ObsidianToolAdapter,
@@ -41,17 +42,105 @@ function setup() {
     if (method.endsWith('.prepare')) return invocation()
     return { ...invocation(), ...params }
   })
+  const hosted = vi.fn(async () => {})
   const executor = new NodeObsidianExecutor({
     clientId: 'client-1',
     vaultId: 'vault-1',
     request,
+    hosted,
     receipt: async (id) => receipts.get(id),
     save,
     resolve: async () => ({ revision: 'revision-1', prepare, execute }),
   })
-  return { executor, execute, prepare, request, receipts, save }
+  return { executor, execute, prepare, request, receipts, save, hosted }
 }
 describe('node Obsidian executor', () => {
+  it.each(['questions', 'delegate'])(
+    'requires fresh approval evidence for hosted %s',
+    async (tool_name) => {
+      const s = setup()
+      s.prepare.mockResolvedValueOnce({ preview: invocation().preview!, needsApproval: true })
+      await s.executor.accept(invocation({ tool_name, action: 'hosted' }))
+      expect(s.request).toHaveBeenCalledExactlyOnceWith(
+        'obsidian.tools.v1.prepare',
+        expect.objectContaining({ needs_approval: true })
+      )
+      expect(s.hosted).not.toHaveBeenCalled()
+      expect(s.save).not.toHaveBeenCalled()
+    }
+  )
+  it('persists admission before opening fresh hosted delegation', async () => {
+    const s = setup()
+    s.hosted.mockImplementationOnce(async () => {
+      expect(s.prepare).toHaveBeenCalledOnce()
+      expect(s.receipts.get('invocation-1')).toMatchObject({
+        state: 'executing',
+        sessionId: 'session-1',
+        runId: 'run-1',
+      })
+    })
+    await s.executor.accept(invocation({ tool_name: 'delegate', action: 'hosted' }))
+    expect(s.hosted).toHaveBeenCalledOnce()
+  })
+  it('does not open fresh hosted delegation when durable admission fails', async () => {
+    const s = setup()
+    s.save.mockRejectedValueOnce(new Error('Storage unavailable'))
+    await expect(
+      s.executor.accept(invocation({ tool_name: 'delegate', action: 'hosted' }))
+    ).rejects.toThrow('Storage unavailable')
+    expect(s.hosted).not.toHaveBeenCalled()
+  })
+  it.each(['questions', 'delegate'])(
+    'checks policy before receiptless hosted %s',
+    async (tool_name) => {
+      const s = setup()
+      s.prepare.mockRejectedValueOnce(new ObsidianNotExecuted('Tool disabled or depth exhausted'))
+      await s.executor.accept(invocation({ tool_name, action: 'hosted', state: 'executing' }))
+      expect(s.prepare).toHaveBeenCalledOnce()
+      expect(s.hosted).not.toHaveBeenCalled()
+      expect(s.request.mock.calls.some(([m]) => m.endsWith('.questions.open'))).toBe(false)
+    }
+  )
+  it.each(['questions', 'delegate'])(
+    'settles receiptless %s recovery without starting',
+    async (tool_name) => {
+      const s = setup()
+      await s.executor.accept(invocation({ tool_name, action: 'reconcile', state: 'executing' }))
+      expect(s.hosted).not.toHaveBeenCalled()
+      expect(s.request.mock.calls.some(([m]) => m.endsWith('.questions.open'))).toBe(false)
+      expect(s.request).toHaveBeenLastCalledWith(
+        'obsidian.tools.v1.complete',
+        expect.objectContaining({ state: 'outcome_unknown' })
+      )
+    }
+  )
+  it.each(['cancel', 'hosted'] as const)(
+    'never starts receiptless cancelled delegation via %s',
+    async (action) => {
+      const s = setup()
+      await s.executor.accept(
+        invocation({ tool_name: 'delegate', action, state: 'executing', cancel_requested: true })
+      )
+      expect(s.hosted).not.toHaveBeenCalled()
+      expect(s.prepare).not.toHaveBeenCalled()
+    }
+  )
+  it('resumes delegation only with an executing receipt belonging to this run', async () => {
+    const s = setup()
+    const i = invocation({ tool_name: 'delegate' })
+    await s.executor.accept(i)
+    await s.executor.accept({ ...i, action: 'hosted' })
+    expect(s.hosted).toHaveBeenCalledTimes(2)
+    expect(s.prepare).toHaveBeenCalledOnce()
+    await s.executor.accept({ ...i, action: 'hosted', run_id: 'other-run' })
+    expect(s.hosted).toHaveBeenCalledTimes(2)
+  })
+  it('never reopens a hosted invocation with a terminal receipt', async () => {
+    const s = setup()
+    s.receipts.set('invocation-1', { state: 'failed', result: {} })
+    await s.executor.accept(invocation({ tool_name: 'questions', action: 'hosted' }))
+    expect(s.request.mock.calls.some(([m]) => m.endsWith('.questions.open'))).toBe(false)
+  })
   it('opens a claimed questionnaire and recovers it without generic completion', async () => {
     const s = setup()
     const i = invocation({ tool_name: 'questions' })
