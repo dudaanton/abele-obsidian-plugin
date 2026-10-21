@@ -27189,6 +27189,16 @@
       "de"
     ]
   },
+  "node.error.workspaceDirty": {
+    "englishHash": "2366f07af8c8044d192d97218d361099006d0804299ecbeff622881a7e1d624c",
+    "context": "Worktree deletion refused because it has uncommitted changes.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
   "node.manager.command": {
     "englishHash": "e1f2e7878ec7c3b0d3fa9f7bd71a5cb73af3caecd796a1f4a57a74fcf66dce18",
     "context": "Node manager approval, pause reason or owner action",

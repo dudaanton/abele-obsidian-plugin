@@ -84,7 +84,6 @@ export const en = {
     'Editing stopped. The file could not be refreshed because the worktree is busy. Refresh when the current action finishes. (resource_busy)',
   'node.error.workspaceDirty':
     'The worktree has uncommitted changes. Commit or discard them before deleting it.',
-  'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
   'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',
   'image.timeLimit.label': 'Image generation time limit',
   'image.timeLimit.unlimited': 'No limit',

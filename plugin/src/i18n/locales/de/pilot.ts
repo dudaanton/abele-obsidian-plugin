@@ -77,8 +77,6 @@ export const de = {
   'node.files.stopSessions': 'Diese Sitzungen stoppen',
   'node.files.sessionsStopped':
     'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
-  'node.error.workspaceDirty':
-    'Der Arbeitsbaum enthält nicht committete Änderungen. Committen oder verwerfen Sie diese vor dem Löschen.',
   'node.error.busy':
     'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
   'node.error.busyStage':
@@ -87,6 +85,8 @@ export const de = {
     'Der Chat konnte nicht gestartet werden, da der Ordner oder Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
   'node.error.busyRead':
     'Bearbeitung beendet. Die Datei konnte nicht aktualisiert werden, da der Worktree belegt ist. Aktualisieren Sie nach Abschluss der aktuellen Aktion. (resource_busy)',
+  'node.error.workspaceDirty':
+    'Der Arbeitsbaum enthält nicht committete Änderungen. Committen oder verwerfen Sie diese vor dem Löschen.',
   'node.codeLineUnavailable': 'Die verlinkten Zeilen existieren in dieser Datei nicht mehr.',
   'image.timeLimit.label': 'Zeitlimit für die Bilderzeugung',
   'image.timeLimit.unlimited': 'Kein Limit',

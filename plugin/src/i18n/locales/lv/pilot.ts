@@ -84,7 +84,6 @@ export const lv = {
     'Rediģēšana apturēta. Failu nevarēja atjaunināt, jo darba koks ir aizņemts. Atjauniniet pēc pašreizējās darbības beigām. (resource_busy)',
   'node.error.workspaceDirty':
     'Darba kokā ir nekomitētas izmaiņas. Pirms dzēšanas komitējiet vai atmetiet tās.',
-  'node.error.busy': 'Šī mape vai darba koks tiek izmantots. Pirms dzēšanas apturiet tā sesijas.',
   'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
   'image.timeLimit.label': 'Attēlu ģenerēšanas laika ierobežojums',
   'image.timeLimit.unlimited': 'Bez ierobežojuma',
