@@ -24,7 +24,10 @@ export function delegatedPermissionMode(own?: string, parent?: string): string {
 }
 
 /** Only owner settings can authorize bypass. Missing capability is never consent. */
-export function ownerPermissionPatch(description: unknown, ownerMode?: string) {
+export function ownerPermissionPatch(
+  description: unknown,
+  ownerMode?: string
+): { permission_mode?: 'manual' | 'bypassPermissions' } {
   const envelope = description as { capabilities?: unknown } | null
   return Description.safeParse(description).success ||
     Description.safeParse(envelope?.capabilities).success
@@ -63,7 +66,7 @@ export async function configureOwnerPermissionMode(
   const patch = ownerPermissionPatch(description, ownerMode)
   if (patch.permission_mode)
     await client.configureSession(session, {
-      permission_mode: patch.permission_mode as 'manual' | 'bypassPermissions',
+      permission_mode: patch.permission_mode,
     })
 }
 
