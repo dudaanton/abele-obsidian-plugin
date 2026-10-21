@@ -170,6 +170,15 @@
               : presenter.answer(prompt, choice, value)
         "
       />
+      <NodeQuestionnaire
+        v-for="prompt in questionnaires"
+        :key="prompt.prompt_id"
+        :prompt="prompt"
+        :disabled="offline"
+        :busy="answeringQuestion === prompt.prompt_id"
+        :error="questionError[prompt.prompt_id]"
+        @answer="(answers) => answerQuestionnaire(prompt, answers)"
+      />
       <div
         v-if="working"
         class="abele-ai-chat__typing"
@@ -305,6 +314,10 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeQuestionnaire from './NodeQuestionnaire.vue'
+import { provide } from 'vue'
+import { obsidianConversationPresentation } from '@/node/obsidianConversationPresentation'
+import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
 import { streamBCount } from '@/i18n/streamBCounts'
@@ -446,6 +459,10 @@ const chooseAgent = () => {
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
 const offline = computed(() => props.presenter.connection.state.value !== 'connected')
+provide(obsidianConversationPresentation, {
+  client: props.presenter.connection.client,
+  revision: computed(() => props.presenter.projection.value),
+})
 const standalonePrompts = computed(() => {
   const projection = props.presenter.projection.value
   const nested = new Set(
@@ -453,8 +470,34 @@ const standalonePrompts = computed(() => {
       .flat()
       .map((p) => p.prompt_id)
   )
-  return projection.prompts.filter((p) => !nested.has(p.prompt_id))
+  return projection.prompts.filter((p) => p.kind !== 'questionnaire' && !nested.has(p.prompt_id))
 })
+const questionnaires = computed(() =>
+  [
+    ...new Map(
+      [
+        ...(props.presenter.connection.obsidian?.questionnaires.value ?? []),
+        ...props.presenter.projection.value.prompts,
+      ].map((prompt) => [prompt.prompt_id, prompt])
+    ).values(),
+  ].filter((prompt) => prompt.kind === 'questionnaire' && prompt.state === 'pending')
+)
+const answeringQuestion = ref('')
+const questionError = ref<Record<string, string>>({})
+async function answerQuestionnaire(prompt: Prompt, answers: QuestionnaireAnswer[] | null) {
+  if (offline.value || answeringQuestion.value) return
+  answeringQuestion.value = prompt.prompt_id
+  delete questionError.value[prompt.prompt_id]
+  try {
+    await props.presenter.connection.client.answerQuestionnaire(prompt, answers)
+    await props.presenter.connection.obsidian?.refreshQuestionnaires()
+    await props.presenter.refresh()
+  } catch (error) {
+    questionError.value[prompt.prompt_id] = error instanceof Error ? error.message : String(error)
+  } finally {
+    answeringQuestion.value = ''
+  }
+}
 /** A long-lived session: how it runs, what it keeps running; null for any other. */
 const live = computed(() => props.presenter.live?.value ?? null)
 /** Something runs now that Stop ends: an answer, a turn the session woke for, a compaction. */

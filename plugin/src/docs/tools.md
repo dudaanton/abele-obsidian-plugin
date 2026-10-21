@@ -1390,7 +1390,11 @@ rolled back. Reconnect reconciles durable execution receipts and never repeats a
 mutation. An unknown outcome requires checking the affected files before requesting another
 action. Oversized previews or results ask for a smaller page or passage.
 
-Conversation-host tools such as `questions` and local `delegate` still require a vault
-conversation context. Enabling their modes does not currently supply that context to a
-node executor; they cannot complete there yet. Native node tools keep their existing
-session context and permissions.
+With the node's questionnaire and delegate-host capabilities, `questions` uses the ordinary
+question cards and recovers pending questionnaires on every owner device of this vault.
+Answers and cancellation settle the call on the node. Local `delegate` reserves its depth,
+root budget and branches durably on the node, then runs private ordinary agent sessions in
+the plugin under the parent's scope and policy ceilings. Each physical branch starts only
+after its first claim. Retained branch history is available from the node chat on other
+devices; an unconfirmed claimed branch is reported as unknown and never restarted blindly.
+Native node delegation and its permissions remain separate.

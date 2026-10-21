@@ -9,7 +9,7 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
 import type { NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
-import { ObsidianToolsSnapshotSchema } from '@abele/node-protocol'
+import { ObsidianToolsSnapshotSchema, PromptSchema } from '@abele/node-protocol'
 
 it('keeps node agent tool settings in ordinary transferable agent definitions without offering them as vault models', () => {
   useVault([])
@@ -27,6 +27,68 @@ it('keeps node agent tool settings in ordinary transferable agent definitions wi
   ).toBe(false)
   agents[0].toolModes.create = 'off'
   expect(ensureNodeAgents('sample-node', 'Sample node', ['claude'])[0].toolModes.create).toBe('off')
+})
+
+it('subscribes before recovering every questionnaire page and answers through the durable SDK helper', async () => {
+  useVault([])
+  AgentRegistry.destroy()
+  AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
+  const prompt = PromptSchema.parse({
+    kind: 'questionnaire',
+    prompt_id: 'sample-questionnaire',
+    session_id: 'another-session',
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    expires_at: Number.MAX_SAFE_INTEGER,
+    state: 'pending',
+    choice: null,
+    installation_id: null,
+    delivered: false,
+    questions: [{ question: 'A sample question', options: ['First', 'Second'] }],
+  })
+  const order: string[] = []
+  let pending = true
+  const scan = vi.fn(async (_vault: string, after?: string) => {
+    order.push('scan')
+    return pending && !after ? [prompt] : []
+  })
+  const answer = vi.fn(async () => {
+    pending = false
+  })
+  const client = {
+    request: async () => ({}),
+    channel: {
+      channel: {
+        welcome: {
+          methods: ['obsidian.tools.v1.advertise', 'obsidian.tools.v1.questions.pending'],
+        },
+      },
+    },
+    onEvent: () => {
+      order.push('listen')
+      return () => {}
+    },
+    subscribe: async () => {
+      order.push('subscribe')
+    },
+    pendingQuestionnaires: scan,
+    answerQuestionnaire: answer,
+  } as unknown as NodeClient
+  const store = new NodeClientStore('sample-questionnaire-recovery', new IDBFactory())
+  const runtime = new NodeObsidianTools(client, store, 'sample-node', 'Sample node')
+  try {
+    await runtime.connectionChanged({ providers: [] })
+    expect(order.slice(0, 3)).toEqual(['listen', 'subscribe', 'scan'])
+    expect(scan).toHaveBeenNthCalledWith(2, runtime.vaultId, prompt.prompt_id)
+    expect(runtime.questionnaires.value).toEqual([prompt])
+    await runtime.answerQuestionnaire(prompt, ['First'])
+    expect(answer).toHaveBeenCalledWith(prompt, ['First'])
+    expect(runtime.questionnaires.value).toEqual([])
+  } finally {
+    await runtime.destroy()
+    store.close()
+  }
 })
 
 it('configures ordinary schemas before execution, advertises on reconnect and completes a fake-node call once', async () => {

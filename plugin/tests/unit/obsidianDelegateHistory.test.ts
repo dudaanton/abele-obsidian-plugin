@@ -12,6 +12,7 @@ it('keeps the last complete message when a later version is only partly recorded
     foldDelegateHistory([
       { id: 'sample-message', version: 1, part: 0, parts: 1, text },
       { id: 'sample-message', version: 2, part: 0, parts: 2, text: '{"id":' },
+      { id: 'sample-message', version: 3, part: 0, parts: 1, text: 'invalid retained JSON' },
     ])
   ).toEqual([JSON.parse(text)])
 })

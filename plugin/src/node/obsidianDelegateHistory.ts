@@ -33,12 +33,13 @@ export function foldDelegateHistory(records: unknown[]): ChatMessage[] {
           raw.id === id &&
           ['user', 'assistant', 'tool-call', 'system'].includes(raw.role) &&
           typeof raw.content === 'string'
-        )
+        ) {
           result.push(raw)
+          break
+        }
       } catch {
         /* A malformed retained row cannot become a chat message. */
       }
-      break
     }
   }
   return result.sort((a, b) => a.timestamp - b.timestamp)

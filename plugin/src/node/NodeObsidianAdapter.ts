@@ -2,7 +2,7 @@ import { TFile } from 'obsidian'
 import { obsidianDeviceName } from './obsidianDevice'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { resolveTargetAgent } from '@/ai/DelegateRun'
-import { ObsidianDelegateArgumentsSchema } from '@abele/node-protocol'
+import { ObsidianDelegateArgumentsSchema, QuestionnaireQuestionsSchema } from '@abele/node-protocol'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from '@/ai/ordinaryToolPolicy'
 import { createAgentTools } from '@/ai/tools'
@@ -143,6 +143,13 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
   }
   async prepare(i: ObsidianInvocation) {
     const tool = this.tool(i)
+    if (
+      tool.name === 'questions' &&
+      !QuestionnaireQuestionsSchema.safeParse(i.arguments.questions).success
+    )
+      throw new ObsidianNotExecuted(
+        'The questionnaire is invalid or exceeds the node transport bounds'
+      )
     if (tool.name === 'delegate') {
       const args = ObsidianDelegateArgumentsSchema.safeParse(i.arguments)
       if (!args.success) throw new ObsidianNotExecuted('Invalid delegation arguments')

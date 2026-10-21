@@ -7,6 +7,7 @@
       :node-label="item.node.label"
       :disabled="service.connection(item.node.id).state.value !== 'connected'"
       @answer="(prompt, choice, value) => answer(item.node.id, prompt, choice, value)"
+      @questionnaire="(prompt, answers) => answerQuestionnaire(item.node.id, prompt, answers)"
       @stop="(prompt) => stop(item.node.id, prompt)"
       @open="open(item)"
     />
@@ -22,7 +23,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import type { Prompt } from '@abele/node-client'
+import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
 import { answerOwnerPrompt } from '@/node/promptAnswers'
 import NodeManagerRunCard from './NodeManagerRunCard.vue'
 import NodeErrorText from './NodeErrorText.vue'
@@ -46,6 +47,18 @@ const cards = computed(() =>
   })
 )
 const error = ref('')
+async function answerQuestionnaire(
+  node: string,
+  prompt: Prompt,
+  answers: QuestionnaireAnswer[] | null
+) {
+  try {
+    await service.connection(node).client.answerQuestionnaire(prompt, answers)
+    await service.connection(node).refreshDelegations()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  }
+}
 const runs = computed(() =>
   service.nodes.value.flatMap((node) => {
     try {

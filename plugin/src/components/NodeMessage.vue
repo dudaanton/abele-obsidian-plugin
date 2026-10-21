@@ -17,6 +17,13 @@
       <div v-if="message.toolDevice" class="abele-node-message-note">
         {{ t('node.tools.runner', { device: message.toolDevice }) }}
       </div>
+      <NodeDelegateHistory
+        v-if="conversation && message.toolName === 'delegate' && message.id.startsWith('obsidian:')"
+        :client="conversation.client"
+        :invocation="message.id.slice('obsidian:'.length)"
+        :revision="conversation.revision.value"
+        :open-resource="openResource"
+      />
       <span
         v-if="message.toolResult || message.content"
         class="abele-node-message-note"
@@ -74,6 +81,10 @@
   </AiChatMessage>
 </template>
 <script setup lang="ts">
+import { inject } from 'vue'
+import { obsidianConversationPresentation } from '@/node/obsidianConversationPresentation'
+import NodeDelegateHistory from './NodeDelegateHistory.vue'
+const conversation = inject(obsidianConversationPresentation, null)
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import type { Prompt } from '@abele/node-client'

@@ -83,6 +83,19 @@ it.skipIf(!available).each([
       if (!root.textContent.includes('Text waiting for approval.')) throw Error('Approval does not show the note text');
       const approval=root.querySelector('.abele-tool-approval');
       for (const label of ['Deny','Allow','Stop']) if (![...approval.querySelectorAll('button')].some(b=>b.textContent.trim()===label)) throw Error('Missing approval action '+label);
+      const history = [...root.querySelectorAll('.abele-disclosure__control')].find(el=>el.textContent.includes('Delegation'));
+      if (!history) throw Error('Missing hosted delegation history'); history.click(); await wait();
+      if (!root.textContent.includes('A retained sample answer')) throw Error('Retained delegation history is missing');
+      history.scrollIntoView({block:'center'}); await capture('delegate-history');
+      const questionnaire = root.querySelector('.abele-node-questionnaire');
+      if (!questionnaire) throw Error('Missing hosted questionnaire');
+      questionnaire.scrollIntoView({block:'center'}); await capture('questionnaire');
+      const option = [...questionnaire.querySelectorAll('.abele-chat-question__answer')].find(el=>el.textContent==='Reference');
+      if (!option) throw Error('Missing single-choice option'); option.closest('button').click(); await wait();
+      const answer = root.querySelector('.abele-node-questionnaire textarea');
+      if (!answer) throw Error('Missing text answer'); answer.value='Sample label'; answer.dispatchEvent(new Event('input',{bubbles:true})); await wait();
+      await press(document,'.abele-node-questionnaire button','Answer');
+      if (root.querySelector('.abele-node-questionnaire')) throw Error('Answered questionnaire is still pending');
       return {overflow,shots};
     } finally {
       await api.closeNodeSessionFixture();
@@ -94,5 +107,5 @@ it.skipIf(!available).each([
   })()`)
   const parsed = typeof result === 'string' ? JSON.parse(result) : result
   expect(parsed.overflow).toEqual([])
-  expect(parsed.shots).toHaveLength(6)
+  expect(parsed.shots).toHaveLength(8)
 })

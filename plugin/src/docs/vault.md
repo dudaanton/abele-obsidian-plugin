@@ -3068,3 +3068,10 @@ retain their exact trusted tool snapshot with the ordinary idempotent creation i
 node atomically installs it before the child's first turn. These local recovery bindings
 do not travel with settings. Execution-client IDs are installation-local; same-vault routing
 uses the sync vault identity when available, otherwise a device-local vault identity.
+
+Hosted questionnaires and local delegation branches live on the node. The client retains
+immutable delegate admission and history-append requests in its local operation-request
+store so lost replies can be reconciled with the exact same IDs and bytes. Physical branch
+claims are never queued for replay. The configured conversation snapshot carries serialized
+scope ceilings, permission mode, skills, tool sections, GitHub rights and delegation depth;
+it is a ceiling for private ordinary sub-runs, never an expansion of current target policy.

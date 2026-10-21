@@ -33,17 +33,24 @@
       :text="t('streamBMeta.1f8e74f453', { p0: String(card.pendingHumanPrompts) })"
       @click="emit('open')"
     />
-    <AiToolApproval
-      v-for="prompt in card.prompts ?? []"
-      :key="prompt.prompt_id"
-      :message="promptMessage(prompt)"
-      :node-prompt="prompt"
-      :disabled="disabled"
-      :answer-state="card.answers?.[prompt.prompt_id]"
-      :diffs="card.promptDiffs?.[prompt.prompt_id]"
-      @answer="(choice, value) => emit('answer', prompt, choice, value)"
-      @stop="emit('stop', prompt)"
-    />
+    <template v-for="prompt in card.prompts ?? []" :key="prompt.prompt_id">
+      <NodeQuestionnaire
+        v-if="prompt.kind === 'questionnaire'"
+        :prompt="prompt"
+        :disabled="disabled"
+        @answer="(answers) => emit('questionnaire', prompt, answers)"
+      />
+      <AiToolApproval
+        v-else
+        :message="promptMessage(prompt)"
+        :node-prompt="prompt"
+        :disabled="disabled"
+        :answer-state="card.answers?.[prompt.prompt_id]"
+        :diffs="card.promptDiffs?.[prompt.prompt_id]"
+        @answer="(choice, value) => emit('answer', prompt, choice, value)"
+        @stop="emit('stop', prompt)"
+      />
+    </template>
     <details class="abele-node-delegation__details" :open="!finished || !!card.pendingHumanPrompts">
       <summary>{{ t('node.delegation.activity') }}</summary>
       <p
@@ -83,7 +90,9 @@
 </template>
 <script setup lang="ts">
 import AiToolApproval from './AiToolApproval.vue'
-import type { Prompt } from '@abele/node-client'
+import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
+import NodeQuestionnaire from './NodeQuestionnaire.vue'
+import { obsidianPromptCall } from '@/node/obsidianPresentation'
 import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
 import { computed } from 'vue'
@@ -115,14 +124,16 @@ const stateLabel = computed(() => {
   return state
 })
 const promptMessage = (prompt: Prompt): ChatMessage =>
+  obsidianPromptCall(prompt) ??
   ({
     id: prompt.prompt_id,
     role: 'tool-call',
     content: '',
     toolName: prompt.tool_name,
     toolParams: prompt.input,
-  }) as ChatMessage
+  } as ChatMessage)
 const emit = defineEmits<{
+  questionnaire: [prompt: Prompt, answers: QuestionnaireAnswer[] | null]
   open: []
   answer: [prompt: Prompt, choice: 'allow' | 'deny', value?: string]
   stop: [prompt: Prompt]

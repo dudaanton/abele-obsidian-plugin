@@ -173,6 +173,40 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
         },
         1
       ),
+      e(
+        'obsidian.tools.updated',
+        {
+          invocation_id: 'sample-delegate',
+          session_id: SESSION,
+          tool_name: 'delegate',
+          arguments: { agent: 'Sample researcher', task: 'Read a sample reference.' },
+          state: 'succeeded',
+          result: { content: [{ type: 'text', text: 'The sample reference is ready.' }] },
+        },
+        1
+      ),
+      e(
+        'prompt.opened',
+        {
+          kind: 'questionnaire',
+          prompt_id: 'sample-questionnaire',
+          session_id: SESSION,
+          run_id: 'obsidian:sample-questions',
+          revision: 1,
+          action_digest: 'b'.repeat(64),
+          expires_at: Number.MAX_SAFE_INTEGER,
+          state: 'pending',
+          choice: null,
+          installation_id: null,
+          delivered: false,
+          input: { invocation_id: 'sample-questions', vault_id: 'sample-vault' },
+          questions: [
+            { question: 'Choose a sample destination', options: ['Reference', 'Draft'] },
+            { question: 'Add a sample label', type: 'input', options: [] },
+          ],
+        },
+        1
+      ),
     ]
   }
   // Records as the node writes them, every field present: earlier pages are checked against
@@ -537,7 +571,48 @@ export async function openNodeSessionFixture(
     operationResult: async (id: string) => store.results[id] ?? { result: {} },
     onEvent: () => () => {},
     subscribe: async () => ({}),
+    answerQuestionnaire: async (prompt: { prompt_id: string }, answers: unknown) => {
+      nodeSessionCalls.push({ method: 'questionnaire.answer', params: { prompt, answers } })
+      const event = full.find(
+        (event) => (event.data as { prompt_id?: string }).prompt_id === prompt.prompt_id
+      )
+      if (!event) throw new Error('Unknown sample questionnaire')
+      event.data = {
+        ...(event.data as object),
+        state: 'resolved',
+        choice: answers === null ? 'deny' : 'allow',
+        answers,
+      }
+      return event.data
+    },
     request: async (method: string, params?: { after_seq?: number; limit?: number }) => {
+      if (method === 'obsidian.tools.v1.delegate.get')
+        return {
+          runs: [{ run_id: 'sample-host-run' }],
+          branches: [{ branch_id: 'sample-host-branch', item: 'Sample reference', state: 'done' }],
+        }
+      if (method === 'obsidian.tools.v1.delegate.history')
+        return {
+          entries: [
+            {
+              seq: 1,
+              message: {
+                id: 'sample-host-answer',
+                version: 1,
+                part: 0,
+                parts: 1,
+                text: JSON.stringify({
+                  id: 'sample-host-answer',
+                  role: 'assistant',
+                  timestamp: 1,
+                  content: 'A retained sample answer from the delegated agent.',
+                }),
+              },
+            },
+          ],
+          next_seq: 1,
+          has_more: false,
+        }
       if (method === 'stream.read') {
         nodeSessionCalls.push({ method, params: [params] })
         // The node cannot be reached for earlier pages in the error state.

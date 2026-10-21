@@ -22,6 +22,7 @@
       >
       <Icon
         class="abele-chat-question__skip"
+        :disabled="disabled"
         icon="x"
         size="xs"
         :label="count > 1 ? t('chat.skipQuestions') : t('chat.skipQuestion')"
@@ -38,16 +39,26 @@
         plain
         type="button"
         class="abele-chat-question__option"
+        :disabled="disabled"
+        :aria-pressed="multi ? selected?.includes(option) : undefined"
         @click="emit('answer', option)"
       >
         <kbd v-if="i < 9" class="abele-chat-question__key">{{ i + 1 }}</kbd>
         <span class="abele-chat-question__answer">{{ option }}</span>
+        <Icon
+          v-if="multi && selected?.includes(option)"
+          icon="check"
+          size="xs"
+          :interactive="false"
+        />
       </Button>
       <Button
+        v-if="allowCustom !== false"
         :text="t('chat.ownAnswer')"
         plain
         type="button"
         class="abele-chat-question__option abele-chat-question__option_own"
+        :disabled="disabled"
         @click="emit('own')"
       >
         <Icon class="abele-chat-question__key" icon="pencil" size="xs" :interactive="false" />
@@ -71,6 +82,10 @@ const props = defineProps<{
   /** Where this question stands among the ones asked together, from 0. */
   index: number
   count: number
+  disabled?: boolean
+  allowCustom?: boolean
+  multi?: boolean
+  selected?: readonly string[]
 }>()
 const emit = defineEmits<{
   answer: [option: string]
@@ -90,6 +105,7 @@ watchEffect(() => {
 
 /** A digit picks that answer while the card has the keyboard; Escape skips. */
 function onKey(event: KeyboardEvent) {
+  if (props.disabled) return
   console.debug('[Abele question]', {
     key: event.key,
     composing: event.isComposing,

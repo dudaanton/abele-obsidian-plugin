@@ -98,6 +98,12 @@ it('executes an enabled ordinary questionnaire in its own node conversation', as
   expect(methods).not.toContain('obsidian.tools.v1.complete')
   await executor.destroy()
 })
+it('refuses a questionnaire outside the node transport bounds before claiming it', async () => {
+  AgentRegistry.getInstance().update(agentId, { toolModes: { questions: 'auto' } })
+  await expect(adapter.prepare(call('questions', { questions: [] }))).rejects.toThrow(
+    /questionnaire/i
+  )
+})
 
 it('admits an enabled local delegation through the ordinary target resolver', async () => {
   AgentRegistry.getInstance().update(agentId, { toolModes: { delegate: 'auto' } })
