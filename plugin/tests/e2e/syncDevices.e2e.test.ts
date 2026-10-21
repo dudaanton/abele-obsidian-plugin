@@ -162,7 +162,7 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   expect((await s.items()).some((item) => item.path === unresolved)).toBe(false)
   await owner.long(
     'restore the known kept-copy location before retry',
-    `await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(unresolved)}),${JSON.stringify(moved)});await svc.connectionsChanged();await poll(()=>svc.rows.value.some(one=>one.id===${JSON.stringify(ownerId)}&&one.status==='idle')&&host.live.get(${JSON.stringify(ownerId)})?.engine.status.state==='idle');return true`
+    `await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(unresolved)}),${JSON.stringify(moved)});await svc.retryConnection(${JSON.stringify(ownerId)},()=>{});await poll(()=>svc.rows.value.some(one=>one.id===${JSON.stringify(ownerId)}&&one.status==='idle')&&host.live.get(${JSON.stringify(ownerId)})?.engine.status.state==='idle');return true`
   )
   await owner.waitIdle(ownerId)
   await owner.shareSet(ownerId, ['Folder: ' + s.root], 'Sample explicit re-share')
