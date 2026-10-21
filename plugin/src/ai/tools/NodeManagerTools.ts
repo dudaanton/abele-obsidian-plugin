@@ -177,11 +177,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       guard()
       let value: unknown
       if (name === 'node_command_status')
-        value = await connection.manager.status(
-          parentId,
-          sessionId,
-          id.parse(params.run_id)
-        )
+        value = await connection.manager.status(parentId, sessionId, id.parse(params.run_id))
       else {
         if (!operation_id) throw new Error('A stable operation_id is required')
         value = await connection.manager.mutate(

@@ -16,6 +16,14 @@
         @click="emit('open')"
       />
     </Setting>
+    <p
+      v-if="card.state === 'stopped' && card.reason === 'time_limit'"
+      class="abele-node-delegation__metadata"
+    >
+      {{
+        t(card.pendingHumanPrompts ? 'node.delegation.pausedPrompt' : 'node.delegation.pausedLimit')
+      }}
+    </p>
     <Button
       v-if="card.pendingHumanPrompts && !card.prompts?.length"
       data-pending-prompts
@@ -36,15 +44,15 @@
       @answer="(choice, value) => emit('answer', prompt, choice, value)"
       @stop="emit('stop', prompt)"
     />
-    <p
-      v-for="warning in card.warnings ?? []"
-      :key="warning"
-      class="abele-node-delegation__metadata"
-    >
-      {{ warning }}
-    </p>
     <details class="abele-node-delegation__details" :open="!finished || !!card.pendingHumanPrompts">
       <summary>{{ t('node.delegation.activity') }}</summary>
+      <p
+        v-for="warning in card.warnings ?? []"
+        :key="warning"
+        class="abele-node-delegation__metadata"
+      >
+        {{ warning }}
+      </p>
       <p v-if="card.activity?.tool" class="abele-node-delegation__metadata">
         {{ card.activity.tool }}
       </p>
@@ -59,7 +67,7 @@
       <template v-for="report in card.reports" :key="report.seq">
         <details v-if="report.kind === 'progress'">
           <summary>{{ t('streamB.progress.466482') }}</summary>
-          <p class="abele-node-delegation__report">{{ report.text }}</p>
+          <p class="abele-node-delegation__report">{{ delegationReportText(report.text) }}</p>
         </details>
         <div v-else :data-mailbox-seq="report.seq">
           <strong>{{
@@ -67,7 +75,7 @@
               ? t('streamB.result.6e7d50')
               : t('streamB.workerQuestionInformational.12931f')
           }}</strong>
-          <p class="abele-node-delegation__report">{{ report.text }}</p>
+          <p class="abele-node-delegation__report">{{ delegationReportText(report.text) }}</p>
         </div>
       </template>
     </details>
@@ -80,7 +88,7 @@ import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
 import { computed } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
-import { delegationBranchLabel } from '@/node/delegation'
+import { delegationBranchLabel, delegationReportText } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'

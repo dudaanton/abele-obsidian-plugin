@@ -243,7 +243,7 @@ export const streamB = {
   'streamB.backToWhereTheChatWentOn.ff3fef': 'Zurück zum Ort des Chats',
   'streamB.deleteChat.93291d': 'Chat löschen',
   'streamB.deleteThisChatItsFileTheRuns.3538d3':
-    'Diesen Chat löschen? Seine Datei, die von ihm delegierten Ausführungen und sein Eintrag im Verlauf gehen verloren. Dies kann nicht rückgängig gemacht werden.',
+    'Diesen Chat löschen? Seine Datei und sein Verlaufseintrag werden entfernt. Delegierte Chats, Sitzungen und Worktrees bleiben auf dem Knoten. Dies kann nicht rückgängig gemacht werden.',
   'streamB.deleteThisChat.45b0a7': 'Diesen Chat löschen',
   'streamB.run.a1533f': '{v0} ausgeführt',
   'streamB.newChat.db1838': 'Neuer Chat',

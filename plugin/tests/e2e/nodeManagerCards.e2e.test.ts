@@ -28,6 +28,7 @@ async function inspectCards(label: string) {
     'failed',
     'empty',
     'paused',
+    'paused-prompt',
     'warning',
     'prompt',
     'answering',
@@ -45,10 +46,23 @@ async function inspectCards(label: string) {
       ) as { overflow: boolean; open: boolean; prompt: boolean; text: string }
       expect(report.overflow).toBe(false)
       expect(report.open).toBe(
-        state === 'working' || state === 'empty' || state === 'prompt' || state === 'answering'
+        state === 'working' ||
+          state === 'empty' ||
+          state === 'prompt' ||
+          state === 'answering' ||
+          state === 'paused-prompt'
       )
-      expect(report.prompt).toBe(state === 'working' || state === 'prompt' || state === 'answering')
+      expect(report.prompt).toBe(
+        state === 'working' ||
+          state === 'prompt' ||
+          state === 'answering' ||
+          state === 'paused-prompt'
+      )
       if (state === 'paused') expect(report.text).toContain('Paused; can continue')
+      if (state === 'paused-prompt') {
+        expect(report.text).toContain('Time limit reached while waiting for your answer')
+        expect(report.text).toContain('Allow')
+      }
       if (state === 'warning') expect(report.text).toContain('Sample cleanup warning')
       if (state === 'prompt')
         expect(report.text).toContain('npm test -- tests/sample-parser.test.ts')

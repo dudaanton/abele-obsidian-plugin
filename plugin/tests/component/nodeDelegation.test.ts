@@ -6,6 +6,55 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
+it('presents command approvals as command and folder with raw evidence collapsed', async () => {
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  const wrapper = mount(NodeManagerRunCard, { props: { card: nodeManagerFixture() } })
+  try {
+    expect(wrapper.get('[data-manager-approval]').text()).toContain('npm test')
+    expect(wrapper.get('[data-manager-approval]').text()).toContain('/workspace/sample-project')
+    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeUndefined()
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('replaces obsolete controller approval instructions while preserving the question', () => {
+  const card = nodeDelegationCardFixture()
+  card.reports = [
+    {
+      seq: 3,
+      kind: 'question',
+      text: 'Waiting for owner approval. Open child session sample-session to answer prompt sample-prompt. The controller cannot approve it.',
+    },
+  ]
+  const wrapper = mount(NodeDelegationCard, { props: { card, nodeLabel: 'Sample node' } })
+  try {
+    expect(wrapper.text()).not.toContain('sample-prompt')
+    expect(wrapper.text()).not.toContain('controller cannot approve')
+    expect(wrapper.text()).toContain('Answer the pending action')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('explains a deadline pause while retaining the owner prompt', () => {
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      nodeLabel: 'Sample node',
+      card: {
+        ...nodeDelegationCardFixture(),
+        state: 'stopped',
+        reason: 'time_limit',
+        pendingHumanPrompts: 1,
+      },
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Time limit reached')
+    expect(wrapper.text()).toContain('waiting for your answer')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('keeps generated branch identifiers out of the developer card label', () => {
   const wrapper = mount(NodeDelegationCard, {
     props: {

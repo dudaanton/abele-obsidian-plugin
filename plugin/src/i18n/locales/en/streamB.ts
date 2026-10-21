@@ -228,7 +228,7 @@ export const streamB = {
   'streamB.backToWhereTheChatWentOn.ff3fef': 'Back to where the chat went on',
   'streamB.deleteChat.93291d': 'Delete chat',
   'streamB.deleteThisChatItsFileTheRuns.3538d3':
-    'Delete this chat? Its file, the runs it delegated and its entry in the history\n        all go. This cannot be undone.',
+    'Delete this chat? Its file and history entry will be removed. Delegated child chats, node sessions and worktrees stay on the node. This cannot be undone.',
   'streamB.deleteThisChat.45b0a7': 'Delete this chat',
   'streamB.run.a1533f': '{v0} run',
   'streamB.newChat.db1838': 'New chat',

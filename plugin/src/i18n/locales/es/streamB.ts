@@ -234,7 +234,7 @@ export const streamB = {
   'streamB.backToWhereTheChatWentOn.ff3fef': 'Regresar a donde transcurría el chat',
   'streamB.deleteChat.93291d': 'Eliminar chat',
   'streamB.deleteThisChatItsFileTheRuns.3538d3':
-    '¿Eliminar este chat? Su archivo, las ejecuciones que delegó y su entrada en el historial, todo desaparece. Esto no se puede deshacer.',
+    '¿Eliminar este chat? Se eliminarán su archivo y su entrada en el historial. Los chats delegados, las sesiones y los árboles de trabajo permanecerán en el nodo. Esto no se puede deshacer.',
   'streamB.deleteThisChat.45b0a7': 'Eliminar este chat',
   'streamB.run.a1533f': '{v0} ejecutar',
   'streamB.newChat.db1838': 'Nuevo chat',

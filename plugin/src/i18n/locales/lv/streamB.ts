@@ -232,7 +232,7 @@ export const streamB = {
   'streamB.backToWhereTheChatWentOn.ff3fef': 'Atpakaļ uz to, kur turpinājās tērzēšana',
   'streamB.deleteChat.93291d': 'Dzēst tērzēšanu',
   'streamB.deleteThisChatItsFileTheRuns.3538d3':
-    'Vai dzēst šo tērzēšanu? Tās fails, deleģētās izpildes un ieraksts vēsturē tiks dzēsti. Šo darbību nevar atsaukt.',
+    'Vai dzēst šo tērzēšanu? Tās fails un vēstures ieraksts tiks dzēsti. Deleģētās tērzēšanas, sesijas un darba koki paliks mezglā. Šo darbību nevar atsaukt.',
   'streamB.deleteThisChat.45b0a7': 'Dzēst šo tērzēšanu',
   'streamB.run.a1533f': '{v0} palaist',
   'streamB.newChat.db1838': 'Jauna tērzēšana',

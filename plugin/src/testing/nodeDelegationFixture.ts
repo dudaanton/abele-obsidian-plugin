@@ -1,6 +1,15 @@
 import type { DelegationCard } from '@/node/delegation'
 export function nodeDelegationCardFixture(
-  state?: 'working' | 'done' | 'failed' | 'empty' | 'paused' | 'warning' | 'prompt' | 'answering'
+  state?:
+    | 'working'
+    | 'done'
+    | 'failed'
+    | 'empty'
+    | 'paused'
+    | 'paused-prompt'
+    | 'warning'
+    | 'prompt'
+    | 'answering'
 ): DelegationCard {
   const card: DelegationCard = {
     delegationId: 'sample-delegation',
@@ -23,13 +32,13 @@ export function nodeDelegationCardFixture(
       },
     ],
   }
-  if (state === 'paused') {
+  if (state === 'paused' || state === 'paused-prompt') {
     card.state = 'stopped'
     card.reason = 'time_limit'
   }
   if (state === 'warning')
     card.warnings = ['sample-extension: session_shutdown: Sample cleanup warning']
-  if (state === 'prompt' || state === 'answering')
+  if (state === 'prompt' || state === 'answering' || state === 'paused-prompt')
     card.prompts = [
       {
         kind: 'permission',
@@ -56,9 +65,13 @@ export function nodeDelegationCardFixture(
   if (!state) return card
   card.branch = 'work/sample-parser-boundaries'
   card.pendingHumanPrompts =
-    state === 'working' ? 2 : state === 'prompt' || state === 'answering' ? 1 : 0
+    state === 'working'
+      ? 2
+      : state === 'prompt' || state === 'answering' || state === 'paused-prompt'
+        ? 1
+        : 0
   card.state =
-    state === 'paused'
+    state === 'paused' || state === 'paused-prompt'
       ? 'stopped'
       : state === 'warning'
         ? 'completed'

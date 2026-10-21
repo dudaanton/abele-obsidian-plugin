@@ -32,7 +32,22 @@
         :text-right="diff.new"
         :path="diff.path"
       />
+      <div v-if="managerApproval" data-manager-approval>
+        <Setting
+          v-for="row in managerApproval"
+          :key="row.name"
+          :name="row.name"
+          :desc="row.value"
+        />
+        <details data-manager-evidence>
+          <summary>{{ t('node.manager.evidence') }}</summary>
+          <pre
+            class="abele-tool-approval__code"
+          ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+        </details>
+      </div>
       <pre
+        v-else
         class="abele-tool-approval__code"
       ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
       <Dropdown
@@ -76,6 +91,19 @@
       ><code><SyntaxText :text="String(params.content || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
     </template>
 
+    <template v-else-if="message.toolName === 'node_delegate'">
+      <Setting
+        :name="promptString(params.title)"
+        :desc="providerLabel(promptString(params.provider))"
+      />
+      <p class="abele-tool-approval__code">{{ params.text }}</p>
+      <details>
+        <summary>{{ t('node.manager.evidence') }}</summary>
+        <pre
+          class="abele-tool-approval__code"
+        ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
+      </details>
+    </template>
     <template v-else-if="message.toolName === 'node_propose_edit'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <div class="abele-tool-approval__param">
@@ -322,6 +350,8 @@ import type { WorkbookEdit } from '@/spreadsheet/edit'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
 import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
 import HttpSendPreview from './debugger/http/HttpSendPreview.vue'
+import Setting from './obsidian/Setting.vue'
+import { providerLabel } from '@/node/providers'
 /** A saved request as an agent's send would put it on the wire, for its card. */
 const readHttpSend = (id: string, environment?: string) =>
   import('@/requests/agentContext').then((m) => m.sendPreview(id, environment))
@@ -335,6 +365,44 @@ const props = defineProps<{
   diffs?: { path: string; old: string; new: string }[]
 }>()
 const emit = defineEmits<{ answer: [choice: 'allow' | 'deny', value?: string]; stop: [] }>()
+const promptString = (value: unknown): string => (typeof value === 'string' ? value : '')
+const managerApproval = computed(() => {
+  const input = props.nodePrompt?.input
+  if (!input || !['command.v1.run', 'git.v1.integrate'].includes(promptString(input.method)))
+    return undefined
+  const params = input.params as Record<string, unknown> | undefined
+  if (!params) return undefined
+  const rows: { name: string; value: string }[] = []
+  if (input.method === 'command.v1.run') {
+    rows.push({
+      name: t('node.manager.command'),
+      value: Array.isArray(params.argv)
+        ? params.argv
+            .map((arg) =>
+              typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : JSON.stringify(arg)
+            )
+            .join(' ')
+        : promptString(params.command),
+    })
+  } else {
+    rows.push({
+      name: t('node.manager.branches'),
+      value: params.rebase
+        ? t('streamB.rebaseOnto.708b25', {
+            v0: promptString(params.source_branch),
+            v1: promptString(params.target_branch),
+          })
+        : `${promptString(params.source_branch)} → ${promptString(params.target_branch)}`,
+    })
+    for (const [key, label] of [
+      ['expected_source_head', 'node.manager.sourceHead'],
+      ['expected_target_head', 'node.manager.targetHead'],
+    ] as const)
+      rows.push({ name: t(label), value: promptString(params[key]) })
+  }
+  if (typeof input.cwd === 'string') rows.push({ name: t('node.manager.folder'), value: input.cwd })
+  return rows
+})
 const nodeValue = ref('')
 
 const session = computed(() =>

@@ -30,14 +30,16 @@ import { computed, ref } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { ChatService } from '@/ai/ChatService'
 import NodeDelegationCard from './NodeDelegationCard.vue'
-const props = defineProps<{ parentId: string }>()
+const props = defineProps<{ parentId: string; include?: string[]; exclude?: string[] }>()
+const visible = (key: string) =>
+  props.include ? props.include.includes(key) : !props.exclude?.includes(key)
 const service = NodeService.getInstance()
 const cards = computed(() =>
   service.nodes.value.flatMap((node) => {
     try {
-      return (service.connection(node.id).delegationCards.value[props.parentId] ?? []).map(
-        (card) => ({ node, card })
-      )
+      return (service.connection(node.id).delegationCards.value[props.parentId] ?? [])
+        .filter((card) => visible(`task:${card.taskKey}`))
+        .map((card) => ({ node, card }))
     } catch {
       return []
     }
@@ -47,10 +49,12 @@ const error = ref('')
 const runs = computed(() =>
   service.nodes.value.flatMap((node) => {
     try {
-      return (service.connection(node.id).managerCards.value[props.parentId] ?? []).map((card) => ({
-        node,
-        card,
-      }))
+      return (service.connection(node.id).managerCards.value[props.parentId] ?? [])
+        .filter((card) => visible(`operation:${card.operation}`))
+        .map((card) => ({
+          node,
+          card,
+        }))
     } catch {
       return []
     }

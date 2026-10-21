@@ -25,6 +25,7 @@ import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 export interface DialogFixtureOptions {
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
   delegationState?:
+    | 'paused-prompt'
     | 'working'
     | 'done'
     | 'failed'

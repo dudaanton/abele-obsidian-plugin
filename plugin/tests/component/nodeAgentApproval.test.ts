@@ -6,6 +6,36 @@ import AiToolApproval from '@/components/AiToolApproval.vue'
 import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+it('keeps delegation identifiers in collapsed evidence beside a readable task brief', () => {
+  useVault([])
+  const view = mount(AiToolApproval, {
+    props: {
+      message: {
+        id: 'sample-delegate-call',
+        role: 'tool-call',
+        content: '',
+        timestamp: 1,
+        toolName: 'node_delegate',
+        toolStatus: 'pending',
+        toolParams: {
+          node: 'sample-node-id',
+          project_id: 'sample-project-id',
+          provider: 'pi',
+          title: 'Review the sample parser',
+          text: 'Check the parser boundary cases.',
+        },
+      },
+    },
+  })
+  try {
+    expect(view.get('.setting-item-name').text()).toBe('Review the sample parser')
+    expect(view.get('details code').text()).toContain('sample-project-id')
+    expect(view.get('details').attributes('open')).toBeUndefined()
+    expect(view.text()).toContain('Check the parser boundary cases.')
+  } finally {
+    view.unmount()
+  }
+})
 
 describe('node writes use chat file-edit permission choices', () => {
   it('offers unattended file edits, but never a misleading per-tool Auto override', async () => {

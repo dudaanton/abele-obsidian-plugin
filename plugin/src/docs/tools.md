@@ -1320,11 +1320,14 @@ The link is `abele-node-code:` followed by URI-encoded JSON with `scope` equal t
 For plain folders use `"workspace"` and its workspace ID. Links only open within the receiving
 chat's node access. GitHub links continue to address their original revisions.
 
-
 ### Manager command and integration tools
 
 `node_command_run` runs exactly one `argv` or `command` in a registered `project_id` or
 `worktree_id`. Pass `node`, an existing `session_id`, and a stable `operation_id`.
+The `workspace_id` returned by delegation is also accepted and resolved to its worktree.
+If no target is given, the command uses the session's bound worktree. A worktree takes
+precedence over accompanying project metadata. Integration also accepts `workspace_id`
+and `source_workspace_id` aliases. Never create unmanaged worktrees through commands.
 Optional `cwd` stays inside that target; `timeout_ms` bounds execution and `output_bytes`
 sets each output tail (1024–16384 bytes). The node must advertise `command_run_v1`.
 The initial receipt is pending owner approval. Only the owner UI answers it.
@@ -1342,4 +1345,7 @@ blindly or clean up an uncertain integration. Older nodes keep the existing Git 
 
 Run → check output and diff → integrate → remove the clean developer worktree.
 Retain the same exact arguments and operation ID to recover a lost receipt.
+The parent receives automatic attention notices for child prompts, pauses, failures and
+delivered results, and when its command ends. Notices are deduplicated and respect Stop.
+Older nodes are monitored with quiet status reads; the owner need not request polling.
 Manager tools never answer developer or command prompts.

@@ -222,11 +222,20 @@
             v-bind="messageProps(block.message)"
             v-on="messageHandlers"
           />
+          <NodeDelegations
+            v-if="
+              session?.delegationParentId &&
+              nodePlacements[block.kind === 'run' ? block.id : block.message.id]
+            "
+            :parent-id="session.delegationParentId"
+            :include="nodePlacements[block.kind === 'run' ? block.id : block.message.id]"
+          />
         </template>
 
         <NodeDelegations
           v-if="session?.delegationParentId"
           :parent-id="session.delegationParentId"
+          :exclude="Object.values(nodePlacements).flat()"
         />
 
         <!-- Streaming indicator -->
@@ -560,6 +569,7 @@ import AiRunView from './AiRunView.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import NodeSidebarChat from './NodeSidebarChat.vue'
 import NodeDelegations from './NodeDelegations.vue'
+import { nodeCardPlacement } from '@/node/cardPlacement'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
@@ -746,6 +756,7 @@ const runForks = (block: ChatBlock) =>
         .find((count) => count > 1)
     : undefined
 const blocks = computed(() => chatBlocks(visibleMessages.value))
+const nodePlacements = computed(() => nodeCardPlacement(blocks.value))
 const runChoice = reactive(new Map<string, boolean>())
 const runsShowing = reactive(new Set<string>())
 watch(
