@@ -1668,6 +1668,40 @@ const probeScript = `(async () => {
       }
     }
 
+    // Provider modes at phone geometry: use the real kit screens and synthetic state only.
+    for (const [label, dialogName, options] of [
+      ['node provider agent settings', 'node-agent-permissions', {}],
+      ['node provider inherited settings', 'node-agent-permissions', { agentInherit: true }],
+      ['node provider refusal', 'node-delegation-card', { permissionState: 'refused' }],
+      ['node provider operator opt in', 'node-delegation-card', { permissionState: 'node-opt-in' }],
+      ['node provider running', 'node-delegation-card', { permissionState: 'running' }],
+      ['node provider unknown', 'node-delegation-card', { permissionState: 'unknown' }],
+    ]) {
+      try {
+        window.__abeleTest.openDialog(dialogName, options)
+        const modal = await until(() => document.querySelector('.modal.abele-modal'), 5000)
+        if (!modal) throw new Error('Provider mode fixture did not open')
+        await wait(250)
+        await screen(label, modal, modal.querySelector('.abele-modal__body'))
+        for (const field of modal.querySelectorAll('select,button,[tabindex="0"]')) {
+          if (!field.getBoundingClientRect().width) continue
+          field.focus(); report[label].clipped.push(...ringClipped(field)); field.blur()
+        }
+      } finally { await closeDialog() }
+    }
+    try {
+      await window.__abeleTest.openNodeSessionFixture('idle')
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const presenter = chats.getNodeSession(chats.activeTabId.value)
+      presenter.providerReports.value.push({ provider: 'codex', available: true, configuration: { per_action_approval: false, permission_modes: ['manual','bypassPermissions'] }, capabilities: {} })
+      const root = await until(() => document.querySelector('.abele-node-chat'), 5000)
+      root.querySelector('.abele-node-chat__agent').click()
+      const menu = await until(() => document.querySelector('.menu'), 5000)
+      if (!menu) throw new Error('Provider picker did not open')
+      await screen('node provider picker', menu, menu)
+      await closeDialog()
+    } finally { await window.__abeleTest.closeNodeSessionFixture() }
+
     // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
     // native floating view header must be above its calendar, not painted over the first week.
     await nodeScreens()
