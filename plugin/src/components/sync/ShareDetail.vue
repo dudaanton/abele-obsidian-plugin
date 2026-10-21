@@ -157,7 +157,7 @@ async function revokeShare() {
 }
 
 function itemMenu(event: MouseEvent, item: ShareItem) {
-  const menu = new Menu()
+  const menu = new Menu().setUseNativeMenu(false)
   menu.addItem((one) =>
     one
       .setTitle('Remove from this share…')

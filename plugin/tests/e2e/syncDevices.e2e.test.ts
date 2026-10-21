@@ -35,8 +35,9 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
     'Sample deletion share'
   )
   const receiverId = await s.connect(receiver, issued.token)
-  owner.run(
-    `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample deletion share'));row.click();await poll(()=>modal('Sample deletion share'));const detail=modal('Sample deletion share');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('Delete one')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'));action.click();await poll(()=>inWindows('.abele-server-delete__facts'));return true`
+  await owner.long(
+    'open single-file deletion preview',
+    `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample deletion share'));row.click();await poll(()=>modal('Sample deletion share'));const detail=modal('Sample deletion share');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('Delete one')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'),undefined,'DOM item deletion menu action');action.click();await poll(()=>inWindows('.abele-server-delete__facts'),undefined,'single-file deletion facts');return true`
   )
   const confirmation = await captureSyncScreen(
     owner,
@@ -45,7 +46,8 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   )
   expect(confirmation.over).toEqual([])
   expect(confirmation.clipped).toEqual([])
-  owner.run(
+  await owner.long(
+    'confirm single-file server deletion',
     `const box=inWindows('.abele-server-delete__facts').closest('.modal');const facts=[...box.querySelectorAll('dt')].find(one=>textOf(one)==='Files');if(textOf(facts?.nextElementSibling)!=='1')throw new Error('Expected one file in deletion preview');const button=[...box.querySelectorAll('.abele-modal__footer button')].find(one=>one.classList.contains('mod-warning'));if(!button||button.disabled)throw new Error('Explicit deletion confirmation unavailable');button.click();await poll(()=>!document.contains(box));return true`
   )
   closeSyncScreens(owner)
@@ -152,8 +154,8 @@ it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uplo
     `
     const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
     const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample item set'));row.click();await poll(()=>modal('Sample item set'));
-    const detail=modal('Sample item set');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('First group')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'));action.click();let confirmation;
-    await poll(()=>{confirmation=inWindows('.abele-server-delete__facts')?.closest('.modal');return confirmation&&[...confirmation.querySelectorAll('.abele-modal__footer button')].some(one=>one.classList.contains('mod-warning')&&!one.disabled)});
+    const detail=modal('Sample item set');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('First group')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'),undefined,'DOM item deletion menu action');action.click();let confirmation;
+    await poll(()=>{confirmation=inWindows('.abele-server-delete__facts')?.closest('.modal');return confirmation&&[...confirmation.querySelectorAll('.abele-modal__footer button')].some(one=>one.classList.contains('mod-warning')&&!one.disabled)},undefined,'loaded writable group deletion preview');
     const count=[...confirmation.querySelectorAll('dt')].find(one=>textOf(one)==='Files');return {files:Number(textOf(count.nextElementSibling).replace(/[^0-9]/g,'')),warnings:[...confirmation.querySelectorAll('.abele-server-delete__also')].map(one=>textOf(one))}
   `
   )

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { AbstractInputSuggest, Platform } from 'obsidian'
+import { AbstractInputSuggest, Platform, Menu } from 'obsidian'
 import SharePicker from '@/components/sync/SharePicker.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
@@ -31,6 +31,41 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it.each(['share', 'connection'] as const)(
+    'uses the shared DOM menu in %s item actions',
+    async (screen) => {
+      const native = vi.spyOn(Menu.prototype, 'setUseNativeMenu')
+      const wrapper =
+        screen === 'share'
+          ? mount(ShareDetail, {
+              props: {
+                share: {
+                  id: 'share-a',
+                  label: 'Sample share',
+                  readOnly: false,
+                  createdAt: '2025-01-01T00:00:00Z',
+                  revokedAt: null,
+                  items: [{ id: 'item-a', kind: 'file', path: 'Garden/Flowers.md' }],
+                },
+                choices: [],
+                add: async () => {},
+                remove: async () => {},
+                revoke: async () => {},
+              },
+              global: {
+                stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } },
+              },
+            })
+          : mount(ConnectionItems, { props: { items: [detached] } })
+      try {
+        wrapper.get('[data-icon="more-horizontal"]').element.closest('button')!.click()
+        expect(native).toHaveBeenCalledWith(false)
+      } finally {
+        wrapper.unmount()
+        native.mockRestore()
+      }
+    }
+  )
   it('keeps the desktop picker on the native suggester', () => {
     const wrapper = mount(SharePicker, { props: { modelValue: [], choices: [] } })
     try {

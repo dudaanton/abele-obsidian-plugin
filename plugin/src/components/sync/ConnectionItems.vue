@@ -73,7 +73,7 @@ const emit = defineEmits<{
 }>()
 
 function menu(event: MouseEvent, item: ConnectionItem) {
-  const menu = new Menu()
+  const menu = new Menu().setUseNativeMenu(false)
   const detached = item.state.kind === 'detached'
   const state = item.state
   if (state.kind === 'moved')
