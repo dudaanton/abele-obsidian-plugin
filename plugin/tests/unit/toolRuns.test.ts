@@ -5,6 +5,22 @@ import { chatBlocks, ownLine, runKind, runState, runSummary, toolKind } from '@/
 import type { ChatMessage } from '@/ai/types'
 import { readableToolName } from '@/ai/toolLine'
 
+it('keeps structured refusal evidence out of the collapsed tool line', () => {
+  const text = runSummary([
+    call('mcp__abele_debugger__debug_status', {
+      toolStatus: 'rejected',
+      toolResult: JSON.stringify({
+        outcome: 'rejected',
+        code: 'unauthorized',
+        request_id: 'sample-request',
+      }),
+    }),
+  ])
+  expect(text).not.toContain('{')
+  expect(text).not.toContain('sample-request')
+  expect(text).toContain('Debugger: status')
+})
+
 it('uses human names for short vault tool identifiers', () => {
   expect(readableToolName('mv')).toBe('Move file')
   expect(readableToolName('rm')).toBe('Delete file')

@@ -53,6 +53,7 @@ export async function openDebuggerAccessFixture(
     .map((id) => chats.getNodeSession(id))
     .find((p) => p?.reference.sessionId === 'sample-live-session')
   if (!presenter) throw new Error('Sample node chat did not open')
+  presenter.connection.client.listProjects = async () => []
   allowed = denied = revoked = deleted = false
   const item =
     state === 'long'
