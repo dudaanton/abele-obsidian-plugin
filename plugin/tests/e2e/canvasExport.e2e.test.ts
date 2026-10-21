@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -7,6 +7,7 @@ import { screenshot, tap, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { dismissOwnNotices } from './helpers/ownNotices'
+import { closeFixtureLeaves } from './helpers/fixtureBoundary'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -63,6 +64,25 @@ const chooseExport = async (format: string) => {
   return run<string>('return view().lastExport.path')
 }
 
+const closeOpenedViews = (final = false) =>
+  run(`
+  const state=window.__canvasExport
+  if(!state)return true
+  // Escape alone does not close the mobile image editor. Use the modal's own close action.
+  for(const modal of [...document.querySelectorAll('.modal-container')].reverse()){
+    if(!state.modals.includes(modal))
+      modal.querySelector('.modal-close-button, .modal-header-button, .modal-bg')?.click()
+  }
+  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
+  const leaves=[]
+  app.workspace.iterateAllLeaves(leaf=>{
+    if(!state.leaves.includes(leaf)&&(${final}||leaf!==state.canvas))leaves.push(leaf)
+  })
+  await (${closeFixtureLeaves.toString()})(leaves)
+  if(!${final}&&state.canvas)await app.workspace.revealLeaf(state.canvas)
+  return true
+`)
+
 describe.skipIf(!available)('whole canvas export through real pointer and touch input', () => {
   // Kept here too: an app restart mid-file loses the page's copy, not the vault's changes.
   let saved: { folder: unknown; preference: unknown } | undefined
@@ -70,6 +90,8 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
     saved = run(`
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
       window.__canvasExport={layout:app.workspace.getLayout(),folder:app.vault.getConfig('attachmentFolderPath'),preference:window.__abeleTest.AbeleConfig.getInstance().canvasViewer}
+      window.__canvasExport.leaves=[];app.workspace.iterateAllLeaves(leaf=>window.__canvasExport.leaves.push(leaf))
+      window.__canvasExport.modals=[...document.querySelectorAll('.modal-container')]
       window.__canvasExportScriptRuns=0
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer=true
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasExport.owned=true
@@ -90,14 +112,16 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
       ],edges:[{id:'a',fromNode:'near',toNode:'note'},{id:'b',fromNode:'note',toNode:'image'},{id:'c',fromNode:'image',toNode:'drawing'},{id:'d',fromNode:'drawing',toNode:'far'}],abele:{steps:[{id:'first',reveal:['near'],focus:'near',say:'Only the first card is visible.'}]}}
       const file=await app.vault.create(path,JSON.stringify(graph));window.__canvasExport.source=await app.vault.read(file)
       // Start in Abele directly: native Canvas normalizes image geometry on first open.
-      const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true});await app.workspace.revealLeaf(leaf)
+      const leaf=app.workspace.getLeaf('tab');window.__canvasExport.canvas=leaf;await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true});await app.workspace.revealLeaf(leaf)
       return {folder:window.__canvasExport.folder,preference:window.__canvasExport.preference}
     `)
   }, 120_000)
+  afterEach(() => closeOpenedViews(), 120_000)
   afterAll(() => {
+    closeOpenedViews(true)
     run(`
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
-      const state=window.__canvasExport,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)});for(const leaf of leaves)leaf.detach()
+      const state=window.__canvasExport,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)});await (${closeFixtureLeaves.toString()})(leaves)
       // The folder is this run's alone, so it goes even when the page lost the record of it.
       const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)
       const kept=state??${JSON.stringify(saved ?? null)}
@@ -125,6 +149,13 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
     await press('menuItem("Export whole canvas as PNG")')
     await until('view().lastExport?.extension==="png"&&!view().exportController')
     const png = run<string>('return view().lastExport.path')
+    console.info(
+      'After PNG export, before the test opens it:',
+      run(`return {
+      activeFile:app.workspace.getActiveFile()?.path,
+      modals:document.querySelectorAll('.modal-container').length-window.__canvasExport.modals.length
+    }`)
+    )
     const agent = run<{
       visible: string[]
       warnings: { code: string }[]
