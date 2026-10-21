@@ -15,6 +15,7 @@ import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { computed } from 'vue'
 import { retainedCopyCovered } from '@/sync/retainedCopyCoverage'
+import { deferred } from '../helpers/deferred'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
 function setup() {
@@ -29,6 +30,122 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it.each([true, false])(
+    'keeps the latest overlapping item pause request (first=%s)',
+    async (first) => {
+      const { storage, data } = setup()
+      data.delete(TOKEN_REGISTRY_KEY)
+      const registry = TokenConnectionRegistry.open(storage),
+        id = registry.add()
+      const ui = new TokenUi(
+        registry,
+        { get: () => null, set: () => {}, remove: () => {} },
+        async () => {
+          throw new Error('No network')
+        }
+      )
+      ui.itemSets.store.create(id, 'Sample share', [folder('folder-a', 'Sample')], {
+        'folder-a': id,
+      })
+      const entered = deferred<void>(),
+        resume = deferred<void>()
+      let calls = 0,
+        runtimePaused = false
+      ui.runtimes.set(id, {
+        pause: async (paused: boolean) => {
+          if (++calls === 1) {
+            entered.resolve()
+            await resume.promise
+          }
+          runtimePaused = paused
+        },
+      } as never)
+      const earlier = ui.itemSets.pauseItem(id, 'folder-a', first)
+      await entered.promise
+      const latest = ui.itemSets.pauseItem(id, 'folder-a', !first)
+      resume.resolve()
+      await Promise.all([earlier, latest])
+      expect(ui.itemSets.store.get(id)?.items[0].paused).toBe(!first)
+      expect(registry.records()[0].paused).toBe(!first)
+      expect(runtimePaused).toBe(!first)
+    }
+  )
+  it('continues a queued item transition after an earlier runtime failure', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      id = registry.add()
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    ui.itemSets.store.create(id, 'Sample share', [folder('folder-a', 'Sample')], { 'folder-a': id })
+    const entered = deferred<void>(),
+      resume = deferred<void>()
+    let calls = 0,
+      runtimePaused = false
+    ui.runtimes.set(id, {
+      pause: async (paused: boolean) => {
+        if (++calls === 1) {
+          entered.resolve()
+          await resume.promise
+          throw new Error('interrupted transition')
+        }
+        runtimePaused = paused
+      },
+    } as never)
+    const earlier = expect(ui.itemSets.pauseItem(id, 'folder-a', true)).rejects.toThrow(
+      'interrupted transition'
+    )
+    await entered.promise
+    const latest = ui.itemSets.pauseItem(id, 'folder-a', false)
+    resume.resolve()
+    await Promise.all([earlier, latest])
+    expect(calls).toBe(2)
+    expect(runtimePaused).toBe(false)
+    expect(registry.records()[0].paused).toBe(false)
+    expect(ui.itemSets.store.get(id)?.items[0].paused).toBe(false)
+  })
+  it('does not block another item behind an awaited pause', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      id = registry.add(),
+      other = registry.add(true)
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    ui.itemSets.store.create(
+      id,
+      'Sample share',
+      [folder('folder-a', 'First'), folder('folder-b', 'Second')],
+      { 'folder-a': id, 'folder-b': other }
+    )
+    const entered = deferred<void>(),
+      resume = deferred<void>()
+    ui.runtimes.set(id, {
+      pause: async () => {
+        entered.resolve()
+        await resume.promise
+      },
+    } as never)
+    const first = ui.itemSets.pauseItem(id, 'folder-a', true)
+    await entered.promise
+    try {
+      await ui.itemSets.pauseItem(id, 'folder-b', true)
+      expect(registry.records().find((record) => record.id === other)?.paused).toBe(true)
+    } finally {
+      resume.resolve()
+      await first
+    }
+  })
   it('reconciles a pause persisted before its runtime registry write failed', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)

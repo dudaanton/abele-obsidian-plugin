@@ -36,6 +36,7 @@ export class TokenItemSets implements ShareSetSource {
   readonly store: ConnectionSets
   private readonly capabilities = new Map<string, boolean>()
   private readonly pending = new Map<string, Promise<boolean>>()
+  private readonly pauseTransitions = new Map<string, Promise<void>>()
   private readonly choiceCache = shallowReactive(new Map<string, ShareItem[]>())
   private readonly issued = new Map<string, { connectionId: string; share: IssuedShare }>()
   private readonly facts = shallowReactive(new Map<string, ShareDeleteFacts>())
@@ -502,7 +503,19 @@ export class TokenItemSets implements ShareSetSource {
       if (!records.some((record) => record.id === entry.connectionId)) this.issued.delete(id)
     this.refreshUploadBindings()
   }
-  async pauseItem(id: string, itemId: string, paused: boolean): Promise<void> {
+  pauseItem(id: string, itemId: string, paused: boolean): Promise<void> {
+    const key = JSON.stringify([id, itemId])
+    const previous = this.pauseTransitions.get(key) ?? Promise.resolve()
+    const work = previous.catch(() => {}).then(() => this.pauseItemUnlocked(id, itemId, paused))
+    this.pauseTransitions.set(key, work)
+    void work
+      .finally(() => {
+        if (this.pauseTransitions.get(key) === work) this.pauseTransitions.delete(key)
+      })
+      .catch(() => {})
+    return work
+  }
+  private async pauseItemUnlocked(id: string, itemId: string, paused: boolean): Promise<void> {
     if (itemId === 'scope:' + id) {
       await this.ui.pause(id, paused)
       return
