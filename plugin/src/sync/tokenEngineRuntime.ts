@@ -210,6 +210,10 @@ export class TokenEngineRuntime
   private readonly pullPaths = new Set<string>()
   private readonly pulledPaths = new Set<string>()
   private readonly progress: TransferProgress
+  private readonly uploadProgress: TransferProgress
+  private activeUploads = 0
+  private journalActive = false
+  private readonly sentUploadHashes = new Set<string>()
   private readonly folderProgress: TransferProgress
   private readonly pendingFolders = new Set<string>()
   private preparingFolders(paths: string[]): void {
@@ -310,7 +314,7 @@ export class TokenEngineRuntime
       )
         this.progress.clear()
       // A local read may also happen during a pull or upload; retain that active transfer.
-      if (!this.progress.stage)
+      if (!this.progress.stage && !this.journalActive && !this.activeUploads)
         activityLog.update(
           value ? { stage: 'Comparing files', ...value, totalKnown: true } : undefined
         )
@@ -322,6 +326,30 @@ export class TokenEngineRuntime
           activityLog.update(one)
           options.progress?.(one)
         }
+      },
+      Date.now,
+      (work, delay) => {
+        const timer = window.setTimeout(work, delay)
+        return () => window.clearTimeout(timer)
+      }
+    )
+    this.uploadProgress = new TransferProgress(
+      (one) => {
+        // The SDK exposes a journal batch, not the whole run's content inventory.
+        const shown =
+          one &&
+          (one.stage === 'Uploading'
+            ? { ...one, total: undefined, totalBytes: undefined, totalKnown: false }
+            : {
+                stage: one.stage,
+                completed: 0,
+                total: undefined,
+                totalBytes: undefined,
+                bytes: undefined,
+                totalKnown: false,
+              })
+        activityLog.update(shown)
+        options.progress?.(shown)
       },
       Date.now,
       (work, delay) => {
@@ -390,6 +418,10 @@ export class TokenEngineRuntime
           const path = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           ).pathname
+          if (path.startsWith('/v2/uploads/') && init?.method === 'PUT') {
+            this.sentUploadHashes.add(path.split('/')[3])
+            this.uploadProgress.phase('Uploading')
+          }
           if (
             (path === '/v2/commit' ||
               path === '/v2/group-assets' ||
@@ -499,7 +531,7 @@ export class TokenEngineRuntime
               : body instanceof ArrayBuffer
                 ? body.byteLength
                 : 0
-            this.progress.bytes(url.pathname, 0, size)
+            this.uploadProgress.bytes(url.pathname, 0, size)
           }
           if (url.pathname === '/v2/connection') {
             const generation = response.headers.get(RESTORE_HEADER)
@@ -705,12 +737,17 @@ export class TokenEngineRuntime
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     const hasBlob = this.client.hasBlob.bind(this.client)
-    this.client.hasBlob = async (sha) => this.uploadEntitlements.has(sha) || (await hasBlob(sha))
+    this.client.hasBlob = async (sha) => {
+      if (!this.activeUploads && this.uploadProgress.stage)
+        this.uploadProgress.phase('Checking the vault')
+      return this.uploadEntitlements.has(sha) || (await hasBlob(sha))
+    }
     const prepare = this.client.prepare.bind(this.client)
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded) => {
+      this.journalActive = false
       this.largeUploadPaths.clear()
       this.readyToPublish = false
       this.acceptHandshake = true
@@ -737,6 +774,8 @@ export class TokenEngineRuntime
         }
       }
       this.pulling = (await state.getCursor()) === 0
+      this.uploadProgress.clear()
+      this.sentUploadHashes.clear()
       this.folderProgress.clear()
       this.pendingFolders.clear()
       this.progress.begin('Checking the vault', false)
@@ -859,21 +898,36 @@ export class TokenEngineRuntime
     }
     const putBlob = this.client.putBlob.bind(this.client)
     this.client.putBlob = async (sha, bytes) => {
-      if (this.progress.stage !== 'Uploading') this.progress.begin('Uploading')
-      const path = this.uploadNames.get(sha)
-      if (path) this.progress.current(path)
-      await putBlob(sha, bytes)
+      this.activeUploads++
+      try {
+        if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
+        if (this.activeUploads === 1) this.uploadProgress.phase('Checking the vault')
+        this.uploadProgress.add(sha, bytes.length)
+        const path = this.uploadNames.get(sha)
+        if (path) this.uploadProgress.current(path)
+        await putBlob(sha, bytes)
+        if (this.sentUploadHashes.has(sha)) this.uploadProgress.done(sha)
+        this.uploadProgress.refresh()
+      } finally {
+        this.activeUploads--
+      }
     }
     const putBlobSource = this.client.putBlobSource.bind(this.client)
     this.client.putBlobSource = async (...args) => {
-      if (this.progress.stage !== 'Uploading') this.progress.begin('Uploading')
-      const path = this.uploadNames.get(args[0].sha)
-      if (path) this.progress.current(path)
-      await putBlobSource(...args)
+      this.activeUploads++
+      try {
+        if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
+        if (this.activeUploads === 1) this.uploadProgress.phase('Checking the vault')
+        this.uploadProgress.add(args[0].sha, args[0].size)
+        const path = this.uploadNames.get(args[0].sha)
+        if (path) this.uploadProgress.current(path)
+        await putBlobSource(...args)
+        if (this.sentUploadHashes.has(args[0].sha)) this.uploadProgress.done(args[0].sha)
+        this.uploadProgress.refresh()
+      } finally {
+        this.activeUploads--
+      }
     }
-    let pushTotal = 0
-    const uploadOps = new Map<string, number>()
-    const uploadHashes = new Set<string>()
     const progressState = new Proxy(options.engineState ?? options.state, {
       get: (target, name) => {
         if (name === 'put')
@@ -884,36 +938,21 @@ export class TokenEngineRuntime
         if (name === 'setJournal')
           return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
             await target.setJournal(journal)
+            this.journalActive = journal !== null
             if (!journal) return
-            if (
-              this.progress.stage !== 'Uploading' &&
-              this.progress.stage !== 'Committing changes'
-            ) {
-              this.progress.begin('Uploading')
-              uploadOps.clear()
-              uploadHashes.clear()
-              pushTotal = Math.max(this.engine.status.pending, journal.ops.length)
-            }
-            if (this.progress.stage === 'Committing changes') this.progress.phase('Uploading')
-            for (const [index, op] of journal.ops.entries()) {
+            this.progress.clear()
+            if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
+            else this.uploadProgress.phase('Checking the vault')
+            for (const op of journal.ops) {
               const path =
                 'path' in op
                   ? op.path
                   : 'to_path' in op
                     ? op.to_path
                     : await this.pathFor(op.file_id)
-              if (path) this.progress.current(path)
+              if (path) this.uploadProgress.current(path)
               if (path && 'sha' in op) this.uploadNames.set(op.sha, path)
-              const id = journal.idempotencyKey + ':' + index
-              if (!uploadOps.has(id)) {
-                const size = 'sha' in op && !uploadHashes.has(op.sha) && 'size' in op ? op.size : 0
-                if ('sha' in op) uploadHashes.add(op.sha)
-                uploadOps.set(id, size)
-                this.progress.add(id, uploadOps.get(id))
-              }
             }
-            if (uploadOps.size >= pushTotal) this.progress.inventoryComplete()
-            this.progress.counts(Math.max(0, pushTotal - this.engine.status.pending), pushTotal)
           }
         const value = Reflect.get(target, name)
         return typeof value === 'function' ? value.bind(target) : value
@@ -1111,6 +1150,7 @@ export class TokenEngineRuntime
         this.pendingFolders.clear()
         this.folderProgress.clear()
         this.progress.clear()
+        this.uploadProgress.clear()
         this.pulling = false
         options.pulling?.()
         comparing()
@@ -1126,6 +1166,7 @@ export class TokenEngineRuntime
         this.folderProgress.clear()
         if (!this.yieldedForReview(error)) options.event?.('Error: ' + connectionError(error))
         this.progress.clear()
+        this.uploadProgress.clear()
         this.pulling = false
         options.pulling?.()
         const rootFailure = vaultRootFailure(error)
@@ -1157,13 +1198,6 @@ export class TokenEngineRuntime
     this.unstatus = this.engine.onStatus((status) => {
       if (status.state === 'offline') this.serverAvailable = false
       if (status.state === 'syncing') this.trace.beginPullCycle()
-      if (
-        status.state === 'syncing' &&
-        (this.progress.stage === 'Uploading' || this.progress.stage === 'Committing changes')
-      ) {
-        pushTotal = Math.max(pushTotal, status.pending)
-        this.progress.counts(pushTotal - status.pending, pushTotal)
-      }
       options.changed(status)
     })
     this.actions = new TokenActions(this.engine, options.state, this.client)
@@ -1203,7 +1237,7 @@ export class TokenEngineRuntime
     const commit = this.client.commitRaw.bind(this.client)
     this.client.commitRaw = async (ops, key) => {
       let outcome: Awaited<ReturnType<typeof commit>>
-      this.progress.phase('Committing changes')
+      this.uploadProgress.phase('Committing changes')
       try {
         outcome = await commit(ops, key)
       } catch (error) {
@@ -1219,7 +1253,7 @@ export class TokenEngineRuntime
         const path =
           'path' in op ? op.path : 'to_path' in op ? op.to_path : await this.pathFor(op.file_id)
         if (path) {
-          this.progress.current(path)
+          this.uploadProgress.current(path)
           if (result.status === 'rejected') options.event?.('Not sent ' + path + ': ' + result.code)
         }
       }
@@ -2124,6 +2158,7 @@ export class TokenEngineRuntime
     this.active = false
     this.pendingFolders.clear()
     this.progress.clear()
+    this.uploadProgress.clear()
     this.folderProgress.clear()
     this.unroot?.()
     this.unroot = undefined

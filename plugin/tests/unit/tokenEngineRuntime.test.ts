@@ -1844,10 +1844,122 @@ it('replaces an empty server download with comparison, then real upload counts',
     expect(duringComparison).not.toContainEqual(expect.objectContaining({ stage: 'Downloading' }))
     expect(duringUpload.length).toBeGreaterThan(0)
     for (const value of duringUpload)
-      expect(value).toMatchObject({ stage: 'Uploading', completed: 0, total: 1, totalBytes: 5 })
+      expect(value).toMatchObject({
+        stage: 'Uploading',
+        completed: 0,
+        total: undefined,
+        totalBytes: undefined,
+        bytes: 0,
+      })
     expect(duringCommit).toContainEqual(
-      expect.objectContaining({ stage: 'Committing changes', total: 1, bytes: 5 })
+      expect.objectContaining({ stage: 'Committing changes', total: undefined, bytes: undefined })
     )
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('does not present a resumed journal batch as the whole remaining upload', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const send = wire.fetch.getMockImplementation()!
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  for (let i = 0; i < 1002; i++)
+    await fs.writeAtomic(`Notes/local-${i}.md`, new TextEncoder().encode(`sample ${i}`), 2000)
+  let uploads = 0,
+    resumed = false,
+    committed = 0,
+    current: TransferSnapshot | undefined
+  const observed: (TransferSnapshot | undefined)[] = []
+  const acknowledged: TransferSnapshot[] = []
+  wire.fetch.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
+    if (route.startsWith('/v2/uploads/')) {
+      if (resumed) observed.push(current && { ...current })
+      if (++uploads > 2 && !resumed) throw new EngineError('offline', 'sample interrupted transfer')
+    }
+    if (route === '/v2/changes')
+      return Response.json({ items: [], cursor: Math.max(1, committed), next: null })
+    if (route === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      const results = ops.map((op: { path: string; sha: string; size: number; mtime: number }) => {
+        const seq = ++committed
+        return {
+          status: 'applied',
+          file_id: `sample-file-${seq}`,
+          version_id: `sample-version-${seq}`,
+          seq,
+          path: op.path,
+          sha: op.sha,
+          size: op.size,
+          mtime: op.mtime,
+        }
+      })
+      return Response.json({ cursor: committed, results })
+    }
+    return send(input, init)
+  })
+  let one = runtime(wire, fs, state)
+  try {
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+    expect((await state.getJournal())?.ops).toHaveLength(1000)
+    await one.runtime.close()
+    resumed = true
+    uploads = 0
+    one = runtime(wire, fs, state, undefined, null, {
+      progress: (value) => {
+        current = value
+        if (value?.stage === 'Uploading') acknowledged.push(value)
+      },
+    })
+    await one.runtime.sync()
+    expect(observed.length).toBeGreaterThan(0)
+    expect(observed[0]).toMatchObject({ stage: 'Uploading', completed: 0, bytes: 0 })
+    for (const snapshot of observed) {
+      expect(snapshot?.total).toBeUndefined()
+      expect(snapshot?.totalBytes).toBeUndefined()
+      expect(snapshot?.totalKnown).toBe(false)
+    }
+    expect(observed.some((snapshot) => (snapshot?.completed ?? 0) >= 1000)).toBe(true)
+    expect(acknowledged.at(-1)).toMatchObject({
+      completed: 1002,
+      bytes: Array.from({ length: 1002 }, (_, i) => `sample ${i}`.length).reduce(
+        (a, b) => a + b,
+        0
+      ),
+    })
+    expect(await state.getJournal()).toBeNull()
+    expect(await Array.fromAsync(state.all())).toHaveLength(1002)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('shows checking rather than uploading when all journal contents are already available', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
+  const updates: TransferSnapshot[] = []
+  const one = runtime(wire, fs, undefined, undefined, null, {
+    engineClient: (client) =>
+      new Proxy(client, {
+        get(target, key) {
+          if (key === 'hasBlob') return async () => true
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      }),
+    progress: (value) => {
+      if (value) updates.push(value)
+    },
+  })
+  try {
+    await one.runtime.sync()
+    expect(wire.requests.some((route) => route.startsWith('/v2/uploads/'))).toBe(false)
+    expect(updates.some((value) => value.stage === 'Uploading')).toBe(false)
+    expect(updates.some((value) => value.stage === 'Checking the vault')).toBe(true)
+    expect(updates.some((value) => value.stage === 'Committing changes')).toBe(true)
   } finally {
     await one.runtime.close()
   }
@@ -1874,8 +1986,11 @@ it.each([true, false])(
     try {
       if (acknowledged) await one.runtime.sync()
       else await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
-      expect(updates).toContainEqual(expect.objectContaining({ total: 1, totalBytes: 5, bytes: 0 }))
+      expect(updates).toContainEqual(
+        expect.objectContaining({ total: undefined, totalBytes: undefined, bytes: 0 })
+      )
       expect(Math.max(...updates.map((one) => one.bytes ?? 0))).toBe(acknowledged ? 5 : 0)
+      expect(Math.max(...updates.map((one) => one.completed))).toBe(acknowledged ? 1 : 0)
     } finally {
       await one.runtime.close()
     }
