@@ -93,7 +93,17 @@
     </div>
     <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
       <span class="abele-chat-msg__detail-label">{{ t('streamB.result.6e7d50') }}</span>
-      <pre data-find-part="result">{{ toolResultText(message.toolResult) }}</pre>
+      <div v-if="chatList" class="abele-chat-list" data-find-part="result">
+        <TreeItem
+          v-for="(chat, index) in chatList"
+          :key="index"
+          :text="chat.title"
+          :where="chat.folder"
+          icon="message-square"
+          plain
+        />
+      </div>
+      <pre v-else data-find-part="result">{{ toolResultText(message.toolResult) }}</pre>
     </div>
   </div>
 </template>
@@ -105,8 +115,10 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import type { ChatMessage } from '@/ai/types'
 import { toolParamsText, toolResultText } from '@/ai/toolLine'
+import { computed } from 'vue'
+import TreeItem from './obsidian/TreeItem.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     message: ChatMessage
     /** The row of actions; a question or an answer has them in the line under it instead. */
@@ -118,6 +130,24 @@ withDefaults(
   }>(),
   { actions: true }
 )
+const chatList = computed(() => {
+  if (props.message.toolName !== 'list_chats' || !props.message.toolResult) return null
+  try {
+    const result: unknown = JSON.parse(props.message.toolResult)
+    if (!Array.isArray(result)) return null
+    const rows: { title: string; folder?: string }[] = []
+    for (const item of result) {
+      if (!item || typeof item !== 'object' || typeof item.title !== 'string') return null
+      rows.push({
+        title: item.title,
+        folder: typeof item.folder === 'string' ? item.folder : undefined,
+      })
+    }
+    return rows
+  } catch {
+    return null
+  }
+})
 const emit = defineEmits<{
   (event: 'copy'): void
   (event: 'actions', mouse: MouseEvent): void

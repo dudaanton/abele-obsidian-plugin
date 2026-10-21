@@ -182,7 +182,7 @@
         />
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
-        <ChatLetterRun v-if="message.chatLetter" :letter="message.chatLetter" />
+        <ChatLetterRun v-if="message.chatLetter" :message="message" />
         <TreeItem
           v-if="message.replyProposal"
           class="abele-chat-run abele-chat-msg__proposal"
