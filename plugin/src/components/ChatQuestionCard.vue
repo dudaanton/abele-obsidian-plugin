@@ -77,17 +77,21 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import RequestCard from './obsidian/RequestCard.vue'
 
-const props = defineProps<{
-  question: string
-  options: readonly string[]
-  /** Where this question stands among the ones asked together, from 0. */
-  index: number
-  count: number
-  disabled?: boolean
-  allowCustom?: boolean
-  multi?: boolean
-  selected?: readonly string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    question: string
+    options: readonly string[]
+    /** Where this question stands among the ones asked together, from 0. */
+    index: number
+    count: number
+    disabled?: boolean
+    /** An own answer is offered unless a hosted questionnaire turns it off. */
+    allowCustom?: boolean
+    multi?: boolean
+    selected?: readonly string[]
+  }>(),
+  { allowCustom: true }
+)
 const emit = defineEmits<{
   answer: [option: string]
   skip: []
