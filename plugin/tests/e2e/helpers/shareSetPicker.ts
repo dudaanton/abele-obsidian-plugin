@@ -1,10 +1,10 @@
 /** Native suggestion selection shared by the live single-item and set-sharing cases. */
 export const SHARE_SET_PICKER = `
 const pickShareItem = async (box, label, waitForChip = true) => {
-  const legacy = box.querySelector('select');
+  let legacy = box.querySelector('select');
   if (legacy) {
     let option;
-    await poll(() => { option = [...legacy.options].find(one => one.textContent.trim() === label); return !!option });
+    await poll(() => { legacy = box.querySelector('select'); option = legacy && [...legacy.options].find(one => one.textContent.trim() === label); return !!option }, undefined, 'sharing scopes to load');
     legacy.value = option.value;
     legacy.dispatchEvent(new legacy.ownerDocument.defaultView.Event('change', { bubbles: true }));
     return;
