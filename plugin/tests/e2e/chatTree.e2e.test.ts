@@ -284,13 +284,17 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     'keeps the node in the switcher on desktop and at 390 by 844',
     async () => {
       const header = (label: string) => `(async () => {
+      const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width;
       try {
         await window.__abeleTest.openNodeSessionFixture('empty');
+        if (!app.isMobile) app.workspace.rightSplit.setSize(600);
         await new Promise(resolve => setTimeout(resolve, 500));
         const root = document.querySelector('.abele-node-chat');
         const current = root.querySelector('.abele-chat-switch__current');
         if (!current?.getAttribute('aria-label')?.startsWith('Sample node / ')) throw Error('Node missing from switcher');
         if (root.querySelector('.abele-node-chat__node')) throw Error('Separate node label remains');
+        const where = current.querySelector('.abele-chat-switch__where');
+        if (!app.isMobile && (!where || !where.getClientRects().length)) throw Error('Node location hidden in a wide header');
         const bounds = current.getBoundingClientRect();
         if (bounds.width <= 0 || bounds.right > innerWidth + 1) throw Error('Node header is clipped');
         const path = ${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-node-header.png';
@@ -300,7 +304,10 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
           require('fs').writeFileSync(path, image.toPNG());
         }
         return JSON.stringify(true);
-      } finally { await window.__abeleTest.closeNodeSessionFixture(); }
+      } finally {
+        await window.__abeleTest.closeNodeSessionFixture();
+        if (!app.isMobile && priorWidth) app.workspace.rightSplit.setSize(priorWidth);
+      }
     })()`
       expect(JSON.parse(await evalLong(header('desktop'), 30_000))).toBe(true)
       await withEmulatedPhone(async () => {
