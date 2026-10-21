@@ -2,7 +2,7 @@
  * Where a chat's rewind log is kept: in the plugin's folder, on this device only.
  *
  * `<configDir>/plugins/abele/rewind/<chat>/log.json` holds the entries, with the text of every
- * file as it was before; binaries sit beside it as `<hash>.bin`. None of it is in the chat file,
+ * file as it was before; binaries sit beside it as `<encoded-fingerprint>.bin`. None of it is in the chat file,
  * so a chat opened on another device has its conversation and nothing to rewind with — the
  * snapshots can be large, and the vault is what gets synced.
  */
@@ -42,6 +42,10 @@ export function adapterStore(app: App): RewindStore {
   const adapter = app.vault.adapter as Adapter
   const root = rewindDir(app)
   const dir = (key: string) => `${root}/${key}`
+  // Encode the fingerprint separator only on disk; log references and hashes stay stable.
+  // Escaping '%' keeps the mapping unambiguous for other store callers too.
+  const blobPath = (key: string, name: string) =>
+    `${dir(key)}/${name.replace(/[%\\:*?"<>|]/g, (char) => '%' + char.charCodeAt(0).toString(16))}.bin`
   const ensure = async (key: string) => {
     for (const path of [`${app.vault.configDir}/plugins/abele`, root, dir(key)]) {
       if (!(await adapter.exists(path))) await adapter.mkdir(path)
@@ -65,18 +69,21 @@ export function adapterStore(app: App): RewindStore {
       await adapter.write(`${dir(key)}/log.json`, JSON.stringify(log))
     },
     async readBlob(key, name) {
-      const path = `${dir(key)}/${name}.bin`
-      if (!(await adapter.exists(path))) return null
-      return adapter.readBinary(path)
+      const path = blobPath(key, name)
+      if (await adapter.exists(path)) return adapter.readBinary(path)
+      const legacy = `${dir(key)}/${name}.bin`
+      if (legacy === path || !(await adapter.exists(legacy))) return null
+      return adapter.readBinary(legacy)
     },
     async writeBlob(key, name, data) {
       await ensure(key)
-      const path = `${dir(key)}/${name}.bin`
+      const path = blobPath(key, name)
       if (!(await adapter.exists(path))) await adapter.writeBinary(path, data)
     },
     async removeBlob(key, name) {
-      const path = `${dir(key)}/${name}.bin`
-      if (await adapter.exists(path)) await adapter.remove(path)
+      for (const path of new Set([blobPath(key, name), `${dir(key)}/${name}.bin`])) {
+        if (await adapter.exists(path)) await adapter.remove(path)
+      }
     },
     async usage() {
       if (!(await adapter.exists(root))) return []

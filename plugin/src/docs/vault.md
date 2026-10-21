@@ -1481,13 +1481,18 @@ What a chat's tools changed in the vault is not in the chat file. It is kept in 
 folder, under `rewind/`, one folder per chat named by the id of its first message: `log.json`
 lists every change with the user message whose turn made it, the text a file had before (or
 that it did not exist, or where it was moved to) and a fingerprint of what it held after; a
-picture or other binary it replaced sits beside the log as `<fingerprint>.bin`, unless it was
+picture or other binary it replaced sits beside the log as `<encoded-fingerprint>.bin`, unless it was
 larger than 20MB. Explicitly prepared Word edits keep their original archive even above that
 opportunistic cap, under the same configured history budget. This is on the device where the
 chat ran, nothing more. It is kept under the
 size the **Rewind space** setting allows (100MB by default; 0 keeps nothing): the chats written
 to least recently lose theirs first, then the oldest changes of the chat being written. A change
 that has been put back leaves the log. Deleting this folder only takes away the way back.
+
+Binary filenames percent-encode characters that Windows and shared mobile storage cannot
+store (the fingerprint's colon becomes `%3a`), while the fingerprint and blob reference in
+the log stay unchanged. Reads prefer the portable filename and fall back to the original
+filename. Existing history is not renamed or migrated.
 
 Abele Sync offers only `data.json`, `manifest.json`, `main.js` and `styles.css` from this
 plugin's directory. Rewind history, chat indexes and recovery backups, reader backups and
