@@ -9,6 +9,51 @@ import { useVault } from '../helpers/testEnv'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseChat } from '@/ai/ChatLog'
+import { TFile } from 'obsidian'
+
+it('shows times for loaded, unloaded and closed chats without loading their sessions', () => {
+  const app = useVault(
+    ['AI/Chats/loaded.abchat', 'AI/Chats/unloaded.abchat', 'AI/Chats/closed.abchat'].map(
+      (path) => ({ path, content: '' })
+    )
+  )
+  const paths = app.vault.getFiles().map((file) => file.path)
+  const ids = paths.slice(0, 2).map((path) => {
+    const id = service.createTab()
+    service.getSession(id)!.currentChatFile.value = app.vault.getAbstractFileByPath(path) as TFile
+    return id
+  })
+  const loaded = service.getSession(ids[0])! as unknown as {
+    appendChatMessage(message: ChatMessage): void
+    updateVisibleMessages(): void
+  }
+  loaded.appendChatMessage({
+    id: 'sample-latest',
+    role: 'user',
+    content: 'Sample',
+    timestamp: 9000,
+  })
+  loaded.updateVisibleMessages()
+  AbeleConfig.getInstance().ai.chatHistory = paths.map((path, i) => ({
+    path,
+    title: path,
+    created: '',
+    lastMessageAt: 1000 + i,
+  }))
+  const tree = service.tree
+  const rows = chatsOf(tree.root.value)
+  expect(ids.map((id) => rows.find((row) => row.id === id)?.at)).toEqual([9000, 1001])
+  expect(rows.find((row) => row.id === paths[2])?.at).toBe(1002)
+})
+
+it('uses file modification time when the index has no last-message time', () => {
+  const app = useVault([{ path: 'AI/Chats/sample.abchat', content: '' }])
+  const file = app.vault.getFiles()[0]
+  AbeleConfig.getInstance().ai.chatHistory = [{ path: file.path, title: 'Sample', created: '' }]
+  const read = vi.spyOn(app.vault, 'cachedRead')
+  expect(chatsOf(service.tree.root.value)[0].at).toBe(file.stat.mtime)
+  expect(read).not.toHaveBeenCalled()
+})
 
 let service: ChatService
 beforeEach(() => {

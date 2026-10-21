@@ -140,7 +140,7 @@ export class ChatTreeModel implements ChatTreeSource {
       entry.title = cached.title || entry.title
       entry.agentId = cached.agentId ?? entry.agentId
       entry.created = cached.created ?? entry.created
-      entry.lastMessageAt = cached.at ?? entry.lastMessageAt
+      entry.lastMessageAt = cached.at || entry.lastMessageAt
       if (cached.parent) parents[entry.path] = cached.parent
       helpers.push(...cached.helpers)
     }
@@ -178,6 +178,16 @@ export class ChatTreeModel implements ChatTreeSource {
     void this.service.folders.revision.value
     const { app } = GlobalStore.getInstance()
     const root: ChatTreeEntry[] = []
+    const indexedTimes = new Map(
+      this.history.value.map((entry) => [entry.path, entry.lastMessageAt])
+    )
+    const timeFor = (path: string, live?: number) => {
+      if (live) return live
+      const indexed = indexedTimes.get(path)
+      if (indexed) return indexed
+      const file = app.vault.getAbstractFileByPath(path)
+      return file instanceof TFile ? file.stat.mtime : 0
+    }
     const folders = new Map<string, ChatTreeFolder>()
     const ensure = (path: string): ChatTreeEntry[] => {
       if (!path) return root
@@ -224,7 +234,7 @@ export class ChatTreeModel implements ChatTreeSource {
         open: true,
         state: info.state === 'idle' ? undefined : info.state,
         nested: this.service.getNodeSession(info.id) ? 'node' : undefined,
-        at: presentation.messages.value.at(-1)?.timestamp ?? 0,
+        at: timeFor(path, presentation.messages.value.at(-1)?.timestamp),
         children: [],
       }
       entries.set(chat.id, {
@@ -251,7 +261,7 @@ export class ChatTreeModel implements ChatTreeSource {
           entry.title ||
           t('chatTree.discussion'),
         open: false,
-        at: live?.messages.value.at(-1)?.timestamp ?? entry.lastMessageAt ?? 0,
+        at: timeFor(entry.path, live?.messages.value.at(-1)?.timestamp),
         state:
           state === 'pending'
             ? 'waiting'
