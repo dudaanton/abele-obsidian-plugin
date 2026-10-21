@@ -549,7 +549,14 @@ it.each(['desktop', 'phone'])(
     } finally { await binding.controller.command('stop'); }
   })()`)
     try {
-      expect(device === 'phone' ? await withEmulatedPhone(probe) : await probe()).toBe(true)
+      expect(
+        device === 'phone'
+          ? await withEmulatedPhone(async () => {
+              openChat()
+              return probe()
+            })
+          : await probe()
+      ).toBe(true)
     } finally {
       openChat()
     }
