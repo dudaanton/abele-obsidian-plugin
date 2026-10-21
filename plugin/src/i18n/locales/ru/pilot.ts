@@ -29,6 +29,8 @@ export const ru = {
   'debug.pausedAtStart': 'Остановлено при запуске',
   'node.disconnectRevokeNotice':
     'Отключить это устройство и отозвать его ключ на ноде? Остальные устройства останутся подключёнными.',
+  'node.tools.callPlace': 'на {device}',
+  'node.tools.askedAgent': 'Попросил {agent}',
   'node.tools.runner': 'Выполняется в Obsidian на устройстве {device}',
   'node.tools.noRunner': 'К ноде сейчас не подключено ни одного устройства с Obsidian',
   'node.tools.nodeAgent': 'Агент ноды',

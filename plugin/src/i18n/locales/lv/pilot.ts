@@ -28,6 +28,8 @@ export const lv = {
   'debug.pausedAtStart': 'Apturēts sākumā',
   'node.disconnectRevokeNotice':
     'Atvienot šo ierīci un atsaukt tās atslēgu mezglā? Citas ierīces paliks savienotas.',
+  'node.tools.callPlace': 'ierīcē {device}',
+  'node.tools.askedAgent': 'Lūdza {agent}',
   'node.tools.runner': 'Darbojas Obsidian ierīcē {device}',
   'node.tools.noRunner': 'Mezglam pašlaik nav pievienota neviena ierīce ar Obsidian',
   'node.tools.nodeAgent': 'Mezgla aģents',

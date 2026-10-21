@@ -2,28 +2,33 @@
   <!-- One message of a node chat: the regular chat's message, with what the node adds under it
        (a failed turn's way to send it again, where a queued input stands) and beside a call
        (what allowed it). -->
-  <AiChatMessage
+  <NodeDelegateHistory
+    v-if="conversation && message.toolName === 'delegate' && message.id.startsWith('obsidian:')"
+    :client="conversation.client"
     :message="message"
+    :invocation="message.id.slice('obsidian:'.length)"
+    :revision="conversation.revision.value"
+    :open-resource="openResource"
+  />
+  <AiChatMessage
+    v-else
+    :message="runMessage"
     :read-only-history="true"
     :extend-actions="historyState ? addHistoryActions : undefined"
     :can-reply="canReply"
-    :compact-tool-details="!message.id.startsWith('obsidian:')"
+    compact-tool-details
     :resource-opener="openResource"
     @reply="emit('reply', $event)"
     @show-reply="emit('show-reply', $event)"
     @open-session="emit('open-session', $event)"
   >
-    <template #tool-note>
-      <div v-if="message.toolDevice" class="abele-node-message-note">
-        {{ t('node.tools.runner', { device: message.toolDevice }) }}
-      </div>
-      <NodeDelegateHistory
-        v-if="conversation && message.toolName === 'delegate' && message.id.startsWith('obsidian:')"
-        :client="conversation.client"
-        :invocation="message.id.slice('obsidian:'.length)"
-        :revision="conversation.revision.value"
-        :open-resource="openResource"
+    <template #tool-place>
+      <CallPlace
+        v-if="message.toolStatus !== 'pending' && message.toolExecution !== 'not-run'"
+        :device="message.toolDevice"
       />
+    </template>
+    <template v-if="!message.id.startsWith('obsidian:')" #tool-note>
       <span
         v-if="message.toolResult || message.content"
         class="abele-node-message-note"
@@ -81,9 +86,10 @@
   </AiChatMessage>
 </template>
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { obsidianConversationPresentation } from '@/node/obsidianConversationPresentation'
 import NodeDelegateHistory from './NodeDelegateHistory.vue'
+import CallPlace from './chat/CallPlace.vue'
 const conversation = inject(obsidianConversationPresentation, null)
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
@@ -107,6 +113,13 @@ const props = defineProps<{
   promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
   historyState?: { reason: string }
 }>()
+// Write previews belong to the live approval card. The retained call stays a run line;
+// its ordinary details menu does not reopen the saved preview as another content block.
+const runMessage = computed(() =>
+  props.message.id.startsWith('obsidian:')
+    ? { ...props.message, toolDiff: undefined }
+    : props.message
+)
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
   (e: 'retry', messageId: string): void

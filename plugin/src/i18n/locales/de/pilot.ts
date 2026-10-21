@@ -29,6 +29,8 @@ export const de = {
   'debug.pausedAtStart': 'Beim Start angehalten',
   'node.disconnectRevokeNotice':
     'Dieses Gerät trennen und seinen Schlüssel auf dem Knoten widerrufen? Andere Geräte bleiben verbunden.',
+  'node.tools.callPlace': 'auf {device}',
+  'node.tools.askedAgent': 'Fragte {agent}',
   'node.tools.runner': 'Wird in Obsidian auf {device} ausgeführt',
   'node.tools.noRunner': 'Derzeit ist kein Gerät mit Obsidian mit dem Knoten verbunden',
   'node.tools.nodeAgent': 'Knoten-Agent',

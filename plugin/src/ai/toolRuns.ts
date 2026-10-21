@@ -201,7 +201,12 @@ export function runSummary(calls: readonly ChatMessage[]): string {
 /** Helper transcripts and reply decisions remain visible instead of being folded into a run. */
 export const ownLine = (message: ChatMessage): boolean =>
   message.role === 'tool-call' &&
-  !!(message.subAgentRun || message.replyProposal || message.chatLetter)
+  !!(
+    message.subAgentRun ||
+    message.replyProposal ||
+    message.chatLetter ||
+    (message.toolName === 'delegate' && message.id.startsWith('obsidian:'))
+  )
 
 /** A chat's messages as drawn: each on its own, and the agent's calls in a row as one run. */
 export type ChatBlock =

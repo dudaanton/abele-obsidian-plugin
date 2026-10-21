@@ -1383,8 +1383,10 @@ An outside-scope vault path is an ordinary per-action approval; bypass skips que
 never enables an Off tool. No folder or delegation grant is needed.
 
 Calls run on a connected client of the same vault, preferring a desktop. The agent editor
-shows the execution device or that no device is connected. Calls and exact approvals appear
-in the node chat, including created text and edit diffs. Pending approvals have no deadline.
+shows the execution device or that no device is connected. Calls use the ordinary compact
+run lines; a quiet device code appears only for work run on another device. Created text and
+edit diffs appear in the pending approval card. Delegate calls fold open to the retained answer.
+Pending approvals have no deadline.
 Stop cancels the invocation; cancellation never implies that an already-running write was
 rolled back. Reconnect reconciles durable execution receipts and never repeats a claimed
 mutation. An unknown outcome requires checking the affected files before requesting another

@@ -92,12 +92,17 @@
         <span
           v-if="!ownLine(message)"
           class="abele-chat-msg__tool-line"
-          :class="{ 'abele-chat-msg__tool-line_files': toolFilePath }"
+          :class="{ 'abele-chat-msg__tool-line_files': toolFilePath && !compactToolDetails }"
           data-find-part="tool"
           @contextmenu.prevent="showActions"
         >
           <span class="abele-chat-msg__tool-name">{{ readableToolName(message.toolName) }}</span>
-          <ChatToolFiles v-if="toolFilePath" :message="message" :resource-opener="resourceOpener" />
+          <ChatToolFiles
+            v-if="toolFilePath"
+            :message="message"
+            :inline="compactToolDetails"
+            :resource-opener="resourceOpener"
+          />
           <span v-else-if="toolSummary" class="abele-chat-msg__tool-summary">{{
             toolSummary
           }}</span>
@@ -135,6 +140,7 @@
             :index="branches.index"
             @switch="(id) => emit('switch-branch', id)"
           />
+          <slot name="tool-place" />
           <Icon
             v-if="canForkCall"
             class="abele-chat-msg__tool-branch"

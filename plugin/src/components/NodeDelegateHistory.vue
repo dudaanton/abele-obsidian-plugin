@@ -1,37 +1,57 @@
 <template>
-  <Disclosure v-model="open" :label="t('settings.ai.AgentEditorModal.delegation.a6d910ba')">
+  <TreeItem
+    class="abele-chat-run abele-run"
+    :class="`abele-chat-run_${state}`"
+    :text="t('node.tools.askedAgent', { agent: String(message.toolParams?.agent ?? '') })"
+    :icon="state === 'running' ? 'loader' : 'bot'"
+    collapsible
+    :collapsed="!open"
+    @click="open = !open"
+  >
+    <template #end>
+      <span
+        v-if="state !== 'done'"
+        class="abele-chat-run__dot"
+        :class="`abele-chat-run__dot_${state}`"
+        role="img"
+        :aria-label="branchState(state)"
+      />
+    </template>
     <NodeErrorText v-if="error" :error="error" />
     <template v-for="branch in branches" :key="branch.id">
-      <p class="abele-node-message-note">{{ branch.item }} · {{ branchState(branch.state) }}</p>
+      <p v-if="branches.length > 1" class="abele-node-message-note">{{ branch.item }}</p>
       <AiChatMessage
-        v-for="message in branch.messages"
-        :key="message.id"
-        :message="message"
+        v-for="answer in branch.messages"
+        :key="answer.id"
+        :message="answer"
         read-only-history
         :resource-opener="openResource"
       />
     </template>
-  </Disclosure>
+  </TreeItem>
 </template>
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { z } from 'zod'
 import type { NodeClient } from '@abele/node-client'
 import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { foldDelegateHistory } from '@/node/obsidianDelegateHistory'
-import Disclosure from './obsidian/Disclosure.vue'
+import TreeItem from './obsidian/TreeItem.vue'
+import { callState } from '@/ai/toolRuns'
 import AiChatMessage from './AiChatMessage.vue'
 import NodeErrorText from './NodeErrorText.vue'
 const props = defineProps<{
   client: NodeClient
   invocation: string
+  message: ChatMessage
   openResource: (path: string) => void
   revision?: unknown
 }>()
 const open = ref(false),
   error = ref('')
+const state = computed(() => callState(props.message))
 const branchState = (state: string) =>
   state === 'done'
     ? t('node.delegation.done')

@@ -29,6 +29,8 @@ export const es = {
   'debug.pausedAtStart': 'En pausa al inicio',
   'node.disconnectRevokeNotice':
     '¿Desconectar este dispositivo y revocar su clave en el nodo? Los demás dispositivos seguirán conectados.',
+  'node.tools.callPlace': 'en {device}',
+  'node.tools.askedAgent': 'Consultó a {agent}',
   'node.tools.runner': 'Se ejecuta en Obsidian en {device}',
   'node.tools.noRunner': 'No hay ningún dispositivo con Obsidian conectado al nodo',
   'node.tools.nodeAgent': 'Agente del nodo',

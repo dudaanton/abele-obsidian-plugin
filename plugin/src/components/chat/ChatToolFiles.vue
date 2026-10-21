@@ -1,5 +1,9 @@
 <template>
-  <span v-if="paths.length" class="abele-chat-tool-files">
+  <span
+    v-if="paths.length"
+    class="abele-chat-tool-files"
+    :class="{ 'abele-chat-tool-files_inline': inline }"
+  >
     <span
       v-for="path in paths"
       :key="path"
@@ -25,6 +29,7 @@ const props = defineProps<{
   message: ChatMessage
   paths?: string[]
   compact?: boolean
+  inline?: boolean
   resourceOpener?: (path: string) => void
 }>()
 const paths = computed(() => props.paths ?? toolFilePaths(props.message))
@@ -59,6 +64,16 @@ function open(path: string) {
     max-width: 100%;
     white-space: normal;
     overflow: visible;
+  }
+}
+.abele-chat-tool-files_inline {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+
+  > .abele-chat-msg__tool-link {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 </style>

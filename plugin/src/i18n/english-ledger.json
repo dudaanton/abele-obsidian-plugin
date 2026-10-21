@@ -27388,5 +27388,25 @@
       "es",
       "de"
     ]
+  },
+  "node.tools.callPlace": {
+    "englishHash": "39f599cbe826c3619e2543c34d829f96c313eedaf3d3ffa0c11760d9b6b3ad4c",
+    "context": "Node call place and folded delegate line",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.tools.askedAgent": {
+    "englishHash": "78e2aaad106b58e6c21cc2d8dd4e6ca3f08a74c310f6e4bb1f1a30e9a99fb712",
+    "context": "Node call place and folded delegate line",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

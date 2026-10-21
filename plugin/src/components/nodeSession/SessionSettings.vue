@@ -6,12 +6,7 @@
     :aria-label="facts"
     @click="open"
   >
-    <span
-      ref="glyph"
-      class="abele-session-settings__mode"
-      :class="{ 'abele-session-settings__mode_bypass': settings.mode === 'bypass' }"
-      aria-hidden="true"
-    />
+    <span ref="glyph" class="abele-session-settings__mode" aria-hidden="true" />
     <span v-if="!phone" class="abele-session-settings__model">{{ said }}</span>
     <ContextMeter v-if="live.context" :context="live.context" />
   </button>
@@ -20,7 +15,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 // How the session runs, in one quiet control at the composer's foot: its permission mode as a
-// glyph, red when it asks about nothing; the model's family in a word; how full the context is,
+// glyph; the model's family in a word; how full the context is,
 // as a share that turns orange near the end. The effort and the account are its tooltip. It opens one menu of everything the session can
 // be set to, compacting first. On a phone the words go and the glyph and the share stay.
 import { computed, onMounted, ref, watch } from 'vue'
@@ -151,9 +146,6 @@ defineExpose({ open })
 .abele-session-settings__mode {
   display: inline-flex;
   flex-shrink: 0;
-}
-.abele-session-settings__mode_bypass {
-  color: var(--text-error);
 }
 .abele-session-settings__model {
   overflow: hidden;

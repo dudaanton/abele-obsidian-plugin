@@ -28,6 +28,8 @@ export const en = {
   'node.disconnectRevokeNotice':
     'Disconnect this device and revoke its key on the node? Other devices stay connected.',
   'node.tools.runner': 'Runs in Obsidian on {device}',
+  'node.tools.callPlace': 'on {device}',
+  'node.tools.askedAgent': 'Asked {agent}',
   'node.tools.noRunner': 'No device with Obsidian is connected to the node now',
   'node.tools.nodeAgent': 'Node agent',
   'node.tools.modes': 'Off = unavailable. Ask = needs approval. Auto = runs on its own.',
