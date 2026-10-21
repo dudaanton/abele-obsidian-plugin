@@ -10,7 +10,7 @@ export const streamB = {
   'streamB.permissionBypass': 'Without asking',
   'streamB.permissionUnknown': 'Permission mode not reported',
   'streamB.permissionNeedsBypass':
-    'This provider cannot ask before each action. Choose Without asking in its agent settings to enable it.',
+    'This provider cannot ask before each action. Choose Without asking in its agent settings to enable it. For delegation, the parent chat must also run without asking.',
   'streamB.permissionNodeOptIn': 'The node operator must enable --claude-allow-bypass on the node.',
   'streamB.permissionOpenSettings': 'Agent permission settings',
   'streamB.permissionCodexFolder':

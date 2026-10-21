@@ -11,7 +11,7 @@ export const streamB = {
   'streamB.permissionBypass': 'Ohne Nachfrage',
   'streamB.permissionUnknown': 'Berechtigungsmodus nicht gemeldet',
   'streamB.permissionNeedsBypass':
-    'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren.',
+    'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren. Beim Delegieren muss auch der übergeordnete Chat ohne Nachfrage laufen.',
   'streamB.permissionNodeOptIn':
     'Der Knotenbetreiber muss --claude-allow-bypass auf dem Knoten aktivieren.',
   'streamB.permissionOpenSettings': 'Agentenberechtigungen',

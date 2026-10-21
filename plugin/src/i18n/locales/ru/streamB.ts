@@ -11,7 +11,7 @@ export const streamB = {
   'streamB.permissionBypass': 'Без вопросов',
   'streamB.permissionUnknown': 'Режим разрешений не сообщён',
   'streamB.permissionNeedsBypass':
-    'Этот провайдер не может спрашивать перед каждым действием. Чтобы включить его, выберите «Без вопросов» в настройках агента.',
+    'Этот провайдер не может спрашивать перед каждым действием. Чтобы включить его, выберите «Без вопросов» в настройках агента. При делегировании родительский чат тоже должен работать без вопросов.',
   'streamB.permissionNodeOptIn': 'Оператор ноды должен включить на ноде --claude-allow-bypass.',
   'streamB.permissionOpenSettings': 'Разрешения агента',
   'streamB.permissionCodexFolder':

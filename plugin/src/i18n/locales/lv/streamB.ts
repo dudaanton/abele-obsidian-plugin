@@ -10,7 +10,7 @@ export const streamB = {
   'streamB.permissionBypass': 'Bez jautāšanas',
   'streamB.permissionUnknown': 'Atļauju režīms nav norādīts',
   'streamB.permissionNeedsBypass':
-    'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas».',
+    'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas». Deleģējot arī vecāka čatam jādarbojas bez jautāšanas.',
   'streamB.permissionNodeOptIn': 'Mezgla operatoram mezglā jāiespējo --claude-allow-bypass.',
   'streamB.permissionOpenSettings': 'Aģenta atļauju iestatījumi',
   'streamB.permissionCodexFolder':

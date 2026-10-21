@@ -10,7 +10,7 @@ export const streamB = {
   'streamB.permissionBypass': 'Sin preguntar',
   'streamB.permissionUnknown': 'Modo de permisos no indicado',
   'streamB.permissionNeedsBypass':
-    'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente.',
+    'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente. Al delegar, el chat principal también debe ejecutarse sin preguntar.',
   'streamB.permissionNodeOptIn':
     'El operador del nodo debe activar --claude-allow-bypass en el nodo.',
   'streamB.permissionOpenSettings': 'Permisos del agente',
