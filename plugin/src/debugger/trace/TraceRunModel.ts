@@ -141,10 +141,14 @@ export class TraceRunModel {
 
   async follow(value: string) {
     try {
-      const plain = value.replace(/^"(.*)"$/, '$1')
-      const asNumber = Number(plain)
-      const needle =
-        plain !== '' && !Number.isNaN(asNumber) && /^-?[\d.]+$/.test(plain) ? asNumber : plain
+      let needle: string | number = value
+      try {
+        const parsed: unknown = JSON.parse(value)
+        if (typeof parsed === 'string' || (typeof parsed === 'number' && Number.isFinite(parsed)))
+          needle = parsed
+      } catch {
+        // Plain text values need not be JSON literals.
+      }
       this.trail = trail(await this.rpc.follow(this.projectId, this.runId, needle))
     } catch (e) {
       this.error = e instanceof Error ? e.message : t('streamC.d7e1cbd199d663cc')

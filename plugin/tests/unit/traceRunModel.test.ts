@@ -129,6 +129,23 @@ function node() {
 }
 
 describe('a run open in its tab', () => {
+  it('follows escaped strings exactly and keeps quoted numeric strings as strings', async () => {
+    const n = node()
+    const m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+    const text = 'sample\n"quoted value"'
+    await m.follow(JSON.stringify(text))
+    expect(n.request).toHaveBeenLastCalledWith('trace.v1.follow', {
+      project_id: 'project-1',
+      run_id: 'run-1',
+      value: text,
+    })
+    await m.follow('"20418"')
+    expect(n.request).toHaveBeenLastCalledWith('trace.v1.follow', {
+      project_id: 'project-1',
+      run_id: 'run-1',
+      value: '20418',
+    })
+  })
   it('searches whole recorded values on the node and ignores late search results', async () => {
     const n = node(),
       m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
