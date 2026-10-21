@@ -389,8 +389,14 @@ export class NodePathMainView extends ItemView {
       ))
       this.stops.push(
         watch(
-          () => model.fileRefresh?.value[pathTargetKey(state.target)],
-          () => this.act(() => editing.refresh())
+          () =>
+            model.fileVersion?.(
+              state.target,
+              this.saved?.kind === 'file' ? this.saved.path : state.path
+            ) ?? model.fileRefresh?.value[pathTargetKey(state.target)],
+          () => {
+            if (editing.active.value) this.act(() => editing.refresh())
+          }
         )
       )
       // The owner may open or close the worktree to saves elsewhere; the lock follows.

@@ -308,9 +308,9 @@ describe('the path sidebar model on the change stream', () => {
           changed = (batch) => {
             if (!stopped) apply!(batch)
           }
-          return () => {
+          return vi.fn(() => {
             stopped = true
-          }
+          })
         }
       ),
     }
@@ -359,6 +359,8 @@ describe('the path sidebar model on the change stream', () => {
     expect(port.watch).toHaveBeenCalledTimes(3)
     tab.destroy()
     model.destroy()
+    const stops = await Promise.all(port.watch.mock.results.map((result) => result.value))
+    for (const stop of stops) expect(stop).toHaveBeenCalledOnce()
   })
   it('invalidates open tabs after streamed file edits without rereading the tree', async () => {
     const { model, port, changed } = await open()
@@ -369,12 +371,44 @@ describe('the path sidebar model on the change stream', () => {
     expect(port.tree).not.toHaveBeenCalled()
     model.destroy()
   })
+  it('keeps an unchanged file and its language analysis mounted when another file changes', async () => {
+    const { model, port, changed } = await open()
+    port.file.mockResolvedValue({
+      target,
+      path: 'README.md',
+      text: 'sample',
+      contentId: 'sample-content',
+      revision,
+    })
+    const tab = new NodePathFileModel(model, target)
+    await tab.open('README.md')
+    await ticks()
+    port.file.mockClear()
+    changed({ entries: [{ change: 'modified', entry: file('src/other.ts') }], git: false })
+    await ticks()
+    expect(port.file).not.toHaveBeenCalled()
+    tab.destroy()
+    model.destroy()
+  })
   it('does not reread file contents for a git-only observation that can be caused by reading a file', async () => {
     const { model, changed } = await open()
     const before = { ...model.fileRefresh.value }
     changed({ entries: [], git: true })
     await ticks()
     expect(model.fileRefresh.value).toEqual(before)
+    model.destroy()
+  })
+  it('refreshes an open comparison when a git-only batch changes HEAD', async () => {
+    const { model, port, changed } = await open()
+    const before = { ...model.fileRefresh.value }
+    port.inspect.mockResolvedValueOnce({
+      entries: [],
+      changes: [],
+      revision: { ...revision, head: 'b'.repeat(40) },
+    })
+    changed({ entries: [], git: true })
+    await ticks()
+    expect(model.fileRefresh.value).not.toEqual(before)
     model.destroy()
   })
   it('starts the watch before reading the files, and reads them once', async () => {

@@ -845,11 +845,25 @@ export class NodePathModel {
     const key = pathTargetKey(target)
     this.refreshFiles(key)
   }
-  private refreshFiles(key: string): void {
-    this.fileRefresh.value = {
-      ...this.fileRefresh.value,
-      [key]: (this.fileRefresh.value[key] ?? 0) + 1,
+  private refreshFiles(key: string, paths?: readonly string[]): void {
+    const versions = { ...this.fileRefresh.value }
+    for (const path of paths ?? [undefined]) {
+      const entry = path === undefined ? key : JSON.stringify([key, path])
+      versions[entry] = (versions[entry] ?? 0) + 1
     }
+    this.fileRefresh.value = versions
+  }
+  /** Whole-target refreshes plus streamed edits of this file or one of its parent folders. */
+  fileVersion(target: PathTarget, path: string): number {
+    const key = pathTargetKey(target),
+      versions = this.fileRefresh.value
+    let version = versions[key] ?? 0,
+      prefix = ''
+    for (const part of path.split('/').filter(Boolean)) {
+      prefix = prefix ? `${prefix}/${part}` : part
+      version += versions[JSON.stringify([key, prefix])] ?? 0
+    }
+    return version
   }
   private async reloadTargetOnce(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
@@ -897,7 +911,18 @@ export class NodePathModel {
     const previous = this.inspections.value[key]?.revision
     this.invalidateRevision(target)
     this.patch(target, batch.entries)
-    if (batch.entries.length) this.refreshFiles(key)
+    if (batch.entries.length)
+      this.refreshFiles(key, [
+        ...new Set(
+          batch.entries.flatMap((entry) =>
+            entry.change === 'deleted'
+              ? [entry.path]
+              : entry.change === 'renamed'
+                ? [entry.from, entry.entry.path]
+                : [entry.entry.path]
+          )
+        ),
+      ])
     const listed = new Set((this.inspections.value[key]?.changes ?? []).map((c) => c.path))
     const touched = batch.entries.some((c) =>
       c.change === 'deleted'
@@ -1425,7 +1450,9 @@ export class NodePathFileModel {
     markRaw(this)
     this.watchTarget()
     this.stopRefresh = watch(
-      () => pathModel.fileRefresh?.value[pathTargetKey(this.target)],
+      () =>
+        pathModel.fileVersion?.(this.target, this.document.value?.path ?? '') ??
+        pathModel.fileRefresh?.value[pathTargetKey(this.target)],
       () => {
         this.watchTarget()
         const doc = this.document.value
