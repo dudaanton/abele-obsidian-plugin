@@ -48,6 +48,8 @@ export const chat = {
   'chatTree.fromFolder': 'De la carpeta {name}',
   'chatTree.defaultFloor': 'Proviene de los valores predeterminados',
   'chatTree.additive': 'Añade a los valores predeterminados, nunca los reduce',
+  'chatTree.folderNodeApprovalHint':
+    'Confirma en este dispositivo el acceso al nodo para todos los chats de esta carpeta, incluidas las subcarpetas.',
   'chatTree.accessHint': 'Todos los chats de esta carpeta reciben este acceso adicional.',
   'chatTree.more': '{name}: más',
   'chatTree.newInFolder': 'Nuevo chat en {name}',

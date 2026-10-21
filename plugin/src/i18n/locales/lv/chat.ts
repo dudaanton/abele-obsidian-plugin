@@ -49,6 +49,8 @@ export const chat = {
   'chatTree.fromFolder': 'No mapes {name}',
   'chatTree.defaultFloor': 'No noklusējuma iestatījumiem',
   'chatTree.additive': 'Papildina noklusējumu, nekad neierobežo',
+  'chatTree.folderNodeApprovalHint':
+    'Apstipriniet šajā ierīcē mapes piekļuvi mezglam visām sarunām tajā, arī apakšmapēs.',
   'chatTree.accessHint': 'Visas sarunas šajā mapē saņem šo papildu piekļuvi.',
   'chatTree.more': '{name}: vairāk',
   'chatTree.newInFolder': 'Jauna saruna mapē {name}',

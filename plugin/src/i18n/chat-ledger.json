@@ -616,5 +616,8 @@
   },
   "chat.letterNode.empty": {
     "englishHash": "d23fcc736274957de778025b9c6cb44a729a3dbfc527f843ddbf4543043ec4f7"
+  },
+  "chatTree.folderNodeApprovalHint": {
+    "englishHash": "1693e7f22ffe85ac97df2a2663e47124da564fb659545c05c5796bc76a87b741"
   }
 }

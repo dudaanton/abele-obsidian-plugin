@@ -48,6 +48,8 @@ export const chat = {
   'chatTree.fromFolder': 'Из папки «{name}»',
   'chatTree.defaultFloor': 'Из настроек по умолчанию',
   'chatTree.additive': 'Добавляет к настройкам по умолчанию, не ограничивает',
+  'chatTree.folderNodeApprovalHint':
+    'Подтвердите на этом устройстве доступ к ноде для всех чатов в папке, включая вложенные папки.',
   'chatTree.accessHint':
     'Все чаты в этой папке получают этот доступ в дополнение к настройкам по умолчанию.',
   'chatTree.more': '{name}: ещё',

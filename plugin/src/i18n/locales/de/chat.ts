@@ -49,6 +49,8 @@ export const chat = {
   'chatTree.fromFolder': 'Aus dem Ordner {name}',
   'chatTree.defaultFloor': 'Aus den Standardeinstellungen',
   'chatTree.additive': 'Ergänzt die Standardeinstellungen, schränkt sie nicht ein',
+  'chatTree.folderNodeApprovalHint':
+    'Bestätige auf diesem Gerät den Knotenzugriff für alle Chats in diesem Ordner und seinen Unterordnern.',
   'chatTree.accessHint': 'Alle Chats in diesem Ordner erhalten diesen zusätzlichen Zugriff.',
   'chatTree.more': '{name}: mehr',
   'chatTree.newInFolder': 'Neuer Chat in {name}',
