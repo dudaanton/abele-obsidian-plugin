@@ -300,7 +300,8 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
   expect(seen.offered.find((r) => r.title.includes('tool.js'))!.kind).toContain('outside this chat')
   expect(seen.detach).toBe('Detach (Shift+F5): the program runs on')
   expect(seen.paused, seen.state).toMatch(/^Paused/)
-  expect(seen.after, seen.state).toBe('Detached · The program runs on')
+  // Detach confirms separation; its snapshot does not observe the process's later liveness.
+  expect(seen.after, seen.state).toBe('Detached · Program state unknown')
   // The program goes on by itself, as it was before the debugger came.
   const held = ticks(mine)
   for (let i = 0; i < 100 && ticks(mine) < held + 20; i++) await wait(50)
