@@ -468,6 +468,7 @@ import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
+import { chatMarkdown } from '@/ai/chatMarkdown'
 import ChatThinking from './ChatThinking.vue'
 import { KIND_ICON, ownLine, toolKind } from '@/ai/toolRuns'
 import type { ReplyProposal } from '@/ai/replyAnnotations'
@@ -621,7 +622,7 @@ const answerable = computed(
 /** What is rendered: a question's words with a spot for each of its places. */
 const question = computed(() =>
   questionMarkdown(
-    props.message.content,
+    props.message.role === 'user' ? chatMarkdown(props.message.content) : props.message.content,
     props.message.role === 'user' ? props.message.replyTo : undefined
   )
 )
