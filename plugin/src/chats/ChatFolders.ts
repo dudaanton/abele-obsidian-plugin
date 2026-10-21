@@ -259,7 +259,7 @@ export class ChatFolders {
         },
       },
       saveForRelease: async () => {
-        await this.setNodeScope(currentPath(), pending?.nodeScope ?? [])
+        await this.setNodeScope(currentPath(), pending?.nodeScope ?? readScope())
         pending = undefined
       },
       ensureDelegationParentId: async () => {

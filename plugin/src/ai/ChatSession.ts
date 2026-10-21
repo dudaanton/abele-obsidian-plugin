@@ -4326,7 +4326,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.allChatMessages.length === 0 &&
       !this.queuedMessages.value.length &&
       !this.currentChatFile.value &&
-      !this.overrides.value.nodeScope?.length
+      !this.effectiveNodeScope.length
     )
       return
 

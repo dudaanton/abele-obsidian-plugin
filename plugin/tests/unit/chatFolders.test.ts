@@ -13,6 +13,8 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import { chatsOf } from '@/chats/chatTree'
 import { NodeScopeLedger } from '@/ai/nodeScope'
 import type { AgentTool } from '@/ai/client'
+import { NodeService } from '@/node/NodeService'
+import { approveObsidianChatNodeAccess, nodeAgentHost } from '@/ai/tools/node/owner'
 
 let service: ChatService
 let folders: ChatFolders
@@ -49,6 +51,42 @@ it('reuses persisted placement for thousands of unchanged chats and refreshes a 
   await folders.reload()
   expect(folders.membershipOf(files[0].path)).toBe('second')
   expect(read.mock.calls.filter(([file]) => file.extension === 'abchat')).toHaveLength(1)
+})
+it('confirms an inherited scope in a draft without making it an own scope', async () => {
+  const registrations = [
+    {
+      id: 'sample-registration',
+      expectedNodeId: 'sample-node',
+      label: 'Sample',
+      url: 'http://127.0.0.1:1',
+    },
+  ]
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    registry: { list: () => registrations, authorizationId: () => 'sample-authority' },
+    nodes: { value: registrations },
+    connection: () => ({ client: { connected: true }, authorizationGeneration: 0 }),
+  } as unknown as NodeService)
+  await folders.create('', 'Collection')
+  const entries = [{ kind: 'node' as const, node_id: 'sample-node', access: 'read' as const }]
+  await folders.setNodeScope('Collection', entries)
+  const session = service.getSession(service.createTab())!
+  await folders.move(session.id, 'Collection')
+  await approveObsidianChatNodeAccess(session, entries)
+  expect(session.overrides.value.nodeScope).toBeUndefined()
+  const host = await nodeAgentHost()
+  expect(
+    host.ledger.approvedNode(session, 'sample-node', host.connection('sample-node').principal())
+  ).toBe(true)
+  await folders.move(session.id, '')
+  expect(
+    host.ledger.approvedNode(session, 'sample-node', host.connection('sample-node').principal())
+  ).toBe(false)
+  const owner = folders.nodeScopeOwner('Collection')
+  await approveObsidianChatNodeAccess(owner, entries)
+  expect(folders.nodeScopeForFolder('Collection')).toEqual(entries)
+  expect(
+    host.ledger.approvedNode(owner, 'sample-node', host.connection('sample-node').principal())
+  ).toBe(true)
 })
 it('allocates a durable chat identity before an inherited node edit executes', async () => {
   await folders.create('', 'Collection')

@@ -198,6 +198,7 @@ export async function approveObsidianChatNodeAccess(
   const generations = new Map(
     [...connections].map(([id, connection]) => [id, connection.authorizationGeneration])
   )
+  await session.saveForRelease()
   await session.ensureDelegationParentId()
   if (
     session.conversationVersion.value !== version ||
