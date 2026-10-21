@@ -19,6 +19,15 @@ export function firstQuestion(messages: ChatMessage[]): string {
   return asked.content.replace(/\s+/g, ' ').trim().slice(0, QUESTION_NAME_LENGTH)
 }
 
+/** Saved fallback names include a timestamp for files, not for the chat's visible title. */
+export function displayChatTitle(title: string, messages: ChatMessage[]): string {
+  const first = messages.find((message) => message.role === 'user')
+  const generated = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2} (.*)$/.exec(title)
+  if (first && generated?.[1] === first.content.slice(0, QUESTION_NAME_LENGTH).replace(/\n/g, ' '))
+    return firstQuestion(messages)
+  return title || firstQuestion(messages)
+}
+
 export function isChatLog(path: string): boolean {
   return path.toLowerCase().endsWith(`.${CHAT_EXTENSION}`)
 }

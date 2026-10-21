@@ -198,6 +198,11 @@ const probe = (label: string) => `(async () => {
     if (root.querySelector('.abele-chat-switch__where')) throw Error('Nested chat still shows its folder in the header')
     if (!current().getAttribute('aria-label').includes(folder)) throw Error('Nested chat lost the folder in its tooltip')
     await shot('nested-header-short-parent')
+    if (root.querySelector('[aria-label="Back to the passage this is about"]')) throw Error('Discussion has duplicate routes to its parent')
+    child.kind = 'comment'; await wait(100)
+    if (!root.querySelector('.abele-chat-parent-back') || root.querySelector('[aria-label="Back to the passage this is about"]')) throw Error('Message discussion does not have exactly its parent route')
+    await shot('discussion-header-one-back')
+    child.kind = 'chat'; await wait(100)
     root.querySelector('.abele-chat-input__scope').click()
     const nodeEditor = await until(() => document.querySelector('.abele-chat-setup .abele-node-scope-editor'))
     await until(() => nodeEditor.textContent.includes('From the folder ' + folder))
@@ -282,10 +287,15 @@ const probe = (label: string) => `(async () => {
       await until(() => service.activeTabId.value !== reopened.id)
       created.push(service.activeTabId.value)
       if (service.getSession(reopened.id) !== previous || !service.tabOrder.value.includes(reopened.id)) throw Error('New chat closed its predecessor')
-      if ((service.folders.folderOf(reopened.id) || '') !== destination) throw Error('New chat moved its predecessor')
+      if ((service.folders.folderOf(reopened.currentChatFile.value.path) || '') !== destination) throw Error('New chat moved its predecessor')
       await shot(destination ? 'new-chat-preserves-folder' : 'new-chat-preserves-top')
     }
     service.switchTab(reopened.id)
+    reopened.appendChatMessage({id:'sample-title-question',role:'user',content:'Plan a sample trip.',timestamp:1})
+    reopened.updateVisibleMessages()
+    reopened.chatTitle.value = '2025-02-03 10-20 Plan a sample trip.'
+    await until(() => current().querySelector('.abele-chat-switch__title')?.textContent === 'Plan a sample trip.')
+    await shot('restored-chat-title')
     reopened.handleAgentEvent({type:'stream_event',event:{type:'error',error:'HTTP 503: {"error":"Sample unavailable service"}'}})
     reopened.retrying.value = { attempt: 1, of: 2, secondsLeft: 3 }
     await until(() => root.querySelector('[role="alert"]')?.textContent.includes('The model provider is temporarily unavailable'))
@@ -361,7 +371,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 26 : 27)
+    expect(result.pictures).toBe(onPhone() ? 28 : 29)
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)

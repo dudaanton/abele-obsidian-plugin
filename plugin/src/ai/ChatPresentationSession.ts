@@ -2,7 +2,7 @@ import { t } from '@/i18n'
 import { computed, type Ref } from 'vue'
 import type { ChatMessage } from './types'
 import type { ChatSession } from './ChatSession'
-import { firstQuestion } from './chatText'
+import { displayChatTitle } from './chatText'
 
 export type ChatReference =
   | { kind: 'local-chat'; chatFilePath: string | null }
@@ -46,8 +46,7 @@ export class LocalChatPresenter implements ChatPresentationSession {
   constructor(readonly session: ChatSession) {
     this.label = computed(
       () =>
-        session.chatTitle.value ||
-        firstQuestion(session.messages.value) ||
+        displayChatTitle(session.chatTitle.value, session.messages.value) ||
         t('streamB.newChat.db1838')
     )
   }

@@ -5,8 +5,21 @@
  * here is a leak into both.
  */
 import { describe, it, expect } from 'vitest'
-import { activeBranch, conversationLines, renderLines } from '@/ai/chatText'
+import { activeBranch, conversationLines, renderLines, displayChatTitle } from '@/ai/chatText'
 import type { ChatMessage } from '@/ai/types'
+
+it('displays a restored generated file title as the same question used before reload', () => {
+  const messages: ChatMessage[] = [
+    { id: 'sample-question', role: 'user', content: 'Plan a sample trip.', timestamp: 1 },
+  ]
+  expect(displayChatTitle('2025-02-03 10-20 Plan a sample trip.', messages)).toBe(
+    'Plan a sample trip.'
+  )
+  expect(displayChatTitle('A custom title', messages)).toBe('A custom title')
+  expect(displayChatTitle('2025-02-03 10-20 Other words', messages)).toBe(
+    '2025-02-03 10-20 Other words'
+  )
+})
 
 const SECRET = 'SECRET-FROM-A-PRIVATE-NOTE'
 
