@@ -369,8 +369,8 @@ function addMenu(event: MouseEvent) {
         .setIcon('server')
         .setChecked(granted)
         .onClick(() => {
-          if (!granted) give({ kind: 'node', node_id: node.id, access: 'edit' })
-          else void locationMenu({ kind: 'node', node_id: node.id, access: 'edit' }, event, true)
+          if (!granted) give({ kind: 'node', node_id: node.id, access: 'read' })
+          else void locationMenu({ kind: 'node', node_id: node.id, access: 'read' }, event, true)
         })
     )
   }

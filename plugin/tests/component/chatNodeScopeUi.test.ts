@@ -204,7 +204,7 @@ describe('node scope beside vault scope and in the header', () => {
     })
     view.unmount()
   })
-  it('Add confirms only the chosen entry, not the entire existing configuration', async () => {
+  it('Add grants read only for the chosen entry, not the entire existing configuration', async () => {
     const session = setup()
     session.overrides.value.nodeScope = []
     const view = mount(AiNodeScopeEditor, { props: { session } })
@@ -214,7 +214,7 @@ describe('node scope beside vault scope and in the header', () => {
     expect(mocks.give).toHaveBeenCalledWith(session, {
       kind: 'node',
       node_id: 'sample-node',
-      access: 'edit',
+      access: 'read',
     })
     expect(mocks.set).not.toHaveBeenCalled()
     view.unmount()
