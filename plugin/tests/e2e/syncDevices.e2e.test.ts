@@ -65,6 +65,8 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
     await sha256(new TextEncoder().encode('other item still writes'))
   )
   expect(owner.read(single)).toBe('server delete candidate')
+  await owner.syncNow(ownerId)
+  expect(owner.read(folder + '/kept.md')).toBe('other item still writes')
   owner.create(single, 'kept local edit')
   owner.create(folder + '/kept.md', 'owner still writes')
   await owner.syncNow(ownerId)
