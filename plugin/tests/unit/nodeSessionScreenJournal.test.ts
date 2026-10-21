@@ -1,6 +1,7 @@
 /** The session screens' invented journals are events the node could have written. */
 import { expect, it, vi } from 'vitest'
 import { NodeEventSchema } from '@abele/node-protocol'
+import { journal } from '@/testing/nodeSessionScreen'
 
 vi.mock('@/ai/ChatService', () => ({ ChatService: {} }))
 vi.mock('@/node/NodeService', () => ({ NodeService: {} }))
@@ -14,8 +15,8 @@ it.each([
   'long',
   'error',
   'rate-limit',
+  'letter',
 ] as const)('the %s screen holds only events the node schema accepts', async (state) => {
-  const { journal } = await import('@/testing/nodeSessionScreen')
   const events = journal(state)
   for (const event of events) expect(() => NodeEventSchema.parse(event)).not.toThrow()
   // A complete fixture has no missing first page for the chat to keep requesting.

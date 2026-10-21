@@ -9,6 +9,7 @@ import { agentChoices, nodeProviders } from '@/node/providers'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { agentJournal } from './nodeAgentJournal'
+import type { NodeClientState } from '@/node/NodeClientStore'
 
 /**
  * A long-lived node session in a real chat tab on invented data, for layout probes that run no
@@ -28,6 +29,7 @@ export const NODE_SESSION_SCREENS = [
   // Another agent than Claude: pi at work on a plan, and Gemini over ACP asking before an edit.
   'agent',
   'agent-asking',
+  'letter',
 ] as const
 export type NodeSessionScreen = (typeof NODE_SESSION_SCREENS)[number]
 
@@ -69,13 +71,14 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
     'session.created',
     {
       session_id: SESSION,
-      title: 'Search by words',
-      provider: 'claude',
+      title: state === 'letter' ? 'Sample node chat' : 'Search by words',
+      provider: state === 'letter' ? 'fake' : 'claude',
       created_at: at(90),
       settings: { permission_mode: 'bypassPermissions' },
     },
     900
   )
+  if (state === 'letter') return [created]
   // Records as the node writes them, every field present: earlier pages are checked against
   // the node's schemas when they arrive.
   const done = (turn: string, inputs: string[], ago: number) =>
@@ -280,7 +283,11 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
   return events
 }
 
-export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', bypass = true) {
+export async function openNodeSessionFixture(
+  state: NodeSessionScreen = 'idle',
+  bypass = true,
+  reveal = true
+) {
   if (!NODE_SESSION_SCREENS.includes(state)) throw new Error('Unknown node session state')
   await closeNodeSessionFixture()
   nodeSessionCalls.length = 0
@@ -289,11 +296,11 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
   const head = full.length
   /** What this device holds: a long session's latest window, all of a short one. */
   const events = state === 'long' || state === 'error' ? full.slice(-400) : full
-  const store = {
+  const store: NodeClientState = {
     events: { [SESSION]: events },
     cursors: { [SESSION]: head },
     results: {},
-    outbox: [] as unknown[],
+    outbox: [],
   }
   const record =
     (method: string, answer: unknown = {}) =>
@@ -341,7 +348,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     sessionState: async (): Promise<LiveSessionState> => ({
       session_id: SESSION,
       live: true,
-      process: ['idle', 'long', 'error', 'empty'].includes(state) ? 'idle' : 'running',
+      process: ['idle', 'long', 'error', 'empty', 'letter'].includes(state) ? 'idle' : 'running',
       // The agent screens are mid-turn.
       run_id: 'sample-process',
       turn: null,
@@ -379,8 +386,59 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     cursor: async () => head,
     head: async () => head,
     getSession: async () => full[0].data,
-    flush: async () => {},
-    operationResult: async () => ({ result: {} }),
+    flush: async () => {
+      if (state !== 'letter') return
+      for (const entry of store.outbox.splice(0)) {
+        if (entry.method !== 'session.send') throw new Error('Unexpected letter fixture operation')
+        nodeSessionCalls.push({ method: entry.method, params: entry.params })
+        const inputId = `sample-letter-${entry.operation_id}`
+        const turnId = `sample-turn-${entry.operation_id}`
+        const append = (type: string, data: Record<string, unknown>) => {
+          const event: JournalEvent = {
+            kind: 'event',
+            node_id: NODE,
+            stream_id: SESSION,
+            seq: full.length + 1,
+            type,
+            data: { run_id: 'sample-process', ...data },
+            actor: { kind: 'node' },
+            at: new Date().toISOString(),
+          }
+          full.push(event)
+          if (events !== full) events.push(event)
+          store.cursors[SESSION] = event.seq
+        }
+        append('input.accepted', {
+          input_id: inputId,
+          text: (entry.params as { text: string }).text,
+        })
+        append('turn.started', { turn_id: turnId, trigger: 'input' })
+        append('claude.message.final', {
+          message_id: `sample-answer-${entry.operation_id}`,
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'The sample node checked the request. This answer belongs only to the sending chat.',
+            },
+          ],
+        })
+        append('turn.completed', {
+          turn_id: turnId,
+          outcome: 'success',
+          input_ids: [inputId],
+          subtype: 'success',
+          num_turns: 1,
+          duration_ms: 10,
+          total_cost_usd: 0,
+          terminal_reason: null,
+        })
+        store.results[entry.operation_id] = {
+          result: { input_id: inputId, accepted_seq: full.length - 3 },
+        }
+      }
+    },
+    operationResult: async (id: string) => store.results[id] ?? { result: {} },
     onEvent: () => () => {},
     subscribe: async () => ({}),
     request: async (method: string, params?: { after_seq?: number; limit?: number }) => {
@@ -422,7 +480,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     sessionId: SESSION,
     title: String((full[0].data as { title?: unknown }).title ?? 'Search by words'),
   })
-  await chats.revealSidebar({ focus: false })
+  if (reveal) await chats.revealSidebar({ focus: false })
   restore = async () => {
     for (const id of [...chats.tabOrder.value])
       if (id.startsWith(`node:${NODE}:`)) await chats.closeTab(id)

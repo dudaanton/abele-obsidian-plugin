@@ -109,8 +109,20 @@ onUnmounted(() => observer?.disconnect())
 </script>
 
 <style lang="scss">
+.abele-chat-msg__body:has(> .abele-chat-letter) {
+  grid-column: 1 / -1;
+}
+.abele-chat-letter.abele-chat-run > .abele-tree-item__self {
+  width: 100%;
+}
 .abele-chat-letter.abele-chat-run > .abele-tree-item__self > .abele-tree-item__inner {
   flex: 1 1 auto;
+}
+body.is-phone
+  .abele-chat-letter:not(.abele-chat-run_done)
+  > .abele-tree-item__self
+  > .tree-item-flair-outer {
+  min-inline-size: calc(var(--size-4-2) + var(--touch-size-m) + 2 * var(--size-2-2));
 }
 .abele-chat-letter > .tree-item-children {
   margin-inline-start: 0;
