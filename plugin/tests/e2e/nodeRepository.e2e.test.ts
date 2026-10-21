@@ -432,8 +432,8 @@ it(
   120000
 )
 
-it.fails(
-  'BUG: the node working tree omits an acknowledged empty directory',
+it(
+  'keeps an acknowledged empty directory in the node working tree',
   () => repositoryScenario(true),
   120000
 )
