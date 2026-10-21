@@ -301,6 +301,14 @@ export class TokenEngineRuntime
         return () => window.clearTimeout(timer)
       }
     )
+    const comparing = (value?: { completed: number; total: number }) => {
+      // A local read may also happen during a pull or upload; retain that active transfer.
+      if (!this.progress.stage)
+        activityLog.update(
+          value ? { stage: 'Comparing files', ...value, totalKnown: true } : undefined
+        )
+      options.comparing?.(value)
+    }
     this.progress = new TransferProgress(
       (one) => {
         if (!this.pendingFolders.size) {
@@ -840,7 +848,7 @@ export class TokenEngineRuntime
     this.client.finishPull = async () => {
       await finishPull()
       this.progress.clear()
-      options.comparing?.()
+      comparing()
     }
     const putBlob = this.client.putBlob.bind(this.client)
     this.client.putBlob = async (sha, bytes) => {
@@ -1050,7 +1058,7 @@ export class TokenEngineRuntime
               this.trace.run('fs ' + String(name) + ' ' + path, async () => {
                 if (name === 'stat') return value.call(target, path)
                 const total = this.inventoryTotal
-                if (this.compared.size === 0) options.comparing?.({ completed: 0, total })
+                if (this.compared.size === 0) comparing({ completed: 0, total })
                 const bytes =
                   name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
                     ? ((this.largeUploadPaths.has(path)
@@ -1064,7 +1072,7 @@ export class TokenEngineRuntime
                 this.compared.add(path)
                 if (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total) {
                   this.comparisonPublished = Date.now()
-                  options.comparing?.({ completed: this.compared.size, total })
+                  comparing({ completed: this.compared.size, total })
                 }
                 return bytes
               })
@@ -1086,7 +1094,7 @@ export class TokenEngineRuntime
           change.origin === 'remote' &&
             change.kind === 'upsert' &&
             !this.receivedPaths.has(change.path)
-            ? 'Matched local file ' + change.path
+            ? 'Applied remote file ' + change.path
             : appliedActivity(change)
         )
       },
@@ -1098,7 +1106,7 @@ export class TokenEngineRuntime
         this.progress.clear()
         this.pulling = false
         options.pulling?.()
-        options.comparing?.()
+        comparing()
         this.trace.finishFirstSync()
         options.changed(this.engine.status, this.placement?.localMetadata(report) ?? report)
         void this.outbox.drain().catch(() => options.publicationChanged?.())
@@ -1116,7 +1124,7 @@ export class TokenEngineRuntime
         const rootFailure = vaultRootFailure(error)
         if (rootFailure) {
           this.engine.pause()
-          options.comparing?.()
+          comparing()
           options.failed(rootFailure)
           return
         }
@@ -1131,7 +1139,7 @@ export class TokenEngineRuntime
           ].includes((error as { code?: string }).code ?? '')
         )
           this.engine.pause()
-        options.comparing?.()
+        comparing()
         if (!this.yieldedForReview(error)) options.failed(error)
       },
       log: (line) => {

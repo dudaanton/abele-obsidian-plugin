@@ -1700,6 +1700,70 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
   }
 })
 
+it('reports comparison phases and thirty-second updates while a local fingerprint is blocked', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) =>
+    new URL(String(input)).pathname === '/v2/manifest'
+      ? Response.json({ items: [], cursor: 1, next: null })
+      : send(input, init)
+  )
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
+  const read = fs.read.bind(fs)
+  let release!: () => void,
+    blocked = false
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  Object.assign(fs, {
+    fingerprint: async (path: string) => {
+      if (!blocked) {
+        blocked = true
+        await gate
+      }
+      const bytes = await read(path)
+      return { size: bytes.length, sha: await sha256(bytes) }
+    },
+  })
+  const events: string[] = []
+  vi.useFakeTimers()
+  const one = runtime(wire, fs, undefined, undefined, null, { event: (line) => events.push(line) })
+  const sync = one.runtime.sync()
+  try {
+    await vi.waitFor(() => expect(blocked).toBe(true))
+    expect(events).toContainEqual(expect.stringContaining('Comparing files: started'))
+    await vi.advanceTimersByTimeAsync(31000)
+    expect(events).toContainEqual(expect.stringMatching(/^Comparing files · 0 of 1 file$/))
+    release()
+    await sync
+    expect(events).toContainEqual(expect.stringContaining('Comparing files: ended'))
+  } finally {
+    release()
+    await sync.catch(() => {})
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('does not invent a local match when applying a new empty remote file', async () => {
+  const wire = await server('Notes/empty.md', '')
+  const fs = new ObsidianFileSystem(buildFakeVault([]) as unknown as App)
+  const events: string[] = []
+  expect(await fs.stat('Notes/empty.md')).toBeNull()
+  const one = runtime(wire, fs as unknown as MemoryFileSystem, undefined, undefined, null, {
+    event: (line) => events.push(line),
+  })
+  try {
+    await one.runtime.sync()
+    expect(await fs.stat('Notes/empty.md')).toMatchObject({ size: 0 })
+    expect(events).not.toContain('Matched local file Notes/empty.md')
+    expect(events).toContain('Applied remote file Notes/empty.md')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it('keeps automatic trigger reasons in diagnostics without adding them to recent activity', async () => {
   const wire = await server('Notes/sample.md', 'sample bytes')
   const events: string[] = []
