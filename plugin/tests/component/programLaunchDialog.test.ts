@@ -65,6 +65,18 @@ function fixture(launch = vi.fn().mockResolvedValue(undefined)) {
   })
 }
 
+it('retains structured startup reasons in Details when no output was captured', async () => {
+  const error = Object.assign(new Error('debugger_start_failed'), {
+    details: { reason: 'The sample entry is not a file.', path: 'dist/sample.js' },
+  })
+  const w = fixture(vi.fn().mockRejectedValue(error))
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  await w.get('.abele-disclosure__control').trigger('click')
+  expect(w.get('.abele-disclosure__content').text()).toContain('The sample entry is not a file.')
+  w.unmount()
+})
+
 it('sizes the desktop dialog to content and keeps the phone sheet tall', () => {
   const mobile = Platform.isMobile
   try {

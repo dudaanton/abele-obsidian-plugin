@@ -52,7 +52,8 @@ import { z } from 'zod'
 
 const DiagnosticsSchema = z.object({
   code: z.string().optional(),
-  details: z.object({ stdout: z.string().optional(), stderr: z.string().optional() }).optional(),
+  message: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
 })
 
 const props = defineProps<{
@@ -101,7 +102,12 @@ async function run() {
       ...new Set(
         [
           diagnostics.success ? diagnostics.data.code : undefined,
-          e instanceof Error ? e.message : String(e),
+          diagnostics.success && diagnostics.data.message
+            ? diagnostics.data.message
+            : e instanceof Error
+              ? e.message
+              : String(e),
+          details ? JSON.stringify(details, null, 2) : undefined,
         ].filter(Boolean)
       ),
     ].join('\n')
@@ -114,7 +120,9 @@ async function run() {
         : technical.value.includes('debugger_program_not_found')
           ? t('debug.launchMissing')
           : t('debug.launchFailedPlain')
-    output.value = [details?.stdout, details?.stderr].filter(Boolean).join('\n')
+    output.value = [details?.stdout, details?.stderr]
+      .filter((value): value is string => typeof value === 'string' && !!value)
+      .join('\n')
   } finally {
     busy.value = false
   }
