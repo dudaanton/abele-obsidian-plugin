@@ -33,6 +33,14 @@
         {{ t('chat.letterAuthority', { capabilities: letterAuthority.join(', ') }) }}
       </div>
     </template>
+    <template v-else-if="message.toolName === 'questions' && questionList.length">
+      <div v-for="(question, index) in questionList" :key="index">
+        <p>{{ question.question }}</p>
+        <ul>
+          <li v-for="option in question.options" :key="option">{{ option }}</li>
+        </ul>
+      </div>
+    </template>
     <template v-else-if="nodePrompt && !obsidianCall">
       <div v-if="location" class="abele-tool-approval__path">
         {{ managerApproval ? visibleText(location) : location }}
@@ -56,10 +64,18 @@
           <pre class="abele-tool-approval__code"><code>{{ managerApproval.evidence }}</code></pre>
         </details>
       </div>
-      <pre
-        v-else
-        class="abele-tool-approval__code"
-      ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+      <template v-else>
+        <code>{{ toolSummary(message) }}</code>
+        <pre
+          v-if="typeof nodePrompt.input?.content === 'string'"
+          class="abele-tool-approval__code"
+        ><code>{{ nodePrompt.input.content }}</code></pre>
+        <Disclosure v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
+          <pre
+            class="abele-tool-approval__code"
+          ><code>{{ JSON.stringify(nodePrompt.input, null, 2) }}</code></pre>
+        </Disclosure>
+      </template>
       <Dropdown
         v-if="nodePrompt.kind === 'select'"
         v-model="nodeValue"
@@ -371,7 +387,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Menu, TFile } from 'obsidian'
 import { KIND_ICON, toolKind } from '@/ai/toolRuns'
-import { readableToolName } from '@/ai/toolLine'
+import { readableToolName, toolSummary } from '@/ai/toolLine'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS, type ChatMessage } from '@/ai/types'
 import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
 
@@ -410,7 +426,10 @@ const visibleJson = (value: unknown, indent?: number): string =>
         })
         .join('')
   )
-const visibleText = (value: string): string => visibleJson(value).slice(1, -1)
+const visibleText = (value: string): string =>
+  value.replace(/[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/gu, (char) =>
+    visibleJson(char).slice(1, -1)
+  )
 const managerApproval = computed(() => {
   const input = props.nodePrompt?.input
   if (!input || !['command.v1.run', 'git.v1.integrate'].includes(promptString(input.method)))
@@ -474,6 +493,23 @@ const isEditing = ref(false)
 const originalOpen = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const questionList = computed(() =>
+  Array.isArray(params.value.questions)
+    ? params.value.questions.flatMap((value) => {
+        if (!value || typeof value !== 'object' || typeof value.question !== 'string') return []
+        return [
+          {
+            question: value.question,
+            options: Array.isArray(value.options)
+              ? value.options.filter(
+                  (option: unknown): option is string => typeof option === 'string'
+                )
+              : [],
+          },
+        ]
+      })
+    : []
+)
 const letterTarget = computed(() =>
   props.message.toolName === 'send_message_to_chat'
     ? openMessagingChats().find((chat) => chat.id === params.value.chat_id)

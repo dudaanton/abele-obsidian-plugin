@@ -6,6 +6,66 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
+it('summarizes a worker shell approval and keeps its exact input in details', async () => {
+  const { default: AiToolApproval } = await import('@/components/AiToolApproval.vue')
+  const prompt = {
+    prompt_id: 'sample',
+    tool_name: 'Bash',
+    title: 'Run command',
+    input: { command: 'npm test' },
+    state: 'pending',
+  }
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      nodePrompt: prompt as never,
+      message: { toolName: 'Bash', toolParams: prompt.input } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('npm test')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    await wrapper.get('.abele-disclosure__control').trigger('click')
+    expect(wrapper.get('pre').text()).toContain('"command"')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('shows question text and choices instead of serialized question parameters', async () => {
+  const { default: AiToolApproval } = await import('@/components/AiToolApproval.vue')
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      message: {
+        toolName: 'questions',
+        toolParams: { questions: [{ question: 'Keep the sample?', options: ['Keep', 'Remove'] }] },
+      } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('Keep the sample?')
+    expect(wrapper.findAll('li').map((row) => row.text())).toEqual(['Keep', 'Remove'])
+    expect(wrapper.text()).not.toContain('"question"')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('shows shell quotes and backslashes verbatim outside JSON details', async () => {
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  const card = nodeManagerFixture()
+  const command = `printf '%s' "a;b" 'c$SAMPLE' "$(echo sample)"; echo $'tab\\there'`
+  card.prompts[0].input = {
+    method: 'command.v1.run',
+    params: { command },
+    cwd: '/workspace/sample',
+  }
+  const wrapper = mount(NodeManagerRunCard, { props: { card } })
+  try {
+    expect(wrapper.get('[data-manager-approval] .setting-item-description').text()).toBe(command)
+    expect(wrapper.get('[data-manager-evidence]').attributes('open')).toBeUndefined()
+  } finally {
+    wrapper.unmount()
+  }
+})
 it.each([
   '\n',
   '\r',
