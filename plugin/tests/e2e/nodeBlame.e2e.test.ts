@@ -60,7 +60,9 @@ async function scenario(layout: string) {
           const authorName=author.textContent;
           await new Promise(r=>setTimeout(r,300));
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
-          const scroll=root.querySelector('.abele-node-main');scroll.scrollTop=scroll.scrollHeight;
+          const scroll=root.querySelector('.abele-node-main');
+          scroll.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:100}));
+          scroll.scrollTop=scroll.scrollHeight;
           await until(()=>[...root.querySelectorAll('.abele-github-blame-range__name')].some(el=>el.textContent==='Uncommitted'),'Attribution after line 1500');
           await until(()=>[...root.querySelectorAll('.cm-line')].some(el=>el.textContent.includes('uncommitted final line')),'Final source line');
           return JSON.stringify({author:authorName,pressed:toggle.getAttribute('aria-pressed'),errors:[...root.querySelectorAll('[role=alert]')].map(el=>el.textContent)});
