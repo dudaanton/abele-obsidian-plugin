@@ -27188,5 +27188,125 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.command": {
+    "englishHash": "e1f2e7878ec7c3b0d3fa9f7bd71a5cb73af3caecd796a1f4a57a74fcf66dce18",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.branches": {
+    "englishHash": "cef47bcce1095a1bd1334bb6b617843010d4a3e05586db00eb260815e78b08ff",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.folder": {
+    "englishHash": "f30cec3c8b3e6fa8263a5da2a3353c04fa5ba98ae84865695db66d320e7b18dd",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.sourceHead": {
+    "englishHash": "3df13c2f3e776a2f618328cd54a8e1000ca9a2f3fee01bab854c57e6bb65e74d",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.targetHead": {
+    "englishHash": "be1a895348d9727236dbb159e9ef43fc1202fb6a40bfe1ba7925ce21f522be59",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.evidence": {
+    "englishHash": "5e15049bec0de8a20ef01523ca23a393776826edaec731a802e492555dc3b5ae",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.ownerAnswer": {
+    "englishHash": "bed7df5c9fe6471a268751307849457a5567ed4d76a153064e2eba8d1f459d66",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.pausedPrompt": {
+    "englishHash": "60e4eb98b5a97f72c797cc9dda990d88c4da21288468594c63ffe210b2d3f243",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.pausedLimit": {
+    "englishHash": "28643f8513fa731c6a0b3d25dbca15852706658a08a9ecf6b8400219df70c899",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.invalidCommand": {
+    "englishHash": "05d3d83a5fbddddd288d74739bc0f825e85173e353d7c051ae32d33975bd7128",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.invalidIntegration": {
+    "englishHash": "11693e0eecaa8be177f9c9042a05ceff956b4f0e19ea3a9a9173931a8e70d3d8",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.invalidCancel": {
+    "englishHash": "74d64d6f3fb45c7ac559d839836c7bbacf4ef205b94b9bb39e8eaeb1f6154b36",
+    "context": "Node manager approval, pause reason or owner action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

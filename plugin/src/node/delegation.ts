@@ -1,5 +1,6 @@
 import type { Prompt } from '@abele/node-client'
 import type { PromptAnswerState } from './promptAnswers'
+import { t } from '@/i18n'
 import { z } from 'zod'
 import { DelegationSchema, DelegationStatusSchema } from '@abele/node-protocol'
 import type { Delegation, DelegationStatus } from '@abele/node-client'
@@ -40,6 +41,7 @@ export const DelegationStorageSchema = z
           cancelled: z.boolean().optional(),
           cancelSettled: z.boolean().optional(),
           awaitingResult: z.boolean().optional(),
+          notifiedAttention: z.string().optional(),
           parentStopped: z.boolean().optional(),
           followupMailboxSeq: z.number().int().nonnegative().optional(),
           followupAcceptedSeq: z.number().int().nonnegative().optional(),
@@ -53,6 +55,13 @@ export const DelegationStorageSchema = z
   .strict()
   .transform(({ tasks }) => ({ tasks }))
 export type DelegationStorage = z.infer<typeof DelegationStorageSchema>
+export function delegationReportText(text: string): string {
+  return /^Waiting for owner approval\. Open child session \S+ to answer prompt \S+\. The controller cannot approve it\.$/.test(
+    text
+  )
+    ? t('node.delegation.ownerAnswer')
+    : text
+}
 /** Older nodes allocate opaque branch names; the task title is their human label. */
 export function delegationBranchLabel(branch?: string | null): string | undefined {
   const name = branch?.replace(/^refs\/heads\//, '')
@@ -61,6 +70,7 @@ export function delegationBranchLabel(branch?: string | null): string | undefine
     : undefined
 }
 export interface DelegationCard {
+  taskKey?: string
   delegationId?: string
   sessionId?: string
   nodeId?: string

@@ -5,6 +5,8 @@ import type { NodeClientStore } from './NodeClientStore'
 import { openWindow, catchUp } from './sessionWindow'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
+import { t } from '@/i18n'
+import { nodeErrorDetails } from './errorWords'
 
 function outputTail(value: string, capacity: number): { text: string; truncated: boolean } {
   const chars = Array.from(value)
@@ -26,6 +28,7 @@ export const ManagerOperationSchema = z
     params: z.record(z.string(), z.unknown()),
     run: z.custom<ManagerRun>((value) => ManagerRunSchema.safeParse(value).success).optional(),
     observedSeq: z.number().optional(),
+    notified: z.boolean().optional(),
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
@@ -50,6 +53,32 @@ export class NodeManagerController {
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {}
+  async stopParent(parent: string) {
+    await this.store.transaction((s) => {
+      for (const entry of Object.values(s.managerOperations ?? {}))
+        if (entry.parent === parent) entry.notified = true
+    })
+  }
+  async wakeDelivered(wake: (parent: string, notice: string) => boolean) {
+    const entries = await this.store.transaction((s) =>
+      Object.entries(s.managerOperations ?? {}).filter(
+        ([, entry]) => !entry.notified && entry.method !== 'command.v1.cancel'
+      )
+    )
+    for (const [operation, entry] of entries) {
+      const card = (await this.cards(entry.parent)).find((card) => card.operation === operation)
+      if (!card || ['pending_approval', 'running'].includes(card.run.state)) continue
+      if (
+        wake(
+          entry.parent,
+          `Node command ${card.run.run_id} ended: ${card.run.state}. Read node_command_status with session_id ${card.run.session_id} and run_id ${card.run.run_id} for its output and exit code.`
+        )
+      )
+        await this.store.transaction((s) => {
+          s.managerOperations![operation].notified = true
+        })
+    }
+  }
   async mutate(
     parent: string,
     method: ManagerMethod,
@@ -61,7 +90,18 @@ export class NodeManagerController {
     const capability = method === 'git.v1.integrate' ? 'git_integrate_v1' : 'command_run_v1'
     if (!managerCapability(await this.client.describe(), capability))
       throw new Error(`unsupported_method: ${method}`)
-    const params = validateParams(method, raw) as Record<string, unknown>
+    let params: Record<string, unknown>
+    try {
+      params = validateParams(method, raw) as Record<string, unknown>
+    } catch {
+      throw new Error(
+        method === 'command.v1.run'
+          ? `invalid_params: ${t('node.manager.invalidCommand')}`
+          : method === 'git.v1.integrate'
+            ? `invalid_params: ${t('node.manager.invalidIntegration')}`
+            : `invalid_params: ${t('node.manager.invalidCancel')}`
+      )
+    }
     if (method === 'command.v1.cancel')
       await this.status(
         parent,
@@ -86,7 +126,7 @@ export class NodeManagerController {
     await this.client.flush()
     const receipt = await this.client.store.transaction((s) => s.results[operation])
     if (!receipt) throw new Error(`outcome_unknown: retain operation_id ${operation}`)
-    if (receipt.error) throw new Error(receipt.error)
+    if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
     const run = ManagerRunSchema.parse(receipt.result)
     await this.client.subscribe(run.session_id)
     return run

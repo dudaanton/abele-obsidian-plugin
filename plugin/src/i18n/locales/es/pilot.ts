@@ -3705,6 +3705,23 @@ export const es = {
   'debug.watchLastValue': 'Último valor: {value}',
   'debug.logPoint': 'Punto de registro: {message}',
   'node.delegation.paused': 'En pausa; puede continuar',
+  'node.delegation.ownerAnswer':
+    'Esperando tu aprobación. Responde en esta tarjeta o abre el chat delegado. El gestor no puede responder por ti.',
+  'node.delegation.pausedPrompt':
+    'Se alcanzó el límite de tiempo esperando tu respuesta. Responde a la solicitud guardada y continúa al desarrollador.',
+  'node.delegation.pausedLimit':
+    'Se alcanzó el límite de tiempo. Envía un mensaje para continuar en el mismo chat y árbol de trabajo.',
+  'node.manager.command': 'Comando',
+  'node.manager.invalidCommand':
+    'Indica argv o command y un destino: project_id o worktree_id. Comprueba los rangos de timeout_ms y output_bytes.',
+  'node.manager.invalidIntegration':
+    'La integración necesita los árboles de origen y destino, los nombres de ambas ramas y sus hashes completos y actuales.',
+  'node.manager.invalidCancel': 'Indica session_id y run_id del comando que quieres cancelar.',
+  'node.manager.branches': 'Ramas',
+  'node.manager.folder': 'Carpeta',
+  'node.manager.sourceHead': 'Commit de origen',
+  'node.manager.targetHead': 'Commit de destino',
+  'node.manager.evidence': 'Detalles exactos de aprobación',
   'node.manager.exitCode': 'Código de salida: {code}',
   'node.manager.output': 'Salida',
   'node.manager.truncated': 'La salida anterior se ha truncado.',

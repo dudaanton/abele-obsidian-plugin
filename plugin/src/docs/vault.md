@@ -505,8 +505,11 @@ may carry an opaque session-binding `incarnation` in device-local tab layout and
 snapshots; it is neither a path nor a Git revision and grants no authority.
 Optional `delegation` in this same transactional `state` stores delegation task requests
 and stable parent/task identities, the exact create request body, child links and last observed
-status. Legacy stored delegation grants are ignored without a migration prompt. `awaitingResult` arms parent delivery when creation is reserved. After a follow-up,
-`followupMailboxSeq` records the previous mailbox head so an old terminal event cannot settle
+status. Legacy stored delegation grants are ignored without a migration prompt. `awaitingResult` arms parent delivery when creation is reserved.
+`notifiedAttention` retains the last delivered prompt/terminal notice so reconnecting does
+not wake the manager twice. Manager operations retain `notified` for command completion;
+Stop disarms both notification paths. These fields are installation-local, not synced.
+After a follow-up, `followupMailboxSeq` records the previous mailbox head so an old terminal event cannot settle
 the new turn. The card's bounded child transcript uses the existing session window; branch
 and changed-file summaries are replaceable in-memory projections. Parent IDs use the existing durable `chatId` metadata identity (allocated with a
 checked chat save before delegation), never transient tab IDs. Reopening/renaming retains

@@ -109,12 +109,18 @@ export class NodeConnection {
           if (this.client.target?.expected_node_id)
             AgentsService.getInstance().setDelegations(this.client.target.expected_node_id, cards)
           const { ChatService } = await import('@/ai/ChatService')
-          await this.delegation.wakeDelivered(cards, (parent, id) => {
+          await this.delegation.wakeDelivered(cards, (parent, id, notice) => {
             const session = ChatService.getInstance()
               .getAllSessions()
               .find((s) => s.delegationParentId === parent)
             if (!session) return false
-            return session.wakeDelegationResult(id)
+            return session.wakeDelegationResult(id, notice)
+          })
+          await this.manager.wakeDelivered((parent, notice) => {
+            const session = ChatService.getInstance()
+              .getAllSessions()
+              .find((s) => s.delegationParentId === parent)
+            return session?.wakeDelegationResult('', notice) ?? false
           })
         }
       }
@@ -312,7 +318,9 @@ export class NodeService {
   /** Stop must not create new services/connections just to remove old waiters. */
   static stopDelegationWaiters(parent: string): Promise<void> {
     const connections = this.instance ? [...this.instance.connections.values()] : []
-    return Promise.all(connections.map((c) => c.delegation.stopParent(parent))).then((): void => {})
+    return Promise.all(
+      connections.flatMap((c) => [c.delegation.stopParent(parent), c.manager.stopParent(parent)])
+    ).then((): void => {})
   }
   static resumeDelegationWaiters(parent: string): void {
     for (const connection of this.instance?.connections.values() ?? [])

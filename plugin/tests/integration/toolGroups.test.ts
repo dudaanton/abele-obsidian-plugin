@@ -223,6 +223,10 @@ describe('tools offered by section', () => {
       expect(offered).toContain(tool)
     }
     expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
+    expect(session.getToolMode('node_command_run')).toBe('ask')
+    expect(session.getToolMode('node_command_status')).toBe('auto')
+    expect(session.toolModes.value.node_delegation_status).toBe('auto')
+    expect(session.toolModes.value.node_git_commit).toBe('ask')
   })
 
   it('withholds delegation and manager tools without node scope even when their modes are enabled', () => {

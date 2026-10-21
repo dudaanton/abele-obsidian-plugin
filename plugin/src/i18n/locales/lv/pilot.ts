@@ -3635,6 +3635,23 @@ export const lv = {
   'debug.watchLastValue': 'Pēdējā vērtība: {value}',
   'debug.logPoint': 'Žurnāla punkts: {message}',
   'node.delegation.paused': 'Apturēts; var turpināt',
+  'node.delegation.ownerAnswer':
+    'Gaida jūsu atļauju. Atbildiet šajā kartītē vai atveriet deleģēto tērzēšanu. Pārvaldnieks nevar atbildēt jūsu vietā.',
+  'node.delegation.pausedPrompt':
+    'Gaidot jūsu atbildi, sasniegts laika limits. Atbildiet uz saglabāto pieprasījumu un turpiniet izstrādātāja darbu.',
+  'node.delegation.pausedLimit':
+    'Sasniegts laika limits. Nosūtiet ziņu, lai turpinātu tajā pašā tērzēšanā un darba kokā.',
+  'node.manager.command': 'Komanda',
+  'node.manager.invalidCommand':
+    'Norādiet argv vai command un vienu mērķi: project_id vai worktree_id. Pārbaudiet timeout_ms un output_bytes diapazonus.',
+  'node.manager.invalidIntegration':
+    'Integrācijai vajadzīgi avota un mērķa darba koki, abu zaru nosaukumi un to aktuālie pilnie komitu heši.',
+  'node.manager.invalidCancel': 'Norādiet atceļamās komandas session_id un run_id.',
+  'node.manager.branches': 'Zari',
+  'node.manager.folder': 'Mape',
+  'node.manager.sourceHead': 'Avota komits',
+  'node.manager.targetHead': 'Mērķa komits',
+  'node.manager.evidence': 'Precīza atļaujas informācija',
   'node.manager.exitCode': 'Izejas kods: {code}',
   'node.manager.output': 'Izvade',
   'node.manager.truncated': 'Agrākā izvade ir saīsināta.',

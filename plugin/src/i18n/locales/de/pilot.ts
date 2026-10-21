@@ -3676,6 +3676,23 @@ export const de = {
   'debug.watchLastValue': 'Letzter Wert: {value}',
   'debug.logPoint': 'Protokollpunkt: {message}',
   'node.delegation.paused': 'Pausiert; kann fortgesetzt werden',
+  'node.delegation.ownerAnswer':
+    'Ihre Genehmigung wird erwartet. Antworten Sie auf dieser Karte oder öffnen Sie den untergeordneten Chat. Der Manager kann nicht für Sie antworten.',
+  'node.delegation.pausedPrompt':
+    'Zeitlimit beim Warten auf Ihre Antwort erreicht. Beantworten Sie die gespeicherte Anfrage und setzen Sie den Entwickler fort.',
+  'node.delegation.pausedLimit':
+    'Zeitlimit erreicht. Senden Sie eine Nachricht, um im selben Chat und Worktree fortzufahren.',
+  'node.manager.command': 'Befehl',
+  'node.manager.invalidCommand':
+    'Geben Sie entweder argv oder command und ein Ziel an: project_id oder worktree_id. Prüfen Sie die Bereiche von timeout_ms und output_bytes.',
+  'node.manager.invalidIntegration':
+    'Die Integration benötigt Quell- und Ziel-Worktree, beide Branch-Namen und aktuelle vollständige Commit-Hashes.',
+  'node.manager.invalidCancel': 'Geben Sie session_id und run_id des abzubrechenden Befehls an.',
+  'node.manager.branches': 'Branches',
+  'node.manager.folder': 'Ordner',
+  'node.manager.sourceHead': 'Quell-Commit',
+  'node.manager.targetHead': 'Ziel-Commit',
+  'node.manager.evidence': 'Genaue Genehmigungsdetails',
   'node.manager.exitCode': 'Exit-Code: {code}',
   'node.manager.output': 'Ausgabe',
   'node.manager.truncated': 'Frühere Ausgabe wurde gekürzt.',

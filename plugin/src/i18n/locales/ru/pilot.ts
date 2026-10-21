@@ -3705,6 +3705,23 @@ export const ru = {
   'debug.watchLastValue': 'Последнее значение: {value}',
   'debug.logPoint': 'Точка журнала: {message}',
   'node.delegation.paused': 'Приостановлен; можно продолжить',
+  'node.delegation.ownerAnswer':
+    'Ожидается ваше разрешение. Ответьте на запрос на этой карточке или откройте дочерний чат. Менеджер не может ответить за вас.',
+  'node.delegation.pausedPrompt':
+    'Достигнут лимит времени в ожидании вашего ответа. Ответьте на сохранённый запрос и продолжите работу разработчика.',
+  'node.delegation.pausedLimit':
+    'Достигнут лимит времени. Отправьте сообщение, чтобы продолжить в том же чате и рабочем дереве.',
+  'node.manager.command': 'Команда',
+  'node.manager.invalidCommand':
+    'Укажите либо argv, либо command и одну цель: project_id или worktree_id. Проверьте диапазоны timeout_ms и output_bytes.',
+  'node.manager.invalidIntegration':
+    'Для интеграции нужны исходное и целевое рабочие деревья, имена обеих веток и свежие полные хеши их коммитов.',
+  'node.manager.invalidCancel': 'Укажите session_id и run_id команды для отмены.',
+  'node.manager.branches': 'Ветки',
+  'node.manager.folder': 'Папка',
+  'node.manager.sourceHead': 'Исходный коммит',
+  'node.manager.targetHead': 'Целевой коммит',
+  'node.manager.evidence': 'Точные данные запроса',
   'node.manager.exitCode': 'Код завершения: {code}',
   'node.manager.output': 'Вывод',
   'node.manager.truncated': 'Начало вывода сокращено.',

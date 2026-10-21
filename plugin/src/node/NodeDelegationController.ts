@@ -42,6 +42,7 @@ export class NodeDelegationController {
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
   private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
+  private readonly statusCheckedAt = new Map<string, number>()
   private readonly workspaces = new Map<
     string,
     { branch?: string; files: string[]; state: string; checkedAt: number }
@@ -56,6 +57,7 @@ export class NodeDelegationController {
     this.subscribed.clear()
     this.pendingPrompts.clear()
     this.denied.clear()
+    this.statusCheckedAt.clear()
   }
 
   /** Synchronous fence first; durable waiter removal is serialized with status writes. */
@@ -162,10 +164,25 @@ export class NodeDelegationController {
         if (!task.cancelSettled) task.child = child
       })
       if (signal?.aborted) throw new Error('Delegation call cancelled')
-      await this.client.subscribeDelegation(child)
-      await this.observeTarget(child.delegation_id, child.session_id)
+      try {
+        await this.client.subscribeDelegation(child)
+        await this.observeTarget(child.delegation_id, child.session_id)
+      } catch (error) {
+        // The create receipt is already durable. A read failure cannot undo accepted work.
+        console.debug('[Abele node] accepted child awaits activity refresh', error)
+      }
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       return { ...this.publicChild(child), project_id: input.project_id, title: input.title }
+    } catch (error) {
+      if (
+        !child &&
+        error instanceof Error &&
+        /^(resource_busy|outcome_unknown|disconnected)(:|$)/.test(error.message)
+      )
+        throw new Error(
+          `outcome_unknown (${error.message}): The developer may have started. Check status with node_delegations before retrying; retain the same task_key and exact body.`
+        )
+      throw error
     } finally {
       try {
         if (signal?.aborted) {
@@ -211,6 +228,10 @@ export class NodeDelegationController {
       delegation_id: child.delegation_id,
       state: child.state,
       workspace_id: child.workspace_id ?? null,
+      worktree_id: (() => {
+        const binding = this.targets.get(child.delegation_id)?.target
+        return binding?.kind === 'worktree' ? binding.worktree_id : null
+      })(),
     }
   }
   private owned(parent: string, id: string, _action: string) {
@@ -361,6 +382,7 @@ export class NodeDelegationController {
       task.cancelled = false
       task.cancelSettled = false
       task.awaitingResult = !this.stoppedParents.has(parent)
+      delete task.notifiedAttention
       task.followupMailboxSeq = status.mailbox_head_seq
       task.followupAcceptedSeq = result.accepted_seq
       task.parentStopped = this.stoppedParents.has(parent)
@@ -452,14 +474,18 @@ export class NodeDelegationController {
           )
           if (
             current &&
-            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(current)
+            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(current) &&
+            Date.now() - (this.statusCheckedAt.get(child.delegation_id) ?? -Infinity) < 15000
           )
             return
           try {
             const status = await this.client.delegationStatus(child.delegation_id)
+            this.statusCheckedAt.set(child.delegation_id, Date.now())
             await this.observeTarget(child.delegation_id, child.session_id)
             await this.store.transaction((s) => {
-              storage(s).tasks[child.delegation_key].status = status
+              const task = storage(s).tasks[child.delegation_key]
+              if (!task.status || status.session_head_seq >= task.status.session_head_seq)
+                task.status = status
             })
           } catch {
             /* Revoked or offline resources retain their last durable projection. */
@@ -536,15 +562,20 @@ export class NodeDelegationController {
   /** Wake only a waiting model, once the result is durably present in its parent card. */
   async wakeDelivered(
     cards: Record<string, DelegationCard[]>,
-    wake: (parent: string, id: string) => boolean
+    wake: (parent: string, id: string, notice?: string) => boolean
   ): Promise<void> {
     const epochs = new Map(this.wakeEpochs)
     const pending = await this.store.transaction((s) =>
       Object.entries(storage(s).tasks)
         .filter(([, task]) => task.awaitingResult && task.child)
-        .map(([key, task]) => ({ key, parent: task.parentId, id: task.child!.delegation_id }))
+        .map(([key, task]) => ({
+          key,
+          parent: task.parentId,
+          id: task.child!.delegation_id,
+          notified: task.notifiedAttention,
+        }))
     )
-    for (const { key, parent, id } of pending) {
+    for (const { key, parent, id, notified } of pending) {
       // Stop may have won after enumeration but before dispatch (or before a new
       // explicit turn). Neither a stale snapshot nor that new turn revives this wake.
       if (
@@ -553,13 +584,35 @@ export class NodeDelegationController {
       )
         continue
       const card = cards[parent]?.find((c) => c.delegationId === id)
+      if (!card) continue
+      const completed = card.state === 'completed' && card.reports.some((r) => r.kind === 'result')
+      const terminal = ['failed', 'stopped', 'cancelled', 'unknown'].includes(card.state)
+      const prompts = card.prompts?.map((p) => `${p.prompt_id}:${p.revision}`).sort() ?? []
+      const attention = completed
+        ? 'result'
+        : terminal
+          ? `${card.state}:${card.reason ?? ''}`
+          : card.pendingHumanPrompts
+            ? `prompts:${prompts.join(',')}:${card.pendingHumanPrompts}`
+            : undefined
+      if (!attention && notified && card.state === 'running')
+        await this.store.transaction((s) => {
+          delete storage(s).tasks[key].notifiedAttention
+        })
       if (
-        card?.state === 'completed' &&
-        card.reports.some((r) => r.kind === 'result') &&
-        wake(parent, id)
+        attention &&
+        attention !== notified &&
+        wake(
+          parent,
+          id,
+          completed
+            ? undefined
+            : `Node delegation ${id} (${card.title}) needs attention: ${attention}. Read node_delegation_status. Owner approvals must be answered by the owner in the card.`
+        )
       )
         await this.store.transaction((s) => {
-          storage(s).tasks[key].awaitingResult = false
+          storage(s).tasks[key].notifiedAttention = attention
+          if (completed) storage(s).tasks[key].awaitingResult = false
         })
     }
   }
@@ -642,6 +695,7 @@ export class NodeDelegationController {
             : undefined
           return {
             title: t.input.title,
+            taskKey: t.input.task_key,
             provider: t.input.provider,
             delegationId: child?.delegation_id,
             sessionId: child?.session_id,
@@ -670,15 +724,7 @@ export class NodeDelegationController {
                     return [data.extension, data.event, data.error].filter(Boolean).join(': ')
                   })
               : [],
-            pendingHumanPrompts: [
-              'completed',
-              'failed',
-              'cancelled',
-              'unknown',
-              'stopped',
-            ].includes(state)
-              ? 0
-              : (t.status?.pending_human_prompts ?? 0),
+            pendingHumanPrompts: t.status?.pending_human_prompts ?? pending.size,
             reports,
           }
         })

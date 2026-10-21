@@ -108,14 +108,15 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         name === 'node_command_status' ? 'command.v1.status' : method,
         input
       )
+      const sessionId = id.parse(params.session_id)
       const guards: (() => void)[] = []
       const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
       if (entries.some((entry) => entry.kind === 'node')) {
         guards.push(requireDelegationScope(parent, nodeId))
       } else {
-        const session = await connection.client.getSession(params.session_id)
+        const session = await connection.client.getSession(sessionId)
         const binding = await connection.client.nodePath.sessionWorktreeGet({
-          session_id: params.session_id,
+          session_id: sessionId,
         })
         const workspace = session.workspace_id
           ? await connection.client.getWorkspace(session.workspace_id)
@@ -178,7 +179,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       if (name === 'node_command_status')
         value = await connection.manager.status(
           parentId,
-          params.session_id,
+          sessionId,
           id.parse(params.run_id)
         )
       else {

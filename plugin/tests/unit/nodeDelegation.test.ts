@@ -43,6 +43,75 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it('wakes once for each new prompt and paused or failed transition without requiring a result', async () => {
+  const f = fixture()
+  await f.controller.create('parent', task)
+  const wake = vi.fn(() => true)
+  const base = (await f.controller.cards('parent'))[0]
+  for (const card of [
+    { ...base, state: 'running', pendingHumanPrompts: 1 },
+    { ...base, state: 'stopped', reason: 'time_limit', pendingHumanPrompts: 0 },
+    { ...base, state: 'failed', pendingHumanPrompts: 0 },
+  ]) {
+    await f.controller.wakeDelivered({ parent: [card] }, wake)
+    await f.controller.wakeDelivered({ parent: [card] }, wake)
+  }
+  expect(wake).toHaveBeenCalledTimes(3)
+  f.store.close()
+})
+it('does not report a rejected create when only subscribing to the accepted child failed', async () => {
+  const f = fixture()
+  f.client.subscribeDelegation.mockRejectedValueOnce(new Error('resource_busy'))
+  expect(await f.controller.create('parent', task)).toMatchObject({
+    delegation_id: 'delegation',
+    state: 'running',
+  })
+  expect((await f.controller.cards('parent'))[0].delegationId).toBe('delegation')
+  f.store.close()
+})
+it('reports an uncertain busy create without claiming no developer started', async () => {
+  const f = fixture()
+  f.client.createDelegation.mockRejectedValueOnce(new Error('resource_busy'))
+  await expect(f.controller.create('parent', task)).rejects.toThrow(
+    /outcome_unknown.*resource_busy.*Check status/
+  )
+  f.store.close()
+})
+it('refreshes a paused child quietly when the owner later continues it directly', async () => {
+  const f = fixture()
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1000)
+  try {
+    await f.controller.create('parent', task)
+    f.client.delegationStatus.mockResolvedValueOnce({
+      ...child,
+      state: 'stopped',
+      reason: 'time_limit',
+      session_head_seq: 17,
+      mailbox_head_seq: 0,
+      pending_human_prompts: 0,
+    } as never)
+    await f.controller.restore()
+    now.mockReturnValue(17000)
+    await f.controller.restore()
+    expect((await f.controller.cards('parent'))[0].state).toBe('running')
+  } finally {
+    now.mockRestore()
+    f.store.close()
+  }
+})
+it('returns the observed worktree ID with the delegate workspace', async () => {
+  const f = fixture()
+  const description = await f.client.describe()
+  f.client.describe.mockResolvedValue({ ...description, version: '0.4.2' })
+  try {
+    expect(await f.controller.create('parent', task)).toMatchObject({ worktree_id: 'sample-tree' })
+    expect(await f.controller.status('parent', 'delegation')).toMatchObject({
+      worktree_id: 'sample-tree',
+    })
+  } finally {
+    f.store.close()
+  }
+})
 it('refuses an older node before reserving a task or creating a grant', async () => {
   const f = fixture()
   f.client.describe.mockResolvedValueOnce({

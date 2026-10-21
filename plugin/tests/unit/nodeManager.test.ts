@@ -40,6 +40,56 @@ function fixture(supported = true) {
     controller: new NodeManagerController(client as unknown as NodeClient, store),
   }
 }
+it('wakes the parent once after a command ends and persists delivery across reload', async () => {
+  const f = fixture()
+  await f.controller.mutate(
+    'sample-parent',
+    'command.v1.run',
+    {
+      session_id: 'sample-session',
+      project_id: 'sample-project',
+      argv: ['pwd'],
+    },
+    'sample-operation'
+  )
+  const wake = vi.fn(() => true)
+  await f.controller.wakeDelivered(wake)
+  expect(wake).not.toHaveBeenCalled()
+  await f.store.transaction((s) => {
+    s.managerOperations!['sample-operation'].run = {
+      ...receipt,
+      state: 'exited',
+      exit_code: 0,
+    } as never
+  })
+  await f.controller.wakeDelivered(wake)
+  const restored = new NodeManagerController(f.client as never, f.store)
+  await restored.wakeDelivered(wake)
+  expect(wake).toHaveBeenCalledTimes(1)
+  expect(wake.mock.calls[0]).toEqual([
+    'sample-parent',
+    expect.stringContaining('node_command_status'),
+  ])
+  f.store.close()
+})
+it('explains invalid command input before enqueueing rather than exposing raw validation JSON', async () => {
+  const f = fixture()
+  await expect(
+    f.controller.mutate(
+      'sample-parent',
+      'command.v1.run',
+      {
+        session_id: 'sample-session',
+        project_id: 'sample-project',
+        argv: ['pwd'],
+        command: 'pwd',
+      },
+      'sample-operation'
+    )
+  ).rejects.toThrow(/invalid_params:.*argv.*command/)
+  expect(f.client.flush).not.toHaveBeenCalled()
+  f.store.close()
+})
 it('retains exact operations and never answers owner prompts', async () => {
   const f = fixture()
   const params = {

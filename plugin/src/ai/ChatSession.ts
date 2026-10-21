@@ -686,7 +686,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     set: (value) => this.setOverride('permissionMode', value),
   })
   public readonly toolModes = computed<Record<string, ToolMode>>({
-    get: () => this.folderToolAccess.value.modes,
+    get: () => {
+      const modes = { ...this.folderToolAccess.value.modes }
+      if (this.overrides.value.nodeScope?.length) {
+        for (const name of [
+          'node_git_commit',
+          'node_worktree_remove',
+          'node_command_run',
+          'node_git_integrate',
+        ])
+          modes[name] ??= 'ask'
+        for (const name of [
+          'node_delegations',
+          'node_delegation_status',
+          'node_command_status',
+          'node_command_cancel',
+        ])
+          if (modes[name] !== 'off') modes[name] = 'auto'
+      }
+      return modes
+    },
     set: (value) => this.setOverride('toolModes', value),
   })
 
@@ -2581,7 +2600,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   /** An automatic result notification is not permission to resume a stopped chat. */
-  wakeDelegationResult(id: string): boolean {
+  wakeDelegationResult(id: string, notice?: string): boolean {
     if (this.destroyed || this.delegationWakeStopped || this.preparingClone.value) return false
     const wake: DelegationWakeFence = {
       sessionId: this.id,
@@ -2589,7 +2608,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       stopEpoch: this.delegationStopEpoch,
     }
     void this.sendMessage(
-      `The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`,
+      notice ??
+        `The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`,
       undefined,
       wake
     ).catch((error) => {

@@ -39,7 +39,8 @@ export async function resolveManagerTargets(
     delete params[alias]
   }
   if (method === 'command.v1.run' && !params.project_id && !params.worktree_id) {
-    if (typeof params.session_id !== 'string') throw new Error('invalid_params: Supply an existing session_id.')
+    if (typeof params.session_id !== 'string')
+      throw new Error('invalid_params: Supply an existing session_id.')
     const binding = await client.nodePath.sessionWorktreeGet({
       session_id: params.session_id,
     })
