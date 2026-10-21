@@ -13,20 +13,23 @@ it.each(
     [false, true].flatMap((preserveStamp) =>
       [false, true].flatMap((knownCopy) =>
         ['sample.md', 'renamed.md', 'Moved/sample.md'].flatMap((localPath) =>
-          [false, true].map((deferred) => ({
-            bounded,
-            preserveStamp,
-            knownCopy,
-            localPath,
-            deferred,
-          }))
+          [false, true].flatMap((deferred) =>
+            ['modify', 'move'].map((remoteOp) => ({
+              bounded,
+              preserveStamp,
+              knownCopy,
+              localPath,
+              deferred,
+              remoteOp,
+            }))
+          )
         )
       )
     )
   )
 )(
-  'holds offline edits across equal and later remote pages ($localPath, $bounded, $preserveStamp, $knownCopy, $deferred)',
-  async ({ bounded, preserveStamp, knownCopy, localPath, deferred }) => {
+  'holds offline edits across equal and later remote pages ($localPath, $bounded, $preserveStamp, $knownCopy, $deferred, $remoteOp)',
+  async ({ bounded, preserveStamp, knownCopy, localPath, deferred, remoteOp }) => {
     const fs = new MemoryFileSystem(),
       state = new MemoryStateStore()
     const a = new TextEncoder().encode('sample A')
@@ -84,8 +87,8 @@ it.each(
       file_id: base.fileId,
       version_id: version,
       path: localPath,
-      prev_path: null,
-      op: 'modify',
+      prev_path: seq === 2 && remoteOp === 'move' ? base.path : null,
+      op: seq === 2 ? remoteOp : 'modify',
       kind: 'note',
       sha,
       size: b.length,
