@@ -485,6 +485,9 @@
   "chatTree.deleteChatHint": {
     "englishHash": "2bd0a3497989a66dbb89b80bd3902d3099b50bb3c73fb7338e036d1d7c60b9a0"
   },
+  "chatTree.deleteFolderHint": {
+    "englishHash": "43b605ed6bd9f8d4680a7b68e80fb9ea7b5c8c07105168c09fdae55f00e2f90f"
+  },
   "chatTree.folderNotEmpty": {
     "englishHash": "26a005aa9061b64f6862950641d2375b1d1ac730ac3fbf9ae28b4c4acbf4e385"
   },
