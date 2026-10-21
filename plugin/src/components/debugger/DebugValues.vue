@@ -3,6 +3,7 @@
     v-for="v in values"
     :key="path(v)"
     :text="v.name"
+    :title="v.name"
     :collapsible="!!v.children?.length || !!v.handle || revealsInPlace(v)"
     :collapsed="!openSet.has(path(v))"
     class="abele-debug-value_row"
@@ -122,6 +123,12 @@ watch(
 .abele-debug-panel .abele-tree-item__text {
   flex: 0 1 auto;
   overflow-wrap: anywhere;
+}
+.abele-debug-panel .abele-debug-value_row .abele-tree-item__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 // A value gives way before the row's edge: it shrinks and ends in an ellipsis inside the row's
 // light instead of running past it. The whole value is in its tooltip and opens below the row.
