@@ -331,7 +331,7 @@ export class TokenEngines {
   /** Resume/pocket events share the same engine operations as explicit Sync now. */
   async foreground(visible: boolean): Promise<void> {
     if (this.closed) return
-    if (visible && (await this.ui.itemSets.refreshAll())) {
+    if (visible && (await this.ui.itemSets.refreshAll((id) => this.live.has(id)))) {
       this.start()
       await this.engines.settled()
     }
@@ -350,12 +350,6 @@ export class TokenEngines {
   }
   start(): void {
     if (this.closed) return
-    void this.ui.itemSets
-      .refreshAll()
-      .then((changed) => {
-        if (changed && !this.closed) this.start()
-      })
-      .catch((error) => console.debug('[Abele Sync items]', error))
     const teardown = pendingTeardown(this.app)
     const documents = teardown.then(() => activeExternalDocuments(this.app, factoryOf(this.deps)))
     const beforeOpening = documents.then(async (found) => {
@@ -410,15 +404,26 @@ export class TokenEngines {
         ),
       (id, error) => this.failed(id, error)
     )
+    // Item discovery can change persisted connections. Keep it behind recovery and
+    // inspection, just like the engine it may extend; blocked rows do no network work.
+    void this.engines
+      .settled()
+      .then(async () => {
+        if (this.closed) return
+        if (await this.ui.itemSets.refreshAll((id) => this.live.has(id))) this.start()
+      })
+      .catch((error) => console.debug('[Abele Sync items]', error))
     this.refreshDestinations()
   }
   private failed(id: string, error: unknown): void {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const code = (error as { code?: string })?.code
     if (code === 'forbidden' || code === 'scope_removed')
-      void this.ui.itemSets.refreshAll().then((changed) => {
-        if (changed && !this.closed) this.start()
-      })
+      void this.ui.itemSets
+        .refreshAll((id) => this.live.has(id))
+        .then((changed) => {
+          if (changed && !this.closed) this.start()
+        })
     if (code === 'startup-cancelled') return
     if (
       code !== 'scope_deleted' &&
@@ -1271,9 +1276,11 @@ export class TokenEngines {
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     if (report)
-      void this.ui.itemSets.refreshAll().then((changed) => {
-        if (changed && !this.closed) this.start()
-      })
+      void this.ui.itemSets
+        .refreshAll((id) => this.live.has(id))
+        .then((changed) => {
+          if (changed && !this.closed) this.start()
+        })
     tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
     if (this.ui.registry.records().find((one) => one.id === id)?.rootIssue) return
     if (

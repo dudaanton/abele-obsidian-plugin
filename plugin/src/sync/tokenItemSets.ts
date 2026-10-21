@@ -448,12 +448,13 @@ export class TokenItemSets implements ShareSetSource {
     this.changed()
     return changed
   }
-  async refreshAll(): Promise<boolean> {
+  async refreshAll(ready: (id: string) => boolean = () => true): Promise<boolean> {
     let changed = false
     const leaders = this.ui.registry
       .records()
       .filter((one) => !this.store.forRecord(one.id) || this.store.get(one.id))
     for (const row of leaders) {
+      if (!ready(row.id)) continue
       if (!row.secretReference || (row.status === 'needs-token' && !this.store.get(row.id)))
         continue
       try {
