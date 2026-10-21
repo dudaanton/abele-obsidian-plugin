@@ -94,6 +94,8 @@ export class DebuggerController {
   private lost = false
   private serial = 0
   private frameHandles: string[] = []
+  loadedStackEpoch?: number
+  private watchesEpoch?: number
   private disabledBreakpoints = new Map<string, DebuggerBreakpointRequest>()
   exceptionFilters: string[] = []
   private breakpointCapabilities = { breakpoint_hit_condition: false, breakpoint_enabled: false }
@@ -201,6 +203,8 @@ export class DebuggerController {
       s.incarnation !== this.snapshot.incarnation
     const moved = this.snapshot && (replaced || this.snapshot.stop_epoch !== s.stop_epoch)
     if (replaced) {
+      this.loadedStackEpoch = undefined
+      this.watchesEpoch = undefined
       const restoredWatches = this.snapshot ? [] : this.session.watches
       ++this.serial
       this.markSubmittedUnknown('Target replaced; approval outcome unknown')
@@ -217,6 +221,7 @@ export class DebuggerController {
       this.exceptionFilters = []
     }
     if (moved) {
+      this.loadedStackEpoch = undefined
       this.expireLocal()
       this.session.watches = this.session.watches.map((watch) => ({ ...watch, stale: true }))
       this.session.frames = []
@@ -260,6 +265,8 @@ export class DebuggerController {
     this.notify()
   }
   disconnected() {
+    this.loadedStackEpoch = undefined
+    this.watchesEpoch = undefined
     ++this.serial
     this.lost = true
     this.session.status = ['terminated', 'detached', 'failed'].includes(
@@ -1055,7 +1062,7 @@ export class DebuggerController {
       await this.refreshHistory()
     })
   }
-  async loadStack() {
+  async loadStack(refreshWatches = true, selectedFrame?: number) {
     if (!this.current || this.session.status !== 'paused' || !this.snapshot?.selected_thread_id)
       return
     const s = this.snapshot,
@@ -1121,25 +1128,37 @@ export class DebuggerController {
     else if (this.error === t('debug.frameSourceUnavailable')) this.error = ''
     // Held in Node's own code (js-debug's statement, the loader): the program's frame is the one
     // that matters, so it is the one selected; the Node row stays folded above it.
-    this.session.frame = Math.max(
-      0,
-      this.session.frames.findIndex((frame) => frame.file)
-    )
+    this.session.frame =
+      selectedFrame !== undefined && selectedFrame < this.session.frames.length
+        ? selectedFrame
+        : Math.max(
+            0,
+            this.session.frames.findIndex((frame) => frame.file)
+          )
     this.notify()
     await this.loadScopes(this.session.frame, this.invocation())
-    await this.refreshWatches()
+    if (this.current && this.snapshot?.stop_epoch === epoch && this.session.status === 'paused')
+      this.loadedStackEpoch = epoch
+    if (refreshWatches) await this.refreshWatches()
   }
   selectFrame(index: number) {
     return this.human((invocation) => this.loadScopes(index, invocation)).then(() =>
-      this.refreshWatches()
+      this.refreshWatches(true)
     )
   }
-  private async refreshWatches() {
-    const epoch = this.snapshot?.stop_epoch
+  private async refreshWatches(force = false) {
+    let epoch = this.snapshot?.stop_epoch
+    if (!force && this.watchesEpoch === epoch) return
     for (const { expression } of [...this.session.watches]) {
       if (!this.current || this.session.status !== 'paused' || this.snapshot?.stop_epoch !== epoch)
         return
-      await this.watch(expression, true)
+      if (!this.session.watches.some((watch) => watch.expression === expression)) continue
+      const refreshedEpoch = await this.watch(expression, true)
+      if (refreshedEpoch === undefined) {
+        if (!this.session.watches.some((watch) => watch.expression === expression)) continue
+        return
+      }
+      epoch = refreshedEpoch
     }
   }
   async refreshExitInfo(): Promise<void> {
@@ -1229,8 +1248,18 @@ export class DebuggerController {
       )
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
+      if (result.outcome === 'completed' && this.session.status === 'paused') {
+        await this.loadStack(false, current.frame)
+        if (/\bstale_state\b/.test(this.error) || this.error === t('streamC.8f55c062960e8261'))
+          this.error = ''
+      }
       await this.refreshApprovals()
       await this.refreshHistory()
+      if (result.outcome === 'completed' && this.session.status === 'paused') {
+        this.watchesEpoch = this.snapshot?.stop_epoch
+        this.notify()
+        return this.watchesEpoch
+      }
       this.notify()
     })
   }

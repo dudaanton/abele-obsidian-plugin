@@ -36,6 +36,7 @@ const WAIT_ROUND_MS = 4000
 
 export class DebuggerBinding {
   readonly revision = shallowRef(0)
+  readonly acceptanceCapabilities = shallowRef(debuggerAcceptanceCapabilities(undefined))
   readonly controller: DebuggerController
   attachmentKey?: string
   retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
@@ -152,15 +153,17 @@ export class DebuggerBinding {
       const client = this.connection.client as { describe?: () => Promise<unknown> }
       const description =
         typeof client.describe === 'function' ? await client.describe() : undefined
-      this.stopExceptionText = debuggerAcceptanceCapabilities(description).stop_exception_text
+      this.acceptanceCapabilities.value = debuggerAcceptanceCapabilities(description)
+      this.stopExceptionText = this.acceptanceCapabilities.value.stop_exception_text
       this.controller.setCapabilities({
         ...breakpointCapabilities(description),
-        ...debuggerAcceptanceCapabilities(description),
+        ...this.acceptanceCapabilities.value,
       })
       return nodeTraceSupported(description)
     } catch (e) {
       console.debug('[debugger] Run recording support unknown', e)
       this.controller.setCapabilities({})
+      this.acceptanceCapabilities.value = debuggerAcceptanceCapabilities(undefined)
       this.stopExceptionText = false
       return false
     }
@@ -297,13 +300,14 @@ export class DebuggerBinding {
         .catch((e) => console.debug('[debugger] Exit metadata unavailable', e))
       await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
       const epoch = this.controller.snapshot?.stop_epoch
+      if (this.controller.loadedStackEpoch === epoch) this.loadedEpoch = epoch
       if (
         this.controller.session.status === 'paused' &&
         epoch !== this.loadedEpoch &&
         !this.trace?.isRecordStop()
       ) {
         await this.controller.loadStack()
-        this.loadedEpoch = epoch
+        this.loadedEpoch = this.controller.loadedStackEpoch ?? epoch
         DebuggerService.instance.focusPause(this)
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
@@ -315,8 +319,10 @@ export class DebuggerBinding {
         const keepRequest =
           request?.registrationId === this.registrationId &&
           request.projectId === this.controller.snapshot?.target.project_id
-        if (f && !keepRequest && DebuggerService.instance.active.value === this)
-          DebuggerService.instance.reveal(this, f.file, f.line, Platform.isPhone)
+        if (f && !keepRequest && DebuggerService.instance.active.value === this) {
+          if (Platform.isPhone) DebuggerService.instance.reveal(this, f.file, f.line, true)
+          else DebuggerService.instance.reveal(this, f.file, f.line)
+        }
       }
     })().finally(() => {
       this.refreshing = undefined

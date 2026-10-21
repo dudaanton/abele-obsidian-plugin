@@ -4,6 +4,7 @@ const Flags = z.object({
   frame_source_paths: z.boolean().optional(),
   stop_exception_text: z.boolean().optional(),
   launch_stop_on_entry: z.boolean().optional(),
+  launch_preflight: z.boolean().optional(),
   exit_code: z.boolean().optional(),
   attach_breakpoint_restore: z.boolean().optional(),
   status: z.string(),
@@ -12,6 +13,9 @@ const Description = z.object({
   capabilities: z.object({
     capabilities: z.object({
       debugger_v1: Flags.optional(),
+      trace_v1: z
+        .object({ status: z.string(), bound_record_points: z.boolean().optional() })
+        .optional(),
       device_disconnect: z.object({ status: z.string() }).optional(),
     }),
   }),
@@ -26,6 +30,11 @@ export function debuggerAcceptanceCapabilities(description: unknown) {
     frame_source_paths: supported && flags.frame_source_paths === true,
     stop_exception_text: supported && flags.stop_exception_text === true,
     launch_stop_on_entry: supported && flags.launch_stop_on_entry === true,
+    launch_preflight: supported && flags.launch_preflight === true,
+    bound_record_points:
+      parsed.success &&
+      parsed.data.capabilities.capabilities.trace_v1?.status === 'supported' &&
+      parsed.data.capabilities.capabilities.trace_v1.bound_record_points === true,
     exit_code: supported && flags.exit_code === true,
     attach_breakpoint_restore: supported && flags.attach_breakpoint_restore === true,
   }

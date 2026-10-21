@@ -418,6 +418,10 @@ it.each(['desktop', 'phone'])(
         if(current.session.status!=='paused'||!current.session.frames.length||!current.session.variables.length||current.error)
           throw Error('Watch disturbed the paused view: '+debugState());
       }
+      const scope=binding.controller.session.variables.find(value=>value.handle);
+      if(!scope)throw Error('Watch left no current scope handle');
+      await binding.controller.inspect(scope.handle);
+      await until(()=>binding.controller.session.variables.some(value=>value.children?.length),'scope expands after watch evaluation');
       noOwnerApproval();
       await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();
       await wait(600);

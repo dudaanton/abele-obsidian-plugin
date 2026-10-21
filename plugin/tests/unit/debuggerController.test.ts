@@ -8,6 +8,59 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it.each([false, true])(
+  'refreshes expired handles without reevaluation loops (epoch advances: %s)',
+  async (advanceEpoch) => {
+    const { model, rpc, command } = fixture()
+    model.actions = []
+    model.error = 'stale_state'
+    model.session.watches = [{ expression: 'first' }, { expression: 'second' }]
+    let handles = 0
+    let valid = false
+    rpc.mockImplementation(async (method, params: any) => {
+      if (method === 'debugger.v1.stack') {
+        valid = true
+        handles++
+        return {
+          data: {
+            items: [
+              { handle: `frame-${handles}`, name: 'main', source_id: 'sample-source', line: 7 },
+            ],
+          },
+        } as never
+      }
+      if (method === 'debugger.v1.scopes') {
+        expect(valid).toBe(true)
+        expect(params.frame_handle).toBe(`frame-${handles}`)
+        return { data: { items: [{ name: 'Local', handle: `scope-${handles}` }] } } as never
+      }
+      if (method === 'debugger.v1.history') return { entries: [], truncated_before: 0 } as never
+      return { proposals: [], truncated: false, next: null } as never
+    })
+    command.mockImplementation(async (_method, params: any) => {
+      expect(valid).toBe(true)
+      expect(params.frame_handle).toBe(`frame-${handles}`)
+      valid = false
+      return receipt('completed', {
+        snapshot: advanceEpoch
+          ? snapshot({
+              stop_epoch: model.snapshot!.stop_epoch + 1,
+              state_revision: model.snapshot!.state_revision + 1,
+              event_seq: model.snapshot!.event_seq + 1,
+            })
+          : model.snapshot,
+      })
+    })
+    await model.loadStack()
+    expect(command).toHaveBeenCalledTimes(2)
+    expect(handles).toBe(3)
+    expect(model.session.variables[0].handle).toBe('scope-3')
+    expect(model.session.frames).toHaveLength(1)
+    expect(model.error).toBe('')
+    await model.loadStack()
+    expect(command).toHaveBeenCalledTimes(2)
+  }
+)
 it('does not replace current frames with an older state revision at the same event cursor', () => {
   const { model } = fixture()
   model.observe({
@@ -32,6 +85,13 @@ it('evaluates a watch against the latest revision of the same paused frame', asy
   } as never)
   await model.loadStack()
   rpc.mockImplementation(async (method) => {
+    if (method === 'debugger.v1.stack')
+      return {
+        data: {
+          items: [{ handle: 'sample-frame', name: 'main', source_id: 'sample-source', line: 7 }],
+        },
+      } as never
+    if (method === 'debugger.v1.scopes') return { data: { items: [] } } as never
     if (method === 'debugger.v1.approvals') {
       model.observe({
         observation: 'current',
@@ -1157,6 +1217,12 @@ function grant(patch = {}) {
 }
 function fixture() {
   const rpc = vi.fn(async (method: string, params?: unknown) => {
+    if (method === 'debugger.v1.stack')
+      return {
+        data: {
+          items: [{ handle: 'sample-frame', name: 'main', source_id: 'sample-source', line: 7 }],
+        },
+      }
     if (method === 'debugger.v1.scopes') return { data: { items: [] } }
     if (method === 'debugger.v1.approve')
       return (params as { decision?: string })?.decision === 'deny'
