@@ -594,7 +594,7 @@ export class TokenItemSets implements ShareSetSource {
     })
     for (const item of set.items.slice(1))
       await client.itemClient().addItem(issued.info.id, selector(item))
-    this.ui.releaseLocalOnly(
+    await this.ui.releaseLocalOnly(
       connectionId,
       set.items.map((one) => one.path)
     )
@@ -630,7 +630,7 @@ export class TokenItemSets implements ShareSetSource {
         kind: item.kind === 'vault' ? 'folder' : item.kind,
         id: item.id,
       })
-    this.ui.releaseLocalOnly(
+    await this.ui.releaseLocalOnly(
       this.selected(id),
       items.map((one) => one.path)
     )

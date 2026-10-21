@@ -134,6 +134,7 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   await owner.syncNow(ownerId)
   expect(owner.read(wholePath)).toBe('whole token kept bytes')
   expect((await s.items()).some((item) => item.path === wholePath)).toBe(false)
+
   owner.run(
     `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
   )
@@ -144,6 +145,14 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   expect((await s.items()).some((item) => item.path === wholePath)).toBe(false)
   expect((await s.items()).find((item) => item.path === folder + '/kept.md')).toMatchObject({
     sha: await sha256(new TextEncoder().encode('owner writes after whole deletion')),
+  })
+  await owner.shareSet(ownerId, ['Folder: ' + s.root], 'Sample explicit re-share')
+  expect(owner.read(wholePath)).toBe('whole token kept bytes')
+  await owner.syncNow(ownerId)
+  expect(owner.read(wholePath)).toBe('whole token kept bytes')
+  expect(owner.read(moved)).toBe('kept local edit')
+  expect((await s.items()).find((item) => item.path === wholePath)).toMatchObject({
+    sha: await sha256(new TextEncoder().encode('whole token kept bytes')),
   })
 }, 300000)
 it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uploader', async () => {

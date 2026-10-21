@@ -1,5 +1,5 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
-import { quarantineLocalOnlyJournal } from './localOnlyJournal'
+import { quarantineLocalOnlyJournal, retireLocalOnlyLedger } from './localOnlyJournal'
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
@@ -91,7 +91,39 @@ export class TokenEngines {
   ) {
     this.localOnly = new LocalOnlyCopies(ui.registry)
     ui.localOnlyChanged = () => this.localOnly.refresh()
-    ui.releaseLocalOnly = (id, paths) => this.localOnly.releaseSelected(id, paths)
+    ui.releaseLocalOnly = async (id, paths) => {
+      try {
+        await this.localOnly.releaseSelected(id, paths, async (held) => {
+          // Every connection may have seen this physical copy before it became local-only.
+          // Keep its exclusion until all stopped ledgers have retired the old server identity.
+          const records = ui.registry.records()
+          for (const record of records) {
+            await ui.stopRuntime(record.id)
+            await ui.connectionChangeGuard(record.id)
+          }
+          for (const record of records) {
+            const store = await openTokenLedger(factoryOf(this.deps), ui.registry, record, () => {
+              if (
+                this.closed ||
+                !ui.registry
+                  .records()
+                  .some((one) => one.id === record.id && one.ledgerId === record.ledgerId)
+              )
+                throw new Error('Connection changed')
+            })
+            try {
+              await retireLocalOnlyLedger(store, (path) =>
+                held(this.localOnly.physical(record, path))
+              )
+            } finally {
+              store.close()
+            }
+          }
+        })
+      } finally {
+        await ui.connectionsChanged()
+      }
+    }
     ui.fencePublicationJournal = async (id, paths) => {
       const record = ui.registry.records().find((one) => one.id === id)
       if (!record) throw new Error('Connection unavailable')

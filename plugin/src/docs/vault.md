@@ -2931,6 +2931,12 @@ Vault rename events transfer retained copies into device-wide identities under
 including moves into another shared folder. These identities survive disconnection and restart.
 Edits remain local-only until a successful explicit share of that file, its containing folder,
 or the vault releases the selected exclusion; unrelated shares leave it intact.
+Before releasing exclusions, every connection is drained and its matching old synced ledger
+identities are retired. A kept file returns as a new upload, never as an unchanged copy of a
+deleted server identity. Failed retirement leaves the exclusion in place and resumes engines.
+Rename destinations are fenced in memory before saving their identities. Failed writes or
+readback verification retain that fence across later scans and refreshes; a later successful
+save makes the moved identity durable. Re-sharing cannot release an unsaved rename fence.
 Before fencing, a pending publication batch touching retained paths is quarantined intact in
 ledger metadata `local-only-publication-journal:<idempotencyKey>` before clearing its replay slot.
 Startup and runtime journal reads enforce the same rule. Mixed batches are never split or

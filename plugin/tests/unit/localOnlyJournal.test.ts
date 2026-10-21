@@ -41,3 +41,23 @@ it('leaves unrelated publication intact and blocks a newly fenced batch before s
   expect(await state.getJournal()).toBe(null)
   expect(await state.getMeta('local-only-publication-journal:sample-key')).not.toBe(null)
 })
+import { retireLocalOnlyLedger } from '@/sync/localOnlyJournal'
+
+it('retires the deleted server identity before a retained copy returns to publication', async () => {
+  const state = new MemoryStateStore()
+  const entry = {
+    path: 'Shared/Kept.md',
+    wirePath: 'Shared/Kept.md',
+    fileId: 'deleted-file',
+    versionId: 'old-version',
+    sha: 'a'.repeat(64),
+    size: 4,
+    mtime: 1,
+  }
+  await state.put(entry)
+  await state.put({ ...entry, path: 'Other.md', wirePath: 'Other.md', fileId: 'live-file' })
+  await retireLocalOnlyLedger(state, (path) => path === entry.path)
+  expect(await state.get(entry.path)).toBe(null)
+  expect(await state.byFileId(entry.fileId)).toBe(null)
+  expect(await state.get('Other.md')).not.toBe(null)
+})

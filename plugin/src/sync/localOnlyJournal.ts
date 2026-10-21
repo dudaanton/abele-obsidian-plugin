@@ -1,5 +1,18 @@
 import type { StateStore, Journal } from '@abele/sync-sdk/core'
 
+export async function retireLocalOnlyLedger(
+  state: StateStore,
+  held: (path: string) => boolean
+): Promise<void> {
+  await quarantineLocalOnlyJournal(state, held)
+  await state.transaction(async () => {
+    const paths: string[] = []
+    for await (const entry of state.all())
+      if (held(entry.path) || held(entry.wirePath)) paths.push(entry.path)
+    for (const path of paths) await state.delete(path)
+  })
+}
+
 async function touches(
   state: StateStore,
   journal: Journal,

@@ -310,7 +310,7 @@ export class TokenUi {
     scope?: V2Scope
   ) => Promise<void> = async () => {}
   localOnlyChanged: () => void = () => {}
-  releaseLocalOnly: (id: string, paths: string[]) => void = () => {}
+  releaseLocalOnly: (id: string, paths: string[]) => Promise<void> = async () => {}
   fencePublicationJournal: (id: string, paths: string[]) => Promise<void> = async () => {}
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {

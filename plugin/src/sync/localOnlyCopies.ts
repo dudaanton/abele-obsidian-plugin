@@ -11,10 +11,11 @@ interface Copy {
 /** Device identities follow the same vault rename events as pinned files. */
 export class LocalOnlyCopies {
   private paths: string[] = []
+  private unsaved?: Copy[]
   constructor(private registry: TokenConnectionRegistry) {
     this.refresh()
   }
-  private physical(record: ReturnType<TokenConnectionRegistry['records']>[number], path: string) {
+  physical(record: ReturnType<TokenConnectionRegistry['records']>[number], path: string) {
     const root = record.scope?.kind === 'folder' ? record.scope.path : undefined
     if (
       root &&
@@ -30,7 +31,10 @@ export class LocalOnlyCopies {
     return path
   }
   private copies(): Copy[] {
-    return (this.registry.localStorage.loadLocalStorage(LOCAL_ONLY_COPIES) ?? []) as Copy[]
+    return (
+      this.unsaved ??
+      ((this.registry.localStorage.loadLocalStorage(LOCAL_ONLY_COPIES) ?? []) as Copy[])
+    )
   }
   refresh(): void {
     this.paths = [...this.copies().map((one) => one.path)]
@@ -77,14 +81,24 @@ export class LocalOnlyCopies {
     this.refresh()
   }
   private save(copies: Copy[]): void {
+    // Rename events arrive after the disk move. Fence the destination before any fallible IO.
+    this.unsaved = copies
+    this.refresh()
     this.registry.localStorage.saveLocalStorage(LOCAL_ONLY_COPIES, copies)
     if (
       JSON.stringify(this.registry.localStorage.loadLocalStorage(LOCAL_ONLY_COPIES)) !==
       JSON.stringify(copies)
     )
       throw new Error('Could not retain kept-copy identities')
+    this.unsaved = undefined
   }
-  releaseSelected(id: string, paths: string[]): void {
+  async releaseSelected(
+    id: string,
+    paths: string[],
+    retire: (selected: (path: string) => boolean) => Promise<void> = async () => {}
+  ): Promise<void> {
+    // A failed rename must become durable before any exclusion can be released.
+    if (this.unsaved) this.save(this.unsaved)
     const issuer = this.registry.records().find((one) => one.id === id)
     if (!issuer) throw new Error('Connection unavailable')
     const roots = paths.map((path) => this.physical(issuer, path))
@@ -95,6 +109,9 @@ export class LocalOnlyCopies {
           caseKey(path) === caseKey(root) ||
           caseKey(path).startsWith(caseKey(root) + '/')
       )
+    const held = (path: string) => selected(path) && this.has(path)
+    if (!this.paths.some(selected)) return
+    await retire(held)
     this.save(this.copies().filter((one) => !selected(one.path)))
     for (const record of this.registry.records())
       for (const slot of slots) {
