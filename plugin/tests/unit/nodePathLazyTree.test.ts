@@ -1,7 +1,12 @@
 import { expect, it, vi } from 'vitest'
 import { ChannelError } from '@abele/channel-protocol'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
-import { NodePathModel, type NodePathPort, type PathTarget } from '@/node/NodePathModel'
+import {
+  NodePathModel,
+  pathTargetKey,
+  type NodePathPort,
+  type PathTarget,
+} from '@/node/NodePathModel'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 
 const target: PathTarget = {
@@ -18,6 +23,26 @@ const revision = {
   observed_at: '2025-01-01T00:00:00Z',
 }
 const folder = { path: 'src', name: 'src', kind: 'folder' as const }
+it('keeps the loaded tree when its metadata revision expires during recording writes', async () => {
+  const { model, port } = fixture()
+  await model.refresh()
+  port.inspect.mockRejectedValueOnce(new ChannelError('stale_revision'))
+  await model.selectTarget(target)
+  expect(port.tree).toHaveBeenCalledTimes(1)
+  expect(port.inspect).toHaveBeenLastCalledWith(target, false, undefined)
+  expect(model.inspections.value[pathTargetKey(target)].entries).toEqual([folder])
+  model.destroy()
+})
+
+it('clears a prior listing error after an explicit successful folder refresh', async () => {
+  const { model } = fixture()
+  await model.refresh()
+  await model.selectTarget(target)
+  model.report(new ChannelError('resource_busy'))
+  await model.reloadTarget(target)
+  expect(model.error.value).toBe('')
+  model.destroy()
+})
 function fixture() {
   const port = {
     catalogue: vi.fn(async () => ({

@@ -790,6 +790,7 @@ export class NodePathModel {
       return
     }
     await this.recoverRead(target, () => this.reloadTargetOnce(target, files))
+    uiField(this.error, 'value', uiErrorMessage(''))
     const key = pathTargetKey(target)
     this.fileRefresh.value = {
       ...this.fileRefresh.value,
@@ -1143,7 +1144,17 @@ export class NodePathModel {
     this.targetGenerations.set(key, generation)
     const treeGeneration = files ? (this.treeGenerations.get(key) ?? 0) + 1 : undefined
     if (treeGeneration !== undefined) this.treeGenerations.set(key, treeGeneration)
-    let inspection = await this.port.inspect(target, files, this.knownRead(target)?.revision)
+    let inspection: PathInspection
+    const revision = this.knownRead(target)?.revision
+    try {
+      inspection = await this.port.inspect(target, files, revision)
+    } catch (error) {
+      if (!revision || !(error instanceof ChannelError) || error.code !== 'stale_revision')
+        throw error
+      // Recording writes can expire metadata after the tree was read. Keep that tree and
+      // observe current metadata rather than restarting the entire listing and watch.
+      inspection = await this.port.inspect(target, files, undefined)
+    }
     if (outdated()) return
     const current = this.inspections.value[key]
     if (generation !== this.targetGenerations.get(key)) {
