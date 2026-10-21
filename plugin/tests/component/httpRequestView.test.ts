@@ -18,6 +18,22 @@ import DebugValueView from '@/components/debugger/DebugValueView.vue'
 import type { HttpRequest } from '@/components/debugger/http/types'
 import { useVault } from '../helpers/testEnv'
 
+it('brings a newly paused request into the visible phone viewport', async () => {
+  Platform.isPhone = true
+  const scroll = vi.fn()
+  const original = HTMLElement.prototype.scrollIntoView
+  HTMLElement.prototype.scrollIntoView = scroll
+  try {
+    const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })
+    await view.setProps({ pausedAt: 'src/sample.js:8' })
+    await nextTick()
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' })
+    view.unmount()
+  } finally {
+    HTMLElement.prototype.scrollIntoView = original
+  }
+})
+
 // The request's width beside its answer is kept on the device, as the app keeps it.
 beforeEach(() => {
   useVault([])

@@ -607,6 +607,17 @@ function addPair(part: string, pair: HttpPair) {
 
 const answerTab = ref('body')
 watch(
+  () => props.pausedAt || props.paused,
+  async (paused) => {
+    if (!phone || !paused) return
+    await nextTick()
+    layout.value?.querySelector<HTMLElement>('.abele-http-request__paused')?.scrollIntoView?.({
+      block: 'center',
+      behavior: 'auto',
+    })
+  }
+)
+watch(
   () => props.outcome,
   (now, before) => {
     // A fresh answer is read from its body; looking through the history keeps its tab.

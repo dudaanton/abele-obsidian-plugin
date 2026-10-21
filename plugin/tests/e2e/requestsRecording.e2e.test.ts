@@ -36,7 +36,7 @@ function inApp<T>(script: string): T {
 }
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+(document.querySelector('.workspace-leaf.mod-active')?.textContent??'').slice(0,400))};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance(),requests=api.requests.service.instance();
-const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
+const shot=async name=>{await wait(300);if(/requests-filter|recorded-request/.test(name))for(const title of document.querySelectorAll('.abele-trace-run__step .abele-tree-item__text')){if(title.offsetParent&&/^(POST|GET) /.test(title.textContent)&&title.getBoundingClientRect().width<80)throw Error('Request title collapsed: '+title.textContent)}const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
 const press=el=>{el.click()};
 const marginAt=(line,root)=>{const sel='button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]';if(root)return root.querySelector(sel);return document.querySelector('.workspace-leaf.mod-active '+sel)??[...document.querySelectorAll(sel)].find(b=>b.offsetParent)};
@@ -259,6 +259,8 @@ const PAUSED_SEND = (shots: string) => `
   });
   ${shots.includes('phone') ? "if(app.workspace.activeLeaf!==requestLeaf)throw Error('Paused request lost behind a source tab');" : 'await wait(31000);'}
   app.workspace.setActiveLeaf(requestLeaf,{focus:true});
+  await wait(250);
+  ${shots.includes('phone') ? "const pauseRect=tab().querySelector('.abele-http-request__paused').getBoundingClientRect();if(pauseRect.top<100||pauseRect.bottom>innerHeight-80)throw Error('Paused notice is covered by native chrome: '+JSON.stringify(pauseRect.toJSON()));" : ''}
   await shot(${JSON.stringify(shots + '-waiting-paused')});
   tab().querySelector('.abele-http-request__paused').click();
   await until(()=>!app.workspace.rightSplit.collapsed,'paused debugger opened in one press');

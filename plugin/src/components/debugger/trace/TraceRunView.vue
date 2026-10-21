@@ -288,11 +288,11 @@ const StepEnd = defineComponent({
         ? h(Icon, { icon: 'flag', size: 'xs', noHover: true, class: 'abele-trace-run__flag' })
         : null,
       p.step.sent
-        ? h('span', {}, t('streamC.fd6ff1c88db4072e'))
+        ? h('span', { class: 'abele-trace-run__origin' }, t('streamC.fd6ff1c88db4072e'))
         : p.step.direction
           ? h(
               'span',
-              {},
+              { class: 'abele-trace-run__origin' },
               t(p.step.direction === 'incoming' ? 'debug.httpIncoming' : 'debug.httpOutgoing')
             )
           : null,
@@ -385,9 +385,40 @@ const StepEnd = defineComponent({
   margin-inline-end: var(--size-4-2);
 }
 .abele-trace-run__step .abele-tree-item__text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.abele-trace-run__step .abele-tree-item__inner {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+.abele-trace-run__step .abele-tree-item__named {
+  flex: 1;
+  min-width: 0;
+}
+.abele-trace-run__step .tree-item-flair-outer {
+  flex: 0 2 auto;
+  min-width: 0;
+  max-width: 45%;
+}
+.abele-trace-run__step .abele-tree-item__end {
+  min-width: 0;
+  overflow: hidden;
+}
+.abele-trace-run__end > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-trace-run__list {
+  container-type: inline-size;
+}
+@container (max-width: 420px) {
+  .abele-trace-run__origin {
+    display: none;
+  }
 }
 // A step the followed value passes through: a dot of the accent beside its time.
 .abele-trace-run__step_on-trail > .tree-item-self .abele-trace-run__end::before {

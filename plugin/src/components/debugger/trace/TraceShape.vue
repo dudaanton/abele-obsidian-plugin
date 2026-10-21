@@ -127,7 +127,11 @@ body.is-phone .abele-trace-shape .tree-item-inner {
   color: var(--text-muted);
 }
 .abele-trace-shape .abele-tree-item__text {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .abele-trace-shape .abele-tree-item__note {
   margin-inline-start: var(--size-4-2);
