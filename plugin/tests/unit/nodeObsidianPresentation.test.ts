@@ -12,6 +12,21 @@ const event = (seq: number, data: Record<string, unknown>): JournalEvent => ({
   data,
 })
 
+it('only places the device code on calls that reached execution', () => {
+  for (const state of ['preparing', 'ready', 'awaiting_approval', 'denied', 'cancelled']) {
+    const projection = reduceTranscript([
+      event(1, {
+        invocation_id: 'sample-call',
+        tool_name: 'create',
+        arguments: { path: 'sample.md' },
+        state,
+        preview: { device: 'Sample remote' },
+      }),
+    ])
+    expect(projection.messages[0].toolDevice).toBeUndefined()
+  }
+})
+
 it('uses one ordinary row for a trusted Obsidian bridge call while retaining later unmatched native calls', () => {
   const args = { path: 'sample.md', content: 'Sample text' }
   const native = (seq: number, id: string): JournalEvent => ({

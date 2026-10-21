@@ -58,7 +58,9 @@ export function obsidianCallMessage(raw: unknown, timestamp: number): ChatMessag
           : 'approved',
     toolDiff: result.success ? (result.data.details?.diff ?? i.preview?.diff) : i.preview?.diff,
     toolPath: result.success ? (result.data.details?.path ?? i.preview?.path) : i.preview?.path,
-    toolDevice: i.preview?.device,
+    toolDevice: ['executing', 'succeeded', 'failed', 'outcome_unknown'].includes(i.state ?? '')
+      ? i.preview?.device
+      : undefined,
     toolResult: done
       ? result.success && result.data.content
         ? result.data.content.map((part) => part.text).join('\n')
