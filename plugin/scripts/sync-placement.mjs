@@ -101,6 +101,9 @@ export function syncPlacementPlugin() {
           code,
           'async prefetch(changes, local) {',
           `async prefetch(changes, local) {
+          // Reuse the input inventory, not receipts installed by earlier pages of this pull.
+          this.placer.initialLocal ??= new Map(local);
+          this.placer.adoptionCandidates ??= new Map();
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
             const wanted = [];
             for (const change of changes) {
@@ -109,7 +112,7 @@ export function syncPlacementPlugin() {
               const entry = await this.state.byFileId(change.file_id);
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
-              if (local.has(change.sha)) continue;
+              if (this.placer.initialLocal.has(change.sha)) continue;
               // A missing receipt does not mean missing bytes. Let placement verify and adopt
               // an existing portable spelling before spending a content request on it.
               if (entry === null) {
@@ -118,7 +121,9 @@ export function syncPlacementPlugin() {
                 let target;
                 try { target = inventory.resolve(change.path, 'file'); }
                 catch { continue; }
-                if (await this.fs.stat(target) !== null) continue;
+                const exists = await this.fs.stat(target) !== null;
+                this.placer.adoptionCandidates.set(change.file_id, exists);
+                if (exists) continue;
               }
               if (await this.placer.localSource(change.sha, change.size, local)) continue;
               wanted.push(change);
@@ -321,7 +326,8 @@ export function syncPlacementPlugin() {
               return have.sha === sha && have.size === size ? { path } : null;
             } catch { return null; }
           };
-          const known = local.get(sha);
+          this.initialLocal ??= new Map(local);
+          const known = this.initialLocal.get(sha);
           if (known) {
             const match = await verify(known.path);
             if (match) return match;
@@ -333,9 +339,11 @@ export function syncPlacementPlugin() {
         async placeObserved(change, sha, entry, fetched, local) {
           // An own commit may precede its local receipt. Verify and adopt existing bytes before
           // fetching them again, without settling an interrupted pull's retained write intent.
-          if ((entry === null || entry.sha === sha && entry.wirePath === change.path) &&
+          if (change.op !== 'move' && this.adoptionCandidates?.get(change.file_id) !== false &&
+              (entry === null || entry.sha === sha && entry.wirePath === change.path) &&
               await this.pending.read(change.file_id) === null &&
-              await this.adoptExisting(change, entry)) return true;
+              await coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+                () => this.adoptExistingUnlocked(change, entry))) return true;
           // Downloads do not own paths. The original placer revalidates the source after waiting.
           // Keep the network source bounded and fetch it only once. The core's durable target
           // stage and local-edit checks still run under the placement lease.
@@ -359,7 +367,10 @@ export function syncPlacementPlugin() {
             };
             // The content index is only a hint: verify the current file, then keep using a
             // bounded local source with the same mutation checks as an HTTP source.
-            const candidate = await this.localSource(sha, change.size, local);
+            const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
+            const canReplay = change.size <= this.budget.maxChunkBytes || !replay || await replay.call(this.fs);
+            const candidate = canReplay && change.op !== 'move' && await this.pending.read(change.file_id) === null
+              ? await this.localSource(sha, change.size, local) : null;
             if (candidate) {
               let verified = false;
               try {
@@ -403,8 +414,7 @@ export function syncPlacementPlugin() {
             }
             // Some hosts can append bounded chunks but cannot read a large local stage.
             // Use the core's direct network-to-target stream there, never a whole-file read.
-            const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
-            if (replay && !await replay.call(this.fs))
+            if (!canReplay)
               return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
                 () => this.placeUnlocked(change, sha, entry, fetched, local));
             const stagingFs = this.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.fs;

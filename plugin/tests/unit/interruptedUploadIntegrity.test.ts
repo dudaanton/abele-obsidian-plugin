@@ -8,6 +8,98 @@ import {
   type EngineClient,
 } from '@abele/sync-sdk/core'
 
+it('keeps a known large copy bounded when local source replay is unavailable', async () => {
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const bytes = new Uint8Array(2 * 1024 * 1024).fill(13)
+  const sha = await sha256(bytes)
+  await fs.writeAtomic('existing.bin', bytes, 1000)
+  await state.put({
+    path: 'existing.bin',
+    wirePath: 'existing.bin',
+    fileId: 'existing-file',
+    versionId: 'existing-version',
+    sha,
+    size: bytes.length,
+    mtime: 1000,
+  })
+  const source = () => ({
+    size: bytes.length,
+    read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
+    assertUnchanged: async () => {},
+    close: async () => {},
+  })
+  const openRead = vi.fn(async () => {
+    throw new Error('Local bounded replay unavailable')
+  })
+  const ports = Object.assign(fs, {
+    [Symbol.for('abele.sync.fingerprint-pull-v1')]: async () => ({
+      sha,
+      size: bytes.length,
+      mtime: 1000,
+    }),
+    [Symbol.for('abele.sync.replay-stage-v1')]: async () => false,
+    openRead,
+    beginAtomicWrite: async (path: string, mtime: number) => {
+      const staged = new Uint8Array(bytes.length)
+      let offset = 0
+      return {
+        id: 'sample-stage',
+        get offset() {
+          return offset
+        },
+        append: async (at: number, chunk: Uint8Array) => {
+          expect(at).toBe(offset)
+          staged.set(chunk, at)
+          offset += chunk.length
+        },
+        seal: async (expected: { sha: string; size: number }) => {
+          expect(offset).toBe(expected.size)
+          expect(await sha256(staged)).toBe(expected.sha)
+        },
+        commit: async () => {
+          await fs.writeAtomic(path, staged, mtime)
+        },
+        discard: async () => {},
+      }
+    },
+    reopenStage: async () => {
+      throw new Error('Unexpected stage recovery')
+    },
+  })
+  const openVersion = vi.fn(async () => source())
+  const client = {
+    manifest: async () => ({
+      items: [
+        {
+          file_id: 'copy-file',
+          version_id: 'copy-version',
+          path: 'copy.bin',
+          sha,
+          size: bytes.length,
+          mtime: 2000,
+          seq: 5,
+          kind: 'attachment',
+        },
+      ],
+      head_seq: 5,
+      next: null,
+    }),
+    changes: async () => ({ items: [], head_seq: 5, next_since: 5 }),
+    openVersion,
+  } as unknown as EngineClient
+  const before = await fs.stat('existing.bin')
+  await pull(client, ports, state, {
+    filter: { excluded: () => false },
+    dirty: new Set(),
+    expected: new ExpectedWrites(),
+  })
+  expect(openRead).not.toHaveBeenCalled()
+  expect(openVersion).toHaveBeenCalledOnce()
+  expect(await sha256(await fs.read('copy.bin'))).toBe(sha)
+  expect(await fs.stat('existing.bin')).toEqual(before)
+})
+
 it.each([
   [true, true],
   [false, true],
