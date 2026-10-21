@@ -16,7 +16,8 @@ export interface ObsidianInvocation {
   preview?: Record<string, unknown>
   cancel_requested?: boolean
   prepared_needs_approval?: boolean
-  action: 'prepare' | 'claim' | 'waiting_approval' | 'reconcile' | 'cancel'
+  hosted?: 'questions' | 'delegate'
+  action: 'prepare' | 'claim' | 'waiting_approval' | 'reconcile' | 'cancel' | 'hosted'
 }
 
 export interface ObsidianExecutionReceipt {
@@ -53,6 +54,7 @@ export interface ObsidianExecutorHost {
   /** Must resolve only after durable storage, never after merely queuing an IDB write. */
   save(id: string, receipt: ObsidianExecutionReceipt): Promise<void>
   resolve(invocation: ObsidianInvocation): Promise<ObsidianToolAdapter | null>
+  hosted?(invocation: ObsidianInvocation, signal: AbortSignal): Promise<void>
 }
 
 const method = (name: string) => `obsidian.tools.v1.${name}`
@@ -110,6 +112,23 @@ export class NodeObsidianExecutor {
   }
 
   private async perform(i: ObsidianInvocation, signal: AbortSignal): Promise<void> {
+    const hosted = i.tool_name === 'questions' || i.tool_name === 'delegate'
+    const openHosted = async () => {
+      if (i.tool_name === 'questions')
+        await this.host.request(method('questions.open'), {
+          invocation_id: i.invocation_id,
+          client_id: this.host.clientId,
+          revision: i.revision,
+        })
+      else if (this.host.hosted) await this.host.hosted(i, signal)
+      else throw new Error('The node conversation host is unavailable')
+    }
+    // Hosted calls own their terminal result on the node, including the claim/open crash gap.
+    if (hosted && ['reconcile', 'hosted', 'cancel'].includes(i.action)) {
+      if (i.action !== 'cancel' && !i.cancel_requested) await openHosted()
+      else if (i.tool_name === 'delegate') await this.host.hosted?.(i, signal)
+      return
+    }
     const saved = await this.host.receipt(i.invocation_id)
     if (saved || i.action === 'reconcile' || (i.action === 'cancel' && i.state === 'executing')) {
       const receipt =
@@ -166,6 +185,11 @@ export class NodeObsidianExecutor {
       sessionId: i.session_id,
       runId: i.run_id,
     })
+    if (hosted && !refusal) {
+      signal.throwIfAborted()
+      await openHosted()
+      return
+    }
     let receipt: ObsidianExecutionReceipt
     try {
       signal.throwIfAborted()

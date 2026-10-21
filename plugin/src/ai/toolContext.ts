@@ -17,6 +17,12 @@ export interface ToolContext {
   validateWrite?: () => void
   /** Presentation evidence for the file call's resolved place; grants no access. */
   onNodeFileTarget?: (target: import('./nodeScope').NodeScopeTarget) => void
+  /** An external durable conversation host owns local sub-run admission. */
+  delegate?: (
+    id: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal
+  ) => Promise<import('./client').AgentToolResult>
 }
 
 /** The invocation's owned file facade; direct callers use the ordinary host. */

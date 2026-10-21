@@ -52,6 +52,15 @@ function setup() {
   return { executor, execute, prepare, request, receipts, save }
 }
 describe('node Obsidian executor', () => {
+  it('opens a claimed questionnaire and recovers it without generic completion', async () => {
+    const s = setup()
+    const i = invocation({ tool_name: 'questions' })
+    await s.executor.accept(i)
+    await s.executor.accept({ ...i, action: 'reconcile', state: 'executing' })
+    expect(s.request.mock.calls.filter(([m]) => m.endsWith('.questions.open'))).toHaveLength(2)
+    expect(s.request.mock.calls.some(([m]) => m.endsWith('.complete'))).toBe(false)
+    expect(s.execute).not.toHaveBeenCalled()
+  })
   it('flushes intent before effects and saves the result before completing', async () => {
     const s = setup()
     s.execute.mockImplementationOnce(async () => {

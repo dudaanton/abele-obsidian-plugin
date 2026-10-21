@@ -1,5 +1,9 @@
 import { Platform } from 'obsidian'
 import { z } from 'zod'
+import { shallowRef } from 'vue'
+import { PromptSchema } from '@abele/node-protocol'
+import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
+import { NodeObsidianDelegate, nodeConversation } from './NodeObsidianDelegate'
 import type { NodeClient } from '@abele/node-client'
 import type { ObsidianToolsSnapshot } from '@abele/node-protocol'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -16,6 +20,8 @@ import { nodeProviders } from './providers'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 
 const Config = z.object({
+  max_delegate_depth: z.number().optional(),
+  conversation: z.record(z.string(), z.unknown()).optional(),
   session_id: z.string(),
   vault_id: z.string(),
   agent_id: z.string(),
@@ -56,12 +62,17 @@ const Invocation = z.object({
   preview: z.record(z.string(), z.unknown()).optional(),
   cancel_requested: z.boolean().optional(),
   prepared_needs_approval: z.boolean().optional(),
-  action: z.enum(['prepare', 'claim', 'waiting_approval', 'reconcile', 'cancel']),
+  hosted: z.enum(['questions', 'delegate']).optional(),
+  action: z.enum(['prepare', 'claim', 'waiting_approval', 'reconcile', 'cancel', 'hosted']),
 })
 const prefix = 'obsidian.tools.v1.'
 
 /** Connection-scoped advertisement and session configuration; execution itself owns no timer. */
 export class NodeObsidianTools {
+  readonly questionnaires = shallowRef<Prompt[]>([])
+  private stopQuestionnaires?: () => unknown
+  private questionnaireGeneration = 0
+  private readonly delegate: NodeObsidianDelegate
   readonly executor: NodeObsidianExecutor
   readonly vaultId: string
   readonly clientId: string
@@ -97,6 +108,17 @@ export class NodeObsidianTools {
     }
     this.clientId = localId('abele-obsidian-tools-client')
     this.vaultId = readConnection(app).vaultId || localId('abele-obsidian-tools-vault')
+    this.delegate = new NodeObsidianDelegate(client, store, this.clientId, async (id) => {
+      const snapshot = await this.snapshot('delegate-target', id)
+      return {
+        vault_id: this.vaultId,
+        agent_id: id,
+        revision: snapshot.prefix + crypto.randomUUID(),
+        tools: snapshot.tools,
+        max_delegate_depth: snapshot.max_delegate_depth,
+        conversation: snapshot.conversation,
+      }
+    })
     this.executor = new NodeObsidianExecutor({
       clientId: this.clientId,
       vaultId: this.vaultId,
@@ -106,6 +128,7 @@ export class NodeObsidianTools {
         this.store.transaction((state) => {
           ;(state.obsidianExecutions ??= {})[id] = receipt
         }),
+      hosted: (i, signal) => this.delegate.handle(i, signal),
       resolve: async (i) => {
         const configured = Configuration.parse(
           await this.client.request(prefix + 'configuration', { session_id: i.session_id })
@@ -172,9 +195,13 @@ export class NodeObsidianTools {
     const agent = AgentRegistry.getInstance().get(agentId)
     if (!agent) throw new Error('This node agent is no longer configured')
     const tools = this.adapter(session, agentId, 'snapshot').tools()
+    const conversation = nodeConversation(agent)
+    const max_delegate_depth = Math.min(3, Math.max(0, Math.floor(agent.maxDelegateDepth ?? 0)))
     const fingerprint = JSON.stringify(
       {
         tools,
+        conversation,
+        max_delegate_depth,
         permissionMode: agent.permissionMode,
         scope: agent.scope,
         fullVaultAccess: agent.fullVaultAccess,
@@ -193,7 +220,7 @@ export class NodeObsidianTools {
       'v1_' +
       Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('') +
       '_'
-    return { tools, fingerprint, prefix }
+    return { tools, fingerprint, prefix, conversation, max_delegate_depth }
   }
   async connectionChanged(description: unknown): Promise<void> {
     this.connected = false
@@ -216,6 +243,17 @@ export class NodeObsidianTools {
     for (const [session, agent] of Object.entries(retained)) this.sessions.set(session, agent)
     // Re-admit only snapshots this installation can actually execute for this vault.
     this.connected = true
+    if (nodeAdvertisesMethod(this.client, prefix + 'questions.pending')) {
+      this.stopQuestionnaires?.()
+      this.stopQuestionnaires = this.client.onEvent((event) => {
+        if (event.stream_id === 'catalog' && event.type === 'obsidian.tools.questionnaire')
+          void this.refreshQuestionnaires().catch((error) =>
+            console.debug('[Abele node] Questionnaire recovery pending', error)
+          )
+      })
+      await this.client.subscribe('catalog')
+      await this.refreshQuestionnaires()
+    }
     for (const [session, agent] of this.sessions) {
       if (!AgentRegistry.getInstance().get(agent)) {
         await this.forget(session)
@@ -317,7 +355,13 @@ export class NodeObsidianTools {
     await this.advertise()
   }
   private async configure(session: string, agentId: string) {
-    const { tools, fingerprint, prefix: revisionPrefix } = await this.snapshot(session, agentId)
+    const {
+      tools,
+      fingerprint,
+      prefix: revisionPrefix,
+      conversation,
+      max_delegate_depth,
+    } = await this.snapshot(session, agentId)
     let remote: z.infer<typeof Config> | undefined
     try {
       remote = Configuration.parse(
@@ -347,6 +391,8 @@ export class NodeObsidianTools {
           agent_id: agentId,
           revision,
           tools,
+          conversation,
+          max_delegate_depth,
           ...(remote ? { expected_revision: remote.revision } : {}),
         })
       try {
@@ -473,7 +519,33 @@ export class NodeObsidianTools {
         : current.prefix + crypto.randomUUID()
     this.snapshots.set(agent.id, { fingerprint: current.fingerprint, revision })
     await this.advertise()
-    return { vault_id: this.vaultId, agent_id: agent.id, revision, tools: current.tools }
+    return {
+      vault_id: this.vaultId,
+      agent_id: agent.id,
+      revision,
+      tools: current.tools,
+      conversation: current.conversation,
+      max_delegate_depth: current.max_delegate_depth,
+    }
+  }
+  async refreshQuestionnaires(): Promise<void> {
+    const generation = ++this.questionnaireGeneration
+    const prompts: Prompt[] = []
+    let after: string | undefined
+    for (;;) {
+      const page = await this.client.pendingQuestionnaires(this.vaultId, after)
+      prompts.push(...page.map((prompt) => PromptSchema.parse(prompt)))
+      if (!page.length) break
+      const next = page.at(-1)!.prompt_id
+      if (next === after) throw new Error('Questionnaire recovery did not advance')
+      after = next
+    }
+    if (generation === this.questionnaireGeneration && !this.disposed)
+      this.questionnaires.value = prompts
+  }
+  async answerQuestionnaire(prompt: Prompt, answers: QuestionnaireAnswer[] | null): Promise<void> {
+    await this.client.answerQuestionnaire(prompt, answers)
+    await this.refreshQuestionnaires()
   }
   disconnected(): void {
     this.connected = false
@@ -481,6 +553,7 @@ export class NodeObsidianTools {
   }
   async destroy(): Promise<void> {
     this.disposed = true
+    this.stopQuestionnaires?.()
     this.disconnected()
     await this.executor.destroy()
     for (const adapter of this.adapters.values()) adapter.destroy()

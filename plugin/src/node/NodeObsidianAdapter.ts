@@ -1,6 +1,8 @@
 import { TFile } from 'obsidian'
 import { obsidianDeviceName } from './obsidianDevice'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { resolveTargetAgent } from '@/ai/DelegateRun'
+import { ObsidianDelegateArgumentsSchema } from '@abele/node-protocol'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from '@/ai/ordinaryToolPolicy'
 import { createAgentTools } from '@/ai/tools'
@@ -26,7 +28,7 @@ export interface ObsidianToolDefinition {
 }
 
 /** Preserve ordinary names where the node accepts them; bind other aliases to exact handlers. */
-const wireName = (name: string): string =>
+export const wireName = (name: string): string =>
   /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : `abeleTool_${contentHash(name)}`
 
 /** Ordinary registry, handlers and guards bound to one node agent, never the active vault chat. */
@@ -111,6 +113,18 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
             : 'auto',
     }))
   }
+  permissionModes(ceiling: ReadonlyMap<string, 'off' | 'ask' | 'auto'>) {
+    const current = new Map(this.tools().map((tool) => [tool.name, tool.mode]))
+    const rank = { off: 0, ask: 1, auto: 2 }
+    return Object.fromEntries(
+      this.registry().map((tool) => {
+        const name = wireName(tool.name),
+          a = current.get(name) ?? 'off',
+          b = ceiling.get(name) ?? 'off'
+        return [tool.permissionKey ?? tool.name, rank[a] <= rank[b] ? a : b]
+      })
+    )
+  }
   private tool(i: ObsidianInvocation): AgentTool {
     const agent = this.agent()
     const matches = AgentRegistry.getInstance()
@@ -129,6 +143,15 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
   }
   async prepare(i: ObsidianInvocation) {
     const tool = this.tool(i)
+    if (tool.name === 'delegate') {
+      const args = ObsidianDelegateArgumentsSchema.safeParse(i.arguments)
+      if (!args.success) throw new ObsidianNotExecuted('Invalid delegation arguments')
+      const target = resolveTargetAgent(args.data.agent)
+      if (!target || target.node)
+        throw new ObsidianNotExecuted(`Agent "${args.data.agent}" not found`)
+      if ((this.agent().maxDelegateDepth ?? 0) <= 0)
+        throw new ObsidianNotExecuted('This agent cannot delegate at its current depth limit')
+    }
     this.history = (await this.previousResults(i.session_id)).map((result, index) => ({
       role: 'toolResult',
       toolCallId: String(index),

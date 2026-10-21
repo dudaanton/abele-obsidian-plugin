@@ -244,6 +244,8 @@ export interface SessionParent {
 }
 
 export interface SessionOptions {
+  delegateHost?: ToolContext['delegate']
+  toolCeiling?: (tool: AgentTool) => boolean
   kind?: SessionKind
   agentId?: string
   depth?: number
@@ -256,6 +258,8 @@ export interface SessionOptions {
 }
 
 export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStoragePort {
+  private readonly delegateHost?: ToolContext['delegate']
+  private readonly toolCeiling?: (tool: AgentTool) => boolean
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   /**
    * The turns after which the history summary is written again.
@@ -807,6 +811,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     options: SessionOptions = {}
   ) {
     this.id = id || nanoid()
+    this.delegateHost = options.delegateHost
+    this.toolCeiling = options.toolCeiling
     this.kindRef = shallowRef(options.kind ?? 'chat')
     this.depth = options.depth ?? 0
     this.root = options.root ?? this
@@ -1458,7 +1464,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // Every agent can read on in a result it was sent only the start of. Old node names stay
     // callable for an agent that still uses them, but are never offered (`LEGACY_NODE_TOOLS`).
-    const everything = [...withBook, createReadResultTool(this.results)]
+    const everything = [...withBook, createReadResultTool(this.results)].filter(
+      (tool) => !this.toolCeiling || this.toolCeiling(tool)
+    )
     this.hiddenTools = this.wrapToolsForSession(
       everything.filter((tool) => LEGACY_NODE_TOOLS.has(tool.name))
     )
@@ -1513,6 +1521,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         signal?: AbortSignal,
         callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
+        if (this.toolCeiling && !this.toolCeiling(tool))
+          throw new Error('This tool is outside the hosted run permission ceiling')
         // ZIP's selected array and invocation owner must not change during approval/tracker awaits.
         const invocationParams =
           tool.name === 'zip'
@@ -1526,6 +1536,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         const version = this.conversationVersion.value
         const invocationApp = GlobalStore.getInstance().app
         const ctx: ToolContext = {
+          delegate: this.delegateHost,
           scope: this.scopeResolver,
           session: this,
           onNodeFileTarget: (target) => {

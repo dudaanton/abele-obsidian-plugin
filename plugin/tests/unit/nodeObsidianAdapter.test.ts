@@ -5,6 +5,11 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { NodeObsidianAdapter } from '@/node/NodeObsidianAdapter'
 import type { ObsidianInvocation } from '@/node/NodeObsidianExecutor'
+import { NodeObsidianExecutor } from '@/node/NodeObsidianExecutor'
+import { NodeObsidianDelegate } from '@/node/NodeObsidianDelegate'
+import { NodeClientStore } from '@/node/NodeClientStore'
+import { IDBFactory } from 'fake-indexeddb'
+import type { NodeClient } from '@abele/node-client'
 
 let adapter: NodeObsidianAdapter
 let agentId: string
@@ -66,27 +71,53 @@ it('rejects disabled tools even in bypass and rechecks source before an edit', a
   ).rejects.toThrow(/read first/i)
 })
 
-// BUG: the node executor contract has no owner-question creation/result transport.
-// The ordinary handler requires a conversation host; an active vault chat is not that host.
-it.fails('executes an enabled ordinary questionnaire in its own node conversation', async () => {
+it('executes an enabled ordinary questionnaire in its own node conversation', async () => {
   AgentRegistry.getInstance().update(agentId, { toolModes: { questions: 'auto' } })
   const invocation = call('questions', {
     questions: [{ question: 'Choose a sample option', options: ['First', 'Second'] }],
   })
-  await expect(
-    adapter.execute(invocation, true, new AbortController().signal)
-  ).resolves.toMatchObject({ content: expect.any(Array) })
+  const methods: string[] = []
+  const prepared = await adapter.prepare(invocation)
+  const executor = new NodeObsidianExecutor({
+    clientId: 'sample-client',
+    vaultId: invocation.vault_id,
+    request: async (method) => {
+      methods.push(method)
+      return { execute: true }
+    },
+    save: async () => {},
+    receipt: async () => undefined,
+    resolve: async () => adapter,
+  })
+  await executor.accept({
+    ...invocation,
+    preview: prepared.preview,
+    executor: { installation_id: 'sample-installation', client_id: 'sample-client' },
+  })
+  expect(methods).toContain('obsidian.tools.v1.questions.open')
+  expect(methods).not.toContain('obsidian.tools.v1.complete')
+  await executor.destroy()
 })
 
-// BUG: local delegation also needs a conversation host, including its depth and root budget.
-// A missing target proves host admission without starting any provider executable.
-it.fails('admits an enabled local delegation through the ordinary target resolver', async () => {
+it('admits an enabled local delegation through the ordinary target resolver', async () => {
   AgentRegistry.getInstance().update(agentId, { toolModes: { delegate: 'auto' } })
-  await expect(
-    adapter.execute(
-      call('delegate', { agent: 'Missing sample agent', task: 'A sample task' }),
-      true,
-      new AbortController().signal
-    )
-  ).rejects.toThrow(/not found/i)
+  const store = new NodeClientStore('sample-host', new IDBFactory())
+  const host = new NodeObsidianDelegate(
+    { request: async () => ({ runs: [] }) } as unknown as NodeClient,
+    store,
+    'sample-client',
+    async () => {
+      throw new Error('Must resolve a target first')
+    }
+  )
+  try {
+    await expect(
+      host.handle(
+        call('delegate', { agent: 'Missing sample agent', task: 'A sample task' }),
+        new AbortController().signal
+      )
+    ).rejects.toThrow(/not found/i)
+  } finally {
+    store.close()
+  }
 })
