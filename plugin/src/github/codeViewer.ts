@@ -328,12 +328,14 @@ export function mountCode(
   }
   const selection = lineSelection({ ...hooks, initial: lines(range) })
   const blame = new Compartment()
+  const match = new Compartment()
 
   const viewer = mount(
     parent,
     text,
     [
       blame.of([]),
+      match.of([]),
       lineNumbers({ domEventHandlers: selection.gutterHandlers }),
       selection.extension,
       ...languageFor(path),
@@ -343,6 +345,19 @@ export function mountCode(
     wrap,
     onChange
   )
+  const markMatch = (range?: LineRange) => {
+    const doc = viewer.view.state.doc
+    let marks = Decoration.none
+    if (range?.match && range.start >= 1 && range.start <= doc.lines) {
+      const line = doc.line(range.start)
+      const from = line.from + Math.min(range.match.column, line.length)
+      const to = Math.min(line.to, from + range.match.length)
+      if (from < to)
+        marks = Decoration.set([Decoration.mark({ class: 'cm-searchMatch' }).range(from, to)])
+    }
+    viewer.view.dispatch({ effects: match.reconfigure(EditorView.decorations.of(marks)) })
+  }
+  markMatch(range)
   return {
     ...viewer,
     setText(text) {
@@ -356,6 +371,7 @@ export function mountCode(
       viewer.view.dispatch({ effects: blame.reconfigure(options ? blameGutter(options) : []) })
     },
     mark(next) {
+      markMatch(next)
       viewer.retarget(next.start)
       selection.mark(viewer.view, lines(next))
     },

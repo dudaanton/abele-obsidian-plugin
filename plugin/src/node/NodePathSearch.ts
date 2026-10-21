@@ -1,6 +1,7 @@
 import type { NodeClient } from '@abele/node-client'
 import type { CodeResults, ResultFile } from '@/repository/model'
-import { compileQuery, searchText, type CodeQuery } from '@/github/search/textSearch'
+import { compileQuery, QueryError, searchText, type CodeQuery } from '@/github/search/textSearch'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { Scope } from '@/github/search/tabCode'
 import { t } from '@/i18n'
 import type { PathTarget } from './NodePathModel'
@@ -17,7 +18,13 @@ export async function searchNodePathCode(
 ): Promise<CodeResults> {
   signal?.throwIfAborted()
   const bound = { ...target }
-  const re = compileQuery(query)
+  let re: RegExp
+  try {
+    re = compileQuery(query)
+  } catch (error) {
+    if (error instanceof QueryError) throw new UiError(uiMessage('node.search.invalidRegex'))
+    throw error
+  }
   const revision =
     bound.kind === 'worktree'
       ? (await client.repository.observe({ worktree_id: bound.id })).revision
@@ -62,12 +69,20 @@ export async function searchNodePathCode(
         )
       if (scope !== 'names') {
         const hit = searchText(row.text, re, 1)[0]
+        re.lastIndex = 0
+        const match = re.exec(row.text)
         file.lines.push({
           label: String(row.line),
           text: hit?.text ?? row.text,
           column: hit?.column ?? 0,
           length: hit?.length ?? 0,
-          url: nodeCodeLink(bound, row.path, { start: row.line, end: row.line }),
+          url: nodeCodeLink(bound, row.path, {
+            start: row.line,
+            end: row.line,
+            ...(match?.[0].length
+              ? { match: { column: match.index, length: match[0].length } }
+              : {}),
+          }),
         })
       }
     }

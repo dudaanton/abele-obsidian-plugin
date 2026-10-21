@@ -47,6 +47,7 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 export class NodePathMainView extends ItemView {
   private readonly navigationLine = shallowRef<number>()
   private readonly navigationEndLine = shallowRef<number>()
+  private readonly navigationMatch = shallowRef<{ column: number; length: number }>()
   private ui?: KitMount
   private stops: WatchStopHandle[] = []
   private file?: NodePathFileModel
@@ -166,6 +167,7 @@ export class NodePathMainView extends ItemView {
     const parsed = NodePathTabSchema.parse(raw)
     this.navigationLine.value = parsed.kind === 'file' ? parsed.line : undefined
     this.navigationEndLine.value = parsed.kind === 'file' ? parsed.endLine : undefined
+    this.navigationMatch.value = parsed.kind === 'file' ? parsed.match : undefined
     if (nodePathViewType(parsed) !== this.viewType)
       throw new UiError(uiMessage('streamBMeta.40ea2d02b7'))
     if (parsed.kind === 'editor') {
@@ -241,6 +243,10 @@ export class NodePathMainView extends ItemView {
   private act(run: () => Promise<unknown> | undefined): void {
     void Promise.resolve()
       .then(run)
+      .then(() => {
+        this.error.value = ''
+        if (this.file) this.file.pathModel.error.value = ''
+      })
       .catch((error: unknown) => {
         this.error.value =
           error instanceof Error ? presentUiError(error) : t('streamB.nodeActionFailed.35c41e')
@@ -381,6 +387,12 @@ export class NodePathMainView extends ItemView {
           ),
         allowed
       ))
+      this.stops.push(
+        watch(
+          () => model.fileRefresh.value[pathTargetKey(state.target)],
+          () => this.act(() => editing.refresh())
+        )
+      )
       // The owner may open or close the worktree to saves elsewhere; the lock follows.
       this.stops.push(
         connection.client.onEvent(() => {
@@ -431,6 +443,7 @@ export class NodePathMainView extends ItemView {
               })
             : h(NodePathFilePane, {
                 model: file,
+                match: this.navigationMatch.value,
                 line: this.navigationLine.value,
                 endLine: this.navigationEndLine.value,
                 offline: offline(),

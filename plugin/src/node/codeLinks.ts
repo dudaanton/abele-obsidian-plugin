@@ -5,6 +5,7 @@ export interface CodeDestination {
   path: string
   line?: number
   endLine?: number
+  match?: { column: number; length: number }
 }
 const identity = (target: PathTarget) => [target.nodeId, target.projectId, target.kind, target.id]
 
@@ -12,7 +13,7 @@ const identity = (target: PathTarget) => [target.nodeId, target.projectId, targe
 export function nodeCodeLink(
   target: PathTarget,
   path: string,
-  range?: { start: number; end: number }
+  range?: { start: number; end: number; match?: { column: number; length: number } }
 ): string {
   return (
     prefix +
@@ -20,7 +21,13 @@ export function nodeCodeLink(
       JSON.stringify({
         scope: identity(target),
         path,
-        ...(range ? { line: range.start, endLine: range.end } : {}),
+        ...(range
+          ? {
+              line: range.start,
+              endLine: range.end,
+              ...(range.match ? { match: range.match } : {}),
+            }
+          : {}),
       })
     )
   )
@@ -37,6 +44,18 @@ export function resolveNodeCodeLink(
       const parsed = JSON.parse(decodeURIComponent(resource.slice(prefix.length)))
       if (JSON.stringify(parsed.scope) !== JSON.stringify(identity(target))) return
       destination = { path: parsed.path, line: parsed.line, endLine: parsed.endLine ?? parsed.line }
+      if (parsed.match !== undefined) {
+        if (
+          !parsed.match ||
+          !Number.isSafeInteger(parsed.match.column) ||
+          parsed.match.column < 0 ||
+          !Number.isSafeInteger(parsed.match.length) ||
+          parsed.match.length < 1 ||
+          !parsed.line
+        )
+          return
+        destination.match = { column: parsed.match.column, length: parsed.match.length }
+      }
     } else {
       let path = resource
       if (path.startsWith('file://')) {

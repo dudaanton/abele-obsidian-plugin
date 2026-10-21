@@ -11,6 +11,12 @@ const target = {
   id: 'sample-tree',
 }
 const query = { text: 'needle', caseSensitive: false, regex: false, wholeWord: false }
+
+it('explains an invalid pattern without exposing the regex engine message', async () => {
+  await expect(
+    searchNodePathCode({} as never, target, 'repo', { ...query, text: '[sample', regex: true }, '')
+  ).rejects.toThrow('Check the regular expression and try again.')
+})
 const revision = {
   kind: 'working',
   observation_id: 'sample-observation',

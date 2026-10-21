@@ -5,6 +5,9 @@ export const lv = {
     'Palaišanas rezultāts nav zināms. Atjauno savienojumu un pirms atkārtotas palaišanas pārbaudi atkļūdošanas sesijas.',
   'debug.launchMissing': 'Programma nav atrasta. Pārbaudi ceļu attiecībā pret mapi.',
   'debug.followNoMatches': 'Ierakstītajos soļos šī vērtība nav atrasta.',
+  'node.chat.deleteHint':
+    'Dzēst šo sesiju un tās vēsturi no mezgla? Faili tās mapē paliks nemainīti.',
+  'node.search.invalidRegex': 'Pārbaudiet regulāro izteiksmi un mēģiniet vēlreiz.',
   'node.lsp.locations': 'Vietas kodā: {count}',
   'node.lsp.noLocations': 'Nav atbilstošu vietu',
   'node.lsp.count': 'Diagnostika: {count}',
@@ -73,6 +76,13 @@ export const lv = {
     'Sesijas apturētas. Kad apturēšana pabeigta, vēlreiz izvēlieties darba koka dzēšanu.',
   'node.error.busy':
     'Šis resurss tiek izmantots. Uzgaidi, līdz pašreizējā darbība beidzas, un mēģini vēlreiz.',
+    'Šī mape vai darba koks tiek izmantots. Uzgaidiet, līdz pašreizējā darbība beidzas, un mēģiniet vēlreiz.',
+  'node.error.busyStage':
+    'Failus nevarēja pievienot indeksam, jo darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz. (resource_busy)',
+  'node.error.busyChat':
+    'Jaunu tērzēšanu nevarēja sākt, jo mape vai darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz. (resource_busy)',
+  'node.error.busyRead':
+    'Rediģēšana apturēta. Failu nevarēja atjaunināt, jo darba koks ir aizņemts. Atjauniniet pēc pašreizējās darbības beigām. (resource_busy)',
   'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
   'image.timeLimit.label': 'Attēlu ģenerēšanas laika ierobežojums',
   'image.timeLimit.unlimited': 'Bez ierobežojuma',

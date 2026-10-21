@@ -2,6 +2,20 @@ import { expect, it, vi } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { mountCode } from '@/github/codeViewer'
+it('marks the exact search word and clears it when ordinary line navigation resumes', () => {
+  const parent = document.createElement('div')
+  document.body.append(parent)
+  const viewer = mountCode(parent, 'const sample = true', 'sample.ts', {
+    start: 1,
+    end: 1,
+    match: { column: 6, length: 6 },
+  })
+  expect(parent.querySelector('.cm-searchMatch')?.textContent).toBe('sample')
+  viewer.mark({ start: 1, end: 1 })
+  expect(parent.querySelector('.cm-searchMatch')).toBeNull()
+  viewer.destroy()
+  parent.remove()
+})
 it('keeps ordinary file views read only and uses the same code renderer for editing without redraw', () => {
   const parent = document.createElement('div')
   document.body.append(parent)

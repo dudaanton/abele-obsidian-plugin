@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest'
-import { NodeDocumentSource } from '@/node/NodeFilesModel'
+import { NodeDocumentSource, NodeFilesModel } from '@/node/NodeFilesModel'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
 import { NodeClient, type FileWrite } from '@abele/node-client'
+import type { FileDraft } from '@/node/NodeFilesModel'
 const hash = async (text: string) =>
   Array.from(
     new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))),
@@ -46,6 +47,36 @@ async function setup() {
     },
   }
 }
+it('notices external changes during an unsent edit without replacing its text', async () => {
+  const s = await setup()
+  const model = new NodeFilesModel(s.client, 'fixture', 'workspace', undefined, s.source)
+  await model.openFile('sample.txt')
+  await model.beginEditing()
+  await model.editText('local edit')
+  s.setCurrent('external edit')
+  await model.openFile('sample.txt')
+  expect(model.draftText.value).toBe('local edit')
+  expect(model.draft.value?.status).toBe('conflict')
+  s.store.close()
+})
+
+it('replaces a confirmed old saved version when the file changes externally', async () => {
+  const s = await setup()
+  const doc = await s.source.read('sample.txt')
+  await s.source.edit('sample.txt', doc, 'before')
+  await s.store.transaction((state) => {
+    const drafts = (state as typeof state & { fileDrafts: Record<string, FileDraft> }).fileDrafts
+    drafts[JSON.stringify(['workspace', 'sample.txt'])].status = 'saved'
+  })
+  const model = new NodeFilesModel(s.client, 'fixture', 'workspace', undefined, s.source)
+  await model.openFile('sample.txt')
+  s.setCurrent('external version')
+  await model.openFile('sample.txt')
+  expect(model.document.value?.text).toBe('external version')
+  expect(model.draftText.value).toBe('external version')
+  expect(model.draft.value).toBeUndefined()
+  s.store.close()
+})
 it('persists unsent edits and their original version across source/store recreation', async () => {
   const s = await setup(),
     doc = await s.source.read('sample.txt')

@@ -843,6 +843,10 @@ export class NodePathModel {
     // Reads after this observe the files again.
     this.invalidateRevision(target)
     this.patch(target, batch.entries)
+    this.fileRefresh.value = {
+      ...this.fileRefresh.value,
+      [key]: (this.fileRefresh.value[key] ?? 0) + 1,
+    }
     const listed = new Set((this.inspections.value[key]?.changes ?? []).map((c) => c.path))
     const touched = batch.entries.some((c) =>
       c.change === 'deleted'

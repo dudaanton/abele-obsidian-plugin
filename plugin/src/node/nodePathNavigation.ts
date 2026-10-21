@@ -43,6 +43,10 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
         .optional(),
       debug: NodePathDebugMappingSchema.optional(),
       line: z.number().int().positive().optional(),
+      match: z
+        .object({ column: z.number().int().nonnegative(), length: z.number().int().positive() })
+        .strict()
+        .optional(),
       /** Being edited in this tab. */
       endLine: z.number().int().positive().optional(),
       edit: z.boolean().optional(),
@@ -164,12 +168,37 @@ export async function openNodePathTab(
   }
   const type = nodePathViewType(state)
   const key = nodePathTabKey(state)
-  const existing = workspace.getLeavesOfType(type).find((leaf) => {
-    const old = NodePathTabSchema.safeParse(leaf.getViewState().state)
-    return old.success && nodePathTabKey(old.data) === key
-  })
+  const leaves = workspace.getLeavesOfType(type)
+  const matching =
+    state.kind === 'file' &&
+    leaves.find((leaf) => {
+      const old = NodePathTabSchema.safeParse(leaf.getViewState().state)
+      return (
+        old.success &&
+        old.data.kind === 'file' &&
+        old.data.path === state.path &&
+        old.data.target.registrationId === state.target.registrationId &&
+        old.data.target.nodeId === state.target.nodeId &&
+        old.data.target.projectId === state.target.projectId &&
+        old.data.target.kind === state.target.kind &&
+        old.data.target.id === state.target.id &&
+        ((typeof old.data.stage !== 'object' && typeof state.stage !== 'object') ||
+          JSON.stringify(old.data.stage) === JSON.stringify(state.stage))
+      )
+    })
+  const existing =
+    matching ||
+    leaves.find((leaf) => {
+      const old = NodePathTabSchema.safeParse(leaf.getViewState().state)
+      return old.success && nodePathTabKey(old.data) === key
+    })
   const leaf = existing ?? workspace.getLeaf('tab')
-  await leaf.setViewState({ type, active: true, state })
+  const retained = matching && NodePathTabSchema.safeParse(matching.getViewState().state)
+  const next =
+    retained && retained.success && retained.data.kind === 'file' && retained.data.edit
+      ? { ...state, edit: true, stage: retained.data.stage, debug: retained.data.debug }
+      : state
+  await leaf.setViewState({ type, active: true, state: next })
   await workspace.revealLeaf(leaf)
   if (mobile) workspace.leftSplit.collapse()
 }

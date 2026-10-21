@@ -5,6 +5,9 @@ export const es = {
     'Se desconoce el resultado del inicio. Vuelve a conectar y revisa las sesiones de depuración antes de reintentarlo.',
   'debug.launchMissing': 'No se encontró el programa. Comprueba la ruta relativa a la carpeta.',
   'debug.followNoMatches': 'Ningún paso registrado contiene este valor.',
+  'node.chat.deleteHint':
+    '¿Eliminar esta sesión y su historial del nodo? Los archivos de su carpeta permanecerán sin cambios.',
+  'node.search.invalidRegex': 'Revise la expresión regular e inténtelo de nuevo.',
   'node.lsp.locations': 'Ubicaciones: {count}',
   'node.lsp.noLocations': 'No hay ubicaciones coincidentes',
   'node.lsp.count': 'Diagnósticos: {count}',
@@ -85,6 +88,13 @@ export const es = {
     'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
   'node.error.busy':
     'Este recurso está en uso. Espera a que termine la operación actual e inténtalo de nuevo.',
+    'Esta carpeta o árbol de trabajo está en uso. Espere a que termine la acción actual e inténtelo de nuevo.',
+  'node.error.busyStage':
+    'No se pudieron preparar los archivos porque el árbol de trabajo está ocupado. Espere e inténtelo de nuevo. (resource_busy)',
+  'node.error.busyChat':
+    'No se pudo iniciar un chat porque la carpeta o el árbol de trabajo está ocupado. Espere e inténtelo de nuevo. (resource_busy)',
+  'node.error.busyRead':
+    'Edición detenida. No se pudo actualizar el archivo porque el árbol de trabajo está ocupado. Actualícelo cuando termine la acción actual. (resource_busy)',
   'node.codeLineUnavailable': 'Las líneas enlazadas ya no existen en este archivo.',
   'image.timeLimit.label': 'Límite de tiempo de generación de imágenes',
   'image.timeLimit.unlimited': 'Sin límite',

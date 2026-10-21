@@ -51,6 +51,18 @@ export class NodePathFileEditing {
   stop(): void {
     this.active.value = false
   }
+  async refresh(): Promise<void> {
+    const editor = this.editor.value
+    if (!this.active.value || !editor || !this.path) return
+    await editor.openFile(this.path)
+    if (
+      this.active.value &&
+      !this.locked.value &&
+      editor.fileEditable.value &&
+      !editor.editing.value
+    )
+      await editor.beginEditing()
+  }
   async save(): Promise<void> {
     const editor = this.editor.value
     if (!editor || this.locked.value || !this.dirty.value) return

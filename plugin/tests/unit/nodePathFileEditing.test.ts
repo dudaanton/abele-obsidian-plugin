@@ -38,6 +38,23 @@ const target = {
 }
 
 describe('editing a node file in its own tab', () => {
+  it('refreshes the active editor after an external change and retains its unsent draft', async () => {
+    const editor = editorFake()
+    const editing = new NodePathFileEditing(
+      target,
+      () => editor as never,
+      async () => true
+    )
+    await editing.start('sample.ts')
+    editor.draftText.value = 'unsent sample'
+    editor.openFile.mockImplementation(async () => {})
+    await editing.refresh()
+    expect(editor.openFile).toHaveBeenCalledTimes(2)
+    expect(editor.draftText.value).toBe('unsent sample')
+    editing.stop()
+    await editing.refresh()
+    expect(editor.openFile).toHaveBeenCalledTimes(2)
+  })
   it('starts editing the file shown, saves, discards and stops without losing the draft', async () => {
     const editor = editorFake()
     const allowed = vi.fn(async () => true)

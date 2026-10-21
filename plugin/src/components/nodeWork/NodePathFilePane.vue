@@ -26,6 +26,7 @@
         :revision="revision"
         :line="line"
         :end-line="endLine"
+        :match="match"
         :code-target="model.target"
         :offline="offline"
         :refresh="() => model.refresh()"
@@ -83,6 +84,7 @@ const props = withDefaults(
     revision?: string
     line?: number
     endLine?: number
+    match?: { column: number; length: number }
   }>(),
   {
     offline: false,
@@ -91,6 +93,7 @@ const props = withDefaults(
     revision: undefined,
     line: undefined,
     endLine: undefined,
+    match: undefined,
   }
 )
 const service = DebuggerService.instance

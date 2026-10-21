@@ -140,6 +140,7 @@ const props = withDefaults(
     revision?: string
     line?: number
     endLine?: number
+    match?: { column: number; length: number }
     codeTarget?: PathTarget
     offline?: boolean
     /** Rereads the file, when its working revision has expired. */
@@ -154,6 +155,7 @@ const props = withDefaults(
     revision: undefined,
     line: undefined,
     endLine: undefined,
+    match: undefined,
     codeTarget: undefined,
     offline: false,
     refresh: undefined,
@@ -199,7 +201,7 @@ const root = ref<HTMLElement>()
 const linkedRange = computed(() => {
   const count = props.text.split('\n').length
   return props.line && props.line <= count
-    ? { start: props.line, end: Math.min(props.endLine ?? props.line, count) }
+    ? { start: props.line, end: Math.min(props.endLine ?? props.line, count), match: props.match }
     : undefined
 })
 const fileGlyphHost = ref<HTMLElement>()
@@ -257,6 +259,7 @@ watch(
     props.revision,
     props.line,
     props.endLine,
+    props.match,
   ],
   draw
 )

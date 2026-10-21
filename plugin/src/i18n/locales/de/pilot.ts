@@ -5,6 +5,9 @@ export const de = {
     'Das Startergebnis ist unbekannt. Verbinde dich erneut und prüfe die Debug-Sitzungen vor einem weiteren Versuch.',
   'debug.launchMissing': 'Das Programm wurde nicht gefunden. Prüfe den Pfad relativ zum Ordner.',
   'debug.followNoMatches': 'Kein aufgezeichneter Schritt enthält diesen Wert.',
+  'node.chat.deleteHint':
+    'Diese Sitzung und ihren Chatverlauf vom Knoten löschen? Die Dateien in ihrem Ordner bleiben unverändert.',
+  'node.search.invalidRegex': 'Prüfen Sie den regulären Ausdruck und versuchen Sie es erneut.',
   'node.lsp.locations': 'Fundstellen: {count}',
   'node.lsp.noLocations': 'Keine passenden Fundstellen',
   'node.lsp.count': 'Diagnosen: {count}',
@@ -76,6 +79,13 @@ export const de = {
     'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
   'node.error.busy':
     'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
+    'Dieser Ordner oder Worktree wird verwendet. Warten Sie, bis die aktuelle Aktion beendet ist, und versuchen Sie es erneut.',
+  'node.error.busyStage':
+    'Die Dateien konnten nicht vorgemerkt werden, da der Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
+  'node.error.busyChat':
+    'Der Chat konnte nicht gestartet werden, da der Ordner oder Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
+  'node.error.busyRead':
+    'Bearbeitung beendet. Die Datei konnte nicht aktualisiert werden, da der Worktree belegt ist. Aktualisieren Sie nach Abschluss der aktuellen Aktion. (resource_busy)',
   'node.codeLineUnavailable': 'Die verlinkten Zeilen existieren in dieser Datei nicht mehr.',
   'image.timeLimit.label': 'Zeitlimit für die Bilderzeugung',
   'image.timeLimit.unlimited': 'Kein Limit',

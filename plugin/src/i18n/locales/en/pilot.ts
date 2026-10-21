@@ -4,6 +4,9 @@ export const en = {
     'The launch result is unknown. Reconnect and check the debug sessions before trying again.',
   'debug.launchMissing': 'The program was not found. Check its path relative to the folder.',
   'debug.followNoMatches': 'No recorded steps contain this value.',
+  'node.chat.deleteHint':
+    'Delete this session and its chat history from the node? Files in its folder stay as they are.',
+  'node.search.invalidRegex': 'Check the regular expression and try again.',
   'node.lsp.locations': 'Locations: {count}',
   'node.lsp.noLocations': 'No matching locations',
   'node.lsp.count': 'Diagnostics: {count}',
@@ -73,6 +76,13 @@ export const en = {
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
   'node.error.busy':
     'This resource is in use. Wait for the current operation to finish and try again.',
+    'This folder or worktree is in use. Wait for the current action to finish and try again.',
+  'node.error.busyStage':
+    'Could not stage the files because the worktree is busy. Wait for the current action to finish and try again. (resource_busy)',
+  'node.error.busyChat':
+    'Could not start a new chat because the folder or worktree is busy. Wait for the current action to finish and try again. (resource_busy)',
+  'node.error.busyRead':
+    'Editing stopped. The file could not be refreshed because the worktree is busy. Refresh when the current action finishes. (resource_busy)',
   'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',
   'image.timeLimit.label': 'Image generation time limit',
   'image.timeLimit.unlimited': 'No limit',

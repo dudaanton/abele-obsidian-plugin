@@ -12,6 +12,15 @@ it('round trips working content and ranges within the chat scope', () => {
   expect(resolveNodeCodeLink(link, scope)).toEqual({ path: 'src/sample.ts', line: 3, endLine: 7 })
   expect(resolveNodeCodeLink(link, { ...scope, id: 'other' })).toBeUndefined()
 })
+
+it('retains the matched word within a search destination', () => {
+  const link = nodeCodeLink(scope, 'sample.ts', {
+    start: 2,
+    end: 2,
+    match: { column: 4, length: 6 },
+  } as never)
+  expect(resolveNodeCodeLink(link, scope)).toMatchObject({ match: { column: 4, length: 6 } })
+})
 it('resolves natural citations and confines absolute paths to a known root', () => {
   expect(resolveNodeCodeLink('src/sample.ts:3-7', scope)).toEqual({
     path: 'src/sample.ts',

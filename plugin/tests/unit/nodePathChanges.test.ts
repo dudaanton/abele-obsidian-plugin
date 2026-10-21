@@ -316,6 +316,15 @@ describe('the path sidebar model on the change stream', () => {
     port.inspect.mockClear()
     return { model, port, changed: (batch: PathTreeBatch) => changed(batch) }
   }
+  it('invalidates open tabs after streamed file edits without rereading the tree', async () => {
+    const { model, port, changed } = await open()
+    const before = { ...model.fileRefresh.value }
+    changed({ entries: [{ change: 'modified', entry: file('README.md') }], git: false })
+    await ticks()
+    expect(model.fileRefresh.value).not.toEqual(before)
+    expect(port.tree).not.toHaveBeenCalled()
+    model.destroy()
+  })
   it('starts the watch before reading the files, and reads them once', async () => {
     const order: string[] = []
     const port = {

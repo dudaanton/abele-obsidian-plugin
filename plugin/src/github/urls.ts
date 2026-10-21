@@ -30,6 +30,7 @@ export interface DiffFileAnchor {
 }
 
 export interface LineRange {
+  match?: { column: number; length: number }
   start: number
   end: number
 }

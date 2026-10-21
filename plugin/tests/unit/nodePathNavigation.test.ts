@@ -14,6 +14,22 @@ const target = (id = 'tree-a') => ({
   id,
 })
 describe('main area node leaves', () => {
+  it('prefers the same file opened from search over another file tab', async () => {
+    const state = { kind: 'file', target: target(), path: 'sample.ts' }
+    const first = {
+      getViewState: () => ({ state: { ...state, path: 'other.ts' } }),
+      setViewState: vi.fn(),
+    }
+    const same = { getViewState: () => ({ state: { ...state, line: 3 } }), setViewState: vi.fn() }
+    const workspace = {
+      getLeavesOfType: () => [first, same],
+      revealLeaf: vi.fn(),
+      getLeaf: vi.fn(),
+    }
+    await openNodePathTab(workspace as never, state as never, false)
+    expect(same.setViewState).toHaveBeenCalled()
+    expect(first.setViewState).not.toHaveBeenCalled()
+  })
   it('restores a committed diff with its selected base', () => {
     const stage = { kind: 'committed', base: 'refs/heads/release' }
     const state = NodePathTabSchema.parse({
