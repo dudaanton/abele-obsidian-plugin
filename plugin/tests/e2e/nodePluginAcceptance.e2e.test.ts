@@ -51,6 +51,7 @@ it.each([false, true])(
       await fileLeaf.loadIfDeferred?.();await app.workspace.revealLeaf(fileLeaf);
       if(${phone}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
       await until(()=>fileLeaf.view.file?.document.value);
+      fileLeaf.view.file.mode.value='file';
       fileLeaf.view.fileTab.start();
       await until(()=>fileLeaf.view.editing?.editor.value?.editing.value);
       const blob=client.repository.blob;
@@ -65,6 +66,7 @@ it.each([false, true])(
       client.repository.blob=async()=>({...await blob(),content_id:'2'.repeat(64),size:changedText.length});
       await model.reloadTarget(model.current.value);
       await until(()=>fileLeaf.view.file.document.value.text.includes('false'));
+      document.querySelectorAll('.notice').forEach(notice=>notice.click());
       await shot('file-refreshed');
       fileLeaf.view.fileTab.start();await until(()=>fileLeaf.view.editing.editor.value?.editing.value);
       const editor=fileLeaf.view.editing.editor.value;
