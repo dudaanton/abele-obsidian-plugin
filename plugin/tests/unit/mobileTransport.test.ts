@@ -5,6 +5,32 @@ import {
   setNativeSyncTimeoutForTests,
 } from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
+import { deferred } from '../helpers/deferred'
+
+// BUG: the native HTTP port has no cancellation handle; abort only rejects JavaScript.
+it.fails('prevents a native mutation from landing after its caller aborts', async () => {
+  const entered = deferred<void>(),
+    finish = deferred<void>()
+  const url = 'https://sync.example/v2/commit'
+  let mutations = 0
+  const send = fetchViaCapacitorHttp({
+    request: async () => {
+      entered.resolve()
+      await finish.promise
+      mutations++
+      return { status: 200, headers: {}, data: btoa('{}'), url }
+    },
+  })
+  const controller = new AbortController()
+  const pending = send(url, { method: 'POST', body: '{}', signal: controller.signal })
+  const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  await entered.promise
+  controller.abort()
+  await rejected
+  finish.resolve()
+  await Promise.resolve()
+  expect(mutations).toBe(0)
+})
 
 describe('bounded native connection-lost retry', () => {
   const url = 'https://sync.example/v2/connection'
