@@ -770,6 +770,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await client.store.transaction((raw) => {
         ;(raw as NodeClientState).nodeLetters[operation_id].inputId = inputId
       })
+      await this.refresh()
       for (;;) {
         check()
         const end = await readStore(client.store, (state) =>

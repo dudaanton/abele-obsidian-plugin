@@ -97,6 +97,23 @@ it('refuses a combined node turn rather than returning another request answer', 
   expect(Object.values(state.nodeLetters!)[0].status).toBe('interrupted')
 })
 
+it('refreshes incoming node provenance before waiting for the final answer', async () => {
+  const { presenter, state, finish } = nodeLetterTarget()
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  try {
+    await vi.waitFor(() =>
+      expect(Object.values(state.nodeLetters!)[0]?.inputId).toBe('sample-input')
+    )
+    expect(presenter.refresh).toHaveBeenCalledTimes(2)
+  } finally {
+    finish()
+    await result
+  }
+})
+
 it('does not substitute intermediate text for an empty final node answer', async () => {
   const { presenter, state, finish, projection } = nodeLetterTarget()
   const result = presenter.receiveChatLetter('Sample question', {
