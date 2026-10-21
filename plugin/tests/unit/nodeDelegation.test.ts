@@ -43,7 +43,7 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
-it('wakes once for each new prompt and paused or failed transition without requiring a result', async () => {
+it('wakes for paused or failed transitions but not owner approvals', async () => {
   const f = fixture()
   await f.controller.create('parent', task)
   const wake = vi.fn(() => true)
@@ -56,7 +56,12 @@ it('wakes once for each new prompt and paused or failed transition without requi
     await f.controller.wakeDelivered({ parent: [card] }, wake)
     await f.controller.wakeDelivered({ parent: [card] }, wake)
   }
-  expect(wake).toHaveBeenCalledTimes(3)
+  expect(wake).toHaveBeenCalledTimes(2)
+  for (const call of wake.mock.calls as unknown as string[][]) {
+    expect(call[2]).not.toContain('prompts:')
+    expect(call[2]).not.toContain('failed:')
+    expect(call[2]).not.toContain('delegation (')
+  }
   f.store.close()
 })
 it('does not report a rejected create when only subscribing to the accepted child failed', async () => {

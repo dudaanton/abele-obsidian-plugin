@@ -602,13 +602,17 @@ export class NodeDelegationController {
       if (!card) continue
       const completed = card.state === 'completed' && card.reports.some((r) => r.kind === 'result')
       const terminal = ['failed', 'stopped', 'cancelled', 'unknown'].includes(card.state)
-      const prompts = card.prompts?.map((p) => `${p.prompt_id}:${p.revision}`).sort() ?? []
+      const question = card.reports.findLast(
+        (report) =>
+          report.kind === 'question' &&
+          !report.text.startsWith('Waiting for owner approval.')
+      )
       const attention = completed
         ? 'result'
         : terminal
           ? `${card.state}:${card.reason ?? ''}`
-          : card.pendingHumanPrompts
-            ? `prompts:${prompts.join(',')}:${card.pendingHumanPrompts}`
+          : question
+            ? `question:${question.seq}`
             : undefined
       if (!attention && notified && card.state === 'running')
         await this.store.transaction((s) => {
@@ -622,7 +626,9 @@ export class NodeDelegationController {
           id,
           completed
             ? undefined
-            : `Node delegation ${id} (${card.title}) needs attention: ${attention}. Read node_delegation_status. Owner approvals must be answered by the owner in the card.`
+            : question && !terminal
+              ? `Developer “${card.title}” asks: ${question.text}`
+              : `Developer “${card.title}” ${card.state}${card.reason ? ` (${card.reason})` : ''}. Read node_delegation_status for details.`
         )
       )
         await this.store.transaction((s) => {
