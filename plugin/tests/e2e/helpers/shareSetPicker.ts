@@ -26,10 +26,14 @@ const pickShareItem = async (box, label, waitForChip = true) => {
     return !!choice;
   }, undefined, 'Share picker: matching suggestion row');
   await poll(() => {
+    choice.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     const win = choice.ownerDocument.defaultView;
     const viewport = win.visualViewport;
     const keyboard = parseFloat(win.getComputedStyle(choice.ownerDocument.documentElement).getPropertyValue('--keyboard-height')) || 0;
     const bottom = Math.min(win.innerHeight - keyboard, viewport ? viewport.offsetTop + viewport.height : win.innerHeight);
+    const scroll = choice.closest('.modal-content');
+    const before = choice.getBoundingClientRect();
+    if (scroll && before.bottom > bottom - 8) scroll.scrollTop += before.bottom - bottom + 8;
     const rect = choice.getBoundingClientRect();
     return rect.height > 0 && rect.top >= (viewport?.offsetTop || 0) && rect.bottom <= bottom;
   }, undefined, 'Share picker: suggestion fully above keyboard');

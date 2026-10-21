@@ -5,7 +5,8 @@ import { targets } from './helpers/target'
 import { liveSuite } from './helpers/syncLiveCases'
 import { fixtureFetch } from './helpers/syncServer'
 import { closeSyncScreens } from './helpers/syncScreens'
-import { tap, typeText, screenshot } from './helpers/phone'
+import { typeText, screenshot } from './helpers/phone'
+import { focusPhoneInput } from './helpers/phoneInput'
 import { shotDir } from './helpers/shots'
 import { createServerFolder } from './helpers/syncServerFolder'
 
@@ -45,15 +46,16 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     )
     await phone.shareSet(ownerId, ['Group: Workshop'], 'Sample workshop access')
 
-    const field = await phone.long<{ x: number; y: number }>(
+    await phone.long(
       'open Share picker',
       `
       const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
       const box=modal('Share access');let input;await poll(()=>input=box.querySelector('.abele-share-picker input'));
-      input.scrollIntoView({block:'center'});const r=input.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}
+      if(!window.__e2eHost)throw new Error('Native phone host unavailable');
+      await (${focusPhoneInput.toString()})(input,(x,y)=>window.__e2eHost.tap(x,y),sleep);
+      await poll(()=>modal('Share access')===box&&box.isConnected&&box.ownerDocument.activeElement===input,undefined,'Share sheet and focused input after native tap');return true
     `
     )
-    tap(field.x, field.y)
     typeText('Workshop')
     const picker = await phone.long<{ inline: boolean; titles: string[] }>(
       'inline results above the native keyboard',
