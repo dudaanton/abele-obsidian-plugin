@@ -1489,6 +1489,14 @@ size the **Rewind space** setting allows (100MB by default; 0 keeps nothing): th
 to least recently lose theirs first, then the oldest changes of the chat being written. A change
 that has been put back leaves the log. Deleting this folder only takes away the way back.
 
+Abele Sync offers only `data.json`, `manifest.json`, `main.js` and `styles.css` from this
+plugin's directory. Rewind history, chat indexes and recovery backups, reader backups and
+legacy positions, calendar and exchange-rate caches, cached user profiles, downloaded
+translations, and sync work/recovery files remain local. They are excluded before scanning
+and from the engine's scope, including when an older ledger still tracks them. Exclusion
+does not publish a deletion or remove a local copy in response to a remote change. Copies
+already on a server remain there; updated clients leave them alone rather than clean them up.
+
 Version 1 log entries additionally carry `chat` (the first-message key) and `run` (the invoking
 session/turn identity); delegated branches retain their run identity in their root chat's log.
 Ownership is passed through a call-local file facade, never inferred from which chats happen

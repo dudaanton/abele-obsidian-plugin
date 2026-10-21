@@ -1,5 +1,6 @@
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
+import { isDeviceLocalPluginState } from './deviceLocalState'
 import { nativeChunkPort, connectionFilePort, vaultPathIsLink } from './vaultPathLinks'
 import {
   connectionPrivateRoot,
@@ -8,7 +9,6 @@ import {
   CONNECTION_ROOT_SYMLINK,
 } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
-import { privateRecoveryDirectory } from './privateRecovery'
 import { crossesSymlink } from './symlinkChain'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
@@ -1063,7 +1063,7 @@ export class ObsidianFileSystem implements FileSystem {
     for await (const file of files) {
       if (!withinScope(file.path) || (this.discovery && !this.discovery.includes(file.path)))
         continue
-      if (isAdapterTemp(file.path)) continue
+      if (isAdapterTemp(file.path) || isDeviceLocalPluginState(file.path, this.configDir)) continue
       if (this.awaitingIndex.has(file.path)) {
         const actual = await this.rawStat(file.path)
         if (!actual || actual.type !== 'file') continue
@@ -1263,12 +1263,7 @@ export class ObsidianFileSystem implements FileSystem {
           if (indexedFolders.delete(path)) folders.delete(path)
       }
       for (const child of listing.folders) {
-        if (
-          !visible(child) ||
-          child === stagingDirectory(this.configDir) ||
-          child === privateRecoveryDirectory(this.configDir) ||
-          !relevant(child)
-        )
+        if (!visible(child) || isDeviceLocalPluginState(child, this.configDir) || !relevant(child))
           continue
         if (await this.isSymlink(child)) continue
         if (recursive || normalizationPossible(child)) {
@@ -1885,11 +1880,7 @@ export class ObsidianFileSystem implements FileSystem {
     depth = 0,
     walked: Set<string> = new Set()
   ): AsyncIterable<FileInfo> {
-    if (
-      folder === stagingDirectory(this.configDir) ||
-      folder === privateRecoveryDirectory(this.configDir)
-    )
-      return
+    if (isDeviceLocalPluginState(folder, this.configDir)) return
     if (depth > CONFIG_WALK_DEPTH || walked.has(folder)) {
       console.debug(`[abele-sync] not following ${folder} any further`)
       return
@@ -1905,6 +1896,7 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot list ${folder}`, cause)
     }
     for (const path of listed.files) {
+      if (isDeviceLocalPluginState(path, this.configDir)) continue
       if (isAdapterTemp(path)) {
         // A temp of new bytes a killed write left behind goes; a backup is somebody's only
         // copy, and the write journal puts it back.
@@ -1998,8 +1990,7 @@ export class ObsidianFileSystem implements FileSystem {
           (info) =>
             info.path.startsWith(this.configDir + '/') &&
             !isAdapterTemp(info.path) &&
-            !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
-            !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
+            !isDeviceLocalPluginState(info.path, this.configDir)
         )
         .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
     )

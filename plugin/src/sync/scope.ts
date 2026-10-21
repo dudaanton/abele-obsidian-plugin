@@ -10,6 +10,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { caseKey } from '@abele/sync-sdk/protocol'
 import { messageOf } from './messages'
+import { isDeviceLocalPluginState } from './deviceLocalState'
 
 /**
  * What this device syncs besides its selective settings: the vault's ignore file, the hidden
@@ -67,7 +68,9 @@ export function configLine(configDir: string): string {
 /**
  * What this device will not sync whatever the selective settings say: the vault's
  * `.abele-sync-ignore`, parsed by the core's own gitignore reader so that the plugin and the
- * daemon read one file the same way, and every hidden path but the config folder (`isHidden`).
+ * daemon read one file the same way, every hidden path but the config folder (`isHidden`),
+ * and this plugin's device-local stores. Excluding these through the engine filter as well
+ * as the inventory prevents a previously tracked file's absence becoming a synced delete.
  *
  * `keptOut` is one more wire path left alone, for as long as the engine this is built for runs:
  * this device's own `data.json` while it joins a vault (`EngineRunner.build`).
@@ -84,6 +87,7 @@ export function ignoreFor(
   return {
     ignores: (wirePath) =>
       (kept !== null && caseKey(wirePath) === kept) ||
+      isDeviceLocalPluginState(wirePath, configDir) ||
       isHidden(wirePath, configDir) ||
       (rules?.ignores(wirePath) ?? false),
   }
