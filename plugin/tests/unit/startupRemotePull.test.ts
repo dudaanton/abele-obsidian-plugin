@@ -10,19 +10,23 @@ import {
 } from '@abele/sync-sdk/core'
 import { VaultSettingsSchema } from '@abele/sync-sdk/protocol'
 
-it('applies a remote note before fingerprinting an unrelated startup file completes', () =>
-  remoteBeforeLocalWork('fingerprint'))
+it.each([false, true])(
+  'applies a remote note before fingerprinting an unrelated startup file completes (same size=%s)',
+  (sameSize) => remoteBeforeLocalWork('fingerprint', sameSize)
+)
 
 // BUG: SDK reconciliationScan enumerates the whole inventory before the first pull.
 it.fails('applies a remote note while the startup inventory is still being enumerated', () =>
   remoteBeforeLocalWork('inventory')
 )
 
-async function remoteBeforeLocalWork(block: 'fingerprint' | 'inventory') {
+async function remoteBeforeLocalWork(block: 'fingerprint' | 'inventory', sameSize = false) {
   const fs = new MemoryFileSystem(),
     state = new MemoryStateStore()
-  const local = new TextEncoder().encode('sample local attachment')
   const remote = new TextEncoder().encode('sample remote note')
+  const local = sameSize
+    ? new Uint8Array(remote.length).fill(37)
+    : new TextEncoder().encode('sample local attachment')
   await fs.writeAtomic('local.bin', local, 1000)
   let entered!: () => void, release!: () => void
   const fingerprinting = new Promise<void>((resolve) => {

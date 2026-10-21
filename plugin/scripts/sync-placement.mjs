@@ -326,34 +326,8 @@ export function syncPlacementPlugin() {
             const match = await verify(known.path);
             if (match) return match;
           }
-          // Uncommitted first-upload files are absent from the ledger. Index sizes once,
-          // then hash each possible source at most once in this puller, retaining only
-          // identities. This avoids a whole-vault rehash for every incoming file.
-          if (!this.localSizes) {
-            this.localSizes = new Map();
-            this.localHashes = new Map();
-            for await (const file of this.fs.list()) {
-              if (this.opts.filter.excluded(file.path)) continue;
-              const paths = this.localSizes.get(file.size) ?? [];
-              paths.push(file.path);
-              this.localSizes.set(file.size, paths);
-            }
-          }
-          for (const path of this.localHashes.get(sha) ?? []) {
-            const match = await verify(path);
-            if (match) return match;
-          }
-          const paths = this.localSizes.get(size) ?? [];
-          while (paths.length) {
-            const path = paths.pop();
-            try {
-              const have = await fingerprintPlacementFile(this.fs, path, this.hash);
-              const copies = this.localHashes.get(have.sha) ?? [];
-              copies.push(path);
-              this.localHashes.set(have.sha, copies);
-              if (have.sha === sha && have.size === size) return { path };
-            } catch { /* An unreadable local candidate grants no placement authority. */ }
-          }
+          // Discovering unknown hashes belongs to the scanner. A pull must not wait
+          // for unrelated files merely because their sizes match the remote content.
           return null;
         }
         async placeObserved(change, sha, entry, fetched, local) {

@@ -14,7 +14,7 @@ it.each([
   [true, false],
   [false, false],
 ])(
-  'reuses verified bytes at another local path (recorded=%s, bounded=%s)',
+  'reuses only known hashes at another local path (recorded=%s, bounded=%s)',
   async (recorded, bounded) => {
     const fs = new MemoryFileSystem(),
       state = new MemoryStateStore()
@@ -46,12 +46,13 @@ it.each([
         throw new Error('Unexpected recovery')
       },
     })
-    const openVersion = vi.fn(async () => {
-      throw new Error('Unexpected remote download')
-    })
-    const getBlob = vi.fn(async () => {
-      throw new Error('Unexpected blob download')
-    })
+    const openVersion = vi.fn(async () => ({
+      size: bytes.length,
+      read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
+      assertUnchanged: async () => {},
+      close: async () => {},
+    }))
+    const getBlob = vi.fn(async () => bytes.slice())
     const client = {
       manifest: async () => ({
         items: [
@@ -74,6 +75,7 @@ it.each([
       getBlob,
     } as unknown as EngineClient
     const before = await fs.stat('existing.md')
+    const read = vi.spyOn(fs, 'read')
     if (!bounded) {
       Reflect.deleteProperty(ports, 'beginAtomicWrite')
       Reflect.deleteProperty(ports, 'reopenStage')
@@ -83,8 +85,11 @@ it.each([
       dirty: new Set(),
       expected: new ExpectedWrites(),
     })
-    expect(openVersion).not.toHaveBeenCalled()
-    expect(getBlob).not.toHaveBeenCalled()
+    // Unknown copies must not trigger a content search on the pull path. The scanner
+    // can supply their identities later; known copies still require no download.
+    expect(openVersion).toHaveBeenCalledTimes(!recorded && bounded ? 1 : 0)
+    expect(getBlob).toHaveBeenCalledTimes(!recorded && !bounded ? 1 : 0)
+    if (!recorded) expect(read).not.toHaveBeenCalledWith('existing.md')
     expect(await fs.read('copy.md')).toEqual(bytes)
     expect(await fs.stat('existing.md')).toEqual(before)
   }
