@@ -60,7 +60,7 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   const originalSha = await sha256(new TextEncoder().encode('server delete candidate'))
   await owner.long(
     'leave an unsent create before item deletion',
-    `const runtime=svc.runtimes.get(${JSON.stringify(ownerId)});if(!runtime)throw new Error('Owner runtime unavailable');await runtime.engine.stop();await runtime.options.state.setJournal({batchId:'sample-pending-batch',idempotencyKey:${JSON.stringify(pendingKey)},startedAt:new Date().toISOString(),ops:[{op:'create',path:${JSON.stringify(single)},sha:${JSON.stringify(originalSha)},size:23,mtime:1}]});return true`
+    `const runtime=host.live.get(${JSON.stringify(ownerId)});if(!runtime)throw new Error('Owner runtime unavailable');await runtime.engine.stop();await runtime.options.state.setJournal({batchId:'sample-pending-batch',idempotencyKey:${JSON.stringify(pendingKey)},startedAt:new Date().toISOString(),ops:[{op:'create',path:${JSON.stringify(single)},sha:${JSON.stringify(originalSha)},size:23,mtime:1}]});return true`
   )
   await owner.long(
     'open single-file deletion preview',
@@ -102,7 +102,7 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   )
   await owner.long(
     'quarantined unsent publication evidence',
-    `const runtime=svc.runtimes.get(${JSON.stringify(ownerId)});const evidence=await runtime.options.state.getMeta('local-only-publication-journal:'+${JSON.stringify(pendingKey)});if(!evidence||JSON.parse(evidence).ops[0].op!=='create')throw new Error('Pending create evidence unavailable');return true`
+    `const runtime=host.live.get(${JSON.stringify(ownerId)});const evidence=await runtime.options.state.getMeta('local-only-publication-journal:'+${JSON.stringify(pendingKey)});if(!evidence||JSON.parse(evidence).ops[0].op!=='create')throw new Error('Pending create evidence unavailable');return true`
   )
   owner.create(folder + '/kept.md', 'owner still writes')
   await owner.syncNow(ownerId)
