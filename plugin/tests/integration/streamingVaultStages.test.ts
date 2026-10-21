@@ -26,6 +26,15 @@ const setup = () => {
   const fs = () => new ObsidianFileSystem(app as unknown as App, { storage })
   return { app, fs, storage }
 }
+// BUG: localStorage acknowledgement is not durable stage ownership at process quit.
+// The core intent and host stage record need one durable publication protocol.
+it.fails('reopens a durable stage when the last localStorage update was lost at quit', async () => {
+  const { fs, storage } = setup()
+  const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
+  await stage.append(0, new TextEncoder().encode('sample bytes'))
+  storage.saveLocalStorage(JOURNAL_KEY, null)
+  expect((await fs().reopenStage(stage.id)).offset).toBe(12)
+})
 it('finishes stage discard after a crash between file removal and journal retirement', async () => {
   const { app, fs, storage } = setup()
   const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
