@@ -38,6 +38,15 @@ it('retains breakpoint paths learned from stack metadata without requiring an op
       ],
     }),
   })
+  service.registerSource(
+    binding.registrationId,
+    binding.conversationId,
+    'sample-source',
+    'src/previous.ts',
+    'sample-debug',
+    'sample-old-incarnation',
+    owner.target
+  )
   binding.controller.registerSource('sample-source', 'src/sample.ts')
   service.select(binding)
   expect(service.selectionState()).toMatchObject({

@@ -543,12 +543,14 @@ export class DebuggerService {
       sources: peers
         .flatMap((peer) => {
           const id = peer === binding ? sessionId : peer.sessionId
+          const incarnation = peer.controller.snapshot?.incarnation
           const known = new Map(
             [
               ...(this.sources.get(this.key(peer.registrationId, peer.conversationId)) ?? []),
-            ].filter(([, source]) => source.debugSessionId === id)
+            ].filter(
+              ([, source]) => source.debugSessionId === id && source.incarnation === incarnation
+            )
           )
-          const incarnation = peer.controller.snapshot?.incarnation
           if (id && incarnation)
             for (const point of peer.controller.knownBreakpoints()) {
               if (
