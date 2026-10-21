@@ -64,8 +64,8 @@ export function ordinaryNeedsApproval(
   permissionKey?: string
 ): boolean {
   if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove') return true
-  // The node asks once with the resolved folder and exact command before execution.
-  if (toolName === 'node_command_run') return false
+  // The node asks once with the resolved folder and exact action before execution.
+  if (toolName === 'node_command_run' || toolName === 'node_git_integrate') return false
   if (NODE_ACTION_TOOLS.includes(toolName))
     return (
       !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(toolName) &&

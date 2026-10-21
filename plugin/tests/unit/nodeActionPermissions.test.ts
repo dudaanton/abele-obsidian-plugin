@@ -44,6 +44,7 @@ it('requires approval for Ask actions and refuses Off even with an old approval'
         'node_delegation_status',
         'node_command_status',
         'node_command_run',
+        'node_git_integrate',
       ].includes(name)
     )
       expect(() => requireNodeActionPermission(session, name)).not.toThrow()
@@ -71,6 +72,7 @@ it('asks before every mutating node action in ask mode, even in bypass', () => {
         'node_delegation_status',
         'node_command_status',
         'node_command_run',
+        'node_git_integrate',
       ].includes(n)
   ))
     expect(ordinaryNeedsApproval(policy, name)).toBe(true)

@@ -73,6 +73,7 @@ export function requireNodeActionPermission(
       'node_delegation_status',
       'node_command_status',
       'node_command_run',
+      'node_git_integrate',
     ].includes(name) &&
     !approved
   )

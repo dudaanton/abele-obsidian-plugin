@@ -11,6 +11,9 @@ it('leaves command approval to the exact node card while keeping other actions g
     skillNeedsApproval: () => false,
   }
   expect(ordinaryNeedsApproval(policy, 'node_command_run')).toBe(false)
+  expect(ordinaryNeedsApproval(policy, 'node_git_integrate')).toBe(false)
+  for (const name of ['node_git_status', 'node_git_diff', 'node_git_log'])
+    expect(ordinaryNeedsApproval(policy, name)).toBe(false)
   expect(ordinaryNeedsApproval(policy, 'node_delegate')).toBe(true)
 })
 
