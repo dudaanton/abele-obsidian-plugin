@@ -277,15 +277,12 @@ export async function startProgram(
       continue
     }
     if (c.take && binding.trace) {
-      if (c.enabled === false || c.hit_condition)
-        await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
-          ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
-          ...(c.hit_condition ? { hit_condition: c.hit_condition } : {}),
-        })
       await binding.trace.savePoint(sourceId, c.line, {
         take: c.take,
         ...(c.condition ? { when: c.condition } : {}),
         ...(c.note ? { note: c.note } : {}),
+        ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
+        ...(c.hit_condition ? { hitCondition: c.hit_condition } : {}),
       })
     } else if (c.log_message || c.hit_condition || c.enabled === false)
       await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {

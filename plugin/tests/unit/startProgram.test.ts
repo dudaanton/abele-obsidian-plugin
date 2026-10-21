@@ -373,10 +373,13 @@ describe('running a program under the debugger', () => {
       log_message: 'sample {n}',
       enabled: false,
     })
-    expect(savePoint).toHaveBeenCalledWith('s2', 4, { take: ['sum'], note: 'the running total' })
-    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's2', 4, undefined, {
+    expect(savePoint).toHaveBeenCalledWith('s2', 4, {
+      take: ['sum'],
+      note: 'the running total',
       enabled: false,
     })
+    // Record metadata must be installed before its breakpoint, by savePoint.
+    expect(setBreakpoint).toHaveBeenCalledTimes(1)
   })
 
   it('carries the points only once the new run is held, so they name the state it stopped in', async () => {

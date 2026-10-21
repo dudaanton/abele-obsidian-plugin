@@ -9,13 +9,17 @@ import type { TraceRpc, WirePoint, WireRunPoint, WireRunSummary, WireStatus } fr
 /** The breakpoints a record point stands on: the debugger controller, as far as trace needs it. */
 export interface TraceBreakpoints {
   readonly snapshot: DebuggerSnapshot | null
-  knownBreakpoints(): (KnownBreakpoint & { sourceId: string; requestedLine: number })[]
+  knownBreakpoints(): (KnownBreakpoint & {
+    sourceId: string
+    requestedLine: number
+    hit_condition?: string
+  })[]
   setBreakpoint(
     id: string,
     sourceId: string,
     line: number,
     condition?: string,
-    options?: { enabled?: boolean }
+    options?: { enabled?: boolean; hit_condition?: string }
   ): Promise<unknown>
   removeBreakpoint(id: string): Promise<unknown>
 }
@@ -24,6 +28,8 @@ export interface PointEdit {
   take: string[]
   when?: string
   note?: string
+  enabled?: boolean
+  hitCondition?: string
 }
 
 const FOLLOW_MS = 2000
@@ -148,9 +154,10 @@ export class TraceSession {
   async savePoint(sourceId: string, line: number, edit: PointEdit) {
     const session = this.sessionId
     if (!session) throw new Error('No debugger session')
-    const existing = this.debug
-      .knownBreakpoints()
-      .find((b) => b.sourceId === sourceId && b.line === line)
+    const known = this.debug.knownBreakpoints()
+    const existing =
+      known.find((b) => b.sourceId === sourceId && b.requestedLine === line) ??
+      known.find((b) => b.sourceId === sourceId && b.line === line)
     const id = existing?.id ?? crypto.randomUUID()
     this.points = await this.rpc.setPoints(
       session,
@@ -164,13 +171,32 @@ export class TraceSession {
       []
     )
     let pending = false
-    if (!existing || existing.kind === 'log' || (existing.condition ?? '') !== (edit.when ?? '')) {
-      const result =
-        existing?.state === 'disabled'
-          ? await this.debug.setBreakpoint(id, sourceId, existing.requestedLine, edit.when, {
-              enabled: false,
-            })
-          : await this.debug.setBreakpoint(id, sourceId, existing?.requestedLine ?? line, edit.when)
+    const options = {
+      ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
+      ...(edit.hitCondition !== undefined ? { hit_condition: edit.hitCondition } : {}),
+    }
+    const changedOptions =
+      (options.enabled !== undefined && (existing?.state !== 'disabled') !== options.enabled) ||
+      (options.hit_condition !== undefined && existing?.hit_condition !== options.hit_condition)
+    if (
+      !existing ||
+      existing.kind === 'log' ||
+      (existing.condition ?? '') !== (edit.when ?? '') ||
+      changedOptions
+    ) {
+      const breakpointOptions = {
+        ...(existing?.state === 'disabled' ? { enabled: false } : {}),
+        ...options,
+      }
+      const result = Object.keys(breakpointOptions).length
+        ? await this.debug.setBreakpoint(
+            id,
+            sourceId,
+            existing?.requestedLine ?? line,
+            edit.when,
+            breakpointOptions
+          )
+        : await this.debug.setBreakpoint(id, sourceId, existing?.requestedLine ?? line, edit.when)
       if (
         result &&
         typeof result === 'object' &&

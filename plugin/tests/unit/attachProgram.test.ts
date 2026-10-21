@@ -140,6 +140,8 @@ describe('attaching the debugger to a running program', () => {
         line: 5,
         state: 'set',
         condition: 'sample > 2',
+        enabled: false,
+        hit_condition: '2',
       },
     ]
     const savePoint = vi.fn(async () => {})
@@ -162,6 +164,8 @@ describe('attaching the debugger to a running program', () => {
       take: ['sample'],
       when: 'sample > 2',
       note: 'Sample note',
+      enabled: false,
+      hitCondition: '2',
     })
   })
   it.each([

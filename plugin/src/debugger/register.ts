@@ -162,6 +162,8 @@ function configureSessionActions(
             take: record.take,
             ...(point.condition ? { when: point.condition } : {}),
             ...(record.note ? { note: record.note } : {}),
+            ...(point.enabled !== undefined ? { enabled: point.enabled } : {}),
+            ...(point.hit_condition ? { hitCondition: point.hit_condition } : {}),
           })
         } else await restoreBreakpoint(next.controller, source.source_id, point)
       }

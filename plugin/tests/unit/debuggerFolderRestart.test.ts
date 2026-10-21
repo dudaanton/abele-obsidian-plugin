@@ -134,7 +134,14 @@ it('restores record point metadata when reattaching a restarted program', async 
   const { context, binding } = fixture('detached')
   binding.controller.snapshot.target.process_ownership = 'external'
   binding.retainedBreakpoints = [
-    { id: 'sample-point', file: 'sample.cjs', requestedLine: 5, condition: 'count > 2' } as never,
+    {
+      id: 'sample-point',
+      file: 'sample.cjs',
+      requestedLine: 5,
+      condition: 'count > 2',
+      enabled: false,
+      hit_condition: '2',
+    } as never,
   ]
   const savePoint = vi.fn(async () => {})
   Object.assign(binding, {
@@ -149,6 +156,8 @@ it('restores record point metadata when reattaching a restarted program', async 
     take: ['count'],
     when: 'count > 2',
     note: 'Sample',
+    enabled: false,
+    hitCondition: '2',
   })
   expect(binding.controller.setBreakpoint).not.toHaveBeenCalled()
 })

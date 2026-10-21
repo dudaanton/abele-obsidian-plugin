@@ -2,6 +2,33 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+it('restores a relocated record point under its existing identity with disabled and hit-count intent', async () => {
+  const node = fakeNode()
+  const debug = fakeDebugger([{ id: 'sample-existing', line: 4 }])
+  debug.known[0].line = 5
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 4, {
+      take: ['sample'],
+      enabled: false,
+      hitCondition: '2',
+    })
+    expect(trace.points.map((point) => point.breakpoint_id)).toEqual(['sample-existing'])
+    expect(debug.setBreakpoint).toHaveBeenCalledWith(
+      'sample-existing',
+      'sample-source',
+      4,
+      undefined,
+      {
+        enabled: false,
+        hit_condition: '2',
+      }
+    )
+    expect(debug.known).toHaveLength(1)
+  } finally {
+    trace.dispose()
+  }
+})
 it('lists runs of the observed process only', async () => {
   const s = new TraceSession(fakeNode().rpc, fakeDebugger(), () => {})
   try {
