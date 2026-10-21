@@ -48,8 +48,6 @@ export const chat = {
   'chatTree.waiting': 'Wartet auf dich',
   'chatTree.working': 'Arbeitet',
   'chatTree.failed': 'Mit Fehler angehalten',
-  'chat.listChatsTool': 'Chats auflisten',
-  'chat.sendMessageTool': 'Nachricht an Chat senden',
   'settings.metadata.listChats': 'Chats auflisten',
   'settings.metadata.sendMessageToChat': 'Nachricht an Chat senden',
   'chat.letterAsked': '{title} gefragt',

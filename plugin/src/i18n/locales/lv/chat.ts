@@ -48,8 +48,6 @@ export const chat = {
   'chatTree.waiting': 'Gaida tevi',
   'chatTree.working': 'Strādā',
   'chatTree.failed': 'Apturēts kļūdas dēļ',
-  'chat.listChatsTool': 'Tērzēšanu saraksts',
-  'chat.sendMessageTool': 'Sūtīt ziņojumu tērzēšanai',
   'settings.metadata.listChats': 'Tērzēšanu saraksts',
   'settings.metadata.sendMessageToChat': 'Sūtīt ziņojumu tērzēšanai',
   'chat.letterAsked': 'Jautāts {title}',

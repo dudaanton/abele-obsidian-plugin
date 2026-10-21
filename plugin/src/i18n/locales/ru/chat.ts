@@ -49,8 +49,6 @@ export const chat = {
   'chatTree.waiting': 'Ждёт вас',
   'chatTree.working': 'Работает',
   'chatTree.failed': 'Остановлен с ошибкой',
-  'chat.listChatsTool': 'Список чатов',
-  'chat.sendMessageTool': 'Отправить сообщение в чат',
   'settings.metadata.listChats': 'Список чатов',
   'settings.metadata.sendMessageToChat': 'Отправить сообщение в чат',
   'chat.letterAsked': 'Спросил {title}',
