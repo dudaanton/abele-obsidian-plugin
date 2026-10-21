@@ -92,6 +92,13 @@ export function syncPlacementPlugin() {
         code = replaceOnce(code, 'const MANIFEST_PAGE = 1000;', 'const MANIFEST_PAGE = 5000;')
         code = replaceOnce(
           code,
+          'seen.add(sha);',
+          `const candidate = await this.placer.localSource(sha, change.size, local);
+            if (candidate) { local.set(sha, candidate); continue; }
+            seen.add(sha);`
+        )
+        code = replaceOnce(
+          code,
           'async prefetch(changes, local) {',
           `async prefetch(changes, local) {
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
@@ -102,6 +109,18 @@ export function syncPlacementPlugin() {
               const entry = await this.state.byFileId(change.file_id);
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
+              if (local.has(change.sha)) continue;
+              // A missing receipt does not mean missing bytes. Let placement verify and adopt
+              // an existing portable spelling before spending a content request on it.
+              if (entry === null) {
+                const inventory = await this.placer.paths(change.path);
+                if (inventory.blocked(change.path)) continue;
+                let target;
+                try { target = inventory.resolve(change.path, 'file'); }
+                catch { continue; }
+                if (await this.fs.stat(target) !== null) continue;
+              }
+              if (await this.placer.localSource(change.sha, change.size, local)) continue;
               wanted.push(change);
             }
             const fetched = new Map();
@@ -295,7 +314,54 @@ export function syncPlacementPlugin() {
             return result;
           } finally { finish(complete); }
         }
+        async localSource(sha, size, local) {
+          const verify = async (path) => {
+            try {
+              const have = await fingerprintPlacementFile(this.fs, path, this.hash);
+              return have.sha === sha && have.size === size ? { path } : null;
+            } catch { return null; }
+          };
+          const known = local.get(sha);
+          if (known) {
+            const match = await verify(known.path);
+            if (match) return match;
+          }
+          // Uncommitted first-upload files are absent from the ledger. Index sizes once,
+          // then hash each possible source at most once in this puller, retaining only
+          // identities. This avoids a whole-vault rehash for every incoming file.
+          if (!this.localSizes) {
+            this.localSizes = new Map();
+            this.localHashes = new Map();
+            for await (const file of this.fs.list()) {
+              if (this.opts.filter.excluded(file.path)) continue;
+              const paths = this.localSizes.get(file.size) ?? [];
+              paths.push(file.path);
+              this.localSizes.set(file.size, paths);
+            }
+          }
+          for (const path of this.localHashes.get(sha) ?? []) {
+            const match = await verify(path);
+            if (match) return match;
+          }
+          const paths = this.localSizes.get(size) ?? [];
+          while (paths.length) {
+            const path = paths.pop();
+            try {
+              const have = await fingerprintPlacementFile(this.fs, path, this.hash);
+              const copies = this.localHashes.get(have.sha) ?? [];
+              copies.push(path);
+              this.localHashes.set(have.sha, copies);
+              if (have.sha === sha && have.size === size) return { path };
+            } catch { /* An unreadable local candidate grants no placement authority. */ }
+          }
+          return null;
+        }
         async placeObserved(change, sha, entry, fetched, local) {
+          // An own commit may precede its local receipt. Verify and adopt existing bytes before
+          // fetching them again, without settling an interrupted pull's retained write intent.
+          if ((entry === null || entry.sha === sha && entry.wirePath === change.path) &&
+              await this.pending.read(change.file_id) === null &&
+              await this.adoptExisting(change, entry)) return true;
           // Downloads do not own paths. The original placer revalidates the source after waiting.
           // Keep the network source bounded and fetch it only once. The core's durable target
           // stage and local-edit checks still run under the placement lease.
@@ -317,6 +383,23 @@ export function syncPlacementPlugin() {
                 () => prepared.placeUnlocked(change, sha, entry,
                   smallBytes ? new Map(fetched).set(sha, smallBytes) : fetched, local));
             };
+            // The content index is only a hint: verify the current file, then keep using a
+            // bounded local source with the same mutation checks as an HTTP source.
+            const candidate = await this.localSource(sha, change.size, local);
+            if (candidate) {
+              let verified = false;
+              try {
+                const have = await fingerprintPlacementFile(this.fs, candidate.path, this.hash);
+                verified = have.sha === sha && have.size === change.size;
+              } catch { /* A removed or changed candidate falls back to the server. */ }
+              if (verified) {
+                if (change.size <= this.budget.maxChunkBytes) {
+                  const bytes = await this.fs.read(candidate.path);
+                  if (bytes.length === change.size && await this.hash(bytes) === sha)
+                    return placeFrom(() => this.fs.openRead(candidate.path), bytes);
+                } else return placeFrom(() => this.fs.openRead(candidate.path));
+              }
+            }
             // Small pulls fit in one transfer chunk. Avoid a second journal, copy and file
             // read per note, while still verifying the network source outside the lease.
             if (change.size <= this.budget.maxChunkBytes) {
@@ -366,6 +449,8 @@ export function syncPlacementPlugin() {
           // A matching ledger hash does not prove that its local file still exists.
           // Populate even the fallback's cache before leasing either path.
           if (!fetched.has(sha)) {
+            const candidate = await this.localSource(sha, change.size, local);
+            if (candidate) local = new Map(local).set(sha, candidate);
             const bytes = await this.bytesOf(sha, fetched, local);
             if (!bytes) return false;
             fetched = new Map(fetched).set(sha, bytes);

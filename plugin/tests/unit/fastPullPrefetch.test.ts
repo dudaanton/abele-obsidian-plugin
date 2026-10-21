@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
-import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
+import { MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { Puller } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullRun.js'
 import { V2EngineClient } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
@@ -135,7 +135,7 @@ it('fetches verified small versions eight at a time without opening large versio
       },
     }
   })
-  const fs = { beginAtomicWrite() {}, reopenStage() {}, stat: async () => null }
+  const fs = Object.assign(new MemoryFileSystem(), { beginAtomicWrite() {}, reopenStage() {} })
   const puller = new Puller(
     { openVersion } as never,
     fs as never,
@@ -191,7 +191,7 @@ it.each(['corrupt', 'offline', 'aborted'] as const)(
     }
     const puller = new Puller(
       { openVersion } as never,
-      { beginAtomicWrite() {}, reopenStage() {} } as never,
+      Object.assign(new MemoryFileSystem(), { beginAtomicWrite() {}, reopenStage() {} }) as never,
       new MemoryStateStore(),
       { dirty: new Set(), filter: { excluded: () => false } } as never,
       {} as never
