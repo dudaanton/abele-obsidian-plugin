@@ -96,20 +96,27 @@ const probeLib = `(() => {
           scope.fullVaultAccess.value = full
           state.session.permissionMode.value = mode
           await wait(400)
+          await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
           const button = chatEl().querySelector('button.abele-chat-input__scope')
           const code = button.querySelector('.abele-chat-input__scope-mode')
           const r = button.getBoundingClientRect()
           const row = button.closest('.abele-chat-input__toolbar').getBoundingClientRect()
           await shoot('access-' + (phone ? 'phone-' : 'desktop-') + label)
           if (!phone && glyph) {
+            // The host distinguishes a mouse from touch after pointer movement.
+            for (let i = 0; i < 2; i++) document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }))
             require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-            button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
-            if (!(await until(() => [...document.querySelectorAll('.tooltip')].some((tip) => tip.textContent.includes(words)), 5000))) throw new Error('Access tooltip did not appear: ' + JSON.stringify({ button: button.outerHTML, tips: [...document.querySelectorAll('.tooltip')].map((tip) => tip.outerHTML), tooltip: require('obsidian').setTooltip.toString(), focused: document.hasFocus() }))
+            button.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
+            if (!(await until(() => [...document.querySelectorAll('.tooltip')].some((tip) => tip.textContent.includes(words)), 5000))) throw new Error('Access tooltip did not appear: ' + JSON.stringify({ button: button.outerHTML, tips: [...document.querySelectorAll('.tooltip')].map((tip) => tip.outerHTML),  focused: document.hasFocus() }))
             await shoot('access-tooltip-' + label)
             require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
+            button.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body }))
             await wait(200)
           }
-          results.push({ label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? require('obsidian').getIcon(glyph).getAttribute('class') : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
+          const left = button.closest('.abele-chat-input__toolbar-left').getBoundingClientRect()
+          const right = chatEl().querySelector('.abele-chat-input__toolbar-right').getBoundingClientRect()
+          const geometry = [button, code, button.querySelector('.abele-obsidian-icon__text')].filter(Boolean).map((el) => { const c = getComputedStyle(el); return { width: el.getBoundingClientRect().width, padding: c.padding, margin: c.margin, size: c.getPropertyValue('--icon-size'), xs: c.getPropertyValue('--icon-xs') } })
+          results.push({ oneRow: Math.abs((left.top + left.bottom - right.top - right.bottom) / 2) < 1, geometry, label, glyph: code?.querySelector('svg')?.getAttribute('class') ?? null, words: button.getAttribute('aria-label'), expectedWords: words, expectedGlyph: glyph ? 'svg-icon lucide-' + (glyph === 'pencil' ? 'edit-3' : glyph) : null, count: button.textContent.trim(), inside: r.left >= row.left && r.right <= row.right, nestedButtons: button.querySelectorAll('button').length, banner: !!chatEl().querySelector('.abele-chat-write-permission') })
         }
       } finally {
         scope.entries.value = original.entries
@@ -902,11 +909,17 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       setFocusEmulation(true)
       try {
         await step('open()')
-        const modes =
-          await step<Array<{ inside: boolean; nestedButtons: number; banner: boolean }>>(
-            'accessModes(true)'
-          )
+        const modes = await step<
+          Array<{
+            inside: boolean
+            nestedButtons: number
+            banner: boolean
+            oneRow: boolean
+            geometry: unknown
+          }>
+        >('accessModes(true)')
         for (const mode of modes) {
+          expect(mode.oneRow, JSON.stringify(mode)).toBe(true)
           expect(mode.inside).toBe(true)
           expect(mode.nestedButtons).toBe(0)
           expect(mode.banner).toBe(false)
