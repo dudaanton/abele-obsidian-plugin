@@ -38,6 +38,11 @@ export class TransferProgress {
   get stage(): string | undefined {
     return this.snapshot?.stage
   }
+  phase(stage: string): void {
+    if (!this.snapshot) return
+    this.snapshot.stage = stage
+    this.publish(true)
+  }
   add(path: string, size: number): void {
     this.paths.set(path, size)
     if (!this.snapshot) return
@@ -153,7 +158,7 @@ export class TransferProgress {
 export function transferText(one: TransferSnapshot, text: SyncText = englishSyncText): string {
   if (one.total === 0 && one.completed === 0)
     return text(one.totalKnown === false ? one.stage : 'Syncing')
-  if (one.total === undefined && one.completed === 0) return text(one.stage)
+  if (one.total === undefined && one.completed === 0 && !one.bytes) return text(one.stage)
   const folders = one.stage === 'Preparing folders'
   const total = one.total
   let result =

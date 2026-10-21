@@ -3048,6 +3048,7 @@ export const de = {
     'Eine Synchronisierungswiederherstellung ist erforderlich. Die Datei bleibt hier',
   'settings.sync.presentation.54272d517782b52a': 'Überprüfung des Vaults',
   'settings.sync.presentation.6a534e2d9b68ac18': 'Dateien vergleichen',
+  'settings.sync.presentation.committing': 'Änderungen bestätigen',
   'settings.sync.presentation.0b398fdee3be023a': 'Ordner vorbereiten',
   'settings.sync.presentation.f8cc26b4a73ec961': 'Empfangen von Dateien',
   'settings.sync.presentation.37b345555d7ea6c1': 'Herunterladen',

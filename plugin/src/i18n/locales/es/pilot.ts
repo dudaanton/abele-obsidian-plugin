@@ -3077,6 +3077,7 @@ export const es = {
     'Se requiere recuperación de sincronización. El archivo se queda aquí.',
   'settings.sync.presentation.54272d517782b52a': 'Comprobando la bóveda',
   'settings.sync.presentation.6a534e2d9b68ac18': 'Comparando archivos',
+  'settings.sync.presentation.committing': 'Confirmando cambios',
   'settings.sync.presentation.0b398fdee3be023a': 'Preparando carpetas',
   'settings.sync.presentation.f8cc26b4a73ec961': 'Recibir archivos',
   'settings.sync.presentation.37b345555d7ea6c1': 'Descargando',

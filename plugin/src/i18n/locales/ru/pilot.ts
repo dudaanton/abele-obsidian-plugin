@@ -3083,6 +3083,7 @@ export const ru = {
     'Требуется восстановление синхронизации. Файл останется здесь',
   'settings.sync.presentation.54272d517782b52a': 'Проверка хранилища',
   'settings.sync.presentation.6a534e2d9b68ac18': 'Сравнение файлов',
+  'settings.sync.presentation.committing': 'Фиксация изменений',
   'settings.sync.presentation.0b398fdee3be023a': 'Подготовка папок',
   'settings.sync.presentation.f8cc26b4a73ec961': 'Получение файлов',
   'settings.sync.presentation.37b345555d7ea6c1': 'Загрузка',

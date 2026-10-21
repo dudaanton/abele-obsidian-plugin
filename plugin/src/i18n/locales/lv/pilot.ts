@@ -3012,6 +3012,7 @@ export const lv = {
     'Nepieciešama sinhronizācijas atkopšana. Fails paliek šeit',
   'settings.sync.presentation.54272d517782b52a': 'Pārbauda velvi',
   'settings.sync.presentation.6a534e2d9b68ac18': 'Failu salīdzināšana',
+  'settings.sync.presentation.committing': 'Izmaiņu apstiprināšana',
   'settings.sync.presentation.0b398fdee3be023a': 'Mapju sagatavošana',
   'settings.sync.presentation.f8cc26b4a73ec961': 'Failu saņemšana',
   'settings.sync.presentation.37b345555d7ea6c1': 'Notiek lejupielāde',

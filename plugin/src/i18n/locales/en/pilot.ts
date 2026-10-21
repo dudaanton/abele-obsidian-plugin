@@ -2929,6 +2929,7 @@ export const en = {
   'settings.sync.presentation.4d77018e2e63b109': 'Sync recovery is required. The file stays here',
   'settings.sync.presentation.54272d517782b52a': 'Checking the vault',
   'settings.sync.presentation.6a534e2d9b68ac18': 'Comparing files',
+  'settings.sync.presentation.committing': 'Committing changes',
   'settings.sync.presentation.0b398fdee3be023a': 'Preparing folders',
   'settings.sync.presentation.f8cc26b4a73ec961': 'Receiving files',
   'settings.sync.presentation.37b345555d7ea6c1': 'Downloading',

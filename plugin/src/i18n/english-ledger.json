@@ -27428,5 +27428,15 @@
       "es",
       "de"
     ]
+  },
+  "settings.sync.presentation.committing": {
+    "englishHash": "72af20bc266c57ae335569c07a7f2946edf5888a9466a4bc479da400b6632869",
+    "context": "Sync transfer phase",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

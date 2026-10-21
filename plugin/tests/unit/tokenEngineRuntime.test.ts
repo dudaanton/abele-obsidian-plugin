@@ -1700,15 +1700,35 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
   }
 })
 
+it('logs confirmed downloads and aggregate phase boundaries through the runtime', async () => {
+  const wire = await server('Notes/sample.md', 'sample bytes')
+  const events: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    event: (line) => events.push(line),
+  })
+  try {
+    await one.runtime.sync()
+    expect(events.filter((line) => line === 'Downloaded Notes/sample.md')).toHaveLength(1)
+    expect(events).toContainEqual(expect.stringContaining('Downloading: started'))
+    expect(events).toContainEqual(expect.stringContaining('Downloading: ended'))
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it('replaces an empty server download with comparison, then real upload counts', async () => {
   const wire = await server('Notes/remote.md', 'remote')
   const send = wire.fetch.getMockImplementation()!
   let transfer: TransferSnapshot | undefined
   const duringUpload: (TransferSnapshot | undefined)[] = []
+  const duringCommit: (TransferSnapshot | undefined)[] = []
+  const duringHandshake: (TransferSnapshot | undefined)[] = []
   wire.fetch.mockImplementation(async (input, init) => {
     const route = new URL(String(input)).pathname
     if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
     if (route.startsWith('/v2/uploads/')) duringUpload.push(transfer)
+    if (route === '/v2/commit') duringCommit.push(transfer)
+    if (route === '/v2/connection') duringHandshake.push(transfer)
     return send(input, init)
   })
   const fs = new MemoryFileSystem()
@@ -1725,10 +1745,14 @@ it('replaces an empty server download with comparison, then real upload counts',
   try {
     await one.runtime.sync()
     expect(duringComparison.length).toBeGreaterThan(0)
+    expect(duringHandshake[0]?.stage).toBe('Checking the vault')
     expect(duringComparison).not.toContainEqual(expect.objectContaining({ stage: 'Downloading' }))
     expect(duringUpload.length).toBeGreaterThan(0)
     for (const value of duringUpload)
-      expect(value).toMatchObject({ stage: 'Uploading', total: 1, totalBytes: 5 })
+      expect(value).toMatchObject({ stage: 'Uploading', completed: 0, total: 1, totalBytes: 5 })
+    expect(duringCommit).toContainEqual(
+      expect.objectContaining({ stage: 'Committing changes', total: 1, bytes: 5 })
+    )
   } finally {
     await one.runtime.close()
   }

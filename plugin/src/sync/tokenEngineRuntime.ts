@@ -36,6 +36,7 @@ import {
   type PathMatcher,
 } from '@abele/sync-sdk/core'
 import { ExchangeTrace } from './exchangeTrace'
+import { SyncActivityLog, appliedActivity } from './activityLog'
 import { connectStage, connectionError } from './tokenUi'
 import {
   PathSchema,
@@ -258,8 +259,7 @@ export class TokenEngineRuntime
   private pulled(path: string): void {
     const received = this.receivedPaths.has(path)
     if (!received) this.progress.reused(path)
-    if (this.progress.done(path))
-      this.options.event?.((received ? 'Downloaded ' : 'Matched local file ') + path)
+    this.progress.done(path)
     if (this.pulling && this.pullPaths.has(path)) {
       this.pulledPaths.add(path)
       this.pullProgress()
@@ -293,9 +293,20 @@ export class TokenEngineRuntime
         return fetcher(input, { ...init, headers })
       }
     }
+    const activityLog = new SyncActivityLog(
+      (line) => options.event?.(line),
+      Date.now,
+      (work, delay) => {
+        const timer = window.setTimeout(work, delay)
+        return () => window.clearTimeout(timer)
+      }
+    )
     this.progress = new TransferProgress(
       (one) => {
-        if (!this.pendingFolders.size) options.progress?.(one)
+        if (!this.pendingFolders.size) {
+          activityLog.update(one)
+          options.progress?.(one)
+        }
       },
       Date.now,
       (work, delay) => {
@@ -305,7 +316,8 @@ export class TokenEngineRuntime
     )
     this.folderProgress = new TransferProgress(
       (one) => {
-        if (one) options.progress?.(one)
+        activityLog.update(one)
+        options.progress?.(one)
       },
       Date.now,
       (work, delay) => {
@@ -712,7 +724,7 @@ export class TokenEngineRuntime
       this.pulling = (await state.getCursor()) === 0
       this.folderProgress.clear()
       this.pendingFolders.clear()
-      this.progress.begin('Downloading')
+      this.progress.begin('Checking the vault', false)
       this.incomingNames.clear()
       this.receivedPaths.clear()
       this.uploadNames.clear()
@@ -858,12 +870,16 @@ export class TokenEngineRuntime
           return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
             await target.setJournal(journal)
             if (!journal) return
-            if (this.progress.stage !== 'Uploading') {
+            if (
+              this.progress.stage !== 'Uploading' &&
+              this.progress.stage !== 'Committing changes'
+            ) {
               this.progress.begin('Uploading')
               uploadOps.clear()
               uploadHashes.clear()
               pushTotal = Math.max(this.engine.status.pending, journal.ops.length)
             }
+            if (this.progress.stage === 'Committing changes') this.progress.phase('Uploading')
             for (const [index, op] of journal.ops.entries()) {
               const path =
                 'path' in op
@@ -1065,6 +1081,15 @@ export class TokenEngineRuntime
         (configurationPath(path, options.paths) && path !== options.ownSettingsPath),
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
+      onApplied: (change) => {
+        options.event?.(
+          change.origin === 'remote' &&
+            change.kind === 'upsert' &&
+            !this.receivedPaths.has(change.path)
+            ? 'Matched local file ' + change.path
+            : appliedActivity(change)
+        )
+      },
       onSync: (report) => {
         this.serverAvailable = true
         this.trace.finishPull(true)
@@ -1117,7 +1142,10 @@ export class TokenEngineRuntime
     this.unstatus = this.engine.onStatus((status) => {
       if (status.state === 'offline') this.serverAvailable = false
       if (status.state === 'syncing') this.trace.beginPullCycle()
-      if (status.state === 'syncing' && this.progress.stage === 'Uploading') {
+      if (
+        status.state === 'syncing' &&
+        (this.progress.stage === 'Uploading' || this.progress.stage === 'Committing changes')
+      ) {
         pushTotal = Math.max(pushTotal, status.pending)
         this.progress.counts(pushTotal - status.pending, pushTotal)
       }
@@ -1160,6 +1188,7 @@ export class TokenEngineRuntime
     const commit = this.client.commitRaw.bind(this.client)
     this.client.commitRaw = async (ops, key) => {
       let outcome: Awaited<ReturnType<typeof commit>>
+      this.progress.phase('Committing changes')
       try {
         outcome = await commit(ops, key)
       } catch (error) {
@@ -1176,11 +1205,7 @@ export class TokenEngineRuntime
           'path' in op ? op.path : 'to_path' in op ? op.to_path : await this.pathFor(op.file_id)
         if (path) {
           this.progress.current(path)
-          options.event?.(
-            result.status === 'rejected'
-              ? 'Not sent ' + path + ': ' + result.code
-              : 'Uploaded ' + path
-          )
+          if (result.status === 'rejected') options.event?.('Not sent ' + path + ': ' + result.code)
         }
       }
       this.actions.recordDeleteResults(this.client, ops, outcome.body.results)

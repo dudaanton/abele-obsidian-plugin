@@ -25,6 +25,57 @@ const captureSyncScreen: typeof captureScreen = async (...args) => {
 const fixture = liveSuite(false)
 liveCase(
   'syncDialogs',
+  'the existing activity log keeps thousands of lines and follows live actions on desktop and phone',
+  [85, 90],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      vault = a.vault(),
+      size = windowSize(vault)
+    const id = await s.connect()
+    try {
+      for (const width of [1200, 390]) {
+        await setWindowSize(vault, width, width === 1200 ? 900 : 844)
+        await reloadAs(vault, width < 500)
+        await a.waitIdle()
+        const evidence = a.run<{
+          retained: number
+          rendered: number
+          followed: boolean
+          keptPosition: boolean
+        }>(
+          `const id=${JSON.stringify(id)};for(let i=0;i<6000;i++)svc.recordEvent(id,'Uploaded Notes/sample-'+i+'.md');
+          const root=await openSyncTab();connectionRow(root,id).click();await poll(()=>inWindows('.abele-sync-window__events'));
+          const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');
+          await poll(()=>list.querySelectorAll('li').length===5000);body.scrollTop=body.scrollHeight;
+          svc.recordEvent(id,'Downloaded Notes/live.md');await poll(()=>list.lastElementChild?.textContent.includes('Notes/live.md'));
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          const followed=body.scrollHeight-body.scrollTop-body.clientHeight<5;
+          body.scrollTop=100;svc.recordEvent(id,'Deleted locally Notes/removed.md');await poll(()=>list.lastElementChild?.textContent.includes('Notes/removed.md'));
+          return {retained:svc.activity.value[id].events.length,rendered:list.querySelectorAll('li').length,followed,keptPosition:Math.abs(body.scrollTop-100)<5}`
+        )
+        expect(evidence).toEqual({
+          retained: 5000,
+          rendered: 5000,
+          followed: true,
+          keptPosition: true,
+        })
+        const shot = await captureSyncScreen(a, 'token-activity-' + width, '.abele-sync-window')
+        expect(shot.error).toBe('')
+        expect(shot.over).toEqual([])
+        expect(shot.clipped).toEqual([])
+        closeSyncScreens(a)
+      }
+    } finally {
+      closeSyncScreens(a)
+      await setWindowSize(vault, ...size)
+      await reloadAs(vault, false)
+    }
+  },
+  fixture
+)
+liveCase(
+  'syncDialogs',
   'native token connect errors sharing and connection rows fit desktop and phone widths',
   [2, 7, 11, 13, 14],
   async () => {

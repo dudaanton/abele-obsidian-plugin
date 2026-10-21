@@ -536,7 +536,7 @@ export class TokenUi {
       ...this.activity.value,
       [id]: {
         ...this.activity.value[id],
-        events: [...(this.activity.value[id]?.events ?? []), { at: Date.now(), text }].slice(-100),
+        events: [...(this.activity.value[id]?.events ?? []).slice(-4999), { at: Date.now(), text }],
       },
     }
   }
@@ -1094,12 +1094,7 @@ export class TokenUi {
       assertCurrent()
       storage.saveLocalStorage(slot, attempt)
     }
-    this.publish(id, {
-      events: [
-        ...(this.activity.value[id]?.events ?? []),
-        { at: Date.now(), text: t('streamC.eb5f15550a0803de') },
-      ],
-    })
+    this.recordEvent(id, t('streamC.eb5f15550a0803de'))
     assertCurrent()
     const finishing = Promise.resolve()
       .then(() => this.disconnect(id))

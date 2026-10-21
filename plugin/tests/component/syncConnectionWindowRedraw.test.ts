@@ -57,9 +57,27 @@ it('leaves the recent list alone when only progress moves', async () => {
     ui.recordEvent(id, 'Downloaded Notes/new.md')
     await vi.advanceTimersByTimeAsync(300)
     expect(renders.events).toBe(1)
-    expect(view.find('.abele-sync-window__events li').text()).toContain('Downloaded Notes/new.md')
+    expect(view.findAll('.abele-sync-window__events li').at(-1)?.text()).toContain(
+      'Downloaded Notes/new.md'
+    )
     // Only the new row's time is formatted; the rest keep theirs.
     expect(formatted).toHaveBeenCalledTimes(1)
+  } finally {
+    view.unmount()
+  }
+})
+
+it('retains only the latest timed actions after thirty thousand file events', async () => {
+  const { ui, id, view } = mountWindow()
+  try {
+    for (let i = 0; i < 30000; i++) ui.recordEvent(id, `Uploaded Notes/sample-${i}.md`)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const rows = view.findAll('.abele-sync-window__events li')
+    expect(ui.activity.value[id].events).toHaveLength(5000)
+    expect(rows).toHaveLength(5000)
+    expect(rows[0].text()).toContain('sample-25000.md')
+    expect(rows.at(-1)?.text()).toContain('sample-29999.md')
+    expect(view.findAll('.abele-sync-window__time')).toHaveLength(5000)
   } finally {
     view.unmount()
   }
