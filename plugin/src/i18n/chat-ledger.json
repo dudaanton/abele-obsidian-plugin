@@ -545,6 +545,18 @@
   "chat.letterAsked": {
     "englishHash": "fcb98b7b3bd70f52f325c144d83ba7ff91b20ff5b9931b1cf7003b1a4746d010"
   },
+  "chat.letterAuthority": {
+    "englishHash": "19a9c38879f0294e4accd4ecdf76591701ca73b20dc0f675299f189a04ef57b3"
+  },
+  "chat.letterAuthority.edit": {
+    "englishHash": "4aefb42d572212448f5e55ec88a51333b748ffc1faa2b0eb9fb095e640710cb8"
+  },
+  "chat.letterAuthority.files": {
+    "englishHash": "03334bd568c801e22190901dfa7be5898fbfc9c99259f0e82e7dc9706ed2ca1b"
+  },
+  "chat.letterAuthority.node": {
+    "englishHash": "41f034a767aa11fb7c7ea2df76fe6e9a13d94b8cafd6fb0d3e6fb7d7cb360896"
+  },
   "chat.letterSent": {
     "englishHash": "88d31592e552375cbaf7e3ea6a09657178fb79b3b21bea07c707410a5f4a5322"
   },
