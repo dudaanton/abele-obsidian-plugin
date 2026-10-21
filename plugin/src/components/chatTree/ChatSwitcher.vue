@@ -134,7 +134,7 @@ defineExpose({ open: () => (open.value = true) })
   }
 }
 .abele-chat-switch__where {
-  flex: 0 1 auto;
+  flex: 0 100 auto;
   min-width: 3ch;
   overflow: hidden;
   color: var(--text-muted);
