@@ -296,13 +296,27 @@ const probe = (label: string) => `(async () => {
     reopened.chatTitle.value = '2025-02-03 10-20 Plan a sample trip.'
     await until(() => current().querySelector('.abele-chat-switch__title')?.textContent === 'Plan a sample trip.')
     await shot('restored-chat-title')
+    const composer = root.querySelector('.abele-chat-input')
+    const editable = composer.querySelector('.cm-content, textarea')
+    const geometry = () => ({ height: composer.getBoundingClientRect().height, focused: composer.contains(document.activeElement), keyboard: root.classList.contains('abele-keyboard-open'), editor: composer.querySelector('.abele-chat-input__field').getBoundingClientRect().height, toolbar: composer.querySelector('.abele-chat-input__toolbar').getBoundingClientRect().height, parts: [...composer.querySelectorAll('.markdown-source-view, .cm-editor, .cm-scroller, .cm-sizer, .cm-content')].map(el => { const css = getComputedStyle(el); return { cls: el.className, height: el.getBoundingClientRect().height, minHeight: css.minHeight, padding: css.padding, inline: el.getAttribute('style') } }) })
+    editable.focus(); await wait(200)
+    const focusedComposer = geometry()
+    await shot('empty-composer-focused')
+    document.activeElement.blur(); await wait(200)
+    const blurredComposer = geometry()
+    await shot('empty-composer-blurred')
     reopened.handleAgentEvent({type:'stream_event',event:{type:'error',error:'HTTP 503: {"error":"Sample unavailable service"}'}})
     reopened.retrying.value = { attempt: 1, of: 2, secondsLeft: 3 }
     await until(() => root.querySelector('[role="alert"]')?.textContent.includes('The model provider is temporarily unavailable'))
     if (root.querySelector('[role="alert"]').textContent.includes('Sample unavailable service')) throw Error('Raw provider response is visible')
     await shot('provider-unavailable-retrying')
+    if(!root.querySelector('.abele-ai-chat__error-dot_retrying'))throw Error('Retrying provider has a failure indicator')
+    reopened.retrying.value = null
+    await wait(100)
+    await shot('provider-unavailable-exhausted')
+    if(root.querySelector('.abele-ai-chat__error-dot_retrying'))throw Error('Exhausted provider still has a waiting indicator')
     reopened.error.value = null; reopened.errorPresentation.value = null; reopened.retrying.value = null
-    return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
+    return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
     for (const id of created) {
@@ -371,7 +385,8 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 28 : 29)
+    expect(result.pictures).toBe(onPhone() ? 31 : 32)
+    console.log('Sample composer geometry', JSON.stringify(result.composer))
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)
@@ -386,6 +401,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
       )
       expect(result.overflow).toBeLessThanOrEqual(1)
       expect(result.width).toBeLessThanOrEqual(390)
+      console.log('Sample phone composer geometry', JSON.stringify(result.composer))
     },
     180_000
   )

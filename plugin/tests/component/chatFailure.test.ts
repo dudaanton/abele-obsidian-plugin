@@ -14,6 +14,30 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'ensureInitialized').mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
+it('uses a waiting indicator until automatic retries finish', async () => {
+  const retrying = ref<{ secondsLeft: number; attempt: number; of: number } | null>({
+    secondsLeft: 3,
+    attempt: 1,
+    of: 2,
+  })
+  const session = fakeChatSession({ overrides: { error: ref('Service unavailable'), retrying } })
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: session,
+  } as never)
+  const wrapper = mount(AiChat)
+  try {
+    expect(wrapper.get('.abele-ai-chat__error-dot').classes()).toContain(
+      'abele-ai-chat__error-dot_retrying'
+    )
+    retrying.value = null
+    await flushPromises()
+    expect(wrapper.get('.abele-ai-chat__error-dot').classes()).not.toContain(
+      'abele-ai-chat__error-dot_retrying'
+    )
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('presents one retry error and acknowledges failures only when the chat is presented', async () => {
   const seen = vi.fn().mockResolvedValue(undefined)
   const session = fakeChatSession({

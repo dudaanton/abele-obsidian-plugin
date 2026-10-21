@@ -94,6 +94,11 @@ const KIND_WORDS = {
 export type RunState = 'running' | 'waiting' | 'failed' | 'done'
 
 export function callState(call: ChatMessage): RunState {
+  if (
+    call.toolExecution === 'interrupted' ||
+    (call.toolExecution === 'not-run' && call.toolResult === undefined)
+  )
+    return 'done'
   if (call.toolStatus === 'rejected' || call.subAgentRun?.status === 'error') return 'failed'
   if (call.toolStatus === 'pending') return 'waiting'
   if (call.toolStatus === 'approved' && call.toolResult === undefined) return 'running'

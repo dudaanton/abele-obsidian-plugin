@@ -326,7 +326,11 @@
         <!-- Error -->
         <RequestCard v-if="error" class="abele-ai-chat__error" role="alert">
           <div class="abele-ai-chat__error-line">
-            <span class="abele-ai-chat__error-dot" aria-hidden="true" />
+            <span
+              class="abele-ai-chat__error-dot"
+              :class="{ 'abele-ai-chat__error-dot_retrying': retrying }"
+              aria-hidden="true"
+            />
             <span class="abele-ai-chat__error-text">{{ presentUiError(error) }}</span>
             <span
               v-if="retrying"
@@ -2766,6 +2770,10 @@ body:not(.is-mobile) .abele-ai-chat__queued-item:not(:hover):not(:focus-within) 
   margin-block: calc((1lh - var(--size-4-2)) / 2);
   border-radius: 50%;
   background-color: var(--color-red);
+
+  &_retrying {
+    background-color: var(--color-orange);
+  }
 }
 
 .abele-ai-chat__error-text {

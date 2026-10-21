@@ -13,6 +13,19 @@ it('uses human names for short vault tool identifiers', () => {
 })
 
 let n = 0
+it('keeps stopped calls neutral while real failures remain failed', () => {
+  expect(runState([call('read', { toolStatus: 'rejected', toolExecution: 'interrupted' })])).toBe(
+    'done'
+  )
+  expect(
+    runState([
+      call('edit', { toolStatus: 'rejected', toolExecution: 'not-run', toolResult: undefined }),
+    ])
+  ).toBe('done')
+  expect(runState([call('read', { toolStatus: 'rejected', toolResult: 'Read failed' })])).toBe(
+    'failed'
+  )
+})
 it('recognizes saved default denials from before execution markers were recorded', () => {
   expect(
     runSummary([call('mv', { toolStatus: 'rejected', toolResult: 'User rejected this action' })])

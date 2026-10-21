@@ -42,6 +42,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           await until(()=>root().querySelector('.abele-session-settings')?.getAttribute('aria-label')?.includes('GPT-9.7'));
           if(root().querySelector('.abele-session-settings__model')?.textContent==='gpt-9.7-sol')throw Error('Raw model id replaced its display family');
           await shot('node-chat-model-label');
+          if(app.isMobile&&root().querySelector('.abele-ai-chat__header .abele-drawer-switch.is-shown'))throw Error('Phone drawer switch precedes the chat title');
           p.control.state.value.settings.model = priorModel;
           const scope={run_id:'sample-process',runtime_generation:1};
           const input=(id,text)=>append('input.accepted',{input_id:id,text});
@@ -93,6 +94,12 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           append('run.interrupted',{run_id:'sample-cancel-run'});await publish();
           if(root().textContent.includes('User rejected this action')||root().textContent.includes('Denied:'))throw Error('Stop was shown as an owner denial');
           scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-approval-cancelled');
+          for(const row of root().querySelectorAll('.abele-chat-run')) {
+            if(!/^(Interrupted|Not run):/.test(row.querySelector('.abele-tree-item__text')?.textContent||''))continue;
+            if(row.querySelector('.abele-chat-run__dot_failed'))throw Error('Stopped call has a failure dot');
+            const codes=row.querySelector('.abele-chat-run__codes').getBoundingClientRect(),line=row.querySelector('.tree-item-self').getBoundingClientRect();
+            if(line.right-codes.right>16)throw Error('Stopped call codes are not at the row end');
+          }
           append('pi.tool.call',{run_id:'sample-close-run',tool_use_id:'sample-close-create',name:'create',input:{path:'sample-close.txt'}});
           append('prompt.resolved',{...prompt,prompt_id:'sample-close-prompt',run_id:'sample-close-run',tool_use_id:'sample-close-create',tool_name:'create',title:'Create sample-close.txt',input:{path:'sample-close.txt'},state:'resolved',choice:'deny',installation_id:null});
           append('pi.tool.result',{run_id:'sample-close-run',tool_use_id:'sample-close-create',is_error:true,result:'Node denied, expired or lost this exact approval'});

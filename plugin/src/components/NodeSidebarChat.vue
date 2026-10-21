@@ -10,7 +10,7 @@
     @start-with="startWith"
   >
     <template #lead
-      ><DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')"
+      ><DrawerViewSwitch v-if="!phone" icon="bot" :name="t('streamB.abeleAiChat.08f891')"
     /></template>
     <template #navigation
       ><ChatSwitcher :title="presenter.label.value" :location="nodeLabel"
@@ -21,6 +21,7 @@
 <script setup lang="ts">
 import { nodeErrorNotice } from '@/node/errorNotice'
 import { t } from '@/i18n'
+import { Platform } from 'obsidian'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
 import NodeChatView from './NodeChatView.vue'
@@ -34,6 +35,7 @@ import type { AgentChoice } from '@/node/providers'
 
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
+const phone = Platform.isPhone
 const nodeLabel = computed(() => {
   try {
     return (

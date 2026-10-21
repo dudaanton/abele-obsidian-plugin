@@ -1,8 +1,9 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { Menu, MarkdownRenderer } from 'obsidian'
+import { Menu, MarkdownRenderer, Platform } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
+import NodeSidebarChat from '@/components/NodeSidebarChat.vue'
 import NodeMessageTree from '@/components/NodeMessageTree.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import ChatToolRun from '@/components/ChatToolRun.vue'
@@ -37,6 +38,22 @@ const presenter = () => ({
   cancelInput: vi.fn(),
   interrupt: vi.fn(),
   openResource: vi.fn(),
+})
+it('keeps the phone drawer switch out of the node chat title row', () => {
+  useVault([])
+  const prior = Platform.isPhone
+  ;(Platform as { isPhone: boolean }).isPhone = true
+  const wrapper = mount(NodeSidebarChat, {
+    props: { presenter: presenter() as never },
+    global: { stubs: { DrawerViewSwitch: { template: '<div class="abele-drawer-switch" />' } } },
+  })
+  try {
+    expect(wrapper.find('.abele-ai-chat__header .abele-drawer-switch').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-input__toolbar .abele-node-chat__agent').exists()).toBe(true)
+  } finally {
+    wrapper.unmount()
+    ;(Platform as { isPhone: boolean }).isPhone = prior
+  }
 })
 it('keeps the agent glyph accessible in the composer when navigation occupies the header', () => {
   useVault([])

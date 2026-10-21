@@ -133,8 +133,8 @@ watchEffect(
 
 <style lang="scss">
 // A run sits in the chat as a quiet line, level with the messages' text. The line is as wide
-// as its words, so on a wide pane its state dot and its hover stay beside what they belong to;
-// the counts are in the words already («Searched 3 · Read»).
+// as its words unless file links need the row's room; their codes stay at the row's end.
+// The counts are in the words already («Searched 3 · Read»).
 .abele-chat-run > .tree-item-self {
   width: fit-content;
   max-width: 100%;
@@ -149,6 +149,7 @@ watchEffect(
   animation: abele-chat-run-spin 1.2s linear infinite;
 }
 .abele-chat-run_inline-file > .tree-item-self {
+  width: 100%;
   flex-wrap: wrap;
   row-gap: var(--size-2-1);
 
@@ -158,13 +159,14 @@ watchEffect(
   .tree-item-flair-outer,
   .abele-tree-item__end {
     min-width: 0;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
   }
   .abele-tree-item__text {
     white-space: nowrap;
   }
   .abele-chat-run__codes {
     flex-shrink: 0;
+    margin-inline-start: auto;
   }
   .tree-item-flair-outer {
     max-width: 100%;
