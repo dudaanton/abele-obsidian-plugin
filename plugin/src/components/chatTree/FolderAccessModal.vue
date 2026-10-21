@@ -2,16 +2,15 @@
   <!-- A folder's access: the same tools tree as a chat's, for every chat in the folder. It only
        adds: what the default gives is the least each tool can be. -->
   <ObsidianModal :title="name" size="tall" modal-class="abele-folder-access" @close="emit('close')">
-    <p class="abele-folder-access__about setting-item-description">
-      {{ t('chatTree.accessHint') }}
-    </p>
     <AiNodeScopeEditor v-if="nodeScopeOwner" :session="nodeScopeOwner" folder />
-    <ChatToolModes
-      :tool-modes="modes"
-      :floor="floor"
-      :autofocus="!nodeScopeOwner"
-      @update-many="(m) => emit('update', m)"
-    />
+    <Section :title="t('chat.tools')" :tooltip="t('chatTree.accessHint')">
+      <ChatToolModes
+        :tool-modes="modes"
+        :floor="floor"
+        :autofocus="!nodeScopeOwner"
+        @update-many="(m) => emit('update', m)"
+      />
+    </Section>
   </ObsidianModal>
 </template>
 
@@ -22,6 +21,7 @@ import { withFolderAccess } from '@/chats/chatTree'
 import ObsidianModal from '../obsidian/Modal.vue'
 import ChatToolModes from '../ChatToolModes.vue'
 import AiNodeScopeEditor from '../AiNodeScopeEditor.vue'
+import Section from '../obsidian/Section.vue'
 import type { NodeScopeOwner } from '@/ai/tools/node/owner'
 import type { ToolMode } from '@/ai/types'
 

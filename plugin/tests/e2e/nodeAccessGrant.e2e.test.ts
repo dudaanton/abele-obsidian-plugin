@@ -1,16 +1,14 @@
 import { expect, it } from 'vitest'
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
 import { evalRaw } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { withNode } from './helpers/nodeAccessFixture'
 
 // The node daemon runs beside the app under test, so the phone is its emulated layout here.
 targets('desktop')
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shots = shotDir('abele-node-access')
 const NODE_TOOLS = [
   'node_nodes',
@@ -57,71 +55,6 @@ const chatTurn = (path: string, steps: string) => `(async()=>{
   }finally{window.fetch=realFetch}
   return JSON.stringify(out)
 })()`
-
-/** A git folder on a node the app is connected to, and nothing in this vault that reaches it. */
-async function withNode(
-  work: (node: { port: number; token: string; repo: string }) => Promise<void>
-) {
-  const cli = process.env.ABELE_NODE_CLI
-  if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
-  mkdirSync('../.scratch', { recursive: true })
-  const dir = realpathSync(mkdtempSync(resolve('../.scratch/node-access-'))),
-    repo = resolve(dir, 'sample-app'),
-    state = resolve(dir, 'state')
-  mkdirSync(repo)
-  writeFileSync(resolve(repo, 'sample.txt'), 'first line\nsecond line\n')
-  const git = (...args: string[]) => {
-    const r = spawnSync('/usr/bin/git', args, { cwd: repo, encoding: 'utf8' })
-    if (r.status) throw Error(r.stderr)
-  }
-  git('init', '-b', 'main')
-  git('add', '.')
-  git(
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    '-c',
-    'commit.gpgsign=false',
-    'commit',
-    '-m',
-    'fixture'
-  )
-  const fake = resolve('tests/fixtures/nodeClaude.mjs')
-  const token = spawnSync(
-    process.execPath,
-    [cli, 'token', 'create', 'fixture', '--state-dir', state, '--claude-path', fake, '--json'],
-    { encoding: 'utf8' }
-  )
-  expect(token.status, token.stderr).toBe(0)
-  let child: ChildProcess | undefined
-  try {
-    child = spawn(
-      process.execPath,
-      [cli, 'start', '--state-dir', state, '--port', '0', '--claude-path', fake, '--json'],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
-    )
-    let output = '',
-      errors = ''
-    child.stdout!.on('data', (b) => (output += b))
-    child.stderr!.on('data', (b) => (errors += b))
-    for (let i = 0; !output.includes('"listening"'); i++) {
-      if (i > 500 || child.exitCode !== null) throw Error(errors || 'Daemon startup deadline')
-      await wait(20)
-    }
-    const { port } = JSON.parse(output.split('\n').find((l) => l.includes('"listening"'))!) as {
-      port: number
-    }
-    await work({ port, token: (JSON.parse(token.stdout) as { token: string }).token, repo })
-  } finally {
-    if (child && child.exitCode === null && child.signalCode === null) {
-      const stopped = new Promise<void>((r) => child!.once('exit', () => r()))
-      child.kill('SIGTERM')
-      await stopped
-    }
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
 
 /**
  * The whole way from a refusal to a working call, as the person goes it: the agent is refused,
@@ -188,12 +121,12 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         `(async()=>{${prelude}
         const line=[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].find(el=>el.getBoundingClientRect().width>0);
         button(line,'Give this chat access').click();
-        const add=await until(()=>visible('.abele-node-scope-editor__add'),'node access opened');
-        const editor=add.closest('.abele-node-scope-editor');
-        try{await until(()=>[...editor.querySelectorAll('select')].some(s=>s.value===${JSON.stringify(setup.worktree)}),'place chosen')}catch(e){throw Error(e.message+' '+JSON.stringify({want:${JSON.stringify(setup.worktree)},selects:[...editor.querySelectorAll('select')].map(s=>({value:s.value,options:[...s.options].map(o=>o.value+'='+o.textContent)})),text:editor.textContent.slice(0,400)}))}
-        const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
-        if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);if(!shown.includes('sample-app')||!shown.includes('main · sample-app'))throw Error('Folder and worktree are not named as the node panel names them: '+shown);
-        if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
+        const add=await until(()=>visible('.abele-node-scope-editor__add:not(:disabled)'),'node access opened');
+        await wait(300);
+        add.click();
+        const selected=await until(()=>[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main')),'refused place offered');
+        const shown=selected.textContent;
+        if(shown.includes('refs/heads/'))throw Error('Branch is shown as a full ref: '+shown);
         return JSON.stringify(shown)
       })()`
       )
@@ -203,14 +136,16 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         `(async()=>{${prelude}
         const add=visible('.abele-node-scope-editor__add'),editor=add.closest('.abele-node-scope-editor');
         await wait(400);const body=add.closest('.abele-chat-setup__body'),box=body.getBoundingClientRect(),inner={left:box.left+body.clientLeft,right:box.left+body.clientLeft+body.clientWidth,top:box.top,bottom:box.top+body.clientHeight};
-        for(const el of [add,...editor.querySelectorAll('select.abele-obsidian-dropdown__base')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
+        for(const el of [add]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
         const a=add.getBoundingClientRect();if(a.top<inner.top||a.bottom>inner.bottom)throw Error('Add access is not in view when the place lands: '+JSON.stringify({a,inner}));
         return JSON.stringify('in view')
       })()`
       )
       evalAsync(
         `(async()=>{${prelude}
-        visible('.abele-node-scope-editor__add').click();
+        const chosen=[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main'));
+        if(!chosen)throw Error('Refused place is missing from the add menu');
+        chosen.click();
         const session=chats.getSessionByFile(${JSON.stringify(chat)});
         await until(()=>session.overrides.value.nodeScope?.length===1,'access added');
         const modal=document.querySelector('.abele-chat-setup').closest('.modal');const close=[...modal.querySelectorAll('.modal-close-button,.modal-header-button')].find(b=>b.getBoundingClientRect().width>0);if(close)close.click();else modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));

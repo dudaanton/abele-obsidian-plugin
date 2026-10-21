@@ -51,6 +51,13 @@ export const chat = {
   'chatTree.additive': 'Adds to the default, never takes away',
   'chatTree.folderNodeApprovalHint':
     'Confirm this folder’s node access on this device for every chat in it, including nested folders.',
+  'chatTree.nodeDisconnected': 'Not connected on this device. Connect it from the Node panel.',
+  'chatTree.nodeApprovalTip':
+    'Approve on this device. Settings that came by sync or transfer don’t grant access by themselves.',
+  'chatTree.inheritedNodeModeTip': 'From the folder {name}. Change it in the folder’s access.',
+  'chatTree.connectNode': 'Connect a node from the Node panel',
+  'chatTree.addNode': 'Add node access',
+  'chatTree.nodesHeadingTip': 'Node file access is separate from vault access.',
   'chatTree.accessHint': 'Every chat in this folder gets these on top of the default.',
   'chatTree.more': '{name}: more',
   'chatTree.newInFolder': 'New chat in {name}',

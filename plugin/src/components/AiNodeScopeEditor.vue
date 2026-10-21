@@ -1,12 +1,39 @@
 <template>
-  <div ref="root" class="abele-node-scope-editor">
-    <Setting
-      class="abele-node-scope-editor__head"
-      :name="t('streamB.nodeAccess.bc448d')"
-      :desc="t('streamB.separateFromVaultAccessAWholeNode.da122f')"
-    >
-      <Icon icon="refresh-cw" :tooltip="t('streamB.refreshNodes.d0c8aa')" @click="loadNodes" />
-    </Setting>
+  <Section
+    class="abele-node-scope-editor"
+    :title="t('streamB.nodes.7ac362')"
+    :tooltip="
+      [t('chatTree.nodesHeadingTip'), folder ? t('chatTree.accessHint') : '']
+        .filter(Boolean)
+        .join(' ')
+    "
+  >
+    <template #lead
+      ><StatusDot v-if="needsApproval" tone="orange" :label="t('chatTree.nodeApprovalTip')"
+    /></template>
+    <template #actions>
+      <Icon
+        class="abele-node-scope-editor__add"
+        icon="plus"
+        :disabled="busy || loading || preparing"
+        :tooltip="t('chatTree.addNode')"
+        @click="addMenu"
+      />
+      <Icon
+        icon="refresh-cw"
+        :disabled="busy"
+        :tooltip="t('streamB.refreshNodes.d0c8aa')"
+        @click="loadNodes"
+      />
+      <Icon
+        v-if="needsApproval"
+        class="abele-node-scope-editor__approve"
+        icon="shield-check"
+        :disabled="busy"
+        :tooltip="t('chatTree.nodeApprovalTip')"
+        @click="approve"
+      />
+    </template>
     <EmptyState v-if="loading" variant="loading" :text="t('streamB.loadingNodeFolders.1fb024')" />
     <EmptyState v-if="error" variant="error" :text="error" />
     <EmptyState
@@ -18,7 +45,6 @@
         ><Button :text="t('streamB.clearNodeAccess.cf2e5c')" @click="clear"
       /></template>
     </EmptyState>
-    <!-- What this chat may reach on its nodes, as the vault's places above it. -->
     <div class="abele-scope-mgr__entries" role="list" :aria-label="t('streamB.nodeAccess.bc448d')">
       <div
         v-for="entry in entries"
@@ -26,104 +52,68 @@
         class="abele-scope-mgr__entry"
         role="listitem"
       >
-        <Icon :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'" />
+        <Icon
+          :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'"
+          :interactive="!inheritedFrom(entry)"
+          :tooltip="
+            entry.kind === 'node'
+              ? t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')
+              : label(entry)
+          "
+          @click="(event) => locationMenu(entry, event)"
+        />
         <span class="abele-scope-mgr__entry-path"
           >{{ label(entry) }}
           <span
             v-if="inheritedFrom(entry)"
             class="abele-scope-mgr__entry-type abele-node-scope-editor__source"
+            >{{ t('chatTree.fromFolder', { name: inheritedFrom(entry) }) }}</span
           >
-            {{ t('chatTree.fromFolder', { name: inheritedFrom(entry) }) }}
-          </span>
         </span>
-        <span class="abele-scope-mgr__entry-type">
-          {{ entry.access === 'edit' ? t('streamB.readAndEdit.4067e8') : t('streamB.read.331634') }}
-        </span>
+        <StatusDot
+          v-if="!states[nodeScopeKey(entry)]?.connected"
+          tone="faint"
+          :label="t('chatTree.nodeDisconnected')"
+        />
+        <Icon
+          class="abele-node-scope-editor__mode"
+          :icon="entry.access === 'edit' ? 'pencil' : 'eye'"
+          :interactive="!inheritedFrom(entry)"
+          :tooltip="
+            inheritedFrom(entry)
+              ? t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })
+              : entry.access === 'edit'
+                ? t('streamB.readAndEdit.4067e8')
+                : t('streamB.read.331634')
+          "
+          @click="(event) => modeMenu(entry, event)"
+        />
         <Icon
           v-if="inheritedFrom(entry)"
+          class="abele-node-scope-editor__folder"
           icon="folder"
-          :interactive="false"
-          :tooltip="t('chatTree.fromFolder', { name: inheritedFrom(entry) })"
+          :tooltip="t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })"
+          @click="openFolder(entry)"
         />
         <Icon
           v-else
           class="abele-scope-mgr__entry-remove"
           icon="x"
+          :disabled="busy"
           :tooltip="t('streamB.removeFromChatAccess.f736f6', { v0: String(label(entry)) })"
           @click="remove(entry)"
         />
       </div>
       <EmptyState
-        v-if="!entries.length && !loading && nodes.length"
-        :text="t('streamB.noNodeAccessYet.e2bac7')"
+        v-if="!entries.length && !nodes.length && !loading"
+        :text="t('streamB.noNodesConnectedHereConnectOneFrom.a6484f')"
       />
     </div>
-    <template v-if="nodes.length">
-      <Setting :name="t('streamB.node.e93372')">
-        <Dropdown :model-value="node" :options="nodeOptions" @update:model-value="chooseNode" />
-      </Setting>
-      <Setting
-        v-if="node"
-        :name="t('streamB.folder.74ccd4')"
-        :desc="t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')"
-      >
-        <Dropdown
-          :model-value="project"
-          :options="projectOptions"
-          @update:model-value="chooseProject"
-        />
-      </Setting>
-      <Setting
-        v-if="project"
-        :name="t('streamB.worktree.c893ba')"
-        :desc="t('streamB.wholeFolderIncludesItsValidWorktreesChoosing.172ffc')"
-      >
-        <Dropdown
-          :model-value="target"
-          :options="targetOptions"
-          @update:model-value="target = $event"
-        />
-      </Setting>
-      <Setting
-        v-if="node"
-        :name="t('streamB.access.ec5ba0')"
-        :desc="t('streamB.editPermitsFileChangesWhetherTheyAsk.f54437')"
-      >
-        <Dropdown
-          :model-value="access"
-          :options="accessOptions"
-          @update:model-value="access = $event as 'read' | 'edit'"
-        />
-        <Button
-          class="abele-node-scope-editor__add"
-          :text="t('streamB.addAccess.94a120')"
-          :accent="wanted"
-          :disabled="busy || loading"
-          @click="add"
-        />
-      </Setting>
-    </template>
-    <EmptyState
-      v-else-if="!loading"
-      :text="t('streamB.noNodesConnectedHereConnectOneFrom.a6484f')"
-    />
-    <Setting
-      v-if="entries.length"
-      :name="t('streamB.localApproval.1982d9')"
-      :desc="
-        folder
-          ? t('chatTree.folderNodeApprovalHint')
-          : t('streamB.confirmThisChatSConfiguredAccessOn.df414a')
-      "
-    >
-      <Button :text="t('streamB.approveOnThisDevice.e68f82')" :disabled="busy" @click="approve" />
-    </Setting>
-  </div>
+  </Section>
 </template>
-
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import {
   nodeScopeNames,
   nodeScopeTitle,
@@ -133,11 +123,13 @@ import {
 } from '@/ai/tools/node/scopeNames'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
 import type { NodeScopeOwner } from '@/ai/tools/node/owner'
+import { Menu } from 'obsidian'
+import { useChatTreeSource } from '@/chats/chatTree'
+import type { NodeAgentHost } from '@/ai/tools/node/agent'
 import { delegationBranchLabel } from '@/node/delegation'
 import {
   NodeScopeEntriesSchema,
   nodeScopeKey,
-  nodeTargetId,
   type NodeScopeEntry,
   type NodeChatTarget,
 } from '@/ai/nodeScope'
@@ -148,8 +140,8 @@ import {
   removeObsidianChatNodeAccess,
   approveObsidianChatNodeAccess,
 } from '@/ai/tools/node/owner'
-import Setting from './obsidian/Setting.vue'
-import Dropdown from './obsidian/Dropdown.vue'
+import Section from './obsidian/Section.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import EmptyState from './obsidian/EmptyState.vue'
@@ -173,37 +165,20 @@ const entries = computed(() => [
 const nodes = ref<{ id: string; label: string; node_id?: string }[]>([])
 const projects = ref<{ id: string; label: string; git: boolean }[]>([])
 const targets = ref<{ value: string; display: string; identity: NodeChatTarget }[]>([])
-const node = ref(''),
-  project = ref(''),
-  target = ref(''),
-  access = ref<'read' | 'edit'>('edit')
+const node = ref('')
 /** The form holds the place a refused call wanted. */
-const wanted = ref(false)
-const root = ref<HTMLElement>()
+const wanted = ref<NodeScopeEntry>()
+const preparing = ref(!!pendingNodeAccess.value)
+const tree = useChatTreeSource()
+const host = shallowRef<NodeAgentHost>()
+const states = ref<Record<string, { connected: boolean; approved: boolean }>>({})
+const needsApproval = computed(() =>
+  entries.value.some((entry) => !states.value[nodeScopeKey(entry)]?.approved)
+)
 const loading = ref(false),
   busy = ref(false),
   error = ref('')
 let generation = 0
-const nodeOptions = computed(() => [
-  { value: '', display: t('streamB.chooseANode.8e9aff') },
-  ...nodes.value.map((entry) => ({ value: entry.id, display: entry.label })),
-])
-const projectOptions = computed(() => {
-  // By name, as the node panel says a folder; its `~` path only where two share a name.
-  const labels = folderLabels(projects.value.map((entry) => entry.label))
-  return [
-    { value: '', display: t('streamB.wholeNode.7eee73') },
-    ...projects.value.map((entry, i) => ({ value: entry.id, display: labels[i] })),
-  ]
-})
-const targetOptions = computed(() => [
-  { value: '', display: t('streamB.wholeFolder.b38f07') },
-  ...targets.value,
-])
-const accessOptions = [
-  { value: 'read', display: t('streamB.read.9b9a8d') },
-  { value: 'edit', display: t('streamB.readAndEdit.03b53d') },
-]
 /** Each entry by its names — node, folder, branch — looked up from the node, never its ids. */
 const names = ref<Record<string, NodeScopeNames>>({})
 watch(
@@ -218,20 +193,25 @@ watch(
 )
 function label(entry: NodeScopeEntry) {
   const n = names.value[nodeScopeKey(entry)]
-  if (!n) return entry.node_id
+  if (!n) {
+    const known = nodes.value.find(
+      (node) => node.id === entry.node_id || node.node_id === entry.node_id
+    )
+    return known?.label ?? entry.node_id
+  }
   return n.folder ? `${n.node} / ${nodeScopeTitle(n)}` : n.node
 }
 async function loadNodes() {
   try {
-    nodes.value = (await nodeAgentHost()).nodes()
+    host.value = await nodeAgentHost()
+    nodes.value = host.value.nodes()
+    refreshStatus()
   } catch (failure) {
     error.value = failure instanceof Error ? failure.message : t('streamB.couldNotLoadNodes.260985')
   }
 }
 async function chooseNode(value: string) {
   node.value = value
-  project.value = ''
-  target.value = ''
   projects.value = []
   targets.value = []
   const version = ++generation
@@ -269,8 +249,6 @@ async function chooseNode(value: string) {
   }
 }
 async function chooseProject(value: string) {
-  project.value = value
-  target.value = ''
   targets.value = []
   const version = ++generation,
     nodeId = node.value
@@ -336,24 +314,160 @@ async function perform(work: () => Promise<void>) {
       failure instanceof Error ? failure.message : t('streamB.couldNotSaveNodeScope.b43acb')
   } finally {
     busy.value = false
+    refreshStatus()
   }
 }
-function add() {
-  const selected = targets.value.find((entry) => entry.value === target.value)
-  if (!node.value || (target.value && !selected)) return
-  const entry: NodeScopeEntry = !project.value
-    ? { kind: 'node', node_id: node.value, access: access.value }
-    : selected
-      ? {
-          kind: 'target',
-          node_id: node.value,
-          project_id: project.value,
-          target: selected.identity,
-          access: access.value,
-        }
-      : { kind: 'project', node_id: node.value, project_id: project.value, access: access.value }
-  const chat = props.session
-  void perform(() => giveObsidianChatAccess(chat, entry))
+function refreshStatus() {
+  const current = host.value
+  if (!current) return
+  states.value = Object.fromEntries(
+    entries.value.map((entry) => {
+      try {
+        const connection = current.connection(entry.node_id, props.session)
+        return [
+          nodeScopeKey(entry),
+          {
+            connected: connection.client.connected,
+            approved: current.ledger
+              .approvedEntries(props.session, entry.node_id, connection.principal())
+              .some((value) => nodeScopeKey(value) === nodeScopeKey(entry)),
+          },
+        ]
+      } catch {
+        return [nodeScopeKey(entry), { connected: false, approved: false }]
+      }
+    })
+  )
+}
+watch(entries, refreshStatus)
+function openFolder(entry: NodeScopeEntry) {
+  const folder = inheritedFrom(entry)
+  if (folder) tree.value?.folderAccess(folder)
+}
+function give(entry: NodeScopeEntry) {
+  void perform(() => giveObsidianChatAccess(props.session, entry))
+}
+function addMenu(event: MouseEvent) {
+  const menu = new Menu()
+  if (wanted.value) {
+    const entry = { ...wanted.value }
+    menu.addItem((item) =>
+      item
+        .setTitle(label(entry))
+        .setIcon('folder-plus')
+        .onClick(() => give(entry))
+    )
+    menu.addSeparator()
+  }
+  if (!nodes.value.length)
+    menu.addItem((item) => item.setTitle(t('chatTree.connectNode')).setDisabled(true))
+  for (const node of nodes.value) {
+    const granted = entries.value.some((entry) => entry.node_id === (node.node_id ?? node.id))
+    menu.addItem((item) =>
+      item
+        .setTitle(node.label)
+        .setIcon('server')
+        .setChecked(granted)
+        .onClick(() => {
+          if (!granted) give({ kind: 'node', node_id: node.id, access: 'edit' })
+          else void locationMenu({ kind: 'node', node_id: node.id, access: 'edit' }, event, true)
+        })
+    )
+  }
+  menu.showAtMouseEvent(event)
+}
+function modeMenu(entry: NodeScopeEntry, event: MouseEvent) {
+  if (inheritedFrom(entry) || busy.value) return
+  const menu = new Menu()
+  for (const access of ['read', 'edit'] as const)
+    menu.addItem((item) =>
+      item
+        .setTitle(access === 'read' ? t('streamB.read.331634') : t('streamB.readAndEdit.4067e8'))
+        .setIcon(access === 'read' ? 'eye' : 'pencil')
+        .setChecked(entry.access === access)
+        .onClick(() => give({ ...entry, access }))
+    )
+  menu.showAtMouseEvent(event)
+}
+async function replace(entry: NodeScopeEntry, next: NodeScopeEntry, append = false) {
+  await perform(async () => {
+    if (!append && nodeScopeKey(entry) !== nodeScopeKey(next))
+      await removeObsidianChatNodeAccess(props.session, entry)
+    await giveObsidianChatAccess(props.session, next)
+  })
+}
+async function locationMenu(entry: NodeScopeEntry, event: MouseEvent, append = false) {
+  if (inheritedFrom(entry) || busy.value) return
+  await chooseNode(entry.node_id)
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(t('streamB.wholeNode.7eee73'))
+      .setIcon('server')
+      .setChecked(entry.kind === 'node')
+      .onClick(() => {
+        void replace(entry, { kind: 'node', node_id: entry.node_id, access: entry.access }, append)
+      })
+  )
+  const labels = folderLabels(projects.value.map((project) => project.label))
+  for (const [index, project] of projects.value.entries())
+    menu.addItem((item) =>
+      item
+        .setTitle(labels[index])
+        .setIcon('folder-git-2')
+        .setChecked(entry.kind !== 'node' && entry.project_id === project.id)
+        .onClick(() => {
+          void projectMenu(entry, project.id, event, append)
+        })
+    )
+  menu.showAtMouseEvent(event)
+}
+async function projectMenu(
+  entry: NodeScopeEntry,
+  project: string,
+  event: MouseEvent,
+  append = false
+) {
+  await chooseProject(project)
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(t('streamB.wholeFolder.b38f07'))
+      .setIcon('folder')
+      .setChecked(entry.kind === 'project' && entry.project_id === project)
+      .onClick(() => {
+        void replace(
+          entry,
+          {
+            kind: 'project',
+            node_id: entry.node_id,
+            project_id: project,
+            access: entry.access,
+          },
+          append
+        )
+      })
+  )
+  for (const target of targets.value)
+    menu.addItem((item) =>
+      item
+        .setTitle(target.display)
+        .setIcon('git-branch')
+        .setChecked(
+          entry.kind === 'target' &&
+            JSON.stringify(entry.target) === JSON.stringify(target.identity)
+        )
+        .onClick(() => {
+          void replace(entry, {
+            kind: 'target',
+            node_id: entry.node_id,
+            project_id: project,
+            target: target.identity,
+            access: entry.access,
+          })
+        })
+    )
+  menu.showAtMouseEvent(event)
 }
 function clear() {
   const chat = props.session
@@ -368,34 +482,47 @@ function remove(entry: NodeScopeEntry) {
   const chat = props.session
   void perform(() => removeObsidianChatNodeAccess(chat, entry))
 }
-/**
- * Opened from a refused node call: the place the agent wanted is chosen already, read and edit,
- * and the section is brought into view with its Add button ready — one press gives the access.
- */
+let statusTimer: number | undefined
 onMounted(async () => {
-  await loadNodes()
-  const want = pendingNodeAccess.value
-  if (!want) return
-  pendingNodeAccess.value = null
-  // A chat with no node access at all named no place: the form opens empty for the person to fill.
-  // A refusal names the node as the node knows itself; the list holds this device's registrations.
-  const registration =
-    nodes.value.find((n) => n.id === want.node_id || n.node_id === want.node_id)?.id ?? want.node_id
-  if (want.node_id) await chooseNode(registration)
-  if (want.node_id && want.project_id) await chooseProject(want.project_id)
-  if (want.node_id && want.target) target.value = nodeTargetId(want.target)
-  access.value = 'edit'
-  wanted.value = true
-  await nextTick()
-  // The press that opened the dialog was for this: the Add button takes the focus from the
-  // vault's search field, which would otherwise open its list over the form.
-  // It lands with the button in view: the place above it was chosen for the person already.
-  const add = root.value?.querySelector<HTMLElement>('.abele-node-scope-editor__add')
-  add?.scrollIntoView({ block: 'center' })
-  add?.focus({ preventScroll: true })
+  try {
+    statusTimer = window.setInterval(refreshStatus, 1000)
+    await loadNodes()
+    const want = pendingNodeAccess.value
+    if (!want) return
+    pendingNodeAccess.value = null
+    const registration =
+      nodes.value.find((node) => node.id === want.node_id || node.node_id === want.node_id)?.id ??
+      want.node_id
+    if (!registration) return
+    await chooseNode(registration)
+    if (want.project_id) await chooseProject(want.project_id)
+    wanted.value = !want.project_id
+      ? { kind: 'node', node_id: registration, access: want.access ?? 'edit' }
+      : want.target
+        ? {
+            kind: 'target',
+            node_id: registration,
+            project_id: want.project_id,
+            target: want.target,
+            access: want.access ?? 'edit',
+          }
+        : {
+            kind: 'project',
+            node_id: registration,
+            project_id: want.project_id,
+            access: want.access ?? 'edit',
+          }
+    names.value = {
+      ...names.value,
+      [nodeScopeKey(wanted.value)]: await nodeScopeNames(wanted.value),
+    }
+  } finally {
+    preparing.value = false
+  }
 })
 onUnmounted(() => {
   generation++
+  if (statusTimer) window.clearInterval(statusTimer)
 })
 </script>
 
@@ -404,16 +531,5 @@ onUnmounted(() => {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* Refresh stays beside the words, even where a setting's control drops under them. */
-.abele-obsidian-setting.abele-node-scope-editor__head {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.abele-node-scope-editor {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-  min-width: 0;
 }
 </style>

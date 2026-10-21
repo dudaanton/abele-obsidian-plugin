@@ -619,5 +619,23 @@
   },
   "chatTree.folderNodeApprovalHint": {
     "englishHash": "1693e7f22ffe85ac97df2a2663e47124da564fb659545c05c5796bc76a87b741"
+  },
+  "chatTree.nodeDisconnected": {
+    "englishHash": "ffbce06734f1a19e863f0b96d565c5c083322136a820862143898d2fe8cecb19"
+  },
+  "chatTree.nodeApprovalTip": {
+    "englishHash": "febee2646cbdad5ad5ff27f9b73b1db01cda194f6c8a355ffa9e24cc2ada298f"
+  },
+  "chatTree.inheritedNodeModeTip": {
+    "englishHash": "0a51c565203af37513e1810ef027ecdc024277d8063ba9b53c972f15a66d7512"
+  },
+  "chatTree.connectNode": {
+    "englishHash": "c625442a799ece7f03d3978915692991f85986b4b6357fcbaecb45001bf4e923"
+  },
+  "chatTree.addNode": {
+    "englishHash": "5bf2c407455244ee500721debab9eaa4d0c85a7512ed68a4f146ef4e9781d76c"
+  },
+  "chatTree.nodesHeadingTip": {
+    "englishHash": "8fd718d0eaaa70592cbf87533d9c395f3702cf9b4d7d043b0e9e14ee2472c504"
   }
 }

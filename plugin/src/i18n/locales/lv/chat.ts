@@ -51,6 +51,13 @@ export const chat = {
   'chatTree.additive': 'Papildina noklusējumu, nekad neierobežo',
   'chatTree.folderNodeApprovalHint':
     'Apstipriniet šajā ierīcē mapes piekļuvi mezglam visām sarunām tajā, arī apakšmapēs.',
+  'chatTree.nodeDisconnected': 'Šajā ierīcē nav savienojuma. Savienojiet mezglu mezglu panelī.',
+  'chatTree.nodeApprovalTip':
+    'Apstiprināt šajā ierīcē. Sinhronizēti vai pārsūtīti iestatījumi paši nepiešķir piekļuvi.',
+  'chatTree.inheritedNodeModeTip': 'No mapes {name}. Mainiet piekļuvi mapes iestatījumos.',
+  'chatTree.connectNode': 'Savienojiet mezglu mezglu panelī',
+  'chatTree.addNode': 'Pievienot piekļuvi mezglam',
+  'chatTree.nodesHeadingTip': 'Piekļuve mezgla failiem ir atsevišķa no piekļuves glabātuvei.',
   'chatTree.accessHint': 'Visas sarunas šajā mapē saņem šo papildu piekļuvi.',
   'chatTree.more': '{name}: vairāk',
   'chatTree.newInFolder': 'Jauna saruna mapē {name}',

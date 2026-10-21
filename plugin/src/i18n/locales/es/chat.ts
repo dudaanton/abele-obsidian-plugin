@@ -50,6 +50,15 @@ export const chat = {
   'chatTree.additive': 'Añade a los valores predeterminados, nunca los reduce',
   'chatTree.folderNodeApprovalHint':
     'Confirma en este dispositivo el acceso al nodo para todos los chats de esta carpeta, incluidas las subcarpetas.',
+  'chatTree.nodeDisconnected':
+    'Sin conexión en este dispositivo. Conéctalo desde el panel de nodos.',
+  'chatTree.nodeApprovalTip':
+    'Aprobar en este dispositivo. Los ajustes sincronizados o transferidos no conceden acceso por sí solos.',
+  'chatTree.inheritedNodeModeTip': 'De la carpeta {name}. Cámbialo en el acceso de la carpeta.',
+  'chatTree.connectNode': 'Conecta un nodo desde el panel de nodos',
+  'chatTree.addNode': 'Añadir acceso a un nodo',
+  'chatTree.nodesHeadingTip':
+    'El acceso a archivos del nodo es independiente del acceso a la bóveda.',
   'chatTree.accessHint': 'Todos los chats de esta carpeta reciben este acceso adicional.',
   'chatTree.more': '{name}: más',
   'chatTree.newInFolder': 'Nuevo chat en {name}',

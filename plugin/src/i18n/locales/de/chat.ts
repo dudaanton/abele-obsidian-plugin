@@ -51,6 +51,14 @@ export const chat = {
   'chatTree.additive': 'Ergänzt die Standardeinstellungen, schränkt sie nicht ein',
   'chatTree.folderNodeApprovalHint':
     'Bestätige auf diesem Gerät den Knotenzugriff für alle Chats in diesem Ordner und seinen Unterordnern.',
+  'chatTree.nodeDisconnected':
+    'Auf diesem Gerät nicht verbunden. Verbinde den Knoten im Knotenbereich.',
+  'chatTree.nodeApprovalTip':
+    'Auf diesem Gerät bestätigen. Synchronisierte oder übertragene Einstellungen gewähren allein keinen Zugriff.',
+  'chatTree.inheritedNodeModeTip': 'Aus dem Ordner {name}. Ändere dies im Ordnerzugriff.',
+  'chatTree.connectNode': 'Verbinde einen Knoten im Knotenbereich',
+  'chatTree.addNode': 'Knotenzugriff hinzufügen',
+  'chatTree.nodesHeadingTip': 'Knoten-Dateizugriff ist vom Tresorzugriff getrennt.',
   'chatTree.accessHint': 'Alle Chats in diesem Ordner erhalten diesen zusätzlichen Zugriff.',
   'chatTree.more': '{name}: mehr',
   'chatTree.newInFolder': 'Neuer Chat in {name}',

@@ -1,21 +1,62 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
+import { Menu } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
 import AiNodeScopeEditor from '@/components/AiNodeScopeEditor.vue'
 import AiNodeScopeChips from '@/components/AiNodeScopeChips.vue'
-import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import { CHAT_TREE_SOURCE } from '@/chats/chatTree'
 import { pendingNodeAccess } from '@/components/chat/nodeAccessPending'
 
-const mocks = vi.hoisted(() => ({ set: vi.fn(), give: vi.fn(), remove: vi.fn(), host: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  set: vi.fn(),
+  give: vi.fn(),
+  remove: vi.fn(),
+  approve: vi.fn(),
+  approved: false,
+  host: vi.fn(),
+}))
 vi.mock('@/ai/tools/node/owner', () => ({
   setObsidianChatNodeScope: mocks.set,
   giveObsidianChatAccess: mocks.give,
   removeObsidianChatNodeAccess: mocks.remove,
-  nodeAgentHost: mocks.host,
+  approveObsidianChatNodeAccess: mocks.approve,
+  nodeAgentHost: async () => {
+    const host = await mocks.host()
+    return {
+      ...host,
+      ledger: {
+        approvedEntries: (session: ChatSession) =>
+          mocks.approved
+            ? [
+                ...(session.overrides.value.nodeScope ?? []),
+                ...(session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+              ]
+            : [],
+      },
+      connection: (id: string) => ({
+        ...host.connection(id),
+        principal: () => 'sample-installation',
+      }),
+    }
+  },
 }))
+const menus: Menu[] = []
+vi.spyOn(Menu.prototype, 'showAtMouseEvent').mockImplementation(function () {
+  menus.push(this)
+  return this
+})
+beforeEach(() => {
+  menus.length = 0
+  mocks.approved = false
+  mocks.approve.mockImplementation(async () => {
+    mocks.approved = true
+  })
+  vi.clearAllMocks()
+  pendingNodeAccess.value = null
+})
 function setup() {
   const session = {
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }),
@@ -26,7 +67,40 @@ function setup() {
   })
   return session
 }
+async function icon(view: ReturnType<typeof mount>, glyph: string) {
+  view
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('icon') === glyph)!
+    .vm.$emit('click', new MouseEvent('click'))
+  await flushPromises()
+}
+async function choose(title: string) {
+  const menu = menus.at(-1)!
+  const item = menu.items.find((item) => item.title === title)!
+  expect(item).toBeTruthy()
+  item.handler!()
+  await flushPromises()
+}
 describe('node scope beside vault scope and in the header', () => {
+  it('shows disconnected grants as rows with a dot, without a contradictory empty state or approval block', async () => {
+    const session = setup()
+    mocks.host.mockResolvedValue({
+      nodes: () => [],
+      connection: () => {
+        throw new Error('Not registered')
+      },
+    })
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    expect(view.text()).not.toContain('No nodes connected here')
+    expect(view.text()).not.toContain('Local approval')
+    expect(view.find('.abele-status-dot_faint').exists()).toBe(true)
+    expect(view.find('.abele-status-dot_orange').exists()).toBe(true)
+    expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'shield-check')).toBe(
+      true
+    )
+    view.unmount()
+  })
   it.each(['work/sample-parser', 'abele/11111111-1111-4111-8111-111111111111'])(
     'names a developer worktree by its parent task and meaningful branch (%s)',
     async (branch) => {
@@ -62,69 +136,67 @@ describe('node scope beside vault scope and in the header', () => {
       })
       pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'sample-project' }
       const view = mount(AiNodeScopeEditor, { props: { session } })
-      try {
-        await flushPromises()
-        const option = view
-          .findAllComponents(Dropdown)
-          .flatMap((dropdown) => dropdown.props('options'))
-          .find((option: { value: string }) => option.value === 'sample-tree')
-        expect(option.display).toContain('Review sample parser')
-        expect(option.display).not.toContain('11111111-1111-4111-8111-111111111111')
-        if (branch.startsWith('work/')) expect(option.display).toContain(branch)
-      } finally {
-        view.unmount()
-      }
+      await flushPromises()
+      await icon(view, 'server')
+      await choose('sample')
+      const option = menus
+        .at(-1)!
+        .items.find((item) => item.title.includes('Review sample parser'))!
+      expect(option.title).not.toContain('11111111-1111-4111-8111-111111111111')
+      if (branch.startsWith('work/')) expect(option.title).toContain(branch)
+      view.unmount()
     }
   )
   it('explains whole-node future access, keeps it separate from vault access, and approves loaded settings locally', async () => {
     const session = setup()
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
-    expect(view.text()).toContain('future registered folders')
-    expect(view.text()).toContain('vault access')
-    const approve = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Approve on this device')!
-    approve.vm.$emit('click')
-    await flushPromises()
-    expect(mocks.set).toHaveBeenCalledWith(session, session.overrides.value.nodeScope)
+    expect(view.get('h3').attributes('aria-label')).toContain('vault access')
+    expect(
+      view
+        .findAllComponents(Icon)
+        .find((icon) => icon.props('icon') === 'server')!
+        .props('tooltip')
+    ).toContain('future')
+    await icon(view, 'shield-check')
+    expect(mocks.approve).toHaveBeenCalledWith(session, session.overrides.value.nodeScope)
+    expect(view.find('.abele-status-dot_orange').exists()).toBe(false)
+    expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'shield-check')).toBe(
+      false
+    )
     view.unmount()
   })
   it('offers node/folder/worktree levels with a read/edit choice', async () => {
     const view = mount(AiNodeScopeEditor, { props: { session: setup() } })
     await flushPromises()
-    const nodes = view.findAllComponents(Dropdown)[0]
-    expect(nodes.props('options')).toContainEqual({ value: 'sample-node', display: 'Sample node' })
-    nodes.vm.$emit('update:model-value', 'sample-node')
-    await flushPromises()
-    expect(view.text()).toContain('Whole node')
-    expect(
-      view
-        .findAllComponents(Dropdown)
-        .some((dropdown) =>
-          dropdown.props('options').some((option: { value: string }) => option.value === 'edit')
-        )
-    ).toBe(true)
+    await icon(view, 'plus')
+    expect(menus.at(-1)!.items.find((item) => item.title === 'Sample node')!.checked).toBe(true)
+    await icon(view, 'server')
+    expect(menus.at(-1)!.items[0].title).toBe('Whole node')
+    await icon(view, 'pencil')
+    expect(menus.at(-1)!.items.map((item) => item.title)).toEqual(['read', 'read and edit'])
+    expect(menus.at(-1)!.items[1].checked).toBe(true)
+    await choose('read')
+    expect(mocks.give).toHaveBeenCalledWith(expect.anything(), {
+      kind: 'node',
+      node_id: 'sample-node',
+      access: 'read',
+    })
     view.unmount()
   })
   it('Add confirms only the chosen entry, not the entire existing configuration', async () => {
-    const session = setup(),
-      prior = mocks.set.mock.calls.length
+    const session = setup()
+    session.overrides.value.nodeScope = []
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
-    view.findAllComponents(Dropdown)[0].vm.$emit('update:model-value', 'sample-node')
-    await flushPromises()
-    view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Add access')!
-      .vm.$emit('click')
-    await flushPromises()
+    await icon(view, 'plus')
+    await choose('Sample node')
     expect(mocks.give).toHaveBeenCalledWith(session, {
       kind: 'node',
       node_id: 'sample-node',
       access: 'edit',
     })
-    expect(mocks.set.mock.calls).toHaveLength(prior)
+    expect(mocks.set).not.toHaveBeenCalled()
     view.unmount()
   })
   it('keeps malformed synced scope visible as an error rather than crashing the chat', async () => {
@@ -156,15 +228,20 @@ describe('node scope beside vault scope and in the header', () => {
     pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'sample-project' }
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
-    const [node, folder] = view.findAllComponents(Dropdown)
-    expect(node.props('modelValue')).toBe('sample-registration')
-    expect(folder.props('modelValue')).toBe('sample-project')
     expect(pendingNodeAccess.value).toBeNull()
+    await icon(view, 'plus')
+    menus.at(-1)!.items[0].handler!()
+    await flushPromises()
+    expect(mocks.give).toHaveBeenCalledWith(session, {
+      kind: 'project',
+      node_id: 'sample-registration',
+      project_id: 'sample-project',
+      access: 'edit',
+    })
     view.unmount()
   })
   it('names folders and worktrees the way the node panel does, not by absolute path or full ref', async () => {
     const session = setup()
-    session.overrides.value.nodeScope = []
     mocks.host.mockResolvedValue({
       nodes: () => [{ id: 'sample-registration', node_id: 'sample-node', label: 'Sample node' }],
       connection: () => ({
@@ -192,11 +269,18 @@ describe('node scope beside vault scope and in the header', () => {
     pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'p1' }
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
-    const [, folder, worktree] = view.findAllComponents(Dropdown)
-    const shown = (d: typeof folder) =>
-      (d.props('options') as { display: string }[]).map((o) => o.display)
-    expect(shown(folder)).toEqual(['Whole node', 'sample-app', '~/a/twin', '~/b/twin'])
-    expect(shown(worktree)).toEqual(['Whole folder', 'main · sample-app'])
+    await icon(view, 'server')
+    expect(menus.at(-1)!.items.map((item) => item.title)).toEqual([
+      'Whole node',
+      'sample-app',
+      '~/a/twin',
+      '~/b/twin',
+    ])
+    await choose('sample-app')
+    expect(menus.at(-1)!.items.map((item) => item.title)).toEqual([
+      'Whole folder',
+      'main · sample-app',
+    ])
     view.unmount()
   })
   it('renders removable header access without silently approving it', async () => {
@@ -204,10 +288,47 @@ describe('node scope beside vault scope and in the header', () => {
     const view = mount(AiNodeScopeChips, { props: { session } })
     await flushPromises()
     expect(view.text()).toContain('Sample node')
-    const remove = view.findAllComponents(Icon).find((icon) => icon.props('icon') === 'x')!
-    remove.vm.$emit('click')
-    await flushPromises()
+    await icon(view, 'x')
     expect(mocks.remove).toHaveBeenCalledWith(session, session.overrides.value.nodeScope![0])
+    view.unmount()
+  })
+  it('shows the empty state only without grants or known nodes and offers a disabled connection hint', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope = []
+    mocks.host.mockResolvedValue({
+      nodes: () => [],
+      connection: () => {
+        throw new Error('Not registered')
+      },
+    })
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    expect(view.text()).toContain('No nodes connected here')
+    await icon(view, 'plus')
+    expect(menus.at(-1)!.items).toHaveLength(1)
+    expect(menus.at(-1)!.items[0].disabled).toBe(true)
+    expect(menus.at(-1)!.items[0].title).toBe('Connect a node from the Node panel')
+    view.unmount()
+  })
+  it('opens the source folder and keeps inherited mode and removal unavailable', async () => {
+    const session = setup()
+    const entries = session.overrides.value.nodeScope!
+    session.overrides.value.nodeScope = []
+    Object.assign(session, {
+      inheritedNodeScopes: [{ identity: 'sample-folder', folder: 'Collection', entries }],
+    })
+    const folderAccess = vi.fn()
+    const view = mount(AiNodeScopeEditor, {
+      props: { session },
+      global: { provide: { [CHAT_TREE_SOURCE as symbol]: shallowRef({ folderAccess }) } },
+    })
+    await flushPromises()
+    const mode = view.findAllComponents(Icon).find((icon) => icon.props('icon') === 'pencil')!
+    expect(mode.props('interactive')).toBe(false)
+    expect(mode.props('tooltip')).toContain('Change it in the folder')
+    expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'x')).toBe(false)
+    await icon(view, 'folder')
+    expect(folderAccess).toHaveBeenCalledWith('Collection')
     view.unmount()
   })
 })

@@ -242,7 +242,7 @@ const probe = (label: string) => `(async () => {
     ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.includes('Access…')).click()
     await until(() => document.querySelector('.abele-folder-access'))
     await until(() => ![...document.querySelectorAll('.notice')].some(notice => notice.textContent.includes('That message is no longer in this chat')))
-    const nodeHeading = document.querySelector('.abele-folder-access .abele-node-scope-editor__head').getBoundingClientRect()
+    const nodeHeading = document.querySelector('.abele-folder-access .abele-node-scope-editor .abele-section__header').getBoundingClientRect()
     const folderBody = document.querySelector('.abele-folder-access .abele-modal__body').getBoundingClientRect()
     if (nodeHeading.top < folderBody.top - 1 || nodeHeading.bottom > folderBody.bottom + 1) throw Error('Folder access opened scrolled past node access')
     await shot('folder-access')
