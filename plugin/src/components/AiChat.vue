@@ -2495,6 +2495,10 @@ body.is-phone
   position: relative;
   container-type: inline-size;
 }
+// The switch's negative margin assumes a wider inset; keep its focus ring inside this header.
+.abele-ai-chat__header > .abele-drawer-switch.is-shown {
+  margin-inline: 0;
+}
 .abele-ai-chat__header-actions {
   display: flex;
   align-items: center;

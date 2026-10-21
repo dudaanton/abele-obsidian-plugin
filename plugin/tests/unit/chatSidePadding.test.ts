@@ -16,3 +16,10 @@ it('halves header and composer side padding while preserving the message inset',
   expect(chat).toContain('--abele-chat-inset: calc(var(--p-spacing) * 2)')
   expect(chat).toContain('--abele-chat-inset: var(--size-4-4)')
 })
+
+it('keeps the drawer switch focus ring inside the narrower header inset', () => {
+  const chat = readFileSync('src/components/AiChat.vue', 'utf8')
+  expect(chat).toMatch(
+    /\.abele-ai-chat__header > \.abele-drawer-switch\.is-shown\s*\{\s*margin-inline: 0/s
+  )
+})
