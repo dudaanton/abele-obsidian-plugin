@@ -187,6 +187,13 @@ export function syncPlacementPlugin() {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         code = replaceOnce(
           code,
+          'if (!(await this.clearPath(from)))',
+          `// Destination equality cannot authorize deleting a source recreated during that check.
+          if (entry !== null && await this.edited(entry)) return false;
+          if (!(await this.clearPath(from)))`
+        )
+        code = replaceOnce(
+          code,
           'const state = await this.clear(target, from, change, sha);',
           `const state = await this.clear(target, from, change, sha,
             entry === null && from === null && firstTarget === null ? null : undefined, entry);`
