@@ -64,6 +64,21 @@ function refuseFocus(el: HTMLTextAreaElement, times: number) {
 }
 
 describe('the cursor in the composer', () => {
+  it.each([false, true])(
+    'keeps one route back for a discussion (parent message=%s)',
+    async (message) => {
+      const session = service.activeSession.value!
+      session.kind = 'comment'
+      session.anchor.value = {
+        note: message ? 'Chats/sample-parent.abchat' : 'Notes/sample.md',
+        quote: 'Sample passage',
+        ...(message ? { message: 'sample-message' } : {}),
+      }
+      const wrapper = open()
+      const directBack = wrapper.find('[aria-label="Back to the passage this is about"]')
+      expect(directBack.exists()).toBe(!message)
+    }
+  )
   it('is not requested by a selection return opening the sidebar', async () => {
     service.openingSelection.value = true
     const wrapper = open()

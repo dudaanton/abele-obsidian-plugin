@@ -60,7 +60,7 @@
                points back the way it came rather than being a panel glyph, because what it
                does is scroll a note, not move a pane. -->
           <Icon
-            v-if="commentSession"
+            v-if="commentSession && !session?.anchor.value?.message"
             icon="corner-up-left"
             with-bg
             :tooltip="t('streamB.backToThePassageThisIsAbout.5b41fe')"
