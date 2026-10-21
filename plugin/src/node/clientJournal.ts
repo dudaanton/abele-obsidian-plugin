@@ -17,9 +17,14 @@ function retained(state: NodeClientState, stream: string, events: Events): Event
   let keep = state.windows?.[stream]
   if (
     keep === undefined &&
-    events.some((event) =>
-      ['session.created', 'session.update', 'input.accepted'].includes(event.type)
-    )
+    events.some((event) => {
+      const session = (event.data as { session_id?: unknown } | null)?.session_id
+      // Catalogs announce other sessions too; only the session's own stream is windowed.
+      if (typeof session === 'string' && session !== event.stream_id) return false
+      return event.type === 'session.created'
+        ? session === event.stream_id
+        : ['session.update', 'input.accepted'].includes(event.type)
+    })
   ) {
     // Persist the classification: the identifying event itself will leave the window.
     ;(state.windows ??= {})[stream] = keep = SESSION_WINDOW

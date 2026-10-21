@@ -5,6 +5,25 @@ import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
 
+it('does not mistake catalog session announcements for a session journal', async () => {
+  const store = new NodeClientStore('sample-catalog-retention', new IDBFactory())
+  const catalog = giantJournal({ turns: 60, outputBytes: 40 }).map((event) => ({
+    ...event,
+    stream_id: 'sample-catalog',
+    type: 'session.created',
+    data: { session_id: 'sample-child-' + event.seq },
+  }))
+  try {
+    await store.transaction((state) => {
+      state.events.catalog = catalog
+    })
+    expect(await store.read((state) => state.events.catalog.length)).toBe(catalog.length)
+    expect(await store.read((state) => state.windows?.catalog)).toBeUndefined()
+  } finally {
+    store.close()
+  }
+})
+
 it('keeps a session bounded after its identifying events have left the retained window', async () => {
   const store = new NodeClientStore('sample-sticky-window', new IDBFactory())
   const journal = giantJournal({ turns: 60, outputBytes: 40 })
