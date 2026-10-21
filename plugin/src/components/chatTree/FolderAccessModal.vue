@@ -5,6 +5,7 @@
     <p class="abele-folder-access__about setting-item-description">
       {{ t('chatTree.accessHint') }}
     </p>
+    <AiNodeScopeEditor v-if="nodeScopeOwner" :session="nodeScopeOwner" folder />
     <ChatToolModes :tool-modes="modes" :floor="floor" @update-many="(m) => emit('update', m)" />
   </ObsidianModal>
 </template>
@@ -15,6 +16,8 @@ import { computed } from 'vue'
 import { withFolderAccess } from '@/chats/chatTree'
 import ObsidianModal from '../obsidian/Modal.vue'
 import ChatToolModes from '../ChatToolModes.vue'
+import AiNodeScopeEditor from '../AiNodeScopeEditor.vue'
+import type { NodeScopeOwner } from '@/ai/tools/node/owner'
 import type { ToolMode } from '@/ai/types'
 
 const props = defineProps<{
@@ -23,6 +26,7 @@ const props = defineProps<{
   floor: Record<string, ToolMode>
   /** What the folder raised. */
   access: Record<string, ToolMode>
+  nodeScopeOwner?: NodeScopeOwner
 }>()
 const emit = defineEmits<{ close: []; update: [modes: Record<string, ToolMode>] }>()
 

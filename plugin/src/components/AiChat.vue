@@ -452,6 +452,7 @@
       :name="folderAccessPath"
       :floor="tree.accessFloorFor(folderAccessPath)"
       :access="chatService.folders.access.value[folderAccessPath] ?? {}"
+      :node-scope-owner="folderNodeScopeOwner"
       @close="folderAccessPath = null"
       @update="tree.saveAccessFor(folderAccessPath, $event)"
     />
@@ -622,6 +623,11 @@ const chatService = ChatService.getInstance()
 const tree = chatService.tree
 chatTreeSource.value = tree
 const folderAccessPath = ref<string | null>(null)
+const folderNodeScopeOwner = computed(() =>
+  folderAccessPath.value === null
+    ? undefined
+    : chatService.folders.nodeScopeOwner(folderAccessPath.value)
+)
 const localTreeSource: ChatTreeSource = {
   refresh: () => tree.refresh(),
   root: tree.root,

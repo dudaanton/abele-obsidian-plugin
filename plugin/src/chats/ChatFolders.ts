@@ -6,6 +6,9 @@ import type { ChatService } from '@/ai/ChatService'
 import type { ToolMode } from '@/ai/types'
 import { withFolderAccess, type ChatTreeFolder } from './chatTree'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { NodeScopeEntriesSchema, type NodeScopeEntry, type NodeScopeChat } from '@/ai/nodeScope'
+import { reconcileFolderNodeApprovals, type NodeScopeOwner } from '@/ai/tools/node/owner'
+import type { SessionOverrides } from '@/ai/agents/types'
 import { parseChat, parseChatMetadata, serializeMetadata, serializeChat } from '@/ai/ChatLog'
 
 const validName = (name: string) =>
@@ -20,6 +23,7 @@ interface FolderRecord {
   parent: string | null
   order: number
   access?: Record<string, ToolMode>
+  nodeScope?: NodeScopeEntry[]
 }
 interface Catalog {
   version: 1
@@ -39,6 +43,7 @@ export class ChatFolders {
   private loadedRoot = ''
   private dead = false
   private mutation: Promise<unknown> = Promise.resolve()
+  private folderScopeIdentities = new Set<string>()
   private releaseSettings: () => void
   private mutate<T>(action: () => Promise<T>): Promise<T> {
     const result = this.mutation.then(action, action)
@@ -132,6 +137,21 @@ export class ChatFolders {
     this.access.value = Object.fromEntries(
       this.catalog.folders.map((folder) => [this.folderPath(folder.id), folder.access ?? {}])
     )
+    const owners = this.paths.map((path) => this.nodeScopeOwner(path))
+    const identities = new Set(owners.map((owner) => owner.nodeScopeIdentity!))
+    reconcileFolderNodeApprovals(this.app, [
+      ...owners,
+      ...[...this.folderScopeIdentities]
+        .filter((id) => !identities.has(id))
+        .map(
+          (id): NodeScopeChat => ({
+            nodeScopeIdentity: id,
+            overrides: { value: { nodeScope: [] } },
+            conversationVersion: { value: 0 },
+          })
+        ),
+    ])
+    this.folderScopeIdentities = identities
     this.revision.value++
   }
   reload(): Promise<void> {
@@ -185,6 +205,68 @@ export class ChatFolders {
   }
   accessFor(path: string, base: Record<string, ToolMode>) {
     return this.accessForFolder(this.folderOf(path), base)
+  }
+  nodeScopeForFolder(path: string): NodeScopeEntry[] {
+    void this.revision.value
+    const parsed = NodeScopeEntriesSchema.safeParse(this.record(path)?.nodeScope ?? [])
+    return parsed.success ? parsed.data : []
+  }
+  nodeScopeIdentity(path: string): string | undefined {
+    void this.revision.value
+    const record = this.record(path)
+    return record ? JSON.stringify(['chat-folder', this.root.value, record.id]) : undefined
+  }
+  nodeScopesFor(key: string): { identity: string; entries: NodeScopeEntry[]; folder: string }[] {
+    const parts = this.folderOf(key).split('/').filter(Boolean)
+    return parts.flatMap((_, index) => {
+      const folder = parts.slice(0, index + 1).join('/')
+      const identity = this.nodeScopeIdentity(folder)
+      const entries = this.nodeScopeForFolder(folder)
+      return identity && entries.length ? [{ identity, entries, folder }] : []
+    })
+  }
+  setNodeScope(folder: string, entries: NodeScopeEntry[]): Promise<void> {
+    const parsed = NodeScopeEntriesSchema.parse(entries)
+    const identity = this.nodeScopeIdentity(folder)
+    return this.mutate(async () => {
+      await this.load()
+      const record = this.record(folder)
+      if (!record || this.nodeScopeIdentity(folder) !== identity)
+        throw new Error(t('chatTree.folderMissing'))
+      record.nodeScope = parsed
+      await this.persist()
+    })
+  }
+  nodeScopeOwner(folder: string): NodeScopeOwner {
+    const identity = this.nodeScopeIdentity(folder)
+    if (!identity) throw new Error(t('chatTree.folderMissing'))
+    const currentPath = () => {
+      const path = this.paths.find((path) => this.nodeScopeIdentity(path) === identity)
+      if (!identity || path === undefined) throw new Error(t('chatTree.folderMissing'))
+      return path
+    }
+    const readScope = () => this.nodeScopeForFolder(currentPath())
+    let pending: SessionOverrides | undefined
+    return {
+      nodeScopeIdentity: identity,
+      conversationVersion: { value: 0 },
+      overrides: {
+        get value() {
+          return pending ?? { nodeScope: readScope() }
+        },
+        set value(value: SessionOverrides) {
+          pending = value
+        },
+      },
+      saveForRelease: async () => {
+        await this.setNodeScope(currentPath(), pending?.nodeScope ?? [])
+        pending = undefined
+      },
+      ensureDelegationParentId: async () => {
+        currentPath()
+        return identity
+      },
+    }
   }
   accessForFolder(path: string, base: Record<string, ToolMode>) {
     const parts = path.split('/').filter(Boolean)

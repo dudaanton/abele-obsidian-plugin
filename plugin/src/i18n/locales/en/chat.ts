@@ -49,6 +49,8 @@ export const chat = {
   'chatTree.fromFolder': 'From the folder {name}',
   'chatTree.defaultFloor': 'Comes from the default',
   'chatTree.additive': 'Adds to the default, never takes away',
+  'chatTree.folderNodeApprovalHint':
+    'Confirm this folder’s node access on this device for every chat in it, including nested folders.',
   'chatTree.accessHint': 'Every chat in this folder gets these on top of the default.',
   'chatTree.more': '{name}: more',
   'chatTree.newInFolder': 'New chat in {name}',

@@ -95,7 +95,11 @@
     <Setting
       v-if="entries.length"
       :name="t('streamB.localApproval.1982d9')"
-      :desc="t('streamB.confirmThisChatSConfiguredAccessOn.df414a')"
+      :desc="
+        folder
+          ? t('chatTree.folderNodeApprovalHint')
+          : t('streamB.confirmThisChatSConfiguredAccessOn.df414a')
+      "
     >
       <Button :text="t('streamB.approveOnThisDevice.e68f82')" :disabled="busy" @click="approve" />
     </Setting>
@@ -113,7 +117,7 @@ import {
   type NodeScopeNames,
 } from '@/ai/tools/node/scopeNames'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
-import type { ChatSession } from '@/ai/ChatSession'
+import type { NodeScopeOwner } from '@/ai/tools/node/owner'
 import { delegationBranchLabel } from '@/node/delegation'
 import {
   NodeScopeEntriesSchema,
@@ -134,7 +138,7 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 
-const props = defineProps<{ session: ChatSession }>()
+const props = defineProps<{ session: NodeScopeOwner; folder?: boolean }>()
 const parsed = computed(() =>
   NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )

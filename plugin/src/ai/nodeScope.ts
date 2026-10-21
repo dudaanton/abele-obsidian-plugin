@@ -29,16 +29,25 @@ export interface NodeScopeTarget {
   target: NodeChatTarget
 }
 export interface NodeScopeChat {
+  readonly inheritedNodeScopes?: readonly { identity: string; entries: NodeScopeEntry[] }[]
   readonly nodeScopeIdentity: string | undefined
   readonly overrides: { value: SessionOverrides }
   readonly conversationVersion: { value: number }
   readonly branchSelectionVersion?: number
 }
 export function hasNodeScope(chat: NodeScopeChat): boolean {
-  return !!chat.overrides?.value && Object.hasOwn(chat.overrides.value, 'nodeScope')
+  return (
+    (!!chat.overrides?.value && Object.hasOwn(chat.overrides.value, 'nodeScope')) ||
+    !!chat.inheritedNodeScopes?.length
+  )
 }
 export function nodeScopeEntries(chat: NodeScopeChat): NodeScopeEntry[] {
-  return NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? [])
+  return [
+    ...NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? []),
+    ...(chat.inheritedNodeScopes ?? []).flatMap((source) =>
+      NodeScopeEntriesSchema.parse(source.entries)
+    ),
+  ]
 }
 export function nodeTargetId(target: NodeChatTarget): string {
   return target.kind === 'worktree' ? target.worktree_id : target.workspace_id
@@ -126,7 +135,7 @@ export class NodeScopeLedger {
     this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
   }
   /** Configuration changes fence continuations and prune lost grants, never create new grants. */
-  reconcile(chat: NodeScopeChat): void {
+  reconcile(chat: NodeScopeChat, fenceUnchanged = true): void {
     const identity = chat.nodeScopeIdentity
     if (!identity || !this.approvals[identity]) return
     const parsed = NodeScopeEntriesSchema.safeParse(chat.overrides?.value.nodeScope)
@@ -134,6 +143,11 @@ export class NodeScopeLedger {
     const entries = Object.fromEntries(
       Object.entries(this.approvals[identity].entries).filter(([key]) => current.has(key))
     )
+    if (
+      !fenceUnchanged &&
+      Object.keys(entries).length === Object.keys(this.approvals[identity].entries).length
+    )
+      return
     this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
   }
   revoke(chat: NodeScopeChat): void {
@@ -153,10 +167,20 @@ export class NodeScopeLedger {
     this.commit(next)
   }
   approvedEntries(chat: NodeScopeChat, node: string, principal: string): NodeScopeEntry[] {
-    const grant = chat.nodeScopeIdentity ? this.approvals[chat.nodeScopeIdentity] : undefined
-    return nodeScopeEntries(chat).filter(
-      (entry) =>
-        entry.node_id === node && grant?.entries[nodeScopeKey(entry)]?.principal === principal
+    const sources = [
+      {
+        identity: chat.nodeScopeIdentity,
+        entries: NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? []),
+      },
+      ...(chat.inheritedNodeScopes ?? []),
+    ]
+    return sources.flatMap(({ identity, entries }) =>
+      entries.filter(
+        (entry) =>
+          entry.node_id === node &&
+          !!identity &&
+          this.approvals[identity]?.entries[nodeScopeKey(entry)]?.principal === principal
+      )
     )
   }
   approvedNode(chat: NodeScopeChat, node: string, principal: string): boolean {
@@ -165,19 +189,25 @@ export class NodeScopeLedger {
   guardNode(chat: NodeScopeChat, node: string, principal: string): () => void {
     const identity = chat.nodeScopeIdentity,
       approval = identity ? this.approvals[identity] : undefined
+    const inherited = (chat.inheritedNodeScopes ?? []).map(
+      (source) => [source.identity, this.approvals[source.identity]] as const
+    )
     const scope = normalized(chat),
       conversation = chat.conversationVersion.value,
       branch = chat.branchSelectionVersion
     const check = () => {
       // No approval here at all is what the person can fix with one press on this device.
-      if (!identity || !approval || !this.approvedNode(chat, node, principal))
+      if (!this.approvedNode(chat, node, principal))
         throw new NodeAccessRefusalError(
           'Local owner node scope approval is missing, changed or revoked for this chat',
           { kind: 'not-approved', node_id: node }
         )
       if (
         chat.nodeScopeIdentity !== identity ||
-        this.approvals[identity] !== approval ||
+        (identity ? this.approvals[identity] : undefined) !== approval ||
+        JSON.stringify((chat.inheritedNodeScopes ?? []).map((source) => source.identity)) !==
+          JSON.stringify(inherited.map(([id]) => id)) ||
+        inherited.some(([id, grant]) => this.approvals[id] !== grant) ||
         normalized(chat) !== scope ||
         chat.conversationVersion.value !== conversation ||
         chat.branchSelectionVersion !== branch

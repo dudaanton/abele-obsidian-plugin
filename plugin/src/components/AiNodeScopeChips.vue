@@ -19,6 +19,14 @@
         @click="emit('open')"
       />
       <Icon
+        v-if="inheritedFrom(entry)"
+        icon="folder"
+        size="xs"
+        :interactive="false"
+        :tooltip="t('chatTree.fromFolder', { name: inheritedFrom(entry) })"
+      />
+      <Icon
+        v-else
         icon="x"
         with-bg
         :tooltip="t('streamB.takeOutOfThisChatSAccess.91415d', { v0: String(title(entry)) })"
@@ -74,7 +82,18 @@ const emit = defineEmits<{
 const parsed = computed(() =>
   NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )
-const entries = computed(() => (parsed.value.success ? parsed.value.data : []))
+const inheritedFrom = (entry: NodeScopeEntry) =>
+  props.session.inheritedNodeScopes?.find((source) =>
+    source.entries.some((value) => nodeScopeKey(value) === nodeScopeKey(entry))
+  )?.folder
+const entries = computed(() => [
+  ...new Map(
+    [
+      ...(parsed.value.success ? parsed.value.data : []),
+      ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+    ].map((entry) => [nodeScopeKey(entry), entry])
+  ).values(),
+])
 const selected = computed(() => {
   const target = NodeScopeTargetSchema.safeParse(props.session.overrides?.value.nodeTarget)
   return target.success ? target.data : undefined

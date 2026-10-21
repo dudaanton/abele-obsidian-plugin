@@ -80,8 +80,11 @@ const probe = (label: string) => `(async () => {
     name.value = folder; name.dispatchEvent(new Event('input', { bubbles: true }))
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await until(() => service.folders.paths.includes(folder))
+    await service.folders.setNodeScope(folder, [{ kind: 'node', node_id: 'sample-folder-node', access: 'read' }])
     await session.createInDirectory(path)
     await service.folders.move(first, folder)
+    if (session.inheritedNodeScopes[0]?.entries[0]?.node_id !== 'sample-folder-node') throw Error('Folder node access was not inherited')
+    if (session.getToolMode('node_command_run') !== 'off' || session.getToolMode('node_delegate') !== 'off') throw Error('Folder file scope enabled command or delegation tools')
     files.push(session.currentChatFile.value)
     service.closedNodeChats.value = [...priorNodes, {reference:{kind:'node-session',nodeId:'sample-tree-node',registrationId:'sample-tree-registration',sessionId:'sample-tree-session',title:'Sample node conversation'},at:1000}]
     await wait(100)
@@ -195,6 +198,7 @@ const probe = (label: string) => `(async () => {
     if (root.querySelector('.abele-chat-switch__where')) throw Error('Nested chat still shows its folder in the header')
     if (!current().getAttribute('aria-label').includes(folder)) throw Error('Nested chat lost the folder in its tooltip')
     await shot('nested-header-short-parent')
+    if (!root.querySelector('.abele-node-scope-chips [aria-label="From the folder ' + folder + '"]')) throw Error('Inherited node scope is not labelled with its folder')
     const longParent = 'A long sample parent title that must stay entirely in the tooltip'
     session.chatTitle.value = longParent
     service.switchTab(first); await wait(50); service.switchTab(second)
@@ -232,6 +236,7 @@ const probe = (label: string) => `(async () => {
     await until(() => document.querySelector('.abele-folder-access'))
     await shot('folder-access')
     const modal = document.querySelector('.abele-folder-access')
+    if (!modal.querySelector('.abele-node-scope-editor')?.textContent.includes('sample-folder-node')) throw Error('Folder dialog did not show stored node scope')
     const bounds = modal.getBoundingClientRect()
     const overflow = modal.scrollWidth - modal.clientWidth
     const inherited = reopened.toolModes.value.web_search, ownMode = reopened.ownToolModes.value.web_search

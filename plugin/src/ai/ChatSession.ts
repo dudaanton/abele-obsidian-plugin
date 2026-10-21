@@ -62,7 +62,7 @@ import {
 } from './tools/node/agent'
 import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { nodeRepositoryToolsHost } from './tools/node'
-import { hasNodeScope } from './nodeScope'
+import { hasNodeScope, nodeScopeEntries } from './nodeScope'
 import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
@@ -732,6 +732,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.agent.value?.toolModes ?? {}
     )
   )
+  get inheritedNodeScopes() {
+    return this.chatService.folders.nodeScopesFor(this.chatService.folderLocation(this))
+  }
+  get effectiveNodeScope() {
+    return nodeScopeEntries(this)
+  }
   public readonly folderToolFloor = computed(() => {
     const modes = this.chatService.folders.accessFor(
       this.chatService.folderLocation(this),
@@ -1338,7 +1344,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   getToolMode(toolName: string, toolCallId?: string): ToolMode {
     const saved = this.toolModes.value[this.getToolPermissionKey(toolName, toolCallId)]
     if (saved !== undefined) return saved
-    if (this.overrides.value.nodeScope?.length && NODE_AGENT_TOOL_NAMES.includes(toolName))
+    if (
+      this.effectiveNodeScope.length &&
+      NODE_AGENT_TOOL_NAMES.includes(toolName) &&
+      (this.overrides.value.nodeScope?.length ||
+        !['node_git_commit', 'node_worktree_remove'].includes(toolName))
+    )
       return this.needsApproval(toolName) ? 'ask' : 'auto'
     return 'off'
   }
@@ -1364,7 +1375,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       : this.allChatMessages
     return mergeOpen(
       alwaysOpenSections(this.agent.value),
-      this.overrides.value.nodeScope?.length ? ['nodes'] : [],
+      this.effectiveNodeScope.length ? ['nodes'] : [],
       this.initialSections,
       openSectionsOnPath(path)
     )
@@ -1452,16 +1463,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const permitted = filtered.filter(
       (tool) => !NODE_ACTION_TOOLS.includes(tool.name) || this.getToolMode(tool.name) !== 'off'
     )
-    const scopeFiltered = this.overrides.value.nodeScope?.length
+    const scopeFiltered = this.effectiveNodeScope.length
       ? permitted
       : permitted.filter((tool) => !delegationTools.includes(tool.name))
-    const withNode = this.overrides.value.nodeScope?.length
+    const withNode = this.effectiveNodeScope.length
       ? [
           ...scopeFiltered,
           ...allTools.filter(
             (tool) =>
               scopeTools.includes(tool.name) &&
-              this.getToolMode(tool.name) !== 'off' &&
+              (!!this.overrides.value.nodeScope?.length ||
+                this.toolModes.value[tool.name] !== undefined ||
+                (NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
+                  !['node_git_commit', 'node_worktree_remove'].includes(tool.name))) &&
+              this.toolModes.value[tool.name] !== 'off' &&
+              (!NODE_ACTION_TOOLS.includes(tool.name) || this.getToolMode(tool.name) !== 'off') &&
               !scopeFiltered.some((value) => value.name === tool.name)
           ),
         ]
@@ -1509,7 +1525,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       live: (id) =>
         id === 'nodes'
           ? nodeSectionLive(
-              this.overrides.value.nodeScope,
+              this.effectiveNodeScope,
               this.overrides.value.nodeTarget,
               this.permissionMode.value
             )
@@ -1600,6 +1616,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             AbeleConfig.getInstance().ai.mcpServers
           )
           if (identityRefusal) throw new Error(identityRefusal)
+          if (
+            this.inheritedNodeScopes.length &&
+            NODE_MUTATION_TOOLS.includes(tool.name) &&
+            !this.nodeScopeIdentity
+          ) {
+            await this.ensureDelegationParentId()
+            signal?.throwIfAborted()
+            if (this.destroyed || this.conversationVersion.value !== version)
+              throw new UiError(uiMessage('streamBError.e4184853d0'))
+          }
           const result = await tool.execute(id, invocationParams, signal, ctx)
           await this.readGuard.record(tool.name, params, result)
           // After the guard, which has to see a file's text as the tool gave it.

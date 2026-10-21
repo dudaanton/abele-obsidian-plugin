@@ -19,6 +19,42 @@ const chat = (id = 'sample-chat'): NodeScopeChat => ({
   conversationVersion: { value: 0 },
 })
 
+it('requires a live local folder approval for inherited scope', () => {
+  const ledger = new NodeScopeLedger()
+  const folder = chat('folder:sample')
+  const session = chat()
+  session.overrides.value.nodeScope = []
+  Object.assign(session, { inheritedNodeScopes: [{ identity: 'folder:sample', entries: [entry] }] })
+  expect(() => ledger.guard(session, target, 'pin:1', 'read')).toThrow()
+  ledger.approve(folder, { 'sample-node': 'pin:1' })
+  expect(() => ledger.guard(session, target, 'pin:2', 'read')).toThrow()
+  const check = ledger.guard(session, target, 'pin:1', 'edit')
+  ledger.revoke(folder)
+  expect(check).toThrow()
+  expect(() => ledger.guard(session, target, 'pin:1', 'read')).toThrow()
+})
+
+it('keeps ancestor reads and own edits additive and fences moving between equal folder scopes', () => {
+  const ledger = new NodeScopeLedger()
+  const folder = chat('folder:sample')
+  folder.overrides.value.nodeScope = [{ ...entry, access: 'read' }]
+  const session = chat()
+  const sources = [
+    { identity: folder.nodeScopeIdentity!, entries: folder.overrides.value.nodeScope },
+  ]
+  Object.assign(session, { inheritedNodeScopes: sources })
+  ledger.approve(folder, { 'sample-node': 'pin:1' })
+  expect(() => ledger.guard(session, target, 'pin:1', 'read')).not.toThrow()
+  expect(() => ledger.guard(session, target, 'pin:1', 'edit')).toThrow()
+  ledger.approve(session, { 'sample-node': 'pin:1' }, [entry])
+  const check = ledger.guard(session, target, 'pin:1', 'edit')
+  sources.splice(0)
+  expect(check).toThrow()
+  expect(() => ledger.guard(session, target, 'pin:1', 'edit')).not.toThrow()
+  const anotherDevice = new NodeScopeLedger()
+  expect(() => anotherDevice.guard(session, target, 'pin:1', 'read')).toThrow()
+})
+
 describe('device-local node scope', () => {
   it('inherits only the parent’s approved entries and installation bindings', () => {
     const ledger = new NodeScopeLedger()

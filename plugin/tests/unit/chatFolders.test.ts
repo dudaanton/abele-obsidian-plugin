@@ -11,6 +11,8 @@ import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { chatsOf } from '@/chats/chatTree'
+import { NodeScopeLedger } from '@/ai/nodeScope'
+import type { AgentTool } from '@/ai/client'
 
 let service: ChatService
 let folders: ChatFolders
@@ -47,6 +49,71 @@ it('reuses persisted placement for thousands of unchanged chats and refreshes a 
   await folders.reload()
   expect(folders.membershipOf(files[0].path)).toBe('second')
   expect(read.mock.calls.filter(([file]) => file.extension === 'abchat')).toHaveLength(1)
+})
+it('allocates a durable chat identity before an inherited node edit executes', async () => {
+  await folders.create('', 'Collection')
+  await folders.setNodeScope('Collection', [
+    { kind: 'node', node_id: 'sample-node', access: 'edit' },
+  ])
+  const id = service.createTab()
+  const session = service.getSession(id)!
+  await session.load(app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile)
+  await folders.move(id, 'Collection')
+  expect(session.nodeScopeIdentity).toBeUndefined()
+  const tool: AgentTool = {
+    name: 'node_write',
+    label: 'Write',
+    description: 'Write a sample file',
+    parameters: {},
+    execute: async () => {
+      expect(session.nodeScopeIdentity).toBeTruthy()
+      return { content: [] }
+    },
+  }
+  const wrapped = (
+    session as unknown as { wrapToolsForSession(tools: AgentTool[]): AgentTool[] }
+  ).wrapToolsForSession([tool])
+  await wrapped[0].execute('sample-call', {}, undefined, {
+    approved: true,
+    scope: session.scopeResolver,
+    interactive: true,
+  })
+})
+it('preserves a folder approval identity on rename and prunes a removed scope from local storage', async () => {
+  await folders.create('', 'Collection')
+  const entries = [{ kind: 'node' as const, node_id: 'sample-node', access: 'read' as const }]
+  await folders.setNodeScope('Collection', entries)
+  const owner = folders.nodeScopeOwner('Collection')
+  const ledger = () =>
+    new NodeScopeLedger({
+      read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
+      write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
+    })
+  ledger().approve(owner, { 'sample-node': 'sample-installation' })
+  await folders.rename('Collection', 'Archive')
+  expect(folders.nodeScopeIdentity('Archive')).toBe(owner.nodeScopeIdentity)
+  expect(owner.overrides.value.nodeScope).toEqual(entries)
+  expect(ledger().approvedNode(owner, 'sample-node', 'sample-installation')).toBe(true)
+  await folders.setNodeScope('Archive', [])
+  await folders.setNodeScope('Archive', entries)
+  expect(ledger().approvedNode(owner, 'sample-node', 'sample-installation')).toBe(false)
+})
+it('stores node scope in the catalog and inherits all ancestors without enabling commands', async () => {
+  await folders.create('', 'Projects')
+  await folders.create('Projects', 'Drafts')
+  await folders.setNodeScope('Projects', [{ kind: 'node', node_id: 'sample-node', access: 'read' }])
+  const id = service.createTab()
+  const session = service.getSession(id)!
+  await folders.move(id, 'Projects/Drafts')
+  expect(session.inheritedNodeScopes[0].entries).toEqual([
+    { kind: 'node', node_id: 'sample-node', access: 'read' },
+  ])
+  expect(session.getToolMode('node_command_run')).toBe('off')
+  expect(session.getToolMode('node_delegate')).toBe('off')
+  await folders.reload()
+  expect(folders.nodeScopeForFolder('Projects')).toHaveLength(1)
+  await folders.move(id, '')
+  expect(session.inheritedNodeScopes).toEqual([])
 })
 it('stores tree folders without creating disk directories', async () => {
   await folders.create('', 'Collection')

@@ -1254,6 +1254,15 @@ chat-folder template alone determines where new transcripts live. Tree folder cr
 renaming, deletion, filing and dragging never move or rename transcripts. Unfiled chats appear
 at the tree root, even when their files live in template directories.
 
+Each logical folder may also carry `nodeScope`, an array of the same node/project/target
+read or edit entries as a chat. Chats receive the union of their own entries and every
+ancestor folder's entries. The chat displays these as inherited; moving it out removes that
+access. Node command, manager and delegation permissions remain separate tool permissions.
+Folder confirmations use stable folder identities in the same device-local node approval
+ledger as chat confirmations. A synced catalog carries configuration only: an exact entry
+and the registered installation must have been explicitly approved on this device before
+file tools can use it. Changing or removing an entry prunes its local confirmation.
+
 `_folders.abelechats` in the configured chat root is a synced JSON catalog (version 1): folder
 records contain a stable `id`, `name`, parent id, `order`, and additive `access` modes. The
 catalog also retains node-session membership by stable node reference. A local transcript

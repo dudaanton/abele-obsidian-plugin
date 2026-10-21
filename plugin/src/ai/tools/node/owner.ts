@@ -10,6 +10,7 @@ import {
 } from '../../nodeScope'
 import type { NodeAgentHost, NodeAgentConnection } from './agent'
 import type { NodeRegistry } from '@/node/NodeRegistry'
+import type { App } from 'obsidian'
 
 export function nodeRegistrationPrincipal(
   registry: Pick<NodeRegistry, 'list' | 'authorizationId'>,
@@ -31,8 +32,19 @@ let ownerService: object | undefined
 export function revokeNodeScopeApproval(session: ChatSession): void {
   ownerHost?.ledger.revoke(session)
 }
-export function reconcileNodeScopeApproval(session: ChatSession): void {
+export function reconcileNodeScopeApproval(session: NodeScopeChat): void {
   ownerHost?.ledger.reconcile(session)
+}
+/** Synced catalog edits can prune local confirmations, but cannot create them. */
+export function reconcileFolderNodeApprovals(app: App, folders: NodeScopeChat[]): void {
+  const ledger =
+    ownerApp === app && ownerHost
+      ? ownerHost.ledger
+      : new NodeScopeLedger({
+          read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
+          write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
+        })
+  for (const folder of folders) ledger.reconcile(folder, false)
 }
 /** Inheritance copies existing local approvals; it never approves another installation. */
 export async function inheritObsidianChatNodeAccess(
@@ -153,8 +165,14 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
 /** Owner UI only. Whole-node scope intentionally includes future registered folders.
  * Credentials and installation IDs stay in the local ledger, never in chat metadata.
  */
+export interface NodeScopeOwner extends NodeScopeChat {
+  readonly delegationParentId?: string
+  saveForRelease(): Promise<void>
+  ensureDelegationParentId(): Promise<string>
+}
+
 export function setObsidianChatNodeScope(
-  session: ChatSession,
+  session: NodeScopeOwner,
   entries: NodeScopeEntry[]
 ): Promise<void> {
   return saveNodeScope(session, entries, entries)
@@ -164,13 +182,13 @@ export function setObsidianChatNodeScope(
  * access as it is. A refused call's Approve names exactly these before it is pressed.
  */
 export function approveObsidianChatNodeAccess(
-  session: ChatSession,
+  session: NodeScopeOwner,
   chosen: NodeScopeEntry[]
 ): Promise<void> {
   return saveNodeScope(session, nodeScopeEntries(session), chosen)
 }
 async function saveNodeScope(
-  session: ChatSession,
+  session: NodeScopeOwner,
   entries: NodeScopeEntry[],
   toApprove: NodeScopeEntry[]
 ): Promise<void> {
@@ -218,7 +236,7 @@ async function saveNodeScope(
   if (!canonicalChosen.length) return
   await session.ensureDelegationParentId()
   check()
-  if (JSON.stringify(nodeScopeEntries(session)) !== JSON.stringify(normalized))
+  if (JSON.stringify(session.overrides.value.nodeScope ?? []) !== JSON.stringify(normalized))
     throw new Error('Node scope changed while saving owner approval')
   for (const [id, connection] of connections)
     if (
@@ -232,9 +250,12 @@ async function saveNodeScope(
 /** Public Node-panel row-menu action. C supplies the explicitly chosen chat and immutable row identity.
  * node_id may be a local registry alias or the stable daemon ID; only the stable ID is persisted.
  */
-export function giveObsidianChatAccess(session: ChatSession, raw: NodeScopeEntry): Promise<void> {
+export function giveObsidianChatAccess(
+  session: NodeScopeOwner,
+  raw: NodeScopeEntry
+): Promise<void> {
   const entry = NodeScopeEntrySchema.parse(raw),
-    current = nodeScopeEntries(session)
+    current = session.overrides.value.nodeScope ?? []
   return saveNodeScope(
     session,
     [...current.filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry)), entry],
@@ -244,10 +265,10 @@ export function giveObsidianChatAccess(session: ChatSession, raw: NodeScopeEntry
 
 /** Header removal fences pending work synchronously, before persistence or any network await. */
 export async function removeObsidianChatNodeAccess(
-  session: ChatSession,
+  session: NodeScopeOwner,
   entry: NodeScopeEntry
 ): Promise<void> {
-  const remaining = nodeScopeEntries(session).filter(
+  const remaining = (session.overrides.value.nodeScope ?? []).filter(
     (value) => nodeScopeKey(value) !== nodeScopeKey(entry)
   )
   session.overrides.value = { ...session.overrides.value, nodeScope: remaining }
