@@ -20,7 +20,8 @@ async function inspectCommit(label: string) {
     const open = async () =>
       evalLong(`(async()=>{${setup}
       const id=await api.openRegularChatFixture(),session=chats.getSession(id);
-      session.save=async()=>{};session.saveForRelease=async()=>{};
+      window.__sampleCommitChat=id;
+      await session.saveForRelease();
       await api.giveNodeChatAccess(session,{kind:'node',node_id:${JSON.stringify(node.node)},access:'edit'});
       const project=(await client.listProjects())[0];
       const root=(await client.repository.worktrees({project_id:project.project_id})).entries.find(entry=>entry.kind==='root');
@@ -68,7 +69,7 @@ async function inspectCommit(label: string) {
     await inspect('stale', 'The folder or worktree has changed')
   } finally {
     await evalLong(
-      '(async()=>{await window.__abeleTest.closeRegularChatFixture();delete window.__sampleCommitArgs})()'
+      '(async()=>{const api=window.__abeleTest;if(window.__sampleCommitChat)await api.ChatService.getInstance().deleteChat(window.__sampleCommitChat);await api.closeRegularChatFixture();delete window.__sampleCommitArgs;delete window.__sampleCommitChat})()'
     )
     await node.close()
   }

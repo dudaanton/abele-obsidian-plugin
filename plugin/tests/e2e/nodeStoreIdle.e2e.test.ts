@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { evalLong } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 
 targets('desktop', 'phone')
 
@@ -13,8 +14,7 @@ it('measures idle polling before and after migrating a large synthetic client st
     const req = r => new Promise((resolve, reject) => {r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
     const heap = () => performance.memory?.usedJSHeapSize ?? null;
     const cpu = (()=>{try{return window.require('node:process')}catch{return null}})();
-    const events = Array.from({length:30000}, (_,i)=>({kind:'event',node_id:'sample-node',stream_id:'sample-session',seq:i+1,
-      type:'session.update',actor:{kind:'node'},at:'2026-01-01T00:00:00.000Z',data:{text:'sample output '.repeat(50)+i}}));
+    const events = (${idleStoreJournal.toString()})();
     const initial = {cursors:{'sample-session':events.length},events:{'sample-session':events},outbox:[],results:{}};
     const bytes = JSON.stringify(initial).length;
     const opening=indexedDB.open(name,1);

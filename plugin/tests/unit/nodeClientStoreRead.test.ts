@@ -3,7 +3,13 @@ import { expect, it, vi } from 'vitest'
 import { IDBFactory, IDBObjectStore, IDBRequest } from 'fake-indexeddb'
 import { NodeClientStore, readStore } from '@/node/NodeClientStore'
 import { activeNodeLetters } from '@/node/nodeChatLetters'
+import { NodeEventSchema } from '@abele/node-protocol'
+import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
+
+it('uses protocol-valid synthetic events for the idle measurement', () => {
+  for (const event of idleStoreJournal(3)) expect(() => NodeEventSchema.parse(event)).not.toThrow()
+})
 
 it('does not mistake catalog session announcements for a session journal', async () => {
   const store = new NodeClientStore('sample-catalog-retention', new IDBFactory())

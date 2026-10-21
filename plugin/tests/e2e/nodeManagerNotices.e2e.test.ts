@@ -13,7 +13,9 @@ async function inspect(label: string) {
       await evalLong(`(async()=>{
       const api=window.__abeleTest,id=await api.openRegularChatFixture();
       const session=api.ChatService.getInstance().getSession(id);
-      session.save=async()=>{};session.runAgentLoop=async()=>{};session.afterTurn=async()=>{};session.checkAnswer=async()=>{};
+      window.__sampleNoticeChat=id;
+      session.runAgentLoop=async()=>{};session.afterTurn=async()=>{};session.checkAnswer=async()=>{};
+      await session.saveForRelease();
       const previous=session.messages.value.length;
       session.wakeDelegationResult('sample-hidden-id','Read node_command_status for sample-hidden-id');
       for(let i=0;i<100;i++){
@@ -44,7 +46,9 @@ async function inspect(label: string) {
       `(async()=>{const session=window.__abeleTest.ChatService.getInstance().activeSession.value;session.isStreaming.value=false;await session.drainQueue()})()`
     )
   } finally {
-    await evalLong('window.__abeleTest.closeRegularChatFixture()')
+    await evalLong(
+      '(async()=>{const api=window.__abeleTest;if(window.__sampleNoticeChat)await api.ChatService.getInstance().deleteChat(window.__sampleNoticeChat);await api.closeRegularChatFixture();delete window.__sampleNoticeChat})()'
+    )
   }
 }
 
