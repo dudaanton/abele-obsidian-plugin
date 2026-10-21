@@ -383,7 +383,7 @@ export async function askAndStartProgram(
       console.debug('[debugger] Filename search unavailable; using open files', error)
     }
     if (paths || targets.length) {
-      paths = programLaunchPaths(targets, paths ?? [])
+      paths = programLaunchPaths(targets, paths ?? [], open)
       const selected = await pickProgram(
         app,
         paths,

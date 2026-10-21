@@ -18,10 +18,15 @@ const MethodErrorSchema = z.object({ code: z.string().optional(), message: z.str
 export const launchTargetName = (target: ProgramLaunchTarget) =>
   target.npm_script ? `npm run ${target.npm_script}` : (target.source ?? target.program)
 
-export function programLaunchPaths(targets: ProgramLaunchTarget[], files: string[]): string[] {
+export function programLaunchPaths(
+  targets: ProgramLaunchTarget[],
+  files: string[],
+  open: string[] = []
+): string[] {
   // Source aliases stay searchable without filling the first screen ahead of runnable entries.
   return [
     ...new Set([
+      ...open,
       ...targets.filter((t) => t.npm_script).map(launchTargetName),
       ...targets.filter((t) => !t.npm_script).map((t) => t.program),
       ...targets.map(launchTargetName),

@@ -7,6 +7,16 @@ import {
 } from '@/debugger/programLaunchTargets'
 import { DebuggerControlMethodSchemas, DebuggerStartSchema } from '@abele/node-protocol'
 
+it('keeps the recently opened file ahead of discovered built entries', () => {
+  expect(
+    programLaunchPaths(
+      [{ program: 'dist/main.js', source: 'src/main.ts' }],
+      ['src/sample.js', 'dist/main.js'],
+      ['src/sample.js']
+    )
+  ).toEqual(['src/sample.js', 'dist/main.js', 'src/main.ts'])
+})
+
 it('offers package scripts and built entries before searchable source aliases', () => {
   const targets: ProgramLaunchTarget[] = Array.from({ length: 20 }, (_, i) => ({
     program: `dist/entry-${i}.js`,
