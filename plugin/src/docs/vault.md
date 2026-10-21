@@ -212,7 +212,9 @@ Debug source mappings may also retain the requested line number so a source open
 recorded step or breakpoint list reopens with that line highlighted.
 The Debug leaf retains its selected folder target, selected session and up to 256 known session
 IDs, plus at most 256 source IDs, relative paths and session incarnations in layout state and
-the device-local `abele-debug-selection` preference. This also restores observation when a
+the device-local `abele-debug-selection` preference. Up to 256 watch expressions across those
+sessions are retained too, without their evaluated values. Values are read again at a pause.
+This also restores observation when a
 mobile layout omits the previous desktop leaf. Reopening observes the
 node's retained sessions; it never starts or reattaches a program automatically. Source mappings
 are used only while their session and incarnation still match. Breakpoint locations retained

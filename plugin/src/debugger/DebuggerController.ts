@@ -197,9 +197,11 @@ export class DebuggerController {
       s.incarnation !== this.snapshot.incarnation
     const moved = this.snapshot && (replaced || this.snapshot.stop_epoch !== s.stop_epoch)
     if (replaced) {
+      const restoredWatches = this.snapshot ? [] : this.session.watches
       ++this.serial
       this.markSubmittedUnknown('Target replaced; approval outcome unknown')
       this.session = empty()
+      this.session.watches = restoredWatches
       this.grantId = undefined
       this.modeUnavailableReason = 'A live agent grant must be loaded for this target'
       this.frameHandles = []
@@ -1120,9 +1122,20 @@ export class DebuggerController {
     )
     this.notify()
     await this.loadScopes(this.session.frame, this.invocation())
+    await this.refreshWatches()
   }
   selectFrame(index: number) {
-    return this.human((invocation) => this.loadScopes(index, invocation))
+    return this.human((invocation) => this.loadScopes(index, invocation)).then(() =>
+      this.refreshWatches()
+    )
+  }
+  private async refreshWatches() {
+    const epoch = this.snapshot?.stop_epoch
+    for (const { expression } of [...this.session.watches]) {
+      if (!this.current || this.session.status !== 'paused' || this.snapshot?.stop_epoch !== epoch)
+        return
+      await this.watch(expression)
+    }
   }
   async refreshExitInfo(): Promise<void> {
     const snapshot = this.snapshot

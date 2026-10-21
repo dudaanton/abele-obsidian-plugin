@@ -122,6 +122,7 @@ it('restores source identities and attachment keys for every primary session', a
     second = service.binding(owner, ids[1])
   for (const [index, binding] of [first, second].entries()) {
     binding.controller.observe({ observation: 'current', snapshot: snapshots[index] })
+    binding.controller.session.watches = [{ expression: `sample${index}.count`, value: '42' }]
     binding.attachmentKey = String(index + 1).repeat(64)
     service.registerSource(
       binding.registrationId,
@@ -147,6 +148,10 @@ it('restores source identities and attachment keys for every primary session', a
   await service.restoreSelection(saved, () => owner)
   service.select(restored[1])
   expect(restored[1].attachmentKey).toBe('2'.repeat(64))
+  expect(restored[1].controller.session.watches).toEqual([
+    { expression: 'sample1.count', stale: true },
+  ])
+  expect(JSON.stringify(saved)).not.toContain('42')
   expect(service.debugFor(target, 'src/sample-1.ts')?.debugSessionId).toBe(ids[1])
 })
 it('observes every saved primary session before discovering native mirror records', async () => {

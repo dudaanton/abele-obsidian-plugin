@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { DebuggerClient } from '@abele/node-client'
 import { DebuggerControlMethodSchemas } from '@abele/node-protocol'
 import { DebuggerBinding, DebuggerService } from '@/debugger/DebuggerService'
@@ -7,6 +7,25 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('resumes observation after reconnecting without replaying program controls', async () => {
+  const state = ref('connected')
+  const binding = new DebuggerBinding(
+    { state } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-node'
+  )
+  binding.controller.observe({ observation: 'current', snapshot: debuggerStatus().snapshot })
+  const open = vi.spyOn(binding, 'open').mockResolvedValue(undefined)
+  try {
+    state.value = 'disconnected'
+    await nextTick()
+    state.value = 'connected'
+    await nextTick()
+    expect(open).toHaveBeenCalledWith(binding.sessionId)
+  } finally {
+    binding.destroy()
+  }
+})
 it('keeps a session request failure distinct from a lost node connection', () => {
   const connection = { state: ref('connected') } as unknown as NodeConnection
   const binding = new DebuggerBinding(connection, 'sample-chat', 'sample-registration')

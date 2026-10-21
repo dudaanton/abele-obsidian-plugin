@@ -80,8 +80,10 @@ export class DebuggerBinding {
       if (state !== 'connected') {
         this.stopWatch()
         this.controller.invalidate()
+      } else if (!this.disposed && this.observationId) {
+        // Recover observation only; never replay controls or restart the program.
+        void this.open(this.observationId).catch((error) => this.fail(error))
       }
-      // Reconnection never restarts a watch or sends controls. Retry fetches a fresh snapshot.
     })
   }
   get sessionId() {
@@ -527,6 +529,16 @@ export class DebuggerService {
             : []
         )
         .slice(0, 256),
+      watches: peers
+        .flatMap((peer) =>
+          peer.sessionId
+            ? peer.controller.session.watches.slice(0, 128).map(({ expression }) => ({
+                sessionId: peer.sessionId,
+                expression,
+              }))
+            : []
+        )
+        .slice(0, 256),
       sources: peers
         .flatMap((peer) =>
           [...(this.sources.get(this.key(peer.registrationId, peer.conversationId)) ?? [])].filter(
@@ -555,6 +567,15 @@ export class DebuggerService {
           .max(256)
           .default([]),
         target: z.unknown(),
+        watches: z
+          .array(
+            z.object({
+              sessionId: z.string().min(1).max(128),
+              expression: z.string().min(1).max(16384),
+            })
+          )
+          .max(256)
+          .default([]),
         sources: z
           .array(
             z.object({
@@ -575,6 +596,11 @@ export class DebuggerService {
     const owner = ownerOf(tab.data.target)
     for (const id of parsed.data.sessions) this.preferredSessions.add(id)
     const binding = this.binding(owner, parsed.data.sessionId)
+    for (const saved of parsed.data.watches) {
+      const watches = this.binding(owner, saved.sessionId).controller.session.watches
+      if (!watches.some((watch) => watch.expression === saved.expression))
+        watches.push({ expression: saved.expression, stale: true })
+    }
     for (const attachment of parsed.data.attachments)
       this.binding(owner, attachment.sessionId).attachmentKey = attachment.key
     for (const source of parsed.data.sources) {
@@ -601,6 +627,7 @@ export class DebuggerService {
     for (const id of new Set(parsed.data.sessions)) {
       if (id !== parsed.data.sessionId) await this.binding(owner, id).open(id)
     }
+    ++binding.revision.value
     await this.discover(owner)
   }
   peers(binding: DebuggerBinding) {

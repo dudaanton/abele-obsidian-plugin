@@ -8,6 +8,71 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('reevaluates retained watches when loading a stop and selecting another frame', async () => {
+  const { model, rpc, command } = fixture()
+  model.session.watches = [{ expression: 'sample.count', value: '1', stale: true }]
+  let operationId = ''
+  let value = '2'
+  command.mockImplementation(async (_method, params: any) => {
+    operationId = params.operation_id
+    return receipt('completed', { operation_id: operationId, snapshot: model.snapshot })
+  })
+  rpc.mockImplementation(async (method) => {
+    if (method === 'debugger.v1.stack')
+      return {
+        data: {
+          items: [
+            { handle: 'sample-frame', name: 'main', source_id: 'sample-source', line: 7 },
+            { handle: 'sample-caller', name: 'caller', source_id: 'sample-source', line: 9 },
+          ],
+        },
+      } as never
+    if (method === 'debugger.v1.scopes') return { data: { items: [] } } as never
+    if (method === 'debugger.v1.approvals')
+      return { proposals: [], truncated: false, next: null } as never
+    if (method === 'debugger.v1.history')
+      return {
+        entries: [
+          {
+            actor: { kind: 'human', principal_id: 'sample-human' },
+            operation_id: operationId,
+            operation: 'evaluate',
+            outcome: 'completed',
+            debug_session_id: 'sample-debug',
+            incarnation: 'sample-incarnation',
+            history_seq: 1,
+            event_seq: 8,
+            stop: null,
+            observed_at: '2025-01-01T00:00:00.000Z',
+            stop_epoch: model.snapshot!.stop_epoch,
+            state_revision: 4,
+            target_id: 'sample-target',
+            build_identity: 'matched',
+            payload_status: 'retained',
+            requested_data: { value },
+          },
+        ],
+        truncated_before: 0,
+      } as never
+    return receipt('rejected', { dispatch: 'not_dispatched', code: 'denied' }) as never
+  })
+  await model.loadStack()
+  expect(model.session.watches[0]).toMatchObject({ value: '2', stale: false })
+  value = '8'
+  await model.selectFrame(1)
+  expect(command).toHaveBeenLastCalledWith(
+    'evaluate',
+    expect.objectContaining({
+      expression: 'sample.count',
+      frame_handle: 'sample-caller',
+    })
+  )
+  expect(model.session.watches[0]).toMatchObject({ value: '8', stale: false })
+  model.observe({ observation: 'current', snapshot: snapshot({ stop_epoch: 4, event_seq: 10 }) })
+  value = '32'
+  await model.loadStack()
+  expect(model.session.watches[0]).toMatchObject({ value: '32', stale: false })
+})
 it('labels entry pauses separately and retains enriched exception descriptions', () => {
   const { model } = fixture()
   const state = snapshot()
