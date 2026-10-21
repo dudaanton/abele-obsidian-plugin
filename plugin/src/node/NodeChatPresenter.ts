@@ -712,6 +712,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     await verifySession()
     await this.refresh()
     while (
+      this.queued.value.length ||
       this.projection.value.activeRuns.length ||
       this.projection.value.queuedInputs.length ||
       this.projection.value.prompts.some((prompt) => prompt.state === 'pending')

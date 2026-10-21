@@ -44,6 +44,7 @@ function nodeLetterTarget() {
     reference: { sessionId: 'sample' },
     connection: { client, state: ref('connected') },
     projection,
+    queued: ref([]),
     messages: ref(projection.value.messages),
     nodeDescription: ref(undefined),
     binding: ref(null),
@@ -162,6 +163,24 @@ it('refuses a missing node session before admission', async () => {
     presenter.receiveChatLetter('Sample question', { id: 'sender', title: 'Sample sender' })
   ).rejects.toThrow('check its session')
   expect(client.flush).not.toHaveBeenCalled()
+  expect(state.outbox).toEqual([])
+})
+
+it('waits for a node turn still in the ordinary send outbox', async () => {
+  const { presenter, client, state } = nodeLetterTarget()
+  presenter.queued.value.push({ id: 'ordinary-send', text: 'Earlier question' })
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  const refused = expect(result).rejects.toThrow('disconnected')
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(client.flush).not.toHaveBeenCalled()
+  } finally {
+    client.connected = false
+    await refused
+  }
   expect(state.outbox).toEqual([])
 })
 
