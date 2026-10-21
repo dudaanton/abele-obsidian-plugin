@@ -22,6 +22,7 @@ import {
 } from './mobileWholeRead'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
+import { SyncTaskBudget } from './syncTaskBudget'
 
 interface MobileFiles {
   readFile(options: { path: string; offset: number; length: number }): Promise<{ data: string }>
@@ -78,6 +79,7 @@ const writeReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
 
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
+  private readonly taskBudget = new SyncTaskBudget()
   private rangedMobile: Promise<MobileAccess | null> | undefined
   private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
   private resourceMobile: Awaited<ReturnType<typeof probeResourceRanges>> = null
@@ -386,6 +388,8 @@ export class BoundedVaultIo {
         signal?.throwIfAborted()
         this.assertOwned()
         if (bytes.length !== length) throw new EngineError('io', 'truncated bounded file read')
+        await this.taskBudget.account(bytes.length, signal)
+        this.assertOwned()
         return bytes
       },
       assertUnchanged: unchanged,
@@ -470,6 +474,7 @@ export class BoundedVaultIo {
           if (!bytesRead) break
           hash.update(bytes.subarray(0, bytesRead))
           size += bytesRead
+          await this.taskBudget.account(bytesRead, signal)
         }
         if (stampOf(await this.stat(path)).generation !== before.generation)
           throw new EngineError('conflict', `${path} changed while reading`)
