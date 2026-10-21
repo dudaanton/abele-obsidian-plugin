@@ -1422,12 +1422,15 @@ export class ObsidianFileSystem implements FileSystem {
   async beginAtomicWrite(
     path: string,
     mtime: number,
-    expectedBase: ContentIdentity | null
+    expectedBase: ContentIdentity | null,
+    beforeCreate?: (stageId: string) => Promise<void>
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([path])
     await makeParents(this.disk, path)
     const temp = await this.writer.freeName(path, 'tmp')
+    // The durable core intent owns this opaque locator before any artifact exists.
+    await beforeCreate?.(temp)
     const entry: JournalEntry = {
       target: path,
       temp,

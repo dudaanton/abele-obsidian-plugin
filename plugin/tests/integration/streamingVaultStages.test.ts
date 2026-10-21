@@ -26,6 +26,40 @@ const setup = () => {
   const fs = () => new ObsidianFileSystem(app as unknown as App, { storage })
   return { app, fs, storage }
 }
+it('finishes stage discard after a crash between file removal and journal retirement', async () => {
+  const { app, fs, storage } = setup()
+  const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
+  // The remove reached disk, but the process quit before the next journal write.
+  await app.vault.adapter.remove(stage.id)
+  const restarted = fs()
+  await restarted.discardStage(stage.id)
+  await restarted.discardStage(stage.id)
+  expect(new WriteJournal(storage).entries()).toEqual([])
+  expect(await app.vault.adapter.read('sample.bin')).toBe('original')
+})
+it('awaits stage ownership before journalling or creating its private artifact', async () => {
+  const { app, fs, storage } = setup()
+  const disk = fs(),
+    owned = deferred<void>(),
+    resume = deferred<void>()
+  let id = ''
+  const pending = disk.beginAtomicWrite('sample-new.bin', 0, null, async (stageId) => {
+    id = stageId
+    owned.resolve()
+    await resume.promise
+  })
+  await owned.promise
+  try {
+    expect(id).not.toBe('')
+    expect(await app.vault.adapter.exists(id)).toBe(false)
+    expect(new WriteJournal(storage).entries()).toEqual([])
+  } finally {
+    resume.resolve()
+  }
+  const stage = await pending
+  expect(stage.id).toBe(id)
+  await stage.discard()
+})
 it.each([false, true])(
   'protects a disposable source while creation awaits acknowledgement (owned=%s)',
   async (owned) => {
