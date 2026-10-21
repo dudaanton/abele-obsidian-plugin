@@ -24,6 +24,8 @@ const probe = (label: string) => `(async () => {
   const created = [], files = []
   let leaf, narrowLeaf, ownsLeaf = false, pictureCount = 0
   const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
+  const priorRightCollapsed = app.workspace.rightSplit.collapsed
+  const priorLeftCollapsed = app.workspace.leftSplit.collapsed
   const shot = async name => {
     pictureCount++
     await wait(250)
@@ -33,18 +35,29 @@ const probe = (label: string) => `(async () => {
     require('fs').writeFileSync(path, image.toPNG())
   }
   try {
-    leaf = app.workspace.getLeavesOfType('abele-ai-sidebar-view').find(item => item.getRoot() === app.workspace.rightSplit)
+    leaf = app.isMobile ? null : app.workspace.getLeavesOfType('abele-ai-sidebar-view').find(item => item.getRoot() === app.workspace.rightSplit)
     if (!leaf) {
-      leaf = app.workspace.getRightLeaf(true); ownsLeaf = true
+      leaf = app.isMobile ? app.workspace.getLeaf('tab') : app.workspace.getRightLeaf(true); ownsLeaf = true
       await leaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
     }
     await app.workspace.revealLeaf(leaf)
-    app.workspace.rightSplit.expand()
+    if (app.isMobile) {
+      app.workspace.leftSplit.collapse()
+      app.workspace.rightSplit.collapse()
+    } else app.workspace.rightSplit.expand()
     if (!app.isMobile) app.workspace.rightSplit.setSize(420)
     app.workspace.setActiveLeaf(leaf, { focus: false })
     const root = leaf.view.containerEl
     const current = () => root.querySelector('.abele-chat-switch__current')
     await until(current)
+    if (app.isMobile) {
+      await wait(400)
+      const chat = root.querySelector('.abele-ai-chat').getBoundingClientRect()
+      const content = root.querySelector('.view-content').getBoundingClientRect()
+      if (Math.abs(chat.left - content.left) > 1 || Math.abs(chat.width - content.width) > 1) throw Error('Chat shifted inside its native content box')
+      if (Math.abs(chat.left) > 1 || Math.abs(chat.width - innerWidth) > 1) throw Error('Full-width phone chat leaves a drawer gutter')
+      if (root.querySelector('.abele-ai-chat__header .abele-drawer-switch')) throw Error('Phone header still has a duplicate drawer selector')
+    }
     const first = service.newTab(); created.push(first)
     const session = service.getSession(first)
     session.chatTitle.value = 'Sample navigation chat'
@@ -172,6 +185,8 @@ const probe = (label: string) => `(async () => {
     if (box.height <= ink.height || parseFloat(getComputedStyle(back).paddingLeft) <= 0) throw Error('Back lost its native box')
     if (app.isMobile && (box.width < 44 || box.height < 44)) throw Error('Back is too small for touch')
     if (root.querySelector('.abele-breadcrumbs')) throw Error('Nested chat still has breadcrumbs')
+    if (root.querySelector('.abele-chat-switch__where')) throw Error('Nested chat still shows its folder in the header')
+    if (!current().getAttribute('aria-label').includes(folder)) throw Error('Nested chat lost the folder in its tooltip')
     await shot('nested-header-short-parent')
     const longParent = 'A long sample parent title that must stay entirely in the tooltip'
     session.chatTitle.value = longParent
@@ -246,6 +261,10 @@ const probe = (label: string) => `(async () => {
     if (leaf?.view.containerEl.querySelector('.abele-chat-switch__current')?.getAttribute('aria-expanded') === 'true') leaf.view.containerEl.querySelector('.abele-chat-switch__current').click()
     if (ownsLeaf) leaf?.detach()
     if (!app.isMobile && priorWidth) app.workspace.rightSplit.setSize(priorWidth)
+    if (app.isMobile) {
+      if (!priorRightCollapsed) app.workspace.rightSplit.expand()
+      if (!priorLeftCollapsed) app.workspace.leftSplit.expand()
+    }
     if (prior) service.switchTab(prior)
   }
 })()`

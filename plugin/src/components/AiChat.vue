@@ -44,6 +44,7 @@
       <!-- Header -->
       <div ref="headerContainer" class="abele-ai-chat__header abele-ai-chat__header_tree">
         <DrawerViewSwitch
+          v-if="!phone || !chatTreeSource"
           icon="bot"
           :name="t('streamB.abeleAiChat.08f891')"
           @shown="inDrawer = $event"

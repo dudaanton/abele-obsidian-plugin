@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { shallowRef } from 'vue'
 import ChatTreePanel from '@/components/chatTree/ChatTreePanel.vue'
+import ChatSwitcher from '@/components/chatTree/ChatSwitcher.vue'
 import { CHAT_TREE_SOURCE, chatTreeSource, type ChatTreeSource } from '@/chats/chatTree'
 import { useVault } from '../helpers/testEnv'
 import ChatToolModes from '@/components/ChatToolModes.vue'
@@ -48,6 +49,38 @@ it('reserves an inaccessible close slot on closed phone rows', () => {
   expect(slot.attributes('aria-hidden')).toBe('true')
   expect(slot.attributes('tabindex')).toBeUndefined()
   expect(row.find('[aria-label="Close"]').exists()).toBe(false)
+})
+
+it('keeps the nested folder in the tooltip while giving the header to the chat name', async () => {
+  source.root.value = [
+    {
+      kind: 'folder',
+      path: 'sample',
+      name: 'Sample folder',
+      children: [
+        {
+          kind: 'chat',
+          id: 'parent',
+          title: 'Parent',
+          open: true,
+          at: 1,
+          children: [
+            { kind: 'chat', id: 'child', title: 'Child', open: true, at: 1, nested: 'discussion' },
+          ],
+        },
+      ],
+    },
+  ]
+  source.activeId.value = 'child'
+  const view = mount(ChatSwitcher, { props: { title: 'Child' } })
+  views.push(view)
+  expect(view.find('.abele-chat-switch__where').exists()).toBe(false)
+  expect(view.get('.abele-chat-switch__current').attributes('aria-label')).toBe(
+    'Sample folder / Child'
+  )
+  source.activeId.value = 'parent'
+  await view.setProps({ title: 'Parent' })
+  expect(view.get('.abele-chat-switch__where').text()).toBe('Sample folder')
 })
 const show = () => {
   const view = mount(ChatTreePanel, { attachTo: document.body })

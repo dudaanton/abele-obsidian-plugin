@@ -16,7 +16,7 @@
       @keydown.enter.prevent="open = !open"
       @keydown.space.prevent="open = !open"
     >
-      <span v-if="where" class="abele-chat-switch__where">{{ where }}</span>
+      <span v-if="where && !nested" class="abele-chat-switch__where">{{ where }}</span>
       <span class="abele-chat-switch__title">{{ title }}</span>
       <Icon :icon="open ? 'chevron-up' : 'chevron-down'" size="xs" :interactive="false" />
     </div>
@@ -42,7 +42,7 @@ import { Platform, setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import ChatTreePanel from './ChatTreePanel.vue'
-import { useChatTreeSource, folderPathOf } from '@/chats/chatTree'
+import { useChatTreeSource, folderPathOf, chatsOf } from '@/chats/chatTree'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 
@@ -61,6 +61,15 @@ watch(ChatService.getInstance().treeRequest, () => {
 })
 
 const source = useChatTreeSource()
+const nested = computed(() => {
+  const tree = source.value
+  return (
+    tree &&
+    chatsOf(tree.root.value).some((chat) =>
+      chat.children?.some((child) => child.id === tree.activeId.value)
+    )
+  )
+})
 /** The folder the chat in front is in, the nearest one: the rest is in the tree. */
 const where = computed(() => {
   const tree = source.value

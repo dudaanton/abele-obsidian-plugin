@@ -4,6 +4,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
+import { Platform } from 'obsidian'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import AiChat from '@/components/AiChat.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import { ChatService } from '@/ai/ChatService'
@@ -76,7 +78,10 @@ beforeEach(() => {
   revealAnchor.mockClear()
 })
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  Platform.isPhone = false
+  vi.restoreAllMocks()
+})
 
 describe('a comment in its tab', () => {
   it('offers "Ask here" on its messages, the person’s and the agent’s', () => {
@@ -133,6 +138,12 @@ describe('a comment in its tab', () => {
 })
 
 describe('an ordinary chat', () => {
+  it('has no drawer selector in the phone header when the chat tree is available', () => {
+    Platform.isPhone = true
+    const wrapper = mountWith('chat', null)
+    expect(wrapper.findComponent(DrawerViewSwitch).exists()).toBe(false)
+  })
+
   it('has no trail', async () => {
     const wrapper = mountWith('chat', null)
     await flushPromises()
