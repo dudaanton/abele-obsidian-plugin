@@ -102,6 +102,8 @@ const nonSyncFilesystem = new Set([
   'src/helpers/vaultUtils.ts',
   'src/linter/engine.ts',
   'src/media/importImageFile.ts',
+  'src/node/NodeObsidianAdapter.ts',
+  'src/node/NodeObsidianTools.ts',
   'src/node/localDiscovery.ts',
   'src/notePlaces/otherPlugin.ts',
   'src/ooxml/vaultAdapter.ts',
