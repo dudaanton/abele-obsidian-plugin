@@ -68,6 +68,7 @@ export function requireNodeActionPermission(
     throw new Error('Node tool is off in this device’s tool permissions')
   if (
     mode === 'ask' &&
+    chat.permissionMode?.value !== 'allow-all' &&
     ![
       'node_delegations',
       'node_delegation_status',

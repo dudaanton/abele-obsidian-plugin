@@ -609,7 +609,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       if (NODE_MANAGER_TOOLS.includes(name)) {
         checks.push(host.ledger.guard(session, target, connection.principal(), 'edit'))
-        if (!(ctx.interactive && ctx.approved))
+        if (session.permissionMode.value !== 'allow-all' && !(ctx.interactive && ctx.approved))
           throw new Error('Explicit owner approval is required')
         const operation = z.string().min(1).max(128).parse(params.operation_id)
         const method =
@@ -712,7 +712,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       const repo = client.repository
       if (NODE_MANAGER_TOOLS.includes(name)) {
         const approval = () => {
-          if (!(ctx.interactive && ctx.approved))
+          if (session.permissionMode.value !== 'allow-all' && !(ctx.interactive && ctx.approved))
             throw new Error('Explicit owner approval is required')
         }
         checks.push(approval)

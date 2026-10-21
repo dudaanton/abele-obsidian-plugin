@@ -962,10 +962,12 @@ own permissions and cannot move them to a similarly named server.
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
 Delegation and command tools are Off by default. Enable them through the ordinary agent or
 chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
-cannot enable these tools. Ask prompts before starting a delegation (`node_delegate`). Commands (`node_command_run`)
-and integration (`node_git_integrate`) use one exact owner approval from the node, without a
-second plugin prompt. Sending new instructions
-(`node_delegation_send`) copies `node_delegate` exactly: Ask prompts, Auto sends without a
+cannot enable these tools. In Ask mode, starting a delegation (`node_delegate`) asks in the
+plugin; commands (`node_command_run`) and integration (`node_git_integrate`) use the node's
+exact approval without a duplicate preliminary card. Without asking skips plugin action
+cards for enabled tools; Off and node scope still apply. Sending new instructions
+(`node_delegation_send`) copies `node_delegate` exactly: Ask prompts unless the chat runs
+without asking, Auto sends without a
 prompt, Off disables sending. The tools that list, check status or cancel that work
 (`node_delegations`, `node_delegation_status`,
 `node_delegation_cancel` with `node_delegate`; `node_command_status`, `node_command_cancel` with
@@ -984,6 +986,10 @@ from chats; do not ask for a grant or create one automatically.
   optional `base_ref` (HEAD by default). Available Claude Code, pi and Codex providers come from
   the node; test providers are hidden in normal builds. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
+  The plugin derives permission mode from owner configuration, never tool arguments.
+  An unconfigured developer inherits the parent's effective mode; an explicitly configured
+  developer uses the stricter parent/developer mode, as ordinary delegation does.
+  Native session menu choices persist on the node and are never overwritten by a follow-up.
 - Creation returns `node_id`, `session_id`, `delegation_id`, `state`, `project_id`, `workspace_id`
   and task `title`, not credentials. Use that project and workspace for review tools. A
   manager with approved node access inherits read-only access to its own child's worktree;
@@ -1262,8 +1268,8 @@ picker, shell, stage or push is exposed by this toolset. Delegation tools use th
 | `node_rm` | Remove one regular file (`path`), never a directory |
 | `node_search` | Bounded literal, regex or filename search with `query`, `glob`, case sensitivity |
 | `node_git_status` | Current Git index/worktree status |
-| `node_git_commit` | Commit already staged changes after owner approval; requires `message`, `expected_head` and stable `operation_id` |
-| `node_worktree_remove` | Remove a clean worktree after owner approval; requires `expected_head`, `expected_observation_id` and stable `operation_id` |
+| `node_git_commit` | Commit already staged changes; Ask requires owner approval, without asking skips it; requires `message`, `expected_head` and stable `operation_id` |
+| `node_worktree_remove` | Remove a clean worktree; Ask requires owner approval, without asking skips it; requires `expected_head`, `expected_observation_id` and stable `operation_id` |
 | `node_git_diff` | Explicit staged/unstaged or endpoint comparison; `path` loads its patch |
 | `node_git_branches` | Paginated Git references |
 | `node_git_log` | Commit history in pages of up to 50, optionally restricted to `path`. Call again with only the returned `cursor` for the next page; oversized messages may be marked truncated. |
@@ -1341,15 +1347,17 @@ precedence over accompanying project metadata. Integration also accepts `workspa
 and `source_workspace_id` aliases. Never create unmanaged worktrees through commands.
 Optional `cwd` stays inside that target; `timeout_ms` bounds execution and `output_bytes`
 sets each output tail (1024–16384 bytes). The node must advertise `command_run_v1`.
-The initial receipt is pending owner approval. Only the owner UI answers it.
+In Ask mode the initial receipt is pending owner approval. Only the owner UI answers it.
+Without asking must execute without a card on supporting nodes. A pending approval returned
+by an older node is still pending; never answer it automatically or claim execution succeeded.
 `node_command_status` reads this parent's run using `session_id` and `run_id`, including
 exit code, bounded stdout/stderr and their truncation flags. `node_command_cancel`
 cancels that run with a retained `operation_id`. Output streams live in the manager card.
 
 `node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
 `source_worktree_id`, both branch names and full `expected_target_head` and
-`expected_source_head`, plus `node`, `session_id`, `operation_id`. It creates an owner
-prompt. Default integration is fast-forward; `rebase: true` first rebases the developer
+`expected_source_head`, plus `node`, `session_id`, `operation_id`. Ask creates an owner
+prompt; without asking must skip it on supporting nodes. Default integration is fast-forward; `rebase: true` first rebases the developer
 in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
 `outcome_unknown` directly; inspect both heads before another attempt. Never retry
 blindly or clean up an uncertain integration. Older nodes keep the existing Git tools.

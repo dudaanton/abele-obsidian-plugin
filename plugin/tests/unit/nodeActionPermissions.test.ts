@@ -55,7 +55,18 @@ it('requires approval for Ask actions and refuses Off even with an old approval'
   for (const name of actions)
     expect(() => requireNodeActionPermission(session, name, true)).toThrow(/off/)
 })
-it('asks before every mutating node action in ask mode, even in bypass', () => {
+it('leaves the exact integration approval to the node in Ask mode without a duplicate card', () => {
+  const policy = {
+    permissionMode: 'confirm-all' as const,
+    toolModes: {},
+    getToolMode: () => 'ask' as const,
+    outOfScopePath: () => null,
+    bookAnchored: false,
+    skillNeedsApproval: () => false,
+  }
+  expect(ordinaryNeedsApproval(policy, 'node_git_integrate')).toBe(false)
+})
+it('does not show preliminary node action cards in bypass', () => {
   // Vault chats and node agents share this evaluator.
   const policy = {
     permissionMode: 'allow-all' as const,
@@ -75,7 +86,16 @@ it('asks before every mutating node action in ask mode, even in bypass', () => {
         'node_git_integrate',
       ].includes(n)
   ))
-    expect(ordinaryNeedsApproval(policy, name)).toBe(true)
+    expect(ordinaryNeedsApproval(policy, name)).toBe(false)
+  for (const name of ['node_git_commit', 'node_worktree_remove'])
+    expect(ordinaryNeedsApproval(policy, name)).toBe(false)
+  const chat = {
+    getToolMode: () => 'ask',
+    permissionMode: ref('allow-all'),
+  } as unknown as ChatSession
+  for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).not.toThrow()
+  chat.getToolMode = () => 'off'
+  for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).toThrow(/off/)
 })
 it('lets listing, status and cancel tools follow the tool that started the work', () => {
   const off = nodeActionModes({}, {}, {})

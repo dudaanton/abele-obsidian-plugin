@@ -14,6 +14,22 @@ import { createNodeAgentTools } from '@/ai/tools/node/agent'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it('commits without a preliminary approval in bypass while retaining folder trust checks', async () => {
+    const f = setupGit()
+    f.session.permissionMode.value = 'allow-all'
+    const configuredProject = await f.client.getProject()
+    Object.assign(f.client, {
+      getProject: vi.fn(async () => ({ ...configuredProject, trust: 'trusted' })),
+    })
+    const commit = vi.fn(async () => ({ state: 'committed', commit: '2'.repeat(40) }))
+    Object.assign(f.repository, { git: { commit } })
+    await f.call('node_git_commit', {
+      message: 'Fix sample parser',
+      expected_head: '1'.repeat(40),
+      operation_id: 'sample-bypass-commit',
+    })
+    expect(commit).toHaveBeenCalledOnce()
+  })
   it('requires folder trust before a manager commit can execute project hooks', async () => {
     const f = setupGit()
     const commit = vi.fn(async () => ({ state: 'committed', commit: '2'.repeat(40) }))
