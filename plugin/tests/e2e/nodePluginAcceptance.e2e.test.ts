@@ -44,13 +44,15 @@ it.each([false, true])(
       await shot('new-chat-busy');
       document.querySelectorAll('.notice').forEach(notice=>notice.click());
       client.repository.editingStatus=async()=>({enabled:true});
+      const initialBlob=client.repository.blob;
+      client.repository.blob=async()=>({...await initialBlob(),content_id:'1'.repeat(64)});
       fileLeaf=app.workspace.getLeaf('tab');
       await fileLeaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{...model.current.value},path:'src/sample-panel.ts'}});
       await fileLeaf.loadIfDeferred?.();await app.workspace.revealLeaf(fileLeaf);
       if(${phone}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
       await until(()=>fileLeaf.view.file?.document.value);
       fileLeaf.view.fileTab.start();
-      await until(()=>fileLeaf.view.editing?.active.value);
+      await until(()=>fileLeaf.view.editing?.editor.value?.editing.value);
       const blob=client.repository.blob;
       client.repository.blob=async()=>{throw Object.assign(new Error('resource_busy'),{code:'resource_busy'})};
       fileLeaf.view.fileTab.stop();
@@ -60,15 +62,15 @@ it.each([false, true])(
       const changedPatch=()=>changedText.includes('"external"')?['@@ -1 +1 @@','-export const sample = false','+export const sample = "external"',''].join(String.fromCharCode(10)):'';
       client.repository.patch=async()=>({content_id:'sample-refresh-patch',size:changedPatch().length,binary:false,requires_larger_load:false,too_large:false});
       client.repository.content=async request=>{const text=request.content_id==='sample-refresh-patch'?changedPatch():changedText;return {offset:0,total:text.length,base64:btoa(text)}};
-      client.repository.blob=async()=>({...await blob(),content_id:'sample-updated',size:changedText.length});
+      client.repository.blob=async()=>({...await blob(),content_id:'2'.repeat(64),size:changedText.length});
       await model.reloadTarget(model.current.value);
       await until(()=>fileLeaf.view.file.document.value.text.includes('false'));
       await shot('file-refreshed');
-      fileLeaf.view.fileTab.start();await until(()=>fileLeaf.view.editing.active.value);
+      fileLeaf.view.fileTab.start();await until(()=>fileLeaf.view.editing.editor.value?.editing.value);
       const editor=fileLeaf.view.editing.editor.value;
       await editor.editText('export const sample = "local"'+String.fromCharCode(10));
       changedText='export const sample = "external"'+String.fromCharCode(10);
-      client.repository.blob=async()=>({...await blob(),content_id:'sample-external',size:changedText.length});
+      client.repository.blob=async()=>({...await blob(),content_id:'3'.repeat(64),size:changedText.length});
       await model.reloadTarget(model.current.value);
       await until(()=>fileLeaf.view.contentEl.textContent.includes('Changed on disk'));
       if(!editor.draftText.value.includes('local'))throw Error('External change replaced local draft');
