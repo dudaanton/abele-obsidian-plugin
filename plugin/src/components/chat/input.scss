@@ -120,6 +120,8 @@
  * so and scrolls after that; opened out, it takes all the height the chat gives it.
  */
 .abele-chat-input__editor {
+  // A form field has no floating note header to leave room for on a phone.
+  --view-top-spacing-markdown: 0px;
   border-radius: var(--radius-m);
   cursor: text;
   overflow: hidden;

@@ -402,6 +402,8 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
       expect(result.overflow).toBeLessThanOrEqual(1)
       expect(result.width).toBeLessThanOrEqual(390)
       console.log('Sample phone composer geometry', JSON.stringify(result.composer))
+      expect(result.composer.focusedComposer.editor).toBeLessThan(60)
+      expect(result.composer.blurredComposer.editor).toBeLessThan(60)
     },
     180_000
   )
