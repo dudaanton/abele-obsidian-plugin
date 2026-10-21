@@ -6,6 +6,24 @@ import Disclosure from '@/components/obsidian/Disclosure.vue'
 import { Platform } from 'obsidian'
 
 const modal = { props: ['size'], template: '<div><slot /><slot name="footer" /></div>' }
+it.each([
+  [
+    'request_timeout',
+    'The launch result is unknown. Reconnect and check the debug sessions before trying again.',
+  ],
+  [
+    'debugger_program_not_found',
+    'The program was not found. Check its path relative to the folder.',
+  ],
+])('explains a launch refused with %s', async (code, message) => {
+  const w = fixture(vi.fn().mockRejectedValue(new Error(code)))
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(w.get('[role="alert"]').text()).toContain(message)
+  await w.get('.abele-disclosure__control').trigger('click')
+  expect(w.get('.abele-disclosure__content').text()).toContain(code)
+  w.unmount()
+})
 it('offers supported stop-at-start default off and sends the explicit choice', async () => {
   const launch = vi.fn(async () => {})
   const w = mount(ProgramLaunchDialog, {

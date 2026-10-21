@@ -5,6 +5,13 @@ import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import RequestView from '@/components/debugger/http/RequestView.vue'
 import RequestsPanel from '@/components/debugger/http/RequestsPanel.vue'
+
+it('offers an explicit refresh for requests added outside the view', async () => {
+  const view = mount(RequestsPanel, { props: { collections: [] } })
+  await view.get('[aria-label="Refresh requests"]').trigger('click')
+  expect(view.emitted('refresh')).toHaveLength(1)
+  view.unmount()
+})
 import RequestPairs from '@/components/debugger/http/RequestPairs.vue'
 import CodeField from '@/components/obsidian/CodeField.vue'
 import DebugValueView from '@/components/debugger/DebugValueView.vue'

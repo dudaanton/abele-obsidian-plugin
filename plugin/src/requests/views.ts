@@ -176,6 +176,7 @@ const Sidebar = defineComponent({
         open: open && c && open.projectId === c.projectId ? open.id : undefined,
         sending: m?.state.sending.at(-1),
         recording: recording.value?.name,
+        onRefresh: load,
         reveal: service.reveal.value,
         onOpenRequest: (id: string): void => {
           if (c) void openRequestTab(c, id).catch(say)

@@ -488,3 +488,31 @@ it('shows incoming and outgoing program requests with correlated code on desktop
     }
   })
 }, 180000)
+
+it('explains a missing run after refresh and a followed value with no matches on both layouts', async () => {
+  const check = (device: string) => {
+    connect()
+    const seen = evalAsync<{ missing: boolean; stale: number }>(`(async()=>{${prelude}
+      for(const leaf of app.workspace.getLeavesOfType('abele-trace-run'))leaf.detach();
+      ${OPEN_RUN()}
+      await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)}},{follow:'sample-value-not-recorded'});
+      await until(()=>document.querySelector('.abele-trace-trail')?.textContent.includes('No recorded steps contain this value.'),'empty value trail');
+      await shot('trace-follow-no-matches-${device}');
+      const fs=require('fs'),path=require('path'),folder=path.join(${JSON.stringify(repo)},'.abele','runs',${JSON.stringify(RUN)}),removed=folder+'-temporarily-removed';
+      fs.renameSync(folder,removed);
+      try {
+        const leaf=app.workspace.getLeavesOfType('abele-trace-run').find(l=>l.view.getState().runId===${JSON.stringify(RUN)});
+        leaf.view.containerEl.querySelector('[aria-label="Read the run again"]').click();
+        await until(()=>leaf.view.containerEl.textContent.includes('This run is no longer on the node.'),'removed run explanation');
+        await shot('trace-removed-run-${device}');
+        return {missing:leaf.view.containerEl.textContent.includes('This run is no longer on the node.'),stale:leaf.view.containerEl.querySelectorAll('.abele-trace-run__step').length};
+      } finally {
+        fs.renameSync(removed,folder);
+        for(const leaf of app.workspace.getLeavesOfType('abele-trace-run'))leaf.detach();
+      }
+    })()`)
+    expect(seen).toEqual({ missing: true, stale: 0 })
+  }
+  check('desktop')
+  await withEmulatedPhone(async () => check('phone'))
+}, 180000)

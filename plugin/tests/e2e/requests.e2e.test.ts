@@ -248,6 +248,29 @@ const CHOOSE = (projectId: () => string, label: string) => `
   await api.requests.openView();
   await until(()=>panel()&&panel().querySelector('.abele-requests-panel__project .abele-tree-item__text')?.textContent.trim()===${JSON.stringify(label)},'project shown');`
 
+it('refreshes requests added on disk without reopening the view on either layout', async () => {
+  const check = (device: string) => {
+    connect()
+    const seen = evalAsync<boolean>(`(async()=>{${prelude}
+      ${CHOOSE(() => project, 'repo')}
+      const fs=require('fs'),path=require('path'),file=path.join(${JSON.stringify(repo)},'.abele','requests','Samples','Disk sample.http');
+      fs.writeFileSync(file,${JSON.stringify('# @name Disk sample\nGET http://localhost:4000/sample\n')});
+      try {
+        panel().querySelector('[aria-label="Refresh requests"]').click();
+        await until(()=>panel().textContent.includes('Disk sample'),'new disk request');
+        await shot('requests-disk-refresh-${device}');
+        return panel().textContent.includes('Disk sample');
+      } finally {
+        fs.unlinkSync(file);
+        for(const leaf of app.workspace.getLeavesOfType('abele-requests'))leaf.detach();
+      }
+    })()`)
+    expect(seen).toBe(true)
+  }
+  check('desktop')
+  await withEmulatedPhone(async () => check('phone'))
+}, 180000)
+
 it('says what to do in a project with no saved requests yet', () => {
   connect()
   const seen = evalAsync<{ empty: string; environment: string }>(`(async()=>{${prelude}

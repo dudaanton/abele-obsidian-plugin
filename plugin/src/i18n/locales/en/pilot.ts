@@ -1,4 +1,9 @@
 export const en = {
+  'requests.refresh': 'Refresh requests',
+  'debug.launchUnknown':
+    'The launch result is unknown. Reconnect and check the debug sessions before trying again.',
+  'debug.launchMissing': 'The program was not found. Check its path relative to the folder.',
+  'debug.followNoMatches': 'No recorded steps contain this value.',
   'node.lsp.locations': 'Locations: {count}',
   'node.lsp.noLocations': 'No matching locations',
   'node.lsp.count': 'Diagnostics: {count}',
@@ -66,7 +71,8 @@ export const en = {
   'node.files.stopSessions': 'Stop these sessions',
   'node.files.sessionsStopped':
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
-  'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
+  'node.error.busy':
+    'This resource is in use. Wait for the current operation to finish and try again.',
   'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',
   'image.timeLimit.label': 'Image generation time limit',
   'image.timeLimit.unlimited': 'No limit',

@@ -8,6 +8,7 @@
       <span class="abele-trace-trail__value">{{ trail.value }}</span>
       <Icon icon="x" :tooltip="t('streamC.4c5d9f6c20a1e610')" @click="emit('close')" />
     </div>
+    <EmptyState v-if="!stops.length && !lost" :text="t('debug.followNoMatches')" />
     <!-- Two lines to a stop, so a long path is read whole in a narrow pane: the step, then
          where in it the value was. -->
     <div
@@ -45,6 +46,7 @@ import { t } from '@/i18n'
 
 import { computed } from 'vue'
 import Icon from '../../obsidian/Icon.vue'
+import EmptyState from '../../obsidian/EmptyState.vue'
 import TraceStepGlyph from './TraceStepGlyph.vue'
 import { since } from './format'
 import type { TraceStep, TraceTrail } from './types'

@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'requests.refresh': 'Обновить запросы',
+  'debug.launchUnknown':
+    'Результат запуска неизвестен. Подключитесь снова и проверьте сеансы отладки перед повторным запуском.',
+  'debug.launchMissing': 'Программа не найдена. Проверьте путь относительно папки.',
+  'debug.followNoMatches': 'В записанных шагах это значение не найдено.',
   'node.lsp.locations': 'Места в коде: {count}',
   'node.lsp.noLocations': 'Совпадений нет',
   'node.lsp.count': 'Диагностика: {count}',
@@ -78,8 +83,7 @@ export const ru = {
   'node.files.stopSessions': 'Остановить эти сессии',
   'node.files.sessionsStopped':
     'Сессии остановлены. Когда они завершат остановку, снова выберите удаление рабочего дерева.',
-  'node.error.busy':
-    'Эта папка или рабочее дерево используется. Перед удалением остановите его сессии.',
+  'node.error.busy': 'Ресурс занят. Дождитесь завершения текущей операции и повторите попытку.',
   'node.codeLineUnavailable': 'Строки, на которые ведёт ссылка, больше не существуют в этом файле.',
   'image.timeLimit.label': 'Лимит времени генерации изображений',
   'image.timeLimit.unlimited': 'Без ограничения',

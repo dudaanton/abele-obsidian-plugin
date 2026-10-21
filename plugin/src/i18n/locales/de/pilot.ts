@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'requests.refresh': 'Anfragen aktualisieren',
+  'debug.launchUnknown':
+    'Das Startergebnis ist unbekannt. Verbinde dich erneut und prüfe die Debug-Sitzungen vor einem weiteren Versuch.',
+  'debug.launchMissing': 'Das Programm wurde nicht gefunden. Prüfe den Pfad relativ zum Ordner.',
+  'debug.followNoMatches': 'Kein aufgezeichneter Schritt enthält diesen Wert.',
   'node.lsp.locations': 'Fundstellen: {count}',
   'node.lsp.noLocations': 'Keine passenden Fundstellen',
   'node.lsp.count': 'Diagnosen: {count}',
@@ -70,7 +75,7 @@ export const de = {
   'node.files.sessionsStopped':
     'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
   'node.error.busy':
-    'Dieser Ordner oder Worktree wird verwendet. Stoppen Sie seine Sitzungen vor dem Löschen.',
+    'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
   'node.codeLineUnavailable': 'Die verlinkten Zeilen existieren in dieser Datei nicht mehr.',
   'image.timeLimit.label': 'Zeitlimit für die Bilderzeugung',
   'image.timeLimit.unlimited': 'Kein Limit',

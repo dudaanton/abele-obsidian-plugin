@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'requests.refresh': 'Atjaunot pieprasījumus',
+  'debug.launchUnknown':
+    'Palaišanas rezultāts nav zināms. Atjauno savienojumu un pirms atkārtotas palaišanas pārbaudi atkļūdošanas sesijas.',
+  'debug.launchMissing': 'Programma nav atrasta. Pārbaudi ceļu attiecībā pret mapi.',
+  'debug.followNoMatches': 'Ierakstītajos soļos šī vērtība nav atrasta.',
   'node.lsp.locations': 'Vietas kodā: {count}',
   'node.lsp.noLocations': 'Nav atbilstošu vietu',
   'node.lsp.count': 'Diagnostika: {count}',
@@ -66,7 +71,8 @@ export const lv = {
   'node.files.stopSessions': 'Apturēt šīs sesijas',
   'node.files.sessionsStopped':
     'Sesijas apturētas. Kad apturēšana pabeigta, vēlreiz izvēlieties darba koka dzēšanu.',
-  'node.error.busy': 'Šī mape vai darba koks tiek izmantots. Pirms dzēšanas apturiet tā sesijas.',
+  'node.error.busy':
+    'Šis resurss tiek izmantots. Uzgaidi, līdz pašreizējā darbība beidzas, un mēģini vēlreiz.',
   'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
   'image.timeLimit.label': 'Attēlu ģenerēšanas laika ierobežojums',
   'image.timeLimit.unlimited': 'Bez ierobežojuma',

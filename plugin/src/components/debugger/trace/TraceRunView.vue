@@ -287,13 +287,15 @@ const StepEnd = defineComponent({
       p.step.marked
         ? h(Icon, { icon: 'flag', size: 'xs', noHover: true, class: 'abele-trace-run__flag' })
         : null,
-      p.step.direction
-        ? h(
-            'span',
-            {},
-            t(p.step.direction === 'incoming' ? 'debug.httpIncoming' : 'debug.httpOutgoing')
-          )
-        : null,
+      p.step.sent
+        ? h('span', {}, t('streamC.fd6ff1c88db4072e'))
+        : p.step.direction
+          ? h(
+              'span',
+              {},
+              t(p.step.direction === 'incoming' ? 'debug.httpIncoming' : 'debug.httpOutgoing')
+            )
+          : null,
       p.step.status !== undefined ? h('span', {}, String(p.step.status)) : null,
       p.step.durationMs !== undefined ? h('span', {}, `${p.step.durationMs} ms`) : null,
       h('span', { class: 'abele-trace-run__size' }, same ? '=' : size ? bytes(size) : ''),

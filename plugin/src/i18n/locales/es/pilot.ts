@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'requests.refresh': 'Actualizar solicitudes',
+  'debug.launchUnknown':
+    'Se desconoce el resultado del inicio. Vuelve a conectar y revisa las sesiones de depuración antes de reintentarlo.',
+  'debug.launchMissing': 'No se encontró el programa. Comprueba la ruta relativa a la carpeta.',
+  'debug.followNoMatches': 'Ningún paso registrado contiene este valor.',
   'node.lsp.locations': 'Ubicaciones: {count}',
   'node.lsp.noLocations': 'No hay ubicaciones coincidentes',
   'node.lsp.count': 'Diagnósticos: {count}',
@@ -79,7 +84,7 @@ export const es = {
   'node.files.sessionsStopped':
     'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
   'node.error.busy':
-    'Esta carpeta o árbol de trabajo está en uso. Detenga sus sesiones antes de eliminarlo.',
+    'Este recurso está en uso. Espera a que termine la operación actual e inténtalo de nuevo.',
   'node.codeLineUnavailable': 'Las líneas enlazadas ya no existen en este archivo.',
   'image.timeLimit.label': 'Límite de tiempo de generación de imágenes',
   'image.timeLimit.unlimited': 'Sin límite',

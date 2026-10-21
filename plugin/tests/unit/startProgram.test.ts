@@ -85,6 +85,35 @@ function fakePresenter() {
 
 afterEach(() => DebuggerService.instance.destroy())
 
+it('discovers retained sessions after an uncertain launch without replaying start', async () => {
+  fakeWorkspace()
+  const { presenter } = fakePresenter()
+  vi.mocked(presenter.connection.client.request).mockRejectedValueOnce(new Error('request_timeout'))
+  const discover = vi.spyOn(DebuggerService.instance, 'discover').mockResolvedValue(undefined)
+  try {
+    await expect(
+      startProgram(presenter, 'src/page.js', [], target, async () => {})
+    ).rejects.toThrow('request_timeout')
+    expect(discover).toHaveBeenCalledWith(presenter)
+    expect(presenter.connection.client.request).toHaveBeenCalledTimes(1)
+  } finally {
+    discover.mockRestore()
+  }
+})
+
+it('keeps a confirmed launch visible when reading its source metadata fails', async () => {
+  fakeWorkspace()
+  const { presenter } = fakePresenter()
+  const request = vi.mocked(presenter.connection.client.request).getMockImplementation()!
+  vi.spyOn(presenter.connection.client, 'request').mockImplementation(async (method, params) => {
+    if (method === 'debugger.v1.status') throw new Error('request_timeout')
+    return request(method, params)
+  })
+  const show = vi.fn(async () => {})
+  await expect(startProgram(presenter, 'src/page.js', [], target, show)).resolves.toBe('child-1')
+  expect(show).toHaveBeenCalledWith('child-1')
+})
+
 it.each([true, false])('sends stop-at-start only to supporting nodes: %s', async (supported) => {
   fakeWorkspace()
   const { presenter, calls } = fakePresenter()

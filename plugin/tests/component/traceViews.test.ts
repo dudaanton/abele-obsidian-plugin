@@ -4,8 +4,15 @@ import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
 import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
 import TraceValueRow from '@/components/debugger/trace/TraceValueRow.vue'
 import TraceStepDetail from '@/components/debugger/trace/TraceStepDetail.vue'
+import TraceTrail from '@/components/debugger/trace/TraceTrail.vue'
 import BreakpointMark from '@/components/debugger/BreakpointMark.vue'
 import type { TraceRun } from '@/components/debugger/trace/types'
+
+it('explains a followed value with no recorded matches', () => {
+  const w = mount(TraceTrail, { props: { trail: { value: 'sample body', stops: [] }, steps: [] } })
+  expect(w.text()).toContain('No recorded steps contain this value.')
+  w.unmount()
+})
 
 const run: TraceRun = {
   id: 'sample-run',
@@ -249,6 +256,7 @@ it('shows direction, status and duration of program requests', () => {
         steps: [
           { ...run.steps[0], direction: 'incoming', durationMs: 0, host: 'localhost:4000' },
           { ...run.steps[0], id: 'out', chain: 'b', direction: 'outgoing', durationMs: 25 },
+          { ...run.steps[0], id: 'sent', chain: 'c', sent: true },
         ],
       },
     },
@@ -257,6 +265,7 @@ it('shows direction, status and duration of program requests', () => {
   expect(w.text()).toContain('localhost:4000')
   expect(w.text()).toContain('Incoming')
   expect(w.text()).toContain('Outgoing')
+  expect(w.text()).toContain('A request you sent')
   expect(w.text()).toContain('200')
   expect(w.text()).toContain('0 ms')
   expect(w.text()).toContain('25 ms')

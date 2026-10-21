@@ -200,25 +200,36 @@ export async function startProgram(
 ) {
   argv = [...argv]
   const client = presenter.connection.client
+  const service = DebuggerService.instance
   const supportsStop =
     options.stopOnEntry !== undefined &&
     debuggerAcceptanceCapabilities(await client.describe?.()).launch_stop_on_entry
   const started = StartResultSchema.parse(
-    await client.request('debugger.v1.start', {
-      operation_id: crypto.randomUUID(),
-      ...debugOwnerParams(presenter),
-      program,
-      argv,
-      ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
-      ...(options.npmScript ? { npm_script: options.npmScript } : {}),
-      sources: sources.filter((s) => s !== program),
-    })
+    await client
+      .request('debugger.v1.start', {
+        operation_id: crypto.randomUUID(),
+        ...debugOwnerParams(presenter),
+        program,
+        argv,
+        ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
+        ...(options.npmScript ? { npm_script: options.npmScript } : {}),
+        sources: sources.filter((s) => s !== program),
+      })
+      .catch((error) => {
+        // A lost start reply can leave a retained (even already finished) session on the node.
+        // Discover it by reading; never send the launch a second time.
+        void service
+          .discover(presenter)
+          .catch((failure) =>
+            console.debug('[debugger] Launch outcome could not be discovered', failure)
+          )
+        throw error
+      })
   )
   // The node answers with the session the program's code runs in, not the adapter's own.
   const sessionId = started.debug_session_id
   console.debug('[debugger] Program started', program, sessionId)
-  const snapshot = await registerSources(presenter, started, target)
-  const service = DebuggerService.instance
+  service.trackFolder(presenter, sessionId, target)
   // The node has no restart of its own: Restart in the panel stops the program still going and
   // starts the same one again, with the points it had.
   const binding = service.binding(presenter, sessionId)
@@ -246,7 +257,14 @@ export async function startProgram(
   }
   // Finish admitting the source before the controls become available. A late file admission
   // would otherwise replace a location the person already selected in the debugger.
-  await openSources(presenter, started, snapshot.incarnation, target, options.source ?? program)
+  try {
+    const snapshot = await registerSources(presenter, started, target)
+    await openSources(presenter, started, snapshot.incarnation, target, options.source ?? program)
+  } catch (error) {
+    // The start already succeeded. Failure to read or navigate source is not launch failure.
+    console.debug('[debugger] Started program source unavailable', sessionId, error)
+    binding.fail(error)
+  }
   await show(sessionId)
   // Held on its first line, the new run takes the points before any of its code runs. The node
   // can answer the start before that stop reaches the panel, and a point sent meanwhile names

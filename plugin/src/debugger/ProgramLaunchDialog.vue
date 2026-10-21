@@ -107,7 +107,13 @@ async function run() {
     ].join('\n')
     error.value = technical.value.includes('debugger_startup_handoff_lost')
       ? t('debug.launchExitedEarly')
-      : t('debug.launchFailedPlain')
+      : /request_timeout|connection_lost|disconnected|outcome_unknown|delivery_unknown/.test(
+            technical.value
+          )
+        ? t('debug.launchUnknown')
+        : technical.value.includes('debugger_program_not_found')
+          ? t('debug.launchMissing')
+          : t('debug.launchFailedPlain')
     output.value = [details?.stdout, details?.stderr].filter(Boolean).join('\n')
   } finally {
     busy.value = false

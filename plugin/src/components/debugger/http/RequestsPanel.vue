@@ -10,6 +10,14 @@
         <DrawerViewSwitch icon="send-horizontal" :name="t('streamC.ada27592c9578e90')" />
         <Icon
           class="nav-action-button"
+          icon="refresh-cw"
+          :tooltip="t('requests.refresh')"
+          :aria-label="t('requests.refresh')"
+          :disabled="offline"
+          @click="emit('refresh')"
+        />
+        <Icon
+          class="nav-action-button"
           icon="file-plus"
           :tooltip="t('streamC.5977ded363b21808')"
           :disabled="offline || !!notice"
@@ -170,6 +178,7 @@ const props = withDefaults(
   }
 )
 const emit = defineEmits<{
+  (e: 'refresh'): void
   (e: 'open-request', id: string): void
   (e: 'send-request', id: string): void
   /** Send, duplicate, rename, copy as curl, delete: a menu at the row. */
