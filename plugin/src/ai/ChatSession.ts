@@ -2671,7 +2671,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       attachments,
       !isCurrent && !fromChat,
       replyTo,
-      fromChat
+      fromChat,
+      !!delegationWake
     )
     // Stop may arrive while attachments/message preparation is awaiting I/O.
     if (isCurrent && !isCurrent()) return
@@ -2892,11 +2893,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     attachments?: string[],
     review = true,
     replyTo?: ChatReplyTo[],
-    fromChat?: LetterChat
+    fromChat?: LetterChat,
+    automaticNotice = false
   ): Promise<Message> {
     const userMsg: ChatMessage = {
       id: nanoid(),
-      role: 'user',
+      role: automaticNotice ? 'system' : 'user',
+      ...(automaticNotice
+        ? { sessionMark: { kind: 'notice' as const, text: t('chat.backgroundEnded') } }
+        : {}),
       ...(fromChat ? { fromSession: fromChat } : {}),
       content,
       attachments: attachments?.length ? attachments : undefined,
@@ -2987,7 +2992,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const messages: Message[] = []
     for (const q of taken) {
       if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
-      const message = await this.userMessage(q.content, q.attachments, !q.delegationWake, q.replyTo)
+      const message = await this.userMessage(
+        q.content,
+        q.attachments,
+        !q.delegationWake,
+        q.replyTo,
+        undefined,
+        !!q.delegationWake
+      )
       // Stop can win while message/attachment preparation is pending, after dequeue.
       if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
       messages.push(message)

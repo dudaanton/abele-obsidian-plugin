@@ -85,6 +85,28 @@ it('still wakes an unstopped parent once the durable result is ready', async () 
   expect(await store.transaction((s) => s.delegation!.tasks.key.awaitingResult)).toBe(false)
 })
 
+it('renders automatic wake notifications as quiet system rows while preserving model instructions', async () => {
+  const internals = session as unknown as {
+    runAgentLoop(): Promise<void>
+    afterTurn(): Promise<void>
+  }
+  vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  const send = vi.spyOn(session, 'sendMessage')
+  expect(session.wakeDelegationResult('sample-delegation')).toBe(true)
+  await send.mock.results[0].value
+  expect(session.messages.value.at(-1)).toMatchObject({
+    role: 'system',
+    sessionMark: { kind: 'notice' },
+  })
+  expect(session.messages.value.at(-1)?.sessionMark?.text).not.toContain('sample-delegation')
+  expect(
+    (await ChatStorage.getInstance().loadChat(session.currentChatFile.value!)).internalMessages?.at(
+      -1
+    )
+  ).toMatchObject({ role: 'user', content: expect.stringContaining('node_delegation_status') })
+})
+
 it('clears the durable waiter on Stop; replay stores the result without starting a parent turn', async () => {
   expect((await connection.delegation.status(parent, 'delegation')).state).toBe('receiving mailbox')
   const send = vi.spyOn(session, 'sendMessage').mockResolvedValue(undefined)
