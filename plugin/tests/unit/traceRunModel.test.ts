@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceRunModel } from '@/debugger/trace/TraceRunModel'
 import { TraceRpc } from '@/debugger/trace/wire'
 
+it('clears previously loaded evidence when the run is removed', async () => {
+  const n = node()
+  const model = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+  await model.load()
+  await model.pick('t0001')
+  await model.follow('"C-1"')
+  vi.spyOn(n.rpc, 'wholeRun').mockRejectedValue(new Error('trace_run_not_found'))
+  await model.load()
+  expect(model.run).toBeUndefined()
+  expect(model.wire).toBeUndefined()
+  expect(model.picked).toBeUndefined()
+  expect(model.trail).toBeUndefined()
+  expect(model.error).toBe('This run is no longer on the node.')
+  model.dispose()
+})
+
 it('follows recording until it ends and releases its timer', async () => {
   vi.useFakeTimers()
   try {

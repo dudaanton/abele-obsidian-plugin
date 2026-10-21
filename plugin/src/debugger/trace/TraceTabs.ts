@@ -107,7 +107,11 @@ export class TraceRunTab extends ItemView {
   async setState(raw: unknown, result: ViewStateResult) {
     const parsed = RunState.safeParse(raw)
     if (parsed.success) {
-      const same = this.state?.runId === parsed.data.runId && this.model
+      const same =
+        this.state?.runId === parsed.data.runId &&
+        this.state.projectId === parsed.data.projectId &&
+        this.state.registrationId === parsed.data.registrationId &&
+        this.model
       this.state = parsed.data
       if (!same) this.start()
     }
@@ -434,9 +438,14 @@ export async function openTraceRun(
 ) {
   const { workspace } = GlobalStore.getInstance().app
   const parsed = RunState.parse(state)
-  const existing = workspace
-    .getLeavesOfType(TRACE_RUN_VIEW)
-    .find((l) => (l.view as TraceRunTab).getState().runId === parsed.runId)
+  const existing = workspace.getLeavesOfType(TRACE_RUN_VIEW).find((l) => {
+    const saved = (l.view as TraceRunTab).getState()
+    return (
+      saved.runId === parsed.runId &&
+      saved.projectId === parsed.projectId &&
+      saved.registrationId === parsed.registrationId
+    )
+  })
   const leaf = existing ?? workspace.getLeaf('tab')
   await leaf.setViewState({ type: TRACE_RUN_VIEW, state: parsed, active: true })
   await workspace.revealLeaf(leaf)

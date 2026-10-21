@@ -45,6 +45,14 @@ export class TraceRunModel {
       if (wanted) this.picked = wanted
       if (this.picked) await this.fill(this.picked)
     } catch (e) {
+      if (this.disposed) return
+      this.run = undefined
+      this.wire = undefined
+      this.picked = undefined
+      this.trail = undefined
+      this.valueMatches = []
+      this.loadedSteps.clear()
+      ++this.searchGeneration
       this.error = e instanceof Error ? nodeErrorWords(e.message) : t('streamC.77490b1334072a11')
       console.debug('[trace] Run unavailable', e)
     } finally {
