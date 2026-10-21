@@ -20,9 +20,15 @@ export interface ObsidianInvocation {
 }
 
 export interface ObsidianExecutionReceipt {
+  at?: number
+  sessionId?: string
+  runId?: string
   state: 'executing' | 'succeeded' | 'failed' | 'outcome_unknown'
   result: Record<string, unknown>
 }
+
+/** A checked refusal before the ordinary handler's first effect. */
+export class ObsidianNotExecuted extends Error {}
 
 export interface ObsidianToolAdapter {
   revision: string
@@ -79,12 +85,27 @@ export class NodeObsidianExecutor {
   }
 
   private async complete(i: ObsidianInvocation, receipt: ObsidianExecutionReceipt): Promise<void> {
+    const wireResult = { ...receipt.result }
+    // The ordinary result store retains the full answer locally. Only its preview crosses
+    // the bounded node protocol; read_result retrieves the rest through the same handler.
+    delete wireResult.stored
+    const result =
+      JSON.stringify(wireResult).length <= 65536
+        ? wireResult
+        : {
+            content: [
+              {
+                type: 'text',
+                text: 'The tool finished, but its result exceeds the node size limit. Request a smaller page or passage. Do not repeat a mutation to retrieve its output.',
+              },
+            ],
+          }
     await this.host.request(method('complete'), {
       invocation_id: i.invocation_id,
       client_id: this.host.clientId,
       revision: i.revision,
       state: receipt.state,
-      result: receipt.result,
+      result,
     })
   }
 
@@ -108,7 +129,15 @@ export class NodeObsidianExecutor {
       await this.host.request(method('cancel'), { invocation_id: i.invocation_id })
       return
     }
-    const prepared = await adapter.prepare(i)
+    let refusal: ObsidianNotExecuted | undefined
+    let prepared: Awaited<ReturnType<ObsidianToolAdapter['prepare']>>
+    try {
+      prepared = await adapter.prepare(i)
+    } catch (error) {
+      if (!(error instanceof ObsidianNotExecuted)) throw error
+      refusal = error
+      prepared = { preview: { error: error.message }, needsApproval: false }
+    }
     signal.throwIfAborted()
     if (
       i.action === 'prepare' ||
@@ -131,10 +160,16 @@ export class NodeObsidianExecutor {
     })) as { execute: boolean; bypass?: boolean }
     if (claim.execute !== true) return
     // If this flush fails, nothing executes. The next poll reconciles the node's claim as unknown.
-    await this.host.save(i.invocation_id, { state: 'executing', result: {} })
+    await this.host.save(i.invocation_id, {
+      state: 'executing',
+      result: {},
+      sessionId: i.session_id,
+      runId: i.run_id,
+    })
     let receipt: ObsidianExecutionReceipt
     try {
       signal.throwIfAborted()
+      if (refusal) throw refusal
       const result = await adapter.execute(i, claim.bypass === true, signal)
       receipt = { state: 'succeeded', result }
     } catch (error) {
@@ -142,7 +177,11 @@ export class NodeObsidianExecutor {
       receipt = unknownResult(
         error instanceof Error ? error.message : 'Tool outcome could not be confirmed'
       )
+      if (error instanceof ObsidianNotExecuted) receipt.state = 'failed'
     }
+    receipt.sessionId = i.session_id
+    receipt.runId = i.run_id
+    receipt.at = Date.now()
     await this.host.save(i.invocation_id, receipt)
     await this.complete(i, receipt)
   }

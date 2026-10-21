@@ -213,7 +213,8 @@ export const SECTIONS: Section[] = [
     'imageProviders',
     (p: Identified & { apiKeyId?: string }) => (p.apiKeyId ? [p.apiKeyId] : [])
   ),
-  // Whole agent definitions travel, including identity-based MCP toolModes, toolDiscovery,
+  // Whole agent definitions travel, including node provider identities and their toolModes,
+  // identity-based MCP toolModes, toolDiscovery,
   // toolSectionOpening, toolSectionDescriptions,
   // the ordered `interceptors` list (switched-off entries included) and the single
   // interceptorReplyOnly, interceptorChecks and other review settings that mirror its first.

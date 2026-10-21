@@ -1,6 +1,13 @@
 # Node browser packages
 
-**Released source, vendored browser packages.** These four exact `0.0.0` npm tarballs contain the built browser
+The node-protocol payload is refreshed to source revision
+`71cb5137ab1d5b7c9e557c87032a7fa0dcabdb68` for `obsidian.tools.v1`, including
+the owner-supplied `obsidian_tools` delegation snapshot. This protocol-only update preserves
+the existing client and channel payloads and their local patches below. The extension uses
+the public generic request API; atomic delegation snapshots pass through ordinary SDK
+validation and durable retry storage. This source snapshot precedes its node release.
+
+**Vendored browser packages.** Apart from the protocol refresh above, these exact `0.0.0` npm tarballs contain the built browser
 packages of AbeleNode revision `bed6ddf19935b8527e1fa339c63ad2e556687869` (v0.4.38): delegation through installation authority (delegation_without_grant), debugger frame source paths, exception text, stop on entry, exit codes and attach breakpoint restoration, device disconnect and node.disconnect, plus durable approved manager command/integration APIs, resumable delegation deadlines, retained reports after extension warnings, and pi chat
 checkpoints and online-only preview-bound restores, canonical user messages and turn identities,
 model/account catalogs, and the shared session

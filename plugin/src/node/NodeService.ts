@@ -14,12 +14,14 @@ import { NodeClientStore } from './NodeClientStore'
 import { NodeDelegationController } from './NodeDelegationController'
 import { NodeManagerController } from './NodeManagerController'
 import type { DelegationCard } from './delegation'
+import { NodeObsidianTools } from './NodeObsidianTools'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
+  readonly obsidian?: NodeObsidianTools
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
   readonly manager: NodeManagerController
@@ -38,10 +40,17 @@ export class NodeConnection {
   private lastHealthCheck = 0
   constructor(
     readonly client: NodeClient,
-    readonly store: NodeClientStore
+    readonly store: NodeClientStore,
+    tools?: { nodeId: string; label: string }
   ) {
     this.manager = new NodeManagerController(client, store)
     this.delegation = new NodeDelegationController(client, store)
+    if (tools) {
+      this.obsidian = new NodeObsidianTools(client, store, tools.nodeId, tools.label)
+      this.delegation.obsidianSnapshot = (parent, provider) =>
+        this.obsidian!.delegationSnapshot(parent, provider)
+      this.delegation.configureChildTools = (session) => this.obsidian!.adoptSession(session)
+    }
     // The SDK supplies wire deadlines. This host deadline also bounds timer grace
     // while backgrounded, and publishes failure before callers render their error.
     const request = client.request?.bind(client)
@@ -134,7 +143,11 @@ export class NodeConnection {
     if (this.connecting) return this.connecting
     if (this.client.connected) {
       this.state.value = 'connected'
-      return Promise.resolve()
+      return this.obsidian
+        ? this.client
+            .describe()
+            .then((description) => this.obsidian!.connectionChanged(description))
+        : Promise.resolve()
     }
     console.debug('[Abele node] connect/reconnect', {
       reason,
@@ -152,7 +165,10 @@ export class NodeConnection {
           return
         }
         // Re-negotiate capabilities on every admitted transport, before exposing it.
-        if (this.client.describe) await this.client.describe()
+        if (this.client.describe) {
+          const description = await this.client.describe()
+          await this.obsidian?.connectionChanged(description)
+        }
         if (this.disposed || generation !== this.generation) {
           console.debug('[Abele node] disconnect: stale capability response')
           await this.client.disconnect()
@@ -251,6 +267,7 @@ export class NodeConnection {
       )
         return
       if (!this.client.connected) {
+        this.obsidian?.disconnected()
         this.state.value = 'offline'
         await this.connect('retry_tick').catch(() => {})
       } else if (Date.now() - this.lastHealthCheck >= 15000) {
@@ -267,6 +284,11 @@ export class NodeConnection {
       }
       // Mailbox restoration must never own the transport retry lifetime.
       void this.refreshDelegations().catch(() => {})
+      void this.obsidian
+        ?.tick()
+        .catch((error: unknown) =>
+          console.debug('[Abele node] Obsidian tools synchronization pending', error)
+        )
       if (
         !this.disposed &&
         generation === this.generation &&
@@ -286,7 +308,9 @@ export class NodeConnection {
     this.state.value = 'offline'
     window.clearTimeout(this.timer)
     console.debug('[Abele node] disconnect: connection destroyed')
-    void this.client.disconnect().finally(() => this.store.close())
+    void Promise.allSettled([this.obsidian?.destroy(), this.client.disconnect()]).finally(() =>
+      this.store.close()
+    )
   }
 }
 
@@ -375,7 +399,7 @@ export class NodeService {
       this.registry.add(node, token)
       this.nodes.value = this.registry.list()
       AgentsService.getInstance().setNodes(this.nodes.value)
-      const connection = new NodeConnection(client, store)
+      const connection = new NodeConnection(client, store, { nodeId: admittedNodeId, label })
       this.connections.set(id, connection)
       connection.start()
       return node
@@ -437,7 +461,7 @@ export class NodeService {
       connection = previous
       await connection.connect()
     } else {
-      connection = new NodeConnection(client, store)
+      connection = new NodeConnection(client, store, { nodeId: nodeId!, label })
       this.connections.set(id, connection)
     }
     this.nodes.value = this.registry.list()
@@ -530,7 +554,10 @@ export class NodeService {
           }
         : undefined
     )
-    const connection = new NodeConnection(client, store)
+    const connection = new NodeConnection(client, store, {
+      nodeId: node.expectedNodeId,
+      label: node.label,
+    })
     this.connections.set(id, connection)
     connection.start()
     return connection

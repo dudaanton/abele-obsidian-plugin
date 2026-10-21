@@ -3,6 +3,7 @@ import type { Prompt } from '@abele/node-client'
 import type { PromptAnswerState } from './promptAnswers'
 import { t } from '@/i18n'
 import { z } from 'zod'
+import { ObsidianToolsSnapshotSchema, type ObsidianToolsSnapshot } from '@abele/node-protocol'
 import { DelegationSchema, DelegationStatusSchema } from '@abele/node-protocol'
 import type { Delegation, DelegationStatus } from '@abele/node-client'
 
@@ -32,6 +33,11 @@ const RequestSchema = RetainedTaskInputSchema.omit({ task_key: true })
     delegation_key: z.string().min(1).max(128),
     // Retained requests may contain an old node receipt reference. Never select it.
     grant_id: z.string().optional(),
+    obsidian_tools: z
+      .custom<ObsidianToolsSnapshot>(
+        (value) => ObsidianToolsSnapshotSchema.safeParse(value).success
+      )
+      .optional(),
   })
   .strict()
 export type DelegationRequest = z.input<typeof RequestSchema>

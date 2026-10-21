@@ -13,6 +13,8 @@ import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
 
 export interface NodeClientState extends ClientState {
   nodeLetters?: Record<string, NodeLetter>
+
+  obsidianSessions?: Record<string, string>
   /** Local execution evidence. Reconnect resends outcomes, never handler effects. */
   obsidianExecutions?: Record<string, ObsidianExecutionReceipt>
   managerOperations?: Record<string, ManagerOperation>
@@ -44,12 +46,17 @@ export interface NodeClientState extends ClientState {
 const StateSchema = z
   .object({
     nodeLetters: z.record(z.string(), NodeLetterSchema).optional(),
+
+    obsidianSessions: z.record(z.string(), z.string()).optional(),
     obsidianExecutions: z
       .record(
         z.string(),
         z
           .object({
             state: z.enum(['executing', 'succeeded', 'failed', 'outcome_unknown']),
+            sessionId: z.string().optional(),
+            runId: z.string().optional(),
+            at: z.number().optional(),
             result: z.record(z.string(), z.unknown()),
           })
           .strict()

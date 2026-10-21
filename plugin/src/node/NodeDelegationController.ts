@@ -3,6 +3,7 @@ import {
   DelegationSchema,
   DelegationSendResultSchema,
   type ExpectedExecutionTarget,
+  type ObsidianToolsSnapshot,
 } from '@abele/node-protocol'
 import {
   supportsExpectedTarget,
@@ -11,6 +12,7 @@ import {
   chatMovedNotice,
 } from './expectedTarget'
 import type { NodeClientStore, NodeClientState } from './NodeClientStore'
+import { readStore } from './NodeClientStore'
 import { requireGrantFreeDelegation } from './delegationCapability'
 import {
   DelegationTaskInputSchema,
@@ -36,6 +38,12 @@ async function taskKey(parent: string, key: string): Promise<string> {
 
 /** Provider-neutral trusted controller. No Obsidian, secrets, generic RPC or prompt answers. */
 export class NodeDelegationController {
+  /** Trusted owner snapshot; never read from the model's delegation arguments. */
+  obsidianSnapshot?: (
+    parent: string,
+    provider: string
+  ) => Promise<ObsidianToolsSnapshot | undefined>
+  configureChildTools?: (session: string, provider: string) => Promise<void>
   private readonly subscribed = new Set<string>()
   private readonly pendingPrompts = new Map<string, Prompt[]>()
   private readonly denied = new Set<string>()
@@ -106,6 +114,11 @@ export class NodeDelegationController {
     const description = await this.client.describe()
     requireGrantFreeDelegation(description)
     const key = await taskKey(parent, input.task_key)
+    const retained = await readStore(this.store, (state) => state.delegation?.tasks[key]?.request)
+    const obsidian =
+      !retained && this.obsidianSnapshot
+        ? await this.obsidianSnapshot(parent, input.provider)
+        : undefined
     if (signal?.aborted) throw new Error('Delegation call cancelled')
     const request = await this.store.transaction((s) => {
       const local = storage(s)
@@ -121,6 +134,7 @@ export class NodeDelegationController {
         ...body,
         parent_id: parent,
         delegation_key: key,
+        ...(obsidian ? { obsidian_tools: obsidian } : {}),
       }
       local.tasks[key] = {
         parentId: parent,
@@ -163,6 +177,7 @@ export class NodeDelegationController {
         const task = storage(s).tasks[key]
         if (!task.cancelSettled) task.child = child
       })
+      await this.configureChildTools?.(child.session_id, input.provider)
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       try {
         await this.client.subscribeDelegation(child)

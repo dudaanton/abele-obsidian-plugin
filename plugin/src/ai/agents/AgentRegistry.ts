@@ -89,14 +89,20 @@ export class AgentRegistry {
     return this.get(idOrName) ?? this.getByName(idOrName)
   }
 
-  list(options: { includeUtility?: boolean } = {}): AgentDefinition[] {
-    return options.includeUtility ? [...this.agents] : this.agents.filter((a) => !a.utility)
+  list(options: { includeUtility?: boolean; includeNode?: boolean } = {}): AgentDefinition[] {
+    return this.agents.filter(
+      (a) => (options.includeNode || !a.node) && (options.includeUtility || !a.utility)
+    )
   }
 
   defaultAgent(): AgentDefinition | null {
     void this.version.value
     const configured = this.get(AbeleConfig.getInstance().ai.defaultAgentId)
-    return configured ?? this.agents[0] ?? null
+    return (
+      (configured && !configured.node ? configured : null) ??
+      this.agents.find((agent) => !agent.node) ??
+      null
+    )
   }
 
   // ── Mutation ──────────────────────────────────────────────────
@@ -138,6 +144,7 @@ export class AgentRegistry {
   /** Returns false when the removal was refused — the last agent always stays. */
   remove(id: string): boolean {
     if (this.agents.length <= 1) return false
+    if (!this.get(id)?.node && this.agents.filter((agent) => !agent.node).length <= 1) return false
 
     const index = this.agents.findIndex((a) => a.id === id)
     if (index === -1) return false
@@ -154,12 +161,13 @@ export class AgentRegistry {
     }
 
     const ai = AbeleConfig.getInstance().ai
-    if (ai.defaultAgentId === id) ai.defaultAgentId = this.agents[0].id
+    if (ai.defaultAgentId === id)
+      ai.defaultAgentId = this.agents.find((agent) => !agent.node)?.id ?? ''
     return true
   }
 
   setDefault(id: string): void {
-    if (!this.get(id)) return
+    if (!this.get(id) || this.get(id)?.node) return
     AbeleConfig.getInstance().ai.defaultAgentId = id
     // `defaultAgentId` lives on the plain config object, so nothing would notice on its own.
     this.version.value++

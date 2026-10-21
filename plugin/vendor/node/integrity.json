@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 130497,
-    "unpackedSize": 1434720,
-    "shasum": "fbe5eddfda16693f69d1d687b88fc7a6e6916836",
-    "integrity": "sha512-nn2i1pnkdBkdRpwcVMt8U4GtsQfgpP49WKR+PBpWVHJBE3AFXq3lzSvQ3N/glEqiBxYBKEw+00ncnzJm+Bz6tw==",
+    "size": 133218,
+    "unpackedSize": 1461670,
+    "shasum": "caf5363aabd0423586f04cb94c65b660b976e3d5",
+    "integrity": "sha512-ivacHVObnsOCgYEw99+um/cjxEW8GEmMGm0GMcR2iledTedeR9Sr/g0F03zLsSs1TblEGXMBiCYbg5FpNXxB5g==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -165,17 +165,17 @@
       },
       {
         "path": "dist/delegation.d.ts",
-        "size": 18088,
+        "size": 20614,
         "mode": 420
       },
       {
         "path": "dist/delegation.js",
-        "size": 4575,
+        "size": 4778,
         "mode": 420
       },
       {
         "path": "dist/delegation.js.map",
-        "size": 5070,
+        "size": 5166,
         "mode": 420
       },
       {
@@ -210,17 +210,17 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 2131,
+        "size": 2168,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 1166,
+        "size": 1203,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 963,
+        "size": 986,
         "mode": 420
       },
       {
@@ -281,6 +281,21 @@
       {
         "path": "dist/node-path.js.map",
         "size": 8617,
+        "mode": 420
+      },
+      {
+        "path": "dist/obsidian-tools.d.ts",
+        "size": 10218,
+        "mode": 420
+      },
+      {
+        "path": "dist/obsidian-tools.js",
+        "size": 2096,
+        "mode": 420
+      },
+      {
+        "path": "dist/obsidian-tools.js.map",
+        "size": 2669,
         "mode": 420
       },
       {
@@ -390,17 +405,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 117602,
+        "size": 126483,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 13405,
+        "size": 13506,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 13306,
+        "size": 13369,
         "mode": 420
       },
       {
@@ -469,7 +484,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 79,
+    "entryCount": 82,
     "bundled": []
   },
   {
