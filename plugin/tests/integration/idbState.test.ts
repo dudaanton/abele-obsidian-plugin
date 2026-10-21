@@ -51,6 +51,30 @@ afterEach(() => {
 })
 
 describe('IndexedDbStateStore', () => {
+  // BUG: the shared overlay cannot distinguish a separate task from a nested caller.
+  // Requires a transaction-scoped StateStore capability in the core contract.
+  it.fails('keeps an acknowledged independent write when another task rolls back', async () => {
+    let entered!: () => void, release!: () => void
+    const running = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const outer = store.transaction(async () => {
+      await store.setCursor(9)
+      entered()
+      await held
+      throw new Error('interrupted unrelated operation')
+    })
+    const rejected = expect(outer).rejects.toThrow('interrupted unrelated operation')
+    await running
+    await store.setMeta('sample-independent-intent', 'acknowledged')
+    release()
+    await rejected
+    expect(await store.getCursor()).toBe(0)
+    expect(await store.getMeta('sample-independent-intent')).toBe('acknowledged')
+  })
   it('names one database per vault', () => {
     expect(stateDatabaseName('abc')).toBe('abele-sync-abc')
   })
