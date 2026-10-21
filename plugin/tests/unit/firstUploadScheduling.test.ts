@@ -149,3 +149,21 @@ it.fails('pipelines a bounded pair of multipart requests', async () => {
     await work
   }
 })
+
+// BUG: SDK scan persists committed entries only; an unfinished inventory loses its hashes.
+it.fails('retains fingerprints of unchanged files that have not been committed', async () => {
+  const { scan } = await import('../../node_modules/@abele/sync-sdk/dist/internal/core/scanner.js')
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  await fs.writeAtomic('sample.md', new TextEncoder().encode('sample note'), 1000)
+  const fingerprint = vi.fn(async (path: string) => {
+    const bytes = await fs.read(path)
+    return { size: bytes.length, sha: await sha256(bytes) }
+  })
+  const ports = Object.assign(fs, { fingerprint })
+  await scan(ports, state, { excluded: () => false })
+  fingerprint.mockClear()
+  // The durable state survives reconstruction of the engine, while its process-local maps do not.
+  await scan(ports, state, { excluded: () => false })
+  expect(fingerprint).not.toHaveBeenCalled()
+})

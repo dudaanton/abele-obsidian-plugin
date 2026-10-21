@@ -514,6 +514,7 @@ export async function projectionEvidence(
   const remaining = [...paths]
   let next = 0
   let completed = 0
+  let nextCheckpoint = 128
   inspection.progress?.(0, remaining.length)
   const workers = Array.from({ length: Math.min(8, remaining.length) }, async () => {
     while (next < remaining.length) {
@@ -521,7 +522,12 @@ export async function projectionEvidence(
       await inspect(remaining[next++])
       assertCurrent()
       completed++
-      if (completed % 128 === 0) checkpoint()
+      if (completed >= nextCheckpoint) {
+        // Each checkpoint serializes the accumulated cache. Fixed-size intervals
+        // repeatedly copy a growing vault and make a cold inspection quadratic.
+        checkpoint()
+        nextCheckpoint *= 2
+      }
       if (completed <= 8 || completed % 128 === 0 || completed === remaining.length)
         inspection.progress?.(completed, remaining.length)
     }
