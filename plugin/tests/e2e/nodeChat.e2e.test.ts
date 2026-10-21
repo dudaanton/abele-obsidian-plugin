@@ -36,7 +36,7 @@ const captureDraft = (label: string) =>
 })()`)
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const PRELUDE = `const wait = ms => new Promise(r => setTimeout(r, ms));
-const until = async fn => { for (let i=0; i<200; i++) { const value = fn(); if (value) return value; await wait(50) } throw new Error('Node UI did not converge: ' + fn.toString() + '; dialog=' + document.querySelector('.abele-worktree-dialog')?.textContent + '; menu=' + [...document.querySelectorAll('.menu-item-title')].map(el => el.textContent.trim()).join('|')) };
+const until = async fn => { for (let i=0; i<200; i++) { const value = fn(); if (value) return value; await wait(50) } const dialog = document.querySelector('.abele-worktree-dialog'); throw new Error('Node UI did not converge: ' + JSON.stringify({ error: dialog?.parentElement?.querySelector('[role=alert]')?.textContent, busy: dialog?.parentElement?.getAttribute('aria-busy'), fields: dialog ? [...dialog.querySelectorAll('input')].map(el=>el.value) : [], notices: [...document.querySelectorAll('.notice')].map(el=>el.textContent), menu: [...document.querySelectorAll('.menu-item-title')].map(el=>el.textContent.trim()), predicate: fn.toString() })) };
 const chats = window.__abeleTest.ChatService.getInstance();
 const nodes = window.__abeleTest.NodeService.getInstance();
 const nodeMenu = async title => {
