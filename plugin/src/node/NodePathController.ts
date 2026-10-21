@@ -351,11 +351,10 @@ function rowMenu(
               )
               if (job.state === 'failed' || job.state === 'needs_attention')
                 throw new ChannelError(job.error ?? 'workspace_remove_failed')
-              new Notice(
-                t('streamB.deletionAcceptedRefreshToCheckJob.de2efa', {
-                  v0: String(reservation.job_id),
-                })
-              )
+              if (job.state === 'queued' || job.state === 'running') {
+                new Notice(t('streamB.worktreeDeletionPending'))
+                return
+              }
             } else
               await new NodePathMutations(connection.client).delete(
                 target,
@@ -381,6 +380,11 @@ function rowMenu(
               new Notice(t('node.files.sessionsStopped'))
             }
             return
+          }
+          if (model.selected.value === target.id) {
+            const root = folder.copies.find((copy) => copy.kind === 'project')
+            if (root) await model.select(root.id)
+            else model.selected.value = ''
           }
           await model.refresh()
         }
