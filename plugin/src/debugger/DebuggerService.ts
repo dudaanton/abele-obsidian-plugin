@@ -127,6 +127,7 @@ export class DebuggerBinding {
       }
       if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
+      if (this.controller.current) this.controller.error = ''
       DebuggerService.instance.observeFolder(this, sessionId)
       await this.loadGrant(abort)
       if (abort.signal.aborted || this.disposed) return

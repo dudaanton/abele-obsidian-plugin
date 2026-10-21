@@ -7,6 +7,39 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('clears an old read failure only after opening a fresh debugger snapshot', async () => {
+  const rpc = vi.fn(async (method: string, params: any) => {
+    if (method === 'debugger.v1.status') return debuggerStatus()
+    if (method === 'debugger.v1.wait')
+      return {
+        wait_id: params.wait_id,
+        reason: 'cancelled',
+        elapsed_ms: 0,
+        snapshot: debuggerStatus().snapshot,
+      }
+    throw new Error('Unexpected sample RPC')
+  })
+  const binding = new DebuggerBinding(
+    {
+      state: ref('connected'),
+      client: {
+        request: rpc,
+        debugger: new DebuggerClient(rpc),
+      },
+    } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-node'
+  )
+  vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+  binding.controller.error = 'request_timeout'
+  try {
+    await binding.open('sample-debug')
+    expect(binding.controller.current).toBe(true)
+    expect(binding.controller.error).toBe('')
+  } finally {
+    binding.destroy()
+  }
+})
 it('resumes observation after reconnecting without replaying program controls', async () => {
   const state = ref('connected')
   const binding = new DebuggerBinding(
