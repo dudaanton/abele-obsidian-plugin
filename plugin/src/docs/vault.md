@@ -3052,6 +3052,12 @@ The agent’s ordinary tool modes remain in plugin settings; unset node action m
 
 Chat records retain the target reference, reply or refusal on a cross-chat tool call (`chatLetter`), the source reference on an incoming message (`fromSession`), and the destination reference on the answering message (`sentTo`). References include the saved chat path so links can reopen chats after a reload. An unresolved target carries `unknown: true`; its identifier is diagnostic metadata, not its display title. An interrupted request is not automatically replayed.
 
+On nodes advertising `session_letters_v1`, cross-chat sends journal a display-only sender
+snapshot (`id`, `title`) with the accepted input. Every client can replay that provenance
+without installation-local letter metadata. Replies resolve through the admitted input's
+`input.reply` final-message references; failed and interrupted outcomes do not return partial
+answers. Older nodes retain installation-local provenance and turn-based reply matching.
+
 The installation-local node client store also supports Obsidian tool execution receipts,
 keyed by invocation ID. An `executing` receipt records intent before the handler's first
 effect; a final receipt retains its structured result. A missing or unfinished receipt

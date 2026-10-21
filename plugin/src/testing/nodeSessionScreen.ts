@@ -457,6 +457,7 @@ export async function openNodeSessionFixture(
     connected: true,
     target: { expected_node_id: NODE },
     describe: async () => ({
+      supported_capabilities: state === 'letter' ? ['session_letters_v1'] : [],
       capabilities: { capabilities: {} },
       providers: [
         ...AGENT_PROVIDERS,
@@ -519,8 +520,8 @@ export async function openNodeSessionFixture(
     renameSession: record('session.rename'),
     interrupt: record('session.interrupt'),
     cancelInput: record('input.cancel'),
-    cursor: async () => head,
-    head: async () => head,
+    cursor: async () => store.cursors[SESSION] ?? head,
+    head: async () => full.length,
     getSession: async () => full[0].data,
     flush: async () => {
       if (state !== 'letter') return
@@ -547,17 +548,26 @@ export async function openNodeSessionFixture(
         append('input.accepted', {
           input_id: inputId,
           text: (entry.params as { text: string }).text,
+          sender: (entry.params as { sender?: unknown }).sender,
         })
+        const acceptedSeq = full.length
         append('turn.started', { turn_id: turnId, trigger: 'input' })
-        append('claude.message.final', {
-          message_id: `sample-answer-${entry.operation_id}`,
-          role: 'assistant',
-          content: [
-            {
-              type: 'text',
-              text: 'The sample node checked the request. This answer belongs only to the sending chat.',
-            },
-          ],
+        append('session.update', {
+          turn_id: turnId,
+          update: {
+            kind: 'agent_message',
+            message_id: `sample-answer-${entry.operation_id}`,
+            text: 'The sample node checked the request. This answer belongs only to the sending chat.',
+          },
+        })
+        append('input.reply', {
+          input_id: inputId,
+          turn_id: turnId,
+          outcome: 'success',
+          final_reply: {
+            message_id: `sample-answer-${entry.operation_id}`,
+            event_seqs: [full.length],
+          },
         })
         append('turn.completed', {
           turn_id: turnId,
@@ -570,7 +580,7 @@ export async function openNodeSessionFixture(
           terminal_reason: null,
         })
         store.results[entry.operation_id] = {
-          result: { input_id: inputId, accepted_seq: full.length - 3 },
+          result: { input_id: inputId, accepted_seq: acceptedSeq },
         }
       }
     },

@@ -19,6 +19,20 @@ const e = (seq: number, type: string, data: unknown, at = seq * 1000): JournalEv
 })
 const started = (seq: number, trigger = 'input') =>
   e(seq, 'turn.started', { run_id: 'p1', turn_id: `t${seq}`, trigger })
+
+it('replays sender metadata without a local letter store', () => {
+  const result = reduceTranscript([
+    e(1, 'input.accepted', {
+      input_id: 'letter',
+      text: 'Sample question',
+      sender: { id: 'source', title: 'Sample source' },
+    }),
+  ])
+  expect(result.messages.find((m) => m.role === 'user')?.fromSession).toEqual({
+    id: 'source',
+    title: 'Sample source',
+  })
+})
 const completed = (seq: number, outcome = 'success', input_ids: string[] = []) =>
   e(seq, 'turn.completed', {
     run_id: 'p1',

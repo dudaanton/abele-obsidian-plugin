@@ -721,10 +721,16 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.refresh()
     }
     const operation_id = crypto.randomUUID()
+    const letters = z
+      .object({ supported_capabilities: z.array(z.string()) })
+      .safeParse(this.nodeDescription.value)
+    const nativeLetters =
+      letters.success && letters.data.supported_capabilities.includes('session_letters_v1')
     const params = validateParams('session.send', {
       session_id: sessionId,
       text,
       observed_seq: await client.cursor(sessionId),
+      ...(nativeLetters ? { sender: { id: from.id, title: from.title } } : {}),
       ...(supportsExpectedTarget(this.nodeDescription.value) && expectedBinding(this.binding.value)
         ? { expected_target: expectedBinding(this.binding.value) }
         : {}),
@@ -733,7 +739,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
     // Keep the terminal mapping even if a busy journal advances beyond the device window.
     const endings: JournalEvent[] = []
     const stop = client.onEvent((event) => {
-      if (event.stream_id === sessionId && event.type === 'turn.completed') endings.push(event)
+      if (
+        event.stream_id === sessionId &&
+        ['turn.completed', 'input.reply', 'input.failed', 'input.cancelled'].includes(event.type)
+      )
+        endings.push(event)
     })
     let completed = false
     try {
@@ -773,6 +783,96 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.refresh()
       for (;;) {
         check()
+        if (nativeLetters) {
+          const events = await readStore(client.store, (state) => [
+            ...(state.events[sessionId] ?? []),
+            ...endings,
+          ])
+          const reply = events.find(
+            (event) =>
+              event.type === 'input.reply' &&
+              (event.data as { input_id?: string }).input_id === inputId
+          )
+          if (reply) {
+            const data = z
+              .object({
+                turn_id: z.string().nullable(),
+                outcome: z.string(),
+                final_reply: z
+                  .object({ message_id: z.string(), event_seqs: z.array(z.number()) })
+                  .nullable(),
+              })
+              .parse(reply.data)
+            if (data.outcome !== 'success') throw new Error(t('chat.letterNode.separate'))
+            if (!data.final_reply || !data.turn_id) throw new Error(t('chat.letterNode.empty'))
+            const blocks = await Promise.all(
+              data.final_reply.event_seqs.map(async (seq) => {
+                const retained = events.find((event) => event.seq === seq)
+                if (retained) return retained
+                const raw = await client.request('stream.read', {
+                  stream_id: sessionId,
+                  after_seq: seq - 1,
+                  limit: 1,
+                })
+                const page = Array.isArray(raw)
+                  ? raw.map((event) => NodeEventSchema.parse(event))
+                  : []
+                const event = page.find(
+                  (event) => event.stream_id === sessionId && event.seq === seq
+                )
+                if (!event) throw new Error(t('chat.letterNode.empty'))
+                return event
+              })
+            )
+            const answer = (
+              await Promise.all(
+                blocks.map(async (event) => {
+                  const block = event.data as {
+                    turn_id?: string
+                    update?: { kind: string; message_id?: string; text?: string }
+                    text?: string
+                    artifact_id?: string
+                  }
+                  if (
+                    event.type === 'session.update' &&
+                    block.turn_id === data.turn_id &&
+                    block.update?.kind === 'agent_message' &&
+                    block.update.message_id === data.final_reply!.message_id
+                  )
+                    return block.update.text ?? ''
+                  if (event.type === 'content.delta')
+                    return block.artifact_id
+                      ? this.readArtifact(block.artifact_id, sessionId)
+                      : (block.text ?? '')
+                  throw new Error(t('chat.letterNode.empty'))
+                })
+              )
+            ).join('')
+            if (!answer.trim()) throw new Error(t('chat.letterNode.empty'))
+            await client.store.transaction((raw) => {
+              Object.assign((raw as NodeClientState).nodeLetters[operation_id], {
+                turnId: data.turn_id,
+                status: 'completed',
+              })
+            })
+            completed = true
+            await this.refresh()
+            console.debug('[Abele chat message]', {
+              from: from.id,
+              to: sessionId,
+              phase: 'answered',
+            })
+            return answer
+          }
+          const failed = events.some(
+            (event) =>
+              ['input.failed', 'input.cancelled'].includes(event.type) &&
+              (event.data as { input_id?: string }).input_id === inputId
+          )
+          if (failed) throw new Error(t('chat.letterNode.unaccepted'))
+          await pause()
+          continue
+        }
         const end = await readStore(client.store, (state) =>
           [...endings, ...(state.events[sessionId] ?? [])].find((event) => {
             const data = event.data as { input_ids?: string[] }

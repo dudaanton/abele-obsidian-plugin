@@ -304,6 +304,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       const replied = readAgentReplyText(text('text'))
       input.content = replied?.content ?? text('text')
       if (replied) input.replyTo = replied.replyTo
+      const sender = data.sender as { id?: unknown; title?: unknown } | undefined
+      if (sender && typeof sender.id === 'string' && typeof sender.title === 'string')
+        input.fromSession = { id: sender.id, title: sender.title }
       const from = data.from_session as { session_id?: unknown; title?: unknown } | undefined
       if (from && typeof from.session_id === 'string')
         input.fromSession = {
@@ -396,6 +399,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         const replied = readAgentReplyText(text('text'))
         input.content = replied?.content ?? text('text')
         if (replied) input.replyTo = replied.replyTo
+        const sender = data.sender as { id?: unknown; title?: unknown } | undefined
+        if (sender && typeof sender.id === 'string' && typeof sender.title === 'string')
+          input.fromSession = { id: sender.id, title: sender.title }
         const from = data.from_session as { session_id?: unknown; title?: unknown } | undefined
         if (from && typeof from.session_id === 'string')
           input.fromSession = {

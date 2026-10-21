@@ -33,6 +33,7 @@ function nodeLetterTarget() {
     onEvent: () => () => {},
     cursor: async () => 0,
     getSession: vi.fn(async () => ({ session_id: 'sample' })),
+    request: vi.fn(async (_method: string, _params: unknown): Promise<unknown> => []),
     store: { transaction: async (fn: (s: NodeClientState) => unknown) => fn(state) },
     flush: vi.fn(async () => {
       const entry = state.outbox.shift()!
@@ -63,6 +64,115 @@ function nodeLetterTarget() {
   }
   return { state, client, presenter, finish, projection }
 }
+
+it('sends sender metadata and resolves the final reply by input id on capable nodes', async () => {
+  const { presenter, state } = nodeLetterTarget()
+  presenter.nodeDescription.value = { supported_capabilities: ['session_letters_v1'] } as never
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+  expect(Object.values(state.operationRequests!)[0].params).toMatchObject({
+    sender: { id: 'sender', title: 'Sample sender' },
+  })
+  state.events.sample.push(
+    ...([
+      {
+        seq: 3,
+        type: 'session.update',
+        data: {
+          turn_id: 'letter-turn',
+          update: { kind: 'agent_message', message_id: 'final', text: 'Exact final answer' },
+        },
+      },
+      {
+        seq: 4,
+        type: 'input.reply',
+        data: {
+          input_id: 'sample-input',
+          turn_id: 'letter-turn',
+          outcome: 'success',
+          final_reply: { message_id: 'final', event_seqs: [3] },
+        },
+      },
+    ] as never[])
+  )
+  await expect(result).resolves.toBe('Exact final answer')
+})
+
+it.each(['failed', 'interrupted', 'empty'])(
+  'does not return partial node letter output for %s replies',
+  async (outcome) => {
+    const { presenter, state, finish } = nodeLetterTarget()
+    presenter.nodeDescription.value = { supported_capabilities: ['session_letters_v1'] } as never
+    const result = presenter.receiveChatLetter('Sample question', {
+      id: 'sender',
+      title: 'Sample sender',
+    })
+    const rejected = expect(result).rejects.toThrow(
+      outcome === 'empty' ? 'without an answer' : 'separate answer'
+    )
+    await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+    finish()
+    state.events.sample.push({
+      type: 'input.reply',
+      data: {
+        input_id: 'sample-input',
+        turn_id: 'sample-turn',
+        outcome: outcome === 'empty' ? 'success' : outcome,
+        final_reply: null,
+      },
+    } as never)
+    await rejected
+    expect(Object.values(state.nodeLetters!)[0].status).toBe('interrupted')
+  }
+)
+
+it.each([false, true])(
+  'reads a referenced final block outside the retained window; artifact: %s',
+  async (artifact) => {
+    const { presenter, state, client } = nodeLetterTarget()
+    presenter.nodeDescription.value = { supported_capabilities: ['session_letters_v1'] } as never
+    client.request.mockImplementation(async (method, params) => {
+      if (method === 'artifact.read') return { offset: 0, total: 12, base64: btoa('Final answer') }
+      expect(params).toEqual({ stream_id: 'sample', after_seq: 2, limit: 1 })
+      return [
+        {
+          kind: 'event',
+          node_id: 'sample',
+          stream_id: 'sample',
+          seq: 3,
+          actor: { kind: 'node' },
+          at: new Date(0).toISOString(),
+          type: artifact ? 'content.delta' : 'session.update',
+          data: artifact
+            ? { run_id: 'run', artifact_id: 'sample-artifact' }
+            : {
+                turn_id: 'turn',
+                update: { kind: 'agent_message', message_id: 'final', text: 'Final answer' },
+              },
+        },
+      ]
+    })
+    const result = presenter.receiveChatLetter('Sample question', {
+      id: 'sender',
+      title: 'Sample sender',
+    })
+    await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+    state.events.sample.push({
+      type: 'input.reply',
+      data: {
+        input_id: 'sample-input',
+        turn_id: 'turn',
+        run_id: 'run',
+        outcome: 'success',
+        final_reply: { message_id: 'final', event_seqs: [3] },
+      },
+    } as never)
+    await expect(result).resolves.toBe('Final answer')
+  }
+)
 
 it('returns only the node turn that consumed the admitted input and persists provenance', async () => {
   const { presenter, state, finish } = nodeLetterTarget()
