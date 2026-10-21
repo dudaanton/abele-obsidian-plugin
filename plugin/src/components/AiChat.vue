@@ -42,7 +42,7 @@
 
     <template v-else>
       <!-- Header -->
-      <div class="abele-ai-chat__header abele-ai-chat__header_tree">
+      <div ref="headerContainer" class="abele-ai-chat__header abele-ai-chat__header_tree">
         <DrawerViewSwitch
           icon="bot"
           :name="t('streamB.abeleAiChat.08f891')"
@@ -1263,6 +1263,25 @@ const access = computed(() => {
 })
 
 const chatContainer = ref<HTMLElement | null>(null)
+const headerContainer = ref<HTMLElement | null>(null)
+const compactHeader = ref(Platform.isPhone)
+watch(
+  headerContainer,
+  (header, _previous, cleanup) => {
+    if (!header) return
+    const update = () => {
+      const find = header.querySelector<HTMLElement>('.abele-ai-chat__find')
+      compactHeader.value =
+        phone ||
+        (!!find && header.ownerDocument.defaultView?.getComputedStyle(find).display === 'none')
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(header)
+    update()
+    cleanup(() => observer.disconnect())
+  },
+  { flush: 'post' }
+)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
@@ -2205,8 +2224,12 @@ const phone = Platform.isPhone
 const inDrawer = ref(false)
 const headerOverflowActions = computed<HeaderAction[]>(() => [
   { id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' },
-  { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
-  { id: 'outline', label: t('streamB.outlineOfThisChat.60a8ef'), icon: 'list-tree' },
+  ...(compactHeader.value
+    ? [
+        { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
+        { id: 'outline', label: t('streamB.outlineOfThisChat.60a8ef'), icon: 'list-tree' },
+      ]
+    : []),
   ...(commentSession.value
     ? [
         {

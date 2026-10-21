@@ -103,6 +103,7 @@ function model() {
     refresh: f.refresh,
     report: vi.fn(),
     selectedChat: ref(''),
+    error: ref(''),
     sessions: ref([{ session: { session_id: 'sample-session', title: 'Sample chat' }, target }]),
   } as never
 }

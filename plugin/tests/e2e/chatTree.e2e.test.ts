@@ -16,6 +16,8 @@ const probe = (label: string) => `(async () => {
   }
   const service = window.__abeleTest.ChatService.getInstance()
   const prior = service.activeTabId.value
+  const priorNodes = service.closedNodeChats.value.slice(), priorFolders = {...service.nodeFolders.value}
+  const sampleNodeId = 'node:sample-tree-registration:sample-tree-session'
   const folder = 'Synthetic navigation sample'
   const path = service.folders.path(folder)
   if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic folder already exists')
@@ -58,6 +60,42 @@ const probe = (label: string) => `(async () => {
     await until(() => app.vault.getAbstractFileByPath(path))
     await service.folders.move(first, folder)
     files.push(session.currentChatFile.value)
+    service.closedNodeChats.value = [...priorNodes, {reference:{kind:'node-session',nodeId:'sample-tree-node',registrationId:'sample-tree-registration',sessionId:'sample-tree-session',title:'Sample node conversation'},at:1000}]
+    await wait(100)
+    document.querySelector('.abele-chat-tree__closed > .tree-item-self').click()
+    const nodeMenu=async()=>{
+      const nodeRow = await until(()=>document.querySelector('[data-chat="'+sampleNodeId+'"]'))
+      const nodeMore = nodeRow.querySelector('[aria-label="Sample node conversation: more"]')
+      if(nodeMore)clickAt(nodeMore)
+      else nodeRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:nodeRow.getBoundingClientRect().left+20,clientY:nodeRow.getBoundingClientRect().top+10}))
+      await until(()=>document.querySelector('.menu'))
+    }
+    await nodeMenu()
+    await shot('node-menu')
+    ;[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.trim()==='Delete').click()
+    const deleteMessage=await until(()=>document.querySelector('.abele-confirm__message'))
+    if(!deleteMessage.textContent.includes('Files in its folder stay as they are'))throw Error('Node deletion message does not explain file retention')
+    await shot('node-delete-confirm')
+    ;[...deleteMessage.closest('.modal').querySelectorAll('button')].find(button=>button.textContent.trim()==='Cancel').click()
+    await until(()=>!deleteMessage.isConnected)
+    await nodeMenu()
+    ;[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Rename…')).click()
+    const renameField=await until(()=>document.querySelector('.abele-prompt__field'))
+    await shot('node-rename')
+    ;[...renameField.closest('.modal').querySelectorAll('button')].find(button=>button.textContent.trim()==='Cancel').click()
+    await until(()=>!renameField.isConnected)
+    await nodeMenu()
+    const moveNode=[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Move to…'))
+    if(!moveNode)throw Error('Node chat has no Move action')
+    moveNode.click()
+    await until(()=>document.querySelector('.suggestion-item'))
+    await shot('node-move-picker')
+    ;[...document.querySelectorAll('.suggestion-item')].find(item=>item.textContent.includes(folder)).click()
+    await until(()=>service.nodeFolders.value[sampleNodeId]===folder)
+    if(!document.querySelector('[data-chat="'+sampleNodeId+'"]'))document.querySelector('.abele-chat-tree__closed > .tree-item-self').click()
+    await until(()=>document.querySelector('[data-chat="'+sampleNodeId+'"]'))
+    await shot('node-moved')
+    service.closedNodeChats.value=priorNodes.slice();service.nodeFolders.value={...priorFolders}
     await service.folders.setAccess(folder, { web_search: 'auto' })
     const second = service.newTab(); created.push(second)
     const child = service.getSession(second)
@@ -65,6 +103,15 @@ const probe = (label: string) => `(async () => {
     child.anchor.value = { note: session.currentChatFile.value.path, message: 'sample-message', quote: 'Sample passage' }
     await child.createInDirectory(path)
     files.push(child.currentChatFile.value)
+    current().click()
+    service.switchTab(second)
+    if (!app.isMobile) app.workspace.rightSplit.setSize(300)
+    await wait(300)
+    const discussionTitle = current().querySelector('.abele-chat-switch__title').getBoundingClientRect().width
+    await shot('discussion-header')
+    if (discussionTitle < 80) throw Error('Discussion title collapsed to ' + discussionTitle + 'px')
+    if (!app.isMobile) app.workspace.rightSplit.setSize(420)
+    current().click()
     service.switchTab(first)
     await until(() => document.querySelector('[data-chat="' + first + '"] time')?.textContent)
     session.error.value = 'Synthetic failure'
@@ -157,6 +204,7 @@ const probe = (label: string) => `(async () => {
     await service.folders.moveMany([], '')
     return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
+    service.closedNodeChats.value=priorNodes.slice();service.nodeFolders.value={...priorFolders};service.saveTabs()
     for (const id of created) {
       const session = service.getSession(id)
       if (session) { session.isStreaming.value = false; session.pendingQuestions.value = null; await service.closeTab(id) }
@@ -181,7 +229,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 13 : 14)
+    expect(result.pictures).toBe(onPhone() ? 19 : 20)
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
       expect(result.sidebarWidth).toBeLessThanOrEqual(422)

@@ -27138,5 +27138,55 @@
       "es",
       "de"
     ]
+  },
+  "node.chat.deleteHint": {
+    "englishHash": "ead55a5bfab33021ef4ca0668d358811299320ef47052eec341c0dc24995dd5f",
+    "context": "Delete a node session and history while retaining folder files.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.search.invalidRegex": {
+    "englishHash": "15cb952d1eedf311172802758a31833b4bc7dbca7cd2bb64fe357ea42c644fa0",
+    "context": "Invalid node code search pattern without engine internals.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.busyStage": {
+    "englishHash": "df0097365470368638113a5e81efdc04d580479b9430e2794953ae3dccc77152",
+    "context": "Staging files refused because the worktree is in use.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.busyChat": {
+    "englishHash": "babf7138b3c991cb9292288efbdc35505965dd5c1020666f19a8e5f6443921c6",
+    "context": "New node chat admission refused because its target is busy.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.busyRead": {
+    "englishHash": "507bda5df9f351a228dcb750ca683227a8d6475b0faf27c900ae5f0b4c6f0df4",
+    "context": "File refresh refused after editing has stopped.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

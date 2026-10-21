@@ -49,6 +49,9 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           append('prompt.resolved',{...prompt,state:'resolved',choice:'allow',delivered:true});
           append('pi.tool.result',{...scope,tool_use_id:'sample-edit',result:'Changed the greeting.'});
           answer('answer-1','The greeting is now welcome.');finish('first');await publish();
+          for(let i=0;i<10;i++)append('session.update',{run_id:scope.run_id,update:{kind:'notice',level:'info',text:'Diagnostics for src/sample.ts: no problems'}});
+          await publish();
+          if(root().textContent.includes('no problems'))throw Error('Clean diagnostic notices filled the chat');
           const collapsed=!root().querySelector('.abele-node-permission');
           await shot('node-chat-resolved-edit');
           const run=root().querySelector('.abele-chat-run .abele-tree-item__self')||root().querySelector('.abele-chat-run .tree-item-self');

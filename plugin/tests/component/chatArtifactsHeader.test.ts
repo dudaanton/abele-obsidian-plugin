@@ -49,6 +49,49 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 describe('the compact chat header', () => {
+  it('keeps find and outline available when the narrow header hides their buttons', async () => {
+    const callbacks: (() => void)[] = []
+    const resized = () => callbacks.forEach((callback) => callback())
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+    try {
+      view = mountChat()
+      await nextTick()
+      const find = view.get('.abele-ai-chat__find').element as HTMLElement
+      expect(callbacks.length).toBeGreaterThan(0)
+      find.style.display = 'none'
+      vi.spyOn(find.ownerDocument.defaultView!, 'getComputedStyle').mockImplementation(
+        (element) => ({ display: (element as HTMLElement).style.display }) as CSSStyleDeclaration
+      )
+      resized()
+      await nextTick()
+      expect(view.findComponent(SheetHeaderActions).props('actions')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'find' }),
+          expect.objectContaining({ id: 'outline' }),
+        ])
+      )
+      find.style.display = ''
+      resized()
+      await nextTick()
+      expect(
+        view
+          .findComponent(SheetHeaderActions)
+          .props('actions')
+          .some((a) => a.id === 'find')
+      ).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
   it('keeps find, outline and new chat direct, with history in the overflow kit', async () => {
     view = mountChat()
     for (const tooltip of ['Find in this chat', 'Outline of this chat', 'Start a new chat'])

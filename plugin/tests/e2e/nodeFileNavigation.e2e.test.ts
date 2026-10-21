@@ -29,13 +29,15 @@ it.each([false, true])(
       client.repository.blob = async () => ({content_id:'sample-navigation-content',size:text.length,binary:false,requires_larger_load:false,too_large:false});
       client.repository.content = async () => ({offset:0,total:text.length,base64:btoa(text)});
       leaf = app.workspace.getLeaf('tab');
-      const tab = {kind:'file',target:{...state.model.current.value},path:'src/sample-panel.ts',line:8};
+      const tab = {kind:'file',target:{...state.model.current.value},path:'src/sample-panel.ts',line:8,match:{column:13,length:3}};
       await leaf.setViewState({type:'abele-node-file',active:true,state:tab});
       await leaf.loadIfDeferred?.();
       await app.workspace.revealLeaf(leaf);
       if (${phone}) { app.workspace.leftSplit.collapse(); app.workspace.rightSplit.collapse() }
       const pane = leaf.view.contentEl;
       await until(()=>pane.querySelector('.abele-file-view__header') && pane.querySelector('.cm-line'));
+      await until(()=>pane.querySelector('.cm-searchMatch')?.textContent==='v07');
+      if(getComputedStyle(pane.querySelector('.cm-searchMatch')).backgroundColor==='rgba(0, 0, 0, 0)')throw Error('Search destination has no visible highlight');
       await wait(1200);
       const content = pane.querySelector('.abele-node-main');
       const card = pane.querySelector('.abele-file-view');
