@@ -2,7 +2,8 @@ import type { Prompt } from '@abele/node-client'
 import type { NodeManagerController } from '@/node/NodeManagerController'
 export function nodeManagerFixture(
   state: import('@abele/node-protocol').ManagerRun['state'] = 'pending_approval',
-  escaped = false
+  escaped = false,
+  codex = false
 ): Awaited<ReturnType<NodeManagerController['cards']>>[number] {
   const prompt: Prompt = {
     kind: 'permission' as const,
@@ -26,6 +27,16 @@ export function nodeManagerFixture(
       },
       cwd: '/workspace/sample-project',
     },
+  }
+  if (codex) {
+    prompt.tool_name = 'codex.command'
+    prompt.input = {
+      command: "npm test -- 'sample case'",
+      cwd: '/workspace/sample-project',
+      reason: 'Run the sample checks outside the restricted environment',
+      request_id: 42,
+      thread_id: 'sample-hidden-thread',
+    }
   }
   return {
     operation: 'sample-operation',

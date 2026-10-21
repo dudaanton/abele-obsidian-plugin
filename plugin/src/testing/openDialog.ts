@@ -25,6 +25,7 @@ import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
   delegationCommand?: string
+  managerCodexApproval?: boolean
   managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
   delegationState?:
@@ -431,7 +432,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
                   h(NodeManagerRunCard, {
                     card: nodeManagerFixture(
                       options?.managerRunState,
-                      options?.managerEscapedCommand
+                      options?.managerEscapedCommand,
+                      options?.managerCodexApproval
                     ),
                   }),
               }
