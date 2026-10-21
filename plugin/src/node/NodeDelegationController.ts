@@ -25,6 +25,18 @@ import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { openWindow, catchUp } from './sessionWindow'
 
+/** Child-authored text is quoted data, including any attempted quote/block delimiters. */
+function developerData(value: string): string {
+  const bounded = value.length > 800 ? `${value.slice(0, 800)}…` : value
+  const quoted = JSON.stringify(bounded).replace(/[<>“”`\p{Cf}\u2028\u2029]/gu, (char) =>
+    char
+      .split('')
+      .map((part) => `\\u${part.charCodeAt(0).toString(16).padStart(4, '0')}`)
+      .join('')
+  )
+  return `<developer-data>${quoted}</developer-data>`
+}
+
 function storage(state: NodeClientState) {
   return (state.delegation ??= { tasks: {} })
 }
@@ -624,10 +636,10 @@ export class NodeDelegationController {
           parent,
           id,
           completed
-            ? `Developer “${card.title}” finished. Read node_delegation_status for the durable report.`
+            ? `Developer “${developerData(card.title)}” finished. Read node_delegation_status for the durable report.`
             : question && !terminal
-              ? `Developer “${card.title}” asks: ${question.text}`
-              : `Developer “${card.title}” ${card.state}${card.reason ? ` (${card.reason})` : ''}. Read node_delegation_status for details.`
+              ? `Developer “${developerData(card.title)}” asks: ${developerData(question.text)}`
+              : `Developer “${developerData(card.title)}” ${card.state}${card.reason ? ` (${developerData(card.reason)})` : ''}. Read node_delegation_status for details.`
         )
       )
         await this.store.transaction((s) => {
