@@ -25,6 +25,10 @@ it('explains a busy worktree separately from a rate limit', () => {
 })
 
 it.each([
+  [
+    'workspace_dirty',
+    'The worktree has uncommitted changes. Commit or discard them before deleting it.',
+  ],
   ['trace_run_not_found', 'This run is no longer on the node.'],
   [
     'paired_route_tls_or_unreachable',

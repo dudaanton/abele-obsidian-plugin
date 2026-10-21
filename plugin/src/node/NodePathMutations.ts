@@ -280,7 +280,9 @@ export class NodePathMutations {
         .reverse()
         .find(
           ([, result]) =>
-            result.request && matches(result.request) && result.error !== 'resource_busy'
+            result.request &&
+            matches(result.request) &&
+            !['resource_busy', 'workspace_dirty'].includes(result.error ?? '')
         )
       return receipt ? { id: receipt[0], pending: false } : undefined
     })
@@ -288,16 +290,22 @@ export class NodePathMutations {
       if (retained.pending) await this.client.flush?.()
       const receipt = await this.client.operationResult?.(retained.id)
       if (!receipt) throw new UiError(uiMessage('streamBError.a0a1c7d80c'))
-      if (receipt.error)
+      if (receipt.error && !['resource_busy', 'workspace_dirty'].includes(receipt.error))
         throw new UiError(uiMessage('streamBError.fcff0cdbbc', { v0: String(receipt.error) }))
-      const reservation = WorkspaceJobResultSchema.parse(receipt.result)
-      // Acceptance is not completion: a busy removal job did not remove the worktree.
-      // A later explicit Delete may start a new job; uncertain jobs keep their receipt.
-      const job = await this.client.getJob?.(reservation.job_id)
-      if (
-        !(job && ['failed', 'needs_attention'].includes(job.state) && job.error === 'resource_busy')
-      )
-        return reservation
+      if (!receipt.error) {
+        const reservation = WorkspaceJobResultSchema.parse(receipt.result)
+        // Busy and dirty refusals confirm no removal. Keep all other job outcomes durable.
+        // A later explicit Delete may start a new job; uncertain jobs keep their receipt.
+        const job = await this.client.getJob?.(reservation.job_id)
+        if (
+          !(
+            job &&
+            ['failed', 'needs_attention'].includes(job.state) &&
+            ['resource_busy', 'workspace_dirty'].includes(job.error ?? '')
+          )
+        )
+          return reservation
+      }
     }
     if (!this.client.removeWorkspace) throw new UiError(uiMessage('streamBError.96b7c749ee'))
     return this.client.removeWorkspace(workspaceId)

@@ -7,33 +7,87 @@ import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
-  it.each(['failed', 'needs_attention'])(
-    'starts a new managed removal when the accepted job is %s with a busy refusal',
-    async (jobState) => {
+  it('starts a fresh removal when flushing a pending request confirms a dirty refusal', async () => {
+    const store = new MemoryClientStore()
+    const request = { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } }
+    await store.transaction((state) => {
+      state.outbox.push({ ...request, operation_id: 'sample-pending' })
+    })
+    const removeWorkspace = vi.fn(async () => ({
+      workspace_id: 'sample-workspace',
+      job_id: 'sample-new-job',
+    }))
+    const mutations = new NodePathMutations({
+      store,
+      nodePath: {} as never,
+      removeWorkspace,
+      flush: async () => {
+        await store.transaction((state) => {
+          state.outbox = []
+          state.results['sample-pending'] = { request, error: 'workspace_dirty' }
+        })
+      },
+      operationResult: (id) => store.transaction((state) => state.results[id]),
+    })
+    await expect(mutations.removeManaged('sample-workspace')).resolves.toMatchObject({
+      job_id: 'sample-new-job',
+    })
+    expect(removeWorkspace).toHaveBeenCalledExactlyOnceWith('sample-workspace')
+    expect(await store.transaction((state) => state.results['sample-pending'].error)).toBe(
+      'workspace_dirty'
+    )
+  })
+  it.each(['running', 'succeeded', 'failed', 'needs_attention'])(
+    'retains an accepted %s removal with no known-no-write refusal',
+    async (state) => {
       const store = new MemoryClientStore()
-      await store.transaction((state) => {
-        state.results['sample-removal'] = {
+      const reservation = { workspace_id: 'sample-workspace', job_id: 'sample-job' }
+      await store.transaction((raw) => {
+        raw.results['sample-removal'] = {
           request: { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } },
-          result: { workspace_id: 'sample-workspace', job_id: 'sample-busy-job' },
+          result: reservation,
         }
       })
-      const removeWorkspace = vi.fn(async () => ({
-        workspace_id: 'sample-workspace',
-        job_id: 'sample-new-job',
-      }))
+      const removeWorkspace = vi.fn()
       const mutations = new NodePathMutations({
         store,
         nodePath: {} as never,
         removeWorkspace,
-        getJob: vi.fn(async () => ({ state: jobState, error: 'resource_busy' })) as never,
-        operationResult: (id) => store.transaction((state) => state.results[id]),
+        getJob: vi.fn(async () => ({ state, error: 'outcome_unknown' })) as never,
+        operationResult: (id) => store.transaction((raw) => raw.results[id]),
       })
-      expect(await mutations.removeManaged('sample-workspace')).toMatchObject({
-        job_id: 'sample-new-job',
-      })
-      expect(removeWorkspace).toHaveBeenCalledExactlyOnceWith('sample-workspace')
+      expect(await mutations.removeManaged('sample-workspace')).toEqual(reservation)
+      expect(removeWorkspace).not.toHaveBeenCalled()
     }
   )
+  it.each(
+    ['failed', 'needs_attention'].flatMap((state) =>
+      ['resource_busy', 'workspace_dirty'].map((error) => [state, error])
+    )
+  )('starts a new managed removal when the accepted job is %s with %s', async (jobState, error) => {
+    const store = new MemoryClientStore()
+    await store.transaction((state) => {
+      state.results['sample-removal'] = {
+        request: { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } },
+        result: { workspace_id: 'sample-workspace', job_id: 'sample-busy-job' },
+      }
+    })
+    const removeWorkspace = vi.fn(async () => ({
+      workspace_id: 'sample-workspace',
+      job_id: 'sample-new-job',
+    }))
+    const mutations = new NodePathMutations({
+      store,
+      nodePath: {} as never,
+      removeWorkspace,
+      getJob: vi.fn(async () => ({ state: jobState, error })) as never,
+      operationResult: (id) => store.transaction((state) => state.results[id]),
+    })
+    expect(await mutations.removeManaged('sample-workspace')).toMatchObject({
+      job_id: 'sample-new-job',
+    })
+    expect(removeWorkspace).toHaveBeenCalledExactlyOnceWith('sample-workspace')
+  })
   it('uses a new explicit deletion intent after a known busy refusal', async () => {
     const target = {
       nodeId: 'sample-node',
@@ -58,28 +112,31 @@ describe('owner folder intents', () => {
     expect(send.mock.calls[1][2]).not.toBe(send.mock.calls[0][2])
     expect(send.mock.calls[1][1].expected_observation_id).toBe('second-observation')
   })
-  it('allows a fresh removal after a completed busy refusal without replaying the refused operation', async () => {
-    const store = new MemoryClientStore()
-    await store.transaction((state) => {
-      state.results['refused-removal'] = {
-        error: 'resource_busy',
-        request: {
-          method: 'workspace.remove',
-          params: { workspace_id: 'workspace-sample' },
-        },
-      }
-    })
-    const removeWorkspace = vi.fn(async () => ({
-      workspace_id: 'workspace-sample',
-      job_id: 'fresh-job',
-    }))
-    const mutations = new NodePathMutations({ store, nodePath: {} as never, removeWorkspace })
-    expect(await mutations.removeManaged('workspace-sample')).toEqual({
-      workspace_id: 'workspace-sample',
-      job_id: 'fresh-job',
-    })
-    expect(removeWorkspace).toHaveBeenCalledOnce()
-  })
+  it.each(['resource_busy', 'workspace_dirty'])(
+    'allows a fresh removal after a completed %s refusal without replaying it',
+    async (error) => {
+      const store = new MemoryClientStore()
+      await store.transaction((state) => {
+        state.results['refused-removal'] = {
+          error,
+          request: {
+            method: 'workspace.remove',
+            params: { workspace_id: 'workspace-sample' },
+          },
+        }
+      })
+      const removeWorkspace = vi.fn(async () => ({
+        workspace_id: 'workspace-sample',
+        job_id: 'fresh-job',
+      }))
+      const mutations = new NodePathMutations({ store, nodePath: {} as never, removeWorkspace })
+      expect(await mutations.removeManaged('workspace-sample')).toEqual({
+        workspace_id: 'workspace-sample',
+        job_id: 'fresh-job',
+      })
+      expect(removeWorkspace).toHaveBeenCalledOnce()
+    }
+  )
   it.each([false, true])(
     'starts a fresh explicit Open after a terminal receipt, persisted=%s',
     async (persisted) => {

@@ -86,6 +86,8 @@ export const es = {
   'node.files.stopSessions': 'Detener estas sesiones',
   'node.files.sessionsStopped':
     'Sesiones detenidas. Cuando terminen de detenerse, seleccione de nuevo Eliminar árbol de trabajo.',
+  'node.error.workspaceDirty':
+    'El árbol de trabajo tiene cambios sin confirmar. Confírmalos o descártalos antes de eliminarlo.',
   'node.error.busy':
     'Este recurso está en uso. Espera a que termine la operación actual e inténtalo de nuevo.',
   'node.error.busyStage':

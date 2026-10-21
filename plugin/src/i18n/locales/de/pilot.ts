@@ -77,6 +77,8 @@ export const de = {
   'node.files.stopSessions': 'Diese Sitzungen stoppen',
   'node.files.sessionsStopped':
     'Sitzungen gestoppt. Wählen Sie nach dem Beenden erneut Worktree löschen.',
+  'node.error.workspaceDirty':
+    'Der Arbeitsbaum enthält nicht committete Änderungen. Committen oder verwerfen Sie diese vor dem Löschen.',
   'node.error.busy':
     'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
   'node.error.busyStage':
