@@ -40,6 +40,10 @@ const until = async fn => { for (let i=0; i<200; i++) { const value = fn(); if (
 const chats = window.__abeleTest.ChatService.getInstance();
 const nodes = window.__abeleTest.NodeService.getInstance();
 const nodeMenu = async title => {
+  // Opening while discovery/reconnect is pending freezes an offline menu in place.
+  // Wait for the ordinary prerequisite before taking that menu's immutable snapshot.
+  await until(() => chats.getNodeSession(chats.activeTabId.value)?.connection.state.value === 'connected');
+  if (title === 'Ask for permission') await until(() => chats.getNodeSession(chats.activeTabId.value)?.provider.value === 'fake');
   const active = chats.getNodeSession(chats.activeTabId.value)?.reference.sessionId;
   const root = [...document.querySelectorAll('.abele-node-chat')].find(el => el.dataset.sessionId === active && el.getClientRects().length);
   root.querySelector('[aria-label="More chat actions"]').click();
