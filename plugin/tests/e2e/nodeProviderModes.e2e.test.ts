@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { evalLong } from './helpers/obsidianCli'
+import { enterPhone, evalJson, evalLong, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
@@ -7,9 +7,13 @@ targets('desktop', 'phone')
 const shots = shotDir('abele-node-provider-modes')
 
 it('shows owner modes, exact settings and effective delegation policy on a real screen', async () => {
-  const result = JSON.parse(
-    await evalLong(
-      `(async () => {
+  const alreadyMobile = evalJson<boolean>('!!app.isMobile')
+  for (const phone of alreadyMobile ? [true] : [false, true]) {
+    try {
+      if (phone && !alreadyMobile) await enterPhone(390, 844)
+      const result = JSON.parse(
+        await evalLong(
+          `(async () => {
     const api = window.__abeleTest;
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const until = async fn => { for(let i=0;i<200;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Permission screen did not appear: '+fn) };
@@ -65,18 +69,22 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       return JSON.stringify(states);
     } finally { await close();await api.closeNodeSessionFixture() }
   })()`,
-      120000
-    )
-  )
-  expect(result).toEqual({
-    picker: true,
-    settings: true,
-    ownerChoice: true,
-    sessionOverride: true,
-    inherit: true,
-    refused: true,
-    'node-opt-in': true,
-    running: true,
-    unknown: true,
-  })
-})
+          120000
+        )
+      )
+      expect(result).toEqual({
+        picker: true,
+        settings: true,
+        ownerChoice: true,
+        sessionOverride: true,
+        inherit: true,
+        refused: true,
+        'node-opt-in': true,
+        running: true,
+        unknown: true,
+      })
+    } finally {
+      if (phone && !alreadyMobile) await reloadApp('app.emulateMobile(false)')
+    }
+  }
+}, 240000)
