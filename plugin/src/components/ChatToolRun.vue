@@ -189,9 +189,8 @@ watchEffect(
     min-width: 0;
   }
   .abele-tree-item__text {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 .abele-chat-run_failed.abele-chat-run_inline-file > .tree-item-self {
