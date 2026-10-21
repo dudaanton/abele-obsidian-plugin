@@ -3,6 +3,14 @@ import { mount } from '@vue/test-utils'
 import Progress from '@/components/obsidian/Progress.vue'
 import Section from '@/components/obsidian/Section.vue'
 
+it('keeps section explanations in a heading tooltip and updates them', async () => {
+  const view = mount(Section, { props: { title: 'Sample', tooltip: 'Sample explanation' } })
+  expect(view.get('h3').attributes('aria-label')).toBe('Sample explanation')
+  await view.setProps({ tooltip: 'Changed explanation' })
+  expect(view.get('h3').attributes('aria-label')).toBe('Changed explanation')
+  view.unmount()
+})
+
 describe('shared progress', () => {
   it.each([0, 25, 100])('exposes a named native progress value of %s', (value) => {
     const view = mount(Progress, { props: { label: 'Sample import', value } })

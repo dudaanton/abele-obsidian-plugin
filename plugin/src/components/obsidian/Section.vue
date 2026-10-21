@@ -2,7 +2,7 @@
   <section class="abele-section">
     <div v-if="title || $slots.actions" class="abele-section__header">
       <slot name="lead" />
-      <h3 v-if="title" class="abele-section__heading">{{ title }}</h3>
+      <h3 v-if="title" ref="heading" class="abele-section__heading">{{ title }}</h3>
       <div v-if="$slots.actions" class="abele-section__actions"><slot name="actions" /></div>
     </div>
     <p v-if="desc || $slots.desc" class="abele-section__desc">
@@ -13,12 +13,22 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { ref, watchEffect, onMounted } from 'vue'
+import { setTooltip } from 'obsidian'
+const props = defineProps<{
   /** Omitted when the group already has a heading above it — a tab label, say. */
   title?: string
   /** Plain text. For a description carrying markup, fill the `desc` slot instead. */
   desc?: string
+  tooltip?: string
 }>()
+const heading = ref<HTMLElement>()
+onMounted(() => {
+  if (heading.value) setTooltip(heading.value, props.tooltip ?? '')
+})
+watchEffect(() => {
+  if (heading.value) setTooltip(heading.value, props.tooltip ?? '')
+})
 </script>
 
 <style lang="scss">
