@@ -56,27 +56,48 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
+// A picture in a message, as a note embeds one: the picture itself with its name quiet under it.
+// It presses like a button but does not wear one: a phone's button is a pill and clipped it.
 .abele-chat-picture {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--size-2-1);
   height: auto;
   max-width: min(200px, 100%);
   min-width: 0;
-  padding: var(--size-2-2);
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
   white-space: normal;
+  cursor: var(--cursor);
+
+  &:hover,
+  &:active {
+    background: none;
+    box-shadow: none;
+  }
 
   img {
-    width: 100%;
-    height: 80px;
+    display: block;
+    max-width: 100%;
+    max-height: 160px;
+    border-radius: var(--radius-s);
     object-fit: contain;
   }
+
+  &:focus-visible img {
+    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+  }
+
   span {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
   }
 }
 </style>

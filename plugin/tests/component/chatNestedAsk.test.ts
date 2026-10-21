@@ -138,10 +138,11 @@ describe('a comment in its tab', () => {
 })
 
 describe('an ordinary chat', () => {
-  it('has no drawer selector in the phone header when the chat tree is available', () => {
+  it('keeps the drawer switch in the phone header beside the chat tree', () => {
     Platform.isPhone = true
     const wrapper = mountWith('chat', null)
-    expect(wrapper.findComponent(DrawerViewSwitch).exists()).toBe(false)
+    // Without it a phone's drawer shows Obsidian's own switcher and note line under the chat.
+    expect(wrapper.findComponent(DrawerViewSwitch).exists()).toBe(true)
   })
 
   it('has no trail', async () => {

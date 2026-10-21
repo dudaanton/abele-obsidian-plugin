@@ -43,8 +43,9 @@
     <template v-else>
       <!-- Header -->
       <div ref="headerContainer" class="abele-ai-chat__header abele-ai-chat__header_tree">
+        <!-- Kept on a phone beside the chat's name: without it the drawer brings back Obsidian's
+             own switcher and note line under the chat. -->
         <DrawerViewSwitch
-          v-if="!phone || !chatTreeSource"
           icon="bot"
           :name="t('streamB.abeleAiChat.08f891')"
           @shown="inDrawer = $event"
@@ -1219,7 +1220,10 @@ const tokenDisplay = computed(() => {
   const translationItem = contextTokens.value
   if (translationItem === 0) return ''
   const ctx = contextWindow.value
-  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+  // «1M», not «1000.0k»; a whole thousand without its «.0».
+  const short = (n: number) => String(Number(n.toFixed(1)))
+  const fmt = (n: number) =>
+    n >= 1e6 ? `${short(n / 1e6)}M` : n >= 1000 ? `${short(n / 1000)}k` : String(n)
   return ctx ? `${fmt(translationItem)}/${fmt(ctx)}` : fmt(translationItem)
 })
 
@@ -1993,7 +1997,7 @@ const onCommand = async (command: string) => {
       })
       break
     case '/new':
-      handleNewChat()
+      onNewTab()
       break
     case '/load':
       historyOpen.value = true

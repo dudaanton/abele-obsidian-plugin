@@ -242,6 +242,26 @@ body.is-mobile .abele-chat-input__textarea {
   white-space: nowrap;
 }
 
+// The count is what gives way when the row is narrow: with it the send glyphs broke onto a line
+// of their own and the composer grew by a row while the agent worked (a sidebar on a desktop,
+// any phone, where the glyphs are touch-sized).
+.abele-chat-input__toolbar {
+  container-type: inline-size;
+}
+@container (max-width: 400px) {
+  .abele-chat-input__tokens {
+    display: none;
+  }
+}
+body.is-phone .abele-chat-input__toolbar {
+  container-type: inline-size;
+}
+@container (max-width: 480px) {
+  body.is-phone .abele-chat-input__tokens {
+    display: none;
+  }
+}
+
 // The count beside the access glyph is a code, small and muted like the figures in a tree row.
 .abele-chat-input__scope .abele-obsidian-icon__text {
   color: var(--text-muted);
