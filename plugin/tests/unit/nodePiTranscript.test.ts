@@ -48,6 +48,17 @@ const event = (seq: number, type: string, data: unknown): JournalEvent => ({
   at: '2025-01-01T00:00:00.000Z',
   data,
 })
+it('keeps terminal-only extension diagnostics out of the conversation without hiding failures', () => {
+  const p = reduceTranscript([
+    event(1, 'pi.extension.warning', {
+      reason: 'unsupported_extension_ui',
+      capability: 'onTerminalInput',
+    }),
+    event(2, 'pi.extension.error', { extension: 'sample-extension', error: 'Sample failure' }),
+  ])
+  expect(p.messages.some((m) => m.sessionMark?.text?.includes('onTerminalInput'))).toBe(false)
+  expect(p.messages.some((m) => m.sessionMark?.text?.includes('Sample failure'))).toBe(true)
+})
 
 it('retains the edit diff when the call first appears in an assistant snapshot', () => {
   const scope = { run_id: 'sample-run', runtime_generation: 1 }

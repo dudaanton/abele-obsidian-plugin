@@ -315,6 +315,15 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         }
     }
     let updates = updatesOf(event)
+    updates = updates.filter(
+      (update) =>
+        !(
+          update.kind === 'notice' &&
+          update.code === 'extension_warning' &&
+          update.text ===
+            'pi extension display onTerminalInput is unavailable in this headless run; execution continues'
+        )
+    )
     if (event.type === 'pi.extension.error' && data.mapped !== true) {
       const extension = text('extension') || text('extension_path') || text('extension_id')
       const reason = text('error') || text('message')
