@@ -11,6 +11,7 @@ it('marks the exact search word and clears it when ordinary line navigation resu
     match: { column: 6, length: 6 },
   })
   expect(parent.querySelector('.cm-searchMatch')?.textContent).toBe('sample')
+  expect(parent.querySelector('.abele-github-code__search-destination')?.textContent).toBe('sample')
   viewer.mark({ start: 1, end: 1 })
   expect(parent.querySelector('.cm-searchMatch')).toBeNull()
   viewer.destroy()

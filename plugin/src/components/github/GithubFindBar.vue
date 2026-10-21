@@ -186,7 +186,8 @@ body.is-phone .abele-github-find {
   border-radius: var(--radius-s);
 }
 
-.abele-github-find__match_current {
+.abele-github-find__match_current,
+.abele-github-code__search-destination {
   background-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
   outline: 1px solid var(--interactive-accent);
 }

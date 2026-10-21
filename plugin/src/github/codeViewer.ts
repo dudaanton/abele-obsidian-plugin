@@ -353,7 +353,12 @@ export function mountCode(
       const from = line.from + Math.min(range.match.column, line.length)
       const to = Math.min(line.to, from + range.match.length)
       if (from < to)
-        marks = Decoration.set([Decoration.mark({ class: 'cm-searchMatch' }).range(from, to)])
+        marks = Decoration.set([
+          Decoration.mark({ class: 'cm-searchMatch abele-github-code__search-destination' }).range(
+            from,
+            to
+          ),
+        ])
     }
     viewer.view.dispatch({ effects: match.reconfigure(EditorView.decorations.of(marks)) })
   }
