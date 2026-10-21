@@ -78,6 +78,8 @@ it.skipIf(!available).each([
       const tabs = [...editor.querySelectorAll('.abele-tabs__tab')].map(el=>el.textContent.trim());
       if (JSON.stringify(tabs)!==JSON.stringify(['Basic','Access'])) throw Error('Wrong node-agent tabs: '+tabs);
       if (!editor.querySelector('.abele-status-dot_green') || !editor.textContent.includes('Runs in Obsidian on Sample desktop')) throw Error('Connected executor line is missing');
+      if (!editor.querySelector('.abele-chat-tools [data-tool-group] .abele-tree-item__end .clickable-icon')) throw Error('Missing ordinary tool group mode shields');
+      if (editor.textContent.includes('Off = unavailable') || editor.querySelector('.abele-tool-modes')) throw Error('Legacy tool controls are still shown');
       await capture('agent-connected',doc);
       api.nodeToolRunners['sample-tools-node'] = { state: 'none' }; await wait();
       if (!editor.querySelector('.abele-status-dot_orange')) throw Error('Missing executor is not shown');
@@ -86,16 +88,22 @@ it.skipIf(!available).each([
       await api.openNodeSessionFixture('obsidian-tools'); await wait(500);
       const root = [...document.querySelectorAll('.abele-node-chat')].find(el=>el.getClientRects().length);
       if (!root) throw Error('Node chat missing');
-      for (const [selector,name] of [['[data-message-id="obsidian:sample-create"]','create-note'],['[data-message-id="obsidian:sample-edit"]','edit-diff'],['.abele-tool-approval','approval']]) {
+      for (const [selector,name] of [['[data-node-message="obsidian:sample-create"]','create-note'],['[data-node-message="obsidian:sample-edit"]','edit-diff'],['.abele-tool-approval','approval']]) {
         let row = root.querySelector(selector);
         if (!row && name!=='approval') row = [...root.querySelectorAll('.abele-chat-msg')].find(el=>el.textContent.includes(name==='create-note'?'A sample note created':'An updated sample note'));
         if (!row) throw Error('Missing ordinary Obsidian call: '+name);
         row.scrollIntoView({block:'center'}); await capture(name);
       }
+      for (const row of root.querySelectorAll('[data-node-message^="obsidian:"]')) {
+        if (row.querySelector('.abele-chat-msg__diff, .abele-chat-msg__new-file, .abele-chat-msg__tool-output')) throw Error('Node call expands its write content outside approval');
+        if (row.querySelector('.abele-chat-msg__tool-line_files')) throw Error('Node file call puts its path on another row');
+        const name = row.querySelector('.abele-chat-msg__tool-name'), path = row.querySelector('.abele-chat-msg__tool-link');
+        if (name && path && Math.abs(name.getBoundingClientRect().top - path.getBoundingClientRect().top) > 8) throw Error('Node file call is not a single run line');
+      }
       if (!root.textContent.includes('Text waiting for approval.')) throw Error('Approval does not show the note text');
       const approval=root.querySelector('.abele-tool-approval');
       for (const label of ['Deny','Allow','Stop']) if (![...approval.querySelectorAll('button')].some(b=>b.textContent.trim()===label)) throw Error('Missing approval action '+label);
-      const history = [...root.querySelectorAll('.abele-disclosure__control')].find(el=>el.textContent.includes('Delegation'));
+      const history = [...root.querySelectorAll('.abele-run > .tree-item-self')].find(el=>el.textContent.includes('Asked '));
       if (!history) throw Error('Missing hosted delegation history'); history.click(); await wait();
       if (!root.textContent.includes('A retained sample answer')) throw Error('Retained delegation history is missing');
       history.scrollIntoView({block:'center'}); await capture('delegate-history');
