@@ -37,13 +37,14 @@ it('measures idle polling before and after migrating a large synthetic client st
         const tx=db.transaction('client','readwrite'),object=tx.objectStore('client');let pending=true,ready=false,state;
         tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
         const alive=()=>{if(!pending)return;if(ready){object.put(state,'state');pending=false;return}const r=object.get('state');r.onsuccess=alive};
-        const r=object.get('state');r.onsuccess=()=>{state=r.result;alive();setTimeout(()=>{ready=true},40)};
+        const r=object.get('state');r.onsuccess=()=>{state=r.result;alive();queueMicrotask(()=>{ready=true})};
       }));
       db.close();db=null;
       store=new window.__abeleTest.NodeClientStore(namespace);
       const kept=await store.read(state=>state.events['sample-session'].length);
-      const after=await measure(()=>store.transaction(async()=>{await wait(40)}));
-      return JSON.stringify({bytes,events:events.length,kept,before,after});
+      const after=await measure(()=>store.transaction(()=>{}));
+      const awaited=await measure(()=>store.transaction(async()=>{await wait(40)}));
+      return JSON.stringify({bytes,events:events.length,kept,before,after,awaited});
     } finally {
       db?.close();store?.close();await wait(50);await req(indexedDB.deleteDatabase(name));
     }
@@ -56,10 +57,12 @@ it('measures idle polling before and after migrating a large synthetic client st
     kept: number
     before: { ticks: number; reads: number }
     after: { ticks: number; reads: number }
+    awaited: { ticks: number; reads: number }
   }
   console.log('NODE_STORE_IDLE ' + JSON.stringify(report))
   expect(report.bytes).toBeGreaterThan(20_000_000)
   expect(report.kept).toBe(400)
   expect(report.before.reads).toBeGreaterThan(report.before.ticks)
   expect(report.after.reads).toBe(report.after.ticks)
+  expect(report.awaited.reads).toBe(report.awaited.ticks)
 }, 240000)
