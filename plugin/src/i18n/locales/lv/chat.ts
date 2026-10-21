@@ -1,5 +1,13 @@
 export const chat = {
   'chatTree.backToParent': 'Atpakaļ uz {name}',
+  'chat.letterNode.stopped': 'Pieprasījums apturēts.',
+  'chat.letterNode.closed': 'Mērķa čats ir aizvērts.',
+  'chat.letterNode.offline':
+    'Mezgls ir atvienots. Atveriet čatu un vispirms izveidojiet savienojumu.',
+  'chat.letterNode.unaccepted': 'Mezgls nepieņēma ziņojumu. Atveriet čatu un pārbaudiet tā sesiju.',
+  'chat.letterNode.separate':
+    'Mezgls nevarēja sniegt atsevišķu atbildi uz šo ziņojumu. Pārbaudiet mērķa čatu.',
+  'chat.letterNode.empty': 'Mezgls pabeidza darbu bez atbildes uz šo ziņojumu.',
   'chatTree.missing': 'Šī saruna vairs nav pieejama.',
   'chatTree.transferLabel': 'Sarunu mapju piekļuve',
   'chatTree.invalidFolder': 'Nederīgs mapes nosaukums',

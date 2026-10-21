@@ -17,6 +17,7 @@ export function openMessagingChats(): LetterEndpoint[] {
   knownChats.set(service, known)
   return service.listOpenChats().map((chat) => {
     const session = service.getSession(chat.id)
+    const node = service.getNodeSession(chat.id)
     known.set(chat.id, {
       id: chat.id,
       title: chat.title,
@@ -28,7 +29,11 @@ export function openMessagingChats(): LetterEndpoint[] {
       ...chat,
       path: session?.currentChatFile.value?.path,
       receive: async (message, from, signal) => {
-        if (!session) throw new LetterRefusal('node')
+        if (!session) {
+          if (!node || service.getNodeSession(chat.id) !== node)
+            throw new LetterRefusal('closed', chat.title)
+          return node.receiveChatLetter(message, from, signal)
+        }
         if (session.conversationVersion.value !== version)
           throw new Error('The target chat changed before the message was delivered')
         return session.receiveChatLetter(message, from, signal)

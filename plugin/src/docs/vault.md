@@ -2976,6 +2976,13 @@ moving a node chat does not move files or sessions on the node.
 Node file tabs keep their target, path, selected lines and optional matched-word column and
 length in the device's workspace layout. These navigation hints do not copy file contents.
 
+Incoming cross-chat letters keep device-local sender references and operation/input/turn IDs
+in the installation's node IndexedDB state. These references decorate the incoming user
+message and the matching answer with chat links on this device. Pending letter submissions
+are removed from the outbox after an interrupted run; reconnect never sends them again.
+Completed provenance stays available after reload. The node journal itself currently stores
+the ordinary user turn without this plugin-side sender reference.
+
 Node chat checkpoints and their file snapshots remain on the node. Rewind, branch, edit and
 retry change conversation context without restoring files. Only the rewind dialog's explicit
 file switch and confirmation send the exact preview identity and ordered file hashes to the

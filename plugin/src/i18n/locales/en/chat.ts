@@ -59,6 +59,14 @@ export const chat = {
   'chat.letterRefusal.cycle':
     '{title} is waiting on this chat; asking it back would go in a circle.',
   'chat.letterRefusal.node': "Chats on a node can't be asked yet.",
+  'chat.letterNode.stopped': 'The request was stopped.',
+  'chat.letterNode.closed': 'The target chat is closed.',
+  'chat.letterNode.offline': 'The node is disconnected. Open the chat and connect first.',
+  'chat.letterNode.unaccepted':
+    'The node did not accept the message. Open the chat and check its session.',
+  'chat.letterNode.separate':
+    'The node could not return a separate answer to this message. Open the target chat to check it.',
+  'chat.letterNode.empty': 'The node finished without an answer to this message.',
   'chat.letterAsked': 'Asked {title}',
   'chat.letterSent': 'Sent to {title}',
   'chat.letterFrom': 'From {title}',

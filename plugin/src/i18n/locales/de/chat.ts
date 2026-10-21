@@ -1,5 +1,13 @@
 export const chat = {
   'chatTree.backToParent': 'Zurück zu {name}',
+  'chat.letterNode.stopped': 'Die Anfrage wurde gestoppt.',
+  'chat.letterNode.closed': 'Der Zielchat ist geschlossen.',
+  'chat.letterNode.offline': 'Der Knoten ist getrennt. Öffne den Chat und verbinde ihn zuerst.',
+  'chat.letterNode.unaccepted':
+    'Der Knoten hat die Nachricht nicht angenommen. Öffne den Chat und prüfe seine Sitzung.',
+  'chat.letterNode.separate':
+    'Der Knoten konnte keine separate Antwort auf diese Nachricht zurückgeben. Prüfe den Zielchat.',
+  'chat.letterNode.empty': 'Der Knoten wurde ohne Antwort auf diese Nachricht fertig.',
   'chatTree.missing': 'Diese Unterhaltung ist nicht mehr verfügbar.',
   'chatTree.transferLabel': 'Zugriff der Chatordner',
   'chatTree.invalidFolder': 'Ungültiger Ordnername',

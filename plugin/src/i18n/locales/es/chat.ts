@@ -1,5 +1,12 @@
 export const chat = {
   'chatTree.backToParent': 'Volver a {name}',
+  'chat.letterNode.stopped': 'La solicitud se detuvo.',
+  'chat.letterNode.closed': 'El chat de destino está cerrado.',
+  'chat.letterNode.offline': 'El nodo está desconectado. Abre el chat y conéctate primero.',
+  'chat.letterNode.unaccepted': 'El nodo no aceptó el mensaje. Abre el chat y comprueba su sesión.',
+  'chat.letterNode.separate':
+    'El nodo no pudo devolver una respuesta separada a este mensaje. Comprueba el chat de destino.',
+  'chat.letterNode.empty': 'El nodo terminó sin responder a este mensaje.',
   'chatTree.missing': 'Esta conversación ya no está disponible.',
   'chatTree.transferLabel': 'Acceso de carpetas de chats',
   'chatTree.invalidFolder': 'Nombre de carpeta no válido',

@@ -8,8 +8,10 @@ import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
 import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
 import { trimWindows } from './sessionWindow'
+import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 
 export interface NodeClientState extends ClientState {
+  nodeLetters?: Record<string, NodeLetter>
   managerOperations?: Record<string, ManagerOperation>
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
@@ -38,6 +40,7 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    nodeLetters: z.record(z.string(), NodeLetterSchema).optional(),
     operationRequests: z
       .record(z.string(), z.object({ method: z.string(), params: z.unknown() }).strict())
       .optional(),
@@ -141,7 +144,15 @@ function readState(raw: unknown): NodeClientState {
     // Validation may add defaults in a newer protocol. Never rewrite a retry's body.
     return entry
   })
-  return { ...state, events, outbox }
+  const abandoned = new Set(
+    Object.entries(state.nodeLetters ?? {})
+      .filter(([id, letter]) => letter.status === 'pending' && !activeNodeLetters.has(id))
+      .map(([id, letter]) => {
+        letter.status = 'interrupted'
+        return id
+      })
+  )
+  return { ...state, events, outbox: outbox.filter((entry) => !abandoned.has(entry.operation_id)) }
 }
 
 /**

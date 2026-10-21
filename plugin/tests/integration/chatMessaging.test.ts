@@ -15,6 +15,155 @@ import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import type { Message } from '@/ai/client'
 import { migrateAgents } from '@/ai/agents/migration'
+import { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { ref } from 'vue'
+import type { NodeClientState } from '@/node/NodeClientStore'
+
+function nodeLetterTarget() {
+  const state: NodeClientState = { events: { sample: [] }, cursors: {}, results: {}, outbox: [] }
+  const projection = ref({
+    activeRuns: [] as string[],
+    queuedInputs: [],
+    prompts: [],
+    messages: [] as { role: string; nodeTurnId: string; content: string }[],
+  })
+  const client = {
+    connected: true,
+    onEvent: () => () => {},
+    cursor: async () => 0,
+    getSession: vi.fn(async () => ({ session_id: 'sample' })),
+    store: { transaction: async (fn: (s: NodeClientState) => unknown) => fn(state) },
+    flush: vi.fn(async () => {
+      const entry = state.outbox.shift()!
+      state.results[entry.operation_id] = { result: { input_id: 'sample-input', accepted_seq: 1 } }
+    }),
+    operationResult: async (id: string) => state.results[id],
+  }
+  const presenter = Object.create(NodeChatPresenter.prototype) as NodeChatPresenter
+  Object.assign(presenter, {
+    reference: { sessionId: 'sample' },
+    connection: { client, state: ref('connected') },
+    projection,
+    messages: ref(projection.value.messages),
+    nodeDescription: ref(undefined),
+    binding: ref(null),
+    refresh: vi.fn(async () => {}),
+  })
+  const finish = (inputs = ['sample-input']) => {
+    projection.value.messages.push(
+      { role: 'assistant', nodeTurnId: 'other-turn', content: 'Unrelated answer' },
+      { role: 'assistant', nodeTurnId: 'sample-turn', content: 'Only this answer' }
+    )
+    state.events.sample.push({
+      type: 'turn.completed',
+      data: { input_ids: inputs, turn_id: 'sample-turn', outcome: 'success' },
+    } as never)
+  }
+  return { state, client, presenter, finish, projection }
+}
+
+it('returns only the node turn that consumed the admitted input and persists provenance', async () => {
+  const { presenter, state, finish } = nodeLetterTarget()
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+    path: 'Chats/sample.md',
+  })
+  await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+  finish()
+  await expect(result).resolves.toBe('Only this answer')
+  expect(Object.values(state.nodeLetters!)).toEqual([
+    expect.objectContaining({
+      inputId: 'sample-input',
+      turnId: 'sample-turn',
+      status: 'completed',
+      from: expect.objectContaining({ id: 'sender' }),
+    }),
+  ])
+  expect(state.outbox).toEqual([])
+})
+
+it('refuses a combined node turn rather than returning another request answer', async () => {
+  const { presenter, state, finish } = nodeLetterTarget()
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  const refused = expect(result).rejects.toThrow('separate answer')
+  await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+  finish(['sample-input', 'other-input'])
+  await refused
+  expect(Object.values(state.nodeLetters!)[0].status).toBe('interrupted')
+})
+
+it('queues behind node work and stops without admission when disconnected', async () => {
+  const { presenter, client, projection, state } = nodeLetterTarget()
+  projection.value.activeRuns.push('busy-run')
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  const refused = expect(result).rejects.toThrow('disconnected')
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  expect(client.flush).not.toHaveBeenCalled()
+  client.connected = false
+  await refused
+  expect(state.outbox).toEqual([])
+})
+
+it('admits a queued node letter once the target finishes its current turn', async () => {
+  const { presenter, client, projection, state, finish } = nodeLetterTarget()
+  projection.value.activeRuns.push('busy-run')
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  expect(client.flush).not.toHaveBeenCalled()
+  projection.value.activeRuns.length = 0
+  await vi.waitFor(() => expect(Object.keys(state.results)).toHaveLength(1))
+  finish()
+  await expect(result).resolves.toBe('Only this answer')
+  expect(client.flush).toHaveBeenCalledTimes(1)
+})
+
+it('drops an uncertain letter outbox entry on disconnect without replaying other work', async () => {
+  const { presenter, client, state } = nodeLetterTarget()
+  let release!: () => void
+  client.flush.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  const result = presenter.receiveChatLetter('Sample question', {
+    id: 'sender',
+    title: 'Sample sender',
+  })
+  const refused = expect(result).rejects.toThrow('disconnected')
+  await vi.waitFor(() => expect(state.outbox).toHaveLength(1))
+  state.outbox.push({
+    operation_id: 'other-operation',
+    method: 'session.stop',
+    params: { session_id: 'other' },
+  })
+  client.connected = false
+  await refused
+  release()
+  expect(state.outbox.map((entry) => entry.operation_id)).toEqual(['other-operation'])
+  expect(Object.values(state.nodeLetters!)[0].status).toBe('interrupted')
+  expect(client.flush).toHaveBeenCalledTimes(1)
+})
+
+it('refuses a missing node session before admission', async () => {
+  const { presenter, client, state } = nodeLetterTarget()
+  client.getSession.mockRejectedValueOnce(new Error('session_not_found'))
+  await expect(
+    presenter.receiveChatLetter('Sample question', { id: 'sender', title: 'Sample sender' })
+  ).rejects.toThrow('check its session')
+  expect(client.flush).not.toHaveBeenCalled()
+  expect(state.outbox).toEqual([])
+})
 
 vi.mock('@/ai/client/OpenAIClient', () => ({
   OpenAIClient: class {
@@ -87,6 +236,28 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+it('delivers a node destination through its presenter and returns only that answer', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  const receiveChatLetter = vi.fn(async () => 'Sample node answer')
+  const node = { receiveChatLetter }
+  vi.spyOn(service, 'getNodeSession').mockImplementation((id) =>
+    id === 'sample-node' ? (node as never) : null
+  )
+  vi.spyOn(service, 'listOpenChats').mockReturnValue([
+    { id: caller.id, title: 'Sample sender', folder: '', agent: null, state: 'working' },
+    { id: 'sample-node', title: 'Sample node', folder: '', agent: null, state: 'idle' },
+  ])
+  await expect(chatMessaging.send(caller.id, 'sample-node', 'Sample question')).resolves.toBe(
+    'Sample node answer'
+  )
+  expect(receiveChatLetter).toHaveBeenCalledWith(
+    'Sample question',
+    expect.objectContaining({ id: caller.id, title: 'Sample sender' }),
+    undefined
+  )
+})
+
 it('distinguishes a closed destination from an unknown one and retains its reopen path', async () => {
   const service = ChatService.getInstance()
   const caller = service.getSession(service.createTab())!
@@ -141,7 +312,7 @@ it('uses the tree directory metadata and includes node chats without adding hidd
   expect(list).toHaveBeenCalled()
   expect(chatMessaging.list(local.id)).toEqual([directory[1]])
   await expect(chatMessaging.send(local.id, 'node-chat', 'Sample remote request')).rejects.toThrow(
-    "Chats on a node can't be asked yet."
+    'Remote sample is closed. Open it from the chat tree first.'
   )
 })
 

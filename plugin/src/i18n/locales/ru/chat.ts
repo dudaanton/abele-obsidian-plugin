@@ -1,5 +1,12 @@
 export const chat = {
   'chatTree.backToParent': 'Назад к {name}',
+  'chat.letterNode.stopped': 'Запрос остановлен.',
+  'chat.letterNode.closed': 'Целевой чат закрыт.',
+  'chat.letterNode.offline': 'Нода отключена. Откройте чат и сначала подключитесь.',
+  'chat.letterNode.unaccepted': 'Нода не приняла сообщение. Откройте чат и проверьте его сессию.',
+  'chat.letterNode.separate':
+    'Нода не смогла вернуть отдельный ответ на это сообщение. Проверьте целевой чат.',
+  'chat.letterNode.empty': 'Нода завершила работу без ответа на это сообщение.',
   'chatTree.missing': 'Этот разговор больше недоступен.',
   'chatTree.transferLabel': 'Доступ папок чатов',
   'chatTree.invalidFolder': 'Недопустимое название папки',

@@ -34,6 +34,8 @@ import { StableMessages } from './stableMessages'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { NodeChatHistory, type NodeHistoryAction, type NodeChatPreview } from './NodeChatHistory'
 import { restoredTranscript } from './restoredTranscript'
+import { activeNodeLetters } from './nodeChatLetters'
+import type { LetterChat } from '@/chats/chatLetters'
 
 import {
   chatMovedNotice,
@@ -326,10 +328,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
         this.dirty = false
         const client = this.connection.client
         const draftRevision = this.draftRevision
-        const { history, pending, rejected, artifactData, receipts, draft, firstKept } =
+        const { history, pending, rejected, artifactData, receipts, draft, firstKept, letters } =
           await readStore(client.store, (raw) => {
-            const state = raw as NodeClientState
+            const state = raw
             return {
+              letters: state.nodeLetters ?? {},
               draft: state.chatDrafts?.[this.reference.sessionId],
               receipts: state.results,
               artifactData: state.artifactData ?? {},
@@ -386,7 +389,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             )
               throw new UiError(uiMessage('streamB.couldNotReadEarlierMessages.5f0162'))
             for (const event of page) this.visibleEvents.set(event.seq, event)
-            after = page.at(-1)!.seq
+            after = page.at(-1).seq
           }
         }
         for (const event of history) {
@@ -436,6 +439,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
         if (this.destroyed) return
         this.firstKept.value = visible[0]?.seq ?? firstKept
         const projection = reduceTranscript(hydrated)
+        for (const [id, letter] of Object.entries(letters)) {
+          if (letter.sessionId !== this.reference.sessionId) continue
+          const result = receipts[id]?.result as { input_id?: string } | undefined
+          const inputId = letter.inputId ?? result?.input_id
+          const incoming = projection.messages.find((message) => message.id === `input:${inputId}`)
+          if (incoming) incoming.fromSession = letter.from
+          const answer = projection.messages.findLast(
+            (message) => message.role === 'assistant' && message.nodeTurnId === letter.turnId
+          )
+          if (letter.turnId && answer) answer.sentTo = letter.from
+        }
         const record = visible.findLast((event) =>
           ['session.created', 'session.updated'].includes(event.type)
         )
@@ -667,6 +681,138 @@ export class NodeChatPresenter implements ChatPresentationSession {
         })
       )
     void this.draftWrite.catch((error: unknown) => this.report(error))
+  }
+
+  /** Admit once, without touching the composer or replaying an interrupted request. */
+  async receiveChatLetter(text: string, from: LetterChat, signal?: AbortSignal): Promise<string> {
+    const client = this.connection.client
+    const sessionId = this.reference.sessionId
+    let verifiedAt = 0
+    const check = () => {
+      if (signal?.aborted) throw new Error(t('chat.letterNode.stopped'))
+      if (this.destroyed) throw new Error(t('chat.letterNode.closed'))
+      if (!client.connected || this.connection.state.value !== 'connected')
+        throw new Error(t('chat.letterNode.offline'))
+    }
+    const pause = async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100))
+      check()
+      if (Date.now() - verifiedAt > 5000) await verifySession()
+    }
+    const verifySession = async () => {
+      try {
+        await client.getSession(sessionId)
+        verifiedAt = Date.now()
+      } catch {
+        check()
+        throw new Error(t('chat.letterNode.unaccepted'))
+      }
+    }
+    check()
+    await verifySession()
+    await this.refresh()
+    while (
+      this.projection.value.activeRuns.length ||
+      this.projection.value.queuedInputs.length ||
+      this.projection.value.prompts.some((prompt) => prompt.state === 'pending')
+    ) {
+      await pause()
+      await this.refresh()
+    }
+    const operation_id = crypto.randomUUID()
+    const params = validateParams('session.send', {
+      session_id: sessionId,
+      text,
+      observed_seq: await client.cursor(sessionId),
+      ...(supportsExpectedTarget(this.nodeDescription.value) && expectedBinding(this.binding.value)
+        ? { expected_target: expectedBinding(this.binding.value) }
+        : {}),
+    })
+    activeNodeLetters.add(operation_id)
+    // Keep the terminal mapping even if a busy journal advances beyond the device window.
+    const endings: JournalEvent[] = []
+    const stop = client.onEvent((event) => {
+      if (event.stream_id === sessionId && event.type === 'turn.completed') endings.push(event)
+    })
+    let completed = false
+    try {
+      await client.store.transaction((raw) => {
+        check()
+        const state = raw as NodeClientState
+        state.nodeLetters ??= {}
+        state.nodeLetters[operation_id] = { sessionId, from, status: 'pending' }
+        state.operationRequests ??= {}
+        state.operationRequests[operation_id] = { method: 'session.send', params }
+        state.outbox.push({ operation_id, method: 'session.send', params })
+      })
+      console.debug('[Abele chat message]', { from: from.id, to: sessionId, phase: 'submitted' })
+      let flushed = false
+      let failure: unknown
+      void client.flush().then(
+        () => {
+          flushed = true
+        },
+        (error) => {
+          failure = error
+          flushed = true
+        }
+      )
+      while (!flushed) await pause()
+      if (failure) {
+        check()
+        throw new Error(t('chat.letterNode.unaccepted'))
+      }
+      const receipt = await client.operationResult(operation_id)
+      const result = receipt?.result as { input_id?: string } | undefined
+      if (receipt?.error || !result?.input_id) throw new Error(t('chat.letterNode.unaccepted'))
+      const inputId = result.input_id
+      await client.store.transaction((raw) => {
+        ;(raw as NodeClientState).nodeLetters[operation_id].inputId = inputId
+      })
+      for (;;) {
+        check()
+        const end = await readStore(client.store, (state) =>
+          [...endings, ...(state.events[sessionId] ?? [])].find((event) => {
+            const data = event.data as { input_ids?: string[] }
+            return event.type === 'turn.completed' && data.input_ids?.includes(inputId)
+          })
+        )
+        if (end) {
+          const data = end.data as { input_ids: string[]; turn_id: string; outcome: string }
+          if (data.outcome !== 'success' || data.input_ids.length !== 1)
+            throw new Error(t('chat.letterNode.separate'))
+          await this.refresh()
+          const answer = this.messages.value.findLast(
+            (message) =>
+              message.role === 'assistant' &&
+              message.nodeTurnId === data.turn_id &&
+              message.content.trim()
+          )?.content
+          if (!answer) throw new Error(t('chat.letterNode.empty'))
+          await client.store.transaction((raw) => {
+            Object.assign((raw as NodeClientState).nodeLetters[operation_id], {
+              turnId: data.turn_id,
+              status: 'completed',
+            })
+          })
+          completed = true
+          await this.refresh()
+          console.debug('[Abele chat message]', { from: from.id, to: sessionId, phase: 'answered' })
+          return answer
+        }
+        await pause()
+      }
+    } finally {
+      stop()
+      await client.store
+        .transaction((raw) => {
+          const state = raw as NodeClientState
+          state.outbox = state.outbox.filter((entry) => entry.operation_id !== operation_id)
+          if (!completed && state.nodeLetters?.[operation_id])
+            state.nodeLetters[operation_id].status = 'interrupted'
+        })
+        .finally(() => activeNodeLetters.delete(operation_id))
+    }
   }
 
   /**
@@ -906,7 +1052,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     // A node without stream.head says where the journal ends in the subscription's answer: a
     // device far behind starts again at the window, before much of the journal has come.
     if (!window && Number.isSafeInteger(answer?.head_seq)) {
-      window = await windowAt(client, id, answer!.head_seq as number)
+      window = await windowAt(client, id, answer.head_seq as number)
       adoptWindow(window)
       if (window.jumped) {
         await catchUp(client, id, window.head).catch((e: unknown) => this.report(e))
