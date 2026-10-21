@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
-import { Notice, TFile, TFolder } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -204,28 +204,12 @@ export class ChatTreeModel implements ChatTreeSource {
         access: this.service.folders.access.value[path],
         children: [],
       }
-      const directory = app.vault.getAbstractFileByPath(
-        `${this.service.folders.root.value}/${path}`
-      )
-      folder.canDelete =
-        directory instanceof TFolder &&
-        directory.children.every((child) => child.name === '_folder.abeleaccess') &&
-        !Object.values(this.service.nodeFolders.value).some(
-          (value) => value === path || value.startsWith(`${path}/`)
-        )
+      folder.canDelete = true
       ensure(parts.join('/')).push(folder)
       folders.set(path, folder)
       return folder.children
     }
-    const walk = (folder: TFolder) => {
-      for (const child of folder.children)
-        if (child instanceof TFolder) {
-          ensure(child.path.slice(this.service.folders.root.value.length + 1))
-          walk(child)
-        }
-    }
-    const directory = app.vault.getAbstractFileByPath(this.service.folders.root.value)
-    if (directory instanceof TFolder) walk(directory)
+    for (const path of this.service.folders.paths) ensure(path)
     const byPath = new Map<string, ChatTreeChat>()
     const entries = new Map<string, { chat: ChatTreeChat; path: string; parent?: string }>()
     for (const info of this.service.listOpenChats()) {
@@ -333,12 +317,10 @@ export class ChatTreeModel implements ChatTreeSource {
       entries.set(id, { chat, path: '', parent: entries.get(id)?.parent ?? run.parentChat })
     }
     for (const entry of entries.values()) {
-      const folder = this.service.nodeFolders.value[entry.chat.id]
-      if (folder !== undefined) {
-        ensure(folder).push(entry.chat)
-        continue
-      }
-      if (this.service.getNodeSession(entry.chat.id)) {
+      const filedNode =
+        entry.chat.id.startsWith('node:') &&
+        this.service.folders.membershipOf(entry.chat.id) !== undefined
+      if (this.service.getNodeSession(entry.chat.id) && !filedNode) {
         const parent = this.service.tabOrder.value.find((id) =>
           this.service.childTabs(id).includes(entry.chat.id)
         )
@@ -349,7 +331,7 @@ export class ChatTreeModel implements ChatTreeSource {
           continue
         }
       }
-      const parent = entry.parent && byPath.get(entry.parent)
+      const parent = !filedNode && entry.parent && byPath.get(entry.parent)
       // Guard malformed anchors from forming a cycle in the rendered tree.
       const seen = new Set([entry.path])
       let ancestor = entry.parent
@@ -365,13 +347,7 @@ export class ChatTreeModel implements ChatTreeSource {
       if (parent && !cycle) {
         entry.chat.nested ??= 'discussion'
         parent.children!.push(entry.chat)
-      } else
-        ensure(
-          this.service.folders.folderOf(
-            entry.path ||
-              (entry.parent && app.vault.getAbstractFileByPath(entry.parent) ? entry.parent : '')
-          )
-        ).push(entry.chat)
+      } else ensure(this.service.folders.folderOf(entry.path || entry.chat.id)).push(entry.chat)
     }
     const sort = (entries: ChatTreeEntry[]) => {
       entries.sort((a, b) =>
@@ -425,10 +401,7 @@ export class ChatTreeModel implements ChatTreeSource {
 
   accessFloorFor(folder: string) {
     const parent = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : ''
-    return this.service.folders.accessFor(
-      `${this.service.folders.path(parent)}/sample.abchat`,
-      this.toolFloorFor(folder)
-    ).modes
+    return this.service.folders.accessForFolder(parent, this.toolFloorFor(folder)).modes
   }
   readonly accessFloor = computed(() => this.accessFloorFor(this.accessFolder.value ?? ''))
 
@@ -468,17 +441,11 @@ export class ChatTreeModel implements ChatTreeSource {
       const ids = entry ? chatsOf([entry]).map((chat) => chat.id) : [id]
       this.service.folders.path(folder)
       await this.service.folders.moveMany(
-        ids.filter((child) => !this.service.isRunTab(child) && !child.startsWith('node:')),
+        ids.filter(
+          (child) => !this.service.isRunTab(child) && (child === id || !child.startsWith('node:'))
+        ),
         folder
       )
-      const nodes = id.startsWith('node:') ? [id] : []
-      if (nodes.length) {
-        this.service.nodeFolders.value = {
-          ...this.service.nodeFolders.value,
-          ...Object.fromEntries(nodes.map((child) => [child, folder])),
-        }
-        this.service.saveTabs()
-      }
     })
   }
   newChat(folder: string): void {
@@ -488,8 +455,7 @@ export class ChatTreeModel implements ChatTreeSource {
         return
       }
       const id = this.service.newTab()
-      if (folder)
-        await this.service.getSession(id)?.createInDirectory(this.service.folders.path(folder))
+      if (folder) await this.service.folders.move(id, folder)
     })
   }
   newFolder(parent: string, name: string): void {
@@ -548,8 +514,6 @@ export class ChatTreeModel implements ChatTreeSource {
       if (session) {
         session.chatTitle.value = title
         await session.save()
-        const file = session.currentChatFile.value
-        if (file) await ChatStorage.getInstance().renameChat(file, title)
         this.service.saveTabs()
       } else {
         const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(id)
@@ -558,7 +522,12 @@ export class ChatTreeModel implements ChatTreeSource {
             const metadata = parseChatMetadata(content)
             return metadata ? content + serializeMetadata({ ...metadata, title }) : content
           })
-          await ChatStorage.getInstance().renameChat(file, title)
+          const config = AbeleConfig.getInstance()
+          const entry = config.ai.chatHistory?.find((entry) => entry.path === file.path)
+          if (entry) {
+            entry.title = title
+            await config.saveChatIndex()
+          }
         }
       }
       await this.refresh()
@@ -573,13 +542,12 @@ export class ChatTreeModel implements ChatTreeSource {
         this.service.closedNodeChats.value = this.service.closedNodeChats.value.filter(
           (entry) => `node:${entry.reference.registrationId}:${entry.reference.sessionId}` !== id
         )
-        this.service.nodeFolders.value = Object.fromEntries(
-          Object.entries(this.service.nodeFolders.value).filter(([key]) => key !== id)
-        )
         this.service.nodeParentPaths.value = Object.fromEntries(
           Object.entries(this.service.nodeParentPaths.value).filter(([key]) => key !== id)
         )
         this.service.saveTabs()
+        await this.service.folders.forgetNode(id)
+        await this.refresh()
         return
       }
       if (this.service.getSession(id)) await this.service.deleteChat(id)

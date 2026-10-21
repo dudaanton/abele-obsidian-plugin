@@ -130,14 +130,27 @@ it('moves a closed node reference into a folder and persists its placement', asy
     )
     expect(folder?.children?.some((entry) => entry.kind === 'chat' && entry.id === id)).toBe(true)
   })
-  expect(GlobalStore.getInstance().app.loadLocalStorage('abele-agent-tabs')).toMatchObject({
-    nodeFolders: { [id]: 'Projects' },
-  })
+  // Node placement lives in the synced folder catalog, not in device-local tab state.
+  const catalog = async () => {
+    const app = GlobalStore.getInstance().app
+    const file = app.vault.getAbstractFileByPath(`${service.folders.path('')}/_folders.abelechats`)
+    return JSON.parse(await app.vault.read(file as TFile)) as {
+      folders: { id: string; name: string }[]
+      nodes: Record<string, string | null>
+    }
+  }
+  const stored = await catalog()
+  expect(stored.nodes[id]).toBe(stored.folders.find((folder) => folder.name === 'Projects')?.id)
+  expect(
+    GlobalStore.getInstance().app.loadLocalStorage('abele-agent-tabs') ?? {}
+  ).not.toHaveProperty('nodeFolders')
   await service.folders.rename('Projects', 'Renamed')
-  expect(service.nodeFolders.value[id]).toBe('Renamed')
-  await expect(service.folders.remove('Renamed')).rejects.toThrow(
-    'Only empty folders can be deleted.'
-  )
+  expect(service.folders.folderOf(id)).toBe('Renamed')
+  // Deleting a folder never deletes chats: the node chat returns to the parent (root here).
+  await service.folders.remove('Renamed')
+  expect(service.folders.paths).not.toContain('Renamed')
+  expect(service.folders.folderOf(id)).toBe('')
+  expect(service.closedNodeChats.value.map((entry) => entry.reference)).toEqual([reference])
 })
 
 it('renames and deletes a closed node session through its own node while retaining folder files', async () => {
@@ -163,9 +176,13 @@ it('renames and deletes a closed node session through its own node while retaini
     )
     expect(client.renameSession).toHaveBeenCalledWith(reference.sessionId, 'Renamed sample')
     expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ submitText: 'Rename' }))
+    await service.folders.create('', 'Projects')
+    await service.folders.move(id, 'Projects')
+    expect(service.folders.folderOf(id)).toBe('Projects')
     service.tree.delete(id)
     await vi.waitFor(() => expect(service.closedNodeChats.value).toEqual([]))
     expect(client.deleteSession).toHaveBeenCalledWith(reference.sessionId)
+    await vi.waitFor(() => expect(service.folders.membershipOf(id)).toBeUndefined())
   } finally {
     prompt.mockRestore()
     nodes.mockRestore()
@@ -176,7 +193,8 @@ it('retains helper runs beneath a closed parent and reopens them through the run
   await service.folders.create('', 'Projects')
   const id = service.createTab()
   const parent = service.getSession(id)!
-  await parent.createInDirectory(service.folders.path('Projects'))
+  await service.folders.move(id, 'Projects')
+  await parent.createInDirectory(service.folders.path(''))
   const fixture = parent as unknown as {
     appendChatMessage(message: ChatMessage): void
     updateVisibleMessages(): void
@@ -224,7 +242,8 @@ it('retains a closed node reference under its parent in device-local layout', as
   const id = service.createTab()
   const parent = service.getSession(id)!
   await service.folders.create('', 'Projects')
-  await parent.createInDirectory(service.folders.path('Projects'))
+  await service.folders.move(id, 'Projects')
+  await parent.createInDirectory(service.folders.path(''))
   const reference = {
     kind: 'node-session' as const,
     nodeId: 'sample-node',
@@ -258,4 +277,75 @@ it('retains a closed node reference under its parent in device-local layout', as
   )
   expect(service.closedNodeChats.value[0].reference).toEqual(reference)
   expect(node.destroy).toHaveBeenCalledOnce()
+})
+
+it('files open and closed node chats by stable reference without creating transcripts', async () => {
+  await service.folders.create('', 'Projects')
+  const reference = {
+    kind: 'node-session' as const,
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    sessionId: 'sample-session',
+    title: 'Sample node work',
+  }
+  const nodeId = 'node:sample-registration:sample-session'
+  const node = {
+    id: nodeId,
+    reference,
+    label: ref(reference.title),
+    messages: ref([]),
+    isStreaming: ref(false),
+    provider: ref('fake'),
+    projection: ref({ prompts: [] }),
+    error: ref(''),
+    destroy: vi.fn(),
+  } as unknown as NodeChatPresenter
+  ;(service as unknown as { nodeSessions: Map<string, NodeChatPresenter> }).nodeSessions.set(
+    nodeId,
+    node
+  )
+  service.tabOrder.value = [...service.tabOrder.value, nodeId]
+  await service.folders.move(nodeId, 'Projects')
+  expect(service.listOpenChats().find((chat) => chat.id === nodeId)?.folder).toBe('Projects')
+  await service.closeTab(nodeId)
+  await service.folders.reload()
+  await service.tree.refresh()
+  const folder = service.tree.root.value.find(
+    (entry) => entry.kind === 'folder' && entry.path === 'Projects'
+  )!
+  expect(chatsOf([folder])).toContainEqual(expect.objectContaining({ id: nodeId, open: false }))
+  expect(
+    GlobalStore.getInstance()
+      .app.vault.getFiles()
+      .filter((file) => file.extension === 'abchat')
+  ).toEqual([])
+  await service.folders.move(nodeId, '')
+  await service.folders.reload()
+  expect(service.folders.folderOf(nodeId)).toBe('')
+})
+
+it('renames a chat title from the tree without renaming its transcript', async () => {
+  const dialogs = await import('@/components/obsidian/dialogs')
+  const prompt = vi.spyOn(dialogs, 'promptDialog').mockResolvedValue('Renamed sample')
+  const id = service.createTab()
+  const session = service.getSession(id)!
+  await session.createInDirectory(service.folders.path(''))
+  const path = session.currentChatFile.value!.path
+  const rename = vi.spyOn(GlobalStore.getInstance().app.fileManager, 'renameFile')
+  try {
+    service.tree.rename(id)
+    await vi.waitFor(() => expect(session.chatTitle.value).toBe('Renamed sample'))
+    await vi.waitFor(async () =>
+      expect(
+        parseChat(await GlobalStore.getInstance().app.vault.read(session.currentChatFile.value!))
+          .metadata?.title
+      ).toBe('Renamed sample')
+    )
+    await session.saveForRelease()
+    expect(session.currentChatFile.value!.path).toBe(path)
+    expect(rename).not.toHaveBeenCalled()
+  } finally {
+    prompt.mockRestore()
+    rename.mockRestore()
+  }
 })

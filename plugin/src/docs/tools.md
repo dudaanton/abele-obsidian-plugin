@@ -1349,3 +1349,6 @@ The parent receives automatic attention notices for child prompts, pauses, failu
 delivered results, and when its command ends. Notices are deduplicated and respect Stop.
 Older nodes are monitored with quiet status reads; the owner need not request polling.
 Manager tools never answer developer or command prompts.
+
+Chat navigation listings report `folder` as the logical chat-tree folder path, or an empty
+string for an unfiled chat. This is independent of the transcript file directory.

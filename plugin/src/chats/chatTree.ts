@@ -3,8 +3,8 @@ import type { ToolMode } from '@/ai/types'
 
 /**
  * The chats as a tree: folders, the chats in them, and under a chat what was opened from it —
- * a discussion, a helper, work on a node, a chat it wrote to. A folder is a real folder in the
- * chats folder; its access only ever adds to what the default and the agent already give.
+ * a discussion, a helper, work on a node, a chat it wrote to. Folders are synced logical
+ * entities; their access only adds to what the default and agent already give.
  */
 
 /** Where a chat stands, as its dot says: waiting for you, at work, or failed. */
@@ -32,7 +32,7 @@ export interface ChatTreeChat {
 
 export interface ChatTreeFolder {
   kind: 'folder'
-  /** The folder's path under the chats folder: what moving a chat into it writes. */
+  /** The logical display path; membership uses the folder's stable id. */
   path: string
   name: string
   /** Tools this folder raises for its chats above the default, by permission key. */

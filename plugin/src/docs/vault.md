@@ -1229,28 +1229,33 @@ another asks first. The folder choice is saved with AI general settings and trav
 
 ## Chats
 
-Chats may be placed in real folders under the configured chat directory. Existing files remain
-where they are until explicitly moved. Moving a parent also moves its nested discussions;
-helper transcripts retain their parent reference. Closing a parent closes its nested chat
-presentations without restoring any files.
+The chat tree uses logical folders, independent of directories on disk. The configured
+chat-folder template alone determines where new transcripts live. Tree folder creation,
+renaming, deletion, filing and dragging never move or rename transcripts. Unfiled chats appear
+at the tree root, even when their files live in template directories.
 
-Each folder may contain `_folder.abeleaccess`, a JSON object mapping tool permission keys to
-`off`, `ask`, or `auto`. Folder modes apply to all descendants and only raise the chat's resolved
-agent/default modes. They are resolved at use time, never copied into chat overrides; leaving a
-folder removes its contribution. These vault files sync normally and travel in the settings
-transfer's **Chat folder access** section, relative to the receiving chat directory. A folder
-can be deleted only when it contains no chats, child folders, or other files.
+`_folders.abelechats` in the configured chat root is a synced JSON catalog (version 1): folder
+records contain a stable `id`, `name`, parent id, `order`, and additive `access` modes. The
+catalog also retains migrated legacy marker paths and node-session membership by stable node
+reference. A local transcript stores its folder id as `treeFolderId` in `.abchat` metadata;
+`null` means unfiled. This survives transcript renames and moves. Folder names and paths are
+presentation only. Folder access raises agent/default modes for every descendant, is resolved
+at use time, and is never copied into chat overrides. Leaving a folder removes its contribution.
+The catalog travels in settings transfer's **Chat folder access** file section.
 
-The existing device-local chat layout also retains closed node-session references, their
-local parent-chat paths, and closed helper-run IDs. These are presentation state, never a
-command to restore files or restart execution. Helper transcripts stay in their existing
-sidecars; their parent references follow a moved chat.
+On discovery, legacy directories marked by `_folder.abeleaccess` become logical folders with
+the same nesting and permissions. Their chats gain metadata membership without moving files.
+Unmarked storage directories do not become folders; ancestors needed for a marked folder's
+nesting are retained. Migration records prevent old markers from recreating renamed or deleted
+folders. Deleting a logical folder keeps its chats and child folders in its parent (or root).
+Nonempty folder deletion asks for confirmation.
 
-New message discussions are created beside a parent already filed in a chat folder. Existing
-discussions stay in place until a move. The tree discovers closed discussions through the
-discussion inventory, including files outside the chat directory; it does not add margin-only
-discussions to the ordinary chat-history index. Untitled discussions use their first question
-as a display name.
+Closing a parent closes its nested presentations without restoring files. Helper transcripts
+remain in their sidecars. The device-local chat layout retains closed node references, local
+parent-chat paths and closed helper-run IDs; these do not restart execution. Message discussions
+inherit their parent's logical folder access. The tree discovers closed discussions, including
+files outside the chat directory, without adding margin-only discussions to the ordinary
+chat-history index. Untitled discussions use their first question as a display name.
 
 An explicitly cut local branch carries `pendingBranchCut` in metadata until its first new
 record is appended. That record carries `branchCutAfter`, referencing its parent assistant

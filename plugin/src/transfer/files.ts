@@ -35,7 +35,7 @@ export async function collectFiles(
     if (
       !chatFolder ||
       !file.path.startsWith(`${chatFolder}/`) ||
-      file.name !== '_folder.abeleaccess'
+      !['_folder.abeleaccess', '_folders.abelechats'].includes(file.name)
     )
       continue
     entries.push({
@@ -101,7 +101,7 @@ export function targetPath(
   if (entry.section === 'chat-folder-access') {
     if (
       file.path.split('/').some((part) => !part || part === '.' || part === '..') ||
-      !file.path.endsWith('/_folder.abeleaccess')
+      (file.path !== '_folders.abelechats' && !file.path.endsWith('/_folder.abeleaccess'))
     )
       throw new Error('Invalid chat folder access path')
     return `${chatFolder || file.base}/${file.path}`

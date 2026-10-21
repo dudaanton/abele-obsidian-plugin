@@ -554,31 +554,6 @@ export class CommentService implements CommentInfoSource {
    * The file and the session of a new comment, whatever it is anchored to. `agentId` names the
    * agent that answers it; without one it is the comment agent, which is what a note gets.
    */
-  private async discussionDirectory(anchor: CommentAnchor): Promise<string> {
-    const chats = ChatService.getInstance()
-    const { app } = GlobalStore.getInstance()
-    const seen = new Set<string>()
-    let path = anchor.note
-    while (path.endsWith('.abchat') && !seen.has(path)) {
-      seen.add(path)
-      const folder = chats.folders.folderOf(path)
-      if (folder) return chats.folders.path(folder)
-      const live = this.sessionOnFile(path)
-      if (live) {
-        const parent = live.anchor.value?.note
-        if (!parent) break
-        path = parent
-        continue
-      }
-      const file = app.vault.getAbstractFileByPath(path)
-      if (!(file instanceof TFile)) break
-      const parent = parseChatMetadata(await app.vault.cachedRead(file))?.anchor?.note
-      if (!parent) break
-      path = parent
-    }
-    return this.folder()
-  }
-
   private async startComment(
     id: string,
     anchor: CommentAnchor,
@@ -595,7 +570,7 @@ export class CommentService implements CommentInfoSource {
       (agentId && registry.get(agentId)) ||
       registry.get(config.commentAgentId ?? '') ||
       registry.defaultAgent()
-    const directory = await this.discussionDirectory(anchor)
+    const directory = this.folder()
     const path = `${directory}/${id}.abchat`
 
     const metadata: ChatMetadata = {

@@ -31,6 +31,7 @@ export const chat = {
   'chatTree.moveHint': 'In Ordner verschieben…',
   'chatTree.top': 'Chats (oberste Ebene)',
   'chatTree.deleteTitle': '{name} löschen?',
+  'chatTree.deleteFolderHint': 'Chats und Unterordner bleiben im übergeordneten Ordner erhalten.',
   'chatTree.deleteChatHint': 'Der Chat und seine Kommentare werden gelöscht.',
   'chatTree.folderNotEmpty': 'Nur leere Ordner können gelöscht werden.',
   'chatTree.fromFolder': 'Aus dem Ordner {name}',

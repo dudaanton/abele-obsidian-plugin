@@ -16,11 +16,13 @@ const probe = (label: string) => `(async () => {
   }
   const service = window.__abeleTest.ChatService.getInstance()
   const prior = service.activeTabId.value
-  const priorNodes = service.closedNodeChats.value.slice(), priorFolders = {...service.nodeFolders.value}
+  const priorNodes = service.closedNodeChats.value.slice()
   const sampleNodeId = 'node:sample-tree-registration:sample-tree-session'
   const folder = 'Synthetic navigation sample'
-  const path = service.folders.path(folder)
-  if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic folder already exists')
+  const path = service.folders.path('') + '/2099-02'
+  if (service.folders.paths.includes(folder)) throw Error('Synthetic folder already exists')
+  if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic storage directory already exists')
+  await app.vault.createFolder(path)
   const created = [], files = []
   let leaf, narrowLeaf, ownsLeaf = false, pictureCount = 0
   const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
@@ -73,7 +75,8 @@ const probe = (label: string) => `(async () => {
     const name = document.querySelector('input[aria-label="Folder name"]')
     name.value = folder; name.dispatchEvent(new Event('input', { bubbles: true }))
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    await until(() => app.vault.getAbstractFileByPath(path))
+    await until(() => service.folders.paths.includes(folder))
+    await session.createInDirectory(path)
     await service.folders.move(first, folder)
     files.push(session.currentChatFile.value)
     service.closedNodeChats.value = [...priorNodes, {reference:{kind:'node-session',nodeId:'sample-tree-node',registrationId:'sample-tree-registration',sessionId:'sample-tree-session',title:'Sample node conversation'},at:1000}]
@@ -107,11 +110,11 @@ const probe = (label: string) => `(async () => {
     await until(()=>document.querySelector('.suggestion-item'))
     await shot('node-move-picker')
     ;[...document.querySelectorAll('.suggestion-item')].find(item=>item.textContent.includes(folder)).click()
-    await until(()=>service.nodeFolders.value[sampleNodeId]===folder)
+    await until(()=>service.folders.folderOf(sampleNodeId)===folder)
     if(!document.querySelector('[data-chat="'+sampleNodeId+'"]'))document.querySelector('.abele-chat-tree__closed > .tree-item-self').click()
     await until(()=>document.querySelector('[data-chat="'+sampleNodeId+'"]'))
     await shot('node-moved')
-    service.closedNodeChats.value=priorNodes.slice();service.nodeFolders.value={...priorFolders}
+    service.closedNodeChats.value=priorNodes.slice();await service.folders.forgetNode(sampleNodeId)
     await service.folders.setAccess(folder, { web_search: 'auto' })
     const second = service.newTab(); created.push(second)
     const child = service.getSession(second)
@@ -244,17 +247,19 @@ const probe = (label: string) => `(async () => {
     await until(() => document.querySelector('.prompt-input'))
     await shot('move-to')
     ;[...document.querySelectorAll('.suggestion-item')].find(item => item.textContent.includes('Chats (top)')).click()
-    await until(() => files.every(file => file.path.slice(0, file.path.lastIndexOf('/')) === service.folders.root.value))
+    await until(() => files.every(file => !service.folders.folderOf(file.path)))
+    if (!files.every(file => file.path.startsWith(path + '/'))) throw Error('Tree action moved a transcript')
     // An empty selection queues behind the requested move before fixture files are released.
     await service.folders.moveMany([], '')
     return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
-    service.closedNodeChats.value=priorNodes.slice();service.nodeFolders.value={...priorFolders};service.saveTabs()
+    service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
     for (const id of created) {
       const session = service.getSession(id)
       if (session) { session.isStreaming.value = false; session.pendingQuestions.value = null; await service.closeTab(id) }
     }
     for (const file of files) if (file && app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
+    await service.folders.remove(folder)
     const directory = app.vault.getAbstractFileByPath(path)
     if (directory) await app.vault.delete(directory, true)
     narrowLeaf?.detach()

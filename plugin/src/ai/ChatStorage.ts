@@ -746,6 +746,10 @@ export class ChatStorage {
       const settled = settledAttention(attention)
       const next = {
         ...metadata,
+        treeFolderId:
+          disk.metadata?.treeFolderId !== undefined
+            ? disk.metadata.treeFolderId
+            : metadata.treeFolderId,
         attention,
         pendingToolCalls: metadata.pendingToolCalls?.filter((tc) => !settled.has(tc.id)),
       }

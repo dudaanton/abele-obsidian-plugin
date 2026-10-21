@@ -31,6 +31,7 @@ export const chat = {
   'chatTree.moveHint': 'Переместить в папку…',
   'chatTree.top': 'Чаты (корень)',
   'chatTree.deleteTitle': 'Удалить «{name}»?',
+  'chatTree.deleteFolderHint': 'Чаты и вложенные папки останутся в родительской папке.',
   'chatTree.deleteChatHint': 'Чат и комментарии к нему будут удалены.',
   'chatTree.folderNotEmpty': 'Удалить можно только пустую папку.',
   'chatTree.fromFolder': 'Из папки «{name}»',

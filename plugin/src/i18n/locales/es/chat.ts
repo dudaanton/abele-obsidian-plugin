@@ -31,6 +31,7 @@ export const chat = {
   'chatTree.moveHint': 'Mover a carpeta…',
   'chatTree.top': 'Chats (raíz)',
   'chatTree.deleteTitle': '¿Eliminar {name}?',
+  'chatTree.deleteFolderHint': 'Los chats y las subcarpetas se conservarán en la carpeta superior.',
   'chatTree.deleteChatHint': 'Se eliminarán el chat y sus comentarios.',
   'chatTree.folderNotEmpty': 'Solo se pueden eliminar carpetas vacías.',
   'chatTree.fromFolder': 'De la carpeta {name}',

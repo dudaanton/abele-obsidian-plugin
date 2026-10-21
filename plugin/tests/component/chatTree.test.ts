@@ -217,3 +217,32 @@ it('disables tool modes below a folder floor and retains each floor during bulk 
     menuShown.mockRestore()
   }
 })
+
+it('asks before deleting a nonempty logical folder and respects cancellation', async () => {
+  const dialogs = await import('@/components/obsidian/dialogs')
+  const confirm = vi.spyOn(dialogs, 'confirmDialog').mockResolvedValue(false)
+  const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  source.root.value = [
+    {
+      kind: 'folder',
+      path: 'Projects',
+      name: 'Projects',
+      canDelete: true,
+      children: [{ kind: 'chat', id: 'sample', title: 'Sample chat', open: true, at: 1 }],
+    },
+  ]
+  const view = show()
+  try {
+    await view.get('[aria-label="Projects: more"]').trigger('click')
+    const menu = shown.mock.contexts.at(-1) as Menu
+    await menu.items.find((item) => item.title === 'Delete')!.handler!()
+    expect(confirm).toHaveBeenCalled()
+    expect(source.deleteFolder).not.toHaveBeenCalled()
+    confirm.mockResolvedValue(true)
+    await menu.items.find((item) => item.title === 'Delete')!.handler!()
+    expect(source.deleteFolder).toHaveBeenCalledWith('Projects')
+  } finally {
+    confirm.mockRestore()
+    shown.mockRestore()
+  }
+})

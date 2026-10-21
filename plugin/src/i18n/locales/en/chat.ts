@@ -31,6 +31,7 @@ export const chat = {
   'chatTree.moveHint': 'Move to folder…',
   'chatTree.top': 'Chats (top)',
   'chatTree.deleteTitle': 'Delete {name}?',
+  'chatTree.deleteFolderHint': 'Chats and nested folders will be kept in the parent folder.',
   'chatTree.deleteChatHint': 'The chat and the comments on it are deleted.',
   'chatTree.folderNotEmpty': 'Only empty folders can be deleted.',
   'chatTree.fromFolder': 'From the folder {name}',

@@ -101,7 +101,7 @@ it('lists only open chats in presentation order, with folder, agent and live sta
     expect.objectContaining({
       id: first,
       title: 'Sample project',
-      folder: 'Projects',
+      folder: '', // Disk directories no longer confer tree membership.
       agent: null,
       state: 'failed',
     }),

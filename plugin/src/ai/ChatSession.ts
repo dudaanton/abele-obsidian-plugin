@@ -4176,6 +4176,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               ),
             }
           : undefined,
+      treeFolderId: this.chatService.folders.membershipOf(
+        this.currentChatFile.value?.path ?? this.id
+      ),
       chatId: this.chatIdentity,
       commentId: this.commentId ?? undefined,
       commentLocation: this.commentId ? this.currentChatFile.value?.path : undefined,
@@ -4245,6 +4248,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.commentIdentity = snapshot.metadata.commentId
     this.log.commit(snapshot, plan)
     this.currentChatFile.value = file
+    this.chatService.folders.noteFile(file, snapshot.metadata.treeFolderId)
     this.chatService.saveTabs()
   }
 
@@ -4278,6 +4282,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.log.commit(snapshot, plan)
     this.localRevision++
     this.currentChatFile.value = file
+    this.chatService.folders.noteFile(file, snapshot.metadata.treeFolderId)
     // The first moment a new chat has a path to key its index entry on.
     this.mirrorNoteLinks()
 
@@ -4487,6 +4492,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // intact main-file snapshot. An older format needs a rewrite on save to migrate to a log.
     this.log.adopt(result)
     this.currentChatFile.value = file
+    this.chatService.folders.noteFile(file, result.metadata?.treeFolderId)
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
     this.chatIdentity = result.metadata?.chatId

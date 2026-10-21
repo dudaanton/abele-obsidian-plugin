@@ -793,6 +793,8 @@ export interface MessageComment {
 }
 
 export interface ChatMetadata {
+  /** Logical tree placement, independent of the transcript path. Null means root. */
+  treeFolderId?: string | null
   type: 'abele-chat'
   /** Discussion identity survives file renames; legacy files acquire their original basename. */
   commentId?: string

@@ -72,7 +72,6 @@ interface TabsState {
   activeIndex: number
   closedNodes?: ClosedNodeChat[]
   nodeParents?: Record<string, string>
-  nodeFolders?: Record<string, string>
   closedRuns?: string[]
 }
 
@@ -129,7 +128,6 @@ export class ChatService {
   public readonly tabOrder = ref<string[]>([])
   public readonly closedNodeChats = shallowRef<ClosedNodeChat[]>([])
   public readonly nodeParentPaths = shallowRef<Record<string, string>>({})
-  public readonly nodeFolders = shallowRef<Record<string, string>>({})
   public readonly closedRunIds = ref<string[]>([])
 
   public readonly activeSession = computed<ChatSession | null>(() =>
@@ -246,7 +244,6 @@ export class ChatService {
     const state = ChatService.loadTabsState(app)
     this.closedNodeChats.value = state?.closedNodes ?? []
     this.nodeParentPaths.value = state?.nodeParents ?? {}
-    this.nodeFolders.value = state?.nodeFolders ?? {}
     this.closedRunIds.value = state?.closedRuns ?? []
     if (!state) {
       if (this.sessions.size === 0) this.mutatePresentation(() => this.createTabNow())
@@ -409,9 +406,6 @@ export class ChatService {
         : {}),
       ...(Object.keys(this.nodeParentPaths.value).length
         ? { nodeParents: { ...this.nodeParentPaths.value } }
-        : {}),
-      ...(Object.keys(this.nodeFolders.value).length
-        ? { nodeFolders: { ...this.nodeFolders.value } }
         : {}),
       ...(this.closedRunIds.value.length ? { closedRuns: [...this.closedRunIds.value] } : {}),
     }
@@ -1428,9 +1422,9 @@ export class ChatService {
     return Array.from(this.sessions.values())
   }
 
-  /** A discussion follows the chat it belongs to, before its own file is moved too. */
+  /** A discussion inherits its parent chat's logical folder access. */
   folderLocation(session: ChatSession): string {
-    let location = session.currentChatFile.value?.path ?? ''
+    let location = session.currentChatFile.value?.path ?? session.id
     if (this.folders.folderOf(location)) return location
     const seen = new Set<string>()
     let current: ChatSession | null = session
@@ -1448,9 +1442,6 @@ export class ChatService {
 
   /** Open conversations, in navigation order. Read-only helper transcripts are excluded. */
   listOpenChats(): OpenChatInfo[] {
-    const root = AbeleConfig.getInstance()
-      .ai.chatFolder.replace(/\/?\{\{.*$/, '')
-      .replace(/\/$/, '')
     return this.tabOrder.value.flatMap((id) => {
       const presentation = this.getPresentation(id)
       if (!presentation) return []
@@ -1463,8 +1454,9 @@ export class ChatService {
         : parentSession
           ? this.folderLocation(parentSession)
           : (this.nodeParentPaths.value[id] ?? '')
-      const parent = path.slice(0, path.lastIndexOf('/'))
-      const folder = parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : ''
+      const folder = this.folders.folderOf(
+        this.folders.membershipOf(id) !== undefined ? id : path || id
+      )
       const agent = session?.agent.value
       const node = this.nodeSessions.get(id)
       const state =

@@ -1,15 +1,12 @@
 import { t } from '@/i18n'
 import { computed, shallowRef } from 'vue'
-import { TFile, TFolder, type App, type EventRef } from 'obsidian'
+import { TFile, type App, type EventRef } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { ChatService } from '@/ai/ChatService'
 import type { ToolMode } from '@/ai/types'
 import { withFolderAccess, type ChatTreeFolder } from './chatTree'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { parseChat, parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
-import { CommentService } from '@/ai/CommentService'
-import { RunStorage } from '@/ai/RunStorage'
-import { renameDelegationIdentity } from '@/ai/delegationIdentity'
+import { parseChat, parseChatMetadata, serializeMetadata, serializeChat } from '@/ai/ChatLog'
 
 const ACCESS_FILE = '_folder.abeleaccess'
 const validName = (name: string) =>
@@ -18,20 +15,33 @@ const validName = (name: string) =>
   !['.', '..'].includes(name) &&
   !name.startsWith('.')
 
-interface MoveSource {
+interface FolderRecord {
   id: string
-  file: TFile | null
-  version?: number
+  name: string
+  parent: string | null
+  order: number
+  access?: Record<string, ToolMode>
 }
+interface Catalog {
+  version: 1
+  folders: FolderRecord[]
+  migrated: string[]
+  nodes: Record<string, string | null>
+}
+const CATALOG_FILE = '_folders.abelechats'
 
-/** Vault-backed placement and additive permissions. Nothing moves during discovery. */
+/** Synced logical folders; storage directories never determine placement after migration. */
 export class ChatFolders {
   readonly access = shallowRef<Record<string, Record<string, ToolMode>>>({})
   readonly revision = shallowRef(0)
+  private catalog: Catalog = { version: 1, folders: [], migrated: [], nodes: {} }
+  private membership = new Map<string, string | null>()
+  private metadata = new Map<TFile, { mtime: number; size: number; folder?: string | null }>()
   private events: EventRef[] = []
-  private generation = 0
+  private loadedRoot = ''
   private dead = false
   private mutation: Promise<unknown> = Promise.resolve()
+  private releaseSettings: () => void
   private mutate<T>(action: () => Promise<T>): Promise<T> {
     const result = this.mutation.then(action, action)
     this.mutation = result.catch(() => {})
@@ -39,79 +49,183 @@ export class ChatFolders {
   }
   private readonly configuredRoot = () =>
     (AbeleConfig.getInstance().ai?.chatFolder ?? '').replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
-  private releaseSettings: () => void
   readonly root = computed(() => {
     void this.revision.value
     return this.configuredRoot()
   })
-
   constructor(
     private app: App,
     private service: ChatService
   ) {
     this.releaseSettings = AbeleConfig.getInstance().onSaved(() => {
-      if (this.configuredRoot() === this.root.value) return
-      this.revision.value++
       void this.reload()
     })
-    for (const event of ['create', 'delete', 'rename'] as const)
+    for (const event of ['create', 'delete', 'modify', 'rename'] as const)
       this.events.push(
         app.vault.on(event as 'create', (file) => {
+          if (file instanceof TFile) this.metadata.delete(file)
           if (
-            file.path === this.root.value ||
-            file.path.startsWith(`${this.root.value}/`) ||
-            (file instanceof TFile && file.extension === 'abchat')
+            file instanceof TFile &&
+            (file.extension === 'abchat' || file.name === CATALOG_FILE || file.name === ACCESS_FILE)
           )
-            void this.reload()
+            void this.reload().catch((error) =>
+              console.debug('[Abele] Could not reload chat folders', error)
+            )
         })
       )
-    this.events.push(
-      app.vault.on('modify', (file) => {
-        if (file.name === ACCESS_FILE && file.path.startsWith(`${this.root.value}/`))
-          void this.reload()
-        else if (file instanceof TFile && file.extension === 'abchat') this.revision.value++
-      })
+    void this.reload().catch((error) =>
+      console.debug('[Abele] Could not reload chat folders', error)
     )
-    void this.reload()
   }
-
-  folderOf(path: string): string {
-    const parent = path.slice(0, path.lastIndexOf('/'))
-    return parent.startsWith(`${this.root.value}/`) ? parent.slice(this.root.value.length + 1) : ''
+  private folderPath(id: string | null | undefined, seen = new Set<string>()): string {
+    if (!id || seen.has(id)) return ''
+    seen.add(id)
+    const folder = this.catalog.folders.find((folder) => folder.id === id)
+    if (!folder) return ''
+    const parent = this.folderPath(folder.parent, seen)
+    return parent ? `${parent}/${folder.name}` : folder.name
   }
-
-  path(folder: string): string {
-    if (folder && folder.split('/').some((part) => !validName(part)))
-      throw new Error(t('chatTree.invalidFolder'))
+  get paths(): string[] {
+    void this.revision.value
+    return [...this.catalog.folders]
+      .sort((a, b) => a.order - b.order)
+      .map((folder) => this.folderPath(folder.id))
+  }
+  private record(path: string): FolderRecord | undefined {
+    return this.catalog.folders.find((folder) => this.folderPath(folder.id) === path)
+  }
+  membershipOf(key: string): string | null | undefined {
+    void this.revision.value
+    if (this.membership.has(key)) return this.membership.get(key)
+    const session = this.service.getSessionByFile(key)
+    if (session && this.membership.has(session.id)) return this.membership.get(session.id)
+    return this.catalog.nodes[key]
+  }
+  noteFile(file: TFile, folder: string | null | undefined): void {
+    const previous = this.membership.get(file.path)
+    this.membership.set(file.path, folder ?? null)
+    this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder })
+    if (previous !== (folder ?? null)) this.revision.value++
+  }
+  folderOf(key: string): string {
+    return this.folderPath(this.membershipOf(key))
+  }
+  /** The configured storage root, never a logical folder's directory. */
+  path(_folder: string): string {
     if (!this.root.value) throw new Error(t('chatTree.configureFolder'))
-    return folder ? `${this.root.value}/${folder}` : this.root.value
+    return this.root.value
   }
-
-  async reload(): Promise<void> {
-    const generation = ++this.generation
-    const access: Record<string, Record<string, ToolMode>> = {}
-    for (const file of this.app.vault.getFiles()) {
-      if (!file.path.startsWith(`${this.root.value}/`) || file.name !== ACCESS_FILE) continue
-      try {
-        const data: unknown = JSON.parse(await ChatStorage.getInstance().readNavigationFile(file))
-        if (!data || typeof data !== 'object' || Array.isArray(data)) continue
-        access[this.folderOf(file.path)] = Object.fromEntries(
-          Object.entries(data).filter(([, value]) =>
-            ['off', 'ask', 'auto'].includes(value as string)
-          )
-        )
-      } catch (error) {
-        console.debug('[Abele] Could not read chat folder access', error)
+  private async persist(): Promise<void> {
+    await ChatStorage.getInstance().ensureFolder(this.path(''))
+    await ChatStorage.getInstance().writeFolderAccess(
+      `${this.root.value}/${CATALOG_FILE}`,
+      JSON.stringify(this.catalog)
+    )
+    this.publish()
+  }
+  private publish(): void {
+    this.access.value = Object.fromEntries(
+      this.catalog.folders.map((folder) => [this.folderPath(folder.id), folder.access ?? {}])
+    )
+    this.revision.value++
+  }
+  reload(): Promise<void> {
+    return this.mutate(() => this.load())
+  }
+  private async load(): Promise<void> {
+    if (this.dead) return
+    if (this.loadedRoot !== this.root.value) {
+      this.catalog = { version: 1, folders: [], migrated: [], nodes: {} }
+      this.membership.clear()
+      this.loadedRoot = this.root.value
+    }
+    const file = this.app.vault.getAbstractFileByPath(`${this.root.value}/${CATALOG_FILE}`)
+    if (file instanceof TFile) {
+      const data = JSON.parse(await ChatStorage.getInstance().readNavigationFile(file)) as Catalog
+      if (
+        data.version !== 1 ||
+        !Array.isArray(data.folders) ||
+        !Array.isArray(data.migrated) ||
+        !data.nodes
+      )
+        throw new Error('Invalid chat folder catalog')
+      this.catalog = data
+    }
+    const membership = new Map(
+      [...this.membership].filter(([key]) => !!this.service.getSession(key))
+    )
+    const chats: Array<{ file: TFile; folder?: string | null }> = []
+    for (const chat of this.app.vault.getFiles()) {
+      if (chat.extension !== 'abchat') continue
+      let cached = this.metadata.get(chat)
+      if (!cached || cached.mtime !== chat.stat.mtime || cached.size !== chat.stat.size) {
+        const metadata = parseChatMetadata(await ChatStorage.getInstance().readNavigationFile(chat))
+        if (metadata?.type !== 'abele-chat') continue
+        cached = { mtime: chat.stat.mtime, size: chat.stat.size, folder: metadata.treeFolderId }
+        this.metadata.set(chat, cached)
       }
+      membership.set(chat.path, cached.folder ?? null)
+      chats.push({ file: chat, folder: cached.folder })
     }
-    if (!this.dead && generation === this.generation) {
-      this.access.value = access
-      this.revision.value++
+    const present = new Set(this.app.vault.getFiles())
+    for (const cached of this.metadata.keys())
+      if (!present.has(cached)) this.metadata.delete(cached)
+    this.membership = membership
+    let migrated = 0
+    const legacy = this.app.vault
+      .getFiles()
+      .filter((entry) => entry.name === ACCESS_FILE && entry.path.startsWith(`${this.root.value}/`))
+    for (const marker of legacy) {
+      const relative = marker.path.slice(this.root.value.length + 1, -`/${ACCESS_FILE}`.length)
+      if (!relative || this.catalog.migrated.includes(relative)) continue
+      const modes = JSON.parse(
+        await ChatStorage.getInstance().readNavigationFile(marker)
+      ) as Record<string, ToolMode>
+      let parent: string | null = null
+      const parts = relative.split('/')
+      for (let index = 0; index < parts.length; index++) {
+        const path = parts.slice(0, index + 1).join('/')
+        let folder = this.record(path)
+        if (!folder) {
+          folder = {
+            id: `legacy:${path}`,
+            name: parts[index],
+            parent,
+            order: this.catalog.folders.length,
+          }
+          this.catalog.folders.push(folder)
+        }
+        parent = folder.id
+      }
+      this.record(relative)!.access = Object.fromEntries(
+        Object.entries(modes).filter(([, mode]) => ['off', 'ask', 'auto'].includes(mode))
+      )
+      for (const chat of chats) {
+        if (chat.folder !== undefined || !chat.file.path.startsWith(`${marker.parent!.path}/`))
+          continue
+        const deeper = legacy.some(
+          (other) =>
+            other !== marker &&
+            other.parent!.path.startsWith(`${marker.parent!.path}/`) &&
+            chat.file.path.startsWith(`${other.parent!.path}/`)
+        )
+        if (!deeper) await this.assignFile(chat.file, parent)
+      }
+      this.catalog.migrated.push(relative)
+      migrated++
     }
+    if (migrated) {
+      await this.persist()
+      console.debug('[Abele] Migrated chat tree folders without moving files', {
+        folders: migrated,
+      })
+    } else this.publish()
   }
-
   accessFor(path: string, base: Record<string, ToolMode>) {
-    const parts = this.folderOf(path).split('/').filter(Boolean)
+    return this.accessForFolder(this.folderOf(path), base)
+  }
+  accessForFolder(path: string, base: Record<string, ToolMode>) {
+    const parts = path.split('/').filter(Boolean)
     return withFolderAccess(
       base,
       parts.map(
@@ -125,209 +239,136 @@ export class ChatFolders {
       )
     )
   }
-
-  async create(parent: string, name: string): Promise<void> {
-    return this.mutate(() => this.createNow(parent, name))
+  create(parent: string, name: string): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      if (!validName(name)) throw new Error(t('chatTree.invalidFolder'))
+      if (parent && !this.record(parent)) throw new Error(t('chatTree.folderMissing'))
+      if (this.record(parent ? `${parent}/${name}` : name))
+        throw new Error(t('chatTree.folderExists'))
+      this.catalog.folders.push({
+        id: crypto.randomUUID(),
+        name,
+        parent: this.record(parent)?.id ?? null,
+        order: this.catalog.folders.length,
+      })
+      await this.persist()
+    })
   }
-  private async createNow(parent: string, name: string): Promise<void> {
-    if (!validName(name)) throw new Error(t('chatTree.invalidFolder'))
-    const target = this.path(parent ? `${parent}/${name}` : name)
-    await this.ensureRoot()
-    await this.app.vault.createFolder(target)
-    await this.reload()
+  setAccess(folder: string, modes: Record<string, ToolMode>): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      const record = this.record(folder)
+      if (!record) throw new Error(t('chatTree.folderMissing'))
+      record.access = { ...record.access, ...modes }
+      await this.persist()
+    })
   }
-
-  private async ensureRoot(): Promise<void> {
-    let path = ''
-    for (const part of this.path('').split('/')) {
-      path = path ? `${path}/${part}` : part
-      if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.createFolder(path)
-    }
-  }
-
-  async setAccess(folder: string, modes: Record<string, ToolMode>): Promise<void> {
-    return this.mutate(() => this.setAccessNow(folder, modes))
-  }
-  private async setAccessNow(folder: string, modes: Record<string, ToolMode>): Promise<void> {
-    const path = `${this.path(folder)}/${ACCESS_FILE}`
-    if (!(this.app.vault.getAbstractFileByPath(this.path(folder)) instanceof TFolder))
-      throw new Error(t('chatTree.folderMissing'))
-    const content = JSON.stringify({ ...this.access.value[folder], ...modes })
-    await ChatStorage.getInstance().writeFolderAccess(path, content)
-    await this.reload()
-  }
-
-  async move(id: string, folder: string): Promise<void> {
+  move(id: string, folder: string): Promise<void> {
     return this.moveMany([id], folder)
   }
-
-  async moveMany(ids: string[], folder: string): Promise<void> {
-    const sources = ids.map((id): MoveSource => {
-      const session = this.service.getSession(id)
-      const file = session?.currentChatFile.value ?? this.app.vault.getAbstractFileByPath(id)
-      return {
-        id,
-        file: file instanceof TFile ? file : null,
-        version: session?.conversationVersion.value,
+  moveMany(ids: string[], folder: string): Promise<void> {
+    const sources = ids.map((id) => ({
+      id,
+      version: this.service.getSession(id)?.conversationVersion.value,
+    }))
+    return this.mutate(async () => {
+      await this.load()
+      const target = this.record(folder)
+      if (folder && !target) throw new Error(t('chatTree.folderMissing'))
+      for (const source of sources) {
+        const session = this.service.getSession(source.id)
+        if (
+          source.version !== undefined &&
+          (!session || session.conversationVersion.value !== source.version)
+        )
+          continue
+        const id = target?.id ?? null
+        if (session) {
+          if (session.currentChatFile.value) await session.saveForRelease()
+          const file = session.currentChatFile.value
+          if (file) await this.assignFile(file, id)
+          else this.membership.set(source.id, id)
+        } else {
+          const file = this.app.vault.getAbstractFileByPath(source.id)
+          if (file instanceof TFile && file.extension === 'abchat') await this.assignFile(file, id)
+          else if (source.id.startsWith('node:')) this.catalog.nodes[source.id] = id
+        }
       }
+      await this.persist()
     })
-    return this.mutate(() => this.moveNow(sources, folder))
   }
-  private async moveNow(sources: MoveSource[], folder: string): Promise<void> {
-    const target = this.path(folder)
-    if (!(this.app.vault.getAbstractFileByPath(target) instanceof TFolder))
-      throw new Error(t('chatTree.folderMissing'))
-    const files = new Set<TFile>()
-    for (const source of sources) {
-      const session = this.service.getSession(source.id)
+  /** Drops a deleted node chat's placement from the synced catalog. */
+  forgetNode(id: string): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      if (!(id in this.catalog.nodes)) return
+      delete this.catalog.nodes[id]
+      await this.persist()
+    })
+  }
+  private async assignFile(file: TFile, id: string | null): Promise<void> {
+    await ChatStorage.getInstance().transformDiscussion(file, (content) => {
+      const parsed = parseChat(content)
+      if (!parsed.metadata) throw new Error('Invalid chat metadata')
+      if (parsed.metadata.treeFolderId === id) return content
+      const metadata = { ...parsed.metadata, treeFolderId: id }
+      return parsed.version === 1
+        ? serializeChat({ ...parsed, metadata })
+        : content + serializeMetadata(metadata)
+    })
+    this.membership.set(file.path, id)
+    this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder: id })
+  }
+  rename(folder: string, name: string): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      if (!folder) throw new Error(t('chatTree.renameRoot'))
+      if (!validName(name)) throw new Error(t('chatTree.invalidFolder'))
+      const record = this.record(folder)
+      if (!record) throw new Error(t('chatTree.folderMissing'))
       if (
-        source.version !== undefined &&
-        (!session || session.conversationVersion.value !== source.version)
+        this.catalog.folders.some((other) => other.parent === record.parent && other.name === name)
       )
-        continue
-      if (session) await session.saveForRelease()
-      if (session && !session.currentChatFile.value) await session.createInDirectory(target)
-      const file = session?.currentChatFile.value ?? source.file
-      if (!(file instanceof TFile)) continue
-      files.add(file)
-    }
-    const destinations = new Set<string>()
-    for (const file of files) {
-      const destination = `${target}/${file.name}`
-      const occupied = this.app.vault.getAbstractFileByPath(destination)
-      if ((occupied && occupied !== file) || destinations.has(destination))
-        throw new Error(t('chatTree.chatExists'))
-      destinations.add(destination)
-    }
-    const moved = new Map<string, string>()
-    try {
-      for (const file of files) {
-        const destination = `${target}/${file.name}`
-        if (file.path !== destination) {
-          const previous = file.path
-          await this.app.fileManager.renameFile(file, destination)
-          moved.set(previous, destination)
-          await CommentService.getInstance().handleConversationRename(file, previous)
-        }
+        throw new Error(t('chatTree.folderExists'))
+      record.name = name
+      await this.persist()
+    })
+  }
+  remove(folder: string): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      if (!folder) throw new Error(t('chatTree.deleteRoot'))
+      const record = this.record(folder)
+      if (!record) return
+      for (const child of this.catalog.folders) {
+        if (child.parent !== record.id) continue
+        const original = child.name
+        let suffix = 2
+        while (
+          this.catalog.folders.some(
+            (other) =>
+              other !== child && other.parent === record.parent && other.name === child.name
+          )
+        )
+          child.name = `${original} ${suffix++}`
+        child.parent = record.parent
       }
-    } finally {
-      await this.followMoves(moved, files)
-      this.service.saveTabs()
-      await this.reload()
-    }
-  }
-
-  async rename(folder: string, name: string): Promise<void> {
-    return this.mutate(() => this.renameNow(folder, name))
-  }
-  private async renameNow(folder: string, name: string): Promise<void> {
-    if (!folder) throw new Error(t('chatTree.renameRoot'))
-    if (!validName(name)) throw new Error(t('chatTree.invalidFolder'))
-    const file = this.app.vault.getAbstractFileByPath(this.path(folder))
-    if (!(file instanceof TFolder)) throw new Error(t('chatTree.folderMissing'))
-    const parent = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : ''
-    const destination = this.path(parent ? `${parent}/${name}` : name)
-    if (this.app.vault.getAbstractFileByPath(destination))
-      throw new Error(t('chatTree.folderExists'))
-    const files = this.app.vault
-      .getFiles()
-      .filter((child) => child.path.startsWith(`${file.path}/`) && child.extension === 'abchat')
-    const moved = new Map(
-      files.map((child) => [child.path, `${destination}${child.path.slice(file.path.length)}`])
-    )
-    for (const session of this.service.getAllSessions())
-      if (session.currentChatFile.value && moved.has(session.currentChatFile.value.path))
-        await session.saveForRelease()
-    await this.app.fileManager.renameFile(file, destination)
-    const nextFolder = parent ? `${parent}/${name}` : name
-    this.service.nodeFolders.value = Object.fromEntries(
-      Object.entries(this.service.nodeFolders.value).map(([id, value]) => [
-        id,
-        value === folder || value.startsWith(`${folder}/`)
-          ? nextFolder + value.slice(folder.length)
-          : value,
-      ])
-    )
-    for (const [previous, next] of moved) {
-      const child = this.app.vault.getAbstractFileByPath(next)
-      if (child instanceof TFile)
-        await CommentService.getInstance().handleConversationRename(child, previous)
-    }
-    await this.followMoves(moved, new Set(files))
-    this.service.saveTabs()
-    await this.reload()
-  }
-
-  private async followMoves(moved: Map<string, string>, files: Set<TFile>): Promise<void> {
-    if (!moved.size) return
-    for (const [previous, next] of moved) renameDelegationIdentity(previous, next)
-    for (const file of files) {
-      const session = this.service.getSessionByFile(file.path)
-      const anchor = session?.anchor.value
-      if (session && anchor && moved.has(anchor.note)) {
-        session.anchor.value = { ...anchor, note: moved.get(anchor.note)! }
-        await session.save()
-      } else if (!session) {
-        await ChatStorage.getInstance().transformDiscussion(file, (content) => {
-          const metadata = parseChatMetadata(content)
-          const note = metadata?.anchor?.note
-          return metadata && note && moved.has(note)
-            ? content +
-                serializeMetadata({
-                  ...metadata,
-                  anchor: { ...metadata.anchor!, note: moved.get(note)! },
-                })
-            : content
-        })
+      for (const [key, id] of this.membership) {
+        if (id !== record.id) continue
+        const file = this.app.vault.getAbstractFileByPath(key)
+        if (file instanceof TFile) await this.assignFile(file, record.parent)
+        else this.membership.set(key, record.parent)
       }
-    }
-    for (const id of this.service.tabOrder.value) {
-      const run = this.service.getRun(id)
-      if (run && moved.has(run.parentChat)) {
-        run.parentChat = moved.get(run.parentChat)!
-        await RunStorage.getInstance().save(run)
-      }
-    }
-    const seenRuns = new Set<string>()
-    for (const file of files) {
-      const content = await ChatStorage.getInstance().readNavigationFile(file)
-      if (!content.includes('"subAgentRun"')) continue
-      for (const message of parseChat(content).messages) {
-        const id = message.subAgentRun?.runId
-        if (!id || seenRuns.has(id)) continue
-        seenRuns.add(id)
-        const run = await RunStorage.getInstance().load(id)
-        if (run && moved.has(run.parentChat)) {
-          run.parentChat = moved.get(run.parentChat)!
-          await RunStorage.getInstance().save(run)
-        }
-      }
-    }
-    this.service.followChatMoves(moved)
+      for (const [key, id] of Object.entries(this.catalog.nodes))
+        if (id === record.id) this.catalog.nodes[key] = record.parent
+      this.catalog.folders = this.catalog.folders.filter((folder) => folder !== record)
+      await this.persist()
+    })
   }
-
-  async remove(folder: string): Promise<void> {
-    return this.mutate(() => this.removeNow(folder))
-  }
-  private async removeNow(folder: string): Promise<void> {
-    if (!folder) throw new Error(t('chatTree.deleteRoot'))
-    const file = this.app.vault.getAbstractFileByPath(this.path(folder))
-    if (!(file instanceof TFolder)) return
-    if (
-      file.children.some((child) => child.name !== ACCESS_FILE) ||
-      Object.values(this.service.nodeFolders.value).some(
-        (value) => value === folder || value.startsWith(`${folder}/`)
-      )
-    )
-      throw new Error(t('chatTree.folderNotEmpty'))
-    await this.app.fileManager.trashFile(file)
-    await this.reload()
-  }
-
   destroy(): void {
     this.releaseSettings()
     this.dead = true
-    this.generation++
     for (const event of this.events) this.app.vault.offref(event)
     this.events = []
   }

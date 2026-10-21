@@ -130,7 +130,7 @@ import {
   type ChatTreeFolder,
 } from '@/chats/chatTree'
 import { dragged, matches } from './chatTreeView'
-import { promptDialog } from '../obsidian/dialogs'
+import { confirmDialog, promptDialog } from '../obsidian/dialogs'
 
 const props = defineProps<{
   entries: ChatTreeEntry[]
@@ -218,8 +218,18 @@ function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
       .setTitle(t('chatTree.delete'))
       .setIcon('trash-2')
       .setWarning(true)
-      .setDisabled(folder.canDelete === false || folder.children.length > 0)
-      .onClick(() => source.value.deleteFolder(folder.path))
+      .setDisabled(folder.canDelete === false)
+      .onClick(async () => {
+        if (
+          !folder.children.length ||
+          (await confirmDialog({
+            title: t('chatTree.deleteTitle', { name: folder.name }),
+            message: t('chatTree.deleteFolderHint'),
+            confirmText: t('chatTree.delete'),
+          }))
+        )
+          source.value.deleteFolder(folder.path)
+      })
   )
   menu.showAtMouseEvent(event)
 }

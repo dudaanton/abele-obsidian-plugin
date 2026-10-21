@@ -31,6 +31,7 @@ export const chat = {
   'chatTree.moveHint': 'Pārvietot uz mapi…',
   'chatTree.top': 'Sarunas (sakne)',
   'chatTree.deleteTitle': 'Dzēst {name}?',
+  'chatTree.deleteFolderHint': 'Sarunas un apakšmapes tiks saglabātas vecākmapē.',
   'chatTree.deleteChatHint': 'Saruna un tās komentāri tiks dzēsti.',
   'chatTree.folderNotEmpty': 'Var dzēst tikai tukšas mapes.',
   'chatTree.fromFolder': 'No mapes {name}',
