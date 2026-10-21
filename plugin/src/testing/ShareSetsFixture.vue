@@ -80,7 +80,10 @@ const facts = {
   bytes: 2048,
   access: [],
   canWrite: true,
-  also: [{ path: 'Example note.md', group: 'Sample group' }],
+  also: [
+    { path: 'Example note.md', group: 'Sample group' },
+    { path: 'Other sample note.md', overlapCount: 2 },
+  ],
 }
 /** Presentation data only: the fixture opens no engines, sockets or server connections. */
 const source: ShareSetSource = {
