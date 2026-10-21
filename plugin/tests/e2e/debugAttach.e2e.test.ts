@@ -251,6 +251,7 @@ it('retains independent folder sessions across switching and reload on desktop a
 }, 180000)
 
 it('attaches to a program of the chat’s folder, stops it at a breakpoint and lets it run on after Detach', async () => {
+  openChat()
   const mine = await program(repo, 'src/serve.js')
   await program(other, 'tool.js')
   const seen = inApp<{
@@ -308,6 +309,7 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
 }, 180000)
 
 it('asks before attaching to a program outside the chat’s folder, and attaches nothing on Cancel', async () => {
+  openChat()
   await program(other, 'tool.js')
   const seen = inApp<{ title: string; message: string; sessions: number; after: number }>(
     `(async()=>{${prelude}
@@ -330,6 +332,7 @@ it('asks before attaching to a program outside the chat’s folder, and attaches
 }, 120000)
 
 it('says how to start a program that waits for a debugger when none does', () => {
+  openChat()
   const seen = inApp<{ empty: string; rows: string[] }>(`(async()=>{${prelude}
     await openPicker();
     await wait(500);

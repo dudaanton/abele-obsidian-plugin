@@ -412,6 +412,12 @@ it.each(['desktop', 'phone'])(
       watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
       noOwnerApproval();
       await until(()=>binding.controller.session.watches.some(w=>w.value==='true'),'approved watch value');
+      for(let round=0;round<11;round++){
+        await wait(2000);
+        const current=binding.controller;
+        if(current.session.status!=='paused'||!current.session.frames.length||!current.session.variables.length||current.error)
+          throw Error('Watch disturbed the paused view: '+debugState());
+      }
       noOwnerApproval();
       await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();
       await wait(600);

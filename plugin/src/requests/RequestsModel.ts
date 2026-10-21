@@ -283,10 +283,10 @@ export class RequestsModel {
   followList(online: () => boolean): () => void {
     let stopped = false
     let timer: number | undefined
-    const schedule = () => {
-      if (!stopped) timer = window.setTimeout(() => void refresh(), 5000)
+    const schedule = (): void => {
+      if (!stopped) timer = window.setTimeout((): void => void refresh(), 5000)
     }
-    const refresh = async () => {
+    const refresh = async (): Promise<void> => {
       try {
         if (online() && !this.state.loading) await this.refreshList()
       } catch (error) {
