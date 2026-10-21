@@ -9,9 +9,12 @@ import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/no
 import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
 import { trimWindows } from './sessionWindow'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
+import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
 
 export interface NodeClientState extends ClientState {
   nodeLetters?: Record<string, NodeLetter>
+  /** Local execution evidence. Reconnect resends outcomes, never handler effects. */
+  obsidianExecutions?: Record<string, ObsidianExecutionReceipt>
   managerOperations?: Record<string, ManagerOperation>
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
@@ -41,6 +44,17 @@ export interface NodeClientState extends ClientState {
 const StateSchema = z
   .object({
     nodeLetters: z.record(z.string(), NodeLetterSchema).optional(),
+    obsidianExecutions: z
+      .record(
+        z.string(),
+        z
+          .object({
+            state: z.enum(['executing', 'succeeded', 'failed', 'outcome_unknown']),
+            result: z.record(z.string(), z.unknown()),
+          })
+          .strict()
+      )
+      .optional(),
     operationRequests: z
       .record(z.string(), z.object({ method: z.string(), params: z.unknown() }).strict())
       .optional(),
@@ -199,6 +213,7 @@ export class NodeClientStore implements ClientStore {
       // was sent, receipts, drafts) completes only after a strict flush, below.
       const tx = db.transaction('client', 'readwrite', { durability: 'relaxed' })
       let intent = false
+      let executionIntent = false
       const store = tx.objectStore('client')
       let result: T
       let failure: unknown
@@ -209,7 +224,9 @@ export class NodeClientStore implements ClientStore {
         let flush: IDBTransaction
         try {
           flush = db.transaction('client', 'readwrite', { durability: 'strict' })
-        } catch {
+        } catch (error) {
+          // A handler may start only after its receipt has reached a strict commit.
+          if (executionIntent) return reject(error)
           // The store is closing: the commit happened, the flush is up to the browser now.
           return resolve(result)
         }
@@ -241,6 +258,7 @@ export class NodeClientStore implements ClientStore {
           try {
             const state = readState(request.result)
             const before = intentOf(state)
+            const executionsBefore = JSON.stringify(state.obsidianExecutions)
             const submitted = state.outbox.slice()
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
@@ -276,6 +294,7 @@ export class NodeClientStore implements ClientStore {
             // A long session's journal stays on the node; the device keeps its latest window.
             trimWindows(state)
             intent = intentOf(state) !== before
+            executionIntent = JSON.stringify(state.obsidianExecutions) !== executionsBefore
             store.put(state, 'state')
             pending = false
           } catch (error) {
