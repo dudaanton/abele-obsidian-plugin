@@ -940,7 +940,7 @@ export class TokenUi {
           .manifest(next)
           .catch((error: unknown) => {
             if (allowGone && (error as { code?: string })?.code === 'scope_deleted')
-              return { items: [], next: null }
+              return { items: [] as { path: string }[], next: null as string | null }
             throw error
           })
         paths.push(...page.items.map((one) => one.path))
