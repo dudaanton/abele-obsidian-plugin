@@ -8,8 +8,10 @@ import { chatsOf } from '@/chats/chatTree'
 import { useVault } from '../helpers/testEnv'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { parseChat } from '@/ai/ChatLog'
+import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { TFile } from 'obsidian'
+import { NodeService } from '@/node/NodeService'
+import * as dialogs from '@/components/obsidian/dialogs'
 
 it('shows times for loaded, unloaded and closed chats without loading their sessions', () => {
   const app = useVault(
@@ -55,6 +57,31 @@ it('uses file modification time when the index has no last-message time', () => 
   expect(read).not.toHaveBeenCalled()
 })
 
+it('reads conversation time from a legacy index entry instead of a move timestamp', async () => {
+  const path = 'AI/Chats/sample.abchat'
+  useVault([
+    {
+      path,
+      content: serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          title: 'Sample',
+          created: '2025-01-01',
+          providerId: '',
+          modelId: '',
+        },
+        messages: [
+          { id: 'sample-message', role: 'user', content: 'Sample question', timestamp: 1234 },
+        ],
+        internalMessages: [],
+      }),
+    },
+  ])
+  AbeleConfig.getInstance().ai.chatHistory = [{ path, title: 'Sample', created: '' }]
+  await service.tree.refresh()
+  expect(chatsOf(service.tree.root.value).find((entry) => entry.id === path)?.at).toBe(1234)
+})
+
 let service: ChatService
 beforeEach(() => {
   useVault([])
@@ -68,6 +95,81 @@ beforeEach(() => {
   service = ChatService.getInstance()
 })
 afterEach(() => service.destroy())
+
+it('keeps an untitled saved conversation title stable as the clock advances', () => {
+  vi.useFakeTimers()
+  try {
+    vi.setSystemTime(new Date('2025-01-01T10:00:00Z'))
+    const id = service.createTab()
+    const session = service.getSession(id)! as unknown as {
+      snapshot(): { metadata: { title: string } }
+    }
+    const title = session.snapshot().metadata.title
+    vi.setSystemTime(new Date('2025-01-01T11:00:00Z'))
+    expect(session.snapshot().metadata.title).toBe(title)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('moves a closed node reference into a folder and persists its placement', async () => {
+  await service.folders.create('', 'Projects')
+  const reference = {
+    kind: 'node-session' as const,
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    sessionId: 'sample-session',
+    title: 'Sample node',
+  }
+  const id = 'node:sample-registration:sample-session'
+  service.closedNodeChats.value = [{ reference, at: 100 }]
+  service.tree.move(id, 'Projects')
+  await vi.waitFor(() => {
+    const folder = service.tree.root.value.find(
+      (entry) => entry.kind === 'folder' && entry.path === 'Projects'
+    )
+    expect(folder?.children?.some((entry) => entry.kind === 'chat' && entry.id === id)).toBe(true)
+  })
+  expect(GlobalStore.getInstance().app.loadLocalStorage('abele-agent-tabs')).toMatchObject({
+    nodeFolders: { [id]: 'Projects' },
+  })
+  await service.folders.rename('Projects', 'Renamed')
+  expect(service.nodeFolders.value[id]).toBe('Renamed')
+  await expect(service.folders.remove('Renamed')).rejects.toThrow(
+    'Only empty folders can be deleted.'
+  )
+})
+
+it('renames and deletes a closed node session through its own node while retaining folder files', async () => {
+  const reference = {
+    kind: 'node-session' as const,
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    sessionId: 'sample-session',
+    title: 'Sample node',
+  }
+  const id = 'node:sample-registration:sample-session'
+  const client = { renameSession: vi.fn(async () => ({})), deleteSession: vi.fn(async () => ({})) }
+  const nodes = vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: reference.registrationId, expectedNodeId: reference.nodeId }]),
+    connection: () => ({ client }),
+  } as never)
+  const prompt = vi.spyOn(dialogs, 'promptDialog').mockResolvedValue('Renamed sample')
+  try {
+    service.closedNodeChats.value = [{ reference, at: 100 }]
+    service.tree.rename(id)
+    await vi.waitFor(() =>
+      expect(service.closedNodeChats.value[0].reference.title).toBe('Renamed sample')
+    )
+    expect(client.renameSession).toHaveBeenCalledWith(reference.sessionId, 'Renamed sample')
+    service.tree.delete(id)
+    await vi.waitFor(() => expect(service.closedNodeChats.value).toEqual([]))
+    expect(client.deleteSession).toHaveBeenCalledWith(reference.sessionId)
+  } finally {
+    prompt.mockRestore()
+    nodes.mockRestore()
+  }
+})
 
 it('retains helper runs beneath a closed parent and reopens them through the run service', async () => {
   await service.folders.create('', 'Projects')

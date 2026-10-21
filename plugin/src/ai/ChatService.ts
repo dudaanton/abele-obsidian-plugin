@@ -72,6 +72,7 @@ interface TabsState {
   activeIndex: number
   closedNodes?: ClosedNodeChat[]
   nodeParents?: Record<string, string>
+  nodeFolders?: Record<string, string>
   closedRuns?: string[]
 }
 
@@ -128,6 +129,7 @@ export class ChatService {
   public readonly tabOrder = ref<string[]>([])
   public readonly closedNodeChats = shallowRef<ClosedNodeChat[]>([])
   public readonly nodeParentPaths = shallowRef<Record<string, string>>({})
+  public readonly nodeFolders = shallowRef<Record<string, string>>({})
   public readonly closedRunIds = ref<string[]>([])
 
   public readonly activeSession = computed<ChatSession | null>(() =>
@@ -244,6 +246,7 @@ export class ChatService {
     const state = ChatService.loadTabsState(app)
     this.closedNodeChats.value = state?.closedNodes ?? []
     this.nodeParentPaths.value = state?.nodeParents ?? {}
+    this.nodeFolders.value = state?.nodeFolders ?? {}
     this.closedRunIds.value = state?.closedRuns ?? []
     if (!state) {
       if (this.sessions.size === 0) this.mutatePresentation(() => this.createTabNow())
@@ -406,6 +409,9 @@ export class ChatService {
         : {}),
       ...(Object.keys(this.nodeParentPaths.value).length
         ? { nodeParents: { ...this.nodeParentPaths.value } }
+        : {}),
+      ...(Object.keys(this.nodeFolders.value).length
+        ? { nodeFolders: { ...this.nodeFolders.value } }
         : {}),
       ...(this.closedRunIds.value.length ? { closedRuns: [...this.closedRunIds.value] } : {}),
     }

@@ -2896,6 +2896,9 @@ local storage. It also uses the latest session or a configured provider when the
 choice. Chosen text attachments are quoted into the node chat draft; sending includes their
 content in the ordinary message, without creating a vault attachment or uploading a device path.
 
+Node chat folder placement is device-local, stored with open and closed chat references;
+moving a node chat does not move files or sessions on the node.
+
 Node chat checkpoints and their file snapshots remain on the node. Rewind, branch, edit and
 retry change conversation context without restoring files. Only the rewind dialog's explicit
 file switch and confirmation send the exact preview identity and ordered file hashes to the

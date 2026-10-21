@@ -11,7 +11,7 @@
     :collapsible="!!kids.length"
     :collapsed="folded"
     fold-apart
-    :draggable="!phone && !chat.nested"
+    :draggable="!phone && (!chat.nested || chat.nested === 'node')"
     :data-chat="chat.id"
     @click="choose"
     @toggle="folded = !folded"
@@ -160,11 +160,11 @@ function menu(event: MouseEvent) {
       .setIcon(open ? 'x' : 'message-square')
       .onClick(() => (open ? source.value.close(id) : choose()))
   )
-  if (props.chat.nested === 'helper' || props.chat.nested === 'node') {
+  if (props.chat.nested === 'helper') {
     m.showAtMouseEvent(event)
     return
   }
-  if (!props.chat.nested)
+  if (!props.chat.nested || props.chat.nested === 'node')
     m.addItem((i) =>
       i
         .setTitle(t('chatTree.move'))
@@ -187,7 +187,9 @@ function menu(event: MouseEvent) {
         if (
           await confirmDialog({
             title: t('chatTree.deleteTitle', { name: props.chat.title }),
-            message: t('chatTree.deleteChatHint'),
+            message: t(
+              props.chat.nested === 'node' ? 'node.chat.deleteHint' : 'chatTree.deleteChatHint'
+            ),
             confirmText: t('chatTree.delete'),
           })
         )

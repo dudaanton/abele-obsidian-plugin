@@ -47,7 +47,7 @@ export class LocalChatPresenter implements ChatPresentationSession {
     this.label = computed(
       () =>
         session.chatTitle.value ||
-        (session.kind === 'comment' ? firstQuestion(session.messages.value) : '') ||
+        firstQuestion(session.messages.value) ||
         t('streamB.newChat.db1838')
     )
   }

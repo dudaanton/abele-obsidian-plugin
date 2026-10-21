@@ -157,6 +157,9 @@ export class UpdateTranscript {
       case 'compaction_summary':
         return this.live.summary(update.text)
       case 'notice': {
+        // Clean diagnostic pushes carry no conversation content. Problems stay visible.
+        if (update.level === 'info' && /^Diagnostics for .+: no problems\s*$/i.test(update.text))
+          return
         const rateLimit =
           update.code === 'rate_limit' || /^Usage limit (?:close|reached)\b/.test(update.text)
         if (rateLimit) {

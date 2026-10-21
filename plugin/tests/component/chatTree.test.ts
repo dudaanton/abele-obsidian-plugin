@@ -41,6 +41,21 @@ const show = () => {
   return view
 }
 
+it('offers moving and dragging node chats using the existing folder picker', async () => {
+  source.root.value = [
+    { kind: 'chat', id: 'node:sample', title: 'Sample node', nested: 'node', open: true, at: 1 },
+  ]
+  const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  const view = show()
+  await view.get('[data-chat="node:sample"] > .tree-item-self').trigger('contextmenu')
+  const menu = shown.mock.contexts.at(-1) as Menu
+  expect(menu.items.some((item) => item.title === 'Move to…')).toBe(true)
+  expect(menu.items.some((item) => item.title === 'Rename…')).toBe(true)
+  expect(menu.items.some((item) => item.title === 'Delete')).toBe(true)
+  expect(view.get('[data-chat="node:sample"]').attributes('draggable')).toBe('true')
+  shown.mockRestore()
+})
+
 it('leaves no time column for a new chat and no extra creation action beside search', () => {
   source.root.value = [{ kind: 'chat', id: 'new', title: 'New chat', open: true, at: 0 }]
   const view = show()

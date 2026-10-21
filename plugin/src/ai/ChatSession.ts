@@ -4935,12 +4935,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   // ── Other ─────────────────────────────────────────────────────
 
+  private readonly fallbackTitleTime = Date.now()
   private fallbackTitle(): string {
-    const firstUser = this.messages.value.find((m) => m.role === 'user')
+    const firstUser = this.allChatMessages.find((m) => m.role === 'user')
     const snippet = firstUser
       ? firstUser.content.slice(0, ChatSession.FALLBACK_TITLE_LENGTH).replace(/\n/g, ' ')
       : 'Chat'
-    return `${dayjs().format('YYYY-MM-DD HH-mm')} ${snippet}`
+    return `${dayjs(firstUser?.timestamp ?? this.fallbackTitleTime).format('YYYY-MM-DD HH-mm')} ${snippet}`
   }
 
   getDebugData(): Record<string, unknown> {

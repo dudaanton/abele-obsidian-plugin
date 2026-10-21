@@ -30,6 +30,28 @@ const event = (
 const update = (seq: number, u: Record<string, unknown>, run = 'turn-1') =>
   event(seq, 'session.update', { run_id: run, update: u })
 
+it('omits clean diagnostics while retaining diagnostic problems', () => {
+  const p = reduceTranscript([
+    update(1, { kind: 'notice', level: 'info', text: 'Diagnostics for sample.ts: no problems' }),
+    update(2, {
+      kind: 'notice',
+      level: 'warning',
+      text: 'Diagnostics for sample.ts: Missing type',
+    }),
+  ])
+  expect(p.messages.map((m) => m.content)).toEqual(['Diagnostics for sample.ts: Missing type'])
+})
+
+it('clears historical failure attention after a later input completes successfully', () => {
+  const p = reduceTranscript([
+    event(1, 'input.accepted', { input_id: 'first', text: 'First' }),
+    event(2, 'input.failed', { input_id: 'first' }),
+    event(3, 'input.accepted', { input_id: 'second', text: 'Second' }),
+    event(4, 'input.completed', { input_id: 'second' }),
+  ])
+  expect(p.state).toBe('idle')
+})
+
 describe('an agent speaking session updates', () => {
   const journal = [
     event(1, 'turn.started', { run_id: 'turn-1' }, { kind: 'node' }),

@@ -443,9 +443,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   }
   const attention =
     failed ||
-    [...inputs.values()].some((state) =>
-      ['delivery_unknown', 'failed', 'interrupted'].includes(state)
-    ) ||
+    ['delivery_unknown', 'failed', 'interrupted'].includes([...inputs.values()].at(-1) ?? '') ||
     [...prompts.values()].some((p) => p.state === 'pending')
   const state: NodeSessionState = attention
     ? 'needs-attention'
@@ -473,6 +471,17 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   for (const [id, decisions] of Object.entries(toolPrompts)) {
     const tool = messages.get(id)
     if (tool && decisions.at(-1)?.choice === 'deny') {
+      if (
+        tool.toolExecution === 'interrupted' ||
+        (tool.toolExecution === 'not-run' &&
+          interruptions.some(
+            (turn) =>
+              turn.run === messageRuns.get(id) &&
+              messageSequences[id] >= turn.from &&
+              messageSequences[id] <= turn.to
+          ))
+      )
+        continue
       tool.toolStatus = 'rejected'
       tool.toolExecution = 'not-run'
       tool.toolResult = t('node.actionDeniedByOwner')

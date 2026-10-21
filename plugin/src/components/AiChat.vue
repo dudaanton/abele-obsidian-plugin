@@ -2205,15 +2205,8 @@ const phone = Platform.isPhone
 const inDrawer = ref(false)
 const headerOverflowActions = computed<HeaderAction[]>(() => [
   { id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' },
-  ...(phone
-    ? [
-        ...(!chatTreeSource.value && inDrawer.value
-          ? [{ id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' }]
-          : []),
-        { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
-        { id: 'outline', label: t('streamB.outlineOfThisChat.60a8ef'), icon: 'list-tree' },
-      ]
-    : []),
+  { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
+  { id: 'outline', label: t('streamB.outlineOfThisChat.60a8ef'), icon: 'list-tree' },
   ...(commentSession.value
     ? [
         {
@@ -2459,6 +2452,12 @@ body.is-phone
     height: 2em;
     min-width: 2em;
     flex-shrink: 0;
+  }
+}
+@container (max-width: 360px) {
+  .abele-ai-chat__find,
+  .abele-ai-chat__navigation {
+    display: none;
   }
 }
 

@@ -239,6 +239,15 @@ export class ChatFolders {
       if (session.currentChatFile.value && moved.has(session.currentChatFile.value.path))
         await session.saveForRelease()
     await this.app.fileManager.renameFile(file, destination)
+    const nextFolder = parent ? `${parent}/${name}` : name
+    this.service.nodeFolders.value = Object.fromEntries(
+      Object.entries(this.service.nodeFolders.value).map(([id, value]) => [
+        id,
+        value === folder || value.startsWith(`${folder}/`)
+          ? nextFolder + value.slice(folder.length)
+          : value,
+      ])
+    )
     for (const [previous, next] of moved) {
       const child = this.app.vault.getAbstractFileByPath(next)
       if (child instanceof TFile)
@@ -304,7 +313,12 @@ export class ChatFolders {
     if (!folder) throw new Error(t('chatTree.deleteRoot'))
     const file = this.app.vault.getAbstractFileByPath(this.path(folder))
     if (!(file instanceof TFolder)) return
-    if (file.children.some((child) => child.name !== ACCESS_FILE))
+    if (
+      file.children.some((child) => child.name !== ACCESS_FILE) ||
+      Object.values(this.service.nodeFolders.value).some(
+        (value) => value === folder || value.startsWith(`${folder}/`)
+      )
+    )
       throw new Error(t('chatTree.folderNotEmpty'))
     await this.app.fileManager.trashFile(file)
     await this.reload()

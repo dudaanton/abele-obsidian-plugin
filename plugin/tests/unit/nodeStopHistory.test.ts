@@ -13,6 +13,32 @@ const event = (seq: number, type: string, data: Record<string, unknown>): Journa
   data: { run_id: 'sample-run', ...data },
 })
 
+it('describes stopping with a pending approval as interrupted rather than denied', () => {
+  const p = reduceTranscript([
+    event(1, 'turn.started', { input_ids: ['sample-input'] }),
+    event(2, 'pi.tool.call', { tool_use_id: 'sample-call', name: 'read', input: {} }),
+    event(3, 'prompt.resolved', {
+      kind: 'permission',
+      prompt_id: 'sample-prompt',
+      session_id: 'sample-session',
+      revision: 1,
+      action_digest: 'a'.repeat(64),
+      expires_at: 1999999999999,
+      state: 'resolved',
+      choice: 'deny',
+      installation_id: 'sample-installation',
+      delivered: true,
+      tool_use_id: 'sample-call',
+      tool_name: 'read',
+      input: {},
+    }),
+    event(4, 'turn.completed', { outcome: 'interrupted' }),
+  ])
+  const tool = p.messages.find((message) => message.role === 'tool-call')!
+  expect(tool.toolResult).not.toBe('User rejected this action')
+  expect(tool.toolExecution).toBe('interrupted')
+})
+
 it.each(['pi', 'claude'] as const)(
   'retains completed %s calls and marks an unfinished call on replay',
   (provider) => {

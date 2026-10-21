@@ -11,6 +11,8 @@ import { firstQuestion } from '@/ai/chatText'
 import { CommentService } from '@/ai/CommentService'
 import { promptDialog } from '@/components/obsidian/dialogs'
 import { t } from '@/i18n'
+import { NodeService } from '@/node/NodeService'
+import type { ChatReference } from '@/ai/ChatPresentationSession'
 import {
   chatsOf,
   type ChatTreeChat,
@@ -207,7 +209,10 @@ export class ChatTreeModel implements ChatTreeSource {
       )
       folder.canDelete =
         directory instanceof TFolder &&
-        directory.children.every((child) => child.name === '_folder.abeleaccess')
+        directory.children.every((child) => child.name === '_folder.abeleaccess') &&
+        !Object.values(this.service.nodeFolders.value).some(
+          (value) => value === path || value.startsWith(`${path}/`)
+        )
       ensure(parts.join('/')).push(folder)
       folders.set(path, folder)
       return folder.children
@@ -234,7 +239,12 @@ export class ChatTreeModel implements ChatTreeSource {
         open: true,
         state: info.state === 'idle' ? undefined : info.state,
         nested: this.service.getNodeSession(info.id) ? 'node' : undefined,
-        at: timeFor(path, presentation.messages.value.at(-1)?.timestamp),
+        at: timeFor(
+          path,
+          presentation.messages.value.findLast((message) =>
+            ['user', 'assistant', 'tool-call'].includes(message.role)
+          )?.timestamp
+        ),
         children: [],
       }
       entries.set(chat.id, {
@@ -323,6 +333,11 @@ export class ChatTreeModel implements ChatTreeSource {
       entries.set(id, { chat, path: '', parent: entries.get(id)?.parent ?? run.parentChat })
     }
     for (const entry of entries.values()) {
+      const folder = this.service.nodeFolders.value[entry.chat.id]
+      if (folder !== undefined) {
+        ensure(folder).push(entry.chat)
+        continue
+      }
       if (this.service.getNodeSession(entry.chat.id)) {
         const parent = this.service.tabOrder.value.find((id) =>
           this.service.childTabs(id).includes(entry.chat.id)
@@ -451,10 +466,19 @@ export class ChatTreeModel implements ChatTreeSource {
       await this.refresh()
       const entry = chatsOf(this.root.value).find((chat) => chat.id === id)
       const ids = entry ? chatsOf([entry]).map((chat) => chat.id) : [id]
+      this.service.folders.path(folder)
       await this.service.folders.moveMany(
-        ids.filter((child) => !this.service.isRunTab(child)),
+        ids.filter((child) => !this.service.isRunTab(child) && !child.startsWith('node:')),
         folder
       )
+      const nodes = id.startsWith('node:') ? [id] : []
+      if (nodes.length) {
+        this.service.nodeFolders.value = {
+          ...this.service.nodeFolders.value,
+          ...Object.fromEntries(nodes.map((child) => [child, folder])),
+        }
+        this.service.saveTabs()
+      }
     })
   }
   newChat(folder: string): void {
@@ -480,11 +504,42 @@ export class ChatTreeModel implements ChatTreeSource {
   folderAccess(path: string): void {
     this.accessFolder.value = path
   }
+  private nodeReference(id: string) {
+    return (
+      this.service.getNodeSession(id)?.reference ??
+      this.service.closedNodeChats.value.find(
+        (entry) => `node:${entry.reference.registrationId}:${entry.reference.sessionId}` === id
+      )?.reference
+    )
+  }
+  private nodeClient(reference: Extract<ChatReference, { kind: 'node-session' }>) {
+    const nodes = NodeService.getInstance()
+    if (
+      !nodes.nodes.value.some(
+        (node) => node.id === reference.registrationId && node.expectedNodeId === reference.nodeId
+      )
+    )
+      throw new Error(t('chatTree.missing'))
+    return nodes.connection(reference.registrationId).client
+  }
   rename(id: string): void {
     this.run(async () => {
       const chat = chatsOf(this.root.value).find((entry) => entry.id === id)
       const title = await promptDialog({ title: t('chatTree.renameChat'), value: chat?.title })
       if (!title) return
+      const node = this.nodeReference(id)
+      if (node) {
+        await this.nodeClient(node).renameSession(node.sessionId, title)
+        const presenter = this.service.getNodeSession(id)
+        if (presenter) await presenter.refresh()
+        this.service.closedNodeChats.value = this.service.closedNodeChats.value.map((entry) =>
+          `node:${entry.reference.registrationId}:${entry.reference.sessionId}` === id
+            ? { ...entry, reference: { ...entry.reference, title } }
+            : entry
+        )
+        this.service.saveTabs()
+        return
+      }
       const session = this.service.getSession(id)
       if (session) {
         session.chatTitle.value = title
@@ -507,6 +562,22 @@ export class ChatTreeModel implements ChatTreeSource {
   }
   delete(id: string): void {
     this.run(async () => {
+      const node = this.nodeReference(id)
+      if (node) {
+        await this.nodeClient(node).deleteSession(node.sessionId)
+        await this.service.closeTab(id)
+        this.service.closedNodeChats.value = this.service.closedNodeChats.value.filter(
+          (entry) => `node:${entry.reference.registrationId}:${entry.reference.sessionId}` !== id
+        )
+        this.service.nodeFolders.value = Object.fromEntries(
+          Object.entries(this.service.nodeFolders.value).filter(([key]) => key !== id)
+        )
+        this.service.nodeParentPaths.value = Object.fromEntries(
+          Object.entries(this.service.nodeParentPaths.value).filter(([key]) => key !== id)
+        )
+        this.service.saveTabs()
+        return
+      }
       if (this.service.getSession(id)) await this.service.deleteChat(id)
       else await ChatStorage.getInstance().deleteChat(id)
       await this.refresh()
