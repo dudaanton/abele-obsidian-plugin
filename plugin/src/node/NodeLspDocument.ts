@@ -1,6 +1,7 @@
 import type { NodeClient } from '@abele/node-client'
 import { LspDiagnosticsSchema, type LspDiagnostic } from '@abele/node-protocol'
 import { z } from 'zod'
+import { lspLanguage } from './lspLanguage'
 
 export type LspRoot =
   | { workspace_id: string; worktree_id?: never }
@@ -32,6 +33,17 @@ export class NodeLspDocument {
   ) {}
   private changed() {
     for (const listener of this.listeners) listener()
+  }
+  private get unavailable(): boolean {
+    const language = lspLanguage(this.path)
+    const relevant = this.status.filter(
+      (server) =>
+        server.language === language || (language === 'typescript' && server.language === 'eslint')
+    )
+    return (
+      relevant.some((server) => server.reason === 'untrusted_folder') ||
+      (relevant.length > 0 && relevant.every((server) => !server.found))
+    )
   }
   private async admit() {
     const description = await this.client.describe()
@@ -94,6 +106,11 @@ export class NodeLspDocument {
         if (!this.supported || this.stopped) return
         if (!this.opens) this.status = await this.client.lsp.status(this.root)
         if (this.stopped) return
+        if (this.unavailable) {
+          this.diagnostics = []
+          console.debug('[node] Language analysis waiting for available trusted servers', this.path)
+          return
+        }
         const pushes = this.pushes
         this.diagnostics = []
         this.changed()
@@ -140,7 +157,7 @@ export class NodeLspDocument {
   }
   async query(kind: 'definition' | 'references', position: LspPosition): Promise<LspLocation[]> {
     await this.pending
-    if (!this.supported || this.stopped) return []
+    if (!this.supported || this.stopped || this.unavailable) return []
     try {
       await this.synchronize()
       if (this.stopped) return []
@@ -153,7 +170,7 @@ export class NodeLspDocument {
   }
   async hover(position: LspPosition): Promise<string> {
     await this.pending
-    if (!this.supported || this.stopped) return ''
+    if (!this.supported || this.stopped || this.unavailable) return ''
     try {
       await this.synchronize()
       if (this.stopped) return ''

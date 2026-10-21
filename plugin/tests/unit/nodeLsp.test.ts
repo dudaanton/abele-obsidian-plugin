@@ -9,7 +9,7 @@ const problem = (source: string) => ({
 function fixture(capabilities = ['lsp_v1']) {
   let event: (value: any) => void = () => {}
   const lsp = {
-    status: vi.fn(async () => []),
+    status: vi.fn(async (): Promise<any[]> => []),
     open: vi.fn(async (..._args: any[]) => ({ servers: ['typescript', 'eslint'] })),
     close: vi.fn(async () => {}),
     diagnostics: vi.fn(async (): Promise<any[]> => []),
@@ -43,6 +43,73 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it.each([
+    { language: 'typescript', found: false },
+    { language: 'typescript', found: true, reason: 'untrusted_folder' },
+  ])('closes an unavailable document without a remote buffer to release: %j', async (status) => {
+    const f = fixture()
+    f.lsp.status.mockResolvedValue([status])
+    await f.doc.open('const sample = 1')
+    await f.doc.close()
+    expect(f.lsp.open).not.toHaveBeenCalled()
+    expect(f.lsp.close).not.toHaveBeenCalled()
+  })
+  it('does not open a missing backend because an unrelated language is installed, and retries after installation', async () => {
+    const f = fixture()
+    f.lsp.status.mockResolvedValue([
+      { language: 'typescript', found: false },
+      { language: 'eslint', found: false },
+      { language: 'python', found: true },
+    ])
+    await f.doc.open('const sample = 1')
+    try {
+      expect(f.lsp.open).not.toHaveBeenCalled()
+      expect(await f.doc.query('definition', { line: 0, character: 7 })).toEqual([])
+      expect(await f.doc.hover({ line: 0, character: 7 })).toBe('')
+      expect(f.lsp.definition).not.toHaveBeenCalled()
+      expect(f.lsp.hover).not.toHaveBeenCalled()
+      f.lsp.status.mockResolvedValue([
+        { language: 'typescript', found: true },
+        { language: 'eslint', found: false },
+      ])
+      await f.doc.refreshStatus()
+      await f.doc.open('const sample = 2')
+      expect(f.lsp.open).toHaveBeenCalledOnce()
+    } finally {
+      await f.doc.close()
+    }
+  })
+  it('uses text navigation without opening language servers in an untrusted folder, then resumes after trust', async () => {
+    const f = fixture()
+    f.lsp.status.mockResolvedValue([
+      { language: 'typescript', found: true, reason: 'untrusted_folder' },
+    ])
+    await f.doc.open('const sample = 1')
+    const root = document.createElement('div')
+    const code = root.appendChild(document.createElement('div'))
+    const fallback = { pathOf: () => 'sample.ts', goToDefinition: vi.fn(), findReferences: vi.fn() }
+    const remove = provideLsp(root, { document: f.doc, navigate: vi.fn() })
+    try {
+      expect(f.doc.supported).toBe(true)
+      expect(f.lsp.open).not.toHaveBeenCalled()
+      await lspNavigation(code, fallback)!.goToDefinition('sample', 'sample.ts', {
+        line: 0,
+        character: 7,
+      })
+      expect(fallback.goToDefinition).toHaveBeenCalledOnce()
+      expect(await f.doc.hover({ line: 0, character: 7 })).toBe('')
+      expect(f.lsp.definition).not.toHaveBeenCalled()
+      expect(f.lsp.hover).not.toHaveBeenCalled()
+      expect(f.lsp.open).not.toHaveBeenCalled()
+      f.lsp.status.mockResolvedValue([])
+      await f.doc.refreshStatus()
+      await f.doc.open('const sample = 2')
+      expect(f.lsp.open).toHaveBeenCalledOnce()
+    } finally {
+      remove()
+      await f.doc.close()
+    }
+  })
   it('waits for a query buffer update before closing and never queries a departed view', async () => {
     const f = fixture()
     await f.doc.open('sample')

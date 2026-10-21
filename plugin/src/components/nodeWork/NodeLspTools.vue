@@ -80,6 +80,7 @@ import { Platform } from 'obsidian'
 import { DefinitionPicker } from '@/github/search/definitionPicker'
 import { LSP_CONNECTION } from '@/node/lspConnection'
 import { lspMenuLabel } from '@/node/lspMenu'
+import { lspLanguage } from '@/node/lspLanguage'
 
 const props = defineProps<{
   root?: HTMLElement
@@ -106,31 +107,7 @@ const statuses = computed(() => {
   void revision.value
   return document.value?.status ?? []
 })
-const languages: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'typescript',
-  js: 'typescript',
-  jsx: 'typescript',
-  mjs: 'typescript',
-  cjs: 'typescript',
-  mts: 'typescript',
-  cts: 'typescript',
-  py: 'python',
-  pyi: 'python',
-  rs: 'rust',
-  go: 'go',
-  json: 'json',
-  jsonc: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  css: 'css',
-  scss: 'css',
-  less: 'css',
-  html: 'html',
-  sh: 'bash',
-  bash: 'bash',
-}
-const language = computed(() => languages[props.path.split('.').pop()?.toLowerCase() ?? ''])
+const language = computed(() => lspLanguage(props.path))
 const relevant = computed(() =>
   statuses.value.filter(
     (s) =>
