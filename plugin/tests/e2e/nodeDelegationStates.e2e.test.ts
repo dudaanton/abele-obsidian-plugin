@@ -75,10 +75,19 @@ const probe = (device: string) =>
   try {
     await nodePanel.open('feature');
     const model = window.__abeleNodePanelFixture.model;
-    const treeTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
+    const treeGeometry = async () => {
+      await wait(350);
+      return ['.abele-file-tree', '.abele-file-tree__bar', '.abele-file-tree__body'].map(selector => {
+        const el = nodePanel.root().querySelector(selector);
+        const box = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return { selector, top: box.top, height: box.height, padding: style.padding, margin: style.margin, flex: style.flex };
+      });
+    };
+    const beforeTree = await treeGeometry();
     model.report(new Error('No answer from the node. Reconnecting'));
     await until(() => nodePanel.root().textContent.includes('No answer from the node'));
-    const duringTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
+    const duringTree = await treeGeometry();
     seen['quiet connection status'] = !!nodePanel.root().querySelector('[data-connection-status] .abele-status-dot_orange');
     const statusBox = nodePanel.root().querySelector('[data-connection-status]').getBoundingClientRect();
     seen['status visible'] = statusBox.height > 0 && statusBox.top >= 0 && statusBox.bottom <= innerHeight;
@@ -86,9 +95,9 @@ const probe = (device: string) =>
     await model.refreshCurrent();
     await until(() => !nodePanel.root().textContent.includes('No answer from the node'));
     seen.recovered = !nodePanel.root().textContent.includes('No answer from the node');
-    const afterTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
-    diagnostics.tree = { before: treeTop, during: duringTop, after: afterTop };
-    seen['stable tree'] = Math.abs(treeTop - duringTop) < 1 && Math.abs(afterTop - duringTop) < 1;
+    const afterTree = await treeGeometry();
+    diagnostics.tree = { before: beforeTree, during: duringTree, after: afterTree };
+    seen['stable tree'] = beforeTree.every((box, i) => Math.abs(box.top - duringTree[i].top) < 1 && Math.abs(afterTree[i].top - duringTree[i].top) < 1);
     await shot('recovered');
   } finally { await nodePanel.close(); }
   return JSON.stringify({ checks: seen, diagnostics });

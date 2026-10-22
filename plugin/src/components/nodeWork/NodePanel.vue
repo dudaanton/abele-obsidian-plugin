@@ -75,6 +75,17 @@
     </div>
 
     <template v-else-if="node">
+      <div v-if="reconnecting" class="abele-node-panel__status-anchor">
+        <div
+          data-connection-status
+          class="abele-node-panel__connection-status"
+          role="status"
+          :title="t('streamB.nodeReconnectingLine')"
+        >
+          <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
+          <span>{{ t('streamB.nodeReconnectingLine') }}</span>
+        </div>
+      </div>
       <div class="nav-header">
         <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's
              buttons do, and the actions move to the place's menu. -->
@@ -172,17 +183,6 @@
         </div>
       </div>
       <slot v-else />
-      <div v-if="reconnecting" class="abele-node-panel__status-anchor">
-        <div
-          data-connection-status
-          class="abele-node-panel__connection-status"
-          role="status"
-          :title="t('streamB.nodeReconnectingLine')"
-        >
-          <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
-          <span>{{ t('streamB.nodeReconnectingLine') }}</span>
-        </div>
-      </div>
     </template>
   </div>
 </template>
@@ -385,6 +385,8 @@ body.is-phone .abele-node-panel__link {
   position: sticky;
   bottom: 0;
   flex: 0 0 0;
+  // Keep the tree last in the DOM: the native phone drawer pads its last child.
+  order: 1;
   z-index: 1;
 }
 .abele-node-panel__connection-status {
