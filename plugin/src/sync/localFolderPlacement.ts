@@ -141,6 +141,20 @@ export class LocalFolderPlacement {
         if (key === PRIVATE_PLACEMENT_STAGES) return stages
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        if (key === 'conditionalFile')
+          return (operation: import('./conditionalFiles').ConditionalFileOperation) =>
+            value.call(target, {
+              ...operation,
+              path: placement.toLocal(operation.path),
+              effect:
+                operation.effect.kind === 'move'
+                  ? { ...operation.effect, to: placement.toLocal(operation.effect.to) }
+                  : operation.effect,
+            })
+        if (key === 'installedFile')
+          return (receipt: string, path: string, sha: string) =>
+            value.call(target, receipt, placement.toLocal(path), sha)
+        if (key === 'recoverConditionalFiles') return value.bind(target)
         if (
           [
             Symbol.for('abele.sync.inventory-pass-v1'),

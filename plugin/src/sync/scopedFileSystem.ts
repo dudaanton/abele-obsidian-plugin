@@ -132,6 +132,19 @@ export function scopedFileSystem(
           assertStage(id)
           return value.call(target, id)
         }
+      if (key === 'conditionalFile')
+        return (operation: import('./conditionalFiles').ConditionalFileOperation) => {
+          assertPath(operation.path)
+          if (operation.effect.kind === 'move') assertPath(operation.effect.to)
+          if (operation.effect.kind === 'install') assertStage(operation.effect.stageId)
+          return value.call(target, operation)
+        }
+      if (key === 'installedFile')
+        return (receipt: string, path: string, sha: string) => {
+          assertPath(path)
+          return value.call(target, receipt, path, sha)
+        }
+      if (key === 'recoverConditionalFiles') return value.bind(target)
       if (key === 'reopenStage')
         return async (id: string) => {
           assertStage(id)

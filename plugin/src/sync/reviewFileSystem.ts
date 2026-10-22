@@ -31,9 +31,16 @@ export function reviewFileSystem<T extends FileSystem>(fs: T, assertAllowed: () 
           return stage(await value.apply(target, args))
         }
       if (
-        ['writeAtomic', 'move', 'remove', 'mkdir', 'moveDirectory', 'removeDirectory'].includes(
-          String(key)
-        )
+        [
+          'writeAtomic',
+          'move',
+          'remove',
+          'mkdir',
+          'moveDirectory',
+          'removeDirectory',
+          'conditionalFile',
+          'recoverConditionalFiles',
+        ].includes(String(key))
       )
         return async (...args: unknown[]) => {
           assertAllowed()

@@ -491,9 +491,12 @@ interface NodeFsPromises {
       position: number
     ): Promise<{ bytesRead: number }>
     close(): Promise<void>
+    sync?(): Promise<void>
   }>
 }
 export interface NativeFs {
+  sameObject?(a: string, b: string): Promise<boolean>
+  syncPath?(path: string, parentsOnly?: boolean): Promise<void>
   /** Retain the displaced inode outside the vault, including late writes through open handles. */
   archiveBackup?(path: string): Promise<string>
   rename(from: string, to: string): Promise<void>
@@ -559,6 +562,37 @@ export function nativeOf(
       await reconcile(path)
     },
   }
+  if (fsp.stat)
+    native.sameObject = async (a, b) => {
+      await assertVaultPath(adapter, a)
+      await assertVaultPath(adapter, b)
+      const [left, right] = await Promise.all([fsp.stat(at(a)), fsp.stat(at(b))])
+      return left.dev === right.dev && left.ino === right.ino
+    }
+  if (fsp.open)
+    native.syncPath = async (path, parentsOnly = false) => {
+      const paths: string[] = []
+      if (!parentsOnly) paths.push(path)
+      for (
+        let parent = path.slice(0, Math.max(0, path.lastIndexOf('/')));
+        ;
+        parent = parent.slice(0, Math.max(0, parent.lastIndexOf('/')))
+      ) {
+        paths.push(parent)
+        if (!parent) break
+      }
+      for (const part of new Set(paths)) {
+        await assertVaultPath(adapter, part)
+        assertEffect([part])
+        const handle = await fsp.open(at(part), 'r')
+        try {
+          if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
+          await handle.sync()
+        } finally {
+          await handle.close()
+        }
+      }
+    }
   if (fsp.mkdir && fsp.stat && fsp.link && fsp.unlink) {
     const hex = (value: string) =>
       Array.from(sha256(new TextEncoder().encode(value)), (byte) =>

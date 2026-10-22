@@ -27,6 +27,7 @@ import {
   type SourceStamp,
 } from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from './boundedVaultIo'
+import { ConditionalFiles, type ConditionalFileOperation } from './conditionalFiles'
 import { nativeDiagnostics } from './nativeDiagnostics'
 import type { JournalEntry } from './writeJournal'
 import { caseKey } from '@abele/sync-sdk/protocol'
@@ -69,6 +70,7 @@ const CONFIG_WALK_DEPTH = 32
  */
 const IGNORE_FILE = '.abele-sync-ignore'
 const stageOperations = new WeakMap<object, Set<string>>()
+const conditionalOperations = new WeakMap<object, Set<string>>()
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 interface InventoryPass {
@@ -472,6 +474,7 @@ export class ObsidianFileSystem implements FileSystem {
   private pollNow: (() => void) | null = null
   private readonly writer: VaultWriter
   private readonly io: BoundedVaultIo
+  private readonly conditional: ConditionalFiles
   private readonly stages = new Map<string, JournalEntry>()
   private readonly stageOperations: Set<string>
   private readonly journal: WriteJournal
@@ -673,6 +676,76 @@ export class ObsidianFileSystem implements FileSystem {
         this.wrote([path], 'file')
       },
     })
+    const active = conditionalOperations.get(app.vault) ?? new Set<string>()
+    conditionalOperations.set(app.vault, active)
+    this.conditional = new ConditionalFiles({
+      root: this.privateRoot
+        ? this.privateRoot + '/conditional'
+        : this.configDir + '/plugins/abele/sync-conditional',
+      active,
+      check: () => this.runtimeFence?.assertReady(),
+      validate: (path) => {
+        assertPhysicalPath(path)
+        if (
+          !this.withinFileScope(path) &&
+          !(this.privateRoot && withinRoot(path, this.privateRoot))
+        )
+          throw new EngineError('conflict', 'conditional operation is outside this connection')
+        this.externalCoordination.assertEnginePaths([path])
+      },
+      stat: (path) => this.rawStat(path),
+      fingerprint: async (path) => this.io.fingerprint(path, undefined, true),
+      create: async (path, bytes, mtime) => {
+        await this.io.create(path, mtime)
+        for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
+          await this.io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+      },
+      read: async (path) => new Uint8Array(await this.disk.readBinary(path)),
+      mkdir: (path) => makeParents(this.disk, path + '/placeholder'),
+      list: (path) => this.disk.list(path),
+      capture: (from, to) =>
+        this.native ? this.native.rename(from, to) : this.disk.rename(from, to),
+      install: (from, to) => {
+        if (!this.native) return this.disk.rename(from, to)
+        if (!this.native.installExclusive)
+          throw new EngineError('io', 'exclusive native installation is unavailable')
+        return this.native.installExclusive(from, to)
+      },
+      flush: async (path, parentsOnly) => {
+        if (!this.native) return // Mobile adapter acknowledgement is the host durability boundary.
+        if (!this.native.syncPath) throw new EngineError('io', 'native durability is unavailable')
+        await this.native.syncPath(path, parentsOnly)
+      },
+      ...(this.native?.sameObject ? { sameObject: (a, b) => this.native.sameObject(a, b) } : {}),
+      stage: async (id) => {
+        const entry = this.journal.entries().find((one) => one.temp === id && one.streaming?.sealed)
+        if (!entry || entry.backup || entry.retiredGeneration)
+          throw new EngineError('io', 'sealed stage is unavailable')
+        return { path: id, target: entry.target, sealed: entry.streaming.sealed }
+      },
+      changed: (paths) => {
+        for (const path of paths) this.awaitingIndex.add(path)
+        this.wrote(paths)
+      },
+    })
+  }
+
+  async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {
+    const release = this.externalCoordination.beginEngineMutation([
+      operation.path,
+      ...(operation.effect.kind === 'move' ? [operation.effect.to] : []),
+    ])
+    try {
+      return await this.conditional.apply(operation)
+    } finally {
+      release()
+    }
+  }
+  installedFile(receipt: string, path: string, sha: string): Promise<boolean> {
+    return this.conditional.installed(receipt, path, sha)
+  }
+  recoverConditionalFiles(): Promise<void> {
+    return this.conditional.recover()
   }
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
@@ -697,6 +770,8 @@ export class ObsidianFileSystem implements FileSystem {
             'replaceFencedIdentity',
             'installExclusive',
             'archiveBackup',
+            'syncPath',
+            'sameObject',
           ],
           false
         )
@@ -1422,7 +1497,7 @@ export class ObsidianFileSystem implements FileSystem {
   async beginAtomicWrite(
     path: string,
     mtime: number,
-    expectedBase: ContentIdentity | null,
+    expectedBase: (ContentIdentity & { mtime?: number }) | null,
     beforeCreate?: (stageId: string) => Promise<void>
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
@@ -1439,7 +1514,7 @@ export class ObsidianFileSystem implements FileSystem {
         : {}),
       streaming: {
         mtime,
-        base: expectedBase ? { size: expectedBase.size, sha: expectedBase.sha } : null,
+        base: expectedBase ? { ...expectedBase } : null,
       },
     }
     if (entry.disposableSource) reserveSourceStage(temp)
@@ -1476,7 +1551,9 @@ export class ObsidianFileSystem implements FileSystem {
       this.stageOperations.delete(id)
     }
   }
-  async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
+  async reopenStage(
+    id: string
+  ): Promise<AtomicStage & { readonly target: string; installed(): Promise<boolean> }> {
     let entry =
       this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
     const stat = await this.rawStat(id)
@@ -1509,6 +1586,21 @@ export class ObsidianFileSystem implements FileSystem {
     return {
       id,
       target: entry.target,
+      installed: async () => {
+        const native = this.native
+        if (!entry.streaming.sealed || !native?.sameObject) return false
+        try {
+          return (
+            (await native.sameObject(id, entry.target)) &&
+            (await this.io.fingerprint(entry.target, undefined, true)).sha ===
+              entry.streaming.sealed.sha &&
+            (await native.sameObject(id, entry.target))
+          )
+        } catch (error) {
+          if ((error as { code?: string }).code === 'ENOENT') return false
+          throw error
+        }
+      },
       get offset() {
         return offset
       },
