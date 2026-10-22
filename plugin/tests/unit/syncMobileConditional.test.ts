@@ -9,6 +9,46 @@ import { deferred } from '../helpers/deferred'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
 
+it('bounds buffered conflict recovery by the same checked lease', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const stalled = deferred<void>()
+  try {
+    const app = buildFakeVault([])
+    const rename = app.vault.adapter.rename
+    app.vault.adapter.rename = async function (...args) {
+      if (args[1] === 'sample.bin') throw Object.assign(new Error('occupied'), { code: 'EEXIST' })
+      await rename.apply(this, args)
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    const recovery = vi
+      .spyOn(Reflect.get(disk, 'conditional'), 'recoverIncoming')
+      .mockImplementation(() => stalled.promise)
+    const operation = disk.conditionalFile({
+      path: 'sample.bin',
+      expected: null,
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 1000, receipt: 'occupied' },
+    })
+    let result: boolean | undefined
+    void operation.then((value) => {
+      result = value
+    })
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(recovery).toHaveBeenCalledOnce()
+    const saving = app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(result).toBe(false)
+    await saving
+    stalled.resolve()
+    await operation
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+  } finally {
+    stalled.resolve()
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it('refuses quietly when a failed capture reaches the deadline during restoration', async () => {
   vi.useFakeTimers()
   const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
