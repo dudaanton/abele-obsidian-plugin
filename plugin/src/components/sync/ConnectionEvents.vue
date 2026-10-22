@@ -10,7 +10,7 @@
  * ticks of the window around it do not touch these rows: it renders again only when the
  * list itself is a different list.
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ActivityHistory, type ConnectionEvents } from '@/sync/activityHistory'
 import ConnectionEventChunk from './ConnectionEventChunk.vue'
 
@@ -24,17 +24,48 @@ const chunks = computed(() => {
 })
 
 const scroller = () => list.value?.closest<HTMLElement>('.abele-modal__body')
+let owner: HTMLElement | undefined
+const scrollClass = 'abele-sync-window__scroll'
+let alreadyOwned = false
+let position = 0
+let following = true
+const rememberScroll = () => {
+  if (!owner) return
+  position = owner.scrollTop
+  following = owner.scrollHeight - position - owner.clientHeight <= 4
+}
 onMounted(() => {
-  const parent = scroller()
-  if (parent) parent.scrollTop = parent.scrollHeight
+  owner = scroller()
+  if (!owner) return
+  // The shared body also contains changing status rows. Native anchoring fights the
+  // reader's position when those rows disappear, so this list owns its scroll policy.
+  alreadyOwned = owner.classList.contains(scrollClass)
+  owner.classList.add(scrollClass)
+  owner.scrollTop = owner.scrollHeight
+  position = owner.scrollTop
+  owner.addEventListener('scroll', rememberScroll, { passive: true })
+})
+onBeforeUnmount(() => {
+  if (!owner) return
+  owner.removeEventListener('scroll', rememberScroll)
+  owner.classList.toggle(scrollClass, alreadyOwned)
+  owner = undefined
 })
 watch(
   () => [props.events, props.revision],
-  async () => {
-    const parent = scroller()
-    const follow = parent && parent.scrollHeight - parent.scrollTop - parent.clientHeight <= 4
-    await nextTick()
-    if (follow && parent.isConnected) parent.scrollTop = parent.scrollHeight
-  }
+  () => {
+    const parent = owner
+    if (parent?.isConnected) {
+      parent.scrollTop = following ? parent.scrollHeight : position
+      position = parent.scrollTop
+    }
+  },
+  { flush: 'post' }
 )
 </script>
+
+<style>
+.abele-sync-window__scroll {
+  overflow-anchor: none;
+}
+</style>
