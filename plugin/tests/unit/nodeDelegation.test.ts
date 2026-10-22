@@ -1446,10 +1446,23 @@ it.each(['confirm-all', 'allow-all'])(
       f.store
     )
     try {
+      const description = await f.client.describe()
+      f.client.describe.mockResolvedValue({
+        ...description,
+        capabilities: {
+          capabilities: {
+            ...description.capabilities.capabilities,
+            'tool.permissions.v1': { status: 'supported' },
+          },
+        },
+      })
       await f.store.transaction((s) => {
         s.node_id = 'node'
       })
       await f.controller.create('parent', task, undefined, mode)
+      expect(f.client.createDelegation.mock.calls[0][0].permission_mode).toBe(
+        mode === 'allow-all' ? 'bypassPermissions' : 'manual'
+      )
       const emit = (seq: number, type: string, data: Record<string, unknown>) =>
         sdk.ingest({
           kind: 'event',
@@ -1476,7 +1489,7 @@ it.each(['confirm-all', 'allow-all'])(
       await f.controller.restartByOwner('child')
       await emit(3, 'delegation.result', {
         report_id: 'sample-result',
-        text: 'Sample checks passed',
+        text: 'Waiting for owner approval. That step is resolved; sample checks passed.',
       })
       await emit(4, 'delegation.terminal', { state: 'completed' })
       expect(await sdk.cursor('mailbox')).toBe(4)

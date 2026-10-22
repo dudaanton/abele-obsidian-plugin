@@ -835,7 +835,11 @@ export class NodeDelegationController {
           pendingHumanPrompts: pendingCount,
           reports: pendingCount
             ? reports
-            : reports.filter((report) => !report.text.startsWith('Waiting for owner approval.')),
+            : reports.filter(
+                (report) =>
+                  report.kind !== 'question' ||
+                  !report.text.startsWith('Waiting for owner approval.')
+              ),
         }
       })
   }
