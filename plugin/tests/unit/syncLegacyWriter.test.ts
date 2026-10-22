@@ -83,11 +83,11 @@ it('keeps an uncertain receipt retry quiet without replaying it over a later sav
 it('propagates a lost publication acknowledgement and keeps its exact journal', async () => {
   const app = buildFakeVault([]),
     disk = new ObsidianFileSystem(app as never)
-  const create = app.vault.createBinary.bind(app.vault)
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
   const failure = Object.assign(new Error('acknowledgement lost'), { code: 'EIO' })
-  app.vault.createBinary = async (...args) => {
-    await create(...args)
-    throw failure
+  app.vault.adapter.rename = async (from, to) => {
+    await rename(from, to)
+    if (to === 'sample.md') throw failure
   }
   await expect(
     disk.conditionalFile({
