@@ -693,6 +693,12 @@ export class NodeManagerController {
           if (prompt.state === 'pending') prompts.set(prompt.prompt_id, prompt)
           else prompts.delete(prompt.prompt_id)
         }
+        const requestedFolder = typeof display.cwd === 'string' ? display.cwd : ''
+        const targetPath = typeof display.target_path === 'string' ? display.target_path : ''
+        const fullFolder =
+          targetPath && !requestedFolder.startsWith('/')
+            ? [targetPath.replace(/\/$/, ''), requestedFolder].filter(Boolean).join('/')
+            : requestedFolder
         return [
           {
             operation,
@@ -706,8 +712,8 @@ export class NodeManagerController {
                     | string
                     | undefined)
                 : undefined) ??
-              (typeof display.cwd === 'string'
-                ? display.cwd
+              (fullFolder
+                ? fullFolder
                 : typeof display.worktree_id === 'string'
                   ? display.worktree_id
                   : typeof display.workspace_id === 'string'

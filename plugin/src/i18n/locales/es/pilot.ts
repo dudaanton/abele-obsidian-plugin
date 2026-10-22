@@ -3763,7 +3763,8 @@ export const es = {
   'node.manager.denied': 'Denegado',
   'node.error.backpressure':
     'La conexión no pudo seguir la salida del nodo. Vuelva a conectarse para recibir los eventos pendientes.',
-  'node.manager.folderMissing': 'La carpeta {folder} no existe en el nodo.',
+  'node.manager.folderMissing':
+    'La carpeta {folder} no se puede usar para este comando en el nodo.',
   'node.manager.bypassDisabled':
     'El nodo requiere aprobación porque su modo sin preguntar está desactivado.',
   'node.manager.integrateBypassUpdate':

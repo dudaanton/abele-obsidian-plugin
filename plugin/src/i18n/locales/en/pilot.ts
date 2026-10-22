@@ -3589,7 +3589,7 @@ export const en = {
   'node.manager.timedOut': 'Time limit reached',
   'node.manager.denied': 'Denied',
   'node.error.backpressure': "The connection fell behind the node's output. Reconnect to catch up.",
-  'node.manager.folderMissing': "The folder {folder} doesn't exist on the node.",
+  'node.manager.folderMissing': 'The folder {folder} cannot be used for this command on the node.',
   'node.manager.bypassDisabled':
     'The node requires approval because its Without asking mode is disabled.',
   'node.manager.integrateBypassUpdate':

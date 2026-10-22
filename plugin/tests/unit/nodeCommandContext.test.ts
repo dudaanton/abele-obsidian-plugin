@@ -5,6 +5,38 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import { ChannelError } from '@abele/channel-protocol'
 
+it('retains the full target folder for a bypass receipt without an approval payload', async () => {
+  const f = fixture()
+  vi.spyOn(f.client, 'listProjects').mockResolvedValue([
+    { project_id: 'sample-project', root_path: '/workspace/sample-project' },
+  ] as never)
+  vi.spyOn(f.client.repository, 'worktrees').mockResolvedValue({
+    entries: [
+      {
+        worktree_id: 'sample-tree',
+        kind: 'root',
+        path_label: '/workspace/sample-project',
+        branch: 'refs/heads/main',
+      },
+    ],
+  } as never)
+  try {
+    await f.controller.command(
+      'sample-parent',
+      { worktree_id: 'sample-tree', command: 'pwd' },
+      'sample-operation',
+      'bypass',
+      'Check the folder.'
+    )
+    const card = (await f.controller.cards('sample-parent'))[0]
+    expect(card.prompts).toEqual([])
+    expect(card.folderLabel).toBe('sample-project')
+    expect(card.folder).toBe('/workspace/sample-project')
+  } finally {
+    f.store.close()
+  }
+})
+
 it('preserves a stopped parent when reconnect recovers an unknown command receipt', async () => {
   const f = fixture()
   const original = f.request.getMockImplementation()!

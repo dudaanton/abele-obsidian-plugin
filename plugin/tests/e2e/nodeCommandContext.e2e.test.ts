@@ -219,7 +219,9 @@ async function runLive(label: string) {
     ) as { reason: string; cards: number; text: string }
     expect(refused.reason).toContain('cwd')
     expect(refused.cards).toBe(0)
-    expect(refused.text).toContain("The folder sample-missing-folder doesn't exist on the node.")
+    expect(refused.text).toContain(
+      'The folder sample-missing-folder cannot be used for this command on the node.'
+    )
     expect(refused.text).not.toContain('Waiting for approval')
     columnShot(`${shots}/${label}-live-error.png`)
   } finally {

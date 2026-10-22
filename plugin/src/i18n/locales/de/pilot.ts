@@ -3734,7 +3734,8 @@ export const de = {
   'node.manager.denied': 'Abgelehnt',
   'node.error.backpressure':
     'Die Verbindung konnte der Knotenausgabe nicht folgen. Verbinden Sie sich erneut, um aufzuholen.',
-  'node.manager.folderMissing': 'Der Ordner {folder} existiert auf dem Knoten nicht.',
+  'node.manager.folderMissing':
+    'Der Ordner {folder} kann für diesen Befehl auf dem Knoten nicht verwendet werden.',
   'node.manager.bypassDisabled':
     'Der Knoten benötigt eine Bestätigung, da sein Modus ohne Rückfrage deaktiviert ist.',
   'node.manager.integrateBypassUpdate':

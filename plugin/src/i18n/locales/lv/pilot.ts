@@ -3692,7 +3692,7 @@ export const lv = {
   'node.manager.denied': 'Noraidīts',
   'node.error.backpressure':
     'Savienojums atpalika no mezgla izvades. Izveidojiet savienojumu vēlreiz, lai saņemtu atlikušos notikumus.',
-  'node.manager.folderMissing': 'Mape {folder} mezglā nepastāv.',
+  'node.manager.folderMissing': 'Mapi {folder} nevar izmantot šai komandai mezglā.',
   'node.manager.bypassDisabled':
     'Mezgls pieprasa apstiprinājumu, jo tā režīms bez jautāšanas ir izslēgts.',
   'node.manager.integrateBypassUpdate':

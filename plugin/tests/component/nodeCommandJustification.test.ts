@@ -123,7 +123,7 @@ it('settles a refusal without approval controls and hides empty output', () => {
   }
 })
 
-it('shows a finished result and exit code in one metadata line', () => {
+it('shows finished and failed exit codes in one metadata line', async () => {
   useVault([])
   const card = nodeManagerFixture('exited')
   card.run.stdout = ''
@@ -133,6 +133,9 @@ it('shows a finished result and exit code in one metadata line', () => {
   try {
     expect(view.text()).toContain('Finished · exit 0')
     expect(view.find('[data-manager-output]').exists()).toBe(false)
+    await view.setProps({ card: { ...card, run: { ...card.run, exit_code: 2 } } })
+    expect(view.text()).toContain('Failed · exit 2')
+    expect(view.find('.abele-status-dot_red').exists()).toBe(true)
   } finally {
     view.unmount()
   }
