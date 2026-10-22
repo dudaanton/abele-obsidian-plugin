@@ -13,6 +13,26 @@ const target: PathTarget = {
   id: 'sample-worktree',
 }
 
+it('keeps uncertain outcomes as alerts without a timeout retry', async () => {
+  useVault([])
+  const model = new NodePathFileModel(
+    {
+      openFile: vi.fn().mockRejectedValue(new Error('outcome_unknown')),
+      fileRefresh: ref({}),
+    } as unknown as NodePathModel,
+    target
+  )
+  await expect(model.open('sample.ts')).rejects.toThrow('outcome_unknown')
+  const view = mount(NodePathFilePane, { props: { model } })
+  try {
+    expect(view.get('[role=alert]').text()).toContain('The result is unknown.')
+    expect(view.findAll('button').some((button) => button.text() === 'Retry')).toBe(false)
+  } finally {
+    view.unmount()
+    model.destroy()
+  }
+})
+
 it('retries the first failed file read with the same target and stage', async () => {
   useVault([])
   const openFile = vi.fn().mockRejectedValueOnce(new Error('git_timeout')).mockResolvedValue({

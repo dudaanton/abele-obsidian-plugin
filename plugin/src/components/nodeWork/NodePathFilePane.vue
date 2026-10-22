@@ -7,7 +7,10 @@
       :text="t('node.file.waitingForNode')"
     />
     <template v-else-if="model.error.value && !offline">
-      <EmptyState :icon="model.document.value ? undefined : 'file-warning'">
+      <EmptyState
+        :icon="model.document.value ? undefined : 'file-warning'"
+        :variant="nodeOperationTimedOut(model.error.value) ? 'empty' : 'error'"
+      >
         <NodeErrorText :error="model.error.value" />
         <template v-if="nodeOperationTimedOut(model.error.value)" #action>
           <Button :text="t('node.file.retry')" :disabled="model.busy.value" @click="retry" />
