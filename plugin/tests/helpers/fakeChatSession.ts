@@ -63,6 +63,7 @@ export function fakeChatSession({
     error: ref(null),
     currentChatFile: ref(null),
     chatTitle: ref(''),
+    manualTitle: ref(false),
     messageComments: shallowRef([]),
     pendingQuestions,
     pendingToolCalls,
