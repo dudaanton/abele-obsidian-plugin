@@ -3114,7 +3114,8 @@ holds immutable intents, publication bytes and captured victims, and `completed`
 hold retired pointers. Recovery restores a captured file into an unoccupied original name
 or a visible conflict copy, preserving recognised extensions and physical parent spelling.
 Each attempted file restoration records its destination under `restore-plans` before
-publication. After publication, a durability failure keeps the operation active: recovery
+publication. Empty, partial or invalid plans left by an interrupted write are ignored;
+installation starts only after the plan is complete and flushed. After publication, a durability failure keeps the operation active: recovery
 retries that destination rather than publishing another visible alias. Native storage retains
 the private victim link even after restoration, so a concurrent replacement of the public
 name cannot destroy the retained bytes. Private-link retention is independent of recovery

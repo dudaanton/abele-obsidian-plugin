@@ -9,6 +9,37 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it.each(['', '{"destination":', 'null', '{"destination":5}'])(
+  'recovers after an interrupted restore-plan write (%j)',
+  async (partial) => {
+    let stopped = false
+    const { root, disk } = await setup({
+      open: async (path: string, flags: string) => {
+        if (stopped) throw new Error('process stopped')
+        const handle = await fs.open(path, flags)
+        if (path.includes('/restore-plans/') && (await handle.stat()).size === 0) {
+          if (partial) await handle.writeFile(partial)
+          await handle.close()
+          stopped = true
+          throw new Error('process stopped after create, before plan population')
+        }
+        return handle
+      },
+    })
+    await captured(root, 'partial-plan', 'sample.md')
+    await expect(disk().recoverConditionalFiles()).rejects.toThrow()
+    expect(stopped).toBe(true)
+    const plans = join(
+      root,
+      '.obsidian/plugins/abele/sync-conditional/objects/partial-plan/restore-plans'
+    )
+    expect(await fs.readFile(join(plans, (await fs.readdir(plans))[0]), 'utf8')).toBe(partial)
+    const restarted = await setup({}, root)
+    await restarted.disk().recoverConditionalFiles()
+    expect(await fs.readFile(join(root, 'sample.md'), 'utf8')).toBe('recovered bytes')
+    await assertNoVisibleAliases(root, 'sample.md')
+  }
+)
 it('retains the private victim across a public atomic replacement at private unlink', async () => {
   let replaced = false
   const replace = async (root: string) => {
@@ -26,7 +57,12 @@ it('retains the private victim across a public atomic replacement at private unl
   await disk().recoverConditionalFiles()
   if (!replaced) await replace(root)
   expect(await fs.readFile(join(root, 'sample.md'), 'utf8')).toBe('new public bytes')
-  expect(await fs.readFile(join(root, '.obsidian/plugins/abele/sync-conditional/objects/retain-record/victim'), 'utf8')).toBe('recovered bytes')
+  expect(
+    await fs.readFile(
+      join(root, '.obsidian/plugins/abele/sync-conditional/objects/retain-record/victim'),
+      'utf8'
+    )
+  ).toBe('recovered bytes')
 })
 async function assertNoVisibleAliases(root: string, path: string) {
   const target = await fs.stat(join(root, path))

@@ -94,9 +94,26 @@ export class ConditionalFiles {
     // A durable plan also finds a randomly named publication after restart.
     if (info.type === 'file' && this.host.sameObject && (await this.host.stat(plans))) {
       for (const plan of (await this.host.list(plans)).files) {
-        const destination = JSON.parse(new TextDecoder().decode(await this.host.read(plan)))
-          .destination as string
-        this.host.validate(destination, true)
+        const bytes = await this.host.read(plan)
+        let destination: string
+        try {
+          const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            !('destination' in value) ||
+            typeof value.destination !== 'string'
+          )
+            throw new Error('invalid restore plan')
+          destination = value.destination
+          this.host.validate(destination, true)
+        } catch (error) {
+          this.host.check()
+          // Publication is never attempted until record() has populated and flushed
+          // the plan. A partial/invalid plan cannot authorize an installation.
+          console.debug('[abele-sync] ignoring incomplete restore plan', plan, error)
+          continue
+        }
         if (
           (await this.host.stat(destination)) &&
           (await this.host.sameObject(from, destination))
