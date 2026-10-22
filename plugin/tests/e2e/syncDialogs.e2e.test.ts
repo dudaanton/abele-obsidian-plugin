@@ -123,6 +123,9 @@ liveCase(
             `await poll(()=>window.__sampleActivity.compareReached);const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes('Compar'));return true`
           )
           assertResponsive(a, 'comparison-' + width)
+          a.run(
+            `inWindows('.abele-sync-window').closest('.abele-modal__body').scrollTop=0;return true`
+          )
           const comparing = await captureSyncScreen(
             a,
             'token-real-comparison-' + width,
@@ -137,6 +140,11 @@ liveCase(
             `await poll(()=>window.__sampleActivity.uploadReached);await poll(()=>inWindows('.abele-sync-window__line')?.textContent.includes('Uploading'));inWindows('.abele-sync-window').closest('.abele-modal__body').scrollTop=0;return true`
           )
           assertResponsive(a, 'upload-' + width)
+          expect(
+            a.run<string[]>(
+              `return [...inWindows('.abele-sync-window').querySelectorAll('.abele-connection-items__state')].map(row=>row.textContent.trim())`
+            )
+          ).not.toContain('Synced')
           const uploading = await captureSyncScreen(
             a,
             'token-real-upload-' + width,
@@ -177,6 +185,10 @@ liveCase(
             `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');await poll(()=>list.querySelectorAll('li').length>${before});return Math.abs(body.scrollTop-window.__sampleActivity.scrollTop)<5`
           )
           expect(kept).toBe(true)
+          // Capture the log itself after checking the original saved position above.
+          a.run(
+            `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=Math.max(0,body.scrollHeight-body.clientHeight-100);return true`
+          )
           const scrolled = await captureSyncScreen(
             a,
             'token-real-log-scrolled-live-' + width,

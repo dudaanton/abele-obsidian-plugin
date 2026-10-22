@@ -57,6 +57,37 @@ afterEach(() => {
   historyConnection.value = null
 })
 
+it('does not mark an item synced while its connection has an upload in flight', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.registry.setStatus(id, 'idle')
+  ui.refresh()
+  ui.itemSets.store.create(
+    id,
+    'Sample share',
+    [{ id: 'whole', kind: 'folder', scopeId: 'root', path: '/' }],
+    { whole: id }
+  )
+  ui.activity.value = {
+    [id]: { transfer: { stage: 'Uploading', completed: 7, bytes: 240, totalKnown: false } },
+  }
+  ui.itemSets.install()
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.get('.abele-sync-window__line').text()).toContain('Uploading')
+    const item = view.get('.abele-connection-items__state')
+    expect(item.text()).toBe('Syncing')
+    expect(item.text()).not.toContain('Synced')
+    expect(ui.itemSets.items(id)![0].state.kind).toBe('syncing')
+  } finally {
+    view.unmount()
+    ui.itemSets.uninstall()
+  }
+})
+
 it('prints an idle sync time once and keeps the server address only in the title', () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id

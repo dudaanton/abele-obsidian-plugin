@@ -84,7 +84,7 @@ export interface IssuedShare {
 /** What one item of a connection is doing on this device. */
 export type ItemState =
   | { kind: 'synced'; at?: number }
-  | { kind: 'syncing'; completed: number; total: number }
+  | { kind: 'syncing'; completed: number; total: number; totalKnown?: boolean }
   | { kind: 'paused' }
   | { kind: 'moved'; to: string }
   | { kind: 'error'; reason: string }
@@ -107,7 +107,7 @@ export function itemTone(state: ItemState): ItemTone {
     case 'synced':
       return 'green'
     case 'syncing':
-      return state.total > 0 ? 'accent' : 'green'
+      return state.totalKnown === false || state.total > 0 ? 'accent' : 'green'
     case 'paused':
     case 'moved':
       return 'orange'
@@ -126,7 +126,11 @@ export function itemLine(state: ItemState): string {
     case 'synced':
       return 'Synced'
     case 'syncing':
-      return state.total > 0 ? `Receiving ${n(state.completed)} of ${n(state.total)}` : 'Synced'
+      return state.totalKnown === false
+        ? 'Syncing'
+        : state.total > 0
+          ? `Receiving ${n(state.completed)} of ${n(state.total)}`
+          : 'Synced'
     case 'paused':
       return 'Paused on this device'
     case 'moved':

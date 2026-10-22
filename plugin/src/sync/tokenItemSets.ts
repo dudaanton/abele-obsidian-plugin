@@ -1,4 +1,5 @@
 import { shallowReactive, triggerRef } from 'vue'
+import { connectionBusy } from './connectionLine'
 import { encodeAccessToken, type V2AccessToken } from '@abele/sync-sdk/protocol'
 import {
   ConnectionSets,
@@ -182,6 +183,11 @@ export class TokenItemSets implements ShareSetSource {
     const record = this.ui.registry.records().find((one) => one.id === id)
     return record?.scope?.kind === 'folder' && record.scope.path === '/'
   }
+  private progressState(record?: TokenConnectionRecord): ConnectionItem['state'] {
+    return record && connectionBusy(record, this.ui.activity.value[record.id])
+      ? { kind: 'syncing', completed: 0, total: 0, totalKnown: false }
+      : { kind: 'synced' }
+  }
   items = (id: string): ConnectionItem[] | null => {
     const connection = this.store.get(id)
     if (!connection) {
@@ -193,7 +199,7 @@ export class TokenItemSets implements ShareSetSource {
           id: 'scope:' + id,
           kind: record.scope.kind,
           path: record.localRoot ?? record.scope.path,
-          state: record.paused ? { kind: 'paused' } : { kind: 'synced' },
+          state: record.paused ? { kind: 'paused' } : this.progressState(record),
         },
         ...departed,
       ]
@@ -215,9 +221,7 @@ export class TokenItemSets implements ShareSetSource {
                 ? { kind: 'moved', to: row.rootIssue.to }
                 : error
                   ? { kind: 'error', reason: error }
-                  : row?.status === 'syncing' || row?.status === 'joining'
-                    ? { kind: 'syncing', completed: 0, total: 0 }
-                    : { kind: 'synced' },
+                  : this.progressState(row),
         }
       }),
       ...connection.items.flatMap((item) => this.departed.get(item.recordId) ?? []),
