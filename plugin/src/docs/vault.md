@@ -93,9 +93,14 @@ ages are excluded from age rules. No background policy runs.
 Device pin intentions also live in a separate local-storage inventory, survive connection
 pauses/replacement and follow ordinary file/folder renames.
 The device-local `abele-sync-ordinary-retained-v1` inventory records the size and SHA of
-unchanged, completed-operation evidence moved into private retention. It suppresses recovery
-Notices only while those bytes still match; unknown or changed copies remain visible recovery
-work. Empty recovery directories do not produce a Notice. Retention never deletes these bytes.
+unchanged, completed-operation evidence moved into private retention. Unknown or changed copies
+remain visible in the connection activity log and attention badge; background retention never
+opens a Notice. Retention never deletes these bytes.
+The per-connection `abele-sync-token-state:startup-stop` field retains the reason a startup was
+paused because its local files were mostly missing or unreadable. With at least 100 ledger
+entries, fewer than 10% as many visible files stops exchange before recovery and engine start.
+An explicit Resume clears the stop and authorizes one start in the current session. That
+authorization is not persisted; another restart checks the local files again.
 Reader, gallery, canvas and agent
 content reads can hydrate absent originals; listings show original paths, size and offloaded
 state. Offloaded paths open an information card, and reading/live-preview embeds show a

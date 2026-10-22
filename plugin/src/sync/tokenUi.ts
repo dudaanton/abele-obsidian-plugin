@@ -1,4 +1,5 @@
 import { settingsSyncText } from '@/i18n/settingsSync'
+import { STARTUP_STOP } from './startupSafety'
 import { ActivityHistory, type ConnectionEvents } from './activityHistory'
 import { ServerDeleteWait } from '@/components/sync/serverDelete'
 import { t } from '@/i18n'
@@ -190,6 +191,8 @@ export const statusName = (status: string, text: SyncText = englishSyncText) =>
     )[status] ?? 'Needs attention'
   )
 export interface ConnectionActivity {
+  safetyStop?: string
+  backgroundAttention?: string
   missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
@@ -230,6 +233,7 @@ export function connectionStatusText(
   activity?: ConnectionActivity,
   text: SyncText = englishSyncText
 ): string {
+  if (activity?.safetyStop) return activity.safetyStop
   if (activity?.error === SCOPE_DELETED) return text('Deleted on the server')
   if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
     return activity.reconciliation.reason.startsWith('server generation changed')
@@ -306,6 +310,8 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 const noConnectionHost = async () => {}
 export class TokenUi {
+  /** Explicit resume is consumed by this session's next start, never by a later restart. */
+  readonly startupApprovals = new Set<string>()
   connectFailure?: { reason: string; code?: string }
   connectionChangeGuard: (
     id?: string,
@@ -361,7 +367,12 @@ export class TokenUi {
     this.registry.finishForgotten(this.secrets)
     this.refresh()
     const activity: Record<string, ConnectionActivity> = {}
-    for (const row of this.rows.value) {
+    for (const row of this.registry.records()) {
+      const safetyStop = row.state[STARTUP_STOP]
+      if (typeof safetyStop === 'string') {
+        activity[row.id] = { safetyStop, error: safetyStop }
+        continue
+      }
       if (row.state['abele-sync-token-state:scope-deleted']) {
         activity[row.id] = { error: SCOPE_DELETED }
         continue
@@ -1208,6 +1219,23 @@ export class TokenUi {
     await this.registry.flush()
     this.refresh()
     await this.runtimes.get(id)?.pause(paused)
+    if (!paused) await this.resumeStartupStop(id)
+  }
+  async resumeStartupStop(id: string): Promise<void> {
+    const storage = this.registry.storage(id)
+    const stopped = typeof storage.loadLocalStorage(STARTUP_STOP) === 'string'
+    if (stopped) {
+      storage.saveLocalStorage(STARTUP_STOP, null)
+      this.startupApprovals.add(id)
+      this.publish(id, { safetyStop: undefined, error: undefined })
+    }
+    await this.registry.flush()
+    this.refresh()
+    if (stopped && !this.runtimes.has(id))
+      await this.retryConnection(id, () => {
+        if (this.registry.records().find((row) => row.id === id)?.paused)
+          throw new Error('Sync is paused')
+      })
   }
   async disconnect(id: string): Promise<void> {
     const set = this.itemSets.store.get(id)

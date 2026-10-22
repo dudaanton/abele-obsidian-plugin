@@ -36,11 +36,13 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
  * outside (paused, no server, a copy to look at), red when the person has to act.
  */
 export function connectionTone(row: Row, activity?: ConnectionActivity): ConnectionTone {
+  if (activity?.safetyStop) return 'red'
   if (row.rootIssue) return 'red'
   if (ATTENTION.includes(row.status) || activity?.startup?.outcome === 'failed') return 'red'
   if (row.paused || row.status === 'offline') return 'orange'
   if (connectionBusy(row, activity)) return 'accent'
-  if (activity?.conflicts?.length || activity?.refused?.length) return 'orange'
+  if (activity?.conflicts?.length || activity?.refused?.length || activity?.backgroundAttention)
+    return 'orange'
   return 'green'
 }
 
@@ -51,6 +53,7 @@ export function connectionLine(
   text: SyncText = englishSyncText,
   when: (iso: string) => string = formatWhen
 ): string {
+  if (activity?.safetyStop) return activity.safetyStop
   if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity, text)
   if (row.rootIssue) return connectionStatusText(row, activity, text)
   if (row.paused) return text('Paused')
@@ -81,6 +84,7 @@ export function connectionLine(
       total: activity.total,
     })
   if (row.status === 'syncing') return text('Syncing')
+  if (activity?.backgroundAttention) return activity.backgroundAttention
   if (activity?.conflicts?.length)
     return text(
       '{count} conflict copies',

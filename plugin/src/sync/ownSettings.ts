@@ -1,4 +1,3 @@
-import { Notice } from 'obsidian'
 import type { StateEntry } from '@abele/sync-sdk/core'
 import { caseKey } from '@abele/sync-sdk/protocol'
 import type AbelePlugin from '@/main'
@@ -149,7 +148,7 @@ export function settingsArrived(
       if (replaced === null) return
       if ((await settingsMeaning(plugin)) === replaced) return
       host.note("this device's Abele settings gave way to the vault's; its own are in history")
-      new Notice(SETTINGS_REPLACED)
+      host.note(SETTINGS_REPLACED)
     })
     .catch((error: unknown) =>
       host.note(`the settings that arrived could not be reloaded: ${messageOf(error)}`)

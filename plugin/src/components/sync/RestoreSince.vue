@@ -58,7 +58,7 @@ import { t } from '@/i18n'
  * (restored meanwhile, or swept) does not come back at all.
  */
 import { computed, ref, useTemplateRef } from 'vue'
-import { Notice } from 'obsidian'
+import { SyncActionNotice } from '@/sync/actionNotice'
 import { TRASH_RESTORE_MAX, type CommitOpResult, type TrashItem } from '@abele/sync-sdk/protocol'
 import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
@@ -227,9 +227,13 @@ async function restore(): Promise<void> {
   busy.value = true
   error.value = null
   const results: CommitOpResult[] = []
+  const notice = new SyncActionNotice(
+    t('streamC.1a415e759c80f3bc', { v1: '0', v2: String(items.length) })
+  )
   try {
     for (let at = 0; at < items.length; at += TRASH_RESTORE_MAX) {
       progress.value = t('streamC.1a415e759c80f3bc', { v1: String(at), v2: String(items.length) })
+      notice.update(progress.value)
       const ids = items.slice(at, at + TRASH_RESTORE_MAX).map((one) => one.file_id)
       results.push(...(await client.restoreDeletedMany(ids, keyOf(ids))))
     }
@@ -239,6 +243,7 @@ async function restore(): Promise<void> {
       v2: items.length,
       v3: reasonOf(failure),
     })
+    notice.finish(error.value)
     if (results.length > 0) {
       emit('restored', gone(items, results))
       // What came back is on the server; a pull puts it here now rather than at the next poll.
@@ -253,10 +258,17 @@ async function restore(): Promise<void> {
     `restored ${restored} file(s) deleted since ${new Date(cutoff.value ?? 0).toISOString()}`
   )
   // The files are back on the server; a pull is what puts them back here.
-  await sync.syncNow()
+  try {
+    await sync.syncNow()
+  } catch (failure) {
+    error.value = reasonOf(failure)
+    notice.finish(error.value)
+    busy.value = false
+    return
+  }
   const summary = t('streamC.86b087f0e635342a', { v1: restored, v2: renamed, v3: failed })
   const state = sync.status.value.state
-  new Notice(
+  notice.finish(
     state === 'paused'
       ? t('streamC.dde0f92cc68c6d75', { v1: String(summary) })
       : state === 'offline' || state === 'error'

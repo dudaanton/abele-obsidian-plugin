@@ -10,6 +10,7 @@ import { pathCoordinatorOf } from '../pathCoordinator'
 import type { OffloadPreview } from './fileActions'
 import { externalLinkPath, recordExternalOpening } from './fileAccess'
 import { openExternalFile } from './opening'
+import { SyncActionNotice } from '../actionNotice'
 
 export const actionTitles = {
   evict: 'Keep only on the server',
@@ -124,6 +125,7 @@ export function registerExternalFileActions(plugin: Plugin): void {
     return [...paths]
   }
   const run = async (kind: keyof typeof actionTitles, paths: string[]) => {
+    let progress: SyncActionNotice | undefined
     try {
       const host = externalActionsOf.get(app.vault)
       if (!host) throw new Error('Connections are unavailable')
@@ -131,8 +133,11 @@ export function registerExternalFileActions(plugin: Plugin): void {
         const actions = host.actions(),
           preview = await actions.preview(paths)
         if (!(await confirmOffload(plugin, preview))) return
+        progress = new SyncActionNotice(streamCUI(actionTitles[kind]))
         const results = await actions.apply(preview)
-        new Notice(results.map((file) => `${file.path}: ${externalStatus(file.status)}`).join('\n'))
+        progress.finish(
+          results.map((file) => `${file.path}: ${externalStatus(file.status)}`).join('\n')
+        )
       } else {
         const results: string[] = []
         const state = kind === 'pin' ? await host.actions().preview(paths) : null
@@ -146,7 +151,9 @@ export function registerExternalFileActions(plugin: Plugin): void {
           ? pinnable > 0 &&
             state.skipped.filter((file) => file.status === 'pinned').length === pinnable
           : false
+        progress = new SyncActionNotice(streamCUI(actionTitles[kind]))
         for (const path of paths) {
+          progress.update(`${streamCUI(actionTitles[kind])}: ${results.length}/${paths.length}`)
           try {
             if (kind === 'hydrate') await host.hydrate(path)
             else {
@@ -161,11 +168,13 @@ export function registerExternalFileActions(plugin: Plugin): void {
             )
           }
         }
-        new Notice(results.join('\n'))
+        progress.finish(results.join('\n'))
       }
     } catch (error) {
       console.debug('[abele-sync] external file action did not finish', error)
-      new Notice(externalStatus(error instanceof Error ? error.message : String(error)))
+      const message = externalStatus(error instanceof Error ? error.message : String(error))
+      if (progress) progress.finish(message)
+      else new Notice(message)
     }
   }
   const menuFor = (menu: Menu, files: readonly TAbstractFile[]) => {

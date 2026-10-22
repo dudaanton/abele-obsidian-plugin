@@ -532,6 +532,7 @@ export class TokenItemSets implements ShareSetSource {
     this.store.pause(id, itemId, paused)
     this.ui.registry.setPaused(item.recordId, paused)
     if (!paused) await this.ui.runtimes.get(item.recordId)?.pause(false)
+    if (!paused) await this.ui.resumeStartupStop(item.recordId)
     this.changed()
   }
   async followItem(id: string, itemId: string): Promise<void> {

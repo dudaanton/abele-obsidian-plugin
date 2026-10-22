@@ -32,7 +32,7 @@ it('keeps an interrupted target stage journal-owned across filesystem restart', 
   expect(Notice.shown.length).toBe(count)
 })
 
-it('announces one orphan recovery pass once while keeping every private copy', async () => {
+it('silently records orphan recovery while keeping every private copy', async () => {
   const app = buildFakeVault([
     { path: 'Notes/sample.md', content: 'user content' },
   ]) as unknown as App
@@ -46,7 +46,7 @@ it('announces one orphan recovery pass once while keeping every private copy', a
   const before = await app.vault.adapter.stat('Notes/sample.md')
   const count = Notice.shown.length
   await recoverOrphanPrivateArtifacts(app, new IDBFactory())
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   for (const path of paths) {
     expect(await app.vault.adapter.exists(path)).toBe(false)
     expect(await app.vault.adapter.read(path.replace('/sync-staging/', '/sync-recovery/'))).toBe(
@@ -56,10 +56,10 @@ it('announces one orphan recovery pass once while keeping every private copy', a
   expect(await app.vault.adapter.read('Notes/sample.md')).toBe('user content')
   expect(await app.vault.adapter.stat('Notes/sample.md')).toEqual(before)
   await recoverOrphanPrivateArtifacts(app, new IDBFactory())
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
 })
 
-it('announces a changed displaced routine copy even after an earlier notice', async () => {
+it('silently preserves a changed displaced routine copy after earlier recovery', async () => {
   const app = buildFakeVault([]) as unknown as App
   const path = '.obsidian/plugins/abele/sync-staging/sample-reused.bin'
   const kept = path.replace('/sync-staging/', '/sync-recovery/')
@@ -73,14 +73,14 @@ it('announces a changed displaced routine copy even after an earlier notice', as
   const count = Notice.shown.length
   await app.vault.adapter.write(path, 'routine')
   await preservePrivateArtifacts(app, [path], () => {}, [expected])
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   const files = await app.vault.adapter.list(kept.slice(0, kept.lastIndexOf('/')))
   expect(await Promise.all(files.files.map((file) => app.vault.adapter.read(file)))).toContain(
     'changed evidence'
   )
 })
 
-it('does not announce an empty recovery directory or byte-verified routine evidence, but detects later edits', async () => {
+it('keeps recovery silent for empty directories, routine evidence and later edits', async () => {
   const app = buildFakeVault([]) as unknown as App
   const count = Notice.shown.length
   const recovery = '.obsidian/plugins/abele/sync-recovery'
@@ -101,11 +101,11 @@ it('does not announce an empty recovery directory or byte-verified routine evide
   const kept = path.replace('/sync-staging/', '/sync-recovery/')
   await app.vault.adapter.write(kept, 'a unique later edit')
   await showPrivateRecoveryNotice(app)
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   expect(await app.vault.adapter.read(kept)).toBe('a unique later edit')
 })
 
-it('notifies again when new copies are preserved after the first notice is dismissed', async () => {
+it('keeps later recovery batches silent after earlier recovery', async () => {
   const app = buildFakeVault([]) as unknown as App
   const count = Notice.shown.length
   const first = '.obsidian/plugins/abele/sync-staging/sample-first.bin'
@@ -113,15 +113,15 @@ it('notifies again when new copies are preserved after the first notice is dismi
   await makeParents(app.vault.adapter, first)
   await app.vault.adapter.write(first, 'sample first edit')
   await preservePrivateArtifacts(app, [first])
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   document.querySelectorAll('.notice').forEach((el) => el.remove())
   await showPrivateRecoveryNotice(app)
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   await app.vault.adapter.write(second, 'sample second edit')
   await preservePrivateArtifacts(app, [second])
-  expect(Notice.shown.length).toBe(count + 2)
+  expect(Notice.shown.length).toBe(count)
   await preservePrivateArtifacts(app, [first, second])
-  expect(Notice.shown.length).toBe(count + 2)
+  expect(Notice.shown.length).toBe(count)
   expect(await app.vault.adapter.read(first.replace('/sync-staging/', '/sync-recovery/'))).toBe(
     'sample first edit'
   )
@@ -151,7 +151,7 @@ it('retains the classification of concurrent routine copies from independent con
   expect(Notice.shown.length).toBe(count)
 })
 
-it('notifies about preserved copies even when a later move in the batch fails', async () => {
+it('silently retains preserved copies even when a later move in the batch fails', async () => {
   const app = buildFakeVault([]) as unknown as App
   const prefix = '.obsidian/plugins/abele/sync-staging/'
   const paths = ['sample-initial.bin', 'sample-kept.bin', 'sample-failed.bin'].map(
@@ -169,7 +169,7 @@ it('notifies about preserved copies even when a later move in the batch fails', 
     return rename(from, to)
   })
   await expect(preservePrivateArtifacts(app, paths.slice(1))).rejects.toThrow('sample move failed')
-  expect(Notice.shown.length).toBe(count + 1)
+  expect(Notice.shown.length).toBe(count)
   expect(await app.vault.adapter.read(paths[1].replace('/sync-staging/', '/sync-recovery/'))).toBe(
     'sample recovery bytes'
   )

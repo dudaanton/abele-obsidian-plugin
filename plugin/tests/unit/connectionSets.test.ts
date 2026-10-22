@@ -16,6 +16,7 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { computed } from 'vue'
 import { retainedCopyCovered } from '@/sync/retainedCopyCoverage'
 import { deferred } from '../helpers/deferred'
+import { STARTUP_STOP } from '@/sync/startupSafety'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
 function setup() {
@@ -30,6 +31,30 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('explicitly resumes a safety-stopped shared item through its own connection', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage),
+      id = registry.add()
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    ui.itemSets.store.create(id, 'Sample share', [folder('folder-a', 'Sample')], { 'folder-a': id })
+    ui.itemSets.store.pause(id, 'folder-a', true)
+    registry.setPaused(id, true)
+    registry.storage(id).saveLocalStorage(STARTUP_STOP, 'Missing files; Resume required')
+    const retry = vi.fn(async () => {})
+    ui.retryConnection = retry
+    await ui.itemSets.pauseItem(id, 'folder-a', false)
+    expect(registry.records()[0].paused).toBe(false)
+    expect(registry.records()[0].state[STARTUP_STOP]).toBeNull()
+    expect(ui.startupApprovals.has(id)).toBe(true)
+    expect(retry).toHaveBeenCalledWith(id, expect.any(Function))
+  })
   it.each([true, false])(
     'keeps the latest overlapping item pause request (first=%s)',
     async (first) => {

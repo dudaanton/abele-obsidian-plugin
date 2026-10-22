@@ -1,7 +1,8 @@
 import { t } from '@/i18n'
 import { vaultDisk } from './vaultPathLinks'
-import { connectionPrivateArea } from './connectionPaths'
-import { Notice, type App } from 'obsidian'
+import { connectionPrivateArea, connectionJournalOwner } from './connectionPaths'
+import type { App } from 'obsidian'
+import { backgroundActivity } from './backgroundActivity'
 import { makeParents } from './vaultFolders'
 import { stagingDirectory } from './stagingDirectory'
 import { BoundedVaultIo } from './boundedVaultIo'
@@ -88,11 +89,14 @@ export async function privateArtifactRecovered(app: App, path: string): Promise<
     (await vaultDisk(app.vault).exists(recovery))
   )
 }
-const notified = new WeakSet<object>()
+const notified = new WeakMap<object, Set<string>>()
 export async function showPrivateRecoveryNotice(app: App, freshCopies = false): Promise<void> {
-  if ((!freshCopies && notified.has(app.vault)) || !(await hasRecoveryCopies(app))) return
-  notified.add(app.vault)
-  new Notice(t('streamC.4c119f3f4f54bc61', { v1: String(recoveryDirectory(app)) }), 0)
+  let owners = notified.get(app.vault)
+  if (!owners) notified.set(app.vault, (owners = new Set()))
+  const owner = connectionJournalOwner(app) ?? ''
+  if ((!freshCopies && owners.has(owner)) || !(await hasRecoveryCopies(app))) return
+  owners.add(owner)
+  backgroundActivity(app, t('streamC.4c119f3f4f54bc61', { v1: String(recoveryDirectory(app)) }))
 }
 export async function preservePrivateArtifacts(
   app: App,

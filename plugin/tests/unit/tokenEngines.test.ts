@@ -14,10 +14,67 @@ import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJou
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
+import { openTokenLedger } from '@/sync/tokenLedger'
+import { STARTUP_STOP } from '@/sync/startupSafety'
 import { promises as nativeFs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { desktopFsPort } from '../helpers/desktopRequire'
+
+it('persists a missing-vault stop before recovery or network work and resumes only explicitly', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  let restarted: TokenEngines | undefined
+  let recover: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+    await f.host.close()
+    const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+    for (let i = 0; i < 100; i++)
+      await state.put({
+        path: `Notes/missing-${i}.md`,
+        wirePath: `Notes/missing-${i}.md`,
+        fileId: `missing-${i}`,
+        versionId: 'v1',
+        sha: 'b'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    state.close()
+    f.transport.mockClear()
+    recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
+    restarted = f.makeHost()
+    restarted.start()
+    await vi.waitFor(() => expect(f.registry.records()[0].paused).toBe(true))
+    await vi.waitFor(() => expect(f.registry.records()[0].status).toBe('paused'))
+    expect(f.transport).not.toHaveBeenCalled()
+    expect(recover).not.toHaveBeenCalled()
+    expect(f.ui.runtimes.has(id)).toBe(false)
+    const reason = f.registry.records()[0].state[STARTUP_STOP]
+    expect(reason).toContain('Resume')
+    await expect(f.ui.sync(id)).rejects.toThrow('paused')
+    await restarted.close()
+    const ui = new TokenUi(f.registry, f.secrets, f.transport, f.ui.reviews)
+    expect(ui.activity.value[id].safetyStop).toBe(reason)
+    restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
+      fetch: f.transport,
+      indexedDB: f.factory,
+    })
+    restarted.start()
+    expect(f.transport).not.toHaveBeenCalled()
+    await ui.pause(id, false)
+    expect(ui.runtimes.has(id)).toBe(true)
+    expect(f.registry.records()[0].state[STARTUP_STOP]).toBeNull()
+  } finally {
+    f.release()
+    await restarted?.close()
+    await f.host.close()
+    recover?.mockRestore()
+    f.probe.mockRestore()
+  }
+})
 
 it.each([
   'sample recovery record is unreadable',

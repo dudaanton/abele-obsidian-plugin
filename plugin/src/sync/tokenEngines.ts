@@ -1,4 +1,8 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
+import { observeBackgroundActivity, safetyNotice } from './backgroundActivity'
+import { STARTUP_STOP, startupSafetyReason } from './startupSafety'
+import { stagingDirectory } from './stagingDirectory'
+import { privateRecoveryDirectory } from './privateRecovery'
 import { quarantineLocalOnlyJournal, retireLocalOnlyLedger } from './localOnlyJournal'
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot } from './connectionPaths'
@@ -82,6 +86,7 @@ export class TokenEngines {
   private readonly localOnly: LocalOnlyCopies
   private readonly renameEvent: EventRef
   private readonly deleteEvent: EventRef
+  private readonly stopBackgroundActivity: () => void
   constructor(
     private readonly app: App,
     private readonly ui: TokenUi,
@@ -90,6 +95,13 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
+    this.stopBackgroundActivity = observeBackgroundActivity(app, (owner, text) => {
+      for (const row of ui.registry.records()) {
+        if (owner && row.id !== owner) continue
+        ui.recordEvent(row.id, text)
+        ui.publish(row.id, { backgroundAttention: text })
+      }
+    })
     this.localOnly = new LocalOnlyCopies(ui.registry)
     ui.forgetMissingKeptCopy = async (path) => {
       await this.localOnly.forgetMissing(
@@ -222,6 +234,8 @@ export class TokenEngines {
     ui.retryConnection = async (id, assertCurrent) => {
       assertCurrent()
       const state = ui.registry.records().find((one) => one.id === id)?.state
+      const stop = state?.[STARTUP_STOP]
+      if (typeof stop === 'string') throw new Error(stop)
       if (
         state?.['abele-sync-token-state:server-delete'] ||
         state?.['abele-sync-token-state:scope-deleted']
@@ -229,7 +243,11 @@ export class TokenEngines {
         throw new Error('Server deletion is awaiting confirmation; this connection cannot restart.')
       const retry = this.retries.get(id)
       if (retry) await retry(assertCurrent)
-      else await ui.connectionsChanged(assertCurrent)
+      else {
+        await ui.connectionsChanged(assertCurrent)
+        await this.engines.settled()
+        assertCurrent()
+      }
     }
     ui.connectionChangeGuard = async (id, assertCurrent = () => {}, scope) => {
       assertCurrent()
@@ -393,6 +411,7 @@ export class TokenEngines {
           !one.pending &&
           one.status !== 'needs-token' &&
           !one.state['abele-sync-token-state:scope-deleted'] &&
+          !one.state[STARTUP_STOP] &&
           !one.state['abele-sync-token-state:server-delete']
       )
     this.engines.start(
@@ -418,6 +437,11 @@ export class TokenEngines {
   private failed(id: string, error: unknown): void {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const code = (error as { code?: string })?.code
+    if (code === 'startup-safety') {
+      this.ui.finishStartup(id, 'complete')
+      this.ui.registry.setStatus(id, 'paused')
+      return
+    }
     if (code === 'forbidden' || code === 'scope_removed')
       void this.ui.itemSets
         .refreshAll((id) => this.live.has(id))
@@ -676,6 +700,38 @@ export class TokenEngines {
       stateHandle = state
       closeStore = () => state.close()
       assertActive()
+      const storage = this.ui.registry.storage(record.id)
+      const approved = this.ui.startupApprovals.delete(record.id)
+      if (!approved) {
+        let reason: string | null
+        try {
+          reason = await startupSafetyReason(
+            state,
+            (path) => vaultDisk(this.app.vault).list(path),
+            scopedRoot ?? '',
+            assertActive,
+            [
+              stagingDirectory(this.app.vault.configDir),
+              privateRecoveryDirectory(this.app.vault.configDir),
+            ]
+          )
+        } catch (error) {
+          assertActive()
+          reason = `Sync paused: the vault or folder could not be listed. Check that it is accessible, then choose Resume. ${error instanceof Error ? error.message : String(error)}`
+        }
+        assertActive()
+        if (reason) {
+          storage.saveLocalStorage(STARTUP_STOP, reason)
+          this.ui.registry.setPaused(record.id, true)
+          const binding = this.ui.itemSets.store.forRecord(record.id)
+          if (binding) this.ui.itemSets.store.pause(binding.connection.id, binding.item.id, true)
+          await this.ui.registry.flush()
+          this.ui.recordEvent(record.id, reason)
+          this.ui.publish(record.id, { safetyStop: reason, inspection: undefined })
+          safetyNotice(this.app, 'startup-files-missing', reason)
+          throw Object.assign(new Error(reason), { code: 'startup-safety' })
+        }
+      }
       state.onRecoveryRequired((error) => {
         active = false
         fence?.release()
@@ -1099,6 +1155,8 @@ export class TokenEngines {
       // Retry callbacks can outlive a deletion timeout or wait across its durable marker.
       // Check at the actual start boundary, before replacing any owned runtime or fence.
       const state = this.ui.registry.records().find((one) => one.id === record.id)?.state
+      const stop = state?.[STARTUP_STOP]
+      if (typeof stop === 'string') throw new Error(stop)
       if (
         state?.['abele-sync-token-state:server-delete'] ||
         state?.['abele-sync-token-state:scope-deleted']
@@ -1495,6 +1553,7 @@ export class TokenEngines {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
     this.closed = true
+    this.stopBackgroundActivity()
     this.ui.itemSets.uninstall()
     if (externalActionsOf.get(this.app.vault) === this) externalActionsOf.delete(this.app.vault)
     this.cancelStartup()
