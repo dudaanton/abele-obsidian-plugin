@@ -69,7 +69,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         if (!app.isMobile) app.workspace.rightSplit.expand()
         await until(() => leaf.view.containerEl.querySelector('.abele-chat-switch__current'))
         await service.folders.create('', folder)
-        const filed = await make('Sample filed chat')
+        const filed = await make('Sample filed chat with a long title that needs room in a narrow list')
         await service.folders.move(filed, folder)
         const fresh = await make('Sample newest chat')
         await service.tree.refresh()
@@ -99,6 +99,25 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => !service.folders.isHidden(folder) && document.querySelector('[data-path="' + folder + '"]'))
         if (!service.tree.root.value.some(entry => entry.kind === 'folder' && entry.path === folder && entry.children.some(chat => chat.kind === 'chat' && chat.open))) throw Error('Reopened chat left its folder')
         await shot('reopened-in-folder')
+        const originalThemes = ['theme-light', 'theme-dark'].filter(name => document.body.classList.contains(name))
+        try {
+          for (const theme of ['theme-light', 'theme-dark']) {
+            document.body.classList.remove('theme-light', 'theme-dark')
+            document.body.classList.add(theme)
+            await shot('reopened-in-folder-' + theme)
+          }
+          if (app.isMobile) {
+            const tree = document.querySelector('.abele-chat-tree')
+            if (tree.querySelector('.abele-chat-tree__close-slot, [aria-label="Close"], [aria-label^="New chat in "]')) throw Error('Phone tree retains extra row actions')
+            for (const text of tree.querySelectorAll('.abele-tree-item__text:not([contenteditable])')) {
+              const css = getComputedStyle(text)
+              if (css.whiteSpace !== 'nowrap' || css.textOverflow !== 'ellipsis' || css.overflow !== 'hidden') throw Error('Phone tree names must be single-line with ellipsis')
+            }
+          }
+        } finally {
+          document.body.classList.remove('theme-light', 'theme-dark')
+          document.body.classList.add(...originalThemes)
+        }
         const reopened = service.getSessionByFile(files[0].path)
         const chatRow = () => document.querySelector('[data-chat="' + reopened.id + '"] > .tree-item-self')
         const eventAt = (element, type) => {
