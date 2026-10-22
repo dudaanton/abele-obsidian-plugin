@@ -23,6 +23,194 @@ function local() {
   }
 }
 
+it('merges independent journal entries from two hydrated hosts without resurrecting retired work', async () => {
+  const factory = new IDBFactory(),
+    firstLocal = local(),
+    secondLocal = local()
+  const first = await HostSyncStorage.open(factory, 'sample-concurrent', firstLocal)
+  const second = await HostSyncStorage.open(factory, 'sample-concurrent', secondLocal)
+  const x = { target: 'first.md', temp: 'first.tmp' },
+    y = { target: 'second.md', temp: 'second.tmp' }
+  first.saveLocalStorage(JOURNAL_KEY, [x])
+  await first.flush()
+  second.saveLocalStorage(JOURNAL_KEY, [y])
+  await second.flush()
+  const combined = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+  expect(combined.loadLocalStorage(JOURNAL_KEY)).toEqual([x, y])
+  combined.close()
+  first.saveLocalStorage(JOURNAL_KEY, null)
+  await first.flush()
+  second.saveLocalStorage(JOURNAL_KEY, [y, { target: 'third.md', temp: 'third.tmp' }])
+  await second.flush()
+  const reopened = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toEqual([
+    y,
+    { target: 'third.md', temp: 'third.tmp' },
+  ])
+  first.close()
+  second.close()
+  reopened.close()
+})
+
+it.each([false, true])(
+  'preserves concurrent registry enrollments and rejects a stale update to a retired record (item=%s)',
+  async (item) => {
+    const factory = new IDBFactory()
+    const first = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+    const second = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+    const a = TokenConnectionRegistry.open(first),
+      b = TokenConnectionRegistry.open(second)
+    const x = a.add(item),
+      y = b.add(item)
+    await expect(a.flush(), 'first enrollment').resolves.toBeUndefined()
+    await expect(b.flush(), 'second enrollment').resolves.toBeUndefined()
+    const reader = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+    expect(
+      TokenConnectionRegistry.open(reader)
+        .records()
+        .map((entry) => entry.id)
+    ).toEqual([x, y])
+    a.beginForget(x)
+    await expect(a.flush(), 'retirement').resolves.toBeUndefined()
+    b.setPaused(x, true)
+    await expect(b.flush()).rejects.toThrow()
+    const reopened = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+    expect(
+      TokenConnectionRegistry.open(reopened)
+        .records()
+        .map((entry) => entry.id)
+    ).toEqual([y])
+    const z = b.add(item)
+    await expect(b.flush(), 'enrollment after conflict').resolves.toBeUndefined()
+    const latest = await HostSyncStorage.open(factory, 'sample-concurrent', local())
+    expect(
+      TokenConnectionRegistry.open(latest)
+        .records()
+        .map((entry) => entry.id)
+    ).toEqual([y, z])
+    latest.close()
+    first.close()
+    second.close()
+    reader.close()
+    reopened.close()
+  }
+)
+
+it('reports an aborted transaction but allows a later independent write to commit', async () => {
+  const factory = new IDBFactory(),
+    storage = local()
+  const host = await HostSyncStorage.open(factory, 'sample-retry', storage)
+  const put = FakeObjectStore.prototype.put
+  const abort = vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementationOnce(function (
+    this: FakeObjectStore,
+    value,
+    key
+  ) {
+    this.transaction.abort()
+    return put.call(this, value, key)
+  })
+  host.saveLocalStorage(JOURNAL_KEY, [{ target: 'failed.md', temp: 'failed.tmp' }])
+  await expect(host.flush()).rejects.toThrow()
+  abort.mockRestore()
+  await expect(host.flush()).resolves.toBeUndefined()
+  host.saveLocalStorage(JOURNAL_KEY, [{ target: 'later.md', temp: 'later.tmp' }])
+  await expect(host.flush()).resolves.toBeUndefined()
+  const reopened = await HostSyncStorage.open(factory, 'sample-retry', local())
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toEqual([
+    { target: 'later.md', temp: 'later.tmp' },
+  ])
+  host.close()
+  reopened.close()
+})
+
+it('migrates committed version-one host values to records once without resurrecting deleted entries', async () => {
+  const factory = new IDBFactory(),
+    namespace = 'sample-upgrade'
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const opening = factory.open('abele-sync-host-v1', 1)
+    opening.onupgradeneeded = () =>
+      opening.result.createObjectStore('host', { keyPath: ['namespace', 'key'] })
+    opening.onsuccess = () => resolve(opening.result)
+    opening.onerror = () => reject(opening.error)
+  })
+  const legacy = [{ target: 'legacy.md', temp: 'legacy.tmp' }]
+  const tx = db.transaction('host', 'readwrite')
+  const committed = new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    tx.onabort = () => reject(tx.error)
+  })
+  for (const key of [
+    JOURNAL_KEY,
+    'abele-sync-recovered-writes',
+    TOKEN_REGISTRY_KEY,
+    'abele-sync-item-connections-v1',
+    'abele-sync-item-selection-v1',
+    'abele-sync-registry-write-v1',
+    'abele-sync-connection-sets-v1',
+  ])
+    tx.objectStore('host').put({ namespace, key, value: key === JOURNAL_KEY ? legacy : null })
+  tx.objectStore('host').put({ namespace, key: '!migrated', value: true })
+  await committed
+  db.close()
+  const put = FakeObjectStore.prototype.put
+  const interrupted = vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementation(function (
+    this: FakeObjectStore,
+    value,
+    key
+  ) {
+    if (value.key === '!records-migrated') {
+      this.transaction.abort()
+      throw new Error('interrupted record migration')
+    }
+    return put.call(this, value, key)
+  })
+  await expect(HostSyncStorage.open(factory, namespace, local())).rejects.toThrow(
+    'interrupted record migration'
+  )
+  interrupted.mockRestore()
+  const upgraded = await HostSyncStorage.open(factory, namespace, local())
+  expect(upgraded.loadLocalStorage(JOURNAL_KEY)).toEqual(legacy)
+  upgraded.saveLocalStorage(JOURNAL_KEY, null)
+  await upgraded.flush()
+  upgraded.close()
+  const reopened = await HostSyncStorage.open(factory, namespace, local())
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toBeNull()
+  reopened.close()
+})
+
+it('commits independent work already queued behind an aborted transaction', async () => {
+  const factory = new IDBFactory()
+  const host = await HostSyncStorage.open(factory, 'sample-queued', local())
+  const put = FakeObjectStore.prototype.put
+  const abort = vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementationOnce(function (
+    this: FakeObjectStore,
+    value,
+    key
+  ) {
+    this.transaction.abort()
+    return put.call(this, value, key)
+  })
+  const failed = { target: 'failed.md', temp: 'failed.tmp' },
+    later = { target: 'later.md', temp: 'later.tmp' }
+  host.saveLocalStorage(JOURNAL_KEY, [failed])
+  const rejected = expect(host.flush()).rejects.toThrow()
+  host.saveLocalStorage(JOURNAL_KEY, [failed, later])
+  const queued = host.flush()
+  try {
+    await rejected
+    await expect(queued).resolves.toBeUndefined()
+  } finally {
+    abort.mockRestore()
+  }
+  const reopened = await HostSyncStorage.open(factory, 'sample-queued', local())
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toEqual([later])
+  reopened.saveLocalStorage(JOURNAL_KEY, [])
+  await reopened.flush()
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toEqual([])
+  host.close()
+  reopened.close()
+})
+
 it('keeps committed host evidence when the last localStorage write disappears', async () => {
   const factory = new IDBFactory(),
     data = new Map<string, unknown>()

@@ -2579,6 +2579,12 @@ copies are not retired before that commit. Subsequent starts use IDB as authorit
 or stale localStorage mirrors cannot resurrect retired work. Host commits never join SDK
 state-store overlays. Enrollment commits before runtime startup, and retirement commits
 before credential cleanup or runtime removal.
+Schema version 2 stores journal entries and registry records separately in `host-records`.
+Each commit applies record deltas inside one IDB readwrite transaction, preserving records
+another host added and rejecting stale changes to retired or conflicting records. The
+version-1 host values migrate with a separate atomic marker and are not re-imported after
+record retirement. A failed transaction rejects its own flush; later queued work can still
+commit. Recovery of a failed attempt refreshes the cache from committed rows.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and

@@ -1,10 +1,21 @@
 import type { App } from 'obsidian'
 import type { LocalStorage } from './ledgerId'
 import { completion, connectTo, wait } from './idbRequests'
+import {
+  hostChanges,
+  joinHostValue,
+  mergeHostChange,
+  normalizeHostHeader,
+  splitHostValue,
+  type HostChange,
+  type HostRecord,
+} from './hostSyncRecords'
 
 // This database never participates in an SDK overlay transaction.
 const DATABASE = 'abele-sync-host-v1'
 const STORE = 'host'
+const RECORDS = 'host-records'
+const RECORDS_MIGRATED = '!records-migrated'
 const MIGRATED = '!migrated'
 const KEYS = [
   'abele-sync-writes',
@@ -40,8 +51,10 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
 /** Hydrated synchronous view; callers must await flush before any dependent effect. */
 export class HostSyncStorage implements LocalStorage {
   private readonly values = new Map<string, unknown>()
-  private readonly dirty = new Map<string, unknown>()
+  private pending: HostChange[] = []
   private tail: Promise<void> = Promise.resolve()
+  private running: Promise<void> | undefined
+  private scheduled = false
   private closed = false
   get isClosed(): boolean {
     return this.closed
@@ -62,23 +75,33 @@ export class HostSyncStorage implements LocalStorage {
       factory,
       DATABASE,
       (db) => {
-        db.createObjectStore(STORE, { keyPath: ['namespace', 'key'] })
+        if (!db.objectStoreNames.contains(STORE))
+          db.createObjectStore(STORE, { keyPath: ['namespace', 'key'] })
+        const records = db.createObjectStore(RECORDS, { keyPath: ['namespace', 'key', 'id'] })
+        records.createIndex('group', ['namespace', 'key'])
       },
-      (db) => db.close()
+      (db) => db.close(),
+      2
     )
     const result = new HostSyncStorage(db, namespace, local)
     let transaction: IDBTransaction | undefined
     let committed: Promise<void> | undefined
     try {
-      const tx = db.transaction(STORE, 'readwrite')
+      const tx = db.transaction([STORE, RECORDS], 'readwrite')
       transaction = tx
       const done = completion(tx, 'cannot migrate sync host storage')
       committed = done
       void done.catch(() => {})
       const rows = tx.objectStore(STORE)
+      const records = tx.objectStore(RECORDS)
       const marker = await wait<{ value: unknown } | undefined>(rows.get([namespace, MIGRATED]))
       if (marker && marker.value !== true)
         throw new Error('Sync host migration marker requires recovery')
+      const recordMarker = await wait<{ value: unknown } | undefined>(
+        rows.get([namespace, RECORDS_MIGRATED])
+      )
+      if (recordMarker && recordMarker.value !== true)
+        throw new Error('Sync host record migration requires recovery')
       // Migration and its marker commit together. Leave the legacy copy intact until COMMIT.
       for (const key of KEYS) {
         const row = marker
@@ -88,10 +111,21 @@ export class HostSyncStorage implements LocalStorage {
         const value = marker
           ? (row?.value ?? null)
           : structuredClone(local.loadLocalStorage(key) ?? null)
-        result.values.set(key, value)
+        if (recordMarker) {
+          result.values.set(
+            key,
+            joinHostValue(await wait<HostRecord[]>(records.index('group').getAll([namespace, key])))
+          )
+        } else {
+          let order = 0
+          for (const [id, item] of splitHostValue(key, value))
+            await wait(records.put({ namespace, key, id, value: item, order: order++ }))
+          result.values.set(key, value)
+        }
         if (!marker) await wait(rows.put({ namespace, key, value }))
       }
       if (!marker) await wait(rows.put({ namespace, key: MIGRATED, value: true }))
+      if (!recordMarker) await wait(rows.put({ namespace, key: RECORDS_MIGRATED, value: true }))
       await done
       // Only a compatibility view. On every reopen the committed IDB rows win.
       for (const [key, value] of result.values) local.saveLocalStorage(key, structuredClone(value))
@@ -117,40 +151,105 @@ export class HostSyncStorage implements LocalStorage {
     if (this.closed) throw new Error('Sync host storage is closed')
     if (this.values.has(key)) {
       const copy = structuredClone(value)
+      this.pending = this.pending.concat(hostChanges(key, this.values.get(key), copy))
       this.values.set(key, copy)
-      this.dirty.set(key, copy)
     }
     this.local.saveLocalStorage(key, value)
     // Ordinary settings/status saves also drain without waiting for another file exchange.
     // Dependent effects still await flush explicitly and receive any commit failure.
-    if (this.values.has(key)) void this.flush().catch(() => {})
+    if (this.values.has(key) && !this.scheduled) {
+      this.scheduled = true
+      queueMicrotask(() => {
+        this.scheduled = false
+        if (this.pending.length && !this.closed) void this.flush().catch(() => {})
+      })
+    }
   }
   flush(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Sync host storage is closed'))
-    this.tail = this.tail.then(async () => {
-      while (this.dirty.size) {
-        const writes = [...this.dirty]
-        const tx = this.db.transaction(STORE, 'readwrite')
-        const done = completion(tx, 'cannot commit sync host storage')
-        void done.catch(() => {})
-        try {
-          for (const [key, value] of writes)
-            tx.objectStore(STORE).put({ namespace: this.namespace, key, value })
-          await done
-        } catch (error) {
-          try {
-            tx.abort()
-          } catch {
-            /* Already settled. */
-          }
-          await done.catch(() => {})
-          throw error
-        }
-        for (const [key, value] of writes) if (this.dirty.get(key) === value) this.dirty.delete(key)
+    if (!this.pending.length) return this.running ?? Promise.resolve()
+    const changes = this.pending
+    this.pending = []
+    const snapshots = new Map(this.values)
+    const running = this.tail.then(() => this.commit(changes, snapshots))
+    this.running = running
+    this.tail = running.catch(() => {})
+    const settled = () => {
+      if (this.running === running) this.running = undefined
+    }
+    void running.then(settled, settled)
+    return running
+  }
+
+  private async commit(changes: HostChange[], snapshots: Map<string, unknown>): Promise<void> {
+    const tx = this.db.transaction(RECORDS, 'readwrite')
+    const done = completion(tx, 'cannot commit sync host records')
+    void done.catch(() => {})
+    const groups = new Map<string, Map<string, HostRecord>>()
+    try {
+      const store = tx.objectStore(RECORDS)
+      for (const key of new Set(changes.map((change) => change.key))) {
+        const rows = await wait<HostRecord[]>(store.index('group').getAll([this.namespace, key]))
+        groups.set(key, new Map(rows.map((row) => [row.id, row])))
       }
-    })
-    void this.tail.catch(() => {})
-    return this.tail
+      for (const change of changes) {
+        const group = groups.get(change.key)
+        if (!group) throw new Error('Sync host transaction group is missing')
+        const prior = group.get(change.id)
+        const value = mergeHostChange(change, prior?.value)
+        if (value === undefined) {
+          await wait(store.delete([this.namespace, change.key, change.id]))
+          group.delete(change.id)
+        } else {
+          const row: HostRecord = {
+            namespace: this.namespace,
+            key: change.key,
+            id: change.id,
+            value,
+            order:
+              prior?.order ??
+              [...group.values()].reduce((next, row) => Math.max(next, row.order + 1), 0),
+          }
+          await wait(store.put(row))
+          group.set(row.id, row)
+        }
+      }
+      for (const [key, group] of groups) {
+        const selection = normalizeHostHeader(key, group)
+        if (selection) {
+          await wait(store.put(selection))
+          group.set(selection.id, selection)
+        }
+        // The synchronous registry repair sequence must land as one host transaction.
+        if (key === 'abele-sync-registry-write-v1' && joinHostValue([...group.values()]) != null)
+          throw new Error('Unfinished registry update requires retry before host commit')
+      }
+      await done
+      for (const [key, group] of groups)
+        if (this.values.get(key) === snapshots.get(key))
+          this.values.set(key, joinHostValue([...group.values()]))
+    } catch (error) {
+      try {
+        tx.abort()
+      } catch {
+        /* Already settled. */
+      }
+      await done.catch(() => {})
+      // Drop this failed attempt only. Later queue entries retain their own result and delta.
+      const read = this.db.transaction(RECORDS, 'readonly').objectStore(RECORDS)
+      const restored = await Promise.all(
+        [...snapshots.keys()].map(
+          async (key) =>
+            [
+              key,
+              await wait<HostRecord[]>(read.index('group').getAll([this.namespace, key])),
+            ] as const
+        )
+      )
+      for (const [key, rows] of restored)
+        if (this.values.get(key) === snapshots.get(key)) this.values.set(key, joinHostValue(rows))
+      throw error
+    }
   }
   close(): void {
     this.closed = true
