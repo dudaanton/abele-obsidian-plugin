@@ -53,7 +53,11 @@
         </span>
         <span v-if="!metadataNote || image" class="abele-file-view__size">
           {{
-            image ? plural(image.bytes.byteLength, 'byte') : plural(text.split('\n').length, 'line')
+            image
+              ? plural(image.bytes.byteLength, 'byte')
+              : text
+                ? plural(text.split('\n').length, 'line')
+                : 'Empty'
           }}
         </span>
         <span ref="fileGlyphHost" class="abele-file-view__tools" />

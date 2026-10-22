@@ -10,6 +10,16 @@
       :offline="offline"
     />
     <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
+      <!-- A node's markdown file: rendered or as code, one lit glyph like blame beside it. -->
+      <Icon
+        v-if="markdown && glyphSwitch"
+        icon="book-open"
+        :active="mode === 'preview' && !blaming"
+        :label="t('streamB.preview.324b13')"
+        :aria-pressed="mode === 'preview' && !blaming"
+        :tooltip="mode === 'preview' && !blaming ? 'Show as code' : 'Show rendered'"
+        @click="switchTo(mode === 'preview' && !blaming ? 'code' : 'preview')"
+      />
       <!-- Who last changed each line, as a glyph lit while it is on. -->
       <Icon
         v-if="source"
@@ -26,7 +36,7 @@
       />
     </Teleport>
     <Teleport :to="toolbarHost ?? 'body'" :disabled="!toolbarHost">
-      <div v-if="markdown || range" class="abele-github-blob__toolbar">
+      <div v-if="(markdown && !glyphSwitch) || range" class="abele-github-blob__toolbar">
         <div v-if="range" class="abele-github-blob__range">
           {{ linesLabel({ from: range.start, to: range.end }) }}
           <span v-if="range.start > lineCount" class="abele-github-blob__warning">
@@ -34,7 +44,7 @@
           </span>
         </div>
         <Tabs
-          v-if="markdown"
+          v-if="markdown && !glyphSwitch"
           class="abele-github-blob__modes"
           :model-value="blaming ? 'code' : mode"
           :tabs="modes"
@@ -76,8 +86,13 @@
 
     <!-- A mapped source keeps its mounted debugger state while blame uses the ordinary viewer. -->
     <div v-if="$slots.code" v-show="!blaming"><slot name="code" /></div>
+    <EmptyState
+      v-if="mode === 'preview' && !blaming && !$slots.code && !text.trim()"
+      class="abele-github-blob__empty"
+      text="This file is empty."
+    />
     <GithubMarkdown
-      v-if="mode === 'preview' && !blaming && !$slots.code"
+      v-else-if="mode === 'preview' && !blaming && !$slots.code"
       ref="preview"
       :text="text"
       :file="file"
@@ -151,6 +166,7 @@ import { t } from '@/i18n'
 import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ChannelError } from '@abele/channel-protocol'
 import Icon from '../obsidian/Icon.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
 import GithubNotice from './GithubNotice.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
@@ -419,19 +435,21 @@ onBeforeUnmount(() => {
   ++blameRequest
 })
 
-const markdown = computed(
-  () => source.value?.identity.provider !== 'node' && isMarkdownPath(props.file.path)
-)
+const markdown = computed(() => isMarkdownPath(props.file.path))
+/** On a node the file card's header row holds the switch, as a glyph; GitHub keeps its tabs. */
+const glyphSwitch = computed(() => source.value?.identity.provider === 'node' && !!props.glyphHost)
+/** What a node tab was switched to, when its owner keeps no state for it. */
+const chosen = ref<BlobMode | undefined>()
 const config = AbeleConfig.getInstance()
 const mode = computed(() => {
   // Followed at once when the setting changes.
   void config.version.value
-  if (source.value?.identity.provider === 'node') return 'code'
   return blobMode({
     path: props.file.path,
     lines: props.range,
-    plain: props.plain,
-    stored: props.mode,
+    // A node file view always asks for plain text; for markdown the setting decides instead.
+    plain: props.plain && source.value?.identity.provider !== 'node',
+    stored: props.mode ?? chosen.value,
     setting: githubSettings().markdownView,
   })
 })
@@ -540,14 +558,21 @@ const switchTo = (next: string) => {
     focus.value = { line: lines.from, context: LINE_CONTEXT.context ?? 0 }
   } else {
     const top = view?.topLine() ?? null
-    focus.value = top ? { line: top, context: 0 } : null
+    // Still at the start: stay put, with the header and its switch in sight.
+    focus.value = top && top > 1 ? { line: top, context: 0 } : null
   }
   blaming.value = false
+  chosen.value = next
   emit('mode', next)
 }
 </script>
 
 <style lang="scss">
+// An empty markdown file says so in the middle of its card, as a pane with nothing in it does.
+.abele-github-blob__empty {
+  padding-block: var(--size-4-8);
+  text-align: center;
+}
 body.is-phone .abele-github-blob > details > summary {
   min-height: calc(var(--size-4-10) + var(--size-4-1));
   padding-block: var(--size-4-2);
@@ -556,6 +581,8 @@ body.is-phone .abele-github-blob > details > summary {
 }
 .abele-github-blob {
   min-width: 0;
+  // A rendered table may run out to the file's own width, measured from here.
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);

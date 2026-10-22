@@ -102,6 +102,8 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
   // `?plain=1` alone, or `#…` after a query: this same file.
   const segments = path ? resolveRepoPath(file.path, path) : file.path.split('/')
   const ref = encodePath(file.ref.split('/'))
+  // A node's file has no web address: the view opens the path on the node itself.
+  if (!file.host) return { kind: 'repo', url: `node-path:${segments.join('/')}${hash}` }
   if (isNativeForge(file.provider))
     return {
       kind: 'repo',
@@ -165,6 +167,8 @@ export function imageSource(src: string, file: RepoFile): ImageSource | null {
   }
   const segments = resolveRepoPath(file.path, parts(s).path)
   if (segments.length === 0) return null
+  // A node's file has no web address: its pictures are read from the node by the view.
+  if (!file.host) return { src: '', repoPath: segments.join('/') }
   return { src: rawUrl(file, segments), repoPath: segments.join('/') }
 }
 
@@ -228,7 +232,8 @@ export function rewriteRendered(root: HTMLElement, file: RepoFile): void {
       img.removeAttribute('src')
       continue
     }
-    img.setAttribute('src', source.src)
+    if (source.src) img.setAttribute('src', source.src)
+    else img.removeAttribute('src')
     if (source.repoPath) img.dataset.abeleRepoPath = source.repoPath
   }
 

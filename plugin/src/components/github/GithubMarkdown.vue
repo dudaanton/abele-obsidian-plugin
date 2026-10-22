@@ -35,7 +35,8 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Component, Platform } from 'obsidian'
+import { Component, Platform, setIcon } from 'obsidian'
+import { useRepositorySource } from '@/repository/context'
 import Icon from '../obsidian/Icon.vue'
 import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
 import type { GithubClient } from '@/github/client'
@@ -130,8 +131,59 @@ const approvedImages = new Set<string>()
 const objectUrls: string[] = []
 
 /** An image the raw address refused: once more through the API, when there is a token. */
-const retryThroughApi = (img: HTMLImageElement) =>
+const source = useRepositorySource(
+  () => props.client,
+  () => props.file
+)
+const retryThroughApi = (img: HTMLImageElement) => {
+  const path = img.dataset.abeleRepoPath
+  const node = source.value
+  if (node?.identity.provider === 'node' && path && !img.getAttribute('src')) {
+    // A picture of the node's project, read from the node; one it cannot give stays its alt text.
+    img.classList.add('abele-github-md__image_loading')
+    void (node as { image?: (ref: string, path: string) => Promise<Blob> })
+      .image?.(props.file.ref, path)
+      .then(
+        (blob) => {
+          const url = URL.createObjectURL(blob)
+          objectUrls.push(url)
+          img.src = url
+        },
+        () => missingImage(img, path)
+      )
+      .finally(() => img.classList.remove('abele-github-md__image_loading'))
+    return
+  }
   retryImageThroughApi(img, props.client, props.file, (url) => objectUrls.push(url))
+}
+/**
+ * A wide table keeps its own width and scrolls sideways in a box of the text's width, as GitHub
+ * shows it: short cells stay on one line, a long one wraps at a readable measure.
+ */
+const scrollingTable = (table: HTMLTableElement) => {
+  const box = table.ownerDocument.createElement('div')
+  box.className = 'abele-github-md__table'
+  table.replaceWith(box)
+  box.appendChild(table)
+  for (const cell of Array.from(table.querySelectorAll('td, th'))) {
+    if ((cell.textContent ?? '').length <= 40) continue
+    // A table at its own width gives every cell its whole line; a measure inside one is what wraps it.
+    const measure = cell.ownerDocument.createElement('div')
+    measure.className = 'abele-github-md__cell-text'
+    measure.append(...Array.from(cell.childNodes))
+    cell.appendChild(measure)
+  }
+}
+/** A picture the node could not give: its name, quiet, where it would have been. */
+const missingImage = (img: HTMLImageElement, path: string) => {
+  const note = img.ownerDocument.createElement('span')
+  note.className = 'abele-github-md__missing'
+  const glyph = note.createSpan()
+  setIcon(glyph, 'image-off')
+  note.createSpan({ text: img.getAttribute('alt') || path.split('/').pop() || path })
+  note.setAttribute('aria-label', `${path} could not be read from the node`)
+  img.replaceWith(note)
+}
 
 const renderAll = async () => {
   const mine = ++renderRun
@@ -161,6 +213,7 @@ const renderAll = async () => {
     if (mine !== renderRun) return
     finishFootnotes(next, list[i], sources.value)
     for (const img of Array.from(next.querySelectorAll('img'))) retryThroughApi(img)
+    for (const table of Array.from(next.querySelectorAll('table'))) scrollingTable(table)
     el.replaceChildren(...Array.from(next.childNodes))
   }
   emit('rendered')
@@ -209,7 +262,12 @@ const onClick = (event: MouseEvent) => {
   } else if (data.abeleRepo !== undefined) {
     // Reached only when the GitHub link handler is off: it takes these clicks first otherwise.
     event.preventDefault()
-    emit('open', a.getAttribute('href') ?? '')
+    const href = a.getAttribute('href') ?? ''
+    const node = source.value
+    if (href.startsWith('node-path:') && node?.identity.provider === 'node') {
+      const path = href.slice('node-path:'.length).split('#')[0]
+      emit('open', node.navigation.file(props.file.ref, path))
+    } else emit('open', href)
   }
 }
 
@@ -320,6 +378,28 @@ defineExpose({
     margin-block-start: 0;
   }
 
+  // A wide table keeps its rows on one line each and scrolls sideways in its own box, as GitHub
+  // shows it, instead of squeezing every column into the text's width.
+  &__table {
+    // Out past the text's measure to the card's right edge, then scrolling.
+    max-width: calc(100% + (100cqw - 100% - var(--size-4-8)) / 2 - var(--size-4-6));
+    width: max-content;
+    overflow-x: auto;
+    margin-block: var(--p-spacing);
+
+    table {
+      width: max-content;
+      margin: 0;
+    }
+    :is(td, th) {
+      white-space: nowrap;
+    }
+    .abele-github-md__cell-text {
+      width: 20em;
+      white-space: normal;
+    }
+  }
+
   &__bar {
     margin-block: var(--size-4-2);
     border-radius: var(--radius-s);
@@ -330,5 +410,31 @@ defineExpose({
 // No hover on a touch screen: the handles stay in sight, quietly.
 body.is-mobile .abele-github-md__handle {
   opacity: 0.5;
+}
+// A finger's width for the handle, so a tap at the start of a line is the line's, not the handle's.
+body.is-phone .abele-github-md__block {
+  padding-inline-start: var(--size-4-12);
+}
+// Room under a one-line last block for its handle's finger-high box.
+body.is-phone .abele-github-md {
+  padding-block-end: var(--size-4-5);
+}
+// A picture the node could not give, in the run of the text like a link's name.
+.abele-github-md__missing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  .svg-icon {
+    width: var(--icon-s);
+    height: var(--icon-s);
+  }
+}
+.abele-github-md__image_loading {
+  min-height: var(--size-4-12);
+  min-width: var(--size-4-12);
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-s);
 }
 </style>
