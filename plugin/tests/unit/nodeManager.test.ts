@@ -73,6 +73,34 @@ function fixture(supported = true) {
     controller: new NodeManagerController(client as unknown as NodeClient, store),
   }
 }
+it('reuses an admitted legacy ID only for its original chat and exact action after upgrade', async () => {
+  const f = fixture()
+  const params = { session_id: 'sample-session', project_id: 'sample-project', argv: ['pwd'] }
+  try {
+    await f.controller.mutate('sample-parent', 'command.v1.run', params, 'old-alias')
+    await f.controller.mutate(
+      'sample-parent',
+      'command.v1.run',
+      params,
+      'new-scoped-id',
+      'old-alias'
+    )
+    expect(await f.store.read((s) => Object.keys(s.managerOperations!))).toEqual(['old-alias'])
+    await f.controller.mutate(
+      'other-parent',
+      'command.v1.run',
+      params,
+      'other-scoped-id',
+      'old-alias'
+    )
+    expect(await f.store.read((s) => Object.keys(s.managerOperations!))).toEqual([
+      'old-alias',
+      'other-scoped-id',
+    ])
+  } finally {
+    f.store.close()
+  }
+})
 it('reads command cards without rewriting the entire node store', async () => {
   const f = fixture()
   const write = vi.spyOn(f.store, 'transaction')

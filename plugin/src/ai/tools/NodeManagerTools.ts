@@ -8,6 +8,7 @@ import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
 import { NodeService } from '@/node/NodeService'
 import { resolveManagerTargets } from '@/node/managerTargets'
+import { nodeMutationKey } from './node/mutations'
 const id = z.string().min(1).max(128)
 const targets = z.looseObject({ node: id, session_id: id, operation_id: id.optional() })
 export const NODE_COMMAND_TOOLS = [
@@ -192,6 +193,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
               ? 'git.v1.integrate'
               : 'command.v1.cancel',
           params,
+          nodeMutationKey(parentId, name, operation_id, params),
           operation_id
         )
       }

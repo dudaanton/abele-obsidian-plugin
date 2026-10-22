@@ -11,9 +11,35 @@ import {
 import * as protocol from '@abele/node-protocol'
 import { NodeClient, MemoryClientStore } from '@abele/node-client'
 import { createNodeAgentTools } from '@/ai/tools/node/agent'
+import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it('never replaces an unresolved legacy commit with a newly scoped operation', async () => {
+    const f = setupGit()
+    f.session.permissionMode.value = 'allow-all'
+    const commit = vi.fn()
+    Object.assign(f.repository, { git: { commit } })
+    await f.client.store.transaction((s) => {
+      s.outbox.push({
+        operation_id: 'sample-legacy',
+        method: 'repository.v1.git.commit',
+        params: {
+          worktree_id: 'sample-tree',
+          expected_head: '1'.repeat(40),
+          message: 'Sample change',
+        },
+      })
+    })
+    await expect(
+      f.call('node_git_commit', {
+        operation_id: 'sample-legacy',
+        expected_head: '1'.repeat(40),
+        message: 'Sample change',
+      })
+    ).rejects.toThrow(/earlier request.*unresolved/i)
+    expect(commit).not.toHaveBeenCalled()
+  })
   it('commits without a preliminary approval in bypass while retaining folder trust checks', async () => {
     const f = setupGit()
     f.session.permissionMode.value = 'allow-all'
@@ -153,7 +179,26 @@ describe('Obsidian chat node tools', () => {
         expected_head: '1'.repeat(40),
         expected_observation_id: 'sample-observation',
       },
-      'sample-remove'
+      nodeMutationKey(
+        'sample-chat',
+        'node_worktree_remove',
+        {
+          target: {
+            node_id: 'sample-node',
+            project_id: project.project_id,
+            target: { kind: 'worktree', worktree_id: 'sample-tree' },
+          },
+          alias: args.operation_id,
+        },
+        {
+          node: 'sample-node',
+          project: project.project_id,
+          workspace: 'sample-tree',
+          target_kind: 'worktree',
+          expected_head: args.expected_head,
+          expected_observation_id: args.expected_observation_id,
+        }
+      )
     )
   })
   it('commits staged work only after explicit owner approval, preserving the operation and head', async () => {
@@ -175,7 +220,26 @@ describe('Obsidian chat node tools', () => {
     await f.call('node_git_commit', args, true)
     expect(commit).toHaveBeenCalledWith(
       { worktree_id: 'sample-tree', expected_head: '1'.repeat(40), message: 'Fix sample parser' },
-      'sample-commit'
+      nodeMutationKey(
+        'sample-chat',
+        'node_git_commit',
+        {
+          target: {
+            node_id: 'sample-node',
+            project_id: project.project_id,
+            target: { kind: 'worktree', worktree_id: 'sample-tree' },
+          },
+          alias: args.operation_id,
+        },
+        {
+          node: 'sample-node',
+          project: project.project_id,
+          workspace: 'sample-tree',
+          target_kind: 'worktree',
+          expected_head: args.expected_head,
+          message: args.message,
+        }
+      )
     )
     f.session.overrides.value.nodeScope![0].access = 'read'
     f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })

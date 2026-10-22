@@ -2,9 +2,46 @@ import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeManagerTools } from '@/ai/tools/NodeManagerTools'
 import { NodeService } from '@/node/NodeService'
+import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('scopes model aliases to the chat, tool and exact intended action while preserving retries', async () => {
+  const mutate = vi.fn(async () => ({ run_id: 'sample-run', state: 'running' }))
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      client: {
+        describe: async () => ({
+          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        }),
+      },
+      manager: { mutate },
+      refreshDelegations: async () => {},
+    }),
+  } as never)
+  const tools = (parent: string) =>
+    createNodeManagerTools({
+      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }),
+      getToolMode: () => 'auto',
+      ensureDelegationParentId: async () => parent,
+    } as ChatSession)
+  const args = {
+    node: 'sample-node',
+    project_id: 'sample-project',
+    session_id: 'sample-session',
+    argv: ['pwd'],
+    operation_id: 'save',
+  }
+  await tools('sample-chat-a')[0].execute('call-one', args)
+  await tools('sample-chat-a')[0].execute('retry-call', args)
+  await tools('sample-chat-b')[0].execute('call-one', args)
+  await tools('sample-chat-a')[0].execute('call-two', { ...args, argv: ['ls'] })
+  const ids = mutate.mock.calls.map((call) => (call as unknown[])[3])
+  expect(ids[0]).toBe(ids[1])
+  expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
+})
 it('refuses disabled manager tools before contacting a node', async () => {
   const owner = { getToolMode: () => 'off' } as unknown as ChatSession
   for (const tool of createNodeManagerTools(owner))
@@ -127,6 +164,11 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     'sample-parent',
     'command.v1.run',
     { session_id: 'sample-session', project_id: 'sample-project', argv: ['npm', 'test'] },
+    nodeMutationKey('sample-parent', 'node_command_run', 'sample-operation', {
+      session_id: 'sample-session',
+      project_id: 'sample-project',
+      argv: ['npm', 'test'],
+    }),
     'sample-operation'
   )
   await tools[1].execute('sample-status', { ...base, run_id: 'sample-run' })

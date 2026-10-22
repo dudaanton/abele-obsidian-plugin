@@ -8,6 +8,7 @@ const contentHash = (value: string) => bytesToHex(sha256(new TextEncoder().encod
 import type { AgentTool, AgentToolResult } from '../../client'
 import type { ChatSession } from '../../ChatSession'
 import { readNodeText } from '@/node/NodeFilesModel'
+import { readStore } from '@/node/NodeClientStore'
 import { NodeMutationStore, nodeMutationKey, type NodeMutationRecord } from './mutations'
 import { NodeAccessRefusalError, type NodeAccessWant } from './accessRefusal'
 import {
@@ -569,6 +570,18 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const target = targetOf(session, params)
       target.node_id = host.nodeId?.(target.node_id) ?? target.node_id
+      const managerOperation = () => {
+        if (!session.nodeScopeIdentity)
+          throw new Error('A saved executing chat is required for manager actions')
+        const alias = z.string().min(1).max(128).parse(params.operation_id)
+        const { operation_id: _alias, ...action } = params
+        return nodeMutationKey(session.nodeScopeIdentity, name, { target, alias }, action)
+      }
+      // The model retries its alias; the wire identity is private to this chat and action.
+      const managerReceipt = (value: unknown) =>
+        value && typeof value === 'object' && 'operation_id' in value
+          ? { ...value, operation_id: params.operation_id }
+          : value
       let mutation:
         | { store: NodeMutationStore; key: string; chat: string; retry?: NodeMutationRecord }
         | undefined
@@ -611,7 +624,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         checks.push(host.ledger.guard(session, target, connection.principal(), 'edit'))
         if (session.permissionMode.value !== 'allow-all' && !(ctx.interactive && ctx.approved))
           throw new Error('Explicit owner approval is required')
-        const operation = z.string().min(1).max(128).parse(params.operation_id)
+        const operation = managerOperation()
         const method =
           name === 'node_git_commit' ? 'repository.v1.git.commit' : 'repository.v1.worktree.delete'
         const request = {
@@ -634,9 +647,18 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           () => client.operationResult?.(operation) ?? Promise.resolve(undefined)
         )
         const pending = await safe(() =>
-          client.store.transaction((s) =>
-            s.outbox.find((entry) => entry.operation_id === operation)
-          )
+          readStore(client.store, (s) => {
+            const legacy = s.outbox.find((entry) => entry.operation_id === params.operation_id)
+            if (
+              legacy?.method === method &&
+              nodeMutationKey('', name, target, legacy.params) ===
+                nodeMutationKey('', name, target, request)
+            )
+              throw new Error(
+                'An earlier request with this operation_id is still unresolved. Reconnect and check its result before starting another action.'
+              )
+            return s.outbox.find((entry) => entry.operation_id === operation)
+          })
         )
         const retained = receipt?.request ?? pending
         if (retained) {
@@ -645,25 +667,35 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             nodeMutationKey('', name, target, retained.params) !==
               nodeMutationKey('', name, target, request)
           )
-            throw new Error('Operation identity belongs to a different manager action')
+            throw new Error(
+              'idempotency_mismatch: This retry ID was already used with different action arguments. Check the previous result before starting a new action with a new operation_id.'
+            )
           if (receipt)
             return retain(
-              receipt.error ? { state: 'failed', error: receipt.error } : receipt.result
+              managerReceipt(
+                receipt.error ? { state: 'failed', error: receipt.error } : receipt.result
+              )
             )
           // Retry only the exact retained action. Its target may already be gone;
           // re-resolving it would prevent recovering the original deletion receipt.
           if (name === 'node_git_commit') await requireCommitTrust()
           return retain(
-            await safe<unknown>(() =>
-              name === 'node_git_commit'
-                ? client.repository.git.commit(
-                    protocol.RepositoryGitMethodSchemas['repository.v1.git.commit'].parse(request),
-                    operation
-                  )
-                : client.nodePath.deleteWorktree(
-                    protocol.NodePathMethodSchemas['repository.v1.worktree.delete'].parse(request),
-                    operation
-                  )
+            managerReceipt(
+              await safe<unknown>(() =>
+                name === 'node_git_commit'
+                  ? client.repository.git.commit(
+                      protocol.RepositoryGitMethodSchemas['repository.v1.git.commit'].parse(
+                        request
+                      ),
+                      operation
+                    )
+                  : client.nodePath.deleteWorktree(
+                      protocol.NodePathMethodSchemas['repository.v1.worktree.delete'].parse(
+                        request
+                      ),
+                      operation
+                    )
+              )
             )
           )
         }
@@ -718,7 +750,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         checks.push(approval)
         approval()
         if (!git) throw new Error('This action requires a Git worktree')
-        const operation = z.string().min(1).max(128).parse(params.operation_id)
+        const operation = managerOperation()
         const expected_head = z
           .string()
           .regex(/^[a-f0-9]{40,64}$/)
@@ -730,7 +762,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             repo.git.commit({ worktree_id: id, expected_head, message }, operation)
           )
           console.debug('[Abele node tools] Commit receipt', operation, result.state)
-          return answer(result)
+          return answer(managerReceipt(result))
         }
         const expected_observation_id = z
           .string()
@@ -750,7 +782,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           )
         )
         console.debug('[Abele node tools] Worktree removal receipt', operation, result.state)
-        return answer(result)
+        return answer(managerReceipt(result))
       }
       const path = pathSchema.parse(text(params, 'path'))
       const revision = async (): Promise<RepositoryRevision> =>

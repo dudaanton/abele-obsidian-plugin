@@ -77,7 +77,7 @@ export class NodeManagerController {
     })
   }
   async wakeDelivered(wake: (parent: string, notice: string) => boolean) {
-    const entries = await this.store.transaction((s) =>
+    const entries = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).filter(
         ([, entry]) => !entry.notified && entry.method !== 'command.v1.cancel'
       )
@@ -100,7 +100,8 @@ export class NodeManagerController {
     parent: string,
     method: ManagerMethod,
     raw: unknown,
-    operation: string
+    operation: string,
+    legacyAlias?: string
   ): Promise<ManagerRun> {
     if (!this.client.connected) throw new Error('disconnected')
     if (!operation || operation.length > 128) throw new Error('invalid_params: operation_id')
@@ -126,6 +127,15 @@ export class NodeManagerController {
         z.string().parse(params.run_id)
       )
     await this.store.transaction((s) => {
+      // An upgrade must not replace an already admitted retry in this same chat.
+      const legacy = legacyAlias ? s.managerOperations?.[legacyAlias] : undefined
+      if (
+        legacyAlias &&
+        legacy?.parent === parent &&
+        legacy.method === method &&
+        JSON.stringify(legacy.params) === JSON.stringify(params)
+      )
+        operation = legacyAlias
       const previous = s.managerOperations?.[operation]
       if (
         previous &&
@@ -133,16 +143,23 @@ export class NodeManagerController {
           previous.method !== method ||
           JSON.stringify(previous.params) !== JSON.stringify(params))
       )
-        throw new Error('idempotency_mismatch')
+        throw new Error(
+          'idempotency_mismatch: This retry ID belongs to different action arguments or a different chat. Check the previous result before starting a new action with a new operation_id.'
+        )
       if (!previous && (s.results[operation] || s.outbox.some((e) => e.operation_id === operation)))
-        throw new Error('idempotency_mismatch')
+        throw new Error(
+          'idempotency_mismatch: This retry ID is already used by another operation. Check the previous result before starting a new action with a new operation_id.'
+        )
       ;(s.managerOperations ??= {})[operation] = previous ?? { parent, method, params }
       if (!s.results[operation] && !s.outbox.some((e) => e.operation_id === operation))
         s.outbox.push({ operation_id: operation, method, params })
     })
     await this.client.flush()
-    const receipt = await this.client.store.transaction((s) => s.results[operation])
-    if (!receipt) throw new Error(`outcome_unknown: retain operation_id ${operation}`)
+    const receipt = await this.store.read((s) => s.results[operation])
+    if (!receipt)
+      throw new Error(
+        'outcome_unknown: Retry the exact action with the same submitted operation_id; do not create a replacement action.'
+      )
     if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
     const run = ManagerRunSchema.parse(receipt.result)
     await this.client.subscribe(run.session_id).catch((error) => {
@@ -151,7 +168,7 @@ export class NodeManagerController {
     return run
   }
   async status(parent: string, session: string, run: string) {
-    const owned = await this.store.transaction((s) =>
+    const owned = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).some(([id, entry]) => {
         const receipt = ManagerRunSchema.safeParse(s.results[id]?.result)
         return (
@@ -163,7 +180,7 @@ export class NodeManagerController {
       })
     )
     if (!owned) throw new Error('Run does not belong to this parent chat')
-    const before = await this.store.transaction((s) => s.cursors[session] ?? 0)
+    const before = await this.store.read((s) => s.cursors[session] ?? 0)
     let status = ManagerRunSchema.parse(
       await this.client.request('command.v1.status', { session_id: session, run_id: run })
     )
@@ -192,7 +209,7 @@ export class NodeManagerController {
   }
   async restore() {
     if (!this.client.connected) return
-    const entries = await this.store.transaction((s) =>
+    const entries = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         const receipt = ManagerRunSchema.safeParse(s.results[operation]?.result)
         return receipt.success && entry.method !== 'command.v1.cancel'
