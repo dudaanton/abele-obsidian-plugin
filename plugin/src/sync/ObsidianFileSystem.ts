@@ -1061,7 +1061,7 @@ export class ObsidianFileSystem implements FileSystem {
     return this.conditional.recover()
   }
   private retentionIdle = false
-  private retentionTimer?: ReturnType<typeof window.setTimeout>
+  private retentionTimer?: number
   private retentionRunning?: Promise<void>
   private retentionScheduling?: Promise<void>
   private retentionAbort?: AbortController

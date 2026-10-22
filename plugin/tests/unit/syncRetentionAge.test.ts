@@ -1,7 +1,10 @@
 import { expect, it, vi } from 'vitest'
-import { sha256 } from '@abele/sync-sdk/core'
+import { sha256, MemoryFileSystem } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem, RETENTION_IDLE } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+
+import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
 const root = '.obsidian/plugins/abele/sync-conditional'
 const bytes = (s: string) => new TextEncoder().encode(s)
@@ -154,4 +157,24 @@ it('imports at most eight legacy records per idle tick from a thirty-thousand-re
   expect(read).toHaveBeenCalledTimes(16)
   expect(list).toHaveBeenCalledOnce()
   expect((await host.retention.summary()).count).toBe(16)
+})
+
+it('forwards idle lifecycle through scoped and placed filesystems without exposing paths', async () => {
+  const idle = Symbol.for('abele.sync.retention-idle-v1')
+  const calls: boolean[] = []
+  const disk = Object.assign(new MemoryFileSystem(), {
+    async [idle](value: boolean) {
+      expect(this).toBe(disk)
+      calls.push(value)
+    },
+  })
+  const scoped = scopedFileSystem(
+    disk,
+    () => {},
+    () => true
+  )
+  const placed = new LocalFolderPlacement('Shared', 'Moved').fileSystem(scoped)
+  await Reflect.get(placed, idle).call(placed, true)
+  await Reflect.get(placed, idle).call(placed, false)
+  expect(calls).toEqual([true, false])
 })
