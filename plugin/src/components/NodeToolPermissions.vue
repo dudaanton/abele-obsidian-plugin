@@ -56,7 +56,7 @@ const modeTooltip = computed(() =>
     : permissionLabel(props.policy)
 )
 const refusal = computed(() => {
-  const reason = props.reason || props.policy?.reason
+  const reason = permissionRefusal(props.reason) ? props.reason : props.policy?.reason
   return props.quietReason &&
     props.provider === 'codex' &&
     reason?.includes('interactive_approval_unsupported')

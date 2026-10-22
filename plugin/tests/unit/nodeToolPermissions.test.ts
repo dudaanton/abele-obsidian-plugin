@@ -3,6 +3,27 @@ import { mount } from '@vue/test-utils'
 import NodeToolPermissions from '@/components/NodeToolPermissions.vue'
 import { openNodeAgentSettings } from '@/node/openNodeAgentSettings'
 vi.mock('@/node/openNodeAgentSettings', () => ({ openNodeAgentSettings: vi.fn() }))
+
+it('retains the policy refusal when the terminal reason is unrelated to permissions', () => {
+  const view = mount(NodeToolPermissions, {
+    props: {
+      nodeLabel: 'Sample node',
+      provider: 'codex',
+      reason: 'time_limit',
+      policy: {
+        permission_mode: 'manual',
+        per_action_approval: false,
+        status: 'unsupported',
+        reason: 'interactive_approval_unsupported',
+      },
+    },
+  })
+  try {
+    expect(view.text()).toContain('cannot ask before each action')
+  } finally {
+    view.unmount()
+  }
+})
 import { agentChoices, nodeProviders } from '@/node/providers'
 import {
   ownerPermissionPatch,
