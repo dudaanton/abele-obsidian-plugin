@@ -76,7 +76,7 @@ const hoverModifiers = ViewPlugin.fromClass(
       this.pointer = event
       this.setActive(event.ctrlKey || event.metaKey)
       // A navigation mark can replace the event target before it reaches this listener.
-      if (event.target instanceof this.view.dom.ownerDocument.win.Node && !event.target.isConnected)
+      if (event.target && 'isConnected' in event.target && event.target.isConnected === false)
         queueMicrotask(() => {
           if (!this.destroyed && this.pointer === event) this.replay(event)
         })
