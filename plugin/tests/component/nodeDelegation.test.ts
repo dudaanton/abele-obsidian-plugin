@@ -15,6 +15,8 @@ it('shows an owner stop as a quiet dot and a separate restart explanation', () =
   })
   try {
     expect(wrapper.get('.abele-status-dot_faint').exists()).toBe(true)
+    expect(wrapper.get('.abele-status-dot_faint').attributes('aria-label')).toBe('Stopped')
+    expect(wrapper.get('.abele-node-delegation__meta').text()).not.toContain('·')
     expect(wrapper.get('[data-delegation-reason]').text()).toBe(
       'Stopped by you. Restart it from its chat.'
     )

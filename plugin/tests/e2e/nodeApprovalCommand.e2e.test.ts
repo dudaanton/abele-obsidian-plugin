@@ -73,6 +73,14 @@ async function inspect(label: string) {
       await evalLong(`!!document.querySelector('.abele-node-delegation .abele-status-dot_faint')`)
     ).toBe('true')
     expect(text).not.toContain('Paused; can continue')
+    const meta = JSON.parse(
+      await evalLong(`(()=>{
+      const card=document.querySelector('.abele-node-delegation');
+      return JSON.stringify({text:card.querySelector('.abele-node-delegation__meta').textContent,label:card.querySelector('.abele-status-dot').getAttribute('aria-label')});
+    })()`)
+    )
+    expect(meta.text).not.toContain('·')
+    expect(meta.label).toBe('Stopped')
     columnShot(`${shots}/${label}-owner-stopped.png`)
   } finally {
     await closeFixture()

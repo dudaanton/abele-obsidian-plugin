@@ -9,7 +9,6 @@
             ><Icon icon="git-branch" no-hover /> {{ delegationBranchLabel(card.branch) }}</span
           >
           <span class="abele-node-delegation__status">
-            ·
             <StatusDot :tone="statusTone" :label="stateLabel" :pulse="card.state === 'running'" />
             {{ stateLabel
             }}<NodeToolPermissions
@@ -172,7 +171,7 @@ watch(
 const expandedReports = ref<Record<number, boolean>>({})
 const stateLabel = computed(() => {
   const state = props.card.state
-  if (props.card.reason === OWNER_STOP_REASON) return t('streamBMeta.8b47045eb7')
+  if (props.card.reason === OWNER_STOP_REASON) return t('chat.stopped')
   if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')

@@ -91,12 +91,15 @@ async function inspectCommit(label: string) {
     const stale = JSON.parse(
       await evalLong(`(()=>{
       const card=document.querySelector('.abele-ai-chat .abele-tool-approval');
-      return JSON.stringify({text:card.textContent,disabled:card.querySelector('button.mod-cta').disabled,refresh:[...card.querySelectorAll('button')].some(button=>button.textContent.trim()==='Refresh')});
+        const refresh=[...card.querySelectorAll('button')].find(button=>button.textContent.trim()==='Refresh');
+        return JSON.stringify({text:card.textContent,disabled:card.querySelector('button.mod-cta').disabled,refresh:!!refresh,compact:refresh?.getBoundingClientRect().width<card.getBoundingClientRect().width*.6,plain:refresh?.classList.contains('clickable-icon')});
     })()`)
     )
     expect(stale.text).not.toContain('(stale_resource)')
     expect(stale.disabled).toBe(true)
     expect(stale.refresh).toBe(true)
+    expect(stale.compact).toBe(true)
+    expect(stale.plain).toBe(true)
   } finally {
     await evalLong(
       '(async()=>{const api=window.__abeleTest;if(window.__sampleCommitChat)await api.ChatService.getInstance().deleteChat(window.__sampleCommitChat);delete window.__sampleCommitArgs;delete window.__sampleCommitChat})()'

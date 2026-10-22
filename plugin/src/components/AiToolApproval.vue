@@ -134,6 +134,8 @@
       </p>
       <Button
         v-if="commitPreviewError"
+        class="abele-tool-approval__refresh"
+        plain
         :text="t('node.commit.refresh')"
         :disabled="disabled"
         @click="commitRefresh++"
@@ -1237,5 +1239,8 @@ const toggleEdit = () => {
     order: -1;
     margin-inline-end: auto;
   }
+}
+.abele-tool-approval__refresh {
+  align-self: flex-start;
 }
 </style>

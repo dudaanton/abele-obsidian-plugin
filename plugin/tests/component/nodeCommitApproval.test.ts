@@ -42,6 +42,7 @@ it('renders preview refusals in the current interface language on refresh', asyn
     expect(wrapper.get('button.mod-cta').attributes('disabled')).toBeDefined()
     const refresh = wrapper.findAll('button').find((button) => button.text() === 'Refresh')!
     expect(refresh).toBeDefined()
+    expect(refresh.classes()).toContain('clickable-icon')
     const calls = vi.mocked(nodeCommitPreview).mock.calls.length
     await refresh.trigger('click')
     await flushPromises()
