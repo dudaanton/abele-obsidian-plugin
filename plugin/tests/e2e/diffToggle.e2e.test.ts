@@ -48,6 +48,18 @@ async function inspect(mode: string) {
       }
       const diff=root.querySelector('.abele-diff')
       if(!diff) throw Error('Sample comparison did not render')
+      if (${JSON.stringify(mode)} === 'phone') {
+        const header = root.querySelector('.abele-ai-chat__header')
+        if (!header.firstElementChild?.matches('.abele-drawer-switch.is-shown'))
+          throw Error('Node drawer switch is not first in its phone header')
+        const drawer = root.closest('.workspace-drawer')
+        if (!drawer) throw Error('Node chat is outside the phone drawer')
+        for (const selector of ['.workspace-drawer-header', '.workspace-drawer-tab-options']) {
+          const row = drawer.querySelector(selector)
+          if (!row || getComputedStyle(row).display !== 'none')
+            throw Error('Native phone drawer footer is visible: ' + selector)
+        }
+      }
       diff.scrollIntoView({block:'start'}); await wait(200)
       const initial=diff.querySelectorAll('.abele-diff__fold').length
       await capture('folded')

@@ -39,7 +39,7 @@ const presenter = () => ({
   interrupt: vi.fn(),
   openResource: vi.fn(),
 })
-it('keeps the phone drawer switch out of the node chat title row', () => {
+it('keeps the phone drawer switch first in the node chat title row', () => {
   useVault([])
   const prior = Platform.isPhone
   ;(Platform as { isPhone: boolean }).isPhone = true
@@ -48,7 +48,11 @@ it('keeps the phone drawer switch out of the node chat title row', () => {
     global: { stubs: { DrawerViewSwitch: { template: '<div class="abele-drawer-switch" />' } } },
   })
   try {
-    expect(wrapper.find('.abele-ai-chat__header .abele-drawer-switch').exists()).toBe(false)
+    expect(
+      wrapper
+        .get('.abele-ai-chat__header')
+        .element.firstElementChild?.classList.contains('abele-drawer-switch')
+    ).toBe(true)
     expect(wrapper.find('.abele-chat-input__toolbar .abele-node-chat__agent').exists()).toBe(true)
   } finally {
     wrapper.unmount()

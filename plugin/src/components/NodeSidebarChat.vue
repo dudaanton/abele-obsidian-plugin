@@ -11,7 +11,7 @@
     @start-with="startWith"
   >
     <template #lead
-      ><DrawerViewSwitch v-if="!phone" icon="bot" :name="t('streamB.abeleAiChat.08f891')"
+      ><DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')"
     /></template>
     <template #navigation
       ><ChatSwitcher :title="presenter.label.value" :location="nodeLabel"
@@ -24,7 +24,6 @@ import { nodeErrorNotice } from '@/node/errorNotice'
 import { t } from '@/i18n'
 import { useChatTreeSource } from '@/chats/chatTree'
 import { ChatService } from '@/ai/ChatService'
-import { Platform } from 'obsidian'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
 import NodeChatView from './NodeChatView.vue'
@@ -43,7 +42,6 @@ const renameInTree = () => {
   ChatService.getInstance().treeRequest.value++
 }
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
-const phone = Platform.isPhone
 const nodeLabel = computed(() => {
   try {
     return (
