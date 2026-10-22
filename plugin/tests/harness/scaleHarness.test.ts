@@ -231,6 +231,8 @@ describe('scale harness independent guarantees', () => {
     const proxy = new WireProxy(`http://127.0.0.1:${address.port}`, 'sample-device')
     const url = await proxy.start()
     try {
+      // A legitimate remote download must not become an own-download retroactively.
+      await (await globalThis.fetch(url + '/v2/files/f1/content?version_id=v1')).text()
       await (
         await globalThis.fetch(url + '/v2/commit', {
           method: 'POST',
@@ -238,6 +240,7 @@ describe('scale harness independent guarantees', () => {
           body: JSON.stringify({ ops: [{ sha: digest }] }),
         })
       ).text()
+      expect(proxy.ownDownloads()).toBe(0)
       await (
         await globalThis.fetch(url + '/v2/files/f1/content?version_id=v1&key=sample-secret')
       ).text()

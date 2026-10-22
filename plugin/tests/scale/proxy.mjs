@@ -11,7 +11,7 @@ export class WireProxy extends EventEmitter {
     this.device = device
     this.events = []
     this.active = new Map()
-    this.owned = new Set()
+    this.owned = new Map()
     this.versions = new Map()
     this.offline = false
     this.sequence = 0
@@ -57,6 +57,9 @@ export class WireProxy extends EventEmitter {
     this.emit('wire', event)
     return event
   }
+  markOwned(sha, request) {
+    this.owned.set(sha, Math.min(this.owned.get(sha) ?? Infinity, request))
+  }
   forward(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1')
     const id = ++this.sequence
@@ -69,7 +72,7 @@ export class WireProxy extends EventEmitter {
     })
     this.active.set(id, entry)
     const uploadSha = /^\/v2\/uploads\/([a-f0-9]{64})/.exec(url.pathname)?.[1]
-    if (uploadSha && req.method !== 'GET') this.owned.add(uploadSha)
+    if (uploadSha && req.method !== 'GET') this.markOwned(uploadSha, id)
     let sent = 0
     req.on('data', (chunk) => {
       sent += chunk.length
@@ -166,7 +169,7 @@ export class WireProxy extends EventEmitter {
             const json = metadata.length ? JSON.parse(decoded.toString()) : null
             if (url.pathname === '/v2/commit') {
               const ops = JSON.parse(Buffer.concat(body).toString()).ops
-              for (const op of ops) if (op.sha) this.owned.add(op.sha)
+              for (const op of ops) if (op.sha) this.markOwned(op.sha, id)
               for (const result of json.results)
                 if (result.version_id && result.sha)
                   this.versions.set(result.version_id, result.sha)
@@ -221,7 +224,7 @@ export class WireProxy extends EventEmitter {
         event.event === 'start' &&
         event.method === 'GET' &&
         /\/content$/.test(event.route) &&
-        this.owned.has(this.versions.get(event.version))
+        (this.owned.get(this.versions.get(event.version)) ?? Infinity) < event.id
     ).length
   }
   unresolvedDownloads() {

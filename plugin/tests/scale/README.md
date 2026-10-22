@@ -88,6 +88,7 @@ the scope is downloaded through the server API and independently hashed, includi
 Missing, extra and corrupt files fail separately. This compares bytes against the generated
 source and directed edits, not against the plugin ledger. Upload SHA paths and commit/manifest
 metadata identify downloads of device-owned bytes; unresolvable content requests fail closed.
+Ownership is ordered by request: a later upload never reclassifies an earlier remote download.
 
 Each run emits `report.json`, `report.md` and `renderer.jsonl`. The JSON includes sanitized
 wire events, actual interruption triggers, mismatches, files/s, MiB/s and each measured budget.
