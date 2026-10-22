@@ -34,6 +34,8 @@ export interface DialogFixtureOptions {
   managerJustification?: string
   managerCommand?: string
   managerOldNode?: boolean
+  managerReason?: string
+  managerRegistrationId?: string
   delegationState?:
     | 'paused-prompt'
     | 'working'
@@ -447,6 +449,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
                       options?.managerCodexApproval,
                       options
                     ),
+                    registrationId: options?.managerRegistrationId,
+                    refresh: async () => {},
+                    retry: async () => {},
                   }),
               }
             ),

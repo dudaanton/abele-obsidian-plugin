@@ -86,8 +86,8 @@ const probe = (device: string) =>
       });
     };
     const beforeTree = await treeGeometry();
-    model.report(new Error('No answer from the node. Reconnecting'));
-    await until(() => nodePanel.root().textContent.includes('No answer from the node'));
+    model.report(new Error('outcome_unknown'));
+    await until(() => nodePanel.root().textContent.includes('Refresh'));
     const duringTree = await treeGeometry();
     seen['quiet connection status'] = !!nodePanel.root().querySelector('[data-connection-status] .abele-status-dot_orange');
     const statusBox = nodePanel.root().querySelector('[data-connection-status]').getBoundingClientRect();
@@ -106,10 +106,10 @@ const probe = (device: string) =>
     };
     diagnostics.overlap = rows.map(visibleBox).filter(box => box.bottom > box.top && box.bottom > statusBox.top && box.top < statusBox.bottom);
     seen['no tree overlap'] = rows.length > 70 && diagnostics.overlap.length === 0;
-    await shot('reconnecting');
+    await shot('unknown-outcome');
     await model.refreshCurrent();
-    await until(() => !nodePanel.root().textContent.includes('No answer from the node'));
-    seen.recovered = !nodePanel.root().textContent.includes('No answer from the node');
+    await until(() => !nodePanel.root().querySelector('[data-connection-status]'));
+    seen.recovered = !nodePanel.root().querySelector('[data-connection-status]');
     const afterTree = await treeGeometry();
     diagnostics.tree = { before: beforeTree, during: duringTree, after: afterTree };
     seen['stable tree'] = beforeTree.every((box, i) => Math.abs(box.top - duringTree[i].top) < 1 && Math.abs(afterTree[i].top - duringTree[i].top) < 1);

@@ -16,7 +16,7 @@ const probe = (device: string) =>
       connection.error.value = 'paired_route_tls_or_unreachable';
       let line;
       for (let i = 0; i < 100; i++) {
-        line = document.querySelector('.abele-node-chat [role="alert"] .abele-node-error-words');
+        line = document.querySelector('.abele-node-chat [role="alert"] .abele-state-line__text');
         if (line) break;
         await wait(50);
       }
@@ -40,14 +40,16 @@ const probe = (device: string) =>
         connection.error.value = code;
         await wait(100);
         const current = line.getBoundingClientRect();
-        otherWords &&= line.title === code && line.textContent === expected &&
+        otherWords &&= line.textContent === expected &&
           current.left >= Math.max(0, root.left) && current.right <= Math.min(innerWidth, root.right) + 1;
       }
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-unknown-error.png',
         (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      line.closest('.abele-state-line').querySelector('.abele-fold-heading').click();
+      await wait(50);
       return {
         visible: box.width > 0 && box.left >= Math.max(0, root.left) && box.right <= Math.min(innerWidth, root.right) + 1 && box.top >= 0 && box.bottom <= innerHeight,
-        diagnostic: line.title === 'future_refusal',
+        diagnostic: line.closest('.abele-state-line').querySelector('.is-code')?.textContent === 'future_refusal',
         words: tlsWords && otherWords
       };
     } finally {

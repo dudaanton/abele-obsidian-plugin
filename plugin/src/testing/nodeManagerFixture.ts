@@ -10,6 +10,7 @@ export function nodeManagerFixture(
     managerCommand?: string
     managerLegacyIntegration?: boolean
     managerOldNode?: boolean
+    managerReason?: string
   }
 ): Awaited<ReturnType<NodeManagerController['cards']>>[number] {
   const prompt: Prompt = {
@@ -119,6 +120,7 @@ export function nodeManagerFixture(
               }
           : {}),
       ...(state === 'outcome_unknown' ? { reason: 'restart' } : {}),
+      ...(presentation?.managerReason ? { reason: presentation.managerReason } : {}),
     },
   }
 }

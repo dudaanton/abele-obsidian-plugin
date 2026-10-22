@@ -43,8 +43,8 @@ const probe = (device: string) =>
           (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
       };
       let pane = await open();
-      await until(() => pane.querySelector('.abele-node-error-words')?.textContent.includes('Git on the node'));
-      const line = pane.querySelector('.abele-node-error-words');
+      await until(() => pane.querySelector('.abele-state-line__text')?.textContent.includes('Git on the node'));
+      const line = pane.querySelector('.abele-state-line__text');
       const retry = [...pane.querySelectorAll('button')].find(el => el.textContent.trim() === 'Retry');
       await capture('timeout');
       const box = line.getBoundingClientRect();
