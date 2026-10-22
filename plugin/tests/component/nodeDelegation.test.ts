@@ -4,6 +4,47 @@ import { initializeLocale } from '@/i18n'
 import { english } from '@/i18n/catalogs'
 import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
+import { OWNER_STOP_REASON } from '@/node/delegation'
+
+it('shows an owner stop as a quiet dot and a separate restart explanation', () => {
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: { ...nodeDelegationCardFixture(), state: 'stopped', reason: OWNER_STOP_REASON },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.get('.abele-status-dot_faint').exists()).toBe(true)
+    expect(wrapper.get('[data-delegation-reason]').text()).toBe(
+      'Stopped by you. Restart it from its chat.'
+    )
+    expect(wrapper.find('.clickable-icon').exists()).toBe(true)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it.each([
+  'cancelled',
+  'outcome_unknown',
+  'running',
+  'exited',
+  'timed_out',
+  'denied',
+  'applied',
+] as const)('gives manager %s one explanation and a status dot', async (state) => {
+  const { default: NodeManagerRunCard } = await import('@/components/NodeManagerRunCard.vue')
+  const { nodeManagerFixture } = await import('@/testing/nodeManagerFixture')
+  const wrapper = mount(NodeManagerRunCard, { props: { card: nodeManagerFixture(state) } })
+  try {
+    expect(wrapper.findAll('[data-manager-state]')).toHaveLength(1)
+    expect(wrapper.find('.abele-status-dot').exists()).toBe(true)
+    expect(wrapper.get('[data-manager-state]').text()).not.toContain('(restart)')
+    expect(wrapper.get('[data-manager-output]').text()).toContain('Output')
+  } finally {
+    wrapper.unmount()
+  }
+})
 import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
 import { DelegationStorageSchema } from '@/node/delegation'
 it.each([

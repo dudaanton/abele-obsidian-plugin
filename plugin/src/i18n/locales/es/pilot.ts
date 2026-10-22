@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.manager.failed': 'El comando falló',
+  'node.manager.applied': 'Cambios aplicados',
+  'node.manager.cancelled': 'Cancelado',
+  'node.manager.running': 'En ejecución',
+  'node.commit.refresh': 'Actualizar',
   'requests.refresh': 'Actualizar solicitudes',
   'debug.launchUnknown':
     'Se desconoce el resultado del inicio. Vuelve a conectar y revisa las sesiones de depuración antes de reintentarlo.',
@@ -3718,7 +3723,7 @@ export const es = {
     'El programa aún no ha cargado código para esta línea. Compruebe el mapa de fuentes o espere a que se cargue este código.',
   'debug.watchLastValue': 'Último valor: {value}',
   'debug.logPoint': 'Punto de registro: {message}',
-  'node.delegation.ownerStopped': 'Detenido por ti; reinicia desde el chat del desarrollador',
+  'node.delegation.ownerStopped': 'Lo has detenido. Reinícialo desde su chat.',
   'node.delegation.paused': 'En pausa; puede continuar',
   'node.delegation.ownerAnswer':
     'Esperando tu aprobación. Responde en esta tarjeta o abre el chat delegado. El gestor no puede responder por ti.',

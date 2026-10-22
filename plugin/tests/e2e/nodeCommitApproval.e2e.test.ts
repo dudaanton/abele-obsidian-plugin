@@ -88,6 +88,15 @@ async function inspectCommit(label: string) {
       `(()=>{${setup}const session=chats.activeSession.value;session.updateChatMessage(m=>m.toolCallId==='sample-commit',m=>({...m,toolParams:{...window.__sampleCommitArgs,expected_head:'b'.repeat(40)}}));session.updateVisibleMessages()})()`
     )
     await inspect('stale', 'The folder or worktree has changed')
+    const stale = JSON.parse(
+      await evalLong(`(()=>{
+      const card=document.querySelector('.abele-ai-chat .abele-tool-approval');
+      return JSON.stringify({text:card.textContent,disabled:card.querySelector('button.mod-cta').disabled,refresh:[...card.querySelectorAll('button')].some(button=>button.textContent.trim()==='Refresh')});
+    })()`)
+    )
+    expect(stale.text).not.toContain('(stale_resource)')
+    expect(stale.disabled).toBe(true)
+    expect(stale.refresh).toBe(true)
   } finally {
     await evalLong(
       '(async()=>{const api=window.__abeleTest;if(window.__sampleCommitChat)await api.ChatService.getInstance().deleteChat(window.__sampleCommitChat);delete window.__sampleCommitArgs;delete window.__sampleCommitChat})()'

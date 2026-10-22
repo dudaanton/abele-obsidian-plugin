@@ -129,7 +129,15 @@
 
     <template v-else-if="message.toolName === 'node_git_commit'">
       <p>{{ params.message }}</p>
-      <p v-if="commitPreviewError" role="status">{{ nodeErrorDetails(commitPreviewError) }}</p>
+      <p v-if="commitPreviewError" role="status" :title="commitPreviewError">
+        {{ nodeErrorWords(commitPreviewError) }}
+      </p>
+      <Button
+        v-if="commitPreviewError"
+        :text="t('node.commit.refresh')"
+        :disabled="disabled"
+        @click="commitRefresh++"
+      />
       <p v-else-if="!commitPreview">{{ t('kit.loading') }}</p>
       <template v-else>
         <p>{{ t('node.files.fileCount', { count: commitPreview.files.length }) }}</p>
@@ -149,7 +157,7 @@
       <Disclosure v-model="originalOpen" :label="t('node.manager.evidence')">
         <pre
           class="abele-tool-approval__code"
-        ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
+        ><code>{{ JSON.stringify({ ...params, ...(commitPreviewError ? { preview_error: commitPreviewError } : {}) }, null, 2) }}</code></pre>
       </Disclosure>
     </template>
     <template v-else-if="message.toolName === 'node_delegate'">
@@ -374,7 +382,7 @@
               : t('streamB.allow.e213c1')
         "
         accent
-        :disabled="keyApprovalBusy || disabled || !!(nodePrompt && answerState)"
+        :disabled="keyApprovalBusy || disabled || commitBlocked || !!(nodePrompt && answerState)"
         :tooltip="t('streamB.letTheAgentDoExactlyThisOnce.db2a63')"
         @click="approve"
       />
@@ -428,7 +436,7 @@ import HttpSendPreview from './debugger/http/HttpSendPreview.vue'
 import Setting from './obsidian/Setting.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import { nodeCommitPreview } from '@/node/nodeCommitPreview'
-import { nodeErrorDetails } from '@/node/errorWords'
+import { nodeErrorDetails, nodeErrorWords } from '@/node/errorWords'
 import { providerLabel } from '@/node/providers'
 /** A saved request as an agent's send would put it on the wire, for its card. */
 const readHttpSend = (id: string, environment?: string) =>
@@ -556,6 +564,12 @@ const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
 const commitPreview = ref<Awaited<ReturnType<typeof nodeCommitPreview>> | null>(null)
 const commitPreviewError = ref('')
+const commitRefresh = ref(0)
+const commitBlocked = computed(
+  () =>
+    props.message.toolName === 'node_git_commit' &&
+    (!commitPreview.value || !!commitPreviewError.value)
+)
 const commitDiffs = ref<Record<string, boolean>>({})
 const questionList = computed(() =>
   Array.isArray(params.value.questions)
@@ -621,6 +635,7 @@ watch(
         )
       ),
     () => props.message.toolName,
+    commitRefresh,
   ],
   async ([owner, _args, _call, _target, name], _previous, cleanup) => {
     commitPreview.value = null
@@ -949,6 +964,7 @@ const settingsWrite = computed(() => {
 const parseError = ref('')
 
 const approve = () => {
+  if (commitBlocked.value) return
   if (props.nodePrompt) {
     if (!props.disabled && !props.answerState)
       emit(

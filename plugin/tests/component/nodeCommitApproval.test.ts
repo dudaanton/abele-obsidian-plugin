@@ -38,6 +38,15 @@ it('renders preview refusals in the current interface language on refresh', asyn
   try {
     await flushPromises()
     expect(wrapper.text()).toContain(t('node.error.staleResource'))
+    expect(wrapper.text()).not.toContain('(stale_resource)')
+    expect(wrapper.get('button.mod-cta').attributes('disabled')).toBeDefined()
+    const refresh = wrapper.findAll('button').find((button) => button.text() === 'Refresh')!
+    expect(refresh).toBeDefined()
+    const calls = vi.mocked(nodeCommitPreview).mock.calls.length
+    await refresh.trigger('click')
+    await flushPromises()
+    expect(vi.mocked(nodeCommitPreview).mock.calls.length).toBe(calls + 1)
+    expect(wrapper.get('button.mod-cta').attributes('disabled')).toBeDefined()
     initializeLocale('ru', catalogs.ru)
     await wrapper.setProps({ disabled: true })
     await flushPromises()

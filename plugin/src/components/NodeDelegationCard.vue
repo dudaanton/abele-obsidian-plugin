@@ -3,12 +3,15 @@
     <Setting :name="card.title">
       <template #desc
         ><span class="abele-node-delegation__meta"
-          >{{
-            [nodeLabel, providerLabel(card.provider), delegationBranchLabel(card.branch)]
-              .filter(Boolean)
-              .join(' · ')
-          }}<span class="abele-node-delegation__status">
-            · {{ stateLabel
+          ><span><Icon icon="server" no-hover /> {{ nodeLabel }}</span>
+          <span><Icon icon="bot" no-hover /> {{ providerLabel(card.provider) }}</span>
+          <span v-if="card.branch"
+            ><Icon icon="git-branch" no-hover /> {{ delegationBranchLabel(card.branch) }}</span
+          >
+          <span class="abele-node-delegation__status">
+            ·
+            <StatusDot :tone="statusTone" :label="stateLabel" :pulse="card.state === 'running'" />
+            {{ stateLabel
             }}<NodeToolPermissions
               :policy="card.toolPermissions"
               :node-label="nodeLabel"
@@ -22,6 +25,13 @@
         @click="emit('open')"
       />
     </Setting>
+    <p
+      v-if="card.reason === OWNER_STOP_REASON"
+      data-delegation-reason
+      class="abele-node-delegation__metadata"
+    >
+      {{ t('node.delegation.ownerStopped') }}
+    </p>
     <NodeToolPermissions
       :policy="card.toolPermissions"
       hide-mode
@@ -129,6 +139,7 @@ import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Disclosure from './obsidian/Disclosure.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 const props = defineProps<{ card: DelegationCard; nodeLabel: string; disabled?: boolean }>()
 const activityPreview = computed(() => {
   const text = props.card.activity?.message ?? ''
@@ -161,7 +172,7 @@ watch(
 const expandedReports = ref<Record<number, boolean>>({})
 const stateLabel = computed(() => {
   const state = props.card.state
-  if (props.card.reason === OWNER_STOP_REASON) return t('node.delegation.ownerStopped')
+  if (props.card.reason === OWNER_STOP_REASON) return t('streamBMeta.8b47045eb7')
   if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')
@@ -170,6 +181,13 @@ const stateLabel = computed(() => {
   if (state === 'running') return t('node.delegation.working')
   if (state === 'unknown' || state === 'outcome unknown') return t('node.delegation.unknown')
   return state
+})
+const statusTone = computed(() => {
+  if (props.card.reason === OWNER_STOP_REASON || props.card.state === 'cancelled') return 'faint'
+  if (props.card.state === 'completed') return 'green'
+  if (['failed', 'unsupported'].includes(props.card.state)) return 'red'
+  if (props.card.state === 'running') return 'accent'
+  return 'orange'
 })
 const promptMessage = (prompt: Prompt): ChatMessage =>
   obsidianPromptCall(prompt) ??
@@ -198,7 +216,15 @@ const emit = defineEmits<{
   overflow-wrap: anywhere;
 }
 .abele-node-delegation__meta {
-  display: inline;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-1) var(--size-4-2);
+}
+.abele-node-delegation__meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
 }
 .abele-node-delegation__status {
   white-space: nowrap;

@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.manager.failed': 'Команда завершилась с ошибкой',
+  'node.manager.applied': 'Изменения применены',
+  'node.manager.cancelled': 'Отменено',
+  'node.manager.running': 'Выполняется',
+  'node.commit.refresh': 'Обновить',
   'requests.refresh': 'Обновить запросы',
   'debug.launchUnknown':
     'Результат запуска неизвестен. Подключитесь снова и проверьте сеансы отладки перед повторным запуском.',
@@ -3718,7 +3723,7 @@ export const ru = {
     'Программа пока не загрузила код для этой строки. Проверьте карту исходного кода или дождитесь загрузки этого кода.',
   'debug.watchLastValue': 'Последнее значение: {value}',
   'debug.logPoint': 'Точка журнала: {message}',
-  'node.delegation.ownerStopped': 'Остановлен вами; продолжить можно из чата разработчика',
+  'node.delegation.ownerStopped': 'Остановлено вами. Запустите снова из его чата.',
   'node.delegation.paused': 'Приостановлен; можно продолжить',
   'node.delegation.ownerAnswer':
     'Ожидается ваше разрешение. Ответьте на запрос на этой карточке или откройте дочерний чат. Менеджер не может ответить за вас.',

@@ -1,4 +1,9 @@
 export const en = {
+  'node.manager.failed': 'Command failed',
+  'node.manager.applied': 'Changes applied',
+  'node.manager.cancelled': 'Cancelled',
+  'node.manager.running': 'Running',
+  'node.commit.refresh': 'Refresh',
   'requests.refresh': 'Refresh requests',
   'debug.launchUnknown':
     'The launch result is unknown. Reconnect and check the debug sessions before trying again.',
@@ -3546,7 +3551,7 @@ export const en = {
     'The program has not loaded code for this line yet. Check its source map or wait for this code to load.',
   'debug.watchLastValue': 'Last value: {value}',
   'debug.logPoint': 'Log point: {message}',
-  'node.delegation.ownerStopped': 'Stopped by you; restart from the child chat',
+  'node.delegation.ownerStopped': 'Stopped by you. Restart it from its chat.',
   'node.delegation.paused': 'Paused; can continue',
   'node.delegation.ownerAnswer':
     'Waiting for your approval. Answer the pending action on this card or open the child chat. The manager cannot answer for you.',

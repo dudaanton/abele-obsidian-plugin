@@ -27440,8 +27440,58 @@
     ]
   },
   "node.delegation.ownerStopped": {
-    "englishHash": "25b86c5cf94766f830b7ab1077e25946cd95d172807512f5e64af793b7727ae0",
-    "context": "Owner stop is final until a direct restart in the child chat",
+    "englishHash": "b0473e581b52c723bcbea129fa3a950392046dc5659ad2ad3c82962d50ee85b8",
+    "context": "Node execution card status, refresh or owner restart explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.commit.refresh": {
+    "englishHash": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671",
+    "context": "Node execution card status, refresh or owner restart explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.running": {
+    "englishHash": "f4ccae29e1bb0c20a124570a1b43f4347ea94bba9f84ffdfddd9c7445b126128",
+    "context": "Node execution card status, refresh or owner restart explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.cancelled": {
+    "englishHash": "d353a99eb4556847ceeb3c306ac886cf6b4fa13043eb1864b9aeb0607fd5f2cc",
+    "context": "Node execution card status, refresh or owner restart explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.applied": {
+    "englishHash": "9cf6dbd76c0ce2a2e3ff7243df135c201b76d20cd05c3c5ff037737f8ed60e64",
+    "context": "Node execution card status, refresh or owner restart explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.failed": {
+    "englishHash": "8c45c79c6d1192a31ad25b0ef73829fc9e57546ab383184a6e7064a78ed483a3",
+    "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
       "lv",

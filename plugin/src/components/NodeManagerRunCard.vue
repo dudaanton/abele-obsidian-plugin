@@ -1,16 +1,9 @@
 <template>
   <section class="abele-node-manager-run">
-    <MetaLine
-      v-if="card.run.state !== 'pending_approval'"
-      :facts="[
-        {
-          key: '0',
-          value: [stateLabel, card.run.reason ? nodeErrorDetails(card.run.reason) : '']
-            .filter(Boolean)
-            .join(' · '),
-        },
-      ]"
-    />
+    <p data-manager-state class="abele-node-manager-run__state">
+      <StatusDot :tone="stateTone" :label="stateLabel" :pulse="card.run.state === 'running'" />
+      <span>{{ stateLabel }}</span>
+    </p>
     <AiToolApproval
       v-for="prompt in card.prompts"
       :key="prompt.prompt_id"
@@ -28,16 +21,16 @@
       :disabled="disabled"
       @click="emit('cancel')"
     />
-    <p v-if="card.run.exit_code !== undefined && card.run.exit_code !== null">
-      {{ t('node.manager.exitCode', { code: String(card.run.exit_code) }) }}
-    </p>
-    <p v-if="card.run.state === 'outcome_unknown'">{{ t('node.error.unknownOutcome') }}</p>
     <ul v-if="card.run.conflicting_files?.length">
       <li v-for="path in card.run.conflicting_files" :key="path">
         <code>{{ path }}</code>
       </li>
     </ul>
     <Disclosure v-model="outputOpen" :label="t('node.manager.output')" data-manager-output>
+      <p v-if="card.run.exit_code !== undefined && card.run.exit_code !== null">
+        {{ t('node.manager.exitCode', { code: String(card.run.exit_code) }) }}
+      </p>
+      <p v-if="card.run.reason">{{ nodeErrorDetails(card.run.reason) }}</p>
       <p v-if="card.run.stdout_truncated || card.run.stderr_truncated">
         {{ t('node.manager.truncated') }}
       </p>
@@ -54,10 +47,10 @@ import { computed, ref, watch } from 'vue'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { nodeErrorDetails } from '@/node/errorWords'
 import { t } from '@/i18n'
-import MetaLine from './obsidian/MetaLine.vue'
 import Disclosure from './obsidian/Disclosure.vue'
 import Button from './obsidian/Button.vue'
 import AiToolApproval from './AiToolApproval.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
   disabled?: boolean
@@ -80,10 +73,26 @@ const stateLabel = computed(() => {
     case 'denied':
       return t('node.manager.denied')
     case 'outcome_unknown':
-      return t('node.delegation.unknown')
+      return t('node.error.unknownOutcome')
+    case 'running':
+      return t('node.manager.running')
+    case 'cancelled':
+      return t('node.manager.cancelled')
+    case 'applied':
+      return t('node.manager.applied')
+    case 'failed':
+      return t('node.manager.failed')
     default:
       return streamBLabel(props.card.run.state)
   }
+})
+const stateTone = computed(() => {
+  const state = props.card.run.state
+  if (['exited', 'applied'].includes(state)) return 'green'
+  if (['failed', 'timed_out'].includes(state)) return 'red'
+  if (['cancelled', 'denied'].includes(state)) return 'faint'
+  if (state === 'running') return 'accent'
+  return 'orange'
 })
 const emit = defineEmits<{
   answer: [prompt: Prompt, choice: 'allow' | 'deny', value?: string]
@@ -106,5 +115,10 @@ const message = (prompt: Prompt) =>
 pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.abele-node-manager-run__state {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 </style>

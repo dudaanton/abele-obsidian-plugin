@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.manager.failed': 'Befehl fehlgeschlagen',
+  'node.manager.applied': 'Änderungen angewendet',
+  'node.manager.cancelled': 'Abgebrochen',
+  'node.manager.running': 'Wird ausgeführt',
+  'node.commit.refresh': 'Aktualisieren',
   'requests.refresh': 'Anfragen aktualisieren',
   'debug.launchUnknown':
     'Das Startergebnis ist unbekannt. Verbinde dich erneut und prüfe die Debug-Sitzungen vor einem weiteren Versuch.',
@@ -3689,7 +3694,7 @@ export const de = {
     'Das Programm hat noch keinen Code für diese Zeile geladen. Prüfen Sie die Quellzuordnung oder warten Sie, bis dieser Code geladen wird.',
   'debug.watchLastValue': 'Letzter Wert: {value}',
   'debug.logPoint': 'Protokollpunkt: {message}',
-  'node.delegation.ownerStopped': 'Von dir gestoppt; im Entwicklerchat fortsetzen',
+  'node.delegation.ownerStopped': 'Von dir gestoppt. Starte ihn in seinem Chat neu.',
   'node.delegation.paused': 'Pausiert; kann fortgesetzt werden',
   'node.delegation.ownerAnswer':
     'Ihre Genehmigung wird erwartet. Antworten Sie auf dieser Karte oder öffnen Sie den untergeordneten Chat. Der Manager kann nicht für Sie antworten.',

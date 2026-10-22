@@ -68,7 +68,10 @@ async function inspect(label: string) {
       for(let i=0;i<100&&!document.querySelector('.abele-node-delegation');i++)await new Promise(r=>setTimeout(r,50));
       return document.querySelector('.abele-node-delegation').textContent;
     })()`)
-    expect(text).toContain('Stopped by you; restart from the child chat')
+    expect(text).toContain('Stopped by you. Restart it from its chat.')
+    expect(
+      await evalLong(`!!document.querySelector('.abele-node-delegation .abele-status-dot_faint')`)
+    ).toBe('true')
     expect(text).not.toContain('Paused; can continue')
     columnShot(`${shots}/${label}-owner-stopped.png`)
   } finally {

@@ -1,5 +1,10 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.manager.failed': 'Komanda neizdevās',
+  'node.manager.applied': 'Izmaiņas piemērotas',
+  'node.manager.cancelled': 'Atcelts',
+  'node.manager.running': 'Darbojas',
+  'node.commit.refresh': 'Atjaunot',
   'requests.refresh': 'Atjaunot pieprasījumus',
   'debug.launchUnknown':
     'Palaišanas rezultāts nav zināms. Atjauno savienojumu un pirms atkārtotas palaišanas pārbaudi atkļūdošanas sesijas.',
@@ -3648,7 +3653,7 @@ export const lv = {
     'Programma vēl nav ielādējusi šīs rindas kodu. Pārbaudiet avota karti vai gaidiet koda ielādi.',
   'debug.watchLastValue': 'Pēdējā vērtība: {value}',
   'debug.logPoint': 'Žurnāla punkts: {message}',
-  'node.delegation.ownerStopped': 'Jūs apturējāt; atsāciet izstrādātāja sarunā',
+  'node.delegation.ownerStopped': 'Jūs apturējāt. Sāciet vēlreiz no tā tērzēšanas.',
   'node.delegation.paused': 'Apturēts; var turpināt',
   'node.delegation.ownerAnswer':
     'Gaida jūsu atļauju. Atbildiet šajā kartītē vai atveriet deleģēto tērzēšanu. Pārvaldnieks nevar atbildēt jūsu vietā.',
