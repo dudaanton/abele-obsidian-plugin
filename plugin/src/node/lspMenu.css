@@ -24,7 +24,7 @@
 .abele-lsp-documentation {
   margin-top: var(--size-4-2);
   color: var(--text-muted);
-  white-space: pre-wrap;
+  white-space: normal;
 }
 .abele-lsp-problem {
   display: flex;
@@ -43,4 +43,39 @@
   margin: var(--size-4-2) 0;
   border: 0;
   border-top: 1px solid var(--background-modifier-border);
+}
+
+.abele-lsp-documentation p {
+  margin: var(--size-4-2) 0;
+}
+.abele-lsp-documentation p:first-child {
+  margin-top: 0;
+}
+.abele-lsp-documentation p:last-child {
+  margin-bottom: 0;
+}
+.abele-lsp-documentation ul,
+.abele-lsp-documentation ol {
+  padding-left: 1.5em;
+}
+.abele-lsp-documentation code {
+  font-family: var(--font-monospace);
+}
+.abele-lsp-signature .abele-lsp-keyword {
+  color: var(--code-keyword);
+}
+.abele-lsp-signature .abele-lsp-string {
+  color: var(--code-string);
+}
+.abele-lsp-signature .abele-lsp-number {
+  color: var(--code-value);
+}
+.abele-lsp-signature .abele-lsp-comment {
+  color: var(--code-comment);
+}
+.abele-lsp-signature .abele-lsp-type {
+  color: var(--code-property);
+}
+.abele-lsp-signature .abele-lsp-function {
+  color: var(--code-function);
 }

@@ -11,6 +11,7 @@ import {
   GutterMarker,
   gutter,
   hoverTooltip,
+  closeHoverTooltips,
   tooltips,
   ViewPlugin,
 } from '@codemirror/view'
@@ -53,6 +54,64 @@ class ProblemMarker extends GutterMarker {
     return mark
   }
 }
+
+// Keep modifier state per editor, including key changes while the pointer is stationary.
+const hoverModifiers = ViewPlugin.fromClass(
+  class {
+    active = false
+    revision = 0
+    private pointer?: MouseEvent
+    constructor(readonly view: EditorView) {
+      view.dom.addEventListener('mousemove', this.move)
+      view.dom.addEventListener('mouseleave', this.leave)
+      view.dom.ownerDocument.addEventListener('keydown', this.key)
+      view.dom.ownerDocument.addEventListener('keyup', this.key)
+      view.dom.ownerDocument.defaultView?.addEventListener('blur', this.blur)
+    }
+    private move = (event: MouseEvent) => {
+      this.pointer = event
+      this.setActive(event.ctrlKey || event.metaKey)
+    }
+    private leave = () => {
+      this.pointer = undefined
+      this.revision++
+    }
+    private setActive(active: boolean) {
+      if (this.active === active) return false
+      this.active = active
+      this.revision++
+      this.view.dispatch({ effects: closeHoverTooltips })
+      return true
+    }
+    private key = (event: KeyboardEvent) => {
+      if (!this.setActive(event.ctrlKey || event.metaKey) || !this.pointer) return
+      const target = this.pointer.target
+      if (target instanceof Element && this.view.dom.contains(target)) {
+        target.dispatchEvent(
+          new MouseEvent('mousemove', {
+            bubbles: true,
+            clientX: this.pointer.clientX,
+            clientY: this.pointer.clientY,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+          })
+        )
+      }
+    }
+    private blur = () => {
+      this.setActive(false)
+      this.pointer = undefined
+    }
+    destroy() {
+      this.revision++
+      this.view.dom.removeEventListener('mousemove', this.move)
+      this.view.dom.removeEventListener('mouseleave', this.leave)
+      this.view.dom.ownerDocument.removeEventListener('keydown', this.key)
+      this.view.dom.ownerDocument.removeEventListener('keyup', this.key)
+      this.view.dom.ownerDocument.defaultView?.removeEventListener('blur', this.blur)
+    }
+  }
+)
 
 /** Inert outside a node document; shared by readers and editors, including repository tabs. */
 export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Extension {
@@ -108,6 +167,7 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
         },
       },
     }),
+    hoverModifiers,
     hoverTooltip(async (view, pos) => {
       const context = lspFor(view.dom)
       if (!context?.document.supported) return null
@@ -117,10 +177,17 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
           end = lspOffset(view.state.doc, d.range.end)
         return start !== null && end !== null && pos >= start && pos <= end
       })
-      const text = await context.document.hover({
-        line: line.number - 1,
-        character: pos - line.from,
-      })
+      const modifier = view.plugin(hoverModifiers)
+      const revision = modifier?.revision
+      if (!modifier?.active && !problems.length) return null
+      const text = modifier?.active
+        ? await context.document.hover({
+            line: line.number - 1,
+            character: pos - line.from,
+          })
+        : ''
+      // Releasing the key or leaving the editor invalidates an in-flight response.
+      if (modifier?.revision !== revision) return null
       if ((!problems.length && !text) || !view.dom.isConnected) return null
       return { pos, create: () => ({ dom: messageDOM(view, problems, text) }) }
     }),
@@ -168,7 +235,7 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       '.cm-tooltip-hover:has(.abele-lsp-message)': {
         width: 'max-content',
         height: 'max-content',
-        maxWidth: 'min(32em, 85vw)',
+        maxWidth: 'min(80ch, 90vw)',
         right: 'auto',
         bottom: 'auto',
         borderColor: 'var(--background-modifier-border)',
@@ -179,9 +246,11 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
         fontSize: 'var(--font-ui-small)',
       },
       '.abele-lsp-message': {
-        whiteSpace: 'pre-wrap',
+        whiteSpace: 'normal',
+        maxHeight: 'min(60vh, 32em)',
+        overflowY: 'auto',
         padding: 'var(--size-4-2)',
-        maxWidth: 'min(32em, 85vw)',
+        maxWidth: 'min(80ch, 90vw)',
         boxSizing: 'border-box',
         borderRadius: 'inherit',
         overflowWrap: 'anywhere',

@@ -15,6 +15,20 @@ it('preserves multiline signatures and treats documentation as plain text', () =
   expect(content.querySelector('.abele-lsp-documentation')?.textContent).toBe('Returns <sample>.')
   expect(content.querySelector('sample')).toBeNull()
 })
+it('renders highlighted markdown without interpreting server HTML', () => {
+  const content = document.createElement('div')
+  appendLspHoverContent(
+    content,
+    '```typescript\nconst sample: number\n```\n\nUse `sample`.\n\n- First\n- Second\n\n<script>alert(1)</script>\n[unsafe](javascript:alert(1))'
+  )
+  expect(content.querySelector('pre code')?.textContent).toBe('const sample: number')
+  expect(content.querySelector('pre code span')).not.toBeNull()
+  expect(content.textContent).not.toContain('```')
+  expect(content.querySelector('.abele-lsp-documentation code')?.textContent).toBe('sample')
+  expect(content.querySelectorAll('li')).toHaveLength(2)
+  expect(content.querySelector('script, [onclick], a[href^="javascript:"]')).toBeNull()
+})
+
 it('includes type documentation in the symbol menu used by long press', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
@@ -81,6 +95,7 @@ it('renders the hover response with type and documentation', async () => {
         bubbles: true,
         clientX: 10,
         clientY: 20,
+        ctrlKey: true,
       })
     )
     await vi.waitFor(() => expect(hover).toHaveBeenCalled())
@@ -115,6 +130,10 @@ it('renders the hover response with type and documentation', async () => {
     expect(popup.querySelector('.abele-lsp-documentation')?.textContent).toBe(
       'Sample documentation.'
     )
+    // Moving into the scrollable tooltip must still allow key release to dismiss it.
+    view.dom.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: popup }))
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control' }))
+    await vi.waitFor(() => expect(document.querySelector('.abele-lsp-message pre')).toBeNull())
   } finally {
     view.destroy()
     remove()
@@ -178,5 +197,99 @@ it('renders both diagnostic sources, tolerates stale ranges, and clears marks on
     remove()
     await doc.close()
     root.remove()
+  }
+})
+
+it('requires Ctrl or Cmd for types, including a key pressed over a stationary symbol', async () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+  doc.supported = true
+  const hover = vi.spyOn(doc, 'hover').mockResolvedValue('const sample: number')
+  const remove = provideLsp(root, { document: doc, navigate: () => {} })
+  const view = new EditorView({
+    parent: root,
+    doc: 'const sample = 1',
+    extensions: [nodeLspExtension()],
+  })
+  try {
+    vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+    const move = () =>
+      view.contentDOM
+        .querySelector('.cm-line')!
+        .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
+    move()
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(hover).not.toHaveBeenCalled()
+    expect(document.querySelector('.abele-lsp-message')).toBeNull()
+    for (const key of ['Control', 'Meta']) {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key, ctrlKey: key === 'Control', metaKey: key === 'Meta' })
+      )
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-lsp-message pre')).not.toBeNull()
+      )
+      document.dispatchEvent(new KeyboardEvent('keyup', { key }))
+      await vi.waitFor(() => expect(document.querySelector('.abele-lsp-message')).toBeNull())
+    }
+    hover.mockClear()
+    doc.diagnostics = [
+      {
+        source: 'typescript',
+        message: 'Sample problem',
+        range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
+      },
+    ]
+    for (const listener of doc.listeners) listener()
+    move()
+    await vi.waitFor(() =>
+      expect(document.querySelector('.abele-lsp-problem')?.textContent).toContain('Sample problem')
+    )
+    expect(hover).not.toHaveBeenCalled()
+  } finally {
+    view.destroy()
+    remove()
+    await doc.close()
+    root.remove()
+    vi.restoreAllMocks()
+  }
+})
+
+it('discards a pending type response when the modifier is released', async () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+  doc.supported = true
+  let finish!: (text: string) => void
+  const hover = vi.spyOn(doc, 'hover').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  const remove = provideLsp(root, { document: doc, navigate: () => {} })
+  const view = new EditorView({
+    parent: root,
+    doc: 'const sample = 1',
+    extensions: [nodeLspExtension()],
+  })
+  try {
+    vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+    view.contentDOM
+      .querySelector('.cm-line')!
+      .dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20, ctrlKey: true })
+      )
+    await vi.waitFor(() => expect(hover).toHaveBeenCalled())
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control' }))
+    finish('const sample: number')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(document.querySelector('.abele-lsp-message')).toBeNull()
+  } finally {
+    view.destroy()
+    remove()
+    await doc.close()
+    root.remove()
+    vi.restoreAllMocks()
   }
 })
