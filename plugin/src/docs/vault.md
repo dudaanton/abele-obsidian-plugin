@@ -2603,6 +2603,10 @@ Journal draft hints index precomputed identities in a Map; commands update one h
 scanning or serializing retained identities. Arrays are materialized only for explicit preview
 reads. Generation retirement indexes archived fingerprints and processes the current inventory
 once, committing only unchanged archived entries in one batch.
+For a whole-file publication without a backup, the initial intent already carries the
+replacement hash. Recovery retains that intent when publication consumed its temp; it is
+retired only after the ledger commits the matching hash. This needs no intermediate installed
+marker, keeping the small-pull path to intent creation and acknowledged retirement.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and

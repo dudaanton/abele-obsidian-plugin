@@ -166,6 +166,10 @@ export class VaultWriter {
   }
 
   private async finishInstallation(entry: JournalEntry): Promise<void> {
+    // A whole-file intent already contains the authenticated replacement hash. A
+    // consumed temp retains that intent until the ledger acknowledges publication;
+    // writing another installed marker would add a third journal mutation per pull.
+    if (this.deps.retainInstalled && !entry.streaming && !entry.backup) return
     await this.deps.journal.persist(() => {
       if (this.deps.retainInstalled)
         this.deps.journal.replace(entry, { ...entry, installed: true, backup: undefined })
@@ -417,7 +421,16 @@ export class VaultWriter {
     for (const entry of await this.deps.journal.currentEntries()) {
       if (!(await this.deps.journal.isCurrent(entry))) continue
       if (entry.retiredGeneration) continue
-      if (this.deps.retainInstalled && entry.installed && !entry.backup) continue
+      if (
+        this.deps.retainInstalled &&
+        !entry.backup &&
+        (entry.installed ||
+          (!entry.streaming &&
+            entry.replacementSha &&
+            entry.temp &&
+            !(await this.there(entry.temp))))
+      )
+        continue
       if (entry.streaming && !entry.backup) {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue
