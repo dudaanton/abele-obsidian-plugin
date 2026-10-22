@@ -4,7 +4,7 @@
            )
              throw e
 -          error = e.code
-+          error = entry.method.startsWith('command.context.v1.')
++          error = (/^(command|integration)\.context\.v1\./).test(entry.method)
 +            ? `${e.code}: ${e.message}`
 +            : e.code
          }

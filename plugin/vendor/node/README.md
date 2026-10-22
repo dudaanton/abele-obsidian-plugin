@@ -5,8 +5,8 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 
 ## Current browser payloads
 
-All four packages are built from the clean released AbeleNode v0.4.47 archive,
-including the provider-independent `command_context_v1` contracts.
+All four packages are built from the clean released AbeleNode v0.4.49 archive,
+including the provider-independent `command_context_v1` and `integration_context_v1` contracts.
 The clean release archive is built for the four browser packages only.
 Apply paired-welcome.patch, lsp-install-deadline.patch (updated for HTTP long polling),
 execution-policy-admission.patch, repository-deadline.patch and command-context-errors.patch before compiling and packaging. The admission patch adds
@@ -15,7 +15,7 @@ replay, and disconnects if admission fails. It never opts into execution policy 
 The command-context error patch preserves the node's resource-specific error message
 in durable receipts; unrelated methods retain their existing error representation.
 The plugin explicitly negotiates execution.policy.v1 on every transport admission and
-also opts into command.context.v1 before replaying saved context operations and streams.
+also opts into command.context.v1 and integration.context.v1 separately before replaying saved context operations and streams.
 Discovery is refreshed after enabling execution policy; older nodes retain unknown policy snapshots.
 The lockfile and integrity.json record these exact packaged bytes.
 The fourth patch gives all `repository.*` requests a thirty-second deadline instead
