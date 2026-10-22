@@ -5,6 +5,43 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import { ChannelError } from '@abele/channel-protocol'
 
+it('preserves a stopped parent when reconnect recovers an unknown command receipt', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  let lost = true
+  f.request.mockImplementation(async (method, params) => {
+    if (method === 'command.context.v1.prepare' && lost) {
+      lost = false
+      throw new ChannelError('outcome_unknown')
+    }
+    return original(method, params)
+  })
+  try {
+    await expect(
+      f.controller.command(
+        'sample-parent',
+        { worktree_id: 'sample-tree', command: 'pwd' },
+        'sample-operation',
+        'ask',
+        'Check the folder.'
+      )
+    ).rejects.toThrow(/outcome_unknown/)
+    await f.controller.stopParent('sample-parent')
+    await f.client.flush()
+    const restored = new NodeManagerController(f.client, f.store)
+    await restored.restore()
+    expect(await f.store.read((s) => s.managerOperations!['sample-operation'].notified)).toBe(true)
+    await f.store.transaction((s) => {
+      s.managerOperations!['sample-operation'].run = { ...f.run, state: 'exited', exit_code: 0 }
+    })
+    const wake = vi.fn(() => true)
+    await restored.wakeDelivered(wake)
+    expect(wake).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
+
 it('replaces the unknown placeholder when SDK reconnect replay recovers the preparation receipt', async () => {
   const f = fixture()
   const original = f.request.getMockImplementation()!

@@ -55,6 +55,7 @@ export const ManagerOperationSchema = z
     run: z.custom<Run>((value) => RunSchema.safeParse(value).success).optional(),
     observedSeq: z.number().optional(),
     notified: z.boolean().optional(),
+    stopped: z.boolean().optional(),
     justification: z.string().max(200).optional(),
     request: z.record(z.string(), z.unknown()).optional(),
     fallback: z.custom<Prompt>((value) => PromptSchema.safeParse(value).success).optional(),
@@ -66,7 +67,7 @@ function retainedRun(entry: ManagerOperation, receipt: Run, recover = false): Ru
   if (entry.run?.session_id === 'unsubmitted-command') {
     if (recover) {
       entry.run = receipt
-      entry.notified = false
+      if (!entry.stopped) entry.notified = false
     }
     return receipt
   }
@@ -368,7 +369,10 @@ export class NodeManagerController {
   async stopParent(parent: string) {
     await this.store.transaction((s) => {
       for (const entry of Object.values(s.managerOperations ?? {}))
-        if (entry.parent === parent) entry.notified = true
+        if (entry.parent === parent) {
+          entry.notified = true
+          entry.stopped = true
+        }
     })
   }
   async cleanupFor(parent: string, run: string) {
@@ -396,7 +400,7 @@ export class NodeManagerController {
         if (receipt.success) retainedRun(entry, receipt.data, true)
       }
       return Object.entries(s.managerOperations ?? {}).filter(
-        ([, entry]) => !entry.notified && entry.method !== 'command.v1.cancel'
+        ([, entry]) => !entry.notified && !entry.stopped && entry.method !== 'command.v1.cancel'
       )
     })
     for (const [operation, entry] of entries) {

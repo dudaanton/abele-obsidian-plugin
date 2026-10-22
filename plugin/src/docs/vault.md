@@ -583,7 +583,8 @@ and stable parent/task identities, the exact create request body, child links an
 status. Legacy stored delegation grants are ignored without a migration prompt. `awaitingResult` arms parent delivery when creation is reserved.
 `notifiedAttention` retains the last delivered prompt/terminal notice so reconnecting does
 not wake the manager twice. Manager operations retain `notified` for command completion;
-Stop disarms both notification paths. These fields are installation-local, not synced.
+Stop disarms both notification paths. Manager operations also retain `stopped` so recovering
+an unknown command receipt cannot rearm a stopped parent. These fields are installation-local, not synced.
 After a follow-up, `followupMailboxSeq` records the previous mailbox head so an old terminal event cannot settle
 the new turn. The card's bounded child transcript uses the existing session window; branch
 and changed-file summaries are replaceable in-memory projections. Parent IDs use the existing durable `chatId` metadata identity (allocated with a
