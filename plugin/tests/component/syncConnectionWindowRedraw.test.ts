@@ -50,7 +50,9 @@ it('leaves the recent list alone when only progress moves', async () => {
       ui.publish(id, pull(i))
       await vi.advanceTimersByTimeAsync(300)
     }
-    expect(view.find('.abele-sync-window__progress').text()).toBe('Receiving files · 5 of 1000')
+    expect(view.get('.abele-sync-window__line[role=status]').text()).toBe(
+      'Receiving files · 5 of at least 1000 files'
+    )
     expect(renders.window).toBeGreaterThan(0)
     expect(renders.events).toBe(0)
     expect(formatted).not.toHaveBeenCalled()
@@ -132,7 +134,9 @@ it('redraws at most a few times a second while a pull reports every file, and se
     }
     expect(renders.window).toBeLessThanOrEqual(5)
     await vi.advanceTimersByTimeAsync(300)
-    expect(view.find('.abele-sync-window__progress').text()).toBe('Receiving files · 100 of 1000')
+    expect(view.get('.abele-sync-window__line[role=status]').text()).toBe(
+      'Receiving files · 100 of at least 1000 files'
+    )
   } finally {
     view.unmount()
   }

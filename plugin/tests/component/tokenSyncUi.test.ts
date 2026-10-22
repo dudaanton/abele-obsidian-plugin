@@ -453,7 +453,9 @@ it('shows vault inspection progress in its connection row and keeps sync blocked
   const id = ui.rows.value[0].id
   ui.activity.value = { ...ui.activity.value, [id]: { inspection: { completed: 12, total: 3000 } } }
   const view = mount(SyncSettings, { props: { model: ui } })
-  expect(view.text()).toContain('Checking the vault · 12 of 3 000')
+  expect(view.get('.abele-sync-row .abele-sync-row__line').text()).toBe(
+    `Checking the vault · ${(12).toLocaleString()} of ${(3000).toLocaleString()}`
+  )
   const sync = view
     .findAllComponents(Icon)
     .find((one) => one.props('tooltip') === 'Sync this connection now')!
