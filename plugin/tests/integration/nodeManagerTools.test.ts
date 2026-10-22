@@ -43,6 +43,33 @@ it('scopes model aliases to the chat, tool and exact intended action while prese
   expect(ids[0]).toBe(ids[1])
   expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
 })
+it('does not create an integrate approval in owner bypass mode on an approval-only node', async () => {
+  const mutate = vi.fn()
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      client: { describe: async () => ({}) },
+      manager: { mutate },
+    }),
+  } as never)
+  const chat = {
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    permissionMode: ref('allow-all'),
+    getToolMode: () => 'auto',
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as unknown as ChatSession
+  await expect(
+    createNodeManagerTools(chat)
+      .find((t) => t.name === 'node_git_integrate')!
+      .execute('sample-call', {
+        node: 'sample-node',
+        operation_id: 'sample-operation',
+        justification: 'Integrate tested changes.',
+      })
+  ).rejects.toThrow(/integration.*without asking/i)
+  expect(mutate).not.toHaveBeenCalled()
+})
 it('retains the inferred scoped folder in an old-node refusal', async () => {
   const refuse = vi.fn(async () => {
     throw new Error('Update the node to 0.4.47')
@@ -187,6 +214,7 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
       operation_id: 'sample-operation',
       justification: 'Check the runtime.',
       permission_mode: 'bypass',
+      session_id: 'sample-provider-session',
     })
     expect(command.mock.calls[0][3]).toBe(mode === 'allow-all' ? 'bypass' : 'ask')
   }

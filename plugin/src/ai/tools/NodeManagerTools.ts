@@ -136,6 +136,8 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
       const description = await connection.client.describe()
+      if (name === 'node_git_integrate' && parent.permissionMode?.value === 'allow-all')
+        throw new Error(t('node.manager.integrateBypassUpdate'))
       if (name === 'node_command_run' && !managerCapability(description, 'command_context_v1')) {
         try {
           return await connection.manager.refuse(

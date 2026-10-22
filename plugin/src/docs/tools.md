@@ -1381,15 +1381,16 @@ For context commands `session_id` identifies the context journal, not a provider
 never pass it to session APIs. Status, cancel and reconnect replay use context APIs
 with the original parent binding. A failed preparation is reported as not submitted
 for execution; lost preparation receipts retain their operation ID and unknown outcome.
-In Ask, a refusal before the node creates an approval retains one local request card
-with the exact requested command, folder and refusal reason. Answering that card
-only settles the failed local request; it never authorizes or starts a node action.
+In Ask, a refusal before the node creates an approval retains one failed request card
+with the exact requested command, folder and readable refusal reason, without approval controls.
 After fixing the stated problem, a new command request gets its own exact node approval.
 
 `node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
 `source_worktree_id`, both branch names and full `expected_target_head` and
 `expected_source_head`, plus `node`, `session_id`, `operation_id`. Ask creates an owner
-prompt; without asking must skip it on supporting nodes. Default integration is fast-forward; `rebase: true` first rebases the developer
+prompt. Node 0.4.48 has no integration owner-mode API, so without-asking integration
+is refused before submission with an explicit update explanation. Never automatically
+answer an integration prompt to emulate bypass. Default integration is fast-forward; `rebase: true` first rebases the developer
 in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
 `outcome_unknown` directly; inspect both heads before another attempt. Never retry
 blindly or clean up an uncertain integration. Older nodes keep the existing Git tools.
