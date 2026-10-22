@@ -1,3 +1,12 @@
+## Delegation reason compatibility
+
+Apply `patches/delegation-reasons.patch` to the v0.4.44 protocol source before
+packaging. Delegation records, status replies and terminal events accept string
+reasons, including provider refusals, lost workers and future reasons. State and
+all other fields retain their existing validation. Only delegation.js, its source
+map and declarations change; the other three browser payloads keep their patches.
+The regression tests exercise both status parsing and SDK mailbox ingestion.
+
 ## Current browser payloads
 
 All four packages are built from released AbeleNode v0.4.44

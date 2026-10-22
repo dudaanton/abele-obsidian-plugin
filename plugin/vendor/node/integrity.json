@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 138755,
-    "unpackedSize": 1515644,
-    "shasum": "f68e372fe05263e87792bcd438ac034f40c08749",
-    "integrity": "sha512-QKVWmzKwOT+qvEytoCXqz5EaoJ05H9Mx1sKWQP44x02MHO1kE0cQ7t/MPWtbDQf7pO7wApyRmX6Dl+BMi4YYxw==",
+    "size": 138729,
+    "unpackedSize": 1515495,
+    "shasum": "75621e0b631aff4b793bb8a5bd75c2e5432d1537",
+    "integrity": "sha512-JrMpWuaDKGZ7dWxpMuC7ufQ4m+0d2MNqly6XoUtznegUJb0mriPZ6W8YghihJOIKoAaaI2Fh29nEgzLING5aww==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -165,17 +165,17 @@
       },
       {
         "path": "dist/delegation.d.ts",
-        "size": 24943,
+        "size": 24865,
         "mode": 420
       },
       {
         "path": "dist/delegation.js",
-        "size": 5205,
+        "size": 5181,
         "mode": 420
       },
       {
         "path": "dist/delegation.js.map",
-        "size": 5484,
+        "size": 5437,
         "mode": 420
       },
       {
