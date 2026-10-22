@@ -55,8 +55,12 @@ it.each([
       await flushPromises()
       // Native reading sections wait for every internal embed, including nested ones.
       expect(surface.querySelectorAll('.internal-embed:not(.is-loaded)')).toHaveLength(0)
-      if (preview) expect(document.querySelector(selector)?.querySelector('img')).not.toBeNull()
-      else expect(document.querySelector(selector)?.textContent).toContain('sample.pdf')
+      // The saved preview arrives after the async presentation refresh, not with the box itself.
+      await vi.waitFor(() =>
+        preview
+          ? expect(document.querySelector(selector)?.querySelector('img')).not.toBeNull()
+          : expect(document.querySelector(selector)?.textContent).toContain('sample.pdf')
+      )
       expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
     } finally {
       editor?.destroy()
