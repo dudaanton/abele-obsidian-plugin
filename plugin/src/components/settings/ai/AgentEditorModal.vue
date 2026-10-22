@@ -32,33 +32,6 @@
             />
           </Setting>
 
-          <div
-            v-if="agent.node?.provider === 'codex' && agent.permissionMode !== 'allow-all'"
-            class="abele-node-permission-warning"
-          >
-            <StatusDot tone="orange" :label="t('streamB.permissionCodexAsk')" />{{
-              t('streamB.permissionCodexAsk')
-            }}
-          </div>
-          <p
-            v-if="
-              agent.node &&
-              !agent.node.permissionModeConfigured &&
-              agent.permissionMode === 'confirm-all'
-            "
-            class="setting-item-description"
-          >
-            · {{ t('streamB.permissionAskNow') }}
-          </p>
-          <NodeBypassHelp
-            v-if="
-              agent.node &&
-              nodePermissionReason &&
-              /bypass.*(disabled|unsupported|not_allowed|not_enabled)|allow.bypass/.test(
-                nodePermissionReason
-              )
-            "
-          />
           <template v-if="!agent.node">
             <Setting
               :name="t('settings.ai.AgentEditorModal.utility_agent.e8384fe8')"
@@ -234,6 +207,33 @@
               @update:model-value="patchPermissionMode"
             />
           </Setting>
+          <div
+            v-if="agent.node?.provider === 'codex' && agent.permissionMode !== 'allow-all'"
+            class="abele-node-permission-warning"
+          >
+            <StatusDot tone="orange" :label="t('streamB.permissionCodexAsk')" />{{
+              t('streamB.permissionCodexAsk')
+            }}
+          </div>
+          <p
+            v-if="
+              agent.node &&
+              !agent.node.permissionModeConfigured &&
+              agent.permissionMode === 'confirm-all'
+            "
+            class="setting-item-description"
+          >
+            · {{ t('streamB.permissionAskNow') }}
+          </p>
+          <NodeBypassHelp
+            v-if="
+              agent.node &&
+              nodePermissionReason &&
+              /bypass.*(disabled|unsupported|not_allowed|not_enabled)|allow.bypass/.test(
+                nodePermissionReason
+              )
+            "
+          />
           <template v-if="!agent.node">
             <Section
               :title="t('settings.git.repositoryConnections')"
