@@ -1,5 +1,5 @@
 <template>
-  <li v-for="(event, i) in chunk.events" :key="chunk.first + i">
+  <li v-for="(event, i) in chunk.events" :key="chunk.first + i" :data-activity-id="chunk.first + i">
     <span class="abele-sync-window__time">{{ when(event) }}</span>
     <span>{{ event.text }}</span>
   </li>

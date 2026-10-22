@@ -29,10 +29,28 @@ const scrollClass = 'abele-sync-window__scroll'
 let alreadyOwned = false
 let position = 0
 let following = true
+let anchor: { row: HTMLElement; id: string; offset: number } | undefined
+const rememberEntry = () => {
+  const rows = list.value?.children
+  if (!owner || !rows?.length) return undefined
+  const top = owner.getBoundingClientRect().top + owner.clientTop
+  // Rows are ordered vertically. Avoid walking thousands of retained entries on scroll.
+  let low = 0
+  let high = rows.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (rows[middle].getBoundingClientRect().bottom <= top) low = middle + 1
+    else high = middle
+  }
+  const row = rows[low] as HTMLElement | undefined
+  if (!row || row.getBoundingClientRect().top >= top + owner.clientHeight) return undefined
+  return { row, id: row.dataset.activityId, offset: row.getBoundingClientRect().top - top }
+}
 const rememberScroll = () => {
   if (!owner) return
   position = owner.scrollTop
   following = owner.scrollHeight - position - owner.clientHeight <= 4
+  anchor = following ? undefined : rememberEntry()
 }
 onMounted(() => {
   owner = scroller()
@@ -56,7 +74,23 @@ watch(
   () => {
     const parent = owner
     if (parent?.isConnected) {
-      parent.scrollTop = following ? parent.scrollHeight : position
+      if (following) parent.scrollTop = parent.scrollHeight
+      else if (anchor) {
+        // Stable row ids survive chunk-boundary changes. If the reader's entry itself
+        // expired, keep the oldest remaining entry at the same viewport offset.
+        const row = anchor.row.isConnected
+          ? anchor.row
+          : (list.value?.querySelector<HTMLElement>(`[data-activity-id="${anchor.id}"]`) ??
+            (list.value?.firstElementChild as HTMLElement | undefined))
+        if (row) {
+          parent.scrollTop +=
+            row.getBoundingClientRect().top -
+            parent.getBoundingClientRect().top -
+            parent.clientTop -
+            anchor.offset
+          anchor = { row, id: row.dataset.activityId, offset: anchor.offset }
+        }
+      } else parent.scrollTop = position
       position = parent.scrollTop
     }
   },

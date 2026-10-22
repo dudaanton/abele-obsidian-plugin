@@ -61,8 +61,8 @@ liveCase(
           svc.recordEvent(id,'Downloaded Notes/live.md');await poll(()=>list.lastElementChild?.textContent.includes('Notes/live.md'));
           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
           const followed=body.scrollHeight-body.scrollTop-body.clientHeight<5;
-          body.scrollTop=100;svc.recordEvent(id,'Deleted locally Notes/removed.md');await poll(()=>list.lastElementChild?.textContent.includes('Notes/removed.md'));
-          return {retained:svc.activity.value[id].events.length,rendered:list.querySelectorAll('li').length,followed,keptPosition:Math.abs(body.scrollTop-100)<5}`
+          const reading=list.children[1000];body.scrollTop+=reading.getBoundingClientRect().top-body.getBoundingClientRect().top+7;body.dispatchEvent(new Event('scroll'));const entry=reading.dataset.activityId,offset=reading.getBoundingClientRect().top-body.getBoundingClientRect().top;svc.recordEvent(id,'Deleted locally Notes/removed.md');await poll(()=>list.lastElementChild?.textContent.includes('Notes/removed.md'));
+          return {retained:svc.activity.value[id].events.length,rendered:list.querySelectorAll('li').length,followed,keptPosition:reading.isConnected&&reading.dataset.activityId===entry&&Math.abs(reading.getBoundingClientRect().top-body.getBoundingClientRect().top-offset)<5}`
         )
         expect(evidence).toEqual({
           retained: 5000,
@@ -162,7 +162,7 @@ liveCase(
           )
           expect(log.error).toBe('')
           a.run(
-            `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=100;window.__sampleActivity.scrollTop=body.scrollTop;window.__sampleActivity.releaseUpload();return true`
+            `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=Math.max(0,body.scrollHeight-body.clientHeight-100);body.dispatchEvent(new Event('scroll'));const row=[...body.querySelectorAll('li[data-activity-id]')].find(row=>row.getBoundingClientRect().bottom>body.getBoundingClientRect().top);window.__sampleActivity.anchor={id:row.dataset.activityId,offset:row.getBoundingClientRect().top-body.getBoundingClientRect().top};window.__sampleActivity.releaseUpload();return true`
           )
           await a.waitIdle()
           const probe = a.run<{ puts: number; autoReleased: boolean }>(
@@ -182,10 +182,10 @@ liveCase(
             expect(completed).toBe(total)
           }
           const kept = a.run<boolean>(
-            `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');await poll(()=>list.querySelectorAll('li').length>${before});return Math.abs(body.scrollTop-window.__sampleActivity.scrollTop)<5`
+            `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');await poll(()=>list.querySelectorAll('li').length>${before});const saved=window.__sampleActivity.anchor,row=[...list.querySelectorAll('li[data-activity-id]')].find(row=>row.dataset.activityId===saved.id);return !!row&&Math.abs(row.getBoundingClientRect().top-body.getBoundingClientRect().top-saved.offset)<5`
           )
           expect(kept).toBe(true)
-          // Capture the log itself after checking the original saved position above.
+          // Capture the log itself after checking the saved visible entry above.
           a.run(
             `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=Math.max(0,body.scrollHeight-body.clientHeight-100);return true`
           )
