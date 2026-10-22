@@ -3,6 +3,7 @@
     class="abele-state-line"
     :class="{ 'abele-state-line_footer': footer }"
     :role="tone === 'faint' ? 'status' : 'alert'"
+    :aria-busy="pulse || undefined"
   >
     <!-- Two columns: the dot (and the fold's arrow) in the gutter, everything else on one edge. -->
     <div class="abele-state-line__head">

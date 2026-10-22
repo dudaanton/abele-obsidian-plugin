@@ -54,6 +54,7 @@ it('shows one pulsing first-load line at the tree edge', () => {
     'Loading changes…'
   )
   expect(view.getComponent(StateLine).props('pulse')).toBe(true)
+  expect(view.getComponent(StateLine).attributes('aria-busy')).toBe('true')
   expect(view.find('.abele-empty-state').exists()).toBe(false)
   view.unmount()
 })
