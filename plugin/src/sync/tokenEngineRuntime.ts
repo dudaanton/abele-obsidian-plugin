@@ -2172,12 +2172,12 @@ export class TokenEngineRuntime
   }
   invalidate(): void {
     this.active = false
+    // Revoke transport before optional host cleanup: unload cannot await a drain.
+    this.requests.abort()
     this.pendingFolders.clear()
     this.progress.clear()
     this.uploadProgress.clear()
     this.folderProgress.clear()
-    // Revoke transport before optional host cleanup: unload cannot await a drain.
-    this.requests.abort()
     const unroot = this.unroot
     this.unroot = undefined
     unroot?.()
