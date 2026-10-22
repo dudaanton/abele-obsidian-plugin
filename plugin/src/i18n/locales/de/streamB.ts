@@ -20,7 +20,8 @@ export const streamB = {
     'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren. Beim Delegieren muss auch der übergeordnete Chat ohne Nachfrage laufen.',
   'streamB.permissionNodeOptIn': 'Auf dem Knoten das Ausführen ohne Nachfrage erlauben:',
   'streamB.permissionOpenSettings': 'Agenteneinstellungen öffnen',
-  'streamB.permissionCodexFolder': 'Bearbeitet ohne Nachfrage im eigenen Ordner und bleibt darin.',
+  'streamB.permissionCodexFolder':
+    'Ohne Nachfrage: bearbeitet ohne Nachfrage im eigenen Ordner und bleibt darin.',
   'streamB.permissionOwnerChoice':
     '«Nachfragen» verlangt eine Bestätigung für jede Aktion. «Ohne Nachfrage» erlaubt die Werkzeuge des Agenten ohne Bestätigung, auch außerhalb seines Ordners.',
   'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',

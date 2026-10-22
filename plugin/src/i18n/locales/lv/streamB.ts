@@ -19,7 +19,8 @@ export const streamB = {
     'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas». Deleģējot arī vecāka čatam jādarbojas bez jautāšanas.',
   'streamB.permissionNodeOptIn': 'Mezglā atļaujiet darbību bez jautāšanas:',
   'streamB.permissionOpenSettings': 'Atvērt aģenta iestatījumus',
-  'streamB.permissionCodexFolder': 'Rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
+  'streamB.permissionCodexFolder':
+    'Bez jautāšanas: rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
   'streamB.permissionOwnerChoice':
     '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',

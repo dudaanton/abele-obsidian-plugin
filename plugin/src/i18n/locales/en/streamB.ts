@@ -20,7 +20,7 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'On the node, allow running without asking:',
   'streamB.permissionOpenSettings': 'Open agent settings',
   'streamB.permissionCodexFolder':
-    'Edits in its folder without asking; it stays inside that folder.',
+    'Without asking: edits in its folder without asking; it stays inside that folder.',
   'streamB.permissionOwnerChoice':
     'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',

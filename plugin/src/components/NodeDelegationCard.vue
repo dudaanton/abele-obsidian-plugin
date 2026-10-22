@@ -4,19 +4,16 @@
       <template #desc
         ><span class="abele-node-delegation__meta"
           >{{
-            [
-              nodeLabel,
-              providerLabel(card.provider),
-              delegationBranchLabel(card.branch),
-              stateLabel,
-            ]
+            [nodeLabel, providerLabel(card.provider), delegationBranchLabel(card.branch)]
               .filter(Boolean)
               .join(' · ')
-          }}<NodeToolPermissions
-            :policy="card.toolPermissions"
-            :node-label="nodeLabel"
-            :provider="card.provider"
-            mode-only /></span
+          }}<span class="abele-node-delegation__status">
+            · {{ stateLabel
+            }}<NodeToolPermissions
+              :policy="card.toolPermissions"
+              :node-label="nodeLabel"
+              :provider="card.provider"
+              mode-only /></span></span
       ></template>
       <Icon
         v-if="card.sessionId"
@@ -200,9 +197,10 @@ const emit = defineEmits<{
   overflow-wrap: anywhere;
 }
 .abele-node-delegation__meta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--size-4-1);
+  display: inline;
+}
+.abele-node-delegation__status {
+  white-space: nowrap;
 }
 
 .abele-node-delegation__report {

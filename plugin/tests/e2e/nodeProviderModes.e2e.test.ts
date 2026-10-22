@@ -52,7 +52,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       await shot('agent-settings-inherited');await close();
       api.openDialog('node-agent-permissions');
       const settings=await until(()=>document.querySelector('.abele-agent-editor'));await until(()=>settings.querySelector('select'));await wait(150);
-      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes("in Ask it won't start") && !settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('it stays inside that folder');
+      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes("in Ask it won't start") && !settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('Without asking: edits in its folder without asking; it stays inside that folder.');
       await shot('agent-settings');
       const select=[...settings.querySelectorAll('select')].find(el=>[...el.options].some(option=>option.value==='confirm-all') && [...el.options].some(option=>option.value==='allow-all'));
       const configured=api.AgentRegistry.getInstance().list({includeUtility:true,includeNode:true}).find(agent=>agent.node?.id==='sample-permission-node');
@@ -68,6 +68,21 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
         if(child && info && child.getBoundingClientRect().top>=info.getBoundingClientRect().bottom)throw Error('Child action moved below the card header');
         const reason=card.querySelector('.abele-node-tool-permissions__reason');
         if(reason && reason.getBoundingClientRect().right>card.getBoundingClientRect().right)throw Error('Refusal text overflows the card');
+        if(reason){
+          const guidance=reason.querySelector('span[title]');
+          if(getComputedStyle(guidance).whiteSpace!=='normal' || guidance.scrollHeight>guidance.clientHeight+2)throw Error('Refusal guidance is truncated');
+          const dot=reason.querySelector('.abele-status-dot');
+          if(dot.getBoundingClientRect().top>guidance.getBoundingClientRect().top+parseFloat(getComputedStyle(guidance).lineHeight))throw Error('Refusal dot is below the first line');
+        }
+        if(state==='node-opt-in'){
+          const meta=card.querySelector('.abele-node-delegation__meta');
+          const glyph=meta.querySelector('[aria-label="Without asking"]');
+          const walker=document.createTreeWalker(meta,NodeFilter.SHOW_TEXT);let textNode;
+          while(walker.nextNode())if(walker.currentNode.textContent.includes('Failed'))textNode=walker.currentNode;
+          const range=document.createRange();range.setStart(textNode,textNode.textContent.indexOf('Failed'));range.setEnd(textNode,textNode.textContent.indexOf('Failed')+6);
+          const line=range.getBoundingClientRect(), mark=glyph.getBoundingClientRect();
+          if(mark.top>=line.bottom || mark.bottom<=line.top)throw Error('Mode glyph detached from final metadata line');
+        }
         if(card.querySelector('details'))throw Error('Delegation details bypass the shared Disclosure');
         const text=card.textContent;
         states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))

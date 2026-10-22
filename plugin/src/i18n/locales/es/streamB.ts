@@ -19,7 +19,8 @@ export const streamB = {
     'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente. Al delegar, el chat principal también debe ejecutarse sin preguntar.',
   'streamB.permissionNodeOptIn': 'En el nodo, permite ejecutar sin preguntar:',
   'streamB.permissionOpenSettings': 'Abrir ajustes del agente',
-  'streamB.permissionCodexFolder': 'Edita en su carpeta sin preguntar; permanece dentro de ella.',
+  'streamB.permissionCodexFolder':
+    'Sin preguntar: edita en su carpeta sin preguntar; permanece dentro de ella.',
   'streamB.permissionOwnerChoice':
     '«Preguntar» requiere aprobar cada acción. «Sin preguntar» permite ejecutar las herramientas del agente sin aprobación, también fuera de su carpeta.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',

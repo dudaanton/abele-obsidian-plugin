@@ -1,6 +1,7 @@
 <template>
   <Icon
     v-if="policy && !hideMode"
+    class="abele-node-tool-permissions__mode"
     :icon="policy.permission_mode === 'bypassPermissions' ? 'shield-off' : 'shield'"
     :tooltip="permissionLabel(policy)"
     :aria-label="permissionLabel(policy)"
@@ -68,9 +69,13 @@ const needsNodeOptIn = computed(() =>
   max-width: 100%;
 }
 .abele-node-tool-permissions__reason span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   min-width: 0;
+}
+.abele-node-tool-permissions__mode {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-inline-start: var(--size-4-1);
 }
 </style>
