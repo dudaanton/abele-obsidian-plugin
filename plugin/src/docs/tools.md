@@ -101,7 +101,7 @@ configured scripts folders. This also applies to daily notes: cancellation creat
 Do not use these links as a silent-write shortcut.
 
 Chart tooltip names and property values are literal text, not HTML; existing chart formats
-and settings are unchanged. Mermaid SVG is cleaned before insertion. External browser links
+and settings are unchanged. Pele SVG is cleaned before insertion. External browser links
 accept only HTTP(S) or mail; local note links are unchanged. Book figure previews only use the
 book's own images, table previews preserve XML text, and book frames start without scripting
 until the reader applies its platform policy.
@@ -296,7 +296,7 @@ must be in scope. New diagrams join scope after creation, like `create`.
 - `canvas_create(path, {title?, from})`: choose exactly one of `from.graph` or `from.mermaid`.
   Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
   edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
-  note requires `file`, link requires `url`. Mermaid input is a flowchart string, not another
+  note requires `file`, link requires `url`. Mermaid input is parsed by pele and must be a flowchart string, not another
   diagram grammar. Undirected/bidirectional/directed links retain both endpoint kinds; unsupported
   marker kinds are refused rather than silently converted to arrows. Creation fits text and applies layered dagre layout; it never overwrites a file.
 
@@ -1451,3 +1451,11 @@ the plugin under the parent's scope and policy ceilings. Each physical branch st
 after its first claim. Retained branch history is available from the node chat on other
 devices; an unconfirmed claimed branch is reported as unknown and never restarted blindly.
 Native node delegation and its permissions remain separate.
+
+## Diagram validation
+
+- `check_diagram({source})`: read-only validation with the same pele renderer used by notes.
+  Pass Mermaid source without fences. Returns `{ok:true,type,width,height}` or
+  `{ok:false,error,line,column,snippet}`; positions are 1-based when available (0 otherwise).
+  Runs automatically by default and never creates or changes a note. Validate before writing
+  a `mermaid` or `pele` block. See `vault` → `diagrams` for all supported types.

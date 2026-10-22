@@ -67,7 +67,7 @@ make a widescreen deck larger. If text does not fit, shorten it or split it acro
 
 ## Pictures, video and backgrounds
 
-Embed pictures and videos exactly as in a note. Drawings, galleries, Mermaid diagrams, charts
+Embed pictures and videos exactly as in a note. Drawings, galleries, pele diagrams (Mermaid source), charts
 and maps work the same way too. A background goes in the settings line, for example
 `::slide{bg="[[sample-image.png]]" dim=0.4 fit=cover}::`. Use `fit=contain` to keep the whole
 picture; `cover` fills the canvas. `dim` adds a wash of the theme's background color.

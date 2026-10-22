@@ -9,6 +9,7 @@ import {
   CANVAS_TOOL_MODES,
   TRACE_TOOL_MODES,
   LINT_TOOL_MODES,
+  DIAGRAM_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
   DEFAULT_AI_SETTINGS,
@@ -122,6 +123,7 @@ export function ensureCommentAgent(ai: AiSettings): boolean {
       read_tasks: 'auto',
       read_transactions: 'auto',
       chart_docs: 'auto',
+      ...DIAGRAM_TOOL_MODES,
       template_docs: 'auto',
       [EDIT_SELECTION_TOOL]: 'ask',
     },
@@ -256,14 +258,14 @@ function enableBookTools(ai: AiSettings): boolean {
 }
 
 /**
- * Hands the linter's tools to agents saved before there was a linter: reading its findings on its
+ * Hands read-only diagram validation and the linter's tools to saved agents: reading its findings on its
  * own, applying fixes after asking. A mode set by hand stays.
  */
 function enableLintTools(ai: AiSettings): boolean {
   let changed = false
 
   for (const agent of ai.agents || []) {
-    for (const [tool, mode] of Object.entries(LINT_TOOL_MODES)) {
+    for (const [tool, mode] of Object.entries({ ...LINT_TOOL_MODES, ...DIAGRAM_TOOL_MODES })) {
       if (agent.toolModes[tool] !== undefined) continue
       agent.toolModes[tool] = mode
       changed = true

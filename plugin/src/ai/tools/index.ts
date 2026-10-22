@@ -45,6 +45,7 @@ import { createOpenFileTool } from './OpenFileTool'
 import { createQuestionsTool } from './QuestionsTool'
 import { createScreenshotTool } from './ScreenshotTool'
 import { createInspectViewTool } from './InspectViewTool'
+import { createCheckDiagramTool } from './CheckDiagramTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from './GeoTools'
 import { createCurrentLocationTool } from './CurrentLocationTool'
@@ -155,6 +156,7 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     send_message_to_chat: { label: 'Send message to chat', category: 'Delegation' },
     remember: { label: 'Remember', category: 'Memory' },
     forget: { label: 'Forget', category: 'Memory' },
+    check_diagram: { label: 'Check diagram', category: 'Docs' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
     template_docs: { label: 'Template docs', category: 'Docs' },
     read_logs: { label: 'Read logs', category: 'Notes data' },
@@ -340,6 +342,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createOpenFileTool(),
     createQuestionsTool(options.session),
     createChartDocsTool(),
+    createCheckDiagramTool(),
     createQueryDocsTool(),
     createReadSettingsTool(),
     createWriteSettingsTool(),

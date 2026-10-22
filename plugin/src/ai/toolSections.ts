@@ -214,7 +214,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
     description:
       'Reference for writing special blocks: chart code blocks, template syntax and the script API. Open this before writing a chart, a template or a script.',
     howTo:
-      '`chart_docs` explains abele-chart blocks; `template_docs` explains templates; `script_api_docs` explains the script API. For anything else about this vault use `query_docs`, which is always available.',
+      '`check_diagram` validates diagram source with pele; `chart_docs` explains abele-chart blocks; `template_docs` explains templates; `script_api_docs` explains the script API. For anything else about this vault use `query_docs`, which is always available.',
   },
   {
     id: 'scripts',

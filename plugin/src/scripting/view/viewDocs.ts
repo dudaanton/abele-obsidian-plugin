@@ -151,7 +151,7 @@ v.body = new Stack([new Section({ title: 'Today', desc: 'What is due', children:
 
 \`Markdown.gallery(images, { layout?, height?, bg? })\`, \`Markdown.chart(config)\`,
 \`Markdown.mermaid(source)\` and \`Markdown.map(config)\` write that block from data and return a
-\`Markdown\` node — the same gallery, chart, diagram and map a note shows. \`images\` are vault
+\`Markdown\` node — the same gallery, chart, diagram and map a note shows. Diagrams use pele with Mermaid source; both mermaid and pele fences work. Validate with check_diagram before writing. \`images\` are vault
 names or paths, web addresses or \`{ src, caption }\`; a chart's config is \`chart_docs\`'s, a map's
 is the \`abele-map\` block's, both as objects. The node's \`text\` is the block: to change it, assign
 another one's (\`node.text = Markdown.chart(next).text\`). \`query_docs\` section \`display\` lists

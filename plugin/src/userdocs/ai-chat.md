@@ -499,7 +499,7 @@ are unavailable. Network requests belong in the Fetch tool or a script instead.
 Other plugins' executable blocks (for example `dataviewjs`) and inline queries in replies,
 thinking, run output and script markdown are shown as code, not executed. The same applies to
 GitHub text. Your notes still use installed plugins normally. Abele charts, maps, galleries and
-Mermaid diagrams in replies still render, and internet images still load as before. Mermaid
+pele diagrams (Mermaid source) in replies still render, and internet images still load as before. Pele
 output is cleaned before it joins the page. External links open only HTTP(S) or email addresses;
 links to notes remain available.
 

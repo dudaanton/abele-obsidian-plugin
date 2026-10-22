@@ -151,7 +151,7 @@ reply or a script view the gallery is for looking at; it is edited only in the n
 
 ## Diagrams
 
-A ```` ```mermaid ```` block is drawn as a diagram the person can zoom, drag and open full
+A ```` ```mermaid ```` or ```` ```pele ```` block is drawn as a diagram the person can zoom, drag and open full
 screen. See `vault` → `diagrams` for the rules; the smallest one:
 
 ```mermaid
@@ -159,8 +159,9 @@ graph LR
   Idea --> Draft --> Done
 ```
 
-Nothing is drawn until the person has allowed diagrams in the vault — Obsidian asks once, in
-place of the first diagram. The block is still right to write.
+Pele draws every diagram using the current Obsidian theme. Call `check_diagram({source})`
+before writing one; an invalid block shows the message, line, column and caret snippet.
+When **Draw diagrams** is off the source appears as ordinary code.
 
 ## Charts
 

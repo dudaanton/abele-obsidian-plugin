@@ -463,6 +463,7 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
  * as editing a note does. Someone who set a mode by hand keeps it (`enableLintTools`).
  */
 export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
+export const DIAGRAM_TOOL_MODES: Record<string, ToolMode> = { check_diagram: 'auto' }
 
 /** Word tools have independent Off/Ask/On modes, like book tools. */
 export const DOCX_TOOL_MODES: Record<string, ToolMode> = {
@@ -570,6 +571,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     send_message_to_chat: 'ask',
     web_search: 'auto',
     chart_docs: 'auto',
+    ...DIAGRAM_TOOL_MODES,
     script_api_docs: 'auto',
     // The map tools need no key and no account, so there is nothing for a person to set up
     // before asking where something is. See `enableMapTools` for the agents that already exist.

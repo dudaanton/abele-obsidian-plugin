@@ -108,9 +108,10 @@ whose places are brought over the first time; keep only one of the two on.
 
 ## Diagrams
 
-A ` ```mermaid ` block is drawn at the width of the note, with zoom and drag, full screen,
+A ` ```mermaid ` or ` ```pele ` block is drawn at the width of the note, with zoom and drag, full screen,
 and copying as source, SVG or a picture. Turn this off in **Settings → Abele → Other** to get
-Obsidian's own drawing back.
+the source as ordinary code. Pele draws diagrams in the current theme, including sequence,
+Gantt, Sankey, XY, radar and treemap charts. Errors show their line, column and caret snippet.
 
 ## Properties
 

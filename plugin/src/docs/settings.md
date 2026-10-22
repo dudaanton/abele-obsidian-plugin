@@ -347,7 +347,7 @@ silently because older versions kept no marker.
 `snippetsFolder` is where CSS snippets are written, `links` are the links added to note
 headers, `fullWidthSidebars` widens the sidebars to the whole screen on
 a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
-default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
+default, shown as **Draw diagrams**) draws mermaid and pele blocks with pele in the zoomable viewer; off shows ordinary source code,
 `propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
 number fields, file cards for File and Files properties and `cover` — `rememberNotePlaces` (on
 by default) opens each note at the scroll and cursor it was left at on that device, unless it is

@@ -2209,16 +2209,116 @@ These are stored with the point; `color` sets its pin colour. Unknown icons use 
 
 ## Diagrams
 
-A fenced ` ```mermaid ` block is drawn as a diagram — in notes, in the chat and in GitHub
-tabs — so a flowchart, a sequence, a class, state, ER or Gantt diagram, a timeline, a pie or a
-mind map is written as Mermaid source in the note rather than as a picture. The person sees it
-at the width of the note and zooms, drags or opens it full screen themselves, so a large diagram
-is fine: do not split one up to make it fit, and do not add `%%{init}%%` sizing for it. Leave the
-theme alone too — it follows Obsidian's light or dark theme unless the source picks one. A node
-given the class `internal-link` links to the note its label names. The source must parse: a
-block with a syntax error shows Mermaid's error in place of the diagram. Nothing is drawn until
-the person has allowed diagrams in the vault (Obsidian asks once); the block is still the right
-thing to write.
+A fenced `mermaid` block (or the `pele` alias) stores Mermaid source, rendered by pele.
+This works in reading view, Live Preview, chat, canvas note cards, slides, columns and script
+views. Zoom, drag, full screen and source/SVG/PNG copies use the same viewer everywhere.
+The **Draw diagrams** setting (`mermaidViewer`) controls drawing; off shows ordinary code.
+No vault trust prompt is needed. Colours and fonts follow Obsidian's theme through CSS
+variables, including dark/light switches. Mermaid theme directives do not select colours.
+HTML labels and JavaScript callbacks are unsupported; external plugins such as ZenUML are
+not available. A node with class `internal-link` links to the note named by its label.
+Call `check_diagram({source})` before writing: errors include message, 1-based line and
+column when available (0 otherwise), and a caret snippet. Do not add sizing directives
+or split a large diagram merely to fit the note.
+
+Supported types: flowchart, sequence, class, state, ER, Gantt, git graph, pie, mindmap,
+kanban, timeline, journey, quadrant, XY, requirement, Sankey, architecture, C4, block,
+radar, treemap, packet, info, agentflow, railroad (including EBNF, ABNF and PEG), tree view,
+Cynefin, Wardley map, event modeling, use case, Venn, Ishikawa and swimlane.
+
+The following examples are complete fence contents:
+
+```mermaid
+graph LR
+  Idea --> Draft --> Done
+```
+
+### Sankey
+
+```mermaid
+sankey-beta
+Source,Process,10
+Process,Output,8
+Process,Waste,2
+```
+
+### XY chart
+
+```mermaid
+xychart-beta
+  x-axis [Jan, Feb, Mar]
+  y-axis "Count" 0 --> 10
+  bar [3, 6, 8]
+  line [2, 5, 9]
+```
+
+### Quadrant
+
+```mermaid
+quadrantChart
+  x-axis Low effort --> High effort
+  y-axis Low impact --> High impact
+  quadrant-1 Plan
+  quadrant-2 Do
+  quadrant-3 Ignore
+  quadrant-4 Review
+  Sample: [0.3, 0.7]
+```
+
+### Timeline
+
+```mermaid
+timeline
+  title Project
+  Draft : Outline
+  Review : Feedback
+  Done : Publish
+```
+
+### Kanban
+
+```mermaid
+kanban
+  todo[To do]
+    task1[Write draft]
+  done[Done]
+    task2[Read brief]
+```
+
+### Architecture
+
+```mermaid
+architecture-beta
+  service api(server)[API]
+  service db(database)[Database]
+  api:R --> L:db
+```
+
+### Radar
+
+```mermaid
+radar-beta
+  axis speed["Speed"], quality["Quality"], cost["Cost"]
+  curve sample["Sample"]{7, 8, 5}
+  max 10
+```
+
+### Treemap
+
+```mermaid
+treemap-beta
+  "Work"
+    "Draft": 6
+    "Review": 4
+```
+
+### Packet
+
+```mermaid
+packet-beta
+  0-7: "Header"
+  8-15: "Payload"
+```
 
 ## Transfer files
 

@@ -129,7 +129,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - Footnote sidenotes, and colored highlights with `=={color} text==`
 - Fenced-code syntax highlighting in Source and Live Preview using Obsidian's Prism and theme, filling language gaps without overpainting native tokens
 - Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
-- Mermaid diagrams drawn the way GitHub draws them — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Mermaid.md))
+- Mermaid source drawn by pele — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Diagrams.md))
 - CSS snippets loaded and hot-reloaded from a folder in the vault
 - Sync between devices through a self-hosted **abele-sync** server — chosen per device, with version history, deleted files and notes merged when two devices change one. There is no hosted service ([how](docs/Sync.md))
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
@@ -172,7 +172,7 @@ plugin live in [`docs/`](docs):
 - [Script views](docs/Script%20views.md) — the tab a script can open and fill with an interface.
 - [GitHub](docs/GitHub.md) — the links that open in tabs, and the token they need.
 - [Calendars](docs/Calendars.md) — other calendars beside the tasks, by link or CalDAV.
-- [Mermaid](docs/Mermaid.md) — the diagram viewer that replaces Obsidian's own.
+- [Diagrams](docs/Diagrams.md) — pele diagrams with zoom, pan and export.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
 
 ## Installation
