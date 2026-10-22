@@ -36,21 +36,15 @@
         />
       </span>
     </template>
+    <!-- On a phone the row keeps one action, its menu: closing is in it, and the room a close
+         glyph took went to the chat's name. -->
     <template v-if="chat.open || phone" #actions>
       <Icon
-        v-if="chat.open"
+        v-if="chat.open && !phone"
         icon="x"
         size="xs"
         :tooltip="t('chatTree.close')"
         @click.stop="source.close(chat.id)"
-      />
-      <Icon
-        v-else-if="phone"
-        icon="x"
-        size="xs"
-        :interactive="false"
-        class="clickable-icon abele-chat-tree__close-slot"
-        aria-hidden="true"
       />
       <Icon
         v-if="phone"
@@ -225,7 +219,9 @@ function menu(event: MouseEvent) {
 </script>
 
 <style lang="scss">
-.abele-chat-tree__close-slot {
-  visibility: hidden;
+.is-phone .abele-chat-tree .abele-tree-item__text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

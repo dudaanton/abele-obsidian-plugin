@@ -9,7 +9,7 @@
         class="abele-chat-tree__field"
         :label="t('chatTree.find')"
         :placeholder="t('chatTree.findHint')"
-        autofocus
+        :autofocus="!phone"
       />
       <Icon
         icon="archive"
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
@@ -64,6 +65,8 @@ import { chatsOf, folderPathOf, useChatTreeSource, type ChatTreeEntry } from '@/
 import { dragged, foldsOf, matches, revealCurrentChat, revealSelection } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
+// On a phone the keyboard would cover half the chats before anyone asked to search.
+const phone = Platform.isPhone
 
 const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)

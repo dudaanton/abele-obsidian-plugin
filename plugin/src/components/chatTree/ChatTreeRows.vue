@@ -83,6 +83,7 @@
       </template>
       <template #actions>
         <Icon
+          v-if="!phone"
           icon="square-pen"
           size="xs"
           :tooltip="t('chatTree.newInFolder', { name: folder.name })"
@@ -151,7 +152,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, ref } from 'vue'
-import { Menu, setIcon } from 'obsidian'
+import { Menu, Platform, setIcon } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import ChatTreeChatRow from './ChatTreeChatRow.vue'
@@ -163,6 +164,8 @@ import {
 } from '@/chats/chatTree'
 import { dragged, matches } from './chatTreeView'
 import { confirmDialog } from '../obsidian/dialogs'
+
+const phone = Platform.isPhone
 
 const props = defineProps<{
   entries: ChatTreeEntry[]
