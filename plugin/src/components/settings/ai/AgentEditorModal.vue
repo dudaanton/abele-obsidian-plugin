@@ -206,6 +206,16 @@
               :options="agent.node ? nodePermissionOptions : PERMISSION_OPTIONS"
               @update:model-value="patchPermissionMode"
             />
+            <span
+              v-if="
+                agent.node &&
+                !agent.node.permissionModeConfigured &&
+                agent.permissionMode === 'confirm-all'
+              "
+              class="setting-item-description"
+            >
+              · {{ t('streamB.permissionAskNow') }}
+            </span>
           </Setting>
           <div
             v-if="agent.node?.provider === 'codex' && agent.permissionMode !== 'allow-all'"
@@ -215,16 +225,7 @@
               t('streamB.permissionCodexAsk')
             }}
           </div>
-          <p
-            v-if="
-              agent.node &&
-              !agent.node.permissionModeConfigured &&
-              agent.permissionMode === 'confirm-all'
-            "
-            class="setting-item-description"
-          >
-            · {{ t('streamB.permissionAskNow') }}
-          </p>
+
           <NodeBypassHelp
             v-if="
               agent.node &&

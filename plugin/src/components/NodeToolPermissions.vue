@@ -65,6 +65,7 @@ const needsNodeOptIn = computed(() =>
   align-items: baseline;
   gap: var(--size-4-2);
   min-width: 0;
+  max-width: 100%;
 }
 .abele-node-tool-permissions__reason span {
   overflow: hidden;

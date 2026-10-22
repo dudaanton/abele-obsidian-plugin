@@ -125,6 +125,16 @@ defineProps<{
       justify-content: flex-end;
     }
   }
+  // Glyph-only actions stay beside their text, like Obsidian's compact rows.
+  &:has(> .setting-item-control > .abele-obsidian-icon):not(
+      :has(> .setting-item-control > :not(.abele-obsidian-icon))
+    ) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    > .setting-item-control {
+      flex-wrap: nowrap;
+      align-self: start;
+    }
+  }
 }
 
 // On a phone a row with a state dot and a button with words stacks: beside the button its name
@@ -150,7 +160,8 @@ body.is-phone
 
 // In a window the rows stand at its edge, so a heading among them does too: Obsidian insets a
 // heading for a card of settings that is not there.
-.modal:not(.mod-settings) .abele-obsidian-setting.setting-item-heading:where(:not(.setting-group *)) {
+.modal:not(.mod-settings)
+  .abele-obsidian-setting.setting-item-heading:where(:not(.setting-group *)) {
   padding-inline: 0;
 }
 

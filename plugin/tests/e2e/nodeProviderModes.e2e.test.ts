@@ -66,6 +66,8 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
         const child=card.querySelector('[aria-label="Open child chat"]');
         const info=card.querySelector('.setting-item-info');
         if(child && info && child.getBoundingClientRect().top>=info.getBoundingClientRect().bottom)throw Error('Child action moved below the card header');
+        const reason=card.querySelector('.abele-node-tool-permissions__reason');
+        if(reason && reason.getBoundingClientRect().right>card.getBoundingClientRect().right)throw Error('Refusal text overflows the card');
         if(card.querySelector('details'))throw Error('Delegation details bypass the shared Disclosure');
         const text=card.textContent;
         states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))

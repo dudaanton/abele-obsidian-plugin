@@ -1,5 +1,9 @@
 <template>
-  <Disclosure :label="t('streamB.permissionNodeOptIn')" v-model="expanded">
+  <Disclosure
+    class="abele-node-bypass-help"
+    :label="t('streamB.permissionNodeOptIn')"
+    v-model="expanded"
+  >
     <div class="abele-node-bypass-command">
       <Input :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
       <Icon icon="copy" :tooltip="t('streamB.permissionCopyCommand')" @click="copy" />
@@ -17,6 +21,14 @@ const command = 'abele-node service flags set --allow-bypass on'
 const copy = () => navigator.clipboard.writeText(command)
 </script>
 <style scoped>
+.abele-node-bypass-help {
+  width: 100%;
+  min-width: 0;
+}
+.abele-node-bypass-command :deep(.abele-obsidian-input) {
+  flex: 1;
+  min-width: 0;
+}
 .abele-node-bypass-command {
   display: flex;
   align-items: center;

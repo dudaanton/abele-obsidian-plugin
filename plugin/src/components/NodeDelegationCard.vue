@@ -204,12 +204,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: var(--size-4-1);
 }
-.abele-node-delegation > :deep(.setting-item) {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-}
+
 .abele-node-delegation__report {
   white-space: pre-wrap;
   font-size: inherit;
