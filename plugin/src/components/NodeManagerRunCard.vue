@@ -28,7 +28,14 @@
       :facts="[
         {
           key: '0',
-          value: [stateLabel, card.run.reason ? nodeErrorDetails(card.run.reason) : '']
+          value: [
+            stateLabel,
+            card.run.reason
+              ? card.run.session_id === 'unsubmitted-command'
+                ? card.run.reason
+                : nodeErrorDetails(card.run.reason)
+              : '',
+          ]
             .filter(Boolean)
             .join(' · '),
         },

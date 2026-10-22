@@ -136,12 +136,27 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       const result=JSON.parse((await tool.execute('sample-command',args,undefined,{session})).content[0].text);
       window.__sampleCommandRun=result;
       for(let i=0;i<100&&!document.querySelector('.abele-tool-approval');i++)await new Promise(r=>setTimeout(r,50));
-      return JSON.stringify({state:result.state,cards:document.querySelectorAll('.abele-tool-approval').length,context:!!result.context_id,sessions:(await client.listSessions()).length});
+      const argv=document.querySelector('.abele-tool-approval__argv');
+      return JSON.stringify({state:result.state,cards:document.querySelectorAll('.abele-tool-approval').length,context:!!result.context_id,sessions:(await client.listSessions()).length,arguments:argv?.querySelectorAll('[data-command-argument]').length,argvDisplay:argv?getComputedStyle(argv).display:''});
     })()`,
         90000
       )
-    ) as { state: string; cards: number; context: boolean; sessions: number }
-    expect(prepared).toEqual({ state: 'pending_approval', cards: 1, context: true, sessions: 0 })
+    ) as {
+      state: string
+      cards: number
+      context: boolean
+      sessions: number
+      arguments: number
+      argvDisplay: string
+    }
+    expect(prepared).toEqual({
+      state: 'pending_approval',
+      cards: 1,
+      context: true,
+      sessions: 0,
+      arguments: 2,
+      argvDisplay: 'flex',
+    })
     columnShot(`${shots}/${onPhone() ? 'phone' : 'desktop'}-live-ask.png`)
     await evalLong(
       `(()=>{const button=[...document.querySelectorAll('.abele-tool-approval button')].find(b=>b.textContent.trim()==='Allow');if(!button)throw Error('Approval missing');button.click()})()`

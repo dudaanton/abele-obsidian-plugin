@@ -69,14 +69,21 @@ export function nodeManagerFixture(
       run_id: 'sample-command',
       prompt_id: prompt.prompt_id,
       session_id: prompt.session_id,
-      method: ['failed', 'applied', 'outcome_unknown'].includes(state)
-        ? 'git.v1.integrate'
-        : 'command.v1.run',
+      method:
+        presentation?.managerCommand === undefined &&
+        ['failed', 'applied', 'outcome_unknown'].includes(state)
+          ? 'git.v1.integrate'
+          : 'command.v1.run',
       state,
       stdout: ['pending_approval', 'denied'].includes(state)
         ? ''
         : 'Sample check output\n'.repeat(20),
-      stderr: state === 'failed' ? 'Sample rebase conflict' : '',
+      stderr:
+        state === 'failed'
+          ? presentation?.managerCommand === undefined
+            ? 'Sample rebase conflict'
+            : 'Sample executable not found'
+          : '',
       stdout_truncated: state === 'running',
       stderr_truncated: false,
       ...(state === 'exited' ? { exit_code: 0 } : {}),
@@ -84,7 +91,12 @@ export function nodeManagerFixture(
       ...(presentation?.managerOldNode
         ? { reason: t('node.manager.contextUpdate') }
         : state === 'failed'
-          ? { reason: 'rebase_conflict', conflicting_files: ['src/sample-parser.ts'] }
+          ? presentation?.managerCommand === undefined
+            ? { reason: 'rebase_conflict', conflicting_files: ['src/sample-parser.ts'] }
+            : {
+                reason:
+                  'executable_not_found: The requested executable was not found in this folder.',
+              }
           : {}),
       ...(state === 'outcome_unknown' ? { reason: 'restart' } : {}),
     },

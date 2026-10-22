@@ -90,7 +90,7 @@
       <div v-if="managerApproval" data-manager-approval>
         <div v-if="managerApproval.argv" data-manager-command class="abele-tool-approval__argv">
           <code v-for="(arg, index) in managerApproval.argv" :key="index" data-command-argument>{{
-            JSON.stringify(arg)
+            JSON.stringify(arg) + (index < managerApproval.argv.length - 1 ? ' ' : '')
           }}</code>
         </div>
         <code v-else data-manager-command>{{ managerApproval.command }}</code>
@@ -1191,7 +1191,7 @@ const toggleEdit = () => {
 }
 .abele-tool-approval__folder {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
@@ -1206,12 +1206,14 @@ const toggleEdit = () => {
 }
 .abele-tool-approval_command [data-manager-command],
 .abele-node-manager-run > [data-manager-command] {
-  display: block;
   background: var(--code-background);
   padding: var(--size-4-2);
   border-radius: var(--radius-s);
   font-size: var(--font-ui-small);
   min-width: 0;
+}
+code[data-manager-command] {
+  display: block;
 }
 // The debugger's card: a thin frame in the accent while it waits for you, small text.
 .abele-tool-approval {
