@@ -70,12 +70,13 @@ it('preserves full legacy justification prose and collapses on a second click', 
   }
 })
 
-it('hides empty activity markers while retaining meaningful notices', async () => {
+it('keeps shared wake and meaningful notice rows visible outside the transcript', async () => {
   useVault([])
   const view = mount(SessionMarkLine, {
     props: { mark: { kind: 'notice', text: 'Node activity update' } },
   })
-  expect(view.find('.abele-session-mark').exists()).toBe(false)
+  expect(view.find('.abele-session-mark_notice').exists()).toBe(true)
+  expect(view.text()).toContain('Node activity update')
   await view.setProps({ mark: { kind: 'notice', text: 'Sample checks completed.' } })
   expect(view.text()).toContain('Sample checks completed.')
   view.unmount()

@@ -3,7 +3,7 @@
        (how much it held before and after; what it kept is in the tooltip, the retelling opens on
        a press), it is compacting now, or something it left running woke it. -->
   <div
-    v-if="said && !hiddenSessionMark(mark)"
+    v-if="said"
     class="abele-session-mark"
     :class="[`abele-session-mark_${mark.kind}`, mark.level && `abele-session-mark_${mark.level}`]"
     :role="mark.kind === 'failed' || mark.level === 'error' ? 'alert' : 'note'"
@@ -37,7 +37,7 @@ import { computed, onMounted, ref } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Markdown from '../obsidian/Markdown.vue'
-import { tokens, hiddenSessionMark, type SessionMark } from './types'
+import { tokens, type SessionMark } from './types'
 
 const props = defineProps<{ mark: SessionMark; summary?: string }>()
 const open = ref(false)

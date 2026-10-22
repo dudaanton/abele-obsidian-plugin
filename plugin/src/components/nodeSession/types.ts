@@ -5,7 +5,8 @@ import type { ChildState, PermissionMode } from '@/node/sessionLive'
 import type { SessionMark } from '@/node/sessionLive'
 import { presentUiField } from '@/i18n/streamBErrors'
 
-export function hiddenSessionMark(mark?: SessionMark): boolean {
+/** Transcript dividers only: queued wake rows must retain their visible system notice. */
+export function hiddenTranscriptDivider(mark?: SessionMark): boolean {
   if (mark?.kind !== 'notice') return false
   const text = presentUiField(mark, 'text')
   return !text || text === t('chat.nodeActivityNotice')

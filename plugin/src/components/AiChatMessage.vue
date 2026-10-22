@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="!hiddenSessionMark(message.sessionMark)"
+    v-if="!hiddenTranscriptDivider(message.sessionMark)"
     class="abele-chat-msg"
     :class="[
       `abele-chat-msg_${message.role}`,
@@ -480,7 +480,7 @@ import ChatLetterRun from './chatTree/ChatLetterRun.vue'
 import { openLetterChat } from '@/ai/chatMessaging'
 import type { LetterChat } from '@/chats/chatLetters'
 import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
-import { hiddenSessionMark } from './nodeSession/types'
+import { hiddenTranscriptDivider } from './nodeSession/types'
 import SessionPlan from './nodeSession/SessionPlan.vue'
 import GalleryViewer from './GalleryViewer.vue'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'

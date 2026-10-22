@@ -3,7 +3,8 @@ import { expect, it, vi } from 'vitest'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import { useVault } from '../helpers/testEnv'
-it('keeps the established JSON quoting and escaped controls on manager argv approvals', () => {
+import { commandLine } from '@/node/commandPresentation'
+it('uses the designer-approved shell form and escaped controls on manager argv approvals', () => {
   useVault([])
   const wrapper = mount(AiToolApproval, {
     props: {
@@ -28,8 +29,9 @@ it('keeps the established JSON quoting and escaped controls on manager argv appr
   })
   try {
     expect(wrapper.get('[data-manager-command]').text()).toBe(
-      'printf "sample\\nline\\r\\u202e\\u200b"'
+      commandLine(['printf', 'sample\nline\r\u202e\u200b'])
     )
+    expect(wrapper.get('[data-manager-command]').text()).not.toMatch(/[\n\r\u202e\u200b]/u)
   } finally {
     wrapper.unmount()
   }
