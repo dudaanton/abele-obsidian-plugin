@@ -687,7 +687,8 @@ export class ObsidianFileSystem implements FileSystem {
       validate: (path, recovery = false) => {
         assertPhysicalPath(path)
         if (
-          !recovery && !this.withinFileScope(path) &&
+          !recovery &&
+          !this.withinFileScope(path) &&
           !(this.privateRoot && withinRoot(path, this.privateRoot))
         )
           throw new EngineError('conflict', 'conditional operation is outside this connection')

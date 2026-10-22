@@ -80,17 +80,31 @@ export class ConditionalFiles {
     for (let end = 1; end <= parents.length; end++) {
       const parent = await this.host.stat(parents.slice(0, end).join('/'))
       if (parent === null) break
-      if (parent.type !== 'folder') { rootFallback = true; break }
+      if (parent.type !== 'folder') {
+        rootFallback = true
+        break
+      }
     }
     for (let attempt = 0; attempt < 16; attempt++) {
-      const file = to.slice(to.lastIndexOf('/') + 1), dot = file.lastIndexOf('.')
-      const stem = dot > 0 ? file.slice(0, dot) : file, ext = dot > 0 ? file.slice(dot) : ''
-      const suffix = ' (Conflicted copy restored ' + (attempt <= 1 ? id : crypto.randomUUID()) + ')'
-      let destination = attempt === 0 ? to : to.slice(0, to.lastIndexOf('/') + 1) + stem + suffix + ext
+      const file = to.slice(to.lastIndexOf('/') + 1),
+        dot = file.lastIndexOf('.')
+      const stem = dot > 0 ? file.slice(0, dot) : file,
+        ext = dot > 0 ? file.slice(dot) : ''
+      const suffix =
+        ' (Conflicted copy restored ' +
+        ((rootFallback ? attempt === 0 : attempt === 1) ? id : crypto.randomUUID()) +
+        ')'
+      let destination =
+        attempt === 0
+          ? to
+          : fitGeneratedName(to.slice(0, to.lastIndexOf('/') + 1), stem, ext, suffix)
       if (rootFallback) {
         destination = fitGeneratedName('', stem, ext, suffix)
       }
-      this.host.validate(destination, rootFallback)
+      this.host.validate(
+        destination,
+        rootFallback || (!destination.includes('/') && to.includes('/'))
+      )
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await this.host.mkdir(parent)
       if ((await this.host.stat(destination)) !== null) {
