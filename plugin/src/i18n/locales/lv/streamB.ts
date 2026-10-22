@@ -49,8 +49,6 @@ export const streamB = {
   'streamB.codexNetworkRetry': 'Tīkls ir ieslēgts. Lūdziet aģentam mēģināt vēlreiz.',
   'streamB.codexNetworkOwner':
     'To var ieslēgt tikai mezgla īpašnieks: projekta izvēlne → Tīkls Codex.',
-  'streamB.permissionCodexFolder':
-    'Bez jautāšanas: rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
   'streamB.permissionOwnerChoice':
     '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',

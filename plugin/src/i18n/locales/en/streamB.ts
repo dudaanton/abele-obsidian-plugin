@@ -49,8 +49,6 @@ export const streamB = {
   'streamB.codexNetworkRetry': 'Network is on. Ask the agent to try again.',
   'streamB.codexNetworkOwner':
     'Only the node’s owner can turn it on: the project menu → Network for Codex.',
-  'streamB.permissionCodexFolder':
-    'Without asking: edits in its folder without asking; it stays inside that folder.',
   'streamB.permissionOwnerChoice':
     'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',

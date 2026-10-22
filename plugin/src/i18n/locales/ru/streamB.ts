@@ -49,8 +49,6 @@ export const streamB = {
   'streamB.codexNetworkRetry': 'Сеть включена. Попросите агента попробовать снова.',
   'streamB.codexNetworkOwner':
     'Включить её может только владелец ноды: меню проекта → Сеть для Codex.',
-  'streamB.permissionCodexFolder':
-    'Без вопросов: редактирует в своей папке без вопросов; остаётся внутри этой папки.',
   'streamB.permissionOwnerChoice':
     '«Спрашивать» требует подтверждения каждого действия. «Без вопросов» разрешает инструменты агента без подтверждений, в том числе вне его папки.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',

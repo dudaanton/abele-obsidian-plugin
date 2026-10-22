@@ -38,6 +38,8 @@ export const streamB = {
     'Este proveedor no puede preguntar antes de cada acción. Para activarlo, elija «Sin preguntar» en los ajustes del agente. Al delegar, el chat principal también debe ejecutarse sin preguntar.',
   'streamB.permissionNodeOptIn': 'En el nodo, permite ejecutar sin preguntar:',
   'streamB.permissionOpenSettings': 'Abrir ajustes del agente',
+  'streamB.permissionCodexFolder':
+    'Edita archivos en su carpeta sin preguntar y permanece dentro de ella.',
   'streamB.codexNetwork': 'Red para Codex',
   'streamB.codexNetworkOnNotice': 'Codex puede acceder a la red en {project}.',
   'streamB.codexNetworkOffNotice': 'Codex está sin conexión en {project}.',
@@ -48,8 +50,6 @@ export const streamB = {
   'streamB.codexNetworkRetry': 'La red está activada. Pide al agente que lo intente de nuevo.',
   'streamB.codexNetworkOwner':
     'Solo el propietario del nodo puede activarla: menú del proyecto → Red para Codex.',
-  'streamB.permissionCodexFolder':
-    'Edita archivos en su carpeta sin preguntar y permanece dentro de ella.',
   'streamB.permissionOwnerChoice':
     '«Preguntar» requiere aprobar cada acción. «Sin preguntar» permite ejecutar las herramientas del agente sin aprobación, también fuera de su carpeta.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',
