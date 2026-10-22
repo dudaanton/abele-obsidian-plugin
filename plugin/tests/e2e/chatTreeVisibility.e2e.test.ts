@@ -145,7 +145,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await shot('folder-rename')
         folderEditor.textContent = '   '
         folderEditor.dispatchEvent(new FocusEvent('blur'))
-        await until(() => !document.querySelector('[contenteditable]'))
+        await until(() => !document.querySelector('[data-path="' + folder + '"] [contenteditable]'))
         if (!service.folders.paths.includes(folder)) throw Error('Empty rename removed the folder name')
         return JSON.stringify(true)
       } finally {
