@@ -715,8 +715,10 @@ export class TokenEngines {
             scopedRoot ?? '',
             assertActive,
             [
+              this.app.vault.configDir,
               stagingDirectory(this.app.vault.configDir),
               privateRecoveryDirectory(this.app.vault.configDir),
+              ...record.selective.excludedFolders,
             ],
             record.scope.kind === 'group'
           )

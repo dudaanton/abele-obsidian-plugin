@@ -2,6 +2,63 @@ import { expect, it } from 'vitest'
 import { MemoryStateStore } from '@abele/sync-sdk/core'
 import { startupSafetyReason, waitForStartupIndex } from '@/sync/startupSafety'
 
+it.each([
+  { notes: 5, present: 5, stopped: false },
+  { notes: 100, present: 0, stopped: true },
+])(
+  'compares indexed notes independently of 100 synced config files ($notes notes, $present present)',
+  async ({ notes, present, stopped }) => {
+    const state = await ledger(notes)
+    for (let i = 0; i < 100; i++) {
+      const path = `.obsidian/plugins/sample/settings-${i}.json`
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: `config-${i}`,
+        versionId: 'v1',
+        sha: 'b'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    }
+    const reason = await startupSafetyReason(
+      state,
+      async () => ({ files: Array.from({ length: present }, (_, i) => `Notes/sample-${i}.md`) }),
+      ''
+    )
+    if (stopped) expect(reason).toContain('Resume')
+    else expect(reason).toBeNull()
+  }
+)
+
+it.each(['Settings', 'Notes/.hidden', 'Excluded'])(
+  'ignores ledger paths outside index visibility: %s',
+  async (prefix) => {
+    const state = await ledger(5)
+    for (let i = 0; i < 100; i++) {
+      const path = `${prefix}/sample-${i}.json`
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: `hidden-${i}`,
+        versionId: 'v1',
+        sha: 'b'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    }
+    expect(
+      await startupSafetyReason(
+        state,
+        async () => ({ files: Array.from({ length: 5 }, (_, i) => `Notes/sample-${i}.md`) }),
+        '',
+        () => {},
+        ['Settings', 'Excluded']
+      )
+    ).toBeNull()
+  }
+)
+
 it('cancels an unloaded-index wait and ignores a later ready callback', async () => {
   let ready!: () => void
   const controller = new AbortController()

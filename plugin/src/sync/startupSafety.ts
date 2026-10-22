@@ -21,13 +21,19 @@ export async function startupSafetyReason(
   snapshot: (root: string) => Promise<{ files: readonly string[] }>,
   root: string,
   assertCurrent: () => void = () => {},
-  privateRoots: readonly string[] = [],
+  excludedRoots: readonly string[] = [],
   ledgerOnly = false
 ): Promise<string | null> {
   let known = 0
   const members = new Set<string>()
+  // The host index never contains hidden paths or its configuration directory.
+  // Compare the same eligible population on both sides, not the entire sync ledger.
+  const comparable = (path: string) =>
+    !path.split('/').some((part) => part.startsWith('.')) &&
+    !excludedRoots.some((root) => path === root || path.startsWith(root + '/'))
   for await (const entry of state.all()) {
     assertCurrent()
+    if (!comparable(entry.path)) continue
     known++
     if (ledgerOnly) members.add(entry.path)
   }
@@ -36,16 +42,13 @@ export async function startupSafetyReason(
   const minimum = Math.ceil(known / 10)
   let present = 0
   const counted = new Set<string>()
-  const privatePath = (path: string) =>
-    path.split('/').includes('.abele-sync') ||
-    privateRoots.some((root) => path === root || path.startsWith(root + '/'))
   assertCurrent()
   const entries = await snapshot(root)
   assertCurrent()
   for (const file of entries.files) {
     assertCurrent()
     if (
-      privatePath(file) ||
+      !comparable(file) ||
       (root && root !== '/' && file !== root && !file.startsWith(root + '/'))
     )
       continue

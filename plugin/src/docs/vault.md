@@ -97,8 +97,10 @@ unchanged, completed-operation evidence moved into private retention. Unknown or
 remain visible in the connection activity log and attention badge; background retention never
 opens a Notice. Retention never deletes these bytes.
 The per-connection `abele-sync-token-state:startup-stop` field retains the reason a startup was
-paused because its local files were mostly missing or unreadable. With at least 100 ledger
-entries, fewer than 10% as many visible files stops exchange before recovery and engine start.
+paused because its local files were mostly missing or unreadable. Only index-visible ledger
+paths count: the config directory, hidden paths, private storage and excluded folders are omitted
+from both populations. With at least 100 comparable ledger entries, fewer than 10% as many visible
+files stops exchange before recovery and engine start. Smaller comparable populations are not judged.
 This count uses the host's in-memory file index after layout readiness; it never walks the
 filesystem or reads file contents. Startup waits for readiness instead of inspecting a partial index.
 For group connections, only distinct ledger member paths count, including their offload
