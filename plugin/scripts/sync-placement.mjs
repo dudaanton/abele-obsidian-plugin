@@ -104,7 +104,8 @@ export function syncPlacementPlugin() {
           `async prefetch(changes, local) {
           // Reuse the input inventory, not receipts installed by earlier pages of this pull.
           this.placer.initialLocal ??= new Map(local);
-          this.placer.adoptionCandidates ??= new Map();
+          // Absence belongs to this batch: a later page may move the same id to local bytes.
+          this.placer.adoptionCandidates = new Map();
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
             const wanted = [];
             const siblings = new Map();
