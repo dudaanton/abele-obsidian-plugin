@@ -199,14 +199,13 @@ export class NodeConnection {
     if (this.client.connected) {
       return this.enableExecutionPolicy().then(async () => {
         this.admitObsidianTools()
+        if (this.client.describe) {
+          const description = await this.client.describe()
+          await this.obsidian?.connectionChanged(description)
+        }
         this.state.value = 'connected'
         uiField(this.error, 'value', uiErrorMessage(''))
         ++this.healthEpoch.value
-        return this.obsidian
-          ? this.client
-              .describe()
-              .then((description) => this.obsidian!.connectionChanged(description))
-          : Promise.resolve()
       })
     }
     console.debug('[Abele node] connect/reconnect', {

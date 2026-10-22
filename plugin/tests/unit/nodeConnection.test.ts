@@ -436,3 +436,30 @@ it('retires a panel connection banner after a health probe without reloading the
     service.mockRestore()
   }
 })
+
+it('keeps a connection banner until an already admitted peer answers again', async () => {
+  const memory = new MemoryClientStore()
+  const client = {
+    connected: true,
+    describe: vi.fn(async () => ({})),
+    disconnect: async () => {},
+  }
+  const connection = new NodeConnection(
+    client as never,
+    { transaction: memory.transaction.bind(memory), close() {} } as never
+  )
+  try {
+    await connection.connect()
+    const epoch = connection.healthEpoch.value
+    connection.error.value = 'No answer from the node. Reconnecting'
+    client.describe.mockRejectedValueOnce(new ChannelError('outcome_unknown'))
+    await expect(connection.connect()).rejects.toThrow()
+    expect(connection.healthEpoch.value).toBe(epoch)
+    expect(connection.error.value).toContain('No answer from the node')
+    await connection.connect()
+    expect(connection.error.value).toBe('')
+    expect(connection.healthEpoch.value).toBeGreaterThan(epoch)
+  } finally {
+    connection.destroy()
+  }
+})
