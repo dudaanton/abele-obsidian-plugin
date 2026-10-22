@@ -48,6 +48,11 @@ export class MermaidWidget extends WidgetType {
       const code = pre.createEl('code')
       code.className = 'language-text'
       code.textContent = this.source
+      host.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        revealSource(view, host)
+      })
       return host
     }
     const dispose = mountMermaid(host, {

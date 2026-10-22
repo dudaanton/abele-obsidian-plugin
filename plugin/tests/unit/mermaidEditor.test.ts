@@ -2,11 +2,12 @@
  * The mermaid viewer in Live Preview: which blocks it draws over, and when it hands a block
  * back as source.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { editorInfoField, editorLivePreviewField } from 'obsidian'
 import { MermaidWidget, mermaidEditorExtension, refreshMermaid } from '@/editor/MermaidPlugin'
+import { useVault } from '../helpers/testEnv'
 
 const DOC = [
   'Intro', // 1
@@ -45,6 +46,33 @@ const widgets = (s: EditorState) => {
 }
 
 describe('the mermaid field', () => {
+  it.each(['mouse', 'touch'])('opens disabled source for editing on %s input', (pointerType) => {
+    useVault([])
+    const editorState = state()
+    const dispatch = vi.fn()
+    const focus = vi.fn()
+    const view = {
+      dom: document.body,
+      state: editorState,
+      posAtDOM: () => editorState.doc.line(2).from,
+      dispatch,
+      focus,
+    } as unknown as EditorView
+    const widget = new MermaidWidget('graph TD\nA-->B', 'sample.md', false)
+    const host = widget.toDOM(view)
+    host.querySelector('code')!.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        pointerType,
+        button: 0,
+      })
+    )
+    expect(dispatch).toHaveBeenCalledWith({
+      selection: { anchor: editorState.doc.line(2).to },
+      scrollIntoView: true,
+    })
+    expect(focus).toHaveBeenCalledOnce()
+  })
   it('draws the whole fenced block as one diagram', () => {
     active = true
     const s = state(0)

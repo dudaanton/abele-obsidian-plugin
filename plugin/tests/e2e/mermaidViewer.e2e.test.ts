@@ -300,6 +300,36 @@ describe.skipIf(!available)('the mermaid viewer', () => {
     expect(r.editing).toBe(0)
   })
 
+  it('opens a disabled diagram source widget for editing in Live Preview', () => {
+    const result = evalAsync<{
+      found: boolean
+      cursorLine: number
+      fenceLine: number
+    }>(`(async () => {
+      ${PRELUDE}
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      const enabled = config.mermaidViewer
+      try {
+        config.mermaidViewer = false
+        const leaf = await openNote('source')
+        leaf.view.editor.setCursor({line:0,ch:0})
+        app.workspace.trigger('post-processor-change')
+        const code = await until(() => leaf.view.containerEl.querySelector('.abele-mermaid-host_editor pre > code.language-text'))
+        if (!code) return {found:false,cursorLine:-1,fenceLine:-2}
+        code.scrollIntoView({block:'center'})
+        code.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:window.__e2eHost?'touch':'mouse',button:0}))
+        await wait(100)
+        const fenceLine = leaf.view.editor.getValue().split('\\n').findIndex(line => /^\\s*\`\`\`mermaid/.test(line))
+        return {found:true,cursorLine:leaf.view.editor.getCursor().line,fenceLine}
+      } finally {
+        config.mermaidViewer = enabled
+        app.workspace.trigger('post-processor-change')
+      }
+    })()`)
+    expect(result.found).toBe(true)
+    expect(result.cursorLine).toBe(result.fenceLine)
+  })
+
   it.each([
     ['flowchart', 'flowchart LR\n A[Draft] --> B[Done]'],
     ['sequence', 'sequenceDiagram\n Alice->>Bob: Hello'],
