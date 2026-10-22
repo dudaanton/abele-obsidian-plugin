@@ -6,6 +6,21 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { OWNER_STOP_REASON } from '@/node/delegation'
 
+it('explains a lost worker and directs the owner to restart from its chat', () => {
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: { ...nodeDelegationCardFixture('empty'), state: 'unknown', reason: 'pi_worker_lost' },
+      nodeLabel: 'Sample node',
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('The developer disconnected. Restart it from its chat.')
+    expect(wrapper.find('[data-pending-prompts]').exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('shows an owner stop as a quiet dot and a separate restart explanation', () => {
   const wrapper = mount(NodeDelegationCard, {
     props: {

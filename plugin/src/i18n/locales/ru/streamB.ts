@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.delegationWorkerLost': 'Разработчик отключился. Перезапустите его в его чате.',
   'streamB.nodeChangedWhileEditing': 'Файл на узле изменился, пока вы его редактировали.',
   'streamB.useTheirs': 'Взять их версию',
   'streamB.theirVersion': 'Версия на узле',

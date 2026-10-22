@@ -31,6 +31,13 @@
     >
       {{ t('node.delegation.ownerStopped') }}
     </p>
+    <p
+      v-if="card.state === 'unknown' && card.reason === 'pi_worker_lost'"
+      data-delegation-reason
+      class="abele-node-delegation__metadata"
+    >
+      {{ t('streamB.delegationWorkerLost') }}
+    </p>
     <NodeToolPermissions
       :policy="card.toolPermissions"
       hide-mode

@@ -414,7 +414,7 @@ export class NodeDelegationController {
             : status.state,
       session_head_seq: status.session_head_seq,
       reason: card?.reason ?? status.reason,
-      pending_human_prompts: status.pending_human_prompts,
+      pending_human_prompts: card?.pendingHumanPrompts ?? status.pending_human_prompts,
       reports: card?.reports ?? [],
     }
   }
@@ -793,6 +793,13 @@ export class NodeDelegationController {
         const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
         const tool = messages.findLast((m) => m.role === 'tool-call' && m.toolResult === undefined)
         const workspace = child?.workspace_id ? this.workspaces.get(child.workspace_id) : undefined
+        // Terminal mail can beat status polling. A dead worker cannot own an
+        // actionable approval, even while its last status still says one is pending.
+        const settled =
+          ['completed', 'failed', 'cancelled', 'unknown', 'unsupported'].includes(
+            state.split(' · ')[0]
+          ) || !!t.ownerStopped
+        const pendingCount = settled ? 0 : (t.status?.pending_human_prompts ?? pending.size)
         return {
           title: t.input.title,
           taskKey: t.input.task_key,
@@ -813,7 +820,7 @@ export class NodeDelegationController {
             : undefined,
           state,
           reason,
-          prompts: t.status?.pending_human_prompts === 0 ? [] : [...pending.values()],
+          prompts: pendingCount === 0 ? [] : [...pending.values()],
           promptDiffs: transcript?.promptDiffs,
           answers: child ? promptAnswerStates(s, child.session_id) : {},
           warnings: canRead
@@ -825,8 +832,10 @@ export class NodeDelegationController {
                   return [data.extension, data.event, data.error].filter(Boolean).join(': ')
                 })
             : [],
-          pendingHumanPrompts: t.status?.pending_human_prompts ?? pending.size,
-          reports,
+          pendingHumanPrompts: pendingCount,
+          reports: pendingCount
+            ? reports
+            : reports.filter((report) => !report.text.startsWith('Waiting for owner approval.')),
         }
       })
   }

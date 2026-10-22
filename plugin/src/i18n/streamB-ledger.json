@@ -5505,5 +5505,8 @@
   },
   "streamB.yourVersion": {
     "englishHash": "8067539c47227f3e9453f01408d0c2d7e0124ef983ae1c386d00c223d6605ab1"
+  },
+  "streamB.delegationWorkerLost": {
+    "englishHash": "dd154b03ca1ef971873b2f25c3e6b7c315ce59fd19c0fd7a1a75c1465665c1af"
   }
 }

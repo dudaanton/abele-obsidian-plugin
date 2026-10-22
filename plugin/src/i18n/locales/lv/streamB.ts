@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.delegationWorkerLost': 'Izstrādātājs atvienojās. Palaidiet to no jauna tā sarunā.',
   'streamB.nodeChangedWhileEditing': 'Fails mezglā tika mainīts rediģēšanas laikā.',
   'streamB.useTheirs': 'Izmantot viņu versiju',
   'streamB.theirVersion': 'Versija mezglā',

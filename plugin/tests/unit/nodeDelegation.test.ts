@@ -1393,3 +1393,100 @@ it('does not launch a provider that cannot ask on a node without permission enfo
     f.store.close()
   }
 })
+
+it('clears phantom approvals when a lost worker terminal arrives before status', async () => {
+  const f = fixture()
+  try {
+    await f.controller.create('parent', task)
+    await f.store.transaction((s) => {
+      const local = Object.values(s.delegation!.tasks)[0]
+      local.status = {
+        ...local.child!,
+        session_head_seq: 17,
+        mailbox_head_seq: 1,
+        pending_human_prompts: 1,
+      }
+      s.events.mailbox = [
+        {
+          kind: 'event',
+          node_id: 'node',
+          stream_id: 'mailbox',
+          seq: 1,
+          actor: { kind: 'node' },
+          at: '2028-01-01T00:00:00Z',
+          type: 'delegation.terminal',
+          data: {
+            delegation_id: 'delegation',
+            session_id: 'child',
+            state: 'unknown',
+            reason: 'pi_worker_lost',
+          },
+        },
+      ]
+    })
+    expect((await f.controller.cards('parent'))[0]).toMatchObject({
+      state: 'unknown',
+      reason: 'pi_worker_lost',
+      pendingHumanPrompts: 0,
+      prompts: [],
+    })
+    expect((await f.controller.status('parent', 'delegation')).pending_human_prompts).toBe(0)
+  } finally {
+    f.store.close()
+  }
+})
+
+it.each(['confirm-all', 'allow-all'])(
+  'wakes once after lost-worker recovery and completion in %s',
+  async (mode) => {
+    const f = fixture()
+    const { NodeClient: SdkClient } = await import('@abele/node-client')
+    const sdk = new SdkClient(
+      { url: 'ws://127.0.0.1:12345/channel', profile: 'local-token-v1', token: 'sample-token' },
+      f.store
+    )
+    try {
+      await f.store.transaction((s) => {
+        s.node_id = 'node'
+      })
+      await f.controller.create('parent', task, undefined, mode)
+      const emit = (seq: number, type: string, data: Record<string, unknown>) =>
+        sdk.ingest({
+          kind: 'event',
+          node_id: 'node',
+          stream_id: 'mailbox',
+          seq,
+          actor: { kind: 'node' },
+          at: '2028-01-01T00:00:00Z',
+          type,
+          data: { delegation_id: 'delegation', session_id: 'child', ...data },
+        })
+      await emit(1, 'delegation.question', {
+        report_id: 'sample-approval',
+        text: 'Waiting for owner approval. Open child session child to answer prompt sample-prompt. The controller cannot approve it.',
+      })
+      await emit(2, 'delegation.terminal', { state: 'unknown', reason: 'pi_worker_lost' })
+      const lost = (await f.controller.cards('parent'))[0]
+      expect(lost).toMatchObject({ state: 'unknown', pendingHumanPrompts: 0 })
+      expect(lost.reports).toEqual([])
+      const wake = vi.fn(() => true)
+      await f.controller.wakeDelivered(await f.controller.snapshot(), wake)
+      expect(wake).toHaveBeenCalledTimes(1)
+      // The owner continues the child; its next result follows the lost-worker event.
+      await f.controller.restartByOwner('child')
+      await emit(3, 'delegation.result', {
+        report_id: 'sample-result',
+        text: 'Sample checks passed',
+      })
+      await emit(4, 'delegation.terminal', { state: 'completed' })
+      expect(await sdk.cursor('mailbox')).toBe(4)
+      await f.controller.wakeDelivered(await f.controller.snapshot(), wake)
+      expect(wake).toHaveBeenCalledTimes(2)
+      expect((wake.mock.calls as unknown as string[][])[1][2]).toContain('finished')
+      await f.controller.wakeDelivered(await f.controller.snapshot(), wake)
+      expect(wake).toHaveBeenCalledTimes(2)
+    } finally {
+      f.store.close()
+    }
+  }
+)

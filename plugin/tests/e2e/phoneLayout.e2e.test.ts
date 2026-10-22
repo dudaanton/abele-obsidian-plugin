@@ -1676,6 +1676,7 @@ const probeScript = `(async () => {
     for (const [label, dialogName, options] of [
       ['node provider agent settings', 'node-agent-permissions', {}],
       ['node provider inherited settings', 'node-agent-permissions', { agentInherit: true }],
+      ['node developer lost', 'node-delegation-card', { delegationState: 'lost' }],
       ['node provider refusal', 'node-delegation-card', { permissionState: 'refused' }],
       ['node provider operator opt in', 'node-delegation-card', { permissionState: 'node-opt-in' }],
       ['node provider running', 'node-delegation-card', { permissionState: 'running' }],

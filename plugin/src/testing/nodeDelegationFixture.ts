@@ -36,7 +36,8 @@ export function nodeDelegationCardFixture(
     | 'warning'
     | 'prompt'
     | 'answering'
-    | 'owner-stopped',
+    | 'owner-stopped'
+    | 'lost',
   command: string | string[] = 'npm test -- tests/sample-parser.test.ts'
 ): DelegationCard {
   const card: DelegationCard = {
@@ -122,6 +123,11 @@ export function nodeDelegationCardFixture(
   if (state === 'owner-stopped') {
     card.state = 'stopped'
     card.reason = OWNER_STOP_REASON
+  }
+  if (state === 'lost') {
+    card.state = 'unknown'
+    card.reason = 'pi_worker_lost'
+    card.reports = []
   }
   return card
 }

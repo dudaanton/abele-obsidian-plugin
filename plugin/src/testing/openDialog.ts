@@ -39,6 +39,7 @@ export interface DialogFixtureOptions {
     | 'prompt'
     | 'answering'
     | 'owner-stopped'
+    | 'lost'
   permissionState?: 'running' | 'refused' | 'node-opt-in' | 'unknown'
   agentInherit?: boolean
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */

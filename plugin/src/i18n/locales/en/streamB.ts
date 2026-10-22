@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.delegationWorkerLost': 'The developer disconnected. Restart it from its chat.',
   'streamB.nodeChangedWhileEditing': 'Changed on the node while you edited.',
   'streamB.useTheirs': 'Use theirs',
   'streamB.theirVersion': 'Their version',

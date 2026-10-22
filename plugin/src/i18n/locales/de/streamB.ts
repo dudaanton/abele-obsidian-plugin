@@ -1,4 +1,6 @@
 export const streamB = {
+  'streamB.delegationWorkerLost':
+    'Der Entwickler wurde getrennt. Starten Sie ihn in seinem Chat neu.',
   'streamB.nodeChangedWhileEditing':
     'Die Datei wurde während der Bearbeitung auf dem Knoten geändert.',
   'streamB.useTheirs': 'Deren Version verwenden',

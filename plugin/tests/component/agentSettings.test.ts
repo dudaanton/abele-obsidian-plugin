@@ -680,3 +680,32 @@ describe('the memory tab', () => {
     ).toEqual(['Weeks start on Monday'])
   })
 })
+
+it('describes the selected Codex mode in its permission row', async () => {
+  const registry = AgentRegistry.getInstance()
+  const agent = registry.create({
+    name: 'Sample coder',
+    permissionMode: 'confirm-all',
+    node: {
+      id: 'sample-node',
+      name: 'Sample node',
+      provider: 'codex',
+      permissionModeConfigured: true,
+    },
+  })
+  const view = mountEditor(agent.id)
+  try {
+    await view
+      .findAll('.abele-tabs__tab')
+      .find((tab) => tab.text() === 'Access')!
+      .trigger('click')
+    const row = view.findAll('.setting-item').find((row) => row.text().includes('Permission mode'))!
+    expect(row.text()).toContain("in Ask it won't start")
+    expect(row.text()).not.toContain('Without asking: edits')
+    await row.findComponent(Dropdown).vm.$emit('update:modelValue', 'allow-all')
+    await view.vm.$nextTick()
+    expect(row.text()).toContain('Without asking: edits')
+  } finally {
+    view.unmount()
+  }
+})

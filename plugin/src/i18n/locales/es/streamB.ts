@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.delegationWorkerLost': 'El desarrollador se desconectó. Reinícialo desde su chat.',
   'streamB.nodeChangedWhileEditing': 'El archivo cambió en el nodo mientras lo editabas.',
   'streamB.useTheirs': 'Usar su versión',
   'streamB.theirVersion': 'Versión del nodo',

@@ -189,7 +189,9 @@
               agent.node
                 ? t(
                     agent.node.provider === 'codex'
-                      ? 'streamB.permissionCodexFolder'
+                      ? agent.permissionMode === 'allow-all'
+                        ? 'streamB.permissionCodexFolder'
+                        : 'streamB.permissionCodexAsk'
                       : 'streamB.permissionOwnerChoice'
                   )
                 : t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')
