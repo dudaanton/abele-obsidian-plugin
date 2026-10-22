@@ -8,6 +8,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { buildScriptContext } from '@/scripting/ScriptContext'
+import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
 
 let app: App
 let store: ReturnType<typeof memoryStore>
@@ -18,6 +19,7 @@ const text = () => app.vault.read(file())
 
 beforeEach(() => {
   app = useVault([{ path: 'sample.md', content: 'original' }]) as unknown as App
+  queueBinaryAdapter(app.vault.adapter)
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   ChangeTracker.install(app)
   store = memoryStore()

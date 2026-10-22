@@ -725,8 +725,8 @@ export function buildFakeVault(
         data: ArrayBuffer,
         options?: { mtime?: number; ctime?: number }
       ) {
-        if (await self.vault.adapter.exists(path)) throw new Error('File already exists')
-        await self.vault.adapter.writeBinary(path, data, options)
+        if (await this.adapter.exists(path)) throw new Error('File already exists')
+        await this.adapter.writeBinary(path, data, options)
         stats.create++
         stats.written += data.byteLength
         const file = addFile(path)
@@ -743,7 +743,7 @@ export function buildFakeVault(
         options?: { mtime?: number; ctime?: number }
       ) {
         stats.modify++
-        await self.vault.adapter.writeBinary(file.path, data, options)
+        await this.adapter.writeBinary(file.path, data, options)
         binByPath.set(file.path, data.slice(0))
       },
       async rename(file: TAbstractFile, to: string) {

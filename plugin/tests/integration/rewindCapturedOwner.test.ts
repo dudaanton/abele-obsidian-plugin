@@ -6,6 +6,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { memoryStore } from '@/ai/rewind/RewindStore'
+import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
 
 afterEach(() => {
   ChangeTracker.get()?.uninstall()
@@ -34,6 +35,7 @@ it.each(['chat-b', null])(
       { path: 'beta.md', content: 'beta original' },
     ]) as unknown as App
     const binary = await app.vault.createBinary('sample.bin', new Uint8Array([1]).buffer)
+    queueBinaryAdapter(app.vault.adapter)
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
     ChangeTracker.install(app)
     let key: string | null = 'chat-a'
