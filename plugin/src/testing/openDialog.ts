@@ -497,7 +497,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
   'node-lsp-live': (options) =>
-    mountAlone(NodeLspLiveFixture, options?.lspFile ?? {}, 'node-lsp-live'),
+    options?.lspFile
+      ? mountAlone(NodeLspLiveFixture, options.lspFile, 'node-lsp-live')
+      : mountAlone(NodeLspFixture, { state: 'errors' }, 'node-lsp-live'),
   'node-lsp-missing': () => mountAlone(NodeLspFixture, { state: 'missing' }, 'node-lsp-missing'),
   'node-lsp-untrusted': () =>
     mountAlone(NodeLspFixture, { state: 'untrusted' }, 'node-lsp-untrusted'),
