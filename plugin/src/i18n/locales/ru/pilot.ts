@@ -5,6 +5,11 @@ export const ru = {
   'node.manager.cancelled': 'Отменено',
   'node.manager.running': 'Выполняется',
   'node.commit.refresh': 'Обновить',
+  'node.manager.contextUpdate':
+    'Обновите ноду до 0.4.47 или новее, чтобы запускать команды из этого чата (нужен command_context_v1).',
+  'node.manager.notSubmitted': 'Команда не передана на выполнение: {reason}',
+  'node.manager.permissionChanged': 'Права на команды изменились. Запросите команду заново.',
+
   'requests.refresh': 'Обновить запросы',
   'debug.launchUnknown':
     'Результат запуска неизвестен. Подключитесь снова и проверьте сеансы отладки перед повторным запуском.',

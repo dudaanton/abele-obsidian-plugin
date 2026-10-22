@@ -13,24 +13,22 @@ const client = {
     })),
   },
 }
-it('explains the missing command context in an ordinary chat before dispatch', async () => {
-  await expect(
-    resolveManagerTargets(client as never, 'command.v1.run', {
+it('accepts an explicit target for an ordinary chat without requiring a provider session', async () => {
+  expect(
+    await resolveManagerTargets(client as never, 'command.v1.run', {
       worktree_id: 'sample-tree',
       argv: ['node', '--version'],
     })
-  ).rejects.toThrow(/command_context_unavailable.*node.*session/i)
+  ).toEqual({ worktree_id: 'sample-tree', argv: ['node', '--version'] })
 })
-it.fails(
-  'BUG: resolves a command context for a scoped ordinary chat without a provider session',
-  async () => {
-    const result = await resolveManagerTargets(client as never, 'command.v1.run', {
-      worktree_id: 'sample-tree',
+it('normalises a session-less chat target for command context creation', async () => {
+  expect(
+    await resolveManagerTargets(client as never, 'command.v1.run', {
+      workspace_id: 'sample-workspace',
       argv: ['node', '--version'],
     })
-    expect(result.session_id).toEqual(expect.any(String))
-  }
-)
+  ).toEqual({ worktree_id: 'sample-tree', argv: ['node', '--version'] })
+})
 it('accepts a delegate workspace and prefers its worktree over the accompanying project', async () => {
   expect(
     await resolveManagerTargets(client as never, 'command.v1.run', {

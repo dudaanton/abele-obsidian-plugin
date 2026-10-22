@@ -28,6 +28,9 @@ export interface DialogFixtureOptions {
   managerCodexApproval?: boolean
   managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
+  managerJustification?: string
+  managerCommand?: string
+  managerOldNode?: boolean
   delegationState?:
     | 'paused-prompt'
     | 'working'
@@ -437,7 +440,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
                     card: nodeManagerFixture(
                       options?.managerRunState,
                       options?.managerEscapedCommand,
-                      options?.managerCodexApproval
+                      options?.managerCodexApproval,
+                      options
                     ),
                   }),
               }

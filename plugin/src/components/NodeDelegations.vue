@@ -15,8 +15,11 @@
       v-for="item in runs"
       :key="item.node.id + item.card.operation"
       :card="item.card"
-      :disabled="service.connection(item.node.id).state.value !== 'connected'"
-      @answer="(prompt, choice, value) => answer(item.node.id, prompt, choice, value)"
+      :disabled="
+        item.card.run.session_id !== 'unsubmitted-command' &&
+        service.connection(item.node.id).state.value !== 'connected'
+      "
+      @answer="(prompt, choice, value) => answerRun(item, prompt, choice, value)"
       @cancel="cancel(item)"
     />
     <NodeErrorText v-if="error" :error="error" />
@@ -98,6 +101,17 @@ const answer = (node: string, prompt: Prompt, choice: 'allow' | 'deny', value?: 
       value
     )
   })
+const answerRun = (
+  item: (typeof runs.value)[number],
+  prompt: Prompt,
+  choice: 'allow' | 'deny',
+  value?: string
+) =>
+  'context_id' in item.card.run || prompt.session_id === 'unsubmitted-command'
+    ? ownerAction(item.node.id, () =>
+        service.connection(item.node.id).manager.answer(props.parentId, prompt, choice)
+      )
+    : answer(item.node.id, prompt, choice, value)
 const stop = (node: string, prompt: Prompt) =>
   ownerAction(node, async () => {
     const connection = service.connection(node)

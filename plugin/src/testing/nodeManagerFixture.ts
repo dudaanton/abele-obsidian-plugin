@@ -1,9 +1,15 @@
 import type { Prompt } from '@abele/node-client'
 import type { NodeManagerController } from '@/node/NodeManagerController'
+import { t } from '@/i18n'
 export function nodeManagerFixture(
   state: import('@abele/node-protocol').ManagerRun['state'] = 'pending_approval',
   escaped = false,
-  codex = false
+  codex = false,
+  presentation?: {
+    managerJustification?: string
+    managerCommand?: string
+    managerOldNode?: boolean
+  }
 ): Awaited<ReturnType<NodeManagerController['cards']>>[number] {
   const prompt: Prompt = {
     kind: 'permission' as const,
@@ -38,8 +44,22 @@ export function nodeManagerFixture(
       thread_id: 'sample-hidden-thread',
     }
   }
+  if (presentation?.managerCommand !== undefined) {
+    prompt.input.context_id = 'sample-context'
+    prompt.input.command = presentation.managerCommand
+    prompt.input.params = { command: presentation.managerCommand }
+  }
+  if (presentation?.managerOldNode) {
+    state = 'pending_approval'
+    prompt.session_id = 'unsubmitted-command'
+    prompt.input.context_id = 'unsubmitted-command'
+  }
   return {
     operation: 'sample-operation',
+    justification: presentation?.managerJustification,
+    command: presentation?.managerCommand,
+    argv: presentation?.managerCommand !== undefined ? undefined : ['npm', 'test'],
+    folder: '/workspace/sample-project',
     title: ['failed', 'applied', 'outcome_unknown'].includes(state)
       ? 'work/sample-parser → main'
       : 'npm test -- tests/sample-parser.test.ts',
@@ -61,9 +81,11 @@ export function nodeManagerFixture(
       stderr_truncated: false,
       ...(state === 'exited' ? { exit_code: 0 } : {}),
       ...(state === 'applied' ? { head: 'c'.repeat(40) } : {}),
-      ...(state === 'failed'
-        ? { reason: 'rebase_conflict', conflicting_files: ['src/sample-parser.ts'] }
-        : {}),
+      ...(presentation?.managerOldNode
+        ? { reason: t('node.manager.contextUpdate') }
+        : state === 'failed'
+          ? { reason: 'rebase_conflict', conflicting_files: ['src/sample-parser.ts'] }
+          : {}),
       ...(state === 'outcome_unknown' ? { reason: 'restart' } : {}),
     },
   }

@@ -4,6 +4,11 @@ export const en = {
   'node.manager.cancelled': 'Cancelled',
   'node.manager.running': 'Running',
   'node.commit.refresh': 'Refresh',
+  'node.manager.contextUpdate':
+    'Update the node to 0.4.47 or later to run commands from this chat (command_context_v1 is required).',
+  'node.manager.notSubmitted': 'Command was not submitted for execution: {reason}',
+  'node.manager.permissionChanged': 'Command permissions changed. Request the command again.',
+
   'requests.refresh': 'Refresh requests',
   'debug.launchUnknown':
     'The launch result is unknown. Reconnect and check the debug sessions before trying again.',

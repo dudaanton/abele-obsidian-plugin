@@ -12,6 +12,51 @@ import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import { folderDebugReason } from '@/debugger/folderActions'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
+import { ref } from 'vue'
+
+it('rechecks command approval scope after worktree metadata arrives', async () => {
+  const chat = {
+    delegationParentId: 'sample-parent',
+    getToolMode: () => 'ask',
+    overrides: ref({
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          target: { kind: 'worktree', worktree_id: 'sample-tree' },
+          access: 'read',
+        },
+      ],
+    }),
+  }
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [chat] } as never)
+  const client = {
+    target: { expected_node_id: 'sample-node' },
+    disconnect: async () => {},
+    repository: {
+      worktrees: async () => {
+        chat.overrides.value.nodeScope = []
+        return { entries: [{ worktree_id: 'sample-tree' }] }
+      },
+    },
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  vi.spyOn(connection.manager, 'targetFor').mockResolvedValue({ worktree_id: 'sample-tree' })
+  try {
+    await expect(
+      connection.manager.canApprove!('sample-parent', {
+        session_id: 'sample-stream',
+        run_id: 'sample-run',
+      } as never)
+    ).resolves.toBe(false)
+  } finally {
+    chats.mockRestore()
+    connection.destroy()
+  }
+})
 
 vi.mock('@/debugger/register', () => ({}))
 it('negotiates policy for an already authenticated connection before background reads', async () => {
@@ -108,12 +153,17 @@ it('enables execution policy before replay on every connection and skips older p
       events.push('describe')
       return {
         capabilities: {
-          capabilities: supported ? { 'execution.policy.v1': { status: 'supported' } } : {},
+          capabilities: supported
+            ? {
+                'execution.policy.v1': { status: 'supported' },
+                command_context_v1: { status: 'supported' },
+              }
+            : {},
         },
       }
     }),
-    request: vi.fn(async () => {
-      events.push('enable')
+    request: vi.fn(async (method: string) => {
+      events.push(method === 'command.context.v1.enable' ? 'context' : 'enable')
       return { enabled: true }
     }),
     connect: vi.fn(async (admit?: () => Promise<void>) => {
@@ -132,12 +182,16 @@ it('enables execution policy before replay on every connection and skips older p
     expect(events.indexOf('enable')).toBeGreaterThanOrEqual(0)
     expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
     expect(request).toHaveBeenCalledWith('execution.policy.v1.enable', {})
+    expect(request).toHaveBeenCalledWith('command.context.v1.enable', {})
+    expect(events.indexOf('context')).toBeLessThan(events.indexOf('replay'))
     expect(events.filter((e) => e === 'describe').length).toBeGreaterThan(1)
     events.length = 0
     client.connected = false
     await connection.connect()
     expect(events.indexOf('enable')).toBeGreaterThanOrEqual(0)
     expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
+    expect(events.filter((e) => e === 'context')).toHaveLength(1)
+    expect(events.indexOf('context')).toBeLessThan(events.indexOf('replay'))
     client.connected = false
     supported = false
     request.mockClear()

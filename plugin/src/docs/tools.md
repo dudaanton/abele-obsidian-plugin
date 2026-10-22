@@ -1355,19 +1355,36 @@ to do and why. It is display-only prose, shown above the exact command on the ap
 card and on the completed run. It never changes the command or grants permission.
 
 `node_command_run` runs exactly one `argv` or `command` in a registered `project_id` or
-`worktree_id`. Pass `node`, an existing `session_id`, and a stable `operation_id`.
+`worktree_id`. Pass `node` and a stable `operation_id`. Ordinary chats use
+`command_context_v1` (node 0.4.47 or newer); no provider session, terminal binding
+or delegation grant is needed. The plugin enables the capability on each connection
+and durably creates/reuses a context per parent chat and target. It takes execution
+mode from the owner's effective chat mode (a per-chat override wins over agent
+settings); tools cannot supply a mode. Tool Auto never weakens an owner's Ask mode.
 The `workspace_id` returned by delegation is also accepted and resolved to its worktree.
-If no target is given, the command uses the session's bound worktree. A worktree takes
+If no target is given, a single folder in the chat's scope may be inferred; otherwise
+supply an explicit target. An older supplied session can resolve its bound worktree,
+but execution still uses a command context. A worktree takes
 precedence over accompanying project metadata. Integration also accepts `workspace_id`
 and `source_workspace_id` aliases. Never create unmanaged worktrees through commands.
 Optional `cwd` stays inside that target; `timeout_ms` bounds execution and `output_bytes`
-sets each output tail (1024–16384 bytes). The node must advertise `command_run_v1`.
-In Ask mode the initial receipt is pending owner approval. Only the owner UI answers it.
+sets each output tail (1024–16384 bytes). The node must advertise `command_context_v1`.
+In Ask mode preparation returns the exact resolved command and folder for one durable
+owner approval. Nothing executes during preparation. Only the owner UI can call the
+context execute endpoint with the exact approval digest; it is never a model tool.
 Without asking must execute without a card on supporting nodes. A pending approval returned
 by an older node is still pending; never answer it automatically or claim execution succeeded.
 `node_command_status` reads this parent's run using `session_id` and `run_id`, including
 exit code, bounded stdout/stderr and their truncation flags. `node_command_cancel`
 cancels that run with a retained `operation_id`. Output streams live in the manager card.
+For context commands `session_id` identifies the context journal, not a provider session;
+never pass it to session APIs. Status, cancel and reconnect replay use context APIs
+with the original parent binding. A failed preparation is reported as not submitted
+for execution; lost preparation receipts retain their operation ID and unknown outcome.
+In Ask, a refusal before the node creates an approval retains one local request card
+with the exact requested command, folder and refusal reason. Answering that card
+only settles the failed local request; it never authorizes or starts a node action.
+After fixing the stated problem, a new command request gets its own exact node approval.
 
 `node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
 `source_worktree_id`, both branch names and full `expected_target_head` and

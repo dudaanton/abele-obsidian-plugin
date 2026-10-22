@@ -1,4 +1,5 @@
 import { uiField, uiMessage, uiErrorMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { ref, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { NodeClient } from '@abele/node-client'
@@ -17,6 +18,8 @@ import type { DelegationCard } from './delegation'
 import { NodeObsidianTools } from './NodeObsidianTools'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ensureNodeAgents } from './nodeAgentTools'
+import { nodeScopeEntries } from '@/ai/nodeScope'
+import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
@@ -48,6 +51,53 @@ export class NodeConnection {
     private readonly tools?: { nodeId: string; label: string }
   ) {
     this.manager = new NodeManagerController(client, store)
+    this.manager.canApprove = async (parent, run) => {
+      const { ChatService } = await import('@/ai/ChatService')
+      const chat = ChatService.getInstance()
+        .getAllSessions()
+        .find((s) => s.delegationParentId === parent)
+      if (!chat || !['ask', 'auto'].includes(chat.getToolMode('node_command_run'))) return false
+      const target = await this.manager.targetFor(parent, run.session_id, run.run_id)
+      const node = client.target.expected_node_id
+      if (!node) return false
+      const verify = (project?: string, workspace?: string, worktree?: string) => {
+        const guard = () => {
+          if (
+            !ChatService.getInstance().getAllSessions().includes(chat) ||
+            !['ask', 'auto'].includes(chat.getToolMode('node_command_run'))
+          )
+            throw new Error(t('node.manager.permissionChanged'))
+          requireDelegationScope(chat, node, project, workspace, worktree)
+        }
+        try {
+          guard()
+          return guard
+        } catch {
+          return false as const
+        }
+      }
+      const entries = nodeScopeEntries(chat).filter((e) => e.node_id === node)
+      if (entries.some((e) => e.kind === 'node')) return verify()
+      if (target?.project_id) return verify(target.project_id)
+      if (target?.worktree_id) {
+        const projects = new Set(entries.flatMap((e) => (e.kind === 'node' ? [] : [e.project_id])))
+        for (const project of projects) {
+          let cursor: string | undefined
+          do {
+            const page = await client.repository.worktrees({
+              project_id: project,
+              cursor,
+              limit: 256,
+            })
+            const row = page.entries.find((row) => row.worktree_id === target.worktree_id)
+            if (row) return verify(project, row.workspace_id ?? undefined, target.worktree_id)
+            if (!page.cursor || page.cursor === cursor) break
+            cursor = page.cursor
+          } while (cursor)
+        }
+      }
+      return false
+    }
     this.delegation = new NodeDelegationController(client, store)
     this.delegation.ownerNodeId = tools?.nodeId
     this.delegation.ownerPermissionMode = (provider) => {
@@ -181,6 +231,8 @@ export class NodeConnection {
     const description = (await this.client.describe()) as {
       capabilities?: { capabilities?: Record<string, { status?: string }> }
     }
+    if (description.capabilities?.capabilities?.command_context_v1?.status === 'supported')
+      await this.client.request('command.context.v1.enable', {})
     if (description.capabilities?.capabilities?.['execution.policy.v1']?.status !== 'supported') {
       this.executionPolicyReady = true
       return

@@ -5,6 +5,12 @@ export const de = {
   'node.manager.cancelled': 'Abgebrochen',
   'node.manager.running': 'Wird ausgeführt',
   'node.commit.refresh': 'Aktualisieren',
+  'node.manager.contextUpdate':
+    'Aktualisiere den Knoten auf 0.4.47 oder neuer, um Befehle aus diesem Chat auszuführen (command_context_v1 erforderlich).',
+  'node.manager.notSubmitted': 'Der Befehl wurde nicht zur Ausführung übermittelt: {reason}',
+  'node.manager.permissionChanged':
+    'Die Befehlsberechtigungen haben sich geändert. Fordere den Befehl erneut an.',
+
   'requests.refresh': 'Anfragen aktualisieren',
   'debug.launchUnknown':
     'Das Startergebnis ist unbekannt. Verbinde dich erneut und prüfe die Debug-Sitzungen vor einem weiteren Versuch.',

@@ -8,7 +8,10 @@ export async function resolveManagerTargets(
 ): Promise<Record<string, unknown>> {
   const params = { ...raw }
   if (!['command.v1.run', 'git.v1.integrate'].includes(method)) return params
-  if (typeof params.session_id !== 'string' || !params.session_id)
+  if (
+    method === 'git.v1.integrate' &&
+    (typeof params.session_id !== 'string' || !params.session_id)
+  )
     throw new Error(
       'command_context_unavailable: This node command API requires an existing node session. The plugin has not established a command context for this chat. No command was submitted for execution.'
     )
@@ -44,7 +47,9 @@ export async function resolveManagerTargets(
   }
   if (method === 'command.v1.run' && !params.project_id && !params.worktree_id) {
     if (typeof params.session_id !== 'string')
-      throw new Error('invalid_params: Supply an existing session_id.')
+      throw new Error(
+        'invalid_params: Supply an explicit project_id or worktree_id for this command.'
+      )
     const binding = await client.nodePath.sessionWorktreeGet({
       session_id: params.session_id,
     })

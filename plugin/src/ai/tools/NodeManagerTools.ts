@@ -10,6 +10,7 @@ import { NodeService } from '@/node/NodeService'
 import { resolveManagerTargets } from '@/node/managerTargets'
 import { nodeMutationKey } from './node/mutations'
 import { commandJustification } from '@/node/commandJustification'
+import { managerCapability } from '@/node/NodeManagerController'
 const id = z.string().min(1).max(128)
 const targets = z.looseObject({ node: id, session_id: id.optional(), operation_id: id.optional() })
 export const NODE_COMMAND_TOOLS = [
@@ -33,7 +34,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
     category: 'Nodes',
     description:
       name === 'node_command_run'
-        ? 'Run argv (literal arguments) OR command in project_id, worktree_id or workspace_id returned by node_delegate. Without a target, use the session worktree. A specific worktree takes precedence over project_id. Optional cwd, timeout_ms and output_bytes (1024–16384 per stream). session_id is an existing node session (for example a developer session). For read-only Git inspection use node_git_status, node_git_diff or node_git_log instead of shell commands; these use the ordinary read permissions. Requires command_run_v1. Ask mode returns a pending owner approval; without-asking mode runs without a card on nodes that support it. A receipt is not execution success. Owner answers in chat; never answer prompts yourself. Preserve exact body and operation_id after uncertainty; poll node_command_status for exit_code, stdout/stderr tails and truncation flags.'
+        ? 'Run argv (literal arguments) OR command in an accessible project_id, worktree_id or delegation workspace_id. Ordinary chats need no provider session, delegation or terminal binding. With one scoped folder it may be inferred; otherwise choose an explicit target. A specific worktree takes precedence over project_id. Requires node 0.4.47+ with command_context_v1. Required justification: one short sentence in the chat language explaining what you want to do and why (max 200 characters). Optional cwd, timeout_ms and output_bytes (1024–16384 per stream). The owner mode controls execution: Ask returns one exact pending approval and executes nothing before the owner allows it; bypass runs without a card. Never supply or change permission_mode. Owner answers in chat; never answer prompts yourself. A receipt is not execution success. Preserve exact body and operation_id after uncertainty; poll node_command_status with the receipt session_id (context journal, not a provider session) and run_id for exit_code, stdout/stderr and truncation flags. Use node_git_status, node_git_diff and node_git_log for read-only Git inspection.'
         : name === 'node_git_integrate'
           ? 'Integrate source_worktree_id (or source_workspace_id from delegation) into worktree_id (or workspace_id) using git_integrate_v1. Supply target_branch, source_branch and full expected_target_head/expected_source_head from fresh status reads. rebase defaults false (fast-forward only); true rebases the developer in its own worktree first. Ask mode creates an exact owner approval; without-asking mode must not show an approval card on nodes that support it. Poll node_command_status. After successful integration, report the retained developer worktree and offer removal; never remove it without the owner. Show conflicting_files and outcome_unknown plainly; inspect both heads before a new attempt, never retry blindly. Older nodes retain existing git tools; do not emulate integration with a shell command or create unmanaged worktrees through commands.'
           : name === 'node_command_status'
@@ -75,7 +76,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       },
       required: [
         'node',
-        ...(name === 'node_command_status' || name === 'node_command_cancel' ? ['session_id'] : []),
+        ...(name !== 'node_command_run' ? ['session_id'] : []),
         ...(name === 'node_command_status'
           ? ['run_id']
           : name === 'node_command_cancel'
@@ -115,40 +116,81 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         requireDelegationScope(parent, nodeId)
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
-      requireGrantFreeDelegation(await connection.client.describe())
+      const description = await connection.client.describe()
+      if (name === 'node_command_run' && !managerCapability(description, 'command_context_v1')) {
+        try {
+          return await connection.manager.refuse(
+            parentId,
+            input,
+            id.parse(operation_id),
+            parent.permissionMode?.value === 'allow-all' ? 'bypass' : 'ask',
+            justification!,
+            new Error(t('node.manager.contextUpdate'))
+          )
+        } finally {
+          await connection.refreshDelegations()
+        }
+      }
+      if (name === 'node_git_integrate') requireGrantFreeDelegation(description)
       const method =
         name === 'node_command_run'
           ? 'command.v1.run'
           : name === 'node_git_integrate'
             ? 'git.v1.integrate'
             : 'command.v1.cancel'
+      if (
+        name === 'node_command_run' &&
+        !input.project_id &&
+        !input.worktree_id &&
+        !input.workspace_id &&
+        !input.session_id
+      ) {
+        const scoped = nodeScopeEntries(parent).filter(
+          (e) => e.node_id === nodeId && e.kind !== 'node'
+        )
+        if (scoped.length === 1) {
+          const entry = scoped[0]
+          if (entry.kind === 'target' && entry.target.kind === 'worktree')
+            input.worktree_id = entry.target.worktree_id
+          else if (entry.kind === 'target' && entry.target.kind === 'workspace')
+            input.workspace_id = entry.target.workspace_id
+          else if (entry.kind === 'project') input.project_id = entry.project_id
+        }
+      }
       const params = await resolveManagerTargets(
         connection.client,
         name === 'node_command_status' ? 'command.v1.status' : method,
         input
       )
-      const sessionId = id.parse(params.session_id)
+      const sessionId = name === 'node_command_run' ? undefined : id.parse(params.session_id)
+      const storedTarget =
+        sessionId && name !== 'node_git_integrate'
+          ? await connection.manager.targetFor(parentId, sessionId, id.parse(params.run_id))
+          : undefined
+      if (storedTarget) Object.assign(params, storedTarget)
       const guards: (() => void)[] = [permission]
       const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
       if (entries.some((entry) => entry.kind === 'node')) {
         guards.push(requireDelegationScope(parent, nodeId))
       } else {
-        const session = await connection.client.getSession(sessionId)
-        const binding = await connection.client.nodePath.sessionWorktreeGet({
-          session_id: sessionId,
-        })
-        const workspace = session.workspace_id
-          ? await connection.client.getWorkspace(session.workspace_id)
-          : undefined
-        guards.push(
-          requireDelegationScope(
-            parent,
-            nodeId,
-            workspace?.project_id ?? binding.project_id,
-            session.workspace_id ?? undefined,
-            binding.target.kind === 'worktree' ? binding.target.worktree_id : undefined
+        if (name !== 'node_command_run' && !storedTarget) {
+          const session = await connection.client.getSession(sessionId!)
+          const binding = await connection.client.nodePath.sessionWorktreeGet({
+            session_id: sessionId!,
+          })
+          const workspace = session.workspace_id
+            ? await connection.client.getWorkspace(session.workspace_id)
+            : undefined
+          guards.push(
+            requireDelegationScope(
+              parent,
+              nodeId,
+              workspace?.project_id ?? binding.project_id,
+              session.workspace_id ?? undefined,
+              binding.target.kind === 'worktree' ? binding.target.worktree_id : undefined
+            )
           )
-        )
+        }
         if (typeof params.project_id === 'string')
           guards.push(requireDelegationScope(parent, nodeId, params.project_id))
         for (const worktree of [params.worktree_id, params.source_worktree_id]) {
@@ -196,17 +238,39 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       guard()
       let value: unknown
       if (name === 'node_command_status')
-        value = await connection.manager.status(parentId, sessionId, id.parse(params.run_id))
-      else {
+        value = await connection.manager.status(parentId, sessionId!, id.parse(params.run_id))
+      else if (name === 'node_command_run') {
+        if (!operation_id) throw new Error('A stable operation_id is required')
+        const mode = parent.permissionMode?.value === 'allow-all' ? 'bypass' : 'ask'
+        try {
+          value = await connection.manager.command(
+            parentId,
+            params,
+            operation_id,
+            mode,
+            justification!,
+            () => {
+              guard()
+              if (mode === 'bypass' && parent.permissionMode?.value !== 'allow-all')
+                throw new Error(t('node.manager.permissionChanged'))
+            }
+          )
+        } catch (error) {
+          await connection
+            .refreshDelegations()
+            .catch((refreshError) =>
+              console.debug('[Abele node] refused command card awaits refresh', refreshError)
+            )
+          throw error
+        }
+      } else {
         if (!operation_id) throw new Error('A stable operation_id is required')
         value = await connection.manager.mutate(
           parentId,
-          name === 'node_command_run'
-            ? 'command.v1.run'
-            : name === 'node_git_integrate'
-              ? 'git.v1.integrate'
-              : 'command.v1.cancel',
-          params,
+          name === 'node_git_integrate' ? 'git.v1.integrate' : 'command.v1.cancel',
+          name === 'node_command_cancel'
+            ? { session_id: sessionId, run_id: params.run_id }
+            : params,
           nodeMutationKey(parentId, name, operation_id, params),
           operation_id,
           justification

@@ -2,9 +2,17 @@
   <!-- What the agent asks to do, said as the debugger's card says it: a glyph of the kind of
        action and what it is, the exact thing in code under it, Deny and Allow at the end. The
        rarer answers (always, edit first) are in the card's menu, not more buttons. -->
-  <RequestCard class="abele-tool-approval" waiting>
+  <RequestCard
+    class="abele-tool-approval"
+    :class="{ 'abele-tool-approval_command': justification }"
+    waiting
+  >
     <div class="abele-tool-approval__header">
-      <Icon :icon="KIND_ICON[toolKind(message.toolName)]" size="xs" :interactive="false" />
+      <Icon
+        :icon="justification ? 'square-terminal' : KIND_ICON[toolKind(message.toolName)]"
+        size="xs"
+        :interactive="false"
+      />
       <span
         class="abele-tool-approval__what"
         :class="{ 'abele-tool-approval__justification': justification }"
@@ -69,7 +77,7 @@
       </div>
     </template>
     <template v-else-if="nodePrompt && !obsidianCall">
-      <div v-if="location" class="abele-tool-approval__path">
+      <div v-if="location && !justification" class="abele-tool-approval__path">
         {{ managerApproval ? visibleText(location) : location }}
       </div>
       <Diff
@@ -80,9 +88,18 @@
         :path="diff.path"
       />
       <div v-if="managerApproval" data-manager-approval>
-        <code data-manager-command>{{ managerApproval.command }}</code>
+        <div v-if="managerApproval.argv" data-manager-command class="abele-tool-approval__argv">
+          <code v-for="(arg, index) in managerApproval.argv" :key="index" data-command-argument>{{
+            JSON.stringify(arg)
+          }}</code>
+        </div>
+        <code v-else data-manager-command>{{ managerApproval.command }}</code>
         <p v-if="managerApproval.reason">{{ managerApproval.reason }}</p>
-        <MetaLine :facts="managerApproval.facts" />
+        <div v-if="justification" class="abele-tool-approval__folder" data-command-folder>
+          <Icon icon="folder" size="xs" :interactive="false" />
+          <span>{{ managerApproval.folder }}</span>
+        </div>
+        <MetaLine v-else :facts="managerApproval.facts" />
         <Disclosure
           v-model="originalOpen"
           :label="t('streamB.originalAction.67ccdf')"
@@ -501,7 +518,27 @@ const managerApproval = computed(() => {
   if (input && props.nodePrompt?.tool_name === 'codex.command') {
     return {
       command: visibleText(commandText(input) ?? ''),
+      argv: undefined as string[] | undefined,
+      folder: visibleText(promptString(input.cwd)),
       reason: visibleText(promptString(input.reason)),
+      facts: [
+        {
+          key: 'cwd',
+          label: t('node.manager.folder'),
+          value: visibleText(promptString(input.cwd)),
+        },
+      ],
+      evidence: visibleJson(input, 2),
+    }
+  }
+  if (input?.context_id) {
+    return {
+      command: promptString(input.command),
+      argv: Array.isArray(input.argv)
+        ? input.argv.filter((v): v is string => typeof v === 'string')
+        : undefined,
+      folder: visibleText(promptString(input.cwd)),
+      reason: '',
       facts: [
         {
           key: 'cwd',
@@ -560,6 +597,8 @@ const managerApproval = computed(() => {
   if (typeof input.cwd === 'string') add(t('node.manager.folder'), input.cwd)
   return {
     reason: '',
+    argv: undefined as string[] | undefined,
+    folder: visibleText(promptString(input.cwd)),
     command: rows[0]?.value ?? '',
     facts: rows
       .slice(1)
@@ -583,7 +622,11 @@ const nodeCommand = computed(() => {
 watch(
   () => [nodeCommand.value, toolSummary(props.message)] as const,
   ([command, summary]) => {
-    if (command !== undefined && (summary !== command || visibleText(command) !== command))
+    if (
+      !props.nodePrompt?.input?.context_id &&
+      command !== undefined &&
+      (summary !== command || visibleText(command) !== command)
+    )
       originalOpen.value = true
   },
   { immediate: true }
@@ -1145,6 +1188,30 @@ const toggleEdit = () => {
 [data-node-command] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.abele-tool-approval__folder {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.abele-tool-approval__argv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+.abele-tool-approval_command [data-manager-command],
+.abele-node-manager-run > [data-manager-command] {
+  display: block;
+  background: var(--code-background);
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+  min-width: 0;
 }
 // The debugger's card: a thin frame in the accent while it waits for you, small text.
 .abele-tool-approval {

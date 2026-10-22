@@ -3188,6 +3188,12 @@ effect; a final receipt retains its structured result. A missing or unfinished r
 after a node claim means the outcome is unknown, never permission to repeat the handler.
 These receipts are device-local recovery evidence, not vault files or transferable settings.
 
+Command contexts are node-side, provider-independent execution records bound to a parent
+chat and target. The installation-local client cache retains exact context creation,
+preparation and owner-decision operation IDs, request parameters, short display-only
+justifications and their receipts. These are recovery records, not transferable execution
+grants. Reconnecting reuses exact operations; interrupted commands are never blindly replayed.
+
 The installation-local IndexedDB node cache stores client metadata separately from each
 stream's journal. Legacy single-record caches migrate atomically on opening. Session streams
 retain their latest 400 events (or the explicitly requested window); older history remains

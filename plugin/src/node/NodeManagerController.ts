@@ -1,5 +1,13 @@
 import type { Prompt, NodeClient } from '@abele/node-client'
-import { ManagerRunSchema, validateParams, type ManagerRun } from '@abele/node-protocol'
+import {
+  ManagerRunSchema,
+  CommandContextRunSchema,
+  CommandContextSchema,
+  PromptSchema,
+  validateParams,
+  type ManagerRun,
+  type CommandContextRun,
+} from '@abele/node-protocol'
 import { z } from 'zod'
 import type { NodeClientStore } from './NodeClientStore'
 import { openWindow, catchUp } from './sessionWindow'
@@ -8,6 +16,23 @@ import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { t } from '@/i18n'
 import { nodeErrorDetails } from './errorWords'
 import { uncertainReceiptError } from './clientRecords'
+const RunSchema = CommandContextRunSchema.or(ManagerRunSchema)
+type Run = ManagerRun | CommandContextRun
+function runUpdate(raw: unknown, current: Run) {
+  // Journals publish run fields; only prepare/status carry the exact approval object.
+  if (
+    'context_id' in current &&
+    raw &&
+    typeof raw === 'object' &&
+    'context_id' in raw &&
+    raw.context_id === current.context_id
+  )
+    return CommandContextRunSchema.safeParse({
+      ...raw,
+      approval: 'approval' in raw ? raw.approval : current.approval,
+    })
+  return RunSchema.safeParse(raw)
+}
 
 function outputTail(value: string, capacity: number): { text: string; truncated: boolean } {
   const chars = Array.from(value)
@@ -27,10 +52,12 @@ export const ManagerOperationSchema = z
     parent: z.string(),
     method: z.string(),
     params: z.record(z.string(), z.unknown()),
-    run: z.custom<ManagerRun>((value) => ManagerRunSchema.safeParse(value).success).optional(),
+    run: z.custom<Run>((value) => RunSchema.safeParse(value).success).optional(),
     observedSeq: z.number().optional(),
     notified: z.boolean().optional(),
     justification: z.string().max(200).optional(),
+    request: z.record(z.string(), z.unknown()).optional(),
+    fallback: z.custom<Prompt>((value) => PromptSchema.safeParse(value).success).optional(),
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
@@ -45,6 +72,8 @@ export function managerCapability(description: unknown, capability: string): boo
 
 /** Exact durable operations; owner prompt answers are deliberately a separate UI API. */
 export class NodeManagerController {
+  /** Owner UI checks this again immediately before approving a prepared action. */
+  canApprove?: (parent: string, run: CommandContextRun) => Promise<(() => void) | false>
   private readonly subscribed = new Set<string>()
   private readonly pendingPrompts = new Map<string, Prompt[]>()
   connectionChanged() {
@@ -55,6 +84,276 @@ export class NodeManagerController {
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {}
+  async enableContexts() {
+    if (!managerCapability(await this.client.describe(), 'command_context_v1'))
+      throw new Error(t('node.manager.contextUpdate'))
+    await this.client.request('command.context.v1.enable', {})
+  }
+  private async contextOperation(
+    parent: string,
+    method: string,
+    raw: unknown,
+    operation: string,
+    justification?: string,
+    guard: () => void = () => {},
+    request?: Record<string, unknown>
+  ) {
+    const params = validateParams(method, raw) as Record<string, unknown>
+    await this.store.transaction((s) => {
+      guard()
+      const previous = s.operationRequests?.[operation]
+      const pending = s.outbox.find((e) => e.operation_id === operation)
+      const known = previous ?? pending
+      if (
+        known &&
+        (known.method !== method || JSON.stringify(known.params) !== JSON.stringify(params))
+      )
+        throw new Error('idempotency_mismatch')
+      const entry = s.managerOperations?.[operation]
+      if (entry && entry.parent !== parent)
+        throw new Error('Run does not belong to this parent chat')
+      if (method === 'command.context.v1.prepare')
+        (s.managerOperations ??= {})[operation] ??= {
+          parent,
+          method,
+          params,
+          justification,
+          request,
+        }
+      if (!s.results[operation] && !pending) {
+        ;(s.operationRequests ??= {})[operation] = { method, params }
+        s.outbox.push({ operation_id: operation, method, params })
+      }
+    })
+    await this.client.flush()
+    const receipt = await this.store.read((s) => s.results[operation])
+    if (!receipt) throw new Error(`outcome_unknown: retain operation_id ${operation}`)
+    if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
+    return receipt.result
+  }
+  async command(
+    parent: string,
+    raw: Record<string, unknown>,
+    operation: string,
+    mode: 'ask' | 'bypass',
+    justification: string,
+    guard: () => void = () => {}
+  ) {
+    try {
+      await this.enableContexts()
+      guard()
+      const { project_id, worktree_id, session_id: _session, ...command } = raw
+      const target = worktree_id ? { worktree_id } : { project_id }
+      const hash = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(JSON.stringify([parent, target]))
+      )
+      const contextOperation =
+        'context-' +
+        Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
+      const context = CommandContextSchema.parse(
+        await this.contextOperation(
+          parent,
+          'command.context.v1.create',
+          { parent_chat_id: parent, ...target },
+          contextOperation
+        )
+      )
+      guard()
+      const run = CommandContextRunSchema.parse(
+        await this.contextOperation(
+          parent,
+          'command.context.v1.prepare',
+          {
+            ...command,
+            context_id: context.context_id,
+            parent_chat_id: parent,
+            permission_mode: mode,
+            justification,
+          },
+          operation,
+          justification,
+          guard,
+          raw
+        )
+      )
+      await this.store.transaction((s) => {
+        const entry = s.managerOperations?.[operation]
+        if (entry?.run?.session_id === 'unsubmitted-command') entry.run = run
+      })
+      await this.client
+        .subscribe(context.stream_id)
+        .catch((error) => console.debug('[Abele node] command context subscription pending', error))
+      return run
+    } catch (error) {
+      return this.refuse(parent, raw, operation, mode, justification, error)
+    }
+  }
+  async refuse(
+    parent: string,
+    raw: Record<string, unknown>,
+    operation: string,
+    mode: 'ask' | 'bypass',
+    justification: string,
+    error: unknown
+  ): Promise<never> {
+    const reason = error instanceof Error ? error.message : String(error)
+    if (reason === 'idempotency_mismatch') throw new Error(reason)
+    let uncertain = false
+    // A refused preparation is visible as a failed request, never as an executed command.
+    await this.store.transaction((s) => {
+      const entry = ((s.managerOperations ??= {})[operation] ??= {
+        parent,
+        method: 'command.context.v1.prepare',
+        params: {},
+        justification,
+      })
+      uncertain =
+        s.operationRequests?.[operation]?.method === 'command.context.v1.prepare' &&
+        !s.results[operation]?.error
+      if (entry.parent !== parent || s.results[operation]?.result) return
+      entry.request ??= raw
+      entry.run ??= {
+        run_id: operation,
+        prompt_id: operation,
+        session_id: 'unsubmitted-command',
+        method: 'command.v1.run',
+        state: uncertain ? 'outcome_unknown' : 'failed',
+        reason: uncertain
+          ? `outcome_unknown: ${reason}`
+          : t('node.manager.notSubmitted', { reason }),
+        stdout: '',
+        stderr: '',
+        stdout_truncated: false,
+        stderr_truncated: false,
+      }
+      if (mode === 'ask' && !uncertain && entry.run.state === 'failed') {
+        const prompt = PromptSchema.parse({
+          kind: 'permission',
+          prompt_id: crypto.randomUUID(),
+          session_id: 'unsubmitted-command',
+          run_id: operation,
+          revision: 1,
+          action_digest: '0'.repeat(64),
+          expires_at: Number.MAX_SAFE_INTEGER,
+          state: 'pending',
+          choice: null,
+          installation_id: null,
+          delivered: false,
+          tool_name: 'node_command_run',
+          title: t('node.manager.command'),
+          input: {
+            ...raw,
+            context_id: 'unsubmitted-command',
+            cwd: raw.cwd ?? raw.worktree_id ?? raw.project_id,
+            refusal: reason,
+          },
+        })
+        entry.fallback ??= prompt
+        entry.run.state = 'pending_approval'
+        entry.run.prompt_id = entry.fallback.prompt_id
+      }
+    })
+    throw new Error(
+      uncertain
+        ? `outcome_unknown: retain operation_id ${operation}; ${reason}`
+        : t('node.manager.notSubmitted', { reason })
+    )
+  }
+  /** Only mounted owner controls call this; never an agent tool. */
+  async answer(parent: string, raw: Prompt, choice: 'allow' | 'deny') {
+    const prompt = PromptSchema.parse(raw)
+    if (prompt.session_id === 'unsubmitted-command') {
+      await this.store.transaction((s) => {
+        const entry = s.managerOperations?.[prompt.run_id]
+        if (
+          entry?.parent !== parent ||
+          !entry.fallback ||
+          entry.fallback.prompt_id !== prompt.prompt_id ||
+          entry.fallback.action_digest !== prompt.action_digest
+        )
+          throw new Error('stale_approval')
+        if (entry.fallback.state !== 'pending') return
+        entry.fallback.state = 'resolved'
+        entry.fallback.choice = choice
+        if (entry.run) entry.run.state = choice === 'allow' ? 'failed' : 'denied'
+      })
+      // Preparation was refused. A local acknowledgement cannot authorize a node action.
+      return
+    }
+    const entry = await this.ownedContext(parent, prompt.session_id, prompt.run_id)
+    if (!entry) throw new Error('Run does not belong to this parent chat')
+    const run = CommandContextRunSchema.parse(
+      await this.status(parent, prompt.session_id, prompt.run_id)
+    )
+    const approvalGuard =
+      choice === 'allow' && this.canApprove ? await this.canApprove(parent, run) : undefined
+    if (approvalGuard === false) throw new Error(t('node.manager.permissionChanged'))
+    const approval = PromptSchema.parse(run.approval)
+    if (approval.prompt_id !== prompt.prompt_id || approval.action_digest !== prompt.action_digest)
+      throw new Error('stale_approval')
+    await this.enableContexts()
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(entry.operation))
+    const decision =
+      'decision-' +
+      Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+    await this.contextOperation(
+      parent,
+      'command.context.v1.execute',
+      {
+        context_id: run.context_id,
+        parent_chat_id: parent,
+        run_id: run.run_id,
+        action_digest: approval.action_digest,
+        choice,
+      },
+      decision,
+      undefined,
+      approvalGuard || undefined
+    )
+    await this.status(parent, prompt.session_id, prompt.run_id)
+  }
+  private async ownedContext(parent: string, session: string, run: string) {
+    return this.store.read(
+      (s) =>
+        Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
+          const parsed = CommandContextRunSchema.safeParse(s.results[operation]?.result)
+          return entry.parent === parent &&
+            parsed.success &&
+            parsed.data.session_id === session &&
+            parsed.data.run_id === run
+            ? [{ operation, run: parsed.data }]
+            : []
+        })[0]
+    )
+  }
+  async targetFor(parent: string, session: string, run: string) {
+    if (session === 'unsubmitted-command')
+      return this.store.read((s) => {
+        const entry = s.managerOperations?.[run]
+        if (entry?.parent !== parent || !entry.request)
+          throw new Error('Run does not belong to this parent chat')
+        return typeof entry.request.worktree_id === 'string'
+          ? { worktree_id: entry.request.worktree_id }
+          : { project_id: entry.request.project_id as string }
+      })
+    const owned = await this.ownedContext(parent, session, run)
+    if (!owned) return undefined
+    return this.store.read((s) => {
+      for (const receipt of Object.values(s.results)) {
+        const context = CommandContextSchema.safeParse(receipt.result)
+        if (
+          context.success &&
+          context.data.context_id === owned.run.context_id &&
+          context.data.parent_chat_id === parent
+        )
+          return context.data.worktree_id
+            ? { worktree_id: context.data.worktree_id }
+            : { project_id: context.data.project_id }
+      }
+      throw new Error('Command context target is unavailable')
+    })
+  }
   async stopParent(parent: string) {
     await this.store.transaction((s) => {
       for (const entry of Object.values(s.managerOperations ?? {}))
@@ -106,7 +405,42 @@ export class NodeManagerController {
     legacyAlias?: string,
     justification?: string
   ): Promise<ManagerRun> {
-    if (!this.client.connected) throw new Error('disconnected')
+    const localCancel =
+      method === 'command.v1.cancel' &&
+      typeof raw === 'object' &&
+      raw !== null &&
+      'session_id' in raw &&
+      raw.session_id === 'unsubmitted-command'
+    if (!this.client.connected && !localCancel) throw new Error('disconnected')
+    if (method === 'command.v1.cancel') {
+      const input = raw as { session_id: string; run_id: string }
+      if (input.session_id === 'unsubmitted-command')
+        return this.store.transaction((s) => {
+          const entry = s.managerOperations?.[input.run_id]
+          if (entry?.parent !== parent || !entry.run)
+            throw new Error('Run does not belong to this parent chat')
+          if (entry.run.state === 'pending_approval') {
+            entry.run.state = 'cancelled'
+            if (entry.fallback) {
+              entry.fallback.state = 'resolved'
+              entry.fallback.choice = 'deny'
+            }
+          }
+          return entry.run
+        })
+      const context = await this.ownedContext(parent, input.session_id, input.run_id)
+      if (context) {
+        await this.enableContexts()
+        return RunSchema.parse(
+          await this.contextOperation(
+            parent,
+            'command.context.v1.cancel',
+            { context_id: context.run.context_id, parent_chat_id: parent, run_id: input.run_id },
+            operation
+          )
+        )
+      }
+    }
     if (!operation || operation.length > 128) throw new Error('invalid_params: operation_id')
     const capability = method === 'git.v1.integrate' ? 'git_integrate_v1' : 'command_run_v1'
     if (!managerCapability(await this.client.describe(), capability))
@@ -187,7 +521,7 @@ export class NodeManagerController {
         })
       throw new Error(nodeErrorDetails(receipt.error))
     }
-    const run = ManagerRunSchema.parse(receipt.result)
+    const run = RunSchema.parse(receipt.result)
     if (
       method === 'command.v1.cancel' &&
       !['pending_approval', 'running', 'outcome_unknown'].includes(run.state)
@@ -201,9 +535,16 @@ export class NodeManagerController {
     return run
   }
   async status(parent: string, session: string, run: string) {
+    if (session === 'unsubmitted-command')
+      return this.store.read((s) => {
+        const entry = s.managerOperations?.[run]
+        if (entry?.parent !== parent || !entry.run)
+          throw new Error('Run does not belong to this parent chat')
+        return entry.run
+      })
     const owned = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).some(([id, entry]) => {
-        const receipt = ManagerRunSchema.safeParse(s.results[id]?.result)
+        const receipt = RunSchema.safeParse(s.results[id]?.result)
         return (
           entry.parent === parent &&
           receipt.success &&
@@ -214,19 +555,26 @@ export class NodeManagerController {
     )
     if (!owned) throw new Error('Run does not belong to this parent chat')
     const before = await this.store.read((s) => s.cursors[session] ?? 0)
-    let status = ManagerRunSchema.parse(
-      await this.client.request('command.v1.status', { session_id: session, run_id: run })
+    const context = await this.ownedContext(parent, session, run)
+    if (context) await this.enableContexts()
+    let status = RunSchema.parse(
+      await this.client.request(
+        context ? 'command.context.v1.status' : 'command.v1.status',
+        context
+          ? { context_id: context.run.context_id, parent_chat_id: parent, run_id: run }
+          : { session_id: session, run_id: run }
+      )
     )
     await this.store.transaction((s) => {
       // A journal update committed while status was in flight is newer evidence.
       // Never mask an exit/unknown outcome with an earlier running response.
       for (const event of s.events[session] ?? []) {
         if (event.seq <= before || event.type !== 'command.updated') continue
-        const update = ManagerRunSchema.safeParse(event.data)
+        const update = runUpdate(event.data, status)
         if (update.success && update.data.run_id === run) status = update.data
       }
       for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
-        const receipt = ManagerRunSchema.safeParse(s.results[operation]?.result)
+        const receipt = RunSchema.safeParse(s.results[operation]?.result)
         if (
           entry.parent === parent &&
           receipt.success &&
@@ -244,7 +592,7 @@ export class NodeManagerController {
     if (!this.client.connected) return
     const entries = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-        const receipt = ManagerRunSchema.safeParse(s.results[operation]?.result)
+        const receipt = RunSchema.safeParse(s.results[operation]?.result)
         return receipt.success && entry.method !== 'command.v1.cancel'
           ? [{ parent: entry.parent, run: entry.run ?? receipt.data }]
           : []
@@ -262,7 +610,7 @@ export class NodeManagerController {
         }
         if (reconnect || ['pending_approval', 'running'].includes(entry.run.state)) {
           const status = await this.status(entry.parent, session, entry.run.run_id)
-          if (status.state === 'pending_approval')
+          if (status.state === 'pending_approval' && !('context_id' in status))
             this.pendingPrompts.set(status.run_id, await pendingOwnerPrompts(this.client, session))
           else this.pendingPrompts.delete(status.run_id)
         }
@@ -275,15 +623,16 @@ export class NodeManagerController {
     return this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
-        const receipt = ManagerRunSchema.safeParse(s.results[operation]?.result)
-        if (!receipt.success) return []
-        let run = entry.run ?? receipt.data
+        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        if (!receipt.success && !entry.run) return []
+        let run = entry.run ?? (receipt.success ? receipt.data : undefined)!
+        const display = entry.request ?? entry.params
         const events = s.events[run.session_id] ?? []
         for (const event of events) {
           const data = event.data as Record<string, unknown>
           if (data.run_id !== run.run_id || event.seq <= (entry.observedSeq ?? 0)) continue
           if (event.type === 'command.updated') {
-            const updated = ManagerRunSchema.safeParse(data)
+            const updated = runUpdate(data, run)
             if (updated.success) run = updated.data
           } else if (
             event.type === 'command.output' &&
@@ -304,6 +653,12 @@ export class NodeManagerController {
         const prompts = new Map(
           (this.pendingPrompts.get(run.run_id) ?? []).map((prompt) => [prompt.prompt_id, prompt])
         )
+        if (entry.fallback?.state === 'pending')
+          prompts.set(entry.fallback.prompt_id, entry.fallback)
+        if ('approval' in run && run.approval) {
+          const approval = PromptSchema.parse(run.approval)
+          prompts.set(approval.prompt_id, approval)
+        }
         for (const prompt of transcript.prompts) {
           if (prompt.state === 'pending') prompts.set(prompt.prompt_id, prompt)
           else prompts.delete(prompt.prompt_id)
@@ -311,17 +666,34 @@ export class NodeManagerController {
         return [
           {
             operation,
+            command: typeof display.command === 'string' ? display.command : undefined,
+            argv: Array.isArray(display.argv)
+              ? display.argv.filter((v): v is string => typeof v === 'string')
+              : undefined,
+            folder:
+              ('approval' in run && run.approval
+                ? ((run.approval.input as Record<string, unknown> | undefined)?.cwd as
+                    | string
+                    | undefined)
+                : undefined) ??
+              (typeof display.cwd === 'string'
+                ? display.cwd
+                : typeof display.worktree_id === 'string'
+                  ? display.worktree_id
+                  : typeof display.project_id === 'string'
+                    ? display.project_id
+                    : undefined),
             justification: entry.justification,
             title:
-              typeof entry.params.command === 'string'
-                ? entry.params.command
-                : Array.isArray(entry.params.argv)
-                  ? entry.params.argv
+              typeof display.command === 'string'
+                ? display.command
+                : Array.isArray(display.argv)
+                  ? display.argv
                       .filter((value): value is string => typeof value === 'string')
                       .join(' ')
-                  : typeof entry.params.source_branch === 'string' &&
-                      typeof entry.params.target_branch === 'string'
-                    ? `${entry.params.source_branch} → ${entry.params.target_branch}`
+                  : typeof display.source_branch === 'string' &&
+                      typeof display.target_branch === 'string'
+                    ? `${display.source_branch} → ${display.target_branch}`
                     : 'git.v1.integrate',
             run,
             prompts: [...prompts.values()].filter(
@@ -330,7 +702,36 @@ export class NodeManagerController {
                 p.prompt_id === run.prompt_id &&
                 p.state === 'pending'
             ),
-            answers: promptAnswerStates(s, run.session_id),
+            answers: {
+              ...promptAnswerStates(s, run.session_id),
+              ...Object.fromEntries(
+                Object.entries(s.operationRequests ?? {}).flatMap(([id, request]) => {
+                  const p = request.params as Record<string, unknown>
+                  const pending = s.outbox.some((e) => e.operation_id === id)
+                  if (
+                    request.method !== 'command.context.v1.execute' ||
+                    p.run_id !== run.run_id ||
+                    p.parent_chat_id !== parent ||
+                    (p.choice !== 'allow' && p.choice !== 'deny')
+                  )
+                    return []
+                  return [
+                    [
+                      run.prompt_id,
+                      {
+                        choice: p.choice,
+                        state: pending
+                          ? ('pending' as const)
+                          : s.results[id]?.error
+                            ? ('rejected' as const)
+                            : ('answered' as const),
+                        error: s.results[id]?.error,
+                      },
+                    ],
+                  ]
+                })
+              ),
+            },
           },
         ]
       })

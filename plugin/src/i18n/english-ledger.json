@@ -27498,5 +27498,35 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.contextUpdate": {
+    "englishHash": "61aeb3d860473fcae15710885a8e8aa47238867f7922c2e4666515c01ae9882a",
+    "context": "Node command context capability and pre-execution refusal",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.notSubmitted": {
+    "englishHash": "30dc858c578ef4232b4db1948b23d6631b0dc27a1275d3b81596b2031a633dd5",
+    "context": "Node command context capability and pre-execution refusal",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.permissionChanged": {
+    "englishHash": "cc15a86322fef72080acbd219f6d65f6c028c7479d93d7001062da65aedad2cf",
+    "context": "Node command context capability and pre-execution refusal",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

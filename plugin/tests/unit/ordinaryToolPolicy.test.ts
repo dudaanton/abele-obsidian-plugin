@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { ordinaryNeedsApproval } from '@/ai/ordinaryToolPolicy'
 
-it.fails('BUG: asks before a stale node session can fail before node approval', () => {
+it('prepares a context instead of dispatching a legacy stale-session command', () => {
   const policy = {
     permissionMode: 'confirm-all' as const,
     getToolMode: () => 'ask' as const,
@@ -11,7 +11,7 @@ it.fails('BUG: asks before a stale node session can fail before node approval', 
     skillNeedsApproval: () => false,
   }
   expect(ordinaryNeedsApproval(policy, 'node_command_run', { session_id: 'missing-session' })).toBe(
-    true
+    false
   )
 })
 
@@ -55,7 +55,7 @@ it('exports core read/write policy without treating a missing feature mode as co
   ).toBe(true)
 })
 
-it('asks before a session-less command can fail before node approval', () => {
+it('uses only the durable node preparation card for a session-less Ask command', () => {
   const policy = {
     permissionMode: 'confirm-all' as const,
     getToolMode: () => 'ask' as const,
@@ -65,7 +65,7 @@ it('asks before a session-less command can fail before node approval', () => {
     skillNeedsApproval: () => false,
   }
   expect(ordinaryNeedsApproval(policy, 'node_command_run', { worktree_id: 'sample-tree' })).toBe(
-    true
+    false
   )
   expect(
     ordinaryNeedsApproval({ ...policy, permissionMode: 'allow-all' }, 'node_command_run')

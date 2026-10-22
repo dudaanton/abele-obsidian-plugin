@@ -5,6 +5,12 @@ export const es = {
   'node.manager.cancelled': 'Cancelado',
   'node.manager.running': 'En ejecución',
   'node.commit.refresh': 'Actualizar',
+  'node.manager.contextUpdate':
+    'Actualiza el nodo a 0.4.47 o posterior para ejecutar comandos desde este chat (se requiere command_context_v1).',
+  'node.manager.notSubmitted': 'El comando no se envió para su ejecución: {reason}',
+  'node.manager.permissionChanged':
+    'Los permisos de comandos cambiaron. Solicita el comando de nuevo.',
+
   'requests.refresh': 'Actualizar solicitudes',
   'debug.launchUnknown':
     'Se desconoce el resultado del inicio. Vuelve a conectar y revisa las sesiones de depuración antes de reintentarlo.',

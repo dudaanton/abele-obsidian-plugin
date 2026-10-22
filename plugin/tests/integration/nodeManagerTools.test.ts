@@ -67,8 +67,16 @@ it('refuses every manager operation on an older node without sending a mutation'
     nodes: { value: [{ id: 'sample-node' }] },
     connection: () => ({
       connect: async () => {},
+      refreshDelegations: async () => {},
       client: { describe: async () => ({ capabilities: { capabilities: {} } }) },
-      manager: { mutate, status },
+      manager: {
+        mutate,
+        status,
+        targetFor: async () => undefined,
+        refuse: async () => {
+          throw new Error('Update the node to 0.4.47')
+        },
+      },
     }),
   } as never)
   const tools = createNodeManagerTools({
@@ -76,7 +84,9 @@ it('refuses every manager operation on an older node without sending a mutation'
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
-  for (const tool of tools)
+  for (const tool of tools.filter((t) =>
+    ['node_command_run', 'node_git_integrate'].includes(t.name)
+  ))
     await expect(
       tool.execute('sample-call', {
         node: 'sample-node',
@@ -85,10 +95,64 @@ it('refuses every manager operation on an older node without sending a mutation'
         operation_id: 'sample-operation',
         run_id: 'sample-run',
       })
-    ).rejects.toThrow('This node needs an update to take tasks from chats')
+    ).rejects.toThrow(
+      tool.name === 'node_command_run'
+        ? /0.4.47/
+        : /This node needs an update to take tasks from chats/
+    )
   expect(mutate).not.toHaveBeenCalled()
   expect(status).not.toHaveBeenCalled()
 })
+
+it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
+  'uses the effective owner mode %s even when a model supplies bypass',
+  async (mode) => {
+    const command = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+      nodes: { value: [{ id: 'sample-node' }] },
+      connection: () => ({
+        connect: async () => {},
+        refreshDelegations: async () => {},
+        manager: { command },
+        client: {
+          describe: async () => ({
+            capabilities: { capabilities: { command_context_v1: { status: 'supported' } } },
+          }),
+          repository: {
+            worktrees: async () => ({
+              entries: [{ worktree_id: 'sample-tree', workspace_id: 'sample-workspace' }],
+            }),
+          },
+        },
+      }),
+    } as never)
+    const chat = {
+      overrides: ref({
+        nodeScope: [
+          {
+            kind: 'target',
+            node_id: 'sample-node',
+            project_id: 'sample-project',
+            target: { kind: 'worktree', worktree_id: 'sample-tree' },
+            access: 'read',
+          },
+        ],
+      }),
+      permissionMode: ref(mode),
+      getToolMode: () => 'auto',
+      ensureDelegationParentId: async () => 'sample-parent',
+    } as unknown as ChatSession
+    await createNodeManagerTools(chat)[0].execute('sample-call', {
+      node: 'sample-node',
+      worktree_id: 'sample-tree',
+      command: 'node --version',
+      operation_id: 'sample-operation',
+      justification: 'Check the runtime.',
+      permission_mode: 'bypass',
+    })
+    expect(command.mock.calls[0][3]).toBe(mode === 'allow-all' ? 'bypass' : 'ask')
+  }
+)
 it('refuses a command for a project outside the chat node chips', async () => {
   const mutate = vi.fn()
   vi.spyOn(NodeService, 'getInstance').mockReturnValue({
@@ -98,7 +162,12 @@ it('refuses a command for a project outside the chat node chips', async () => {
       manager: { mutate },
       client: {
         describe: async () => ({
-          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+          capabilities: {
+            capabilities: {
+              delegation_without_grant: { status: 'supported' },
+              command_context_v1: { status: 'supported' },
+            },
+          },
         }),
         getSession: async () => ({ workspace_id: 'sample-workspace' }),
         getWorkspace: async () => ({ project_id: 'sample-project' }),
@@ -134,16 +203,24 @@ it('refuses a command for a project outside the chat node chips', async () => {
 })
 it('routes only fixed manager APIs, binding runs to the executing parent and keeping prompt answers out of tools', async () => {
   const mutate = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
+  const command = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
   const status = vi.fn(async () => ({ run_id: 'sample-run', state: 'exited', exit_code: 0 }))
   const refresh = vi.fn(async () => {})
   const connection = {
     client: {
       describe: async () => ({
-        capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
+        capabilities: {
+          capabilities: {
+            delegation_without_grant: { status: 'supported' },
+            command_context_v1: { status: 'supported' },
+          },
+        },
       }),
     },
     connect: async () => {},
     manager: {
+      command,
+      targetFor: async () => undefined,
       mutate,
       status,
       cleanupFor: vi.fn(async () => ({
@@ -176,9 +253,8 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     project_id: 'sample-project',
     argv: ['npm', 'test'],
   })
-  expect(mutate).toHaveBeenCalledWith(
+  expect(command).toHaveBeenCalledWith(
     'sample-parent',
-    'command.v1.run',
     { session_id: 'sample-session', project_id: 'sample-project', argv: ['npm', 'test'] },
     nodeMutationKey('sample-parent', 'node_command_run', 'sample-operation', {
       session_id: 'sample-session',
@@ -186,7 +262,9 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
       argv: ['npm', 'test'],
     }),
     'sample-operation',
-    'Check the sample project.'
+    'ask',
+    'Check the sample project.',
+    expect.any(Function)
   )
   await tools[1].execute('sample-status', { ...base, run_id: 'sample-run' })
   expect(status).toHaveBeenCalledWith('sample-parent', 'sample-session', 'sample-run')
@@ -202,7 +280,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     expected_source_head: 'b'.repeat(40),
     rebase: true,
   })
-  expect(mutate.mock.calls[1][1]).toBe('git.v1.integrate')
+  expect(mutate.mock.calls[0][1]).toBe('git.v1.integrate')
   expect(refresh).toHaveBeenCalledTimes(3)
   status.mockResolvedValueOnce({
     run_id: 'sample-run',

@@ -1,12 +1,39 @@
 <template>
-  <section class="abele-node-manager-run">
-    <p data-manager-state class="abele-node-manager-run__state">
-      <StatusDot :tone="stateTone" :label="stateLabel" :pulse="card.run.state === 'running'" />
-      <span>{{ stateLabel }}</span>
-    </p>
-    <p v-if="card.justification && card.run.state !== 'pending_approval'">
-      {{ card.justification }}
-    </p>
+  <component
+    :is="card.run.state === 'pending_approval' ? 'section' : RequestCard"
+    class="abele-node-manager-run"
+  >
+    <template v-if="card.run.state !== 'pending_approval'">
+      <div v-if="justification" class="abele-node-manager-run__request">
+        <Icon icon="square-terminal" size="xs" :interactive="false" />
+        <span
+          v-if="justification"
+          class="abele-node-manager-run__justification"
+          :title="justification"
+          >{{ justification }}</span
+        >
+      </div>
+      <div v-if="card.argv" data-manager-command>
+        <code v-for="(arg, index) in card.argv" :key="index" data-command-argument
+          >{{ JSON.stringify(arg) }}
+        </code>
+      </div>
+      <code v-else data-manager-command>{{ card.command || card.title }}</code>
+      <div v-if="card.folder" class="abele-node-manager-run__folder">
+        <Icon icon="folder" size="xs" :interactive="false" />{{ card.folder }}
+      </div>
+    </template>
+    <MetaLine
+      v-if="card.run.state !== 'pending_approval' || card.run.reason"
+      :facts="[
+        {
+          key: '0',
+          value: [stateLabel, card.run.reason ? nodeErrorDetails(card.run.reason) : '']
+            .filter(Boolean)
+            .join(' · '),
+        },
+      ]"
+    />
     <AiToolApproval
       v-for="prompt in card.prompts"
       :key="prompt.prompt_id"
@@ -40,7 +67,7 @@
       <pre>{{ card.run.stdout }}</pre>
       <pre>{{ card.run.stderr }}</pre>
     </Disclosure>
-  </section>
+  </component>
 </template>
 <script setup lang="ts">
 import type { Prompt } from '@abele/node-client'
@@ -53,11 +80,18 @@ import { t } from '@/i18n'
 import Disclosure from './obsidian/Disclosure.vue'
 import Button from './obsidian/Button.vue'
 import AiToolApproval from './AiToolApproval.vue'
-import StatusDot from './obsidian/StatusDot.vue'
+import RequestCard from './obsidian/RequestCard.vue'
+import MetaLine from './obsidian/MetaLine.vue'
+import Icon from './obsidian/Icon.vue'
+import { commandJustification } from '@/node/commandJustification'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
   disabled?: boolean
 }>()
+const justification = computed(() => {
+  const parsed = commandJustification.safeParse(props.card.justification?.slice(0, 200))
+  return parsed.success ? parsed.data : ''
+})
 const outputOpen = ref(props.card.run.state === 'running')
 watch(
   () => props.card.run.state,
@@ -89,14 +123,6 @@ const stateLabel = computed(() => {
       return streamBLabel(props.card.run.state)
   }
 })
-const stateTone = computed(() => {
-  const state = props.card.run.state
-  if (['exited', 'applied'].includes(state)) return 'green'
-  if (['failed', 'timed_out'].includes(state)) return 'red'
-  if (['cancelled', 'denied'].includes(state)) return 'faint'
-  if (state === 'running') return 'accent'
-  return 'orange'
-})
 const emit = defineEmits<{
   answer: [prompt: Prompt, choice: 'allow' | 'deny', value?: string]
   cancel: []
@@ -119,9 +145,21 @@ pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.abele-node-manager-run__state {
+.abele-node-manager-run__request,
+.abele-node-manager-run__folder {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
+}
+.abele-node-manager-run__folder {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.abele-node-manager-run__justification {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: var(--font-normal);
 }
 </style>
