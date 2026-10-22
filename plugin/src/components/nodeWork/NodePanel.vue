@@ -164,23 +164,23 @@
       </div>
 
       <slot name="error-action" />
-      <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
-        <div class="abele-node-panel__intro-text">
-          {{ t('streamBMeta.f7d3ed8268', { p0: String(node.name) }) }}
+      <div class="abele-node-panel__content">
+        <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
+          <div class="abele-node-panel__intro-text">
+            {{ t('streamBMeta.f7d3ed8268', { p0: String(node.name) }) }}
+          </div>
+          <div class="abele-node-panel__intro-actions">
+            <Button
+              :text="t('streamB.openFolder.6a9084')"
+              icon="folder-plus"
+              accent
+              :disabled="node.status !== 'connected'"
+              :tooltip="t('streamB.chooseAFolderOnTheNodeOr.ae4e56')"
+              @click="emit('open-folder')"
+            />
+          </div>
         </div>
-        <div class="abele-node-panel__intro-actions">
-          <Button
-            :text="t('streamB.openFolder.6a9084')"
-            icon="folder-plus"
-            accent
-            :disabled="node.status !== 'connected'"
-            :tooltip="t('streamB.chooseAFolderOnTheNodeOr.ae4e56')"
-            @click="emit('open-folder')"
-          />
-        </div>
-      </div>
-      <div v-else class="abele-node-panel__content">
-        <slot />
+        <slot v-else />
       </div>
     </template>
   </div>

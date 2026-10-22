@@ -139,6 +139,7 @@ const probe = (device: string) =>
       await reopen({ empty: true }).catch(() => {})
       const root = nodePanel.root()
       seen.empty = await until(() => root?.textContent.includes('to see its files and changes'))
+      seen.emptyFooter = Math.abs(root.querySelector('[data-connection-footer]').getBoundingClientRect().bottom - root.getBoundingClientRect().bottom) < 1;
       await shot('empty')
       return seen
     } finally {
@@ -169,6 +170,7 @@ it('pictures every state of the node panel on a computer', () => {
     long: true,
     plain: true,
     empty: true,
+    emptyFooter: true,
   })
 })
 

@@ -27,6 +27,12 @@ it('keeps a bottom status row outside the scroll area across connection recovery
     await view.setProps({ error: 'Sample action failed' })
     expect(view.find('.abele-node-panel__notice').exists()).toBe(false)
     expect(view.get('[data-connection-status]').text()).toContain('Sample action failed')
+    await view.setProps({ empty: true })
+    expect(view.get('.abele-node-panel__content .abele-node-panel__intro_empty').exists()).toBe(
+      true
+    )
+    expect(view.get('.abele-node-panel__content').element.contains(footer)).toBe(false)
+    expect(view.get('[data-connection-footer]').element).toBe(footer)
   } finally {
     view.unmount()
   }
