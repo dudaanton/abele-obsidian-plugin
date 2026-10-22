@@ -5,9 +5,28 @@ import {
   observeBackgroundActivity,
   safetyNotice,
 } from '@/sync/backgroundActivity'
-import { connectionJournalApp } from '@/sync/connectionScope'
+import { connectionInspectionApp, connectionJournalApp } from '@/sync/connectionScope'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { connectionLine, connectionTone } from '@/sync/connectionLine'
+
+it('normalizes proxy registrations and safety notices to the underlying vault', () => {
+  const app = buildFakeVault([]) as unknown as App
+  const scoped = connectionInspectionApp(app, app.vault.adapter, 'Notes')
+  let received = 0
+  const stop = observeBackgroundActivity(scoped, () => received++)
+  const before = Notice.shown.length
+  try {
+    backgroundActivity(app, 'Kept a recovery copy')
+    expect(received).toBe(1)
+    safetyNotice(scoped, 'missing-root', 'Resume required')
+    safetyNotice(app, 'missing-root', 'Resume required')
+    expect(Notice.shown).toHaveLength(before + 1)
+  } finally {
+    stop()
+  }
+  backgroundActivity(scoped, 'After teardown')
+  expect(received).toBe(1)
+})
 
 it('keeps recovery and safety reasons on the existing status line and badge', () => {
   const row = { status: 'idle' as const, paused: false }

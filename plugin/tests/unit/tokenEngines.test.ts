@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import type { App } from 'obsidian'
+import { Notice, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
@@ -20,61 +20,104 @@ import { promises as nativeFs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { desktopFsPort } from '../helpers/desktopRequire'
+import {
+  connectionAdapter,
+  connectionInspectionApp,
+  connectionJournalApp,
+} from '@/sync/connectionScope'
+import { showPrivateRecoveryNotice } from '@/sync/privateRecovery'
+import { makeParents } from '@/sync/vaultFolders'
+import { connectionTone } from '@/sync/connectionLine'
 
-it('persists a missing-vault stop before recovery or network work and resumes only explicitly', async () => {
+it('routes folder recovery through its proxy vault to the connection badge and log', async () => {
   const f = inspectionFixture(false, 'Notes')
-  let restarted: TokenEngines | undefined
-  let recover: ReturnType<typeof vi.spyOn> | undefined
   try {
-    f.release()
-    await f.ui.connect(f.encoded)
-    const id = f.registry.records()[0].id
-    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
-    await f.host.close()
-    const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
-    for (let i = 0; i < 100; i++)
-      await state.put({
-        path: `Notes/missing-${i}.md`,
-        wirePath: `Notes/missing-${i}.md`,
-        fileId: `missing-${i}`,
-        versionId: 'v1',
-        sha: 'b'.repeat(64),
-        size: 1,
-        mtime: 1,
-      })
-    state.close()
-    f.transport.mockClear()
-    recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
-    restarted = f.makeHost()
-    restarted.start()
-    await vi.waitFor(() => expect(f.registry.records()[0].paused).toBe(true))
-    await vi.waitFor(() => expect(f.registry.records()[0].status).toBe('paused'))
-    expect(f.transport).not.toHaveBeenCalled()
-    expect(recover).not.toHaveBeenCalled()
-    expect(f.ui.runtimes.has(id)).toBe(false)
-    const reason = f.registry.records()[0].state[STARTUP_STOP]
-    expect(reason).toContain('Resume')
-    await expect(f.ui.sync(id)).rejects.toThrow('paused')
-    await restarted.close()
-    const ui = new TokenUi(f.registry, f.secrets, f.transport, f.ui.reviews)
-    expect(ui.activity.value[id].safetyStop).toBe(reason)
-    restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
-      fetch: f.transport,
-      indexedDB: f.factory,
-    })
-    restarted.start()
-    expect(f.transport).not.toHaveBeenCalled()
-    await ui.pause(id, false)
-    expect(ui.runtimes.has(id)).toBe(true)
-    expect(f.registry.records()[0].state[STARTUP_STOP]).toBeNull()
+    const id = f.registry.add()
+    const root = connectionPrivateRoot(id)
+    const path = root + '/recovery/sample.bin'
+    await makeParents(f.app.vault.adapter, path)
+    await f.app.vault.adapter.write(path, 'unique retained bytes')
+    const app = f.app as unknown as App
+    const scoped = connectionInspectionApp(
+      connectionJournalApp(app, id),
+      connectionAdapter(app.vault.adapter, 'Notes', root),
+      'Notes',
+      root
+    )
+    const notices = Notice.shown.length
+    await showPrivateRecoveryNotice(scoped)
+    const activity = f.ui.activity.value[id]
+    expect(activity?.backgroundAttention).toContain('recoverable copies')
+    expect([...activity.events].map((event) => event.text)).toContain(activity.backgroundAttention)
+    expect(connectionTone({ status: 'idle', paused: false }, activity)).toBe('orange')
+    expect(Notice.shown).toHaveLength(notices)
   } finally {
     f.release()
-    await restarted?.close()
     await f.host.close()
-    recover?.mockRestore()
     f.probe.mockRestore()
   }
 })
+
+it.each(['folder', 'group'] as const)(
+  'persists a missing-vault stop before recovery or network work and resumes only explicitly (%s)',
+  async (kind) => {
+    const f = inspectionFixture(false, kind === 'group' ? 'Notes/group.md' : 'Notes', kind)
+    let restarted: TokenEngines | undefined
+    let recover: ReturnType<typeof vi.spyOn> | undefined
+    try {
+      f.release()
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+      await f.host.close()
+      const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+      for (let i = 0; i < 100; i++)
+        await state.put({
+          path: `Notes/missing-${i}.md`,
+          wirePath: `Notes/missing-${i}.md`,
+          fileId: `missing-${i}`,
+          versionId: 'v1',
+          sha: 'b'.repeat(64),
+          size: 1,
+          mtime: 1,
+        })
+      state.close()
+      if (kind === 'group')
+        for (let i = 0; i < 10; i++)
+          await f.app.vault.adapter.write(`unrelated-${i}.md`, 'outside the connection')
+      f.transport.mockClear()
+      recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
+      restarted = f.makeHost()
+      restarted.start()
+      await vi.waitFor(() => expect(f.registry.records()[0].paused).toBe(true))
+      await vi.waitFor(() => expect(f.registry.records()[0].status).toBe('paused'))
+      expect(f.transport).not.toHaveBeenCalled()
+      expect(recover).not.toHaveBeenCalled()
+      expect(f.ui.runtimes.has(id)).toBe(false)
+      const reason = f.registry.records()[0].state[STARTUP_STOP]
+      expect(reason).toContain('Resume')
+      await expect(f.ui.sync(id)).rejects.toThrow('paused')
+      await restarted.close()
+      const ui = new TokenUi(f.registry, f.secrets, f.transport, f.ui.reviews)
+      expect(ui.activity.value[id].safetyStop).toBe(reason)
+      restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
+        fetch: f.transport,
+        indexedDB: f.factory,
+      })
+      restarted.start()
+      expect(f.transport).not.toHaveBeenCalled()
+      await ui.pause(id, false)
+      expect(ui.runtimes.has(id)).toBe(true)
+      expect(f.registry.records()[0].state[STARTUP_STOP]).toBeNull()
+    } finally {
+      f.release()
+      await restarted?.close()
+      await f.host.close()
+      recover?.mockRestore()
+      f.probe.mockRestore()
+    }
+  }
+)
 
 it.each([
   'sample recovery record is unreadable',

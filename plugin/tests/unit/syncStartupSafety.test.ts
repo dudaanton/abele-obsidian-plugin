@@ -34,6 +34,45 @@ it('allows new empty vaults and small ledgers', async () => {
     await startupSafetyReason(await ledger(99), async () => ({ files: [], folders: [] }), '')
   ).toBeNull()
 })
+it.each([
+  {
+    kind: 'unrelated notes',
+    files: Array.from({ length: 10 }, (_, i) => `Other/sample-${i}.md`),
+    stopped: true,
+  },
+  {
+    kind: 'ledger members',
+    files: Array.from({ length: 10 }, (_, i) => `Notes/sample-${i}.md`),
+    stopped: false,
+  },
+  {
+    kind: 'offloaded members',
+    files: Array.from({ length: 10 }, (_, i) => `Notes/sample-${i}.md.abele-ref`),
+    stopped: false,
+  },
+  {
+    kind: 'duplicate representations',
+    files: Array.from({ length: 5 }, (_, i) => [
+      `Notes/sample-${i}.md`,
+      `Notes/sample-${i}.md.abele-ref`,
+    ]).flat(),
+    stopped: true,
+  },
+])(
+  'compares only distinct connection files with the group ledger: $kind',
+  async ({ files, stopped }) => {
+    const reason = await startupSafetyReason(
+      await ledger(100),
+      async () => ({ files, folders: [] }),
+      '',
+      () => {},
+      [],
+      true
+    )
+    if (stopped) expect(reason).toContain('Resume')
+    else expect(reason).toBeNull()
+  }
+)
 it('stops listing once a tenth of the previous population is present', async () => {
   const reason = await startupSafetyReason(
     await ledger(100),

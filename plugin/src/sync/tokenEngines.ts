@@ -713,7 +713,8 @@ export class TokenEngines {
             [
               stagingDirectory(this.app.vault.configDir),
               privateRecoveryDirectory(this.app.vault.configDir),
-            ]
+            ],
+            record.scope.kind === 'group'
           )
         } catch (error) {
           assertActive()
