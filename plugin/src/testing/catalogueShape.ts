@@ -32,6 +32,7 @@ export const CATALOGUE_COMPONENTS = [
   'CallNote',
   'Card',
   'CardGrid',
+  'ChangeOverview',
   'Chart',
   'Checkbox',
   'ChoiceModal',

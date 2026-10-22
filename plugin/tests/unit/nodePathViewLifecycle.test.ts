@@ -374,6 +374,8 @@ it('keeps phone file actions in the pane menu', () => {
   try {
     const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
     views.push(view)
+    // Editing is offered only for a loaded working file.
+    ;(view as any).file = { document: shallowRef({ text: 'sample' }), destroy() {} }
     const titles: string[] = []
     const item = {
       setTitle(title: string) {
@@ -432,6 +434,7 @@ it('turns the file tab’s header into save, discard and stop while editing, and
     save,
   }
   ;(view as any).editing = editing
+  ;(view as any).file = { document: shallowRef({ text: 'sample' }), destroy() {} }
   ;(view as any).fileTab.render()
   expect(shown.map((a) => a.title)).toContain('Edit the file')
   editing.active.value = true
