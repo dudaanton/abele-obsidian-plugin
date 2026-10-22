@@ -334,6 +334,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     await flushPromises()
     expect(document.querySelector('.abele-file-view .abele-lsp-status')).toBeNull()
     expect(document.querySelector('[data-lsp-analysis]')).not.toBeNull()
+    expect(document.querySelector('.abele-file-view [data-lsp-analysis]')).toBeNull()
     view.unmount()
   })
   it('analyzes and searches the displayed text when a locked editor retains a different draft', async () => {
@@ -580,6 +581,19 @@ describe('node language diagnostics in the shared file viewer', () => {
     for (const listener of doc.listeners) listener()
     await nextTick()
     expect(document.querySelector('[data-lsp-analysis]')?.getAttribute('data-state')).toBe('ready')
+    view.unmount()
+  })
+  it('keeps missing setup orange when a server includes an explanatory diagnostic', async () => {
+    const view = mount(NodeLspFixture, { props: { state: 'eslint' }, attachTo: document.body })
+    await flushPromises()
+    const doc = lspFor(document.querySelector('.cm-editor')!)!.document
+    doc.status.find((status) => status.language === 'eslint')!.diagnostic =
+      'Sample configuration missing'
+    for (const listener of doc.listeners) listener()
+    await nextTick()
+    expect(document.querySelector('[data-lsp-analysis]')?.getAttribute('data-state')).toBe(
+      'degraded'
+    )
     view.unmount()
   })
 })

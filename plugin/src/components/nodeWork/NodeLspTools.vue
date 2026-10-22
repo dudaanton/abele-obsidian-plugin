@@ -109,11 +109,11 @@ const eslintMissing = computed(() =>
   )
 )
 const analysisState = computed(() => {
-  if (actionError.value || document.value?.error || relevant.value.some((s) => s.diagnostic))
-    return 'failed'
+  if (actionError.value || document.value?.error) return 'failed'
   if (!language.value || props.offline || (settled.value && !document.value?.supported))
     return 'off'
   if (untrusted.value || missing.value || eslintMissing.value) return 'degraded'
+  if (relevant.value.some((s) => s.diagnostic)) return 'failed'
   if (!settled.value || busy.value) return 'starting'
   return 'ready'
 })
@@ -211,6 +211,7 @@ function addAnalysisEntry(menu: Menu) {
     item
       .setTitle(t('node.analysis.title'))
       .setIcon('scan-search')
+      .setSection('action')
       .onClick(() => {
         const submenu = new Menu().setUseNativeMenu(false)
         populateAnalysis(submenu)
