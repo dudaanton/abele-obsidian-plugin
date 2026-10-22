@@ -108,6 +108,8 @@ export function syncPlacementPlugin() {
           this.placer.adoptionCandidates = new Map();
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
             const wanted = [];
+            const observations = new Map();
+            const revision = this.fs[Symbol.for('abele.sync.local-change-revision-v1')];
             const siblings = new Map();
             for (const change of changes) {
               if (change.sha === null || change.op === 'delete' || change.size === null ||
@@ -116,6 +118,7 @@ export function syncPlacementPlugin() {
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
               if (this.placer.initialLocal.has(change.sha)) continue;
+              const observed = revision?.call(this.fs, change.path);
               // A missing receipt does not mean missing bytes. Let placement verify and adopt
               // an existing portable spelling before spending a content request on it.
               {
@@ -142,6 +145,7 @@ export function syncPlacementPlugin() {
               }
               if (await this.placer.localSource(change.sha, change.size, local)) continue;
               wanted.push(change);
+              observations.set(change, observed);
             }
             const fetched = new Map();
             const prefetched = fetched[Symbol.for('abele.sync.prefetched-files-v1')] = new Set();
@@ -159,7 +163,10 @@ export function syncPlacementPlugin() {
                   this.placer.adoptionCandidates.set(change.file_id, true);
                   return true;
                 };
-                if (await destinationReady()) return;
+                // Event revisions are free; hosts without them use the failure fallback.
+                const observed = observations.get(change);
+                if (observed !== undefined && revision.call(this.fs, change.path) !== observed &&
+                    await destinationReady()) return;
                 try {
                   const source = await this.client.openVersion(change.file_id, change.version_id,
                     { sha: change.sha, size: change.size });

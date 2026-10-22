@@ -176,6 +176,7 @@ export class LocalFolderPlacement {
           [
             Symbol.for('abele.sync.fingerprint-fresh-v1'),
             Symbol.for('abele.sync.fingerprint-pull-v1'),
+            Symbol.for('abele.sync.local-change-revision-v1'),
           ].includes(key as symbol)
         )
           return (path: string) => value.call(target, placement.toLocal(path))

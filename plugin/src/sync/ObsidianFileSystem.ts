@@ -80,6 +80,8 @@ interface InventoryPass {
   directories?: Promise<DirectoryInfo[]>
   listings: Map<string, Promise<ListedFiles>>
   mutations: Set<string>
+  localChanges: Map<string, number>
+  localRevision: number
   children: Map<string, Promise<InventoryChild[]>>
   indexedChildren: Map<string, Promise<InventoryChild[]>>
 }
@@ -224,11 +226,16 @@ export class ObsidianFileSystem implements FileSystem {
         ? {
             listings: new Map(),
             mutations: new Set(),
+            localChanges: new Map(),
+            localRevision: 0,
             children: new Map(),
             indexedChildren: new Map(),
           }
         : null
     const inventory = this.inventory
+    const recordChange = (path: string) => {
+      if (inventory) inventory.localChanges.set(caseKey(path), ++inventory.localRevision)
+    }
     const invalidate = (
       file: { path: string; children?: unknown[] },
       previous?: string,
@@ -237,6 +244,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
+        recordChange(path)
         for (const parent of inventory.parentFolders ?? [])
           if (parent === path || parent.startsWith(path + '/'))
             inventory.parentFolders?.delete(parent)
@@ -263,6 +271,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const refs = [
       this.app.vault.on('create', (file) => invalidate(file, undefined, true)),
+      this.app.vault.on('modify', (file) => recordChange(file.path)),
       this.app.vault.on('delete', (file) => invalidate(file)),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
     ]
@@ -283,6 +292,20 @@ export class ObsidianFileSystem implements FileSystem {
         this.inventory = null
       }
     }
+  }
+  [Symbol.for('abele.sync.local-change-revision-v1')](path: string): number | undefined {
+    if (!this.inventory) return undefined
+    let revision = 0
+    // Ancestor renames/deletions also invalidate observations of their children.
+    for (
+      let current = caseKey(path);
+      current;
+      current = current.slice(0, current.lastIndexOf('/'))
+    ) {
+      revision = Math.max(revision, this.inventory.localChanges.get(current) ?? 0)
+      if (!current.includes('/')) break
+    }
+    return revision
   }
   async [INVENTORY_DIRECTORIES](settle = false): Promise<DirectoryInfo[]> {
     if (settle) await this.settleInventoryParents()

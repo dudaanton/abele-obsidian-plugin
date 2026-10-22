@@ -96,10 +96,7 @@ async function measure(folder: boolean) {
   }
 }
 
-it.fails.each([false, true])(
-  'BUG: live destination rechecks exceed the first-pull bridge budget (folder=%s)',
-  measure
-)
+it.each([false, true])('bounds first-pull costs and order (folder=%s)', measure)
 
 it.fails('BUG: first pull still needs more than four bridge operations per file', async () => {
   const counts = await measure(false)

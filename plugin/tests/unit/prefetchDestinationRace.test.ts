@@ -8,9 +8,16 @@ import {
   type EngineClient,
 } from '@abele/sync-sdk/core'
 
-it.each(['before-request', 'open-failure', 'read-failure', 'cancelled'] as const)(
-  'adopts a same-page local write with content offline (%s)',
-  async (boundary) => {
+it.each(
+  [true, false].flatMap((signal) =>
+    (['before-request', 'open-failure', 'read-failure', 'cancelled'] as const).map((boundary) => ({
+      signal,
+      boundary,
+    }))
+  )
+)(
+  'adopts a same-page local write with content offline ($boundary, signal=$signal)',
+  async ({ boundary, signal }) => {
     const fs = new MemoryFileSystem()
     const state = new MemoryStateStore()
     const bytes = new TextEncoder().encode('sample local content')
@@ -27,6 +34,12 @@ it.each(['before-request', 'open-failure', 'read-failure', 'cancelled'] as const
       throw new Error('Local content must not be staged')
     })
     Object.assign(fs, {
+      ...(signal
+        ? {
+            [Symbol.for('abele.sync.local-change-revision-v1')]: (path: string) =>
+              path === 'a.md' && injected ? 1 : 0,
+          }
+        : {}),
       beginAtomicWrite: stage,
       reopenStage: stage,
       stat: async (path: string) => {
@@ -79,7 +92,7 @@ it.each(['before-request', 'open-failure', 'read-failure', 'cancelled'] as const
       { dirty: new Set(), expected: new ExpectedWrites(), filter: { excluded: () => false } }
     )
     expect(injected).toBe(true)
-    expect(openVersion).toHaveBeenCalledTimes(boundary === 'before-request' ? 0 : 1)
+    expect(openVersion).toHaveBeenCalledTimes(boundary === 'before-request' && signal ? 0 : 1)
     expect(close).toHaveBeenCalledTimes(
       boundary === 'read-failure' || boundary === 'cancelled' ? 1 : 0
     )
