@@ -76,6 +76,14 @@ it('keeps the tree on reload and moves the slow count and log into the footer', 
   expect(view.get('.abele-file-tree').text()).not.toContain('Still reading')
   view.unmount()
 })
+it('moves a prolonged first read to the footer without repeating the loading line', async () => {
+  vi.useFakeTimers()
+  const { view } = setup()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(view.findAllComponents(StateLine)).toHaveLength(1)
+  expect(view.get('[data-connection-footer]').text()).toContain('Still reading the files…')
+  view.unmount()
+})
 it('uses the tree empty line with no tab count, while files retain the whole tree', async () => {
   const { model, view } = setup(true)
   model.panelBranch.value = {

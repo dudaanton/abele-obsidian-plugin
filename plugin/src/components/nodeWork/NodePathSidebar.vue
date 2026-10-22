@@ -166,7 +166,7 @@
           "
           class="abele-node-sidebar__first"
         >
-          <StateLine tone="faint" pulse :text="loadingText" />
+          <StateLine v-if="!slowLoading" tone="faint" pulse :text="loadingText" />
         </div>
         <FileTree
           v-else-if="mode === 'files' || mode === 'changes'"
