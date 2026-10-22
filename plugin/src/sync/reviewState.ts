@@ -87,8 +87,13 @@ export class ReviewDocuments {
     queue.tail = next.catch(() => {})
     return next
   }
-  private async load<T>(key: string, schema: z.ZodType<T>, initial: T): Promise<T> {
-    const raw = await this.store.getMeta(key)
+  private async load<T>(
+    key: string,
+    schema: z.ZodType<T>,
+    initial: T,
+    state = this.store
+  ): Promise<T> {
+    const raw = await state.getMeta(key)
     return raw === null ? clone(initial) : schema.parse(JSON.parse(raw))
   }
   read<T>(key: string, schema: z.ZodType<T>, initial: T): Promise<T> {
@@ -102,11 +107,11 @@ export class ReviewDocuments {
   ): Promise<R> {
     return this.serial(async () => {
       let encoded = ''
-      const result = await this.store.transaction(async () => {
-        const doc = await this.load(key, schema, initial),
+      const result = await this.store.transaction(async (tx) => {
+        const doc = await this.load(key, schema, initial, tx),
           result = await work(doc)
         encoded = JSON.stringify(schema.parse(doc))
-        await this.store.setMeta(key, encoded)
+        await tx.setMeta(key, encoded)
         return result
       })
       if ((await this.store.getMeta(key)) !== encoded)

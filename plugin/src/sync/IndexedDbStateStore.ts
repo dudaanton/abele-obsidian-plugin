@@ -1,5 +1,6 @@
 import {
   EngineError,
+  StateTransaction,
   checkExternalPhase,
   prepareExternalLedger,
   EXTERNAL_STATE_KEY,
@@ -63,64 +64,7 @@ interface MetaRow {
   value: unknown
 }
 
-/**
- * The plugin's state, in IndexedDB.
- *
- * This is the WebView's own storage and nothing else: no Node, no filesystem, no data file the
- * user could see grow to a megabyte per thousand notes. One vault is one database
- * (`abele-sync-<vaultId>`), so forgetting a vault is `IndexedDbStateStore.delete`.
- *
- * Three keys index one entry, as in the daemon's SQLite store: `path` is what a row is stored
- * under, and `fileId` and `wirePath` are unique — `put` clears any *other* row holding the same
- * `fileId` or `wirePath` before writing, so a crash between a move's put and its delete cannot
- * leave two rows claiming one file. That is stricter than `MemoryStateStore`, which leaves the
- * old row behind for the caller to delete.
- *
- * ## Transactions are an overlay, not an IDB transaction
- *
- * An IndexedDB transaction commits itself the moment no request of its own is pending, so one
- * cannot span the engine's awaits — the engine hashes a file or waits on the network inside
- * `transaction(...)`, and the browser would have committed long before. So `transaction(fn)`
- * opens no IDB transaction at all. It buffers every `put`, `delete`, cursor, journal and meta
- * write `fn` makes in an in-memory overlay that every read inside `fn` consults first —
- * `get`, `byFileId`, `all` and the meta accessors all see what was written, exactly as they
- * would inside a real transaction. Nothing is loaded eagerly: a read the overlay does not hold
- * still goes to the database.
- *
- * When `fn` returns, the whole overlay is written in **one** readwrite IDB transaction over
- * both stores, which either lands whole or aborts whole. When `fn` throws, the overlay is
- * dropped and the error is rethrown, and the database was never touched. A nested
- * `transaction` joins the outer one and commits nothing of its own, the way the daemon's
- * nesting is counted rather than saved: an inner throw the caller swallows leaves the inner
- * writes in the outer overlay — the engine lets every failure out, which is what makes that
- * safe.
- *
- * ## One transaction at a time
- *
- * Top-level transactions are serialised: each waits for the previous one to finish
- * **committing**, not merely to finish running, so no write can slip between an overlay and
- * the flush that lands it, and two of them land in the order they were started.
- *
- * A call that arrives while a body is still running is treated as nested and joins it. A
- * WebView offers no way to tell such a call apart from a second, independent caller — there is
- * no `AsyncLocalStorage`, and a call made after an `await` inside `fn` looks exactly like one
- * made from another task. Joining is the safe half of that guess: writes are never lost, they
- * land with the outer transaction, and reads see them. What a joined caller does not get is a
- * transaction of its own, so if the outer one rolls back its writes go with it — which is why
- * a joined call that is still running when the outer fails is rejected with the outer's error
- * rather than resolving as though it had committed. The engine has exactly one `transaction`
- * call site and never runs two syncs at once; a host that wants two independent transactions
- * has to await the first.
- *
- * What this model does not give is isolation from another writer between `fn`'s first read and
- * the commit, which a real transaction would. Nothing else writes this database: one plugin
- * instance per vault owns it, and a second window of the same vault is the same instance.
- *
- * Every failure the API raises comes back as `EngineError('io', …)`. IndexedDB has no lock a
- * caller could retry — an aborted transaction is a full disk, a closed connection or a browser
- * that evicted the origin's storage, and all of those are `io`. The one failure tried again is
- * WebKit dropping a transaction, which gets one more go on a fresh connection (`once`).
- */
+/** Durable ledger with private revocable transaction handles and native revision CAS. */
 export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private normalizationCache: Map<string, Promise<string | null>> | null = null
   private normalizationPassDepth = 0
@@ -169,8 +113,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.entryObserver = observer
   }
 
-  /** Non-null exactly while a transaction's body is running; a call arriving then joins it. */
-  private overlay: Overlay | null = null
   /**
    * The tail of the queue of top-level transactions: resolved once the last one has committed
    * (or failed). A new top-level transaction chains itself onto it before opening its overlay.
@@ -201,7 +143,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     readonly databaseIdentity: string
   ) {
     connection.onRecoveryRequired = (error) => {
-      this.overlay?.discard(error)
       this.recoveryRequired?.(error)
     }
   }
@@ -284,8 +225,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   async get(path: string): Promise<StateEntry | null> {
     this.assertRecovery()
-    const overlaid = this.overlay?.entries.get(path)
-    if (overlaid !== undefined) return copyEntry(overlaid)
     return this.read(`cannot read the state of ${path}`, [ENTRIES], async (tx) =>
       copyEntry(await wait<StateEntry | undefined>(tx.objectStore(ENTRIES).get(path)))
     )
@@ -293,17 +232,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   async byFileId(fileId: string): Promise<StateEntry | null> {
     this.assertRecovery()
-    const overlay = this.overlay
-    if (overlay) {
-      const path = overlay.byFileId.get(fileId)
-      if (path !== undefined) return copyEntry(overlay.entries.get(path))
-    }
     const rows = await this.read(`cannot read the state of ${fileId}`, [ENTRIES], async (tx) =>
       wait<StateEntry[]>(tx.objectStore(ENTRIES).index(BY_FILE_ID).getAll(fileId))
     )
-    // A row the overlay holds a newer word on was either deleted or rewritten under another
-    // fileId; the index above already answered for the rewrite that still holds this one.
-    return copyEntry(rows.find((row) => !overlay?.entries.has(row.path)))
+    return copyEntry(rows[0])
   }
 
   async *all(): AsyncIterable<StateEntry> {
@@ -313,14 +245,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     const rows = await this.read('cannot read the state', [ENTRIES], async (tx) =>
       wait<StateEntry[]>(tx.objectStore(ENTRIES).getAll())
     )
-    const overlay = this.overlay
-    const merged = overlay
-      ? [
-          ...rows.filter((row) => !overlay.entries.has(row.path)),
-          ...[...overlay.entries.values()].filter((entry) => entry !== null),
-        ]
-      : rows
-    for (const row of merged) yield { ...row }
+    for (const row of rows) yield { ...row }
   }
 
   /**
@@ -332,28 +257,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     await this.entryObserver?.({ ...entry })
     const copy = { ...entry }
     const what = `cannot record ${copy.path}`
-    const overlay = this.overlay
-    if (overlay) {
-      const byFileId = overlay.byFileId.get(copy.fileId)
-      const byWirePath = overlay.byWirePath.get(copy.wirePath)
-      if (byFileId !== undefined && byFileId !== copy.path) overlayDelete(overlay, byFileId)
-      if (byWirePath !== undefined && byWirePath !== copy.path) overlayDelete(overlay, byWirePath)
-      // The database is only asked about a key the overlay cannot answer for: whichever put
-      // first filed that key here already cleared every row of the database holding it.
-      for (const path of await this.clashesInDatabase(
-        what,
-        copy,
-        byFileId === undefined,
-        byWirePath === undefined
-      )) {
-        // A path the overlay has already written is authoritative, and the clash the database
-        // reports for it is stale — this very transaction is about to rewrite or remove that
-        // row. Nulling it here is what used to lose a rename that swapped two names over.
-        if (path !== copy.path && !overlay.entries.has(path)) overlayDelete(overlay, path)
-      }
-      overlayPut(overlay, copy)
-      return
-    }
     await this.write(what, [ENTRIES], async (tx) => {
       const entries = tx.objectStore(ENTRIES)
       for (const path of await clashingKeys(entries, copy, true, true)) {
@@ -366,10 +269,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   async delete(path: string): Promise<void> {
     this.assertRecovery()
-    if (this.overlay) {
-      overlayDelete(this.overlay, path)
-      return
-    }
     await this.write(`cannot forget ${path}`, [ENTRIES], async (tx) =>
       wait(tx.objectStore(ENTRIES).delete(path))
     )
@@ -416,7 +315,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   async getMeta(key: string): Promise<string | null> {
     this.assertRecovery()
     const cache =
-      !this.overlay &&
       !this.transactionPending &&
       (key === 'normalization-collisions' || key === 'normalization-directory-collisions')
         ? this.normalizationCache
@@ -465,10 +363,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       wait<IDBValidKey[]>(tx.objectStore(META).getAllKeys())
     )
     const keys = new Set(stored.filter((key): key is string => typeof key === 'string'))
-    for (const [key, value] of this.overlay?.meta ?? []) {
-      if (value === null) keys.delete(key)
-      else keys.add(key)
-    }
     const scoped = own(prefix)
     return [...keys].filter((key) => key.startsWith(scoped)).map((key) => key.slice(7))
   }
@@ -482,14 +376,14 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.assertRecovery()
     if (!this.permitsEngineEffects || this.externalCommitUnknown)
       throw new ExternalStateError('recovery-required')
-    if (this.overlay || this.transactionPending || this.externalPhasePending)
+    if (this.transactionPending || this.externalPhasePending)
       throw new ExternalStateError('nested-transaction')
   }
 
   /** Read committed external state only: an ordinary overlay is never a durable phase. */
   async getExternalState(): Promise<string | null> {
     this.assertRecovery()
-    if (this.overlay || this.transactionPending || this.externalPhasePending)
+    if (this.transactionPending || this.externalPhasePending)
       throw new ExternalStateError('nested-transaction')
     return this.getMeta(EXTERNAL_STATE_KEY)
   }
@@ -538,6 +432,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         else await wait(meta.put({ key: own(item.key), value: item.value }))
       }
       await wait(meta.put({ key: own(EXTERNAL_STATE_KEY), value: batch.next }))
+      await bumpRevision(tx)
       await done
       if (!this.permitsEngineEffects) throw new ExternalStateError('commit-unknown')
     } catch (cause) {
@@ -563,72 +458,81 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     }
   }
 
-  /**
-   * Buffers everything `fn` writes and commits it in one IDB transaction, or drops it all if
-   * `fn` throws. See the class comment for why this cannot be an IDB transaction held open,
-   * and for what joins an open transaction rather than starting one of its own.
-   */
-  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+  readonly transactionScoped = true
+
+  async transaction<T>(fn: (tx: StateStore) => Promise<T>): Promise<T> {
     this.assertRecovery()
     if (this.externalPhasePending) throw new ExternalStateError('nested-transaction')
-    const outer = this.overlay
-    if (outer) {
-      // Part of the transaction that is already open: no overlay, no commit of its own. The
-      // race is what stops a joined call from reporting success for writes a rollback took.
-      return await Promise.race([fn(), outer.discarded])
-    }
-    // Queued behind whatever was started before this call, and holding the next one back until
-    // this one has committed. Both halves are set up synchronously, so the queue is in call
-    // order however long each transaction takes.
-    this.transactionPending++
     const previous = this.committed
-    let finished = (): void => undefined
-    this.committed = new Promise<void>((resolve) => (finished = resolve))
+    let finish!: () => void
+    this.committed = new Promise<void>((resolve) => {
+      finish = resolve
+    })
     try {
       await previous
-      return await this.run(fn)
+      return await this.runScoped(fn)
     } finally {
-      this.transactionPending--
-      finished()
+      finish()
     }
   }
 
-  /** One top-level transaction: an overlay, the body, and one flush. */
-  private async run<T>(fn: () => Promise<T>): Promise<T> {
-    const overlay = newOverlay()
-    this.overlay = overlay
-    let result: T
+  private async runScoped<T>(fn: (tx: StateStore) => Promise<T>): Promise<T> {
+    const revision = (await this.metaValue('revision')) ?? 0
+    const scoped = new StateTransaction(this, async (entry) => {
+      const paths = await this.clashesInDatabase(
+        'cannot check transaction indexes',
+        entry,
+        true,
+        true
+      )
+      const rows = await Promise.all(paths.map((path) => this.get(path)))
+      return rows.filter((row): row is StateEntry => row !== null)
+    })
+    this.transactionPending++
     try {
-      result = await fn()
-    } catch (error) {
-      // Nothing was written, so there is nothing to roll back — but a call that joined this
-      // one and is still running must not be told its writes landed.
-      this.overlay = null
-      overlay.discard(error)
-      throw error
+      const result = await fn(scoped)
+      scoped.close()
+      const overlay = newOverlay()
+      for (const mutation of scoped.mutations) {
+        switch (mutation.kind) {
+          case 'put':
+            await this.entryObserver?.({ ...mutation.entry })
+            overlayPut(overlay, mutation.entry)
+            break
+          case 'delete':
+            overlayDelete(overlay, mutation.path)
+            break
+          case 'cursor':
+            overlay.meta.set(CURSOR_KEY, mutation.value)
+            break
+          case 'journal':
+            overlay.meta.set(JOURNAL_KEY, copyJournal(mutation.value))
+            break
+          case 'meta':
+            overlay.meta.set(own(mutation.key), mutation.value)
+            break
+        }
+      }
+      await this.flush(overlay, revision)
+      await this.committedEntryObserver?.(
+        [...overlay.entries.values()].filter((entry): entry is StateEntry => entry !== null)
+      )
+      return result
+    } finally {
+      scoped.close()
+      this.transactionPending--
     }
-    // Cleared before the flush so its own writes go to the database rather than back into it.
-    this.overlay = null
-    try {
-      await this.flush(overlay)
-    } catch (error) {
-      // A flush that fails is a rollback like any other — it lands whole or not at all — so a
-      // joined call still running hears about it exactly as it would a body that threw.
-      overlay.discard(error)
-      throw error
-    }
-    await this.committedEntryObserver?.(
-      [...overlay.entries.values()].filter((entry): entry is StateEntry => entry !== null)
-    )
-    return result
   }
 
   /** The overlay, in one readwrite transaction over both stores. */
-  private async flush(overlay: Overlay): Promise<void> {
+  private async flush(overlay: Overlay, revision: unknown): Promise<void> {
     if (overlay.entries.size === 0 && overlay.meta.size === 0) return
     await this.write('cannot commit the state transaction', [ENTRIES, META], async (tx) => {
       const entries = tx.objectStore(ENTRIES)
       const meta = tx.objectStore(META)
+      const current = await wait<MetaRow | undefined>(meta.get('revision'))
+      if ((current?.value ?? 0) !== revision)
+        throw new EngineError('conflict', 'State changed during transaction')
       // Deletes first. One path holds one word in the overlay, so no key is both — but a row
       // that has to go before another can take its `fileId` is the invariant `put` keeps, and
       // this order is what keeps it if an index is ever declared unique.
@@ -660,8 +564,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   /** A meta value, the overlay first; `null` for a key nothing was written under. */
   private async metaValue(key: string): Promise<unknown> {
-    const overlay = this.overlay
-    if (overlay?.meta.has(key)) return overlay.meta.get(key)
     const row = await this.read(`cannot read ${key}`, [META], async (tx) =>
       wait<MetaRow | undefined>(tx.objectStore(META).get(key))
     )
@@ -670,11 +572,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   private async setMetaValue(what: string, key: string, value: unknown): Promise<void> {
     this.normalizationCache?.delete(key.slice('plugin:'.length))
-    const overlay = this.overlay
-    if (overlay) {
-      overlay.meta.set(key, value)
-      return
-    }
     try {
       await this.write(what, [META], async (tx) => {
         const meta = tx.objectStore(META)
@@ -712,11 +609,12 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     fn: (tx: IDBTransaction) => Promise<T>
   ): Promise<T> {
     return this.once(what, async () => {
-      const tx = this.begin(what, stores, 'readwrite')
+      const tx = this.begin(what, [...new Set([...stores, META])], 'readwrite')
       const done = completion(tx, what)
       let result: T
       try {
         result = await fn(tx)
+        await bumpRevision(tx)
       } catch (cause) {
         // The abort a failed request already caused must not be reported instead of the request.
         void done.catch((): void => undefined)
@@ -769,4 +667,10 @@ async function clashingKeys(
     )
   }
   return found as string[]
+}
+
+async function bumpRevision(tx: IDBTransaction): Promise<void> {
+  const meta = tx.objectStore(META)
+  const row = await wait<MetaRow | undefined>(meta.get('revision'))
+  await wait(meta.put({ key: 'revision', value: Number(row?.value ?? 0) + 1 }))
 }

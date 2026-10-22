@@ -214,15 +214,15 @@ export class EditCopies {
     for (const [destination, batch] of batches) {
       const { store } = destination
       const preserving = destination.tail.then(() =>
-        store.transaction(async () => {
-          const copies = await this.list(store)
+        store.transaction(async (tx) => {
+          const copies = await this.list(tx)
           let size = copies.reduce(
               (total, copy) => total + (copy.source?.size ?? copy.bytes.length),
               0
             ),
             changed = false
           for (const { path, sha, mtime, bytes, source } of batch) {
-            const base = await store.get(path)
+            const base = await tx.get(path)
             if (
               base?.sha === sha &&
               base.mtime === mtime &&
@@ -252,7 +252,7 @@ export class EditCopies {
             })
             changed = true
           }
-          if (changed) await store.setMeta(EDIT_COPIES_KEY, JSON.stringify(copies))
+          if (changed) await tx.setMeta(EDIT_COPIES_KEY, JSON.stringify(copies))
         })
       )
       destination.tail = preserving.catch(() => {})

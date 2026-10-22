@@ -5,11 +5,11 @@ export async function retireLocalOnlyLedger(
   held: (path: string) => boolean
 ): Promise<void> {
   await quarantineLocalOnlyJournal(state, held)
-  await state.transaction(async () => {
+  await state.transaction(async (tx) => {
     const paths: string[] = []
-    for await (const entry of state.all())
+    for await (const entry of tx.all())
       if (held(entry.path) || held(entry.wirePath)) paths.push(entry.path)
-    for (const path of paths) await state.delete(path)
+    for (const path of paths) await tx.delete(path)
   })
 }
 
@@ -46,9 +46,9 @@ export async function quarantineLocalOnlyJournal(
 ): Promise<void> {
   const journal = await state.getJournal()
   if (!journal || !(await touches(state, journal, held))) return
-  await state.transaction(async () => {
-    await retain(state, journal)
-    await state.setJournal(null)
+  await state.transaction(async (tx) => {
+    await retain(tx, journal)
+    await tx.setJournal(null)
   })
   console.debug('[Abele Sync] Kept-copy publication journal quarantined', journal.idempotencyKey)
 }
@@ -59,6 +59,9 @@ export function localOnlyJournalState(
 ): StateStore {
   return new Proxy(state, {
     get(target, key) {
+      if (key === 'transaction')
+        return <T>(work: (tx: StateStore) => Promise<T>) =>
+          target.transaction((tx) => work(localOnlyJournalState(tx, held)))
       if (key === 'getJournal')
         return async () => {
           await quarantineLocalOnlyJournal(target, held)
@@ -67,7 +70,7 @@ export function localOnlyJournalState(
       if (key === 'setJournal')
         return async (journal: Journal | null) => {
           if (journal && (await touches(target, journal, held))) {
-            await target.transaction(() => retain(target, journal))
+            await target.transaction((tx) => retain(tx, journal))
             throw new Error('A kept local copy cannot be published')
           }
           await target.setJournal(journal)

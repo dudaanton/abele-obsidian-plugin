@@ -29,7 +29,18 @@ export async function registerDurableEditCopies(
       get: (path: string) => base.get(path),
       getMeta: raw.getMeta.bind(raw),
       setMeta: raw.setMeta.bind(raw),
-      transaction: raw.transaction.bind(raw),
+      transaction: <T>(work: (tx: StateStore) => Promise<T>) =>
+        raw.transaction((tx) =>
+          work(
+            new Proxy(tx, {
+              get(target, key) {
+                if (key === 'get') return (path: string) => base.get(path)
+                const value = Reflect.get(target, key)
+                return typeof value === 'function' ? value.bind(target) : value
+              },
+            })
+          )
+        ),
     }
     const unregister = copies.register(id, store, accepts)
     return {

@@ -1,4 +1,9 @@
-import { GENERATION_KEY, EXTERNAL_STATE_KEY, EngineError, type StateStore } from '@abele/sync-sdk/core'
+import {
+  GENERATION_KEY,
+  EXTERNAL_STATE_KEY,
+  EngineError,
+  type StateStore,
+} from '@abele/sync-sdk/core'
 
 export const RESTORE_HEADER = 'abele-restore-generation'
 const HOST_KEYS = ['token-asset-outbox', 'token-asset-identities'] as const
@@ -30,11 +35,11 @@ export async function fenceHostGeneration(
     }
   if (!recovering) return false
   const key = 'retired-host-generation:' + (previous ?? 'legacy')
-  await state.transaction(async () => {
-    if (!(await state.getMeta(key))) {
-      await state.setMeta(key, JSON.stringify({ generation, metadata }))
+  await state.transaction(async (tx) => {
+    if (!(await tx.getMeta(key))) {
+      await tx.setMeta(key, JSON.stringify({ generation, metadata }))
     }
-    for (const name of HOST_KEYS) await state.setMeta(name, null)
+    for (const name of HOST_KEYS) await tx.setMeta(name, null)
   })
   await archiveWrites?.(async (value) => {
     const writesKey = key + ':writes'

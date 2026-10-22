@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBDatabase as FakeIDBDatabase, IDBFactory } from 'fake-indexeddb'
-import type { Journal, StateEntry } from '@abele/sync-sdk/core'
+import type { Journal, StateEntry, StateStore } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 
 /**
@@ -32,7 +32,7 @@ const journal = (over: Partial<Journal> = {}): Journal => ({
   ...over,
 })
 
-async function collect(store: IndexedDbStateStore): Promise<StateEntry[]> {
+async function collect(store: StateStore): Promise<StateEntry[]> {
   const found: StateEntry[] = []
   for await (const e of store.all()) found.push(e)
   return found.sort((a, b) => a.path.localeCompare(b.path))
@@ -53,7 +53,7 @@ afterEach(() => {
 describe('IndexedDbStateStore', () => {
   // BUG: the shared overlay cannot distinguish a separate task from a nested caller.
   // Requires a transaction-scoped StateStore capability in the core contract.
-  it.fails('keeps an acknowledged independent write when another task rolls back', async () => {
+  it('keeps an acknowledged independent write when another task rolls back', async () => {
     let entered!: () => void, release!: () => void
     const running = new Promise<void>((resolve) => {
       entered = resolve
@@ -61,8 +61,8 @@ describe('IndexedDbStateStore', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    const outer = store.transaction(async () => {
-      await store.setCursor(9)
+    const outer = store.transaction(async (tx) => {
+      await tx.setCursor(9)
       entered()
       await held
       throw new Error('interrupted unrelated operation')
@@ -162,17 +162,17 @@ describe('IndexedDbStateStore', () => {
    */
   it('hands out copies of entries, and keeps a copy of the one it was given', async () => {
     await store.put(entry())
-    await store.transaction(async () => {
+    await store.transaction(async (tx) => {
       const given = entry({ versionId: 'ver-2' })
-      await store.put(given)
+      await tx.put(given)
       given.sha = 'f'.repeat(64)
-      const byPath = await store.get('notes/a.md')
+      const byPath = await tx.get('notes/a.md')
       byPath!.sha = 'c'.repeat(64)
-      const byId = await store.byFileId('file-1')
+      const byId = await tx.byFileId('file-1')
       byId!.sha = 'd'.repeat(64)
-      for await (const each of store.all()) each.sha = 'e'.repeat(64)
-      expect(await store.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
-      expect(await store.byFileId('file-1')).toEqual(entry({ versionId: 'ver-2' }))
+      for await (const each of tx.all()) each.sha = 'e'.repeat(64)
+      expect(await tx.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
+      expect(await tx.byFileId('file-1')).toEqual(entry({ versionId: 'ver-2' }))
     })
     expect(await store.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
     // And the same outside one, where the clone does the work rather than the store.
@@ -182,16 +182,16 @@ describe('IndexedDbStateStore', () => {
   })
 
   it('copies the journal out, ops and all, and copies the one it was given in', async () => {
-    await store.transaction(async () => {
+    await store.transaction(async (tx) => {
       const given = journal()
-      await store.setJournal(given)
+      await tx.setJournal(given)
       given.ops.push({ op: 'delete', file_id: 'file-9', base_version_id: 'ver-9' })
       given.batchId = 'batch-9'
-      const fetched = await store.getJournal()
+      const fetched = await tx.getJournal()
       expect(fetched).toEqual(journal())
       fetched!.ops.push({ op: 'delete', file_id: 'file-2', base_version_id: 'ver-2' })
       fetched!.batchId = 'batch-2'
-      expect(await store.getJournal()).toEqual(journal())
+      expect(await tx.getJournal()).toEqual(journal())
     })
     expect(await store.getJournal()).toEqual(journal())
   })
@@ -280,8 +280,8 @@ describe('IndexedDbStateStore', () => {
     await expect(store.put(entry())).rejects.toMatchObject({ code: 'io' })
     await expect(store.getCursor()).rejects.toMatchObject({ code: 'io' })
     await expect(
-      store.transaction(async () => {
-        await store.setCursor(1)
+      store.transaction(async (tx) => {
+        await tx.setCursor(1)
       })
     ).rejects.toMatchObject({ code: 'io' })
     store = await IndexedDbStateStore.open(indexedDB, NAME)
@@ -360,9 +360,9 @@ describe('IndexedDbStateStore', () => {
     it('commits a transaction whose flush lost its transaction', async () => {
       const lose = loseTransactions(0)
       try {
-        await store.transaction(async () => {
-          await store.put(entry())
-          await store.setCursor(3)
+        await store.transaction(async (tx) => {
+          await tx.put(entry())
+          await tx.setCursor(3)
           // The flush is the next transaction opened.
           lose.restore()
           loseTransactions(1)
@@ -388,9 +388,9 @@ describe('IndexedDbStateStore', () => {
 
   describe('transaction', () => {
     it('runs the callback and returns its value, committing what it wrote', async () => {
-      const result = await store.transaction(async () => {
-        await store.put(entry())
-        await store.setCursor(7)
+      const result = await store.transaction(async (tx) => {
+        await tx.put(entry())
+        await tx.setCursor(7)
         return 'done'
       })
       expect(result).toBe('done')
@@ -405,11 +405,11 @@ describe('IndexedDbStateStore', () => {
 
       const boom = new Error('boom')
       await expect(
-        store.transaction(async () => {
-          await store.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
-          await store.delete('notes/a.md')
-          await store.setCursor(99)
-          await store.setJournal(null)
+        store.transaction(async (tx) => {
+          await tx.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
+          await tx.delete('notes/a.md')
+          await tx.setCursor(99)
+          await tx.setJournal(null)
           throw boom
         })
       ).rejects.toBe(boom)
@@ -426,9 +426,9 @@ describe('IndexedDbStateStore', () => {
       // from a write: it sees the store's committed rows and nothing of its overlay.
       const witness = await IndexedDbStateStore.open(indexedDB, NAME)
       try {
-        await store.transaction(async () => {
-          await store.put(entry())
-          await store.setCursor(7)
+        await store.transaction(async (tx) => {
+          await tx.put(entry())
+          await tx.setCursor(7)
           expect(await witness.get('notes/a.md')).toBeNull()
           expect(await witness.getCursor()).toBe(0)
         })
@@ -442,21 +442,21 @@ describe('IndexedDbStateStore', () => {
     it('reads inside the transaction see what the transaction wrote', async () => {
       await store.put(entry())
       await store.setCursor(1)
-      await store.transaction(async () => {
+      await store.transaction(async (tx) => {
         const moved = entry({ path: 'notes/b.md', wirePath: 'notes/b.md', versionId: 'ver-2' })
-        await store.put(moved)
-        await store.setCursor(2)
-        await store.setJournal(journal())
-        await store.setMeta('scope', 'notes')
+        await tx.put(moved)
+        await tx.setCursor(2)
+        await tx.setJournal(journal())
+        await tx.setMeta('scope', 'notes')
 
-        expect(await store.get('notes/b.md')).toEqual(moved)
+        expect(await tx.get('notes/b.md')).toEqual(moved)
         // The put re-filed `file-1`, so the row it left is gone to every read here too.
-        expect(await store.get('notes/a.md')).toBeNull()
-        expect(await store.byFileId('file-1')).toEqual(moved)
-        expect(await collect(store)).toEqual([moved])
-        expect(await store.getCursor()).toBe(2)
-        expect(await store.getJournal()).toEqual(journal())
-        expect(await store.getMeta('scope')).toBe('notes')
+        expect(await tx.get('notes/a.md')).toBeNull()
+        expect(await tx.byFileId('file-1')).toEqual(moved)
+        expect(await collect(tx)).toEqual([moved])
+        expect(await tx.getCursor()).toBe(2)
+        expect(await tx.getJournal()).toEqual(journal())
+        expect(await tx.getMeta('scope')).toBe('notes')
       })
       expect(await collect(store)).toEqual([
         entry({ path: 'notes/b.md', wirePath: 'notes/b.md', versionId: 'ver-2' }),
@@ -466,23 +466,23 @@ describe('IndexedDbStateStore', () => {
     it('all() inside the transaction hides what it deleted and shows what it added', async () => {
       await store.put(entry())
       await store.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
-      await store.transaction(async () => {
-        await store.delete('notes/a.md')
-        await store.put(entry({ path: 'notes/c.md', wirePath: 'notes/c.md', fileId: 'file-3' }))
-        expect((await collect(store)).map((e) => e.path)).toEqual(['notes/b.md', 'notes/c.md'])
+      await store.transaction(async (tx) => {
+        await tx.delete('notes/a.md')
+        await tx.put(entry({ path: 'notes/c.md', wirePath: 'notes/c.md', fileId: 'file-3' }))
+        expect((await collect(tx)).map((e) => e.path)).toEqual(['notes/b.md', 'notes/c.md'])
       })
       expect((await collect(store)).map((e) => e.path)).toEqual(['notes/b.md', 'notes/c.md'])
     })
 
     it('runs a nested transaction inside the outer one, committing once', async () => {
-      await store.transaction(async () => {
-        await store.put(entry())
-        await store.transaction(async () => {
-          await store.setCursor(5)
+      await store.transaction(async (tx) => {
+        await tx.put(entry())
+        await tx.transaction(async (tx) => {
+          await tx.setCursor(5)
           // Still nothing written: the inner transaction commits nothing of its own.
-          expect(await store.getCursor()).toBe(5)
+          expect(await tx.getCursor()).toBe(5)
         })
-        expect(await store.get('notes/a.md')).toEqual(entry())
+        expect(await tx.get('notes/a.md')).toEqual(entry())
       })
       expect(await store.get('notes/a.md')).toEqual(entry())
       expect(await store.getCursor()).toBe(5)
@@ -491,10 +491,10 @@ describe('IndexedDbStateStore', () => {
     it('rolls the outer transaction back when a nested one throws through it', async () => {
       const boom = new Error('boom')
       await expect(
-        store.transaction(async () => {
-          await store.put(entry())
-          await store.transaction(async () => {
-            await store.setCursor(5)
+        store.transaction(async (tx) => {
+          await tx.put(entry())
+          await tx.transaction(async (tx) => {
+            await tx.setCursor(5)
             throw boom
           })
         })
@@ -503,20 +503,20 @@ describe('IndexedDbStateStore', () => {
       expect(await store.getCursor()).toBe(0)
     })
 
-    it('keeps the writes of a nested transaction whose failure the caller swallowed', async () => {
+    it('discards the writes of a nested transaction whose failure the caller swallowed', async () => {
       // The daemon's SQLite store behaves the same way: nesting is counted, not saved. The
       // engine lets every failure out, which is what makes that safe.
-      await store.transaction(async () => {
+      await store.transaction(async (tx) => {
         try {
-          await store.transaction(async () => {
-            await store.setCursor(5)
+          await tx.transaction(async (tx) => {
+            await tx.setCursor(5)
             throw new Error('boom')
           })
         } catch {
           /* swallowed on purpose */
         }
       })
-      expect(await store.getCursor()).toBe(5)
+      expect(await store.getCursor()).toBe(0)
     })
 
     it('lets a batch swap two names over, keeping both files', async () => {
@@ -525,10 +525,10 @@ describe('IndexedDbStateStore', () => {
       // to "who holds file-1?" is stale, and believing it used to lose one of the two rows.
       await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-1' }))
       await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-2' }))
-      await store.transaction(async () => {
-        await store.delete('A.md')
-        await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
-        await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-2' }))
+      await store.transaction(async (tx) => {
+        await tx.delete('A.md')
+        await tx.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
+        await tx.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-2' }))
       })
       expect(await collect(store)).toEqual([
         entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-2' }),
@@ -546,10 +546,10 @@ describe('IndexedDbStateStore', () => {
       ]) {
         await store.put(entry({ path, wirePath: path, fileId }))
       }
-      await store.transaction(async () => {
-        await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
-        await store.put(entry({ path: 'C.md', wirePath: 'C.md', fileId: 'file-2' }))
-        await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-3' }))
+      await store.transaction(async (tx) => {
+        await tx.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
+        await tx.put(entry({ path: 'C.md', wirePath: 'C.md', fileId: 'file-2' }))
+        await tx.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-3' }))
       })
       expect((await collect(store)).map((e) => [e.path, e.fileId])).toEqual([
         ['A.md', 'file-3'],
@@ -561,19 +561,19 @@ describe('IndexedDbStateStore', () => {
     it('serialises two transactions started at once and commits both, in order', async () => {
       let release = (): void => undefined
       const held = new Promise<void>((resolve) => (release = resolve))
-      const first = store.transaction(async () => {
-        await store.put(entry())
+      const first = store.transaction(async (tx) => {
+        await tx.put(entry())
         await held
         // The second one is queued, not merged into this overlay.
-        expect(await store.get('notes/b.md')).toBeNull()
-        await store.setCursor(1)
+        expect(await tx.get('notes/b.md')).toBeNull()
+        await tx.setCursor(1)
       })
-      const second = store.transaction(async () => {
+      const second = store.transaction(async (tx) => {
         // It starts after the first has committed, so it reads what the first wrote.
-        expect(await store.get('notes/a.md')).toEqual(entry())
-        expect(await store.getCursor()).toBe(1)
-        await store.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
-        await store.setCursor(2)
+        expect(await tx.get('notes/a.md')).toEqual(entry())
+        expect(await tx.getCursor()).toBe(1)
+        await tx.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
+        await tx.setCursor(2)
       })
       release()
       await Promise.all([first, second])
@@ -582,34 +582,18 @@ describe('IndexedDbStateStore', () => {
       expect(await store.getCursor()).toBe(2)
     })
 
-    it('fails a call that joined a running transaction when that transaction rolls back', async () => {
-      // A call made while a body is running cannot be told from a nested one, so it joins —
-      // and if the transaction it joined is rolled back, it is told so rather than reporting
-      // success for writes that were dropped.
-      let start = (): void => undefined
-      const running = new Promise<void>((resolve) => (start = resolve))
-      let release = (): void => undefined
-      const held = new Promise<void>((resolve) => (release = resolve))
-      let releaseJoined = (): void => undefined
-      const joinedHeld = new Promise<void>((resolve) => (releaseJoined = resolve))
-
-      const boom = new Error('boom')
-      const outer = store.transaction(async () => {
-        start()
-        await held
-        throw boom
+    it('keeps an independent transaction after another transaction rolls back', async () => {
+      const boom = new Error('rollback')
+      await expect(
+        store.transaction(async (tx) => {
+          await tx.setCursor(3)
+          throw boom
+        })
+      ).rejects.toBe(boom)
+      await store.transaction(async (tx) => {
+        await tx.setCursor(5)
       })
-      await running
-      const joined = store.transaction(async () => {
-        await store.setCursor(5)
-        await joinedHeld
-      })
-
-      release()
-      await expect(outer).rejects.toBe(boom)
-      await expect(joined).rejects.toBe(boom)
-      releaseJoined()
-      expect(await store.getCursor()).toBe(0)
+      expect(await store.getCursor()).toBe(5)
     })
 
     it('reports a flush that cannot be written as io and leaves the database as it was', async () => {
@@ -621,10 +605,10 @@ describe('IndexedDbStateStore', () => {
       } as unknown as StateEntry
 
       await expect(
-        store.transaction(async () => {
-          await store.setCursor(9)
-          await store.delete('notes/a.md')
-          await store.put(poison)
+        store.transaction(async (tx) => {
+          await tx.setCursor(9)
+          await tx.delete('notes/a.md')
+          await tx.put(poison)
         })
       ).rejects.toMatchObject({ code: 'io', message: 'cannot commit the state transaction' })
 
@@ -632,42 +616,29 @@ describe('IndexedDbStateStore', () => {
       expect(await store.getCursor()).toBe(0)
     })
 
-    it('tells a joined call that is still running that the flush failed', async () => {
-      // A flush that cannot be written rolls the whole transaction back, so a call that joined
-      // it is owed the same news as when the body itself throws.
-      let releaseJoined = (): void => undefined
-      const joinedHeld = new Promise<void>((resolve) => (releaseJoined = resolve))
-      let joined: Promise<void> = Promise.resolve()
-      const poison = {
-        ...entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }),
-        unclonable: () => undefined,
-      } as unknown as StateEntry
-
-      const outer = store.transaction(async () => {
-        joined = store.transaction(async () => {
-          await store.setCursor(5)
-          await joinedHeld
+    it('revokes a handle when native publication fails', async () => {
+      let handle!: StateStore
+      const poison = { ...entry(), unclonable: () => undefined } as unknown as StateEntry
+      await expect(
+        store.transaction(async (tx) => {
+          handle = tx
+          await tx.setCursor(5)
+          await tx.put(poison)
         })
-        // Handled here so the rejection is never an unhandled one; asserted below all the same.
-        void joined.catch((): void => undefined)
-        await store.put(poison)
-      })
-
-      await expect(outer).rejects.toMatchObject({ code: 'io' })
-      releaseJoined()
-      await expect(joined).rejects.toMatchObject({ code: 'io' })
+      ).rejects.toMatchObject({ code: 'io' })
+      await expect(handle.setCursor(9)).rejects.toThrow()
       expect(await store.getCursor()).toBe(0)
     })
 
     it('holds the clash rule for a row only the database knows about', async () => {
       await store.put(entry())
-      await store.transaction(async () => {
+      await store.transaction(async (tx) => {
         // Same file, new path — the row in the database has to go, and it is not in the
         // overlay for the check to find.
-        await store.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md' }))
+        await tx.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md' }))
         // And one that clashes on wirePath alone.
-        await store.put(entry({ path: 'x.md', wirePath: 'x.md', fileId: 'file-2' }))
-        await store.put(entry({ path: 'y.md', wirePath: 'x.md', fileId: 'file-3' }))
+        await tx.put(entry({ path: 'x.md', wirePath: 'x.md', fileId: 'file-2' }))
+        await tx.put(entry({ path: 'y.md', wirePath: 'x.md', fileId: 'file-3' }))
       })
       expect((await collect(store)).map((e) => e.path)).toEqual(['notes/b.md', 'y.md'])
       expect(await store.byFileId('file-2')).toBeNull()

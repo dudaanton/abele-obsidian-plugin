@@ -98,11 +98,11 @@ export class TokenAssetOutbox {
     await Promise.allSettled([...this.flights.values()])
     await this.operations
   }
-  private async list(): Promise<Candidate[]> {
+  private async list(state = this.options.state): Promise<Candidate[]> {
     this.options.assertOwned()
-    if (!this.options.state.getMeta || !this.options.state.setMeta)
+    if (!state.getMeta || !state.setMeta)
       throw new Error('Durable publication storage is unavailable')
-    const raw = await this.options.state.getMeta(QUEUE),
+    const raw = await state.getMeta(QUEUE),
       queue = queueSchema.parse(JSON.parse(raw ?? '[]'))
     if (
       new Set(queue.map((one) => one.key)).size !== queue.length ||
@@ -125,15 +125,15 @@ export class TokenAssetOutbox {
     this.options.assertOwned()
     return queue
   }
-  private mutate<T>(work: (queue: Candidate[]) => Promise<T>): Promise<T> {
+  private mutate<T>(work: (queue: Candidate[], tx: StateStore) => Promise<T>): Promise<T> {
     return this.local(async () => {
       let committed: Candidate[] | undefined
       const result = await this.options.serial(() =>
-        this.options.state.transaction(async () => {
-          const queue = await this.list(),
-            result = await work(queue)
+        this.options.state.transaction(async (tx) => {
+          const queue = await this.list(tx),
+            result = await work(queue, tx)
           this.options.assertOwned()
-          await this.options.state.setMeta(QUEUE, JSON.stringify(queue))
+          await tx.setMeta(QUEUE, JSON.stringify(queue))
           committed = structuredClone(queue)
           return result
         })
@@ -159,12 +159,12 @@ export class TokenAssetOutbox {
     }
     this.refused.delete(input.id)
     const marker = markerOf(input)
-    const key = await this.mutate(async (queue) => {
-      const prior = await this.options.state.getMeta(marker),
+    const key = await this.mutate(async (queue, tx) => {
+      const prior = await tx.getMeta(marker),
         key = prior ?? crypto.randomUUID()
-      if (!prior) await this.options.state.setMeta(marker, key)
+      if (!prior) await tx.setMeta(marker, key)
       if (
-        !(await this.options.state.getMeta('token-asset-settled:' + key)) &&
+        !(await tx.getMeta('token-asset-settled:' + key)) &&
         !queue.some((one) => one.key === key)
       )
         queue.push(
@@ -173,7 +173,7 @@ export class TokenAssetOutbox {
             bytes: [...input.bytes],
             key,
             binding: this.options.binding(),
-            baseVersion: (await this.options.state.get(input.path))?.versionId ?? null,
+            baseVersion: (await tx.get(input.path))?.versionId ?? null,
           })
         )
       return key
@@ -207,7 +207,7 @@ export class TokenAssetOutbox {
         // Reconcile that request with its original key before considering a new attempt.
         if (one.uncertain === undefined && sizeOf(one) > this.options.maxBytes()) {
           const refusal = { code: 'too_large', message: 'This file is too large for this server' }
-          await this.mutate(async (queue) => {
+          await this.mutate(async (queue, tx) => {
             const current = queue.find((item) => item.key === one.key)
             if (current) current.hold = refusal
           })
@@ -226,15 +226,12 @@ export class TokenAssetOutbox {
         }
         if (one.hold) {
           const old = one.key
-          one = await this.mutate(async (queue) => {
+          one = await this.mutate(async (queue, tx) => {
             const current = queue.find((item) => item.key === old)
             if (!current || !current.hold) throw new Error('Publication retry changed')
             current.key = crypto.randomUUID()
-            await this.options.state.setMeta(
-              'token-asset-rejection:' + old,
-              JSON.stringify(current.hold)
-            )
-            await this.options.state.setMeta(markerOf(current), current.key)
+            await tx.setMeta('token-asset-rejection:' + old, JSON.stringify(current.hold))
+            await tx.setMeta(markerOf(current), current.key)
             delete current.hold
             delete current.uncertain
             return structuredClone(current)
@@ -258,7 +255,7 @@ export class TokenAssetOutbox {
           throw new Error('Publication response does not identify the retained candidate')
         const result = response.results[0]
         if (result.status === 'rejected') {
-          await this.mutate(async (queue) => {
+          await this.mutate(async (queue, tx) => {
             const current = queue.find((item) => item.key === one.key)
             if (!current) throw new Error('Publication candidate disappeared')
             current.hold = { code: result.code, message: result.message }
@@ -276,14 +273,14 @@ export class TokenAssetOutbox {
           !result.version_id
         )
           throw new Error('Publication response does not match the retained candidate')
-        await this.mutate(async (queue) => {
-          const prior = await this.options.state.get(one.path),
-            identity = await this.options.state.byFileId(result.file_id)
+        await this.mutate(async (queue, tx) => {
+          const prior = await tx.get(one.path),
+            identity = await tx.byFileId(result.file_id)
           if (
             (prior?.versionId ?? null) === (one.baseVersion ?? null) &&
             (!identity || identity.path === one.path)
           )
-            await this.options.state.put({
+            await tx.put({
               path: one.path,
               wirePath: result.path,
               fileId: result.file_id,
@@ -292,16 +289,16 @@ export class TokenAssetOutbox {
               size: result.size,
               mtime: result.mtime,
             })
-          await this.options.state.setMeta(
+          await tx.setMeta(
             ASSET_IDENTITIES,
             JSON.stringify([
               ...assetIdentitiesSchema
-                .parse(JSON.parse((await this.options.state.getMeta(ASSET_IDENTITIES)) ?? '[]'))
+                .parse(JSON.parse((await tx.getMeta(ASSET_IDENTITIES)) ?? '[]'))
                 .filter((item) => item.id !== one.id),
               { id: one.id, fileId: result.file_id },
             ])
           )
-          await this.options.state.setMeta(
+          await tx.setMeta(
             'token-asset-settled:' + one.key,
             JSON.stringify({ binding: one.binding, result })
           )
@@ -319,7 +316,7 @@ export class TokenAssetOutbox {
       } catch (error) {
         errors.set(one.key, error)
         try {
-          await this.mutate(async (queue) => {
+          await this.mutate(async (queue, tx) => {
             const current = queue.find((item) => item.key === one.key)
             if (current && !current.hold)
               current.uncertain =

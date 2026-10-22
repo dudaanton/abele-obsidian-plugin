@@ -212,12 +212,16 @@ it('keeps deliveries from another server separate even when file and version IDs
 it('does not acknowledge a failed stage write and validates persisted bytes before approval', async () => {
   const store = new MemoryStateStore(),
     review = new ExecutableReview(store)
-  const write = store.setMeta.bind(store)
-  store.setMeta = async () => {
-    throw new Error('storage unavailable')
-  }
+  const transaction = store.transaction.bind(store)
+  store.transaction = (work) =>
+    transaction(async (tx) => {
+      tx.setMeta = async () => {
+        throw new Error('storage unavailable')
+      }
+      return work(tx)
+    })
   await expect(review.stage(await incoming())).rejects.toThrow('storage unavailable')
-  store.setMeta = write
+  store.transaction = transaction
   expect(await review.pending()).toEqual([])
   await review.stage(await incoming())
   const [candidate] = await review.pending()
