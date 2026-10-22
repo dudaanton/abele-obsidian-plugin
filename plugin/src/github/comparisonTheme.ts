@@ -7,11 +7,11 @@ const added = 'color-mix(in srgb, var(--text-success) 16%, var(--background-prim
 export const comparisonTheme = EditorView.theme({
   '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
     backgroundColor: removed,
-    boxShadow: 'inset var(--size-2-1) 0 var(--text-error)',
+    boxShadow: 'inset var(--border-width) 0 var(--text-error)',
   },
   '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': {
     backgroundColor: added,
-    boxShadow: 'inset var(--size-2-1) 0 var(--text-success)',
+    boxShadow: 'inset var(--border-width) 0 var(--text-success)',
   },
   '&.cm-merge-a .cm-changedText, .cm-deletedChunk .cm-deletedText': {
     background: 'color-mix(in srgb, var(--text-error) 18%, transparent)',
@@ -20,6 +20,4 @@ export const comparisonTheme = EditorView.theme({
     background: 'color-mix(in srgb, var(--text-success) 18%, transparent)',
   },
   '.cm-deletedChunk': { color: 'var(--text-muted)' },
-  '&.cm-merge-a .cm-changedLineGutter': { background: 'var(--text-error)' },
-  '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--text-success)' },
 })

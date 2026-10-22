@@ -15,6 +15,7 @@ it.each([false, true])('edits the working comparison live, split=%s', (split) =>
   try {
     const editors = [...parent.querySelectorAll<HTMLElement>('.cm-editor')]
     expect(editors).toHaveLength(split ? 2 : 1)
+    expect(parent.querySelector('.cm-changeGutter')).toBeNull()
     const working = EditorView.findFromDOM(editors.at(-1)!)!
     expect(getChunks(working.state)?.chunks).toHaveLength(1)
     if (!split) {

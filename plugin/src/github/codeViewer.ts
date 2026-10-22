@@ -146,6 +146,7 @@ function mount(
   ]
   const merge = comparison?.split
     ? new MergeView({
+        gutter: false,
         parent,
         a: {
           doc: comparison.original,

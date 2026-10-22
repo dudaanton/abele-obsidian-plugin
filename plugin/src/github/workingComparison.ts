@@ -4,6 +4,7 @@ import { unifiedMergeView } from '@codemirror/merge'
 export function workingComparison(original: string) {
   return unifiedMergeView({
     original,
+    gutter: false,
     mergeControls: false,
     syntaxHighlightDeletions: true,
     allowInlineDiffs: false,
