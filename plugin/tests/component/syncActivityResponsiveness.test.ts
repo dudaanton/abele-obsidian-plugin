@@ -184,6 +184,8 @@ it('lets host timers run during the production scan and live activity publicatio
   })
   // Use the same adapter and SDK scan as the runtime's exchange, including its
   // comparison budget and activity callbacks, rather than scheduling updates here.
+  // This models a running exchange, not a manual review read while idle or paused.
+  Reflect.get(runtime.engine, 'set').call(runtime.engine, { state: 'syncing' })
   const scanning = (
     runtime.engine as unknown as {
       opts: { fs: import('@abele/sync-sdk/core').FileSystem }
