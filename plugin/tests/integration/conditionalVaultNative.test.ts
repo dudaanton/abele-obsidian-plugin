@@ -9,6 +9,51 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it('recreates a parent removed after capture and recovers following records', async () => {
+  let injected = false
+  const { root, disk } = await setup({
+    rename: async (from: string, to: string) => {
+      await fs.rename(from, to)
+      if (!injected && from.endsWith('/gone/sample.bin') && to.endsWith('/victim')) {
+        injected = true
+        await fs.rmdir(join(root, 'gone'))
+        throw new Error('capture acknowledgement lost')
+      }
+    },
+  })
+  await fs.mkdir(join(root, 'gone'))
+  await fs.writeFile(join(root, 'gone/sample.bin'), 'sample A')
+  await fs.utimes(join(root, 'gone/sample.bin'), 1, 1)
+  await expect(
+    disk().conditionalFile({
+      path: 'gone/sample.bin',
+      expected: { size: 8, mtime: 1000, sha: await sha256(new TextEncoder().encode('sample A')) },
+      effect: { kind: 'remove' },
+    })
+  ).rejects.toThrow()
+  await captured(root, 'following', 'following.bin')
+  const restarted = await setup({}, root)
+  await restarted.disk().recoverConditionalFiles()
+  expect(await fs.readFile(join(root, 'gone/sample.bin'), 'utf8')).toBe('sample A')
+  expect(await fs.readFile(join(root, 'following.bin'), 'utf8')).toBe('recovered bytes')
+})
+
+it('keeps a failed recovery pending while recovering later records', async () => {
+  const { root, disk } = await setup({
+    link: async (from: string, to: string) => {
+      if (from.includes('/a-blocked/'))
+        throw Object.assign(new Error('unavailable'), { code: 'EIO' })
+      await fs.link(from, to)
+    },
+  })
+  await captured(root, 'a-blocked', 'blocked.bin')
+  await captured(root, 'b-following', 'following.bin')
+  await expect(disk().recoverConditionalFiles()).rejects.toThrow()
+  expect(await fs.readFile(join(root, 'following.bin'), 'utf8')).toBe('recovered bytes')
+  expect(await fs.readdir(join(root, '.obsidian/plugins/abele/sync-conditional/active'))).toEqual([
+    'a-blocked.json',
+  ])
+})
 async function captured(root: string, id: string, path: string, directory = false) {
   const privateRoot = join(root, '.obsidian/plugins/abele/sync-conditional')
   const folder = join(privateRoot, 'objects', id)
@@ -135,9 +180,9 @@ it.each([false, true])(
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true })
 })
-async function setup(overrides: Partial<typeof fs> = {}) {
-  const root = await fs.mkdtemp(join(tmpdir(), 'sample-conditional-'))
-  roots.push(root)
+async function setup(overrides: Partial<typeof fs> = {}, existingRoot?: string) {
+  const root = existingRoot ?? (await fs.mkdtemp(join(tmpdir(), 'sample-conditional-')))
+  if (!existingRoot) roots.push(root)
   const app = buildFakeVault([])
   Object.assign(app.vault.adapter, {
     fsPromises: { ...fs, ...overrides },

@@ -78,6 +78,8 @@ export class ConditionalFiles {
       const destination =
         attempt === 0 ? to : to + '.recovered-' + (attempt === 1 ? id : crypto.randomUUID())
       this.host.validate(destination)
+      const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
+      if (parent) await this.host.mkdir(parent)
       if ((await this.host.stat(destination)) !== null) {
         if (info.type === 'file' && (await this.host.sameObject?.(from, destination))) {
           await this.host.flush(destination)
@@ -225,13 +227,15 @@ export class ConditionalFiles {
     const h = this.host,
       root = h.root + '/active'
     if ((await h.stat(root)) === null) return
+    let failed: unknown
     for (const pointer of (await h.list(root)).files) {
-      const id = idOf(pointer.slice(root.length + 1).replace(/\.json$/, ''))
-      const folder = h.root + '/objects/' + id
-      const activeKey = h.root + '/' + id
+      const candidate = pointer.slice(root.length + 1).replace(/\.json$/, '')
+      const activeKey = h.root + '/' + candidate
       if (h.active.has(activeKey)) continue
       h.active.add(activeKey)
       try {
+        const id = idOf(candidate)
+        const folder = h.root + '/objects/' + id
         if ((await h.stat(pointer)) === null) continue
         if ((await h.stat(folder + '/complete')) !== null) {
           await this.archive(folder, id, true)
@@ -250,10 +254,15 @@ export class ConditionalFiles {
         await this.restore(folder + '/victim', intent.path)
         await this.archive(folder, id, false)
         h.changed([intent.path])
+      } catch (error) {
+        // Keep this pointer outstanding, but do not strand independent victims.
+        failed ??= error
+        console.debug('[abele-sync] conditional recovery remains pending', pointer, error)
       } finally {
         h.active.delete(activeKey)
       }
     }
+    if (failed) throw new EngineError('io', 'conditional recovery remains pending', failed)
   }
   async installed(receipt: string, path: string, sha: string): Promise<boolean> {
     const h = this.host
