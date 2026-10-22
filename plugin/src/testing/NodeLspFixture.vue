@@ -2,6 +2,14 @@
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
     <FileView :path="'sample.ts'" :text="text" mode="file" :code-target="target" :line="line" />
     <div v-if="destination" data-lsp-destination>{{ destination }}</div>
+    <FileView
+      v-if="destination.startsWith('node_modules/')"
+      data-lsp-dependency
+      path="node_modules/sample-types/index.d.ts"
+      :text="'/** Sample dependency documentation. */\n\nexport declare const sample: string'"
+      mode="file"
+      :line="3"
+    />
     <template #footer
       ><Button data-lsp-close :text="t('streamB.close.7d9eb7')" @click="emit('close')"
     /></template>
@@ -82,11 +90,11 @@ client.lsp.diagnostics = async (_root, _path, signal) => {
       }))
     : []
 }
-client.lsp.hover = async () => ({ text: 'const sample: string' })
+client.lsp.hover = async () => ({ text: 'const sample: string\nSample documentation.' })
 client.lsp.definition = async () => [
   {
-    path: 'sample.ts',
-    range: { start: { line: 0, character: 13 }, end: { line: 0, character: 19 } },
+    path: 'node_modules/sample-types/index.d.ts',
+    range: { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } },
   },
 ]
 client.lsp.references = async () => [

@@ -67,6 +67,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             phase = 'hover';
             p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y}));
             await until(() => document.querySelector('.cm-tooltip-hover'));
+            if (!document.querySelector('.cm-tooltip-hover').textContent.includes('Sample documentation.')) throw Error('Hover documentation missing');
             await shot('hover');
             const hoverBox = document.querySelector('.cm-tooltip-hover').getBoundingClientRect();
             const hoverBottom = document.elementFromPoint(hoverBox.left+hoverBox.width/2,hoverBox.bottom-3);
@@ -79,12 +80,15 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               const finger = new Touch({identifier:1,target:p.target,clientX:p.x,clientY:p.y,pageX:p.x+scrollX,pageY:p.y+scrollY});
               p.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,view:window,touches:[finger],targetTouches:[finger],changedTouches:[finger]}));
               await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Go to definition')));
+              if (![...document.querySelectorAll('.abele-lsp-menu-message')].some(e=>e.textContent.includes('Sample documentation.'))) throw Error('Long-press type documentation missing');
               p.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,view:window,touches:[],targetTouches:[],changedTouches:[finger]}));
               await shot('long-press');
               [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Go to definition')).closest('.menu-item').click();
             } else p.target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,metaKey:true,clientX:p.x,clientY:p.y}));
             phase = 'definition';
-            await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'sample.ts:1');
+            await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'node_modules/sample-types/index.d.ts:3');
+            await until(() => document.querySelector('[data-lsp-dependency] .cm-content')?.textContent.includes('export declare const sample'));
+            if (document.querySelector('[data-lsp-dependency] .cm-content').getAttribute('contenteditable') !== 'false') throw Error('Dependency definition is editable');
             await shot('definition');
             if (${mobile}) await wait(1100);
             phase = 'references';
