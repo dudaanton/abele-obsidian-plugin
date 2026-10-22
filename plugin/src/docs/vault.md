@@ -2202,7 +2202,9 @@ A place is a note with its coordinates in one property, written `lat, lon` — `
 map block accepts both `coordinates` and `location`. Five decimals is about a metre, which is
 as precise as anything here needs. Obsidian's map view reads the property; an `abele-map` block
 written into the note carries its own points and routes. Both are read when shown rather than
-cached anywhere.
+cached anywhere. A block point may also carry `icon`, an Obsidian Lucide icon name (with an
+optional `lucide-` prefix), or `mark`, one or two characters for a numbered or lettered stop.
+These are stored with the point; `color` sets its pin colour. Unknown icons use the plain pin.
 
 ## Diagrams
 

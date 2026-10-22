@@ -185,6 +185,16 @@ describe('places', () => {
     expect(text).toContain('km')
   })
 
+  it('pins each place with the glyph of what it is', async () => {
+    requestUrl.mockResolvedValue(overpassAnswer([node('Near Coffee', 56.9505, 24.1052)]))
+
+    const result = await execute(createPlacesTool(), { query: 'cafe', near: '56.9496, 24.1052' })
+
+    expect(result.details.map.points).toEqual([
+      expect.objectContaining({ label: 'Near Coffee', icon: 'coffee' }),
+    ])
+  })
+
   it('takes coordinates for the centre without going to look them up', async () => {
     requestUrl.mockResolvedValue(overpassAnswer([node('Near Coffee', 56.9505, 24.1052)]))
 
@@ -415,8 +425,8 @@ describe('route', () => {
       route: '_p~iF~ps|U_ulLnnqC',
       routePrecision: 6,
       points: [
-        { lat: 56.9496, lon: 24.1052 },
-        { lat: 56.951, lon: 24.194 },
+        { lat: 56.9496, lon: 24.1052, mark: 'A' },
+        { lat: 56.951, lon: 24.194, mark: 'B' },
       ],
     })
   })

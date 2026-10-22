@@ -717,6 +717,14 @@ export function setIcon(el: HTMLElement, icon: string): void {
   el.setAttribute('data-icon', icon)
 }
 
+/** One of Obsidian's icons as an element, or null for a name it does not have. */
+export function getIcon(icon: string): SVGSVGElement | null {
+  if (icon.includes('no-such')) return null
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('data-icon', icon)
+  return svg
+}
+
 /** The icons Obsidian can draw. A few real Lucide ones, enough for a picker to show a grid. */
 export function getIconIds(): string[] {
   return ['lucide-play', 'lucide-download', 'lucide-calendar', 'lucide-check']

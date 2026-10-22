@@ -857,8 +857,18 @@ points:
     label: Station
   - location: 56.946, 24.111
     label: Hotel
+    icon: bed
     color: "#e5484d"
+  - coordinates: 56.948, 24.106
+    label: Second stop
+    mark: 2
 ```
+
+A point can say what kind of place it is. `icon` names one of Obsidian's Lucide icons (`coffee`,
+`utensils`, `bed`, `landmark`, `train-front`, `trees`…) and draws it inside a round pin; `mark`
+puts one or two characters there instead, for a numbered or lettered stop. A point with neither
+is the small plain pin, and so is one whose icon Obsidian does not have. `places` already pins
+each result with the icon of its category, and `route` letters its stops A, B, C in order.
 
 `center` and `zoom` fix the view instead of fitting it to what is on the map, `style` takes a
 MapLibre style URL, and `interactive: false` makes a picture rather than something to explore.

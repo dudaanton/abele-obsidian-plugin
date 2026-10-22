@@ -70,9 +70,74 @@ function text(body: string, map?: MapBlock) {
   return { content: [{ type: 'text' as const, text: body }], details: map ? { map } : undefined }
 }
 
+/**
+ * The glyph a pin carries for what a place is, by its OSM value — so a map of cafés and
+ * pharmacies reads at a glance. A kind not listed keeps the plain pin.
+ */
+const KIND_ICONS: Record<string, string> = {
+  cafe: 'coffee',
+  restaurant: 'utensils',
+  fast_food: 'sandwich',
+  bar: 'wine',
+  pub: 'beer',
+  bakery: 'croissant',
+  supermarket: 'shopping-cart',
+  convenience: 'shopping-basket',
+  pharmacy: 'pill',
+  hospital: 'hospital',
+  doctors: 'stethoscope',
+  dentist: 'stethoscope',
+  veterinary: 'paw-print',
+  atm: 'banknote',
+  bank: 'landmark',
+  fuel: 'fuel',
+  charging_station: 'plug-zap',
+  parking: 'square-parking',
+  hotel: 'bed',
+  hostel: 'bed',
+  guest_house: 'bed',
+  museum: 'landmark',
+  gallery: 'frame',
+  attraction: 'star',
+  viewpoint: 'mountain',
+  park: 'trees',
+  playground: 'baby',
+  beach: 'umbrella',
+  fitness_centre: 'dumbbell',
+  swimming_pool: 'waves',
+  cinema: 'clapperboard',
+  theatre: 'drama',
+  library: 'library',
+  school: 'school',
+  kindergarten: 'baby',
+  university: 'graduation-cap',
+  post_office: 'mail',
+  police: 'shield',
+  toilets: 'toilet',
+  bus_stop: 'bus',
+  station: 'train-front',
+  aerodrome: 'plane',
+  place_of_worship: 'church',
+  hairdresser: 'scissors',
+  laundry: 'washing-machine',
+  bicycle: 'bike',
+  car_rental: 'car',
+}
+
+function iconFor(kind: string): string | undefined {
+  return KIND_ICONS[kind.split(':').pop() || '']
+}
+
 /** The pins for a list of places, in the order they were answered in. */
 function pinsFor(places: GeoPlace[]): MapBlock {
-  return { points: places.map((p) => ({ lat: p.lat, lon: p.lon, label: p.name })) }
+  return {
+    points: places.map((p) => ({ lat: p.lat, lon: p.lon, label: p.name, icon: iconFor(p.kind) })),
+  }
+}
+
+/** Stops on a route lettered in order, A to the end, as a person reads directions. */
+function stopMark(index: number): string {
+  return index < 26 ? String.fromCharCode(65 + index) : String(index + 1)
 }
 
 export function createGeocodeTool(): AgentTool {
@@ -331,7 +396,12 @@ export function createRouteTool(): AgentTool {
 
       const route = await findRoute(points, mode)
       return text(formatRoute(route, params.steps !== false), {
-        points: points.map((p) => ({ lat: p.lat, lon: p.lon, label: p.name })),
+        points: points.map((p, i) => ({
+          lat: p.lat,
+          lon: p.lon,
+          label: p.name,
+          mark: stopMark(i),
+        })),
         route: route.shape,
         routePrecision: route.shapePrecision,
       })

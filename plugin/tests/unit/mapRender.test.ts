@@ -165,6 +165,26 @@ describe('map controls', () => {
     expect(baseClick).not.toHaveBeenCalled()
     handle.destroy()
   })
+  it('draws a pin with a glyph or a mark as a badge, and a plain one as a pin', async () => {
+    await renderMap(document.createElement('div'), {
+      ...config,
+      points: [
+        { lat: 10, lon: 20 },
+        { lat: 11, lon: 21, icon: 'coffee' },
+        { lat: 12, lon: 22, mark: '2' },
+        { lat: 13, lon: 23, icon: 'no-such-glyph' },
+      ],
+    })
+    const [plain, glyph, mark, unknown] = maplibre.markers.map((m) => m.options.element)
+    expect(plain.className).toBe('abele-map__pin')
+    expect(glyph.classList.contains('mod-badge')).toBe(true)
+    expect(glyph.querySelector('svg')).not.toBeNull()
+    expect(mark.classList.contains('mod-badge')).toBe(true)
+    expect(mark.textContent).toBe('2')
+    // A glyph Obsidian cannot draw would leave an empty disc; the plain pin says more.
+    expect(unknown.className).toBe('abele-map__pin')
+  })
+
   it('keeps the scale away from expanded bottom attribution on a narrow map', async () => {
     await renderMap(document.createElement('div'), config)
     const scale = maplibre.controls.find((control) => control instanceof maplibre.ScaleControl)

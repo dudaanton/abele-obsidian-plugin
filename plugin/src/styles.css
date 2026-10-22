@@ -578,6 +578,27 @@ body.is-mobile .abele-comment-marker_pending::after {
   cursor: pointer;
 }
 
+/* A pin that says what it is: a disc with the glyph or the stop's mark, upright. */
+.abele-map__pin.mod-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  line-height: 1;
+}
+
+.abele-map__pin.mod-badge svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25px;
+}
+
 /*
  * A chat message kept in a note. In live preview Obsidian puts its own "edit this block" button
  * over the top right corner of any rendered block, on hover — where the card's delete icon is.

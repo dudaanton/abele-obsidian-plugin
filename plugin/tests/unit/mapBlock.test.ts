@@ -40,6 +40,21 @@ describe('reading a point', () => {
     })
   })
 
+  /** A pin says what kind of place it is: a glyph, or a number or letter for an order. */
+  it('reads what kind of pin a point is', () => {
+    expect(parsePoint({ coordinates: '56.9, 24.1', icon: 'coffee' })).toMatchObject({
+      icon: 'coffee',
+    })
+    expect(parsePoint({ coordinates: '56.9, 24.1', icon: 'lucide-bed' })).toMatchObject({
+      icon: 'bed',
+    })
+    expect(parsePoint({ coordinates: '56.9, 24.1', mark: 3 })).toMatchObject({ mark: '3' })
+    expect(parsePoint({ coordinates: '56.9, 24.1', mark: 'A' })).toMatchObject({ mark: 'A' })
+    // A mark is a badge, not a caption: anything longer belongs in the label.
+    expect(parsePoint({ coordinates: '56.9, 24.1', mark: 'Hotel' })?.mark).toBe('Ho')
+    expect(parsePoint({ coordinates: '56.9, 24.1', icon: '<svg>' })?.icon).toBeUndefined()
+  })
+
   it('refuses what is not a position', () => {
     expect(parsePoint('Riga')).toBeNull()
     expect(parsePoint('91, 24')).toBeNull()

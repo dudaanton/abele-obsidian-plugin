@@ -1,4 +1,5 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { getIcon } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { mapStyleUrl } from './mapStyles'
 import { formatLatLon, reverseGeocode } from '@/services/GeoService'
@@ -97,12 +98,28 @@ function accent(el: HTMLElement): string {
   return colour || '#e5484d'
 }
 
-/** A pin, in the shape the rest of the plugin's UI would draw it. */
-function markerElement(el: HTMLElement, colour: string): HTMLElement {
+/**
+ * A pin, in the shape the rest of the plugin's UI would draw it.
+ *
+ * A plain point is the small teardrop. A point that says what it is — a glyph, or a stop's
+ * number or letter — becomes a round badge carrying it, so a café, a hotel and the third stop
+ * read apart without opening each one. A glyph Obsidian does not have falls back to the
+ * teardrop rather than an empty disc.
+ */
+function markerElement(el: HTMLElement, point: MapPoint, colour: string): HTMLElement {
   const doc = el.ownerDocument || document
   const pin = doc.win.createDiv()
   pin.className = 'abele-map__pin'
   pin.style.backgroundColor = colour
+
+  const glyph = point.icon ? getIcon(point.icon) : null
+  if (glyph) {
+    pin.addClass('mod-badge')
+    pin.appendChild(glyph)
+  } else if (point.mark) {
+    pin.addClass('mod-badge')
+    pin.setText(point.mark)
+  }
   return pin
 }
 
@@ -138,7 +155,7 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
   }
 
   for (const point of config.points) {
-    const pin = markerElement(el, point.color || colour)
+    const pin = markerElement(el, point, point.color || colour)
     const marker = new maplibre.Marker({ element: pin })
       .setLngLat([point.lon, point.lat])
       .addTo(map)

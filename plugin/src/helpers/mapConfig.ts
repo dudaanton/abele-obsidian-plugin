@@ -15,6 +15,26 @@ export interface MapPoint {
   label?: string
   /** Any CSS colour. Left out, the marker takes the theme's accent. */
   color?: string
+  /** One of Obsidian's (Lucide) icons, drawn inside the pin: what kind of place it is. */
+  icon?: string
+  /** One or two characters inside the pin instead — a stop's number or letter. */
+  mark?: string
+}
+
+/** `coffee` or `lucide-coffee`; anything that is not an icon's name is dropped. */
+function iconName(input: unknown): string | undefined {
+  if (typeof input !== 'string') return undefined
+  const name = input
+    .trim()
+    .toLowerCase()
+    .replace(/^lucide-/, '')
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ? name : undefined
+}
+
+function markText(input: unknown): string | undefined {
+  if (typeof input !== 'string' && typeof input !== 'number') return undefined
+  const text = Array.from(String(input).trim()).slice(0, 2).join('')
+  return text || undefined
 }
 
 export interface MapLine {
@@ -68,6 +88,8 @@ export function parsePoint(input: unknown): MapPoint | null {
             ? row.name
             : undefined,
       color: typeof row.color === 'string' ? row.color : undefined,
+      icon: iconName(row.icon),
+      mark: markText(row.mark),
     }
   }
 
