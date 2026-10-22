@@ -198,6 +198,27 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
     expect(other.cwd).toBe(other.expectedCwd)
     expect(other.reused).toBe(true)
     expect(other.refused).toMatch(/off/i)
+    const refused = JSON.parse(
+      await evalLong(
+        `(async()=>{${setup}
+      const session=chats.getSession(window.__sampleCommandChat);
+      session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
+      const tool=session.getTools().find(t=>t.name==='node_command_run');
+      let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder'},undefined,{session})}catch(error){reason=error.message}
+      for(let i=0;i<100&&!document.querySelector('.abele-tool-approval');i++)await new Promise(r=>setTimeout(r,50));
+      const cards=[...document.querySelectorAll('.abele-tool-approval')];
+      return JSON.stringify({reason,cards:cards.length,text:cards[0]?.closest('.abele-node-manager-run').textContent});
+    })()`,
+        60000
+      )
+    ) as { reason: string; cards: number; text: string }
+    expect(refused.reason).toContain('cwd')
+    expect(refused.cards).toBe(1)
+    expect(refused.text).toContain('not submitted for execution')
+    columnShot(`${shots}/${onPhone() ? 'phone' : 'desktop'}-live-error.png`)
+    await evalLong(
+      `(async()=>{const card=document.querySelector('.abele-tool-approval');[...card.querySelectorAll('button')].find(b=>b.textContent.trim()==='Stop').click();for(let i=0;i<100&&card.isConnected;i++)await new Promise(r=>setTimeout(r,50));if(card.isConnected)throw Error('Local refusal did not stop')})()`
+    )
   } finally {
     await evalLong(
       `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun})()`
