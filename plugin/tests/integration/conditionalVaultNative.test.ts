@@ -9,6 +9,35 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it('makes a directory swapped at capture visible even when its public name is reused', async () => {
+  let injected = false
+  const { root, disk } = await setup({
+    rename: async (from: string, to: string) => {
+      if (!injected && from.endsWith('/sample.bin') && to.endsWith('/victim')) {
+        injected = true
+        await fs.unlink(from)
+        await fs.mkdir(from)
+        await fs.writeFile(join(from, 'note.md'), 'swapped notes')
+        await fs.rename(from, to)
+        await fs.writeFile(from, 'new occupant')
+      } else await fs.rename(from, to)
+    },
+  })
+  await fs.writeFile(join(root, 'sample.bin'), 'sample A')
+  await fs.utimes(join(root, 'sample.bin'), 1, 1)
+  expect(
+    await disk().conditionalFile({
+      path: 'sample.bin',
+      expected: { size: 8, mtime: 1000, sha: await sha256(new TextEncoder().encode('sample A')) },
+      effect: { kind: 'remove' },
+    })
+  ).toBe(false)
+  expect(injected).toBe(true)
+  const visible = (await fs.readdir(root)).find((name) => name.startsWith('sample.bin.recovered-'))
+  expect(visible).toBeDefined()
+  expect(await fs.readFile(join(root, visible!, 'note.md'), 'utf8')).toBe('swapped notes')
+  expect(await fs.readFile(join(root, 'sample.bin'), 'utf8')).toBe('new occupant')
+})
 it('retains changed victims in legacy completed records during recovery', async () => {
   const { root, disk } = await setup()
   const privateRoot = join(root, '.obsidian/plugins/abele/sync-conditional')
@@ -62,7 +91,7 @@ it.each([false, true])(
     await disk().recoverConditionalFiles()
     expect(await fs.readFile(join(root, 'b-file'), 'utf8')).toBe('retained file')
     const directory = occupied
-      ? join(root, privateRoot, 'objects/a-directory/victim')
+      ? join(root, 'a-directory.recovered-a-directory')
       : join(root, 'a-directory')
     expect(await fs.readFile(join(directory, 'note.md'), 'utf8')).toBe('retained note')
     if (occupied) expect(await fs.readFile(join(root, 'a-directory'), 'utf8')).toBe('new occupant')
@@ -72,12 +101,12 @@ it.each([false, true])(
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true })
 })
-async function setup() {
+async function setup(overrides: Partial<typeof fs> = {}) {
   const root = await fs.mkdtemp(join(tmpdir(), 'sample-conditional-'))
   roots.push(root)
   const app = buildFakeVault([])
   Object.assign(app.vault.adapter, {
-    fsPromises: fs,
+    fsPromises: { ...fs, ...overrides },
     getFullPath: (path: string) => join(root, path),
     mkdir: async (path: string) => {
       await fs.mkdir(join(root, path), { recursive: true })

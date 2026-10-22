@@ -73,19 +73,36 @@ export class ConditionalFiles {
     const info = await this.host.stat(from)
     if (!info) return
     this.host.check()
-    if (info.type === 'file') {
-      await this.install(from, to)
+    const id = from.split('/').at(-2)
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const destination =
+        attempt === 0 ? to : to + '.recovered-' + (attempt === 1 ? id : crypto.randomUUID())
+      this.host.validate(destination)
+      if ((await this.host.stat(destination)) !== null) {
+        if (info.type === 'file' && (await this.host.sameObject?.(from, destination))) {
+          await this.host.flush(destination)
+          return
+        }
+        continue
+      }
+      if (info.type === 'file') {
+        if (!(await this.install(from, destination))) continue
+      } else {
+        if (!this.host.restoreDirectory)
+          throw new EngineError('io', 'directory restoration unavailable')
+        try {
+          await this.host.restoreDirectory(from, destination)
+        } catch (error) {
+          if ((await this.host.stat(destination)) !== null) continue
+          throw error
+        }
+        await this.host.flush(destination, true)
+        await this.host.flush(from, true)
+      }
+      this.host.changed([destination])
       return
     }
-    if ((await this.host.stat(to)) !== null || !this.host.restoreDirectory) return
-    try {
-      await this.host.restoreDirectory(from, to)
-    } catch (error) {
-      if ((await this.host.stat(to)) !== null) return
-      throw error
-    }
-    await this.host.flush(to, true)
-    await this.host.flush(from, true)
+    throw new EngineError('io', 'visible recovery destinations are occupied')
   }
   private async archive(_folder: string, id: string, successful: boolean) {
     const parent = this.host.root + (successful ? '/completed' : '/review')

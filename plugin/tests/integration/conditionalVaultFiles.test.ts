@@ -185,9 +185,9 @@ it.each([false, true])(
     const root = '.obsidian/plugins/abele/sync-conditional'
     expect((await app.vault.adapter.list(root + '/active')).files).toHaveLength(0)
     const objects = await app.vault.adapter.list(root + '/objects')
-    expect(
-      new Uint8Array(await app.vault.adapter.readBinary(objects.folders[0] + '/victim'))
-    ).toEqual(data('sample A'))
+    const id = objects.folders[0].split('/').at(-1)
+    const recovered = 'sample.bin.recovered-' + id
+    expect(new Uint8Array(await app.vault.adapter.readBinary(recovered))).toEqual(data('sample A'))
   }
 )
 
