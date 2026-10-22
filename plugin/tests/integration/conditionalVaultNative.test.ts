@@ -9,6 +9,42 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it('retains the private victim across a public atomic replacement at private unlink', async () => {
+  let replaced = false
+  const replace = async (root: string) => {
+    await fs.writeFile(join(root, 'replacement.md'), 'new public bytes')
+    await fs.rename(join(root, 'replacement.md'), join(root, 'sample.md'))
+    replaced = true
+  }
+  const { root, disk } = await setup({
+    unlink: async (path: string) => {
+      if (path.endsWith('/victim')) await replace(root)
+      await fs.unlink(path)
+    },
+  })
+  await captured(root, 'retain-record', 'sample.md')
+  await disk().recoverConditionalFiles()
+  if (!replaced) await replace(root)
+  expect(await fs.readFile(join(root, 'sample.md'), 'utf8')).toBe('new public bytes')
+  expect(await fs.readFile(join(root, '.obsidian/plugins/abele/sync-conditional/objects/retain-record/victim'), 'utf8')).toBe('recovered bytes')
+})
+async function assertNoVisibleAliases(root: string, path: string) {
+  const target = await fs.stat(join(root, path))
+  const aliases: string[] = []
+  const walk = async (folder: string) => {
+    for (const entry of await fs.readdir(join(root, folder), { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue
+      const candidate = folder ? folder + '/' + entry.name : entry.name
+      if (entry.isDirectory()) await walk(candidate)
+      else {
+        const info = await fs.stat(join(root, candidate))
+        if (info.dev === target.dev && info.ino === target.ino) aliases.push(candidate)
+      }
+    }
+  }
+  await walk('')
+  expect(aliases).toEqual([path])
+}
 it.each([false, true])(
   'does not publish another name after a post-link flush failure (collision=%s)',
   async (collision) => {
@@ -51,7 +87,7 @@ it.each([false, true])(
         recovered.push(name)
     expect(recovered).toHaveLength(1)
     const sibling = recovered[0]
-    expect((await fs.stat(join(root, 'folder', sibling))).nlink).toBe(1)
+    await assertNoVisibleAliases(root, 'folder/' + sibling)
   }
 )
 it.each(['inspect', 'mkdir', 'install'])(
@@ -124,7 +160,7 @@ it.each(recoveryCases)(
     }
     await walk('')
     expect(visible).toHaveLength(1)
-    expect((await fs.stat(join(root, visible[0]))).nlink).toBe(1)
+    await assertNoVisibleAliases(root, visible[0])
     expect(visible[0].endsWith('.md')).toBe(true)
     expect(visible[0]).not.toContain('\uFFFD')
     for (const part of visible[0].split('/'))

@@ -39,7 +39,6 @@ export interface ConditionalFileHost {
   restoreDirectory?(from: string, to: string): Promise<void>
   flush(path: string, parentsOnly?: boolean): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
-  retireRestored?(from: string, to: string): Promise<void>
   stage(
     id: string
   ): Promise<{ path: string; target: string; sealed: { size: number; sha: string } }>
@@ -90,7 +89,6 @@ export class ConditionalFiles {
     const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
     const finish = async (destination: string) => {
       await this.host.flush(destination)
-      await this.host.retireRestored?.(from, destination)
       this.host.changed([destination])
     }
     // A durable plan also finds a randomly named publication after restart.
@@ -177,7 +175,6 @@ export class ConditionalFiles {
             }))
           )
             continue
-          await this.host.retireRestored?.(from, destination)
         } else {
           if (!this.host.restoreDirectory)
             throw new EngineError('io', 'directory restoration unavailable')
