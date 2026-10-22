@@ -472,10 +472,7 @@ export class ChatTreeModel implements ChatTreeSource {
   newChat(folder: string): void {
     this.run(async () => {
       const id = await this.service.newTab()
-      if (id) {
-        await this.service.folders.move(id, folder)
-        await this.service.folders.reveal(id)
-      }
+      if (id && folder) await this.service.folders.move(id, folder)
     })
   }
   newFolder(parent: string, name: string): void {

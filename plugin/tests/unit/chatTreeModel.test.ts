@@ -176,6 +176,13 @@ it('puts a chat created inside a hidden folder first and reveals the folder', as
     old,
   ])
 })
+
+it('creates a top-level chat without requiring a folder catalog write', async () => {
+  const move = vi.spyOn(service.folders, 'move')
+  service.tree.newChat('')
+  await vi.waitFor(() => expect(service.tabOrder.value).toHaveLength(1))
+  expect(move).not.toHaveBeenCalled()
+})
 beforeEach(() => {
   useVault([])
   AgentRegistry.destroy()
