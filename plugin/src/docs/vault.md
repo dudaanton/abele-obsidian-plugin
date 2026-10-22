@@ -3111,8 +3111,13 @@ Conditional filesystem effects retain disk-backed operation records and displace
 the connection's private `conditional` area, or the plugin's device-local `sync-conditional`
 directory for an unscoped adapter. `active` holds outstanding recovery pointers, `objects`
 holds immutable intents, publication bytes and captured victims, and `completed`/`review`
-hold retired pointers. Recovery restores a captured file only into an unoccupied name;
-it never deletes retained victims. Completed history is not walked during startup recovery.
+hold retired pointers. Recovery restores a captured file into an unoccupied original name
+or a visible conflict copy, preserving recognised extensions and physical parent spelling.
+Each attempted file restoration records its destination under `restore-plans` before
+publication. After publication, a durability failure keeps the operation active: recovery
+retries that destination rather than publishing another alias. On native storage, only after
+the public file is durable and shares the captured inode does recovery remove its private
+link. Unrestored victims remain retained. Completed history is not walked during startup recovery.
 Native publication receipts verify the retained inode and current content. A mobile adapter
 without stable object identity conservatively refuses to certify installation after restart;
 content equality or a sealed stage alone is never publication evidence.

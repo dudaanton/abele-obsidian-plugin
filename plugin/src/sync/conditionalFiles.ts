@@ -39,6 +39,7 @@ export interface ConditionalFileHost {
   restoreDirectory?(from: string, to: string): Promise<void>
   flush(path: string, parentsOnly?: boolean): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
+  retireRestored?(from: string, to: string): Promise<void>
   stage(
     id: string
   ): Promise<{ path: string; target: string; sealed: { size: number; sha: string } }>
@@ -60,12 +61,23 @@ export class ConditionalFiles {
     await this.host.create(path, new TextEncoder().encode(JSON.stringify(value)), 0)
     await this.host.flush(path)
   }
-  private async install(from: string, to: string): Promise<boolean> {
+  private async install(
+    from: string,
+    to: string,
+    published?: (value: boolean) => void
+  ): Promise<boolean> {
+    published?.(true) // Treat a lost acknowledgement as possibly published until disproved.
     try {
       await this.host.install(from, to)
     } catch (error) {
-      if ((await this.host.stat(to)) !== null) return false
-      throw error
+      if ((await this.host.stat(to)) === null) {
+        published?.(false)
+        throw error
+      }
+      if (!(await this.host.sameObject?.(from, to))) {
+        published?.(false)
+        return false
+      }
     }
     await this.host.flush(to)
     return true
@@ -75,6 +87,27 @@ export class ConditionalFiles {
     if (!info) return
     this.host.check()
     const id = from.split('/').at(-2)
+    const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
+    const finish = async (destination: string) => {
+      await this.host.flush(destination)
+      await this.host.retireRestored?.(from, destination)
+      this.host.changed([destination])
+    }
+    // A durable plan also finds a randomly named publication after restart.
+    if (info.type === 'file' && this.host.sameObject && (await this.host.stat(plans))) {
+      for (const plan of (await this.host.list(plans)).files) {
+        const destination = JSON.parse(new TextDecoder().decode(await this.host.read(plan)))
+          .destination as string
+        this.host.validate(destination, true)
+        if (
+          (await this.host.stat(destination)) &&
+          (await this.host.sameObject(from, destination))
+        ) {
+          await finish(destination)
+          return
+        }
+      }
+    }
     let rootFallback = false
     const parents = to.split('/').slice(0, -1)
     try {
@@ -95,6 +128,7 @@ export class ConditionalFiles {
     for (let attempt = 0; attempt < 16; attempt++) {
       if (attempt >= 8) rootFallback = true
       this.host.check()
+      let published = false
       try {
         const file = to.slice(to.lastIndexOf('/') + 1),
           dot = file.lastIndexOf('.')
@@ -128,18 +162,28 @@ export class ConditionalFiles {
         if (parent) await this.host.mkdir(parent)
         if ((await this.host.stat(destination)) !== null) {
           if (info.type === 'file' && (await this.host.sameObject?.(from, destination))) {
-            await this.host.flush(destination)
+            published = true
+            await finish(destination)
             return
           }
           continue
         }
         if (info.type === 'file') {
-          if (!(await this.install(from, destination))) continue
+          await this.host.mkdir(plans)
+          await this.record(plans + '/' + crypto.randomUUID() + '.json', { destination })
+          if (
+            !(await this.install(from, destination, (value) => {
+              published = value
+            }))
+          )
+            continue
+          await this.host.retireRestored?.(from, destination)
         } else {
           if (!this.host.restoreDirectory)
             throw new EngineError('io', 'directory restoration unavailable')
           try {
             await this.host.restoreDirectory(from, destination)
+            published = true
           } catch (error) {
             if ((await this.host.stat(destination)) !== null) continue
             throw error
@@ -151,7 +195,7 @@ export class ConditionalFiles {
         return
       } catch (error) {
         this.host.check()
-        if (rootFallback) throw error
+        if (published || rootFallback) throw error
         console.debug('[abele-sync] sibling restoration failed; restoring at vault root', error)
         rootFallback = true
       }

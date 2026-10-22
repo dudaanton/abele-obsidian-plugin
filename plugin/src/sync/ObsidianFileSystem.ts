@@ -724,6 +724,15 @@ export class ObsidianFileSystem implements FileSystem {
         await this.native.syncPath(path, parentsOnly)
       },
       ...(this.native?.sameObject ? { sameObject: (a, b) => this.native.sameObject(a, b) } : {}),
+      retireRestored: async (from, to) => {
+        if (!this.native) return // Adapter rename already consumed the private source.
+        if (!this.native.sameObject || !(await this.native.sameObject(from, to)))
+          throw new EngineError('io', 'restored file identity changed; private copy retained')
+        // Only the operation-owned private name is removed, after the public name is durable.
+        await this.disk.remove(from)
+        if (!this.native.syncPath) throw new EngineError('io', 'native durability is unavailable')
+        await this.native.syncPath(from, true)
+      },
       stage: async (id) => {
         const entry = this.journal.entries().find((one) => one.temp === id && one.streaming?.sealed)
         if (!entry || entry.backup || entry.retiredGeneration)

@@ -9,6 +9,51 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it.each([false, true])(
+  'does not publish another name after a post-link flush failure (collision=%s)',
+  async (collision) => {
+    let published = false,
+      failed = false
+    const { root, disk } = await setup({
+      link: async (from: string, to: string) => {
+        await fs.link(from, to)
+        if (to.endsWith('.md')) published = true
+      },
+      open: async (path: string, flags: string) => {
+        const handle = await fs.open(path, flags)
+        const sync = handle.sync.bind(handle)
+        handle.sync = async () => {
+          if (published && !failed && path.endsWith('.md')) {
+            failed = true
+            throw new Error('one-shot flush failure after publication')
+          }
+          await sync()
+        }
+        return handle
+      },
+    })
+    await fs.mkdir(join(root, 'folder'))
+    await fs.writeFile(join(root, 'folder/sample.md'), 'public occupant')
+    if (collision)
+      await fs.writeFile(
+        join(root, 'folder/sample (Conflicted copy restored flush-record).md'),
+        'sibling occupant'
+      )
+    await captured(root, 'flush-record', 'folder/sample.md')
+    await expect(disk().recoverConditionalFiles()).rejects.toThrow()
+    expect(failed).toBe(true)
+    await disk().recoverConditionalFiles()
+    const names = (await fs.readdir(root)).filter((name) => name.endsWith('.md'))
+    expect(names).toEqual([])
+    const recovered: string[] = []
+    for (const name of await fs.readdir(join(root, 'folder')))
+      if ((await fs.readFile(join(root, 'folder', name), 'utf8')) === 'recovered bytes')
+        recovered.push(name)
+    expect(recovered).toHaveLength(1)
+    const sibling = recovered[0]
+    expect((await fs.stat(join(root, 'folder', sibling))).nlink).toBe(1)
+  }
+)
 it.each(['inspect', 'mkdir', 'install'])(
   'falls back visibly after an unexpected %s error',
   async (boundary) => {
@@ -79,6 +124,7 @@ it.each(recoveryCases)(
     }
     await walk('')
     expect(visible).toHaveLength(1)
+    expect((await fs.stat(join(root, visible[0]))).nlink).toBe(1)
     expect(visible[0].endsWith('.md')).toBe(true)
     expect(visible[0]).not.toContain('\uFFFD')
     for (const part of visible[0].split('/'))

@@ -10,6 +10,12 @@ function desktopAdapter(app: ReturnType<typeof buildFakeVault>) {
   // Model hard links' preservation of the source timestamps (the generic fake copies bytes).
   const native = Reflect.get(app.vault.adapter, 'fsPromises')
   const link = native.link.bind(native)
+  const aliases = new Map<string, number>()
+  const lstat = native.lstat.bind(native)
+  native.stat = async (path: string) => {
+    const info = await lstat(path)
+    return { ...info, ino: aliases.get(path) ?? info.ino }
+  }
   native.utimes = async (full: string, _atime: number, mtime: number) => {
     const path = full.slice('/vault/'.length)
     await app.vault.adapter.writeBinary(path, await app.vault.adapter.readBinary(path), {
@@ -17,8 +23,10 @@ function desktopAdapter(app: ReturnType<typeof buildFakeVault>) {
     })
   }
   native.link = async (from: string, to: string) => {
+    const identity = await native.stat(from)
     const info = await app.vault.adapter.stat(from.slice('/vault/'.length))
     await link(from, to)
+    aliases.set(to, identity.ino)
     const path = to.slice('/vault/'.length)
     await app.vault.adapter.writeBinary(path, await app.vault.adapter.readBinary(path), {
       mtime: info.mtime,
