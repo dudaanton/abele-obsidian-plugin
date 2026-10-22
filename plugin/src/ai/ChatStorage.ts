@@ -1058,8 +1058,10 @@ export class ChatStorage {
     return !same || seen !== entry.mtime || seenSize !== entry.size
   }
 
-  async renameChat(file: TFile, newTitle: string): Promise<TFile | null> {
+  async renameChat(file: TFile, newTitle: string, manual = false): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
+    if (manual && !AbeleConfig.getInstance().ai.chatFolder.split('/').at(-1)?.includes('{{name}}'))
+      return null
     const oldPath = file.path
     const proposed = this.resolveChatPath(newTitle)
     const prefix = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/') + 1) : ''
@@ -1071,7 +1073,9 @@ export class ChatStorage {
     const folder = newPath.substring(0, newPath.lastIndexOf('/'))
     if (folder) await this.ensureFolder(folder)
 
-    const availablePath = await getAvailablePath(newPath)
+    const availablePath = manual
+      ? await getAvailablePath(newPath, oldPath, 'space')
+      : await getAvailablePath(newPath)
     await app.fileManager.renameFile(file, availablePath)
 
     // Update history entry

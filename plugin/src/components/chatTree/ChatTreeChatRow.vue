@@ -5,15 +5,19 @@
     class="abele-chat-tree__chat"
     :class="{ 'abele-chat-tree__chat_closed': !chat.open }"
     :text="chat.title"
+    :renaming="renaming"
     :icon="chat.nested ? KIND_ICON[chat.nested] : undefined"
     :label="label"
     :active="chat.id === source.activeId.value"
     :collapsible="!!kids.length"
     :collapsed="folded"
     fold-apart
-    :draggable="!phone && (!chat.nested || chat.nested === 'node')"
+    :draggable="!renaming && !phone && (!chat.nested || chat.nested === 'node')"
     :data-chat="chat.id"
     @click="choose"
+    @rename="source.rename(chat.id, $event)"
+    @rename-cancel="source.cancelRename?.()"
+    @keydown.f2.prevent.stop="source.rename(chat.id)"
     @toggle="folded = !folded"
     @contextmenu.prevent.stop="menu"
     @dragstart.stop="dragged = chat.id"
@@ -90,6 +94,11 @@ const emit = defineEmits<{ chose: [] }>()
 
 const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)
+const renaming = computed(
+  () =>
+    source.value.renaming?.value?.kind === 'chat' &&
+    source.value.renaming.value.id === props.chat.id
+)
 const phone = Platform.isPhone
 
 /** Closed descendants stay with their parent; search still respects the archive toggle. */

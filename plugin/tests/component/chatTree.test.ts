@@ -9,6 +9,32 @@ import ChatToolModes from '@/components/ChatToolModes.vue'
 import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
+it('renames chats and folders in the same row editor, including F2 and empty cancellation', async () => {
+  Object.assign(source, { renaming: shallowRef(null) })
+  source.cancelRename = () => {
+    source.renaming!.value = null
+  }
+  source.rename = vi.fn((id: string, name?: string) => {
+    source.renaming!.value = name === undefined ? { kind: 'chat', id } : null
+  })
+  source.renameFolder = vi.fn((id: string, name?: string) => {
+    source.renaming!.value = name === undefined ? { kind: 'folder', id } : null
+  })
+  source.root.value.push({ kind: 'folder', name: 'Collection', path: 'Collection', children: [] })
+  const view = show()
+  await view.get('[data-chat="sample"] > .tree-item-self').trigger('keydown', { key: 'F2' })
+  const editor = view.get('[data-chat="sample"] [contenteditable]')
+  expect(view.find('[data-chat="sample"] time').exists()).toBe(false)
+  editor.element.textContent = 'Chosen name'
+  await editor.trigger('keydown', { key: 'Enter' })
+  expect(source.rename).toHaveBeenLastCalledWith('sample', 'Chosen name')
+  await view.get('[data-path="Collection"] > .tree-item-self').trigger('keydown', { key: 'F2' })
+  const folderEditor = view.get('[data-path="Collection"] [contenteditable]')
+  folderEditor.element.textContent = '   '
+  await folderEditor.trigger('blur')
+  expect(source.renameFolder).toHaveBeenCalledTimes(1)
+  expect(view.find('[contenteditable]').exists()).toBe(false)
+})
 it.each([
   [false, false, 'Hide folder'],
   [false, true, 'Hide folder and close its chats'],

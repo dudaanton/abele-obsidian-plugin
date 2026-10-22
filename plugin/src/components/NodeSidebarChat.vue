@@ -3,6 +3,7 @@
        and the node's levers, which the node panel's model knows. -->
   <NodeChatView
     :presenter="presenter"
+    :rename-in-tree="renameInTree"
     v-bind="placeProps"
     :open-node-resource="openResource"
     @new-chat="emit('new-chat')"
@@ -21,6 +22,8 @@
 <script setup lang="ts">
 import { nodeErrorNotice } from '@/node/errorNotice'
 import { t } from '@/i18n'
+import { useChatTreeSource } from '@/chats/chatTree'
+import { ChatService } from '@/ai/ChatService'
 import { Platform } from 'obsidian'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
@@ -34,6 +37,11 @@ import { nodeChatPlace, openNodeChatResource } from '@/node/nodeChatPlace'
 import type { AgentChoice } from '@/node/providers'
 
 const props = defineProps<{ presenter: NodeChatPresenter }>()
+const treeSource = useChatTreeSource()
+const renameInTree = () => {
+  treeSource.value?.rename(props.presenter.id)
+  ChatService.getInstance().treeRequest.value++
+}
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
 const phone = Platform.isPhone
 const nodeLabel = computed(() => {

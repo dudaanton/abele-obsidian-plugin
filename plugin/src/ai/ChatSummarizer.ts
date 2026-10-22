@@ -21,6 +21,7 @@ import { isReplyCorrection } from './replyAnnotations'
 export interface SummarizerHost {
   messages: Ref<ChatMessage[]>
   chatTitle: Ref<string>
+  manualTitle?: Ref<boolean>
   currentChatFile: ShallowRef<TFile | null>
   isGeneratingTitle: Ref<boolean>
   isCompacting: Ref<boolean>
@@ -100,6 +101,7 @@ export class ChatSummarizer {
    * never surface as a chat error or interrupt what the user is doing.
    */
   async generateTitle(): Promise<void> {
+    if (this.host.manualTitle?.value) return
     this.host.isGeneratingTitle.value = true
     try {
       const title = await generateChatTitle(
@@ -109,7 +111,7 @@ export class ChatSummarizer {
         this.host.toolDefs()
       )
 
-      if (!title || title === this.host.chatTitle.value) return
+      if (this.host.manualTitle?.value || !title || title === this.host.chatTitle.value) return
 
       this.host.chatTitle.value = title
 

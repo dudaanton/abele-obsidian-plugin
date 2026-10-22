@@ -60,8 +60,8 @@ import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ChatTreeRows from './ChatTreeRows.vue'
-import { chatsOf, useChatTreeSource, type ChatTreeEntry } from '@/chats/chatTree'
-import { dragged, foldsOf, matches, revealSelection } from './chatTreeView'
+import { chatsOf, folderPathOf, useChatTreeSource, type ChatTreeEntry } from '@/chats/chatTree'
+import { dragged, foldsOf, matches, revealCurrentChat, revealSelection } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -71,6 +71,26 @@ const query = ref('')
 const withClosed = ref(false)
 const folded = foldsOf()
 const flip = (path: string) => (folded.has(path) ? folded.delete(path) : folded.add(path))
+watch(
+  () => source.value.renaming?.value,
+  (target) => {
+    if (!target) return
+    query.value = ''
+    if (target.kind === 'chat') {
+      const chat = chatsOf(source.value.root.value).find((chat) => chat.id === target.id)
+      if (
+        !chat?.open ||
+        folderPathOf(source.value.root.value, target.id).some((folder) => folder.hidden)
+      )
+        withClosed.value = true
+      revealCurrentChat(source.value.root.value, target.id, folded)
+    } else {
+      const parts = target.id.split('/')
+      parts.forEach((_, index) => folded.delete(parts.slice(0, index + 1).join('/')))
+    }
+  },
+  { immediate: true }
+)
 const visibleEntries = (entries: ChatTreeEntry[]): ChatTreeEntry[] =>
   entries.flatMap((entry) =>
     entry.kind === 'folder'
@@ -111,6 +131,7 @@ watch(
 )
 /** Down from the field steps onto the first row, as the history's list does. */
 const navigate = (e: KeyboardEvent) => {
+  if ((e.target as HTMLElement).matches('[contenteditable]')) return
   if (
     (e.target as HTMLElement).matches('input, textarea') &&
     !['ArrowDown', 'ArrowUp'].includes(e.key)

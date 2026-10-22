@@ -48,10 +48,16 @@
         'abele-chat-tree__folder_hidden': folder.hidden,
       }"
       :text="folder.name"
+      :renaming="
+        source.renaming?.value?.kind === 'folder' && source.renaming.value.id === folder.path
+      "
       :data-path="folder.path"
       collapsible
       :collapsed="!searching && folded.has(folder.path)"
       @click="flip(folder.path)"
+      @rename="source.renameFolder(folder.path, $event)"
+      @rename-cancel="source.cancelRename?.()"
+      @keydown.f2.prevent.stop="source.renameFolder(folder.path)"
       @contextmenu.prevent="folderMenu($event, folder)"
       @dragover.prevent="dropOn = folder.path"
       @dragleave="dropOn === folder.path && (dropOn = null)"
@@ -156,7 +162,7 @@ import {
   type ChatTreeFolder,
 } from '@/chats/chatTree'
 import { dragged, matches } from './chatTreeView'
-import { confirmDialog, promptDialog } from '../obsidian/dialogs'
+import { confirmDialog } from '../obsidian/dialogs'
 
 const props = defineProps<{
   entries: ChatTreeEntry[]
@@ -258,10 +264,7 @@ function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
     i
       .setTitle(t('chatTree.rename'))
       .setIcon('pencil')
-      .onClick(async () => {
-        const name = await promptDialog({ title: t('chatTree.renameFolder'), value: folder.name })
-        if (name) source.value.renameFolder(folder.path, name)
-      })
+      .onClick(() => source.value.renameFolder(folder.path))
   )
   menu.addSeparator()
   menu.addItem((i) =>

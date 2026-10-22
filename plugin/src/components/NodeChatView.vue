@@ -377,6 +377,7 @@ const props = withDefaults(
     worktree?: CopySummary
     folder?: string
     canSwitchWorktree?: boolean
+    renameInTree?: () => void
     canSwitchNative?: boolean
     currentTarget?: PathTarget
     switches?: NodeChatSwitch[]
@@ -386,6 +387,7 @@ const props = withDefaults(
     worktree: undefined,
     folder: undefined,
     canSwitchWorktree: false,
+    renameInTree: undefined,
     canSwitchNative: false,
     currentTarget: undefined,
     switches: () => [],
@@ -457,7 +459,8 @@ const chooseAgent = () => {
   for (const choice of agentChoices(props.presenter.providerReports?.value ?? [])) {
     const current = choice.provider === provider && (choice.agent ?? '') === agent
     const blocked =
-      !choice.unavailable && !!choice.permissionNote &&
+      !choice.unavailable &&
+      !!choice.permissionNote &&
       nodeAgentOwnerMode(props.presenter.reference.nodeId, choice.provider) !== 'allow-all'
     menu.addItem((i) => {
       i.setTitle(choice.label).setChecked(current).setDisabled(!!choice.unavailable)
@@ -696,7 +699,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
     i
       .setTitle(t('streamB.rename.6fa62b'))
       .setIcon('pencil')
-      .onClick(() => (renameOpen.value = true))
+      .onClick(() => (props.renameInTree ? props.renameInTree() : (renameOpen.value = true)))
   )
   if (live.value)
     menu.addItem((i) =>
@@ -983,5 +986,4 @@ watch(
   color: var(--color-orange);
   vertical-align: middle;
 }
-
 </style>

@@ -6,10 +6,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { DEFAULT_AI_SETTINGS, type ToolMode, type ChatMessage } from '@/ai/types'
-import { parseChat, parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
+import { parseChat, parseChatMetadata, serializeMetadata, serializeChat } from '@/ai/ChatLog'
 import { firstQuestion } from '@/ai/chatText'
 import { CommentService } from '@/ai/CommentService'
-import { promptDialog } from '@/components/obsidian/dialogs'
 import { t } from '@/i18n'
 import { NodeService } from '@/node/NodeService'
 import type { ChatReference } from '@/ai/ChatPresentationSession'
@@ -23,6 +22,10 @@ import {
 
 /** A presentation adapter over live sessions and the vault's existing history index. */
 export class ChatTreeModel implements ChatTreeSource {
+  readonly renaming = ref<{ kind: 'chat' | 'folder'; id: string } | null>(null)
+  cancelRename(): void {
+    this.renaming.value = null
+  }
   readonly activeId
   readonly selectionVersion = ref(0)
   readonly accessFolder = ref<string | null>(null)
@@ -478,7 +481,13 @@ export class ChatTreeModel implements ChatTreeSource {
   newFolder(parent: string, name: string): void {
     this.run(() => this.service.folders.create(parent, name))
   }
-  renameFolder(path: string, name: string): void {
+  renameFolder(path: string, name?: string): void {
+    if (name === undefined) {
+      this.renaming.value = { kind: 'folder', id: path }
+      return
+    }
+    this.cancelRename()
+    if (!name.trim()) return
     this.run(() => this.service.folders.rename(path, name))
   }
   deleteFolder(path: string): void {
@@ -521,15 +530,15 @@ export class ChatTreeModel implements ChatTreeSource {
       throw new Error(t('chatTree.missing'))
     return nodes.connection(reference.registrationId).client
   }
-  rename(id: string): void {
+  rename(id: string, name?: string): void {
+    if (name === undefined) {
+      this.renaming.value = { kind: 'chat', id }
+      return
+    }
+    this.cancelRename()
+    const title = name.trim()
+    if (!title) return
     this.run(async () => {
-      const chat = chatsOf(this.root.value).find((entry) => entry.id === id)
-      const title = await promptDialog({
-        title: t('chatTree.renameChat'),
-        value: chat?.title,
-        submitText: t('node.files.renameAction'),
-      })
-      if (!title) return
       const node = this.nodeReference(id)
       if (node) {
         await this.nodeClient(node).renameSession(node.sessionId, title)
@@ -545,20 +554,29 @@ export class ChatTreeModel implements ChatTreeSource {
       }
       const session = this.service.getSession(id)
       if (session) {
+        session.manualTitle.value = true
         session.chatTitle.value = title
         await session.save()
+        if (session.currentChatFile.value)
+          await ChatStorage.getInstance().renameChat(session.currentChatFile.value, title, true)
         this.service.saveTabs()
       } else {
         const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(id)
         if (file instanceof TFile) {
           await ChatStorage.getInstance().transformDiscussion(file, (content) => {
-            const metadata = parseChatMetadata(content)
-            return metadata ? content + serializeMetadata({ ...metadata, title }) : content
+            const parsed = parseChat(content)
+            if (!parsed.metadata) return content
+            const metadata = { ...parsed.metadata, title, manualTitle: true }
+            return parsed.version === 1
+              ? serializeChat({ ...parsed, metadata })
+              : content + serializeMetadata(metadata)
           })
+          await ChatStorage.getInstance().renameChat(file, title, true)
           const config = AbeleConfig.getInstance()
           const entry = config.ai.chatHistory?.find((entry) => entry.path === file.path)
           if (entry) {
             entry.title = title
+            GlobalStore.getInstance().chatLinksVersion.value++
             await config.saveChatIndex()
           }
         }

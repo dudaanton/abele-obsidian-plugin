@@ -300,6 +300,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private branchSelectionRevision = 0
   private userMessageCount = 0
   public readonly chatTitle = ref('')
+  public readonly manualTitle = ref(false)
   private chatCreated = ''
   private readonly chatIdentityRef = ref<string>()
   private get chatIdentity(): string | undefined {
@@ -3412,6 +3413,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.committedAttention = {}
     this.userMessageCount = 0
     this.chatTitle.value = ''
+    this.manualTitle.value = false
     this.chatCreated = ''
     this.chatIdentity = undefined
     this.commentIdentity = undefined
@@ -4228,6 +4230,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       modelId: this.activeModelId.value || config.activeModelId,
       created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
       title: this.chatTitle.value || this.fallbackTitle(),
+      manualTitle: this.manualTitle.value || undefined,
       pendingToolCalls:
         this.pendingToolCalls.value.length > 0
           ? this.pendingToolCalls.value.map((tc) => ({
@@ -4521,6 +4524,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.currentChatFile.value = file
     this.chatService.folders.noteFile(file, result.metadata?.treeFolderId)
     this.chatTitle.value = result.metadata?.title || ''
+    this.manualTitle.value = result.metadata?.manualTitle === true
     this.chatCreated = result.metadata?.created || ''
     this.chatIdentity = result.metadata?.chatId
     this.delegationWakeStopped = false

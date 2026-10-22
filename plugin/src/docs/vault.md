@@ -3031,6 +3031,9 @@ their `.abchat` metadata. Moving a node chat does not move files or sessions on 
 Each folder can carry a `hidden` flag in that catalog. Hiding closes its open chats without
 deleting them or moving files. The archive toggle reveals hidden folders; reopening a chat
 reveals its folder and hidden ancestors again.
+Manually renamed chats persist `manualTitle: true` beside their title, so background title
+generation cannot replace it after reopening or syncing. With a title-based filename template,
+renaming keeps the transcript in its directory and chooses a free name with ` 2`, ` 3`, etc.
 
 Node file tabs keep their target, path, selected lines and optional matched-word column and
 length in the device's workspace layout. These navigation hints do not copy file contents.

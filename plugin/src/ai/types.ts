@@ -833,6 +833,8 @@ export interface MessageComment {
 }
 
 export interface ChatMetadata {
+  /** A chosen title is never replaced by background title generation. */
+  manualTitle?: boolean
   /** Logical tree placement, independent of the transcript path. Null means root. */
   treeFolderId?: string | null
   type: 'abele-chat'

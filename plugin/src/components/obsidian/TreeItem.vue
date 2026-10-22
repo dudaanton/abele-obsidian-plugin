@@ -12,7 +12,12 @@
   >
     <div
       class="tree-item-self abele-tree-item__self"
-      :class="{ 'is-clickable': !inert, 'mod-collapsible': collapsible, 'is-active': active }"
+      :class="{
+        'is-being-renamed': renaming,
+        'is-clickable': !inert,
+        'mod-collapsible': collapsible,
+        'is-active': active,
+      }"
       :role="flush ? undefined : 'treeitem'"
       :tabindex="inert ? undefined : 0"
       :aria-expanded="collapsible ? !collapsed : undefined"
@@ -35,18 +40,35 @@
         <span v-if="$slots.leading" class="abele-tree-item__leading" @click.stop
           ><slot name="leading"
         /></span>
-        <span ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
-        <span v-if="where" class="abele-tree-item__named">
+        <span v-show="!renaming" ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
+        <span v-if="where && !renaming" class="abele-tree-item__named">
           <span class="abele-tree-item__text">{{ text }}</span>
           <!-- Cut from its start, so the folder nearest the file is what stays. -->
           <span class="abele-tree-item__where"
             ><bdi dir="ltr">{{ where }}</bdi></span
           >
         </span>
+        <span
+          v-else-if="renaming"
+          ref="editor"
+          class="abele-tree-item__text"
+          contenteditable="plaintext-only"
+          role="textbox"
+          :aria-label="label || text"
+          spellcheck="false"
+          @click.stop
+          @keydown.enter.prevent.stop="finishRename"
+          @keydown.esc.prevent.stop="cancelRename"
+          @blur="finishRename"
+          >{{ renameText }}</span
+        >
         <span v-else class="abele-tree-item__text">{{ text }}</span>
-        <span v-if="note" class="abele-tree-item__note">{{ note }}</span>
+        <span v-if="note && !renaming" class="abele-tree-item__note">{{ note }}</span>
       </div>
-      <div v-if="flair || $slots.actions || $slots.end" class="tree-item-flair-outer">
+      <div
+        v-if="!renaming && (flair || $slots.actions || $slots.end)"
+        class="tree-item-flair-outer"
+      >
         <span v-if="flair" class="tree-item-flair abele-tree-item__flair">{{ flair }}</span>
         <!-- Codes that are always there: a state dot, a kind of change. -->
         <span v-if="$slots.end" class="abele-tree-item__end"><slot name="end" /></span>
@@ -61,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { setIcon } from 'obsidian'
 
 /**
@@ -109,6 +131,7 @@ const props = withDefaults(
      * place: the arrow then sends `toggle` instead of the row's `click`.
      */
     foldApart?: boolean
+    renaming?: boolean
   }>(),
   {
     icon: undefined,
@@ -134,7 +157,42 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
   /** The arrow was clicked, on a row that folds apart from its click. */
   toggle: []
+  rename: [name: string]
+  'rename-cancel': []
 }>()
+const editor = ref<HTMLElement>()
+const renameText = ref(props.text)
+let renameFinished = false
+const finishRename = () => {
+  if (renameFinished) return
+  renameFinished = true
+  const name = editor.value?.textContent?.trim()
+  if (name) emit('rename', name)
+  else emit('rename-cancel')
+}
+const cancelRename = () => {
+  if (renameFinished) return
+  renameFinished = true
+  emit('rename-cancel')
+}
+watch(
+  () => props.renaming,
+  async (editing) => {
+    if (!editing) return
+    renameFinished = false
+    renameText.value = props.text
+    await nextTick()
+    editor.value?.focus()
+    if (editor.value) {
+      const range = document.createRange()
+      range.selectNodeContents(editor.value)
+      const selection = document.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  },
+  { immediate: true }
+)
 
 /** Enter on a focused row is a click, with the keys the keyboard event held. */
 const keyClick = (e: KeyboardEvent) =>
@@ -150,7 +208,7 @@ const fromAction = (e: Event) =>
   e.target instanceof Element && !!e.target.closest('.abele-tree-item__actions')
 
 const rowClick = (e: MouseEvent) => {
-  if (!inert.value && !fromAction(e)) emit('click', e)
+  if (!props.renaming && !inert.value && !fromAction(e)) emit('click', e)
 }
 
 /** Enter navigates only from the row itself; on a child control it stays that control's. */
@@ -175,6 +233,11 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 </script>
 
 <style lang="scss">
+.abele-tree-item__text[contenteditable] {
+  flex: 1 1 auto;
+  min-width: 0;
+  outline: none;
+}
 // A row that is only read does not answer the pointer: Obsidian brightens a row's flair on hover,
 // which on a row with nothing to press reads as an invitation to click.
 .abele-tree-item_plain > .abele-tree-item__self:hover .tree-item-flair,

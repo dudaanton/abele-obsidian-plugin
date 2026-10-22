@@ -132,6 +132,45 @@ it('reads conversation time from a legacy index entry instead of a move timestam
 })
 
 let service: ChatService
+it('adds a space-number suffix on a title clash and retains the manual title on reopening', async () => {
+  const app = GlobalStore.getInstance().app
+  const id = service.createTab()
+  const session = service.getSession(id)!
+  await session.createInDirectory(service.folders.path(''))
+  const file = session.currentChatFile.value!
+  const parent = file.path.slice(0, file.path.lastIndexOf('/'))
+  await app.vault.create(`${parent}/Chosen name.abchat`, await app.vault.read(file))
+  service.tree.rename(id)
+  expect(service.tree.renaming.value).toEqual({ kind: 'chat', id })
+  service.tree.rename(id, 'Chosen name')
+  await vi.waitFor(() => expect(file.path).toBe(`${parent}/Chosen name 2.abchat`))
+  await service.closeTab(id)
+  await service.openChatFile(file)
+  expect(service.getSessionByFile(file.path)?.manualTitle.value).toBe(true)
+  expect(service.getSessionByFile(file.path)?.chatTitle.value).toBe('Chosen name')
+})
+
+it('renames a closed legacy chat and respects a filename template without a title', async () => {
+  const path = 'AI/Chats/fixed.abchat'
+  const app = useVault([
+    {
+      path,
+      content: serializeChat({
+        metadata: { type: 'abele-chat', title: 'Old', created: '', providerId: '', modelId: '' },
+        messages: [],
+        internalMessages: [],
+      }),
+    },
+  ])
+  AbeleConfig.getInstance().ai.chatFolder = 'AI/Chats/fixed'
+  service.tree.rename(path, 'Chosen name')
+  const file = app.vault.getAbstractFileByPath(path) as TFile
+  await vi.waitFor(async () =>
+    expect(parseChat(await app.vault.read(file)).metadata?.title).toBe('Chosen name')
+  )
+  expect(parseChat(await app.vault.read(file)).metadata?.manualTitle).toBe(true)
+  expect(file.path).toBe(path)
+})
 it('places fresh empty chats ahead of older chats and folders', async () => {
   await service.folders.create('', 'Collection')
   const old = service.createTab()
@@ -267,15 +306,13 @@ it('renames and deletes a closed node session through its own node while retaini
     nodes: ref([{ id: reference.registrationId, expectedNodeId: reference.nodeId }]),
     connection: () => ({ client }),
   } as never)
-  const prompt = vi.spyOn(dialogs, 'promptDialog').mockResolvedValue('Renamed sample')
   try {
     service.closedNodeChats.value = [{ reference, at: 100 }]
-    service.tree.rename(id)
+    service.tree.rename(id, 'Renamed sample')
     await vi.waitFor(() =>
       expect(service.closedNodeChats.value[0].reference.title).toBe('Renamed sample')
     )
     expect(client.renameSession).toHaveBeenCalledWith(reference.sessionId, 'Renamed sample')
-    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ submitText: 'Rename' }))
     await service.folders.create('', 'Projects')
     await service.folders.move(id, 'Projects')
     expect(service.folders.folderOf(id)).toBe('Projects')
@@ -284,7 +321,6 @@ it('renames and deletes a closed node session through its own node while retaini
     expect(client.deleteSession).toHaveBeenCalledWith(reference.sessionId)
     await vi.waitFor(() => expect(service.folders.membershipOf(id)).toBeUndefined())
   } finally {
-    prompt.mockRestore()
     nodes.mockRestore()
   }
 })
@@ -424,16 +460,14 @@ it('files open and closed node chats by stable reference without creating transc
   expect(service.folders.folderOf(nodeId)).toBe('')
 })
 
-it('renames a chat title from the tree without renaming its transcript', async () => {
-  const dialogs = await import('@/components/obsidian/dialogs')
-  const prompt = vi.spyOn(dialogs, 'promptDialog').mockResolvedValue('Renamed sample')
+it('renames a chat and its title-based transcript while retaining its manual title', async () => {
   const id = service.createTab()
   const session = service.getSession(id)!
   await session.createInDirectory(service.folders.path(''))
   const path = session.currentChatFile.value!.path
   const rename = vi.spyOn(GlobalStore.getInstance().app.fileManager, 'renameFile')
   try {
-    service.tree.rename(id)
+    service.tree.rename(id, 'Renamed sample')
     await vi.waitFor(() => expect(session.chatTitle.value).toBe('Renamed sample'))
     await vi.waitFor(async () =>
       expect(
@@ -442,10 +476,15 @@ it('renames a chat title from the tree without renaming its transcript', async (
       ).toBe('Renamed sample')
     )
     await session.saveForRelease()
-    expect(session.currentChatFile.value!.path).toBe(path)
-    expect(rename).not.toHaveBeenCalled()
+    expect(session.currentChatFile.value!.path).toBe(
+      path.slice(0, path.lastIndexOf('/') + 1) + 'Renamed sample.abchat'
+    )
+    expect(rename).toHaveBeenCalled()
+    expect(
+      parseChat(await GlobalStore.getInstance().app.vault.read(session.currentChatFile.value!))
+        .metadata?.manualTitle
+    ).toBe(true)
   } finally {
-    prompt.mockRestore()
     rename.mockRestore()
   }
 })

@@ -110,6 +110,19 @@ beforeEach(() => {
 })
 
 describe('ChatSummarizer.generateTitle', () => {
+  it('never replaces a manual title, including a rename during generation', async () => {
+    nextResponse = 'Automatic name'
+    const manualTitle = ref(false)
+    const { host } = buildHost({ manualTitle })
+    const pending = new ChatSummarizer(host).generateTitle()
+    host.chatTitle.value = 'Chosen name'
+    manualTitle.value = true
+    await pending
+    expect(host.chatTitle.value).toBe('Chosen name')
+    const count = calls.length
+    await new ChatSummarizer(host).generateTitle()
+    expect(calls).toHaveLength(count)
+  })
   it('writes the generated title back to the chat', async () => {
     nextResponse = 'Refactoring the parser'
     const { host } = buildHost()

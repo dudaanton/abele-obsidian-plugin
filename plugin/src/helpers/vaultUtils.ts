@@ -142,7 +142,8 @@ const MAX_FILENAME_LENGTH = 250 // Using 250 for a safer margin.
  */
 export async function getAvailablePath(
   originalPath: string,
-  suitablePath?: string
+  suitablePath?: string,
+  suffixStyle: 'parenthesized' | 'space' = 'parenthesized'
 ): Promise<string> {
   const { vault } = GlobalStore.getInstance().app
 
@@ -187,7 +188,7 @@ export async function getAvailablePath(
 
   // 5. Truncate the baseName to ensure it will fit with a suffix like " (999)".
   // We reserve space for the suffix and potential extension.
-  const suffixPlaceholder = ' (999)'
+  const suffixPlaceholder = suffixStyle === 'space' ? ' 999' : ' (999)'
   const maxBaseNameLength = MAX_FILENAME_LENGTH - extension.length - suffixPlaceholder.length
 
   if (baseName.length > maxBaseNameLength) {
@@ -195,9 +196,10 @@ export async function getAvailablePath(
   }
 
   // 6. Loop to find the first available path with a numeric suffix.
-  let counter = 1
+  let counter = suffixStyle === 'space' ? 2 : 1
   while (true) {
-    const newFileName = `${baseName} (${counter})${extension}`
+    const suffix = suffixStyle === 'space' ? ` ${counter}` : ` (${counter})`
+    const newFileName = `${baseName}${suffix}${extension}`
     const newPath = parentDir ? `${parentDir}/${newFileName}` : newFileName
 
     // If a suitablePath is provided and matches the newPath, return it immediately

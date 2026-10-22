@@ -46,7 +46,9 @@ export class LocalChatPresenter implements ChatPresentationSession {
   constructor(readonly session: ChatSession) {
     this.label = computed(
       () =>
-        displayChatTitle(session.chatTitle.value, session.messages.value) ||
+        (session.manualTitle.value
+          ? session.chatTitle.value
+          : displayChatTitle(session.chatTitle.value, session.messages.value)) ||
         t('streamB.newChat.db1838')
     )
   }

@@ -646,6 +646,8 @@ const folderNodeScopeOwner = computed(() =>
     : chatService.folders.nodeScopeOwner(folderAccessPath.value)
 )
 const localTreeSource: ChatTreeSource = {
+  renaming: tree.renaming,
+  cancelRename: () => tree.cancelRename(),
   refresh: () => tree.refresh(),
   root: tree.root,
   activeId: tree.activeId,
@@ -661,7 +663,7 @@ const localTreeSource: ChatTreeSource = {
   folderAccess: (path) => {
     folderAccessPath.value = path
   },
-  rename: (id) => tree.rename(id),
+  rename: (id, name) => tree.rename(id, name),
   delete: (id) => tree.delete(id),
 }
 provide(CHAT_TREE_SOURCE, shallowRef<ChatTreeSource | null>(localTreeSource))
@@ -2275,6 +2277,7 @@ const onNewChatMenu = () => onNewTab()
 const phone = Platform.isPhone
 const inDrawer = ref(false)
 const headerOverflowActions = computed<HeaderAction[]>(() => [
+  { id: 'rename', label: t('chatTree.rename'), icon: 'pencil' },
   { id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' },
   ...(compactHeader.value
     ? [
@@ -2365,6 +2368,12 @@ const agentsNeedYou = computed(() => {
 })
 const onHeaderOverflowAction = (id: string) => {
   switch (id) {
+    case 'rename':
+      if (chatService.activeTabId.value) {
+        tree.rename(chatService.activeTabId.value)
+        chatService.treeRequest.value++
+      }
+      break
     case 'back':
       void backToNote()
       break
