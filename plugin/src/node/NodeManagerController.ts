@@ -30,6 +30,7 @@ export const ManagerOperationSchema = z
     run: z.custom<ManagerRun>((value) => ManagerRunSchema.safeParse(value).success).optional(),
     observedSeq: z.number().optional(),
     notified: z.boolean().optional(),
+    justification: z.string().max(200).optional(),
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
@@ -102,7 +103,8 @@ export class NodeManagerController {
     method: ManagerMethod,
     raw: unknown,
     operation: string,
-    legacyAlias?: string
+    legacyAlias?: string,
+    justification?: string
   ): Promise<ManagerRun> {
     if (!this.client.connected) throw new Error('disconnected')
     if (!operation || operation.length > 128) throw new Error('invalid_params: operation_id')
@@ -163,7 +165,12 @@ export class NodeManagerController {
         throw new Error(
           'idempotency_mismatch: This retry ID is already used by another operation. Check the previous result before starting a new action with a new operation_id.'
         )
-      ;(s.managerOperations ??= {})[operation] = previous ?? { parent, method, params }
+      ;(s.managerOperations ??= {})[operation] = previous ?? {
+        parent,
+        method,
+        params,
+        justification,
+      }
       if (!s.results[operation] && !s.outbox.some((e) => e.operation_id === operation))
         s.outbox.push({ operation_id: operation, method, params })
     })
@@ -304,6 +311,7 @@ export class NodeManagerController {
         return [
           {
             operation,
+            justification: entry.justification,
             title:
               typeof entry.params.command === 'string'
                 ? entry.params.command

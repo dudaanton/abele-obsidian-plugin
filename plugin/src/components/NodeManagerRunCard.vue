@@ -4,6 +4,9 @@
       <StatusDot :tone="stateTone" :label="stateLabel" :pulse="card.run.state === 'running'" />
       <span>{{ stateLabel }}</span>
     </p>
+    <p v-if="card.justification && card.run.state !== 'pending_approval'">
+      {{ card.justification }}
+    </p>
     <AiToolApproval
       v-for="prompt in card.prompts"
       :key="prompt.prompt_id"
@@ -104,7 +107,7 @@ const message = (prompt: Prompt) =>
     role: 'tool-call',
     content: '',
     toolName: prompt.tool_name,
-    toolParams: prompt.input,
+    toolParams: { ...prompt.input, justification: props.card.justification },
   }) as ChatMessage
 </script>
 <style scoped>

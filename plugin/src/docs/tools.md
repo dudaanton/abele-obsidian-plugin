@@ -1349,6 +1349,11 @@ chat's node access. GitHub links continue to address their original revisions.
 
 ### Manager command and integration tools
 
+`node_command_run` and `node_git_integrate` require `justification`: one short sentence
+in the chat language (1–200 characters) explaining to the owner what the agent wants
+to do and why. It is display-only prose, shown above the exact command on the approval
+card and on the completed run. It never changes the command or grants permission.
+
 `node_command_run` runs exactly one `argv` or `command` in a registered `project_id` or
 `worktree_id`. Pass `node`, an existing `session_id`, and a stable `operation_id`.
 The `workspace_id` returned by delegation is also accepted and resolved to its worktree.

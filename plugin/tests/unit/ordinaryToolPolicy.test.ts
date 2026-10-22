@@ -1,6 +1,20 @@
 import { expect, it } from 'vitest'
 import { ordinaryNeedsApproval } from '@/ai/ordinaryToolPolicy'
 
+it.fails('BUG: asks before a stale node session can fail before node approval', () => {
+  const policy = {
+    permissionMode: 'confirm-all' as const,
+    getToolMode: () => 'ask' as const,
+    outOfScopePath: () => null,
+    toolModes: {},
+    bookAnchored: false,
+    skillNeedsApproval: () => false,
+  }
+  expect(ordinaryNeedsApproval(policy, 'node_command_run', { session_id: 'missing-session' })).toBe(
+    true
+  )
+})
+
 it('leaves command approval to the exact node card while keeping other actions gated', () => {
   const policy = {
     permissionMode: 'confirm-all' as const,
@@ -10,8 +24,12 @@ it('leaves command approval to the exact node card while keeping other actions g
     bookAnchored: false,
     skillNeedsApproval: () => false,
   }
-  expect(ordinaryNeedsApproval(policy, 'node_command_run')).toBe(false)
-  expect(ordinaryNeedsApproval(policy, 'node_git_integrate')).toBe(false)
+  expect(ordinaryNeedsApproval(policy, 'node_command_run', { session_id: 'sample-session' })).toBe(
+    false
+  )
+  expect(
+    ordinaryNeedsApproval(policy, 'node_git_integrate', { session_id: 'sample-session' })
+  ).toBe(false)
   for (const name of ['node_git_status', 'node_git_diff', 'node_git_log'])
     expect(ordinaryNeedsApproval(policy, name)).toBe(false)
   expect(ordinaryNeedsApproval(policy, 'node_delegate')).toBe(true)
@@ -35,4 +53,21 @@ it('exports core read/write policy without treating a missing feature mode as co
       path: 'elsewhere.md',
     })
   ).toBe(true)
+})
+
+it('asks before a session-less command can fail before node approval', () => {
+  const policy = {
+    permissionMode: 'confirm-all' as const,
+    getToolMode: () => 'ask' as const,
+    outOfScopePath: () => null,
+    toolModes: {},
+    bookAnchored: false,
+    skillNeedsApproval: () => false,
+  }
+  expect(ordinaryNeedsApproval(policy, 'node_command_run', { worktree_id: 'sample-tree' })).toBe(
+    true
+  )
+  expect(
+    ordinaryNeedsApproval({ ...policy, permissionMode: 'allow-all' }, 'node_command_run')
+  ).toBe(false)
 })

@@ -9,8 +9,9 @@ import type { ChatSession } from '../ChatSession'
 import { NodeService } from '@/node/NodeService'
 import { resolveManagerTargets } from '@/node/managerTargets'
 import { nodeMutationKey } from './node/mutations'
+import { commandJustification } from '@/node/commandJustification'
 const id = z.string().min(1).max(128)
-const targets = z.looseObject({ node: id, session_id: id, operation_id: id.optional() })
+const targets = z.looseObject({ node: id, session_id: id.optional(), operation_id: id.optional() })
 export const NODE_COMMAND_TOOLS = [
   'node_command_run',
   'node_command_status',
@@ -64,10 +65,17 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         timeout_ms: { type: 'integer' },
         output_bytes: { type: 'integer' },
         rebase: { type: 'boolean' },
+        justification: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 200,
+          description:
+            'One short sentence in the chat language explaining to the owner what you want to do and why. Display-only; the exact command remains authoritative.',
+        },
       },
       required: [
         'node',
-        'session_id',
+        ...(name === 'node_command_status' || name === 'node_command_cancel' ? ['session_id'] : []),
         ...(name === 'node_command_status'
           ? ['run_id']
           : name === 'node_command_cancel'
@@ -81,6 +89,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
                   'expected_source_head',
                 ]
               : ['operation_id']),
+        ...(['node_command_run', 'node_git_integrate'].includes(name) ? ['justification'] : []),
       ],
     },
     execute: async (_call, raw, signal, context) => {
@@ -92,6 +101,11 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       const parentId = await parent.ensureDelegationParentId()
       permission()
       const { node, operation_id, ...input } = targets.parse(raw)
+      let justification: string | undefined
+      if (['node_command_run', 'node_git_integrate'].includes(name)) {
+        justification = commandJustification.parse(input.justification)
+        delete input.justification
+      }
       const service = NodeService.getInstance()
       const matches = service.nodes.value.filter((n) => n.id === node || n.expectedNodeId === node)
       if (matches.length !== 1) throw new Error('Choose an explicit node registration')
@@ -194,7 +208,8 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
               : 'command.v1.cancel',
           params,
           nodeMutationKey(parentId, name, operation_id, params),
-          operation_id
+          operation_id,
+          justification
         )
       }
       guard()

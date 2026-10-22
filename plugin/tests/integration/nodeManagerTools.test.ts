@@ -32,6 +32,7 @@ it('scopes model aliases to the chat, tool and exact intended action while prese
     project_id: 'sample-project',
     session_id: 'sample-session',
     argv: ['pwd'],
+    justification: 'Show the sample folder.',
     operation_id: 'save',
   }
   await tools('sample-chat-a')[0].execute('call-one', args)
@@ -41,6 +42,18 @@ it('scopes model aliases to the chat, tool and exact intended action while prese
   const ids = mutate.mock.calls.map((call) => (call as unknown[])[3])
   expect(ids[0]).toBe(ids[1])
   expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
+})
+it('requires justification in both command-like tool schemas', async () => {
+  const owner = {
+    getToolMode: () => 'auto',
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as unknown as ChatSession
+  for (const tool of createNodeManagerTools(owner).filter((tool) =>
+    ['node_command_run', 'node_git_integrate'].includes(tool.name)
+  )) {
+    expect(tool.parameters.required).toContain('justification')
+    await expect(tool.execute('sample-call', { node: 'sample-node' })).rejects.toThrow()
+  }
 })
 it('refuses disabled manager tools before contacting a node', async () => {
   const owner = { getToolMode: () => 'off' } as unknown as ChatSession
@@ -68,6 +81,7 @@ it('refuses every manager operation on an older node without sending a mutation'
       tool.execute('sample-call', {
         node: 'sample-node',
         session_id: 'sample-session',
+        justification: 'Check the sample project.',
         operation_id: 'sample-operation',
         run_id: 'sample-run',
       })
@@ -112,6 +126,7 @@ it('refuses a command for a project outside the chat node chips', async () => {
       session_id: 'sample-session',
       project_id: 'other-project',
       argv: ['pwd'],
+      justification: 'Check the sample project.',
       operation_id: 'sample-operation',
     })
   ).rejects.toThrow(/node chips/i)
@@ -156,6 +171,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
   const base = { node: 'sample-node', session_id: 'sample-session' }
   await tools[0].execute('sample-call', {
     ...base,
+    justification: 'Check the sample project.',
     operation_id: 'sample-operation',
     project_id: 'sample-project',
     argv: ['npm', 'test'],
@@ -169,12 +185,14 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
       project_id: 'sample-project',
       argv: ['npm', 'test'],
     }),
-    'sample-operation'
+    'sample-operation',
+    'Check the sample project.'
   )
   await tools[1].execute('sample-status', { ...base, run_id: 'sample-run' })
   expect(status).toHaveBeenCalledWith('sample-parent', 'sample-session', 'sample-run')
   await tools[3].execute('sample-integrate', {
     ...base,
+    justification: 'Check the sample project.',
     operation_id: 'sample-integration',
     worktree_id: 'sample-target',
     source_worktree_id: 'sample-source',
@@ -223,6 +241,7 @@ it('never enqueues execution after the parent stops while connecting', async () 
         session_id: 'sample-session',
         project_id: 'sample-project',
         command: 'pwd',
+        justification: 'Check the sample project.',
         operation_id: 'sample-operation',
       },
       signal.signal

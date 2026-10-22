@@ -5,7 +5,13 @@
   <RequestCard class="abele-tool-approval" waiting>
     <div class="abele-tool-approval__header">
       <Icon :icon="KIND_ICON[toolKind(message.toolName)]" size="xs" :interactive="false" />
-      <span class="abele-tool-approval__what">{{ headerText }}</span>
+      <span
+        class="abele-tool-approval__what"
+        :class="{ 'abele-tool-approval__justification': justification }"
+        :title="justification || undefined"
+        :data-command-justification="justification ? '' : undefined"
+        >{{ justification || headerText }}</span
+      >
       <Icon
         v-if="!nodePrompt"
         class="abele-tool-approval__more"
@@ -23,7 +29,28 @@
       <code>{{ message.toolName }}</code>
     </Disclosure>
 
-    <template v-if="message.toolName === 'send_message_to_chat'">
+    <template
+      v-if="
+        !nodePrompt && ['node_command_run', 'node_git_integrate'].includes(message.toolName ?? '')
+      "
+    >
+      <code data-manager-command>{{ exactCommand }}</code>
+      <MetaLine
+        :facts="[
+          {
+            key: 'folder',
+            label: t('node.manager.folder'),
+            value: String(
+              params.cwd || params.worktree_id || params.workspace_id || params.project_id || ''
+            ),
+          },
+        ]"
+      />
+      <Disclosure v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
+        <pre class="abele-tool-approval__code"><code>{{ visibleJson(params, 2) }}</code></pre>
+      </Disclosure>
+    </template>
+    <template v-else-if="message.toolName === 'send_message_to_chat'">
       <div class="abele-tool-approval__path">
         {{ letterTarget?.title || params.chat_id
         }}<span v-if="letterTarget?.folder"> · {{ letterTarget.folder }}</span>
@@ -563,6 +590,27 @@ watch(
 )
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const justification = computed(() => {
+  if (
+    !managerApproval.value &&
+    !['node_command_run', 'node_git_integrate'].includes(props.message.toolName ?? '')
+  )
+    return ''
+  const text = params.value.justification
+  return typeof text === 'string'
+    ? text
+        .slice(0, 200)
+        .replace(/[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    : ''
+})
+const exactCommand = computed(() =>
+  Array.isArray(params.value.argv)
+    ? params.value.argv.map((value) => visibleJson(value)).join(' ')
+    : visibleText(promptString(params.value.command)) ||
+      `${promptString(params.value.source_branch)} → ${promptString(params.value.target_branch)}`
+)
 const commitPreview = ref<Awaited<ReturnType<typeof nodeCommitPreview>> | null>(null)
 const commitPreviewError = ref('')
 const commitRefresh = ref(0)
@@ -1123,6 +1171,13 @@ const toggleEdit = () => {
 .abele-tool-approval__what {
   flex: 1 1 auto;
   min-width: 0;
+}
+.abele-tool-approval__justification {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: var(--font-normal);
 }
 
 .abele-tool-approval .abele-tool-approval__more {

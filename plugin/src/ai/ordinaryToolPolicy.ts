@@ -66,7 +66,12 @@ export function ordinaryNeedsApproval(
   if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove')
     return policy.permissionMode !== 'allow-all'
   // The node asks once with the resolved folder and exact command before execution.
-  if (toolName === 'node_command_run' || toolName === 'node_git_integrate') return false
+  if (toolName === 'node_command_run' || toolName === 'node_git_integrate')
+    return (
+      !args?.session_id &&
+      policy.permissionMode !== 'allow-all' &&
+      policy.getToolMode(toolName) !== 'auto'
+    )
   if (NODE_ACTION_TOOLS.includes(toolName))
     return (
       policy.permissionMode !== 'allow-all' &&

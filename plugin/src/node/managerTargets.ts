@@ -8,6 +8,10 @@ export async function resolveManagerTargets(
 ): Promise<Record<string, unknown>> {
   const params = { ...raw }
   if (!['command.v1.run', 'git.v1.integrate'].includes(method)) return params
+  if (typeof params.session_id !== 'string' || !params.session_id)
+    throw new Error(
+      'command_context_unavailable: This node command API requires an existing node session. The plugin has not established a command context for this chat. No command was submitted for execution.'
+    )
   for (const [alias, key] of [
     ['workspace_id', 'worktree_id'],
     ['source_workspace_id', 'source_worktree_id'],
