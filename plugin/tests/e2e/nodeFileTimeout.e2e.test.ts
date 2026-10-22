@@ -29,7 +29,7 @@ const probe = (device: string) =>
         return { path: 'sample.ts', text: 'export const sample = true', target: state.model.current.value };
       };
       const open = async () => {
-        leaf = app.workspace.getLeaf('tab');
+        leaf ??= app.workspace.getLeaf('tab');
         await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{...state.model.current.value},path:'sample.ts'}});
         await leaf.loadIfDeferred?.();
         await app.workspace.revealLeaf(leaf);
@@ -52,7 +52,7 @@ const probe = (device: string) =>
       retry.click();
       await until(() => pane.querySelector('.abele-file-view'));
       if (reads !== 2) return false;
-      leaf.detach(); leaf = undefined;
+      await leaf.setViewState({type:'empty',active:true});
       connection.state.value = 'disconnected';
       state.model.openFile = async () => { throw Error('offline'); };
       pane = await open();
