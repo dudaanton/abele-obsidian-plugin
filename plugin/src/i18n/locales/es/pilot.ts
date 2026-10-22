@@ -1,5 +1,19 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.error.gitTimeout':
+    'Git en el nodo no respondió a tiempo. El equipo que ejecuta el nodo puede estar ocupado.',
+  'node.error.operationTimeout':
+    'La operación en el nodo no terminó a tiempo. El equipo que ejecuta el nodo puede estar ocupado.',
+  'node.error.connectionTimeout':
+    'La conexión con el nodo no se completó a tiempo. El equipo que ejecuta el nodo puede estar ocupado.',
+  'node.error.controlTimeout':
+    'El control local del nodo no respondió a tiempo. El equipo que ejecuta el nodo puede estar ocupado.',
+  'node.error.tooOld': 'Esta versión del nodo no admite esta operación. Actualiza el nodo.',
+  'node.error.providerMissing':
+    'El proveedor necesario no está disponible en el nodo. Comprueba que esté instalado y configurado.',
+  'node.file.waitingForNode': 'El archivo se abrirá cuando el nodo vuelva a estar disponible.',
+  'node.file.retry': 'Reintentar',
+  'node.error.details': 'Detalles',
   'node.manager.failed': 'El comando falló',
   'node.manager.applied': 'Cambios aplicados',
   'node.manager.cancelled': 'Cancelado',
@@ -111,11 +125,11 @@ export const es = {
   'node.error.busy':
     'Este recurso está en uso. Espera a que termine la operación actual e inténtalo de nuevo.',
   'node.error.busyStage':
-    'No se pudieron preparar los archivos porque el árbol de trabajo está ocupado. Espere e inténtelo de nuevo. (resource_busy)',
+    'No se pudieron preparar los archivos porque el árbol de trabajo está ocupado. Espere e inténtelo de nuevo.',
   'node.error.busyChat':
-    'No se pudo iniciar un chat porque la carpeta o el árbol de trabajo está ocupado. Espere e inténtelo de nuevo. (resource_busy)',
+    'No se pudo iniciar un chat porque la carpeta o el árbol de trabajo está ocupado. Espere e inténtelo de nuevo.',
   'node.error.busyRead':
-    'Edición detenida. No se pudo actualizar el archivo porque el árbol de trabajo está ocupado. Actualícelo cuando termine la acción actual. (resource_busy)',
+    'Edición detenida. No se pudo actualizar el archivo porque el árbol de trabajo está ocupado. Actualícelo cuando termine la acción actual.',
   'node.error.workspaceDirty':
     'El árbol de trabajo tiene cambios sin confirmar. Confírmalos o descártalos antes de eliminarlo.',
   'node.codeLineUnavailable': 'Las líneas enlazadas ya no existen en este archivo.',

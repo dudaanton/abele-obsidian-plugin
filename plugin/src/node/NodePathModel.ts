@@ -1452,6 +1452,7 @@ export class NodePathFileModel {
   readonly error = ref('')
   private generation = 0
   private stage?: PathFileStage
+  private requested?: { path: string; stage?: PathFileStage }
   private stopRefresh: () => void
   private stopTarget?: () => void
   private disposed = false
@@ -1498,8 +1499,8 @@ export class NodePathFileModel {
       })
   }
   async refresh(): Promise<void> {
-    const doc = this.document.value
-    if (doc) await this.open(doc.path, this.stage, true, true)
+    const request = this.requested
+    if (request) await this.open(request.path, request.stage, true, true)
   }
   async open(
     path: string,
@@ -1508,6 +1509,7 @@ export class NodePathFileModel {
     preserveMode = false
   ): Promise<void> {
     const generation = ++this.generation
+    this.requested = { path, stage }
     this.busy.value = true
     try {
       const file = await this.pathModel.openFile(

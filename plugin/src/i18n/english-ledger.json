@@ -27160,7 +27160,7 @@
     ]
   },
   "node.error.busyStage": {
-    "englishHash": "df0097365470368638113a5e81efdc04d580479b9430e2794953ae3dccc77152",
+    "englishHash": "03342474aefabe3271caffe2af1ac86b3e2f2e4279940a07c5e4bafe60fab425",
     "context": "Staging files refused because the worktree is in use.",
     "reviewedLocales": [
       "ru",
@@ -27170,7 +27170,7 @@
     ]
   },
   "node.error.busyChat": {
-    "englishHash": "babf7138b3c991cb9292288efbdc35505965dd5c1020666f19a8e5f6443921c6",
+    "englishHash": "6a6bf11b19c8688178587abf51f1c3692988d142767be01493b4e529ae8fae4f",
     "context": "New node chat admission refused because its target is busy.",
     "reviewedLocales": [
       "ru",
@@ -27180,7 +27180,7 @@
     ]
   },
   "node.error.busyRead": {
-    "englishHash": "507bda5df9f351a228dcb750ca683227a8d6475b0faf27c900ae5f0b4c6f0df4",
+    "englishHash": "f6449ec3e3bb41f8061ffc07f45eb986bf56a45a5fec64c96fa06b0cf062e3b0",
     "context": "File refresh refused after editing has stopped.",
     "reviewedLocales": [
       "ru",
@@ -27592,6 +27592,96 @@
   "settings.metadata.checkDiagram": {
     "englishHash": "144bf5839573c2dbc10058699e5c81f50a5f4e5fc800a1caf3a19963f1bb11d5",
     "context": "Read-only diagram validation tool label in agent permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.gitTimeout": {
+    "englishHash": "d4c3a576e1986c409eb4553437ba78258e4d315a99135d7be1cef348b3275147",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.operationTimeout": {
+    "englishHash": "f3351286dc9c51ae1eb85fe49c8b92d30dcbe00b6e5bf9bd06e8b1aec2bc1e52",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.connectionTimeout": {
+    "englishHash": "d9842a21f6349986e758c3c5a9b9c116368ebc43cc07f6d55b66852d12171bd4",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.controlTimeout": {
+    "englishHash": "11e3b94c34f303e43cf24ee41a0d54dd3e449d5936095ad063974cfa49276aac",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.tooOld": {
+    "englishHash": "b53a6815dcc9d8a221f8a9ed72bbf373ed171a9ab511990d47712c74ce50e51f",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.providerMissing": {
+    "englishHash": "f091ce35b07aad8954179709b7cfdd27a6fa011d5303e57a8c2e40982da456c0",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.file.waitingForNode": {
+    "englishHash": "10f712246fcc81d3da785f93a82b0d42aaa571ba2ca523ef4611889ad91366a1",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.file.retry": {
+    "englishHash": "986142cbeebbf68ea11c46025af7a1c5cc7e491d5c2f50967cf92ab2759f924d",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.details": {
+    "englishHash": "ceea59a54bd2ffe678b85f75a15c5ffedb91331e399efb005c63e2aa6b6161a0",
+    "context": "Node operation failure or file recovery; diagnostic retained separately",
     "reviewedLocales": [
       "ru",
       "lv",

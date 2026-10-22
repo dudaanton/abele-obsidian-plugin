@@ -1,8 +1,25 @@
 <template>
   <div class="abele-node-main">
     <div v-if="model.busy.value" role="status">{{ t('streamB.loadingFile.e937ad') }}</div>
-    <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
-    <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
+    <EmptyState
+      v-if="offline && !model.document.value"
+      icon="file-clock"
+      :text="t('node.file.waitingForNode')"
+    />
+    <template v-else-if="model.error.value && !offline">
+      <EmptyState :icon="model.document.value ? undefined : 'file-warning'">
+        <NodeErrorText :error="model.error.value" />
+        <template v-if="nodeOperationTimedOut(model.error.value)" #action>
+          <Button :text="t('node.file.retry')" :disabled="model.busy.value" @click="retry" />
+        </template>
+      </EmptyState>
+      <Disclosure v-model="detailsOpen" :label="t('node.error.details')">
+        <code>{{ model.error.value }}</code>
+      </Disclosure>
+    </template>
+    <div v-if="offline && model.document.value" role="status">
+      {{ t('streamB.offlineRetainedVersion.ddf2fd') }}
+    </div>
     <template v-if="model.document.value">
       <div
         v-if="line && (endLine ?? line) > model.document.value.text.split('\n').length"
@@ -67,6 +84,10 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import EmptyState from '@/components/obsidian/EmptyState.vue'
+import Button from '@/components/obsidian/Button.vue'
+import Disclosure from '@/components/obsidian/Disclosure.vue'
+import { nodeOperationTimedOut } from '@/node/errorWords'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import type { NodePathFileModel } from '@/node/NodePathModel'
@@ -102,6 +123,21 @@ const props = withDefaults(
   }
 )
 const service = DebuggerService.instance
+const detailsOpen = ref(false)
+async function retry() {
+  try {
+    await props.model.refresh()
+  } catch (error) {
+    console.debug('[node] File retry failed', error)
+  }
+}
+watch(
+  () => props.offline,
+  (offline, wasOffline) => {
+    if (wasOffline && !offline && !props.model.document.value && !props.model.busy.value)
+      void retry()
+  }
+)
 provide(FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false

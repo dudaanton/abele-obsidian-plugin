@@ -17,6 +17,15 @@ const busyActions = ['node.error.busyStage', 'node.error.busyChat', 'node.error.
 
 // Exact protocol/client codes: new codes get the generic explanation until classified.
 const groups: readonly [NodeErrorKey, readonly string[]][] = [
+  ['node.error.gitTimeout', ['git_timeout']],
+  ['node.error.operationTimeout', ['timed_out']],
+  ['node.error.connectionTimeout', ['connection_timeout']],
+  ['node.error.controlTimeout', ['local_control_timeout']],
+  [
+    'node.error.tooOld',
+    ['unsupported_method', 'unsupported_file_metadata', 'pairing_upgrade_required'],
+  ],
+  ['node.error.providerMissing', ['provider_unavailable']],
   ['node.error.runMissing', ['trace_run_not_found']],
   ['node.error.staleResource', ['stale_resource']],
   ['node.error.folderUnavailable', ['repository_unavailable']],
@@ -35,6 +44,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'permission_denied',
       'access_denied',
       'file_not_writable',
+      'profile_refused',
     ],
   ],
   [
@@ -49,6 +59,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'different_node',
       'paired_route_different_node',
       'enrollment_changed',
+      'pairing_client_changed',
     ],
   ],
   [
@@ -68,9 +79,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'pairing_required',
       'pairing_failed',
       'pairing_cancelled',
-      'pairing_upgrade_required',
       'pairing_wait_timeout',
-      'pairing_client_changed',
       'invalid_pair_code',
       'invalid_pairing_configuration',
       'paired_profile_required',
@@ -104,11 +113,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'connection_closed',
       'connection_failed',
       'connection_lost',
-      'connection_timeout',
       'local_control_failed',
-      'local_control_timeout',
-      'timed_out',
-      'git_timeout',
       'enotfound',
       'econnrefused',
       'econnreset',
@@ -130,15 +135,11 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
   [
     'node.error.unavailable',
     [
-      'unsupported_method',
-      'unsupported_file_metadata',
       'unsupported_name',
-      'profile_refused',
       'invalid_local_runtime',
       'unprotected_local_runtime',
       'native_runtime_unavailable',
       'storage_unavailable',
-      'provider_unavailable',
     ],
   ],
 ]
@@ -154,7 +155,7 @@ export function nodeErrorWords(error: string | null | undefined): string {
   const diagnostic = error.trim().match(/^([a-z][a-z0-9_]+):\s*(\S[\s\S]*)$/)
   if (diagnostic) {
     const key = explanations.get(diagnostic[1])
-    return `${t(key ?? 'node.error.generic')} (${error.trim()})`
+    return t(key ?? 'node.error.generic')
   }
   const tokens = raw.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)
   const wrapped = raw.match(/[:·]\s*([a-z][a-z0-9_-]*)(?=$|[.!;,)\s])/)?.[1]
@@ -170,14 +171,18 @@ export function nodeErrorWords(error: string | null | undefined): string {
     .map((value) => explanations.get(value))
     .find(Boolean)
   if (key) return t(key)
-  const originalCode = code
-    .split(' ')
-    .map((value) => {
-      const start = raw.indexOf(value)
-      return error.trim().slice(start, start + value.length)
-    })
-    .join(' ')
-  return `${t('node.error.generic')} (${originalCode})`
+  return t('node.error.generic')
+}
+
+/** Only repeatable operation deadlines, never uncertain write outcomes. */
+export function nodeOperationTimedOut(error: string | null | undefined): boolean {
+  const words = nodeErrorWords(error)
+  return [
+    'node.error.gitTimeout',
+    'node.error.operationTimeout',
+    'node.error.connectionTimeout',
+    'node.error.controlTimeout',
+  ].some((key) => words === t(key as NodeErrorKey))
 }
 
 /** Keep protocol evidence visible on touch devices, where a title tooltip is unavailable. */

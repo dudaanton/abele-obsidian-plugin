@@ -64,6 +64,10 @@
       </template>
     </div>
     <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
+    <div v-if="message.error" class="abele-chat-msg__detail-row">
+      <span class="abele-chat-msg__detail-label">{{ t('node.error.details') }}</span>
+      <pre>{{ message.error }}</pre>
+    </div>
     <div v-if="message.usage" class="abele-chat-msg__detail-row">
       <span class="abele-chat-msg__detail-label">{{ t('streamB.tokens.a039df') }}</span>
       <span

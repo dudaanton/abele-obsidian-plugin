@@ -1,4 +1,18 @@
 export const en = {
+  'node.error.gitTimeout':
+    "Git on the node didn't answer in time. The computer running the node may be busy.",
+  'node.error.operationTimeout':
+    "The operation on the node didn't finish in time. The computer running the node may be busy.",
+  'node.error.connectionTimeout':
+    "The connection to the node didn't complete in time. The computer running the node may be busy.",
+  'node.error.controlTimeout':
+    "The local node control didn't answer in time. The computer running the node may be busy.",
+  'node.error.tooOld': 'This node version does not support this operation. Update the node.',
+  'node.error.providerMissing':
+    'The required provider is unavailable on the node. Check that it is installed and configured.',
+  'node.file.waitingForNode': 'The file will open when the node is back.',
+  'node.file.retry': 'Retry',
+  'node.error.details': 'Details',
   'node.manager.failed': 'Command failed',
   'node.manager.applied': 'Changes applied',
   'node.manager.cancelled': 'Cancelled',
@@ -97,11 +111,11 @@ export const en = {
   'node.error.busy':
     'This resource is in use. Wait for the current operation to finish and try again.',
   'node.error.busyStage':
-    'Could not stage the files because the worktree is busy. Wait for the current action to finish and try again. (resource_busy)',
+    'Could not stage the files because the worktree is busy. Wait for the current action to finish and try again.',
   'node.error.busyChat':
-    'Could not start a new chat because the folder or worktree is busy. Wait for the current action to finish and try again. (resource_busy)',
+    'Could not start a new chat because the folder or worktree is busy. Wait for the current action to finish and try again.',
   'node.error.busyRead':
-    'Editing stopped. The file could not be refreshed because the worktree is busy. Refresh when the current action finishes. (resource_busy)',
+    'Editing stopped. The file could not be refreshed because the worktree is busy. Refresh when the current action finishes.',
   'node.error.workspaceDirty':
     'The worktree has uncommitted changes. Commit or discard them before deleting it.',
   'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',

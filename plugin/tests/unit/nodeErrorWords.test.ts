@@ -1,10 +1,67 @@
 import { afterEach, expect, it } from 'vitest'
-import { nodeErrorWords, nodeActionError, nodeErrorDetails } from '@/node/errorWords'
+import {
+  nodeErrorWords,
+  nodeActionError,
+  nodeErrorDetails,
+  nodeOperationTimedOut,
+} from '@/node/errorWords'
 import { presentUiError } from '@/i18n/streamBErrors'
 import { initializeLocale } from '@/i18n'
 import { catalogs } from '@/i18n/catalogs'
 
 afterEach(() => initializeLocale('en'))
+
+it.each([
+  ['git_timeout', 'Git on the node'],
+  ['timed_out', 'operation on the node'],
+  ['connection_timeout', 'connection to the node'],
+  ['local_control_timeout', 'local node control'],
+])('describes the timed out operation for %s', (code, operation) => {
+  const words = nodeErrorWords(code)
+  expect(words).toContain(operation)
+  expect(words).not.toContain('disconnected')
+  expect(words).not.toContain(code)
+  expect(nodeErrorWords(`${code}: sample diagnostic`)).toBe(words)
+  expect(nodeErrorDetails(`${code}: sample diagnostic`)).toContain(`${code}: sample diagnostic`)
+})
+
+it.each([
+  ['offline', 'connection'],
+  ['outcome_unknown', 'unknownOutcome'],
+  ['unsupported_method', 'tooOld'],
+  ['trust_required', 'trust'],
+  ['profile_refused', 'access'],
+  ['pairing_client_changed', 'identity'],
+  ['provider_unavailable', 'providerMissing'],
+  ['resource_busy', 'busy'],
+  ['file_too_large', 'size'],
+  ['future_failure', 'generic'],
+  ['trace_run_not_found', 'runMissing'],
+  ['stale_resource', 'staleResource'],
+  ['repository_unavailable', 'folderUnavailable'],
+  ['tls', 'tls'],
+  ['host_not_accepted', 'route'],
+  ['pairing_required', 'pairing'],
+  ['output_limit', 'outputLimit'],
+  ['slow_consumer', 'backpressure'],
+  ['workspace_dirty', 'workspaceDirty'],
+  ['rate_limited', 'limit'],
+  ['debugger_program_not_found', 'debugger'],
+  ['stale_revision', 'stale'],
+  ['storage_unavailable', 'unavailable'],
+])('classifies %s without borrowing another state', (code, group) => {
+  expect(nodeErrorWords(code)).toBe(catalogs.en[`node.error.${group}` as keyof typeof catalogs.en])
+})
+
+it.each([
+  'outcome_unknown',
+  'delivery_unknown',
+  'idempotency_mismatch',
+  'offline',
+  'future_failure',
+])('never treats %s as a repeatable operation timeout', (code) => {
+  expect(nodeOperationTimedOut(code)).toBe(false)
+})
 
 it.each(['Stage', 'Chat', 'Read'] as const)(
   'keeps the busy %s action explanation through notice rendering',
@@ -12,7 +69,7 @@ it.each(['Stage', 'Chat', 'Read'] as const)(
     const failure = nodeActionError(new Error('resource_busy'), action)
     const words = presentUiError(failure)
     expect(nodeErrorDetails(words)).toBe(words)
-    expect(words).toContain('resource_busy')
+    expect(nodeErrorWords(words)).not.toContain('resource_busy')
     expect(words).not.toContain('delet')
   }
 )
@@ -47,7 +104,7 @@ it.each([
   ],
   [
     'future_refusal',
-    'The node could not complete the request. Check the details before trying again. (future_refusal)',
+    'The node could not complete the request. Check the details before trying again.',
   ],
 ])('explains %s', (code, expected) => {
   expect(nodeErrorWords(code)).toBe(expected)
@@ -83,7 +140,7 @@ it('does not describe a refused pairing address as an untrusted project', () => 
 })
 it('uses the generic fallback for unknown codes even when their names contain familiar words', () => {
   expect(nodeErrorWords('future_tls_failure')).toBe(
-    'The node could not complete the request. Check the details before trying again. (future_tls_failure)'
+    'The node could not complete the request. Check the details before trying again.'
   )
 })
 
@@ -110,7 +167,7 @@ it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
     ]) {
       const result = nodeErrorWords(code)
       if (code === 'future_refusal') {
-        expect(result).toBe(`${catalogs[locale]['node.error.generic']} (${code})`)
+        expect(result).toBe(catalogs[locale]['node.error.generic'])
         continue
       }
       expect(result).not.toContain(code)
@@ -124,11 +181,11 @@ it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
 )
 
 it.each(['FUTURE_FAILURE', 'future-code', 'futurecode', 'Not accepted: Future_Failure.'])(
-  'preserves the original spelling of an unknown code in %s',
+  'keeps unknown codes in details only for %s',
   (raw) => {
-    const code = raw === 'Not accepted: Future_Failure.' ? 'Future_Failure' : raw
+    expect(nodeErrorDetails(raw)).toContain(raw)
     expect(nodeErrorWords(raw)).toBe(
-      `The node could not complete the request. Check the details before trying again. (${code})`
+      `The node could not complete the request. Check the details before trying again.`
     )
   }
 )

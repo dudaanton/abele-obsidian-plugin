@@ -1,5 +1,20 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.error.gitTimeout':
+    'Git auf dem Knoten hat nicht rechtzeitig geantwortet. Der Computer des Knotens ist möglicherweise ausgelastet.',
+  'node.error.operationTimeout':
+    'Der Vorgang auf dem Knoten wurde nicht rechtzeitig abgeschlossen. Der Computer des Knotens ist möglicherweise ausgelastet.',
+  'node.error.connectionTimeout':
+    'Die Verbindung zum Knoten wurde nicht rechtzeitig hergestellt. Der Computer des Knotens ist möglicherweise ausgelastet.',
+  'node.error.controlTimeout':
+    'Die lokale Knotensteuerung hat nicht rechtzeitig geantwortet. Der Computer des Knotens ist möglicherweise ausgelastet.',
+  'node.error.tooOld':
+    'Diese Knotenversion unterstützt diesen Vorgang nicht. Aktualisiere den Knoten.',
+  'node.error.providerMissing':
+    'Der benötigte Anbieter ist auf dem Knoten nicht verfügbar. Prüfe, ob er installiert und eingerichtet ist.',
+  'node.file.waitingForNode': 'Die Datei wird geöffnet, sobald der Knoten wieder erreichbar ist.',
+  'node.file.retry': 'Erneut versuchen',
+  'node.error.details': 'Details',
   'node.manager.failed': 'Befehl fehlgeschlagen',
   'node.manager.applied': 'Änderungen angewendet',
   'node.manager.cancelled': 'Abgebrochen',
@@ -102,11 +117,11 @@ export const de = {
   'node.error.busy':
     'Diese Ressource wird verwendet. Warte auf das Ende des aktuellen Vorgangs und versuche es erneut.',
   'node.error.busyStage':
-    'Die Dateien konnten nicht vorgemerkt werden, da der Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
+    'Die Dateien konnten nicht vorgemerkt werden, da der Worktree belegt ist. Warten Sie und versuchen Sie es erneut.',
   'node.error.busyChat':
-    'Der Chat konnte nicht gestartet werden, da der Ordner oder Worktree belegt ist. Warten Sie und versuchen Sie es erneut. (resource_busy)',
+    'Der Chat konnte nicht gestartet werden, da der Ordner oder Worktree belegt ist. Warten Sie und versuchen Sie es erneut.',
   'node.error.busyRead':
-    'Bearbeitung beendet. Die Datei konnte nicht aktualisiert werden, da der Worktree belegt ist. Aktualisieren Sie nach Abschluss der aktuellen Aktion. (resource_busy)',
+    'Bearbeitung beendet. Die Datei konnte nicht aktualisiert werden, da der Worktree belegt ist. Aktualisieren Sie nach Abschluss der aktuellen Aktion.',
   'node.error.workspaceDirty':
     'Der Arbeitsbaum enthält nicht committete Änderungen. Committen oder verwerfen Sie diese vor dem Löschen.',
   'node.codeLineUnavailable': 'Die verlinkten Zeilen existieren in dieser Datei nicht mehr.',

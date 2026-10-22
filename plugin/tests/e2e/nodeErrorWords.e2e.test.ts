@@ -26,7 +26,7 @@ const probe = (device: string) =>
       const root = line.closest('.abele-node-chat').getBoundingClientRect();
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-tls-error.png',
         (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
-      const tlsWords = line.textContent.includes('Check its address') && line.textContent.includes('paired_route_tls_or_unreachable');
+      const tlsWords = line.textContent.includes('Check its address') && !line.textContent.includes('paired_route_tls_or_unreachable');
       let otherWords = true;
       for (const [code, expected] of [
         ['unauthorized', 'The node refused access. Pair again or check your permissions.'],
@@ -35,12 +35,12 @@ const probe = (device: string) =>
         ['record_too_large', 'The request is too large. Reduce its size and try again.'],
         ['debugger_profile_unavailable', 'The debugger is unavailable. Check the debug configuration and reconnect.'],
         ['output_limit', 'The node returned too much output. Narrow the request or use paging.'],
-        ['future_refusal', 'The node could not complete the request. Check the details before trying again. (future_refusal)'],
+        ['future_refusal', 'The node could not complete the request. Check the details before trying again.'],
       ]) {
         connection.error.value = code;
         await wait(100);
         const current = line.getBoundingClientRect();
-        otherWords &&= line.title === code && line.textContent === (expected.includes(code) ? expected : expected + ' (' + code + ')') &&
+        otherWords &&= line.title === code && line.textContent === expected &&
           current.left >= Math.max(0, root.left) && current.right <= Math.min(innerWidth, root.right) + 1;
       }
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-unknown-error.png',

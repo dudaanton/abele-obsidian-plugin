@@ -1,5 +1,19 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.error.gitTimeout':
+    'Git mezglā neatbildēja laikus. Dators, kurā darbojas mezgls, var būt aizņemts.',
+  'node.error.operationTimeout':
+    'Darbība mezglā netika pabeigta laikus. Dators, kurā darbojas mezgls, var būt aizņemts.',
+  'node.error.connectionTimeout':
+    'Savienojums ar mezglu netika izveidots laikus. Dators, kurā darbojas mezgls, var būt aizņemts.',
+  'node.error.controlTimeout':
+    'Lokālā mezgla vadība neatbildēja laikus. Dators, kurā darbojas mezgls, var būt aizņemts.',
+  'node.error.tooOld': 'Šī mezgla versija neatbalsta šo darbību. Atjauniniet mezglu.',
+  'node.error.providerMissing':
+    'Nepieciešamais pakalpojuma sniedzējs mezglā nav pieejams. Pārbaudiet, vai tas ir instalēts un konfigurēts.',
+  'node.file.waitingForNode': 'Fails tiks atvērts, kad mezgls atkal būs pieejams.',
+  'node.file.retry': 'Mēģināt vēlreiz',
+  'node.error.details': 'Sīkāka informācija',
   'node.manager.failed': 'Komanda neizdevās',
   'node.manager.applied': 'Izmaiņas piemērotas',
   'node.manager.cancelled': 'Atcelts',
@@ -98,11 +112,11 @@ export const lv = {
   'node.error.busy':
     'Šis resurss tiek izmantots. Uzgaidi, līdz pašreizējā darbība beidzas, un mēģini vēlreiz.',
   'node.error.busyStage':
-    'Failus nevarēja pievienot indeksam, jo darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz. (resource_busy)',
+    'Failus nevarēja pievienot indeksam, jo darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz.',
   'node.error.busyChat':
-    'Jaunu tērzēšanu nevarēja sākt, jo mape vai darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz. (resource_busy)',
+    'Jaunu tērzēšanu nevarēja sākt, jo mape vai darba koks ir aizņemts. Uzgaidiet un mēģiniet vēlreiz.',
   'node.error.busyRead':
-    'Rediģēšana apturēta. Failu nevarēja atjaunināt, jo darba koks ir aizņemts. Atjauniniet pēc pašreizējās darbības beigām. (resource_busy)',
+    'Rediģēšana apturēta. Failu nevarēja atjaunināt, jo darba koks ir aizņemts. Atjauniniet pēc pašreizējās darbības beigām.',
   'node.error.workspaceDirty':
     'Darba kokā ir nekomitētas izmaiņas. Pirms dzēšanas komitējiet vai atmetiet tās.',
   'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
