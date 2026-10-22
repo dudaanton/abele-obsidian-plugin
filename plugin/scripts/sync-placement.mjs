@@ -474,7 +474,7 @@ export function syncPlacementPlugin() {
             intent.from.normalize('NFC').toLowerCase() !== intent.target.normalize('NFC').toLowerCase()) {
             const separated = await coordinatePlacement(fs, [intent.from, intent.target], async () => {
                 if (await fs.stat(intent.from) === null || await fs.stat(intent.target) !== null) return false;
-                await tx.transaction(async (tx) => {
+                await state.transaction(async (tx) => {
                     const occupant = await tx.get(intent.target);
                     if (occupant !== null && occupant.fileId !== fileId)
                         throw new ExternalStateError('recovery-required');

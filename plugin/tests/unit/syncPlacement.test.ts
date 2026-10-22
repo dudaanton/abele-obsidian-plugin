@@ -4,10 +4,22 @@ import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { syncPlacementPlugin } from '../../scripts/sync-placement.mjs'
+import { parse } from 'acorn'
+import { analyze } from 'eslint-scope'
 
 const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
+it('binds every transaction capability in transformed startup recovery', () => {
+  const { id, input } = sample(version, 'pullRecovery.js')
+  const output = syncPlacementPlugin().transform(input, id)!
+  const code = typeof output === 'string' ? output : output.code
+  const ast = parse(code, { ecmaVersion: 'latest', sourceType: 'module', ranges: true })
+  const scopes = analyze(ast, { ecmaVersion: 2022, sourceType: 'module' })
+  expect(
+    scopes.globalScope.through.filter((reference) => reference.identifier.name === 'tx')
+  ).toEqual([])
+})
 afterEach(() => {
   for (const path of paths.splice(0)) rmSync(path, { recursive: true, force: true })
 })
