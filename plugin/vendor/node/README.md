@@ -4,12 +4,18 @@ All four packages are built from released AbeleNode v0.4.44
 (`b642319a281a3302589c2fc143d15e8fbc237ed0`), replacing the earlier additive protocol edit.
 The clean release archive is built for the four browser packages only.
 Apply paired-welcome.patch, lsp-install-deadline.patch (updated for HTTP long polling),
-and execution-policy-admission.patch before compiling and packaging. The latter adds
+execution-policy-admission.patch, and repository-deadline.patch before compiling and packaging. The admission patch adds
 an optional generic admission callback to connect(), before saved subscriptions/outbox
 replay, and disconnects if admission fails. It never opts into execution policy by itself.
 The plugin explicitly negotiates execution.policy.v1 on every transport admission and
 refreshes discovery after enabling it; older nodes retain unknown policy snapshots.
 The lockfile and integrity.json record these exact packaged bytes.
+The fourth patch gives all `repository.*` requests a thirty-second deadline instead
+of five seconds. Version 0.4.44 exposes no per-request deadline option on either
+RequestChannel or NodeClient. Its existing timeout behavior keeps the channel open,
+returns outcome_unknown for the expired request, and never replays mutations.
+Only channel-client index.js and its source map are rebuilt for this patch using
+TypeScript 5.9.3, ES2022 and ES modules; public declarations are unchanged.
 
 ## Earlier payload history
 

@@ -35,9 +35,18 @@ it('lets repository reads and commits finish beyond the ordinary five-second dea
       )
     await expect(read).resolves.toEqual({ completed: true })
     await expect(commit).resolves.toEqual({ completed: true })
-    const late = channel.request('repository.v1.diff', {}).catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(30000)
+    let settled = false
+    const late = channel
+      .request('repository.v1.diff', {})
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true
+      })
+    await vi.advanceTimersByTimeAsync(29999)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
     expect(await late).toMatchObject({ code: 'outcome_unknown' })
+    expect(transport.close).not.toHaveBeenCalled()
     expect(
       transport.send.mock.calls.filter(([bytes]) => FrameCodec.decode(bytes).kind === 'request')
     ).toHaveLength(3)

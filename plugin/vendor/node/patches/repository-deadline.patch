@@ -1,0 +1,11 @@
+--- a/packages/channel-client/src/index.ts
++++ b/packages/channel-client/src/index.ts
+@@ -281,7 +281,7 @@
+         method === 'lsp.v1.install' ? 600000 :
+         longPoll > 0 && Number.isFinite(longPoll)
+           ? Math.max(5000, Math.min(60000, longPoll) + 5000)
+-          : /^(project|workspace|review)\./.test(method)
++          : /^(project|workspace|review|repository)\./.test(method)
+             ? 30000
+             : 5000
+       let due = Date.now() + ms
