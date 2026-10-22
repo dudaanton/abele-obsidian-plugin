@@ -27,6 +27,9 @@ async function fixture(legacy = false) {
   }
   return { app, disk }
 }
+async function sweep(disk: ObsidianFileSystem) {
+  for (let i = 0; i < 8; i++) await Reflect.get(disk, 'conditional').maintenanceStep()
+}
 it('retains displaced bytes independently of receipt cleanup for seven days', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
   const { app, disk } = await fixture()
@@ -36,7 +39,9 @@ it('retains displaced bytes independently of receipt cleanup for seven days', as
   await new ObsidianFileSystem(app as never).recoverConditionalFiles()
   expect(await app.vault.adapter.exists(root + '/trash/sample-retained/victim')).toBe(true)
   clock.mockReturnValue(100000 + week)
-  await new ObsidianFileSystem(app as never).recoverConditionalFiles()
+  const restarted = new ObsidianFileSystem(app as never)
+  await restarted.recoverConditionalFiles()
+  await sweep(restarted)
   expect(await app.vault.adapter.exists(root + '/trash/sample-retained/victim')).toBe(false)
   expect(await app.vault.adapter.read('sample.bin')).toBe('after')
 })
@@ -51,6 +56,7 @@ it('surfaces changed retained bytes visibly instead of deleting them at expiry',
   )
   clock.mockReturnValue(100000 + week)
   await new ObsidianFileSystem(app as never).recoverConditionalFiles()
+  await sweep(disk)
   const files = (await app.vault.adapter.list('')).files
   expect(files.some((path) => /Recovered copy/.test(path))).toBe(true)
   expect(await Promise.all(files.map((path) => app.vault.adapter.read(path)))).toContain(
@@ -71,6 +77,7 @@ it('does not use an older operation review as proof of a retained-copy restorati
   )
   clock.mockReturnValue(100000 + week)
   await disk.recoverConditionalFiles()
+  await sweep(disk)
   const files = (await app.vault.adapter.list('')).files
   expect(await Promise.all(files.map((path) => app.vault.adapter.read(path)))).toContain(
     'late save'
@@ -91,7 +98,9 @@ it('retires the oldest unchanged retained victim first above the byte target', a
     })
   ).toBe(true)
   expect(await app.vault.adapter.exists(root + '/trash/sample-retained/victim')).toBe(true)
+  clock.mockReturnValue(100000 + 24 * 60 * 60 * 1000)
   await disk.recoverConditionalFiles()
+  await sweep(disk)
   expect(await app.vault.adapter.exists(root + '/trash/sample-retained/victim')).toBe(false)
   expect(await app.vault.adapter.read(root + '/trash/sample-newer/victim')).toBe('after')
   expect(await app.vault.adapter.read('sample.bin')).toBe('latest')
@@ -110,6 +119,7 @@ it('does not walk retained metadata per file and still observes expiry', async (
   expect(list.mock.calls.filter(([path]) => path === root + '/retained')).toHaveLength(0)
   clock.mockReturnValue(100000 + week)
   expect(await missing()).toBe(true)
+  await sweep(disk)
   expect(await app.vault.adapter.exists(root + '/trash/sample-retained/victim')).toBe(false)
 })
 it('never deletes directory contents substituted during an empty-victim retirement', async () => {
@@ -135,7 +145,7 @@ it('never deletes directory contents substituted during an empty-victim retireme
   let injected = false
   host.fingerprint = async (path: string) => {
     const value = await fingerprint(path)
-    if (path === folder + '/victim' && !injected) {
+    if (path === folder + '/dying' && !injected) {
       injected = true
       await app.vault.adapter.remove(path)
       await app.vault.adapter.mkdir(path)
@@ -145,10 +155,11 @@ it('never deletes directory contents substituted during an empty-victim retireme
   }
   clock.mockReturnValue(100000 + week)
   // This adapter fixture cannot move directories; preserve the evidence and throw.
-  await expect(disk.recoverConditionalFiles()).rejects.toThrow()
+  await disk.recoverConditionalFiles()
+  await expect(sweep(disk)).rejects.toThrow()
   expect(injected).toBe(true)
-  expect(removals).not.toContain(folder + '/victim')
-  expect(await app.vault.adapter.read(folder + '/victim/child.md')).toBe('preserved child')
+  expect(removals).not.toContain(folder + '/dying')
+  expect(await app.vault.adapter.read(folder + '/dying/child.md')).toBe('preserved child')
 })
 it.each([false, true])(
   'resumes receipt cleanup after a kill following every filesystem await (legacy=%s)',

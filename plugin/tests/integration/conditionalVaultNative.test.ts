@@ -602,7 +602,9 @@ it('retains a captured inode for saves through a handle opened before removal', 
   await expect(fs.stat(path)).rejects.toMatchObject({ code: 'ENOENT' })
   const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + CONDITIONAL_RETENTION_MS + 1000)
   try {
-    await disk().recoverConditionalFiles()
+    const restarted = disk()
+    await restarted.recoverConditionalFiles()
+    for (let i = 0; i < 3; i++) await Reflect.get(restarted, 'conditional').maintenanceStep()
     const recovered = (await fs.readdir(root)).find((name) => name.includes('Recovered copy'))
     expect(recovered).toBeDefined()
     expect(await fs.readFile(join(root, recovered!))).toEqual(Buffer.from(b))
@@ -613,6 +615,70 @@ it('retains a captured inode for saves through a handle opened before removal', 
 }, 30_000)
 
 // Native durability work can exceed the default 5s on a busy volume.
+it.each(['rename', 'fingerprint', 'lost-rename'] as const)(
+  'preserves a descriptor write during retained eviction at %s',
+  async (boundary) => {
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+    let injected = false
+    const { root, disk } = await setup({
+      rename: async (from: string, to: string) => {
+        await fs.rename(from, to)
+        if ((boundary === 'rename' || boundary === 'lost-rename') && to.endsWith('/dying')) {
+          await handle!.write(new TextEncoder().encode('sample B'), 0, 8, 0)
+          await handle!.sync()
+          await fs.utimes(to, 1, 1)
+          injected = true
+          if (boundary === 'lost-rename') throw new Error('retirement acknowledgement lost')
+        }
+      },
+    })
+    const path = join(root, 'sample.bin')
+    await fs.writeFile(path, 'sample A')
+    await fs.utimes(path, 1, 1)
+    handle = await fs.open(path, 'r+')
+    const host = disk(),
+      conditional = Reflect.get(host, 'conditional')
+    try {
+      await host.conditionalFile({
+        path: 'sample.bin',
+        expected: { sha: await sha256(new TextEncoder().encode('sample A')), size: 8, mtime: 1000 },
+        effect: { kind: 'remove' },
+      })
+      Reflect.set(conditional, 'retentionBytes', 1)
+      const port = Reflect.get(conditional, 'host'),
+        fingerprint = port.fingerprint.bind(port)
+      port.fingerprint = async (path: string) => {
+        const value = await fingerprint(path)
+        if (boundary === 'fingerprint' && path.endsWith('/dying') && !injected) {
+          await handle!.write(new TextEncoder().encode('sample B'), 0, 8, 0)
+          await handle!.sync()
+          await fs.utimes(join(root, path), 1, 1)
+          injected = true
+        }
+        return value
+      }
+      await conditional.maintenanceStep()
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 3600000 + 1000)
+      try {
+        if (boundary === 'lost-rename')
+          await expect(conditional.maintenanceStep()).rejects.toThrow(
+            'retirement acknowledgement lost'
+          )
+        for (let i = 0; i < 3; i++) await conditional.maintenanceStep()
+      } finally {
+        clock.mockRestore()
+      }
+      expect(injected).toBe(true)
+      const visible = (await fs.readdir(root)).filter((name) => name.includes('Recovered copy'))
+      expect(visible).toHaveLength(1)
+      expect(await fs.readFile(join(root, visible[0]), 'utf8')).toBe('sample B')
+      expect((await port.retention.summary()).count).toBe(0)
+    } finally {
+      await handle.close()
+    }
+  }
+)
+
 it('certifies only a conditionally installed sealed stage and preserves its expected mtime', async () => {
   const { root, disk } = await setup(),
     host = disk()

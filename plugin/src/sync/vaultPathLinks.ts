@@ -804,6 +804,29 @@ export function nativeChunkPort(adapter: DataAdapter) {
   }
 }
 
+/** Retirement needs modification-of-metadata time, rather than the vault's creation time. */
+export async function retainedFileStat(adapter: DataAdapter, path: string) {
+  const disk = guardedVaultAdapter(adapter) as DataAdapter & {
+    getFullPath?(path: string): string
+    fsPromises?: { lstat(path: string): Promise<import('node:fs').Stats> }
+  }
+  await assertVaultPath(disk, path)
+  if (!disk.getFullPath || !disk.fsPromises?.lstat) return disk.stat(path)
+  try {
+    const info = await disk.fsPromises.lstat(disk.getFullPath(path))
+    if (info.isSymbolicLink()) throw new EngineError('io', 'Retained path is a symbolic link')
+    return {
+      type: info.isDirectory() ? 'folder' : 'file',
+      size: info.size,
+      mtime: info.mtimeMs,
+      ctime: info.ctimeMs,
+    }
+  } catch (error) {
+    if ((error as { code?: string })?.code === 'ENOENT') return null
+    throw error
+  }
+}
+
 export function guardedVaultPort<T extends object>(port: T): T {
   return guardedVaultAdapter(port as unknown as DataAdapter) as unknown as T
 }

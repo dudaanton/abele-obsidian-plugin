@@ -231,10 +231,20 @@ The `retained/<id>.json` pointer carries the original intent and retention times
 Maintenance during conditional operations and recovery keeps these copies for seven days,
 with a 512 MiB target per connection (payload plus 16 KiB charged metadata per record).
 Above the target it retires the oldest unchanged copies first; a new capture remains until
-a later maintenance pass. Changed victims become visible recovered copies, never quota
+a later maintenance pass. No quota eviction happens before a minimum age of 24 hours;
+the target is soft and excess usage is logged. Changed victims become visible recovered copies, never quota
 deletions. Legacy records without capture proof and unresolved reviews remain preserved.
-Quota trimming normally leaves 64 MiB of headroom (or keeps a single fitting newest copy).
-An in-memory size/expiry summary avoids per-file ledger walks; recovery always refreshes it.
+A vault-local IndexedDB index atomically updates ordered retention rows and one summary
+(count, charged bytes, earliest seven-day expiry). Startup reads only that summary, never
+the retained ledger. Idle maintenance processes at most one victim per tick, and only when
+expiry or the byte target requires it. Legacy filesystem pointers are imported lazily,
+eight records per tick after a directory listing; new indexed records need no such walk.
+Pause, a new exchange, offline state and shutdown cancel scheduled work; shutdown drains
+the current tick. A retained victim first moves to a private `dying` name, then receives
+a fresh content/size/mtime/ctime check. Native retirement uses change time, not the vault
+API's creation time. Changed bytes become a recovered copy; unchanged bytes may unlink.
+The residual descriptor-write race after the last check and before unlink is accepted
+only after the 24-hour minimum; there is no claim of an atomic compare-and-unlink syscall.
 A retained folder's `ready` marker certifies its completed durable handoff, so later maintenance
 does not repeat destination fsyncs for settled copies.
 Mismatches are restored without replacing an occupied name, using a visible conflict

@@ -1275,6 +1275,9 @@ export class TokenEngineRuntime
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
+      const retention = Reflect.get(options.fs, Symbol.for('abele.sync.retention-idle-v1'))
+      if (typeof retention === 'function')
+        void retention.call(options.fs, this.active && status.state === 'idle')
       if (status.state === 'syncing') running = true
       else if (status.state === 'paused' || running) {
         running = false
@@ -2276,6 +2279,8 @@ export class TokenEngineRuntime
   }
   invalidate(): void {
     this.active = false
+    const retention = Reflect.get(this.options.fs, Symbol.for('abele.sync.retention-idle-v1'))
+    if (typeof retention === 'function') void retention.call(this.options.fs, false)
     // Revoke transport before optional host cleanup: unload cannot await a drain.
     this.requests.abort()
     this.clearActivity()
@@ -2287,6 +2292,8 @@ export class TokenEngineRuntime
     const failures: unknown[] = []
     try {
       this.invalidate()
+      const retention = Reflect.get(this.options.fs, Symbol.for('abele.sync.retention-idle-v1'))
+      if (typeof retention === 'function') await retention.call(this.options.fs, false)
     } catch (error) {
       failures.push(error)
     }

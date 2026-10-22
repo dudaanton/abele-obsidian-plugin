@@ -1,6 +1,9 @@
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
+import { durableHostOf } from './hostSyncStorage'
+import { MemoryRetention, type RetentionIndex } from './retentionIndex'
+import { retainedFileStat } from './vaultPathLinks'
 import {
   nativeChunkPort,
   connectionFilePort,
@@ -79,6 +82,8 @@ const INVENTORY_READ_ATTEMPTS = 3
 const IGNORE_FILE = '.abele-sync-ignore'
 const stageOperations = new WeakMap<object, Set<string>>()
 const conditionalOperations = new WeakMap<object, Set<string>>()
+const retentionCaches = new WeakMap<object, Map<string, RetentionIndex>>()
+export const RETENTION_IDLE = Symbol.for('abele.sync.retention-idle-v1')
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 /** Revisions belong to reads, never to a later consumer of a cached value. */
@@ -917,7 +922,21 @@ export class ObsidianFileSystem implements FileSystem {
     })
     const active = conditionalOperations.get(app.vault) ?? new Set<string>()
     conditionalOperations.set(app.vault, active)
+    const conditionalRoot =
+      options.journalOwner || this.privateRoot
+        ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) + '/conditional'
+        : this.configDir + '/plugins/abele/sync-conditional'
+    const retentionStorage = options.storage ?? storageOf(app)
+    const durable = retentionStorage ? durableHostOf(retentionStorage) : undefined
+    const caches = retentionCaches.get(app.vault) ?? new Map<string, RetentionIndex>()
+    retentionCaches.set(app.vault, caches)
+    const retention =
+      durable?.retentionIndex(conditionalRoot) ??
+      caches.get(conditionalRoot) ??
+      new MemoryRetention()
+    caches.set(conditionalRoot, retention)
     this.conditional = new ConditionalFiles({
+      retention,
       ...(!this.native
         ? {
             checked: {
@@ -945,7 +964,8 @@ export class ObsidianFileSystem implements FileSystem {
         this.externalCoordination.assertEnginePaths([path])
       },
       stat: (path) => this.rawStat(path),
-      fingerprint: async (path) => this.io.fingerprint(path, undefined, true),
+      retirementStat: (path) => retainedFileStat(this.disk, path),
+      fingerprint: async (path, signal) => this.io.fingerprint(path, signal, true),
       create: async (path, bytes, mtime) => {
         await this.io.create(path, mtime)
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
@@ -1039,6 +1059,61 @@ export class ObsidianFileSystem implements FileSystem {
   }
   recoverConditionalFiles(): Promise<void> {
     return this.conditional.recover()
+  }
+  private retentionIdle = false
+  private retentionTimer?: ReturnType<typeof window.setTimeout>
+  private retentionRunning?: Promise<void>
+  private retentionScheduling?: Promise<void>
+  private retentionAbort?: AbortController
+  private retentionGeneration = 0;
+  [RETENTION_IDLE](idle: boolean): Promise<void> {
+    if (idle === this.retentionIdle)
+      return Promise.all([this.retentionRunning, this.retentionScheduling]).then(() => {})
+    this.retentionIdle = idle
+    this.retentionAbort?.abort()
+    const controller = new AbortController()
+    this.retentionAbort = controller
+    const generation = ++this.retentionGeneration
+    window.clearTimeout(this.retentionTimer)
+    this.retentionTimer = undefined
+    if (!idle) return Promise.all([this.retentionRunning, this.retentionScheduling]).then(() => {})
+    let retryDelay = 0
+    const schedule = async () => {
+      await this.retentionRunning
+      if (!this.retentionIdle || generation !== this.retentionGeneration) return
+      const delay = await this.conditional.maintenanceDelay()
+      if (!this.retentionIdle || generation !== this.retentionGeneration || delay === null) return
+      this.retentionTimer = window.setTimeout(
+        () => {
+          if (!this.retentionIdle || generation !== this.retentionGeneration) return
+          this.retentionRunning = this.conditional
+            .maintenanceStep(() => {
+              if (!this.retentionIdle || generation !== this.retentionGeneration)
+                throw new Error('retention idle period ended')
+            }, controller.signal)
+            .then(() => {
+              retryDelay = 0
+            })
+            .catch((error) => {
+              retryDelay = 1000
+              if (this.retentionIdle && generation === this.retentionGeneration)
+                console.debug('[abele-sync] retention maintenance remains pending', error)
+            })
+            .finally(() => {
+              this.retentionRunning = undefined
+              if (this.retentionIdle && generation === this.retentionGeneration)
+                this.retentionScheduling = schedule().catch((error) =>
+                  console.debug('[abele-sync] retention scheduling remains pending', error)
+                )
+            })
+        },
+        Math.max(25, retryDelay, Math.min(delay, 0x7fffffff))
+      )
+    }
+    this.retentionScheduling = schedule().catch((error) =>
+      console.debug('[abele-sync] retention scheduling remains pending', error)
+    )
+    return Promise.resolve()
   }
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */

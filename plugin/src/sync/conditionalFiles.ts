@@ -1,8 +1,10 @@
 import { EngineError, sha256 } from '@abele/sync-sdk/core'
+import { RETENTION_MS, MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
-export const CONDITIONAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+export const CONDITIONAL_RETENTION_MS = RETENTION_MS
 export const CONDITIONAL_RETENTION_BYTES = 512 * 1024 * 1024
+export const CONDITIONAL_MIN_AGE_MS = 24 * 60 * 60 * 1000
 const RETAINED_RECORD_OVERHEAD = 16 * 1024
 
 /** Structurally matches the next SDK's host port while the current SDK remains pinned. */
@@ -36,12 +38,16 @@ export interface ConditionalFileHost {
     acquire(paths: string[]): Promise<() => void>
     publicationCheck(path: string): () => boolean
   }
+  retention?: RetentionIndex
   root: string
   active: Set<string>
   check(): void
   validate(path: string, recovery?: boolean): void
-  stat(path: string): Promise<{ type: string; size: number; mtime: number } | null>
-  fingerprint(path: string): Promise<FileVersion>
+  stat(path: string): Promise<{ type: string; size: number; mtime: number; ctime?: number } | null>
+  retirementStat?(
+    path: string
+  ): Promise<{ type: string; size: number; mtime: number; ctime?: number } | null>
+  fingerprint(path: string, signal?: AbortSignal): Promise<FileVersion>
   create(path: string, bytes: Uint8Array, mtime: number): Promise<void>
   read(path: string): Promise<Uint8Array>
   mkdir(path: string): Promise<void>
@@ -69,7 +75,12 @@ const missing = (error: unknown) =>
 
 /** Quarantine is retained evidence, never disposable staging or an equality receipt. */
 export class ConditionalFiles {
-  private maintenance?: { bytes: number; nextExpiry: number }
+  private readonly fallback = new MemoryRetention()
+  private migration?: { paths: string[]; at: number }
+  private softWarning = false
+  private get index(): RetentionIndex {
+    return this.host.retention ?? this.fallback
+  }
   constructor(
     private readonly host: ConditionalFileHost,
     private readonly retentionBytes = CONDITIONAL_RETENTION_BYTES
@@ -85,9 +96,16 @@ export class ConditionalFiles {
     const retained = h.root + '/trash/' + id,
       pointer = h.root + '/retained/' + id + '.json'
     if (!(await h.stat(victim))) {
-      if ((await h.stat(retained + '/victim')) && !(await h.stat(retained + '/ready'))) {
+      const info = await h.stat(retained + '/victim')
+      if (info && !(await h.stat(retained + '/ready'))) {
         await h.flush(retained + '/victim')
         await this.flushFormerParent(folder)
+        await this.index.put({
+          id,
+          at: Date.now(),
+          size: info.size + RETAINED_RECORD_OVERHEAD,
+          intent,
+        })
         await this.record(retained + '/ready', true)
       }
       return
@@ -112,9 +130,11 @@ export class ConditionalFiles {
     await h.mkdir(retained)
     await h.mkdir(h.root + '/retained')
     let existing = false
+    let retainedAt = Date.now()
     if (await h.stat(pointer)) {
       try {
-        JSON.parse(new TextDecoder().decode(await h.read(pointer)))
+        const value = JSON.parse(new TextDecoder().decode(await h.read(pointer)))
+        retainedAt = value.at
         existing = true
       } catch (error) {
         if (!(error instanceof SyntaxError)) throw error
@@ -124,135 +144,209 @@ export class ConditionalFiles {
       }
     }
     if (!existing) {
-      const at = Date.now()
-      try {
-        await this.record(pointer, { intent, at })
-      } catch (error) {
-        this.maintenance = undefined
-        throw error
-      }
-      if (this.maintenance) {
-        this.maintenance.bytes += info.size + RETAINED_RECORD_OVERHEAD
-        this.maintenance.nextExpiry = Math.min(
-          this.maintenance.nextExpiry,
-          at + CONDITIONAL_RETENTION_MS
-        )
-      }
+      await this.record(pointer, { intent, at: retainedAt })
     }
+    await this.index.put({ id, at: retainedAt, size: info.size + RETAINED_RECORD_OVERHEAD, intent })
     await h.capture(victim, retained + '/victim')
     await h.flush(retained + '/victim')
     await h.flush(victim, true)
+    // A crash before capture acknowledgement must not backdate the minimum age.
+    await this.index.put({ id, at: Date.now(), size: info.size + RETAINED_RECORD_OVERHEAD, intent })
     await this.record(retained + '/ready', true)
+    const summary = await this.index.summary()
+    if (summary.bytes > this.retentionBytes && !this.softWarning) {
+      this.softWarning = true
+      console.debug(
+        '[abele-sync] retained files exceed soft target; minimum age protects them',
+        summary.bytes,
+        this.retentionBytes
+      )
+    }
   }
 
-  private async sweepRetained(force = false): Promise<void> {
-    const h = this.host,
-      root = h.root + '/retained'
-    if (
-      !force &&
-      this.maintenance &&
-      this.maintenance.bytes <= this.retentionBytes &&
-      Date.now() < this.maintenance.nextExpiry
-    )
-      return
-    this.maintenance = undefined
-    if (!(await h.stat(root))) {
-      this.maintenance = { bytes: 0, nextExpiry: Infinity }
-      return
-    }
-    const records: { id: string; pointer: string; intent: Intent; at: number; size: number }[] = []
-    for (const pointer of (await h.list(root)).files) {
-      const id = idOf(pointer.slice(root.length + 1).replace(/\.json$/, ''))
-      if (h.active.has(h.root + '/' + id)) continue
-      let value: { intent: Intent; at: number }
-      try {
-        value = JSON.parse(new TextDecoder().decode(await h.read(pointer)))
-      } catch (error) {
-        // Interrupted pre-move metadata is repaired by its source operation.
-        if (error instanceof SyntaxError && (await h.stat(h.root + '/objects/' + id + '/victim')))
-          continue
-        throw error
+  /** One victim (or eight legacy metadata records) per idle tick. Never called by startup. */
+  async maintenanceStep(assertIdle: () => void = () => {}, signal?: AbortSignal): Promise<void> {
+    assertIdle()
+    const h = new Proxy(this.host, {
+        get(target, key) {
+          const value =
+            key === 'stat' && target.retirementStat
+              ? target.retirementStat.bind(target)
+              : Reflect.get(target, key)
+          if (typeof value !== 'function') return value
+          return (...args: unknown[]) => {
+            assertIdle()
+            const result = value.apply(target, args)
+            if (result && typeof result.then === 'function')
+              return result.then((value: unknown) => {
+                assertIdle()
+                return value
+              })
+            assertIdle()
+            return result
+          }
+        },
+      }),
+      summary = await this.index.summary()
+    const maintenance = new ConditionalFiles(h, this.retentionBytes)
+    h.check()
+    if (!summary.migrated) {
+      if (!this.migration) {
+        const root = h.root + '/retained'
+        this.migration = { paths: (await h.stat(root)) ? (await h.list(root)).files : [], at: 0 }
       }
-      if (!value.intent || !Number.isFinite(value.at))
-        throw new EngineError('io', 'invalid retained victim record')
-      const folder = h.root + '/trash/' + id
-      const source = h.root + '/objects/' + id + '/victim'
-      if (!(await h.stat(folder + '/victim')) && (await h.stat(source))) {
-        await h.mkdir(folder)
-        await h.capture(source, folder + '/victim')
-        await h.flush(folder + '/victim')
-        await this.flushFormerParent(h.root + '/objects/' + id)
-      }
-      if ((await h.stat(folder + '/victim')) && !(await h.stat(folder + '/ready'))) {
-        await h.flush(folder + '/victim')
-        await this.flushFormerParent(h.root + '/objects/' + id)
-        await this.record(folder + '/ready', true)
-      }
-      const info = await h.stat(folder + '/victim')
-      records.push({ id, pointer, ...value, size: info ? info.size + RETAINED_RECORD_OVERHEAD : 0 })
-    }
-    records.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
-    let total = records.reduce((sum, item) => sum + item.size, 0)
-    // Trim with headroom instead of walking a full ledger again for each small file.
-    const target =
-      total > this.retentionBytes
-        ? Math.max(
-            Math.floor(this.retentionBytes * 0.875),
-            Math.min(this.retentionBytes, records.at(-1)?.size ?? 0)
+      for (let n = 0; n < 8 && this.migration.at < this.migration.paths.length; n++) {
+        const pointer = this.migration.paths[this.migration.at],
+          id = idOf(
+            pointer
+              .split('/')
+              .at(-1)
+              .replace(/\.json$/, '')
           )
-        : this.retentionBytes
-    let nextExpiry = Infinity
-    for (const item of records) {
-      if (item.size && Date.now() - item.at < CONDITIONAL_RETENTION_MS && total <= target) {
-        nextExpiry = Math.min(nextExpiry, item.at + CONDITIONAL_RETENTION_MS)
-        continue
+        const value = JSON.parse(new TextDecoder().decode(await h.read(pointer)))
+        if (!value.intent || !Number.isFinite(value.at))
+          throw new EngineError('io', 'invalid retained victim record')
+        const info =
+          (await h.stat(h.root + '/trash/' + id + '/victim')) ??
+          (await h.stat(h.root + '/trash/' + id + '/dying')) ??
+          (await h.stat(h.root + '/objects/' + id + '/victim'))
+        if (!(await this.index.find(id)))
+          await this.index.put({
+            id,
+            at: Math.max(value.at, info?.ctime ?? value.at),
+            size: (info?.size ?? 0) + RETAINED_RECORD_OVERHEAD,
+            intent: value.intent,
+          })
+        this.migration.at++
       }
-      const folder = h.root + '/trash/' + item.id,
-        victim = folder + '/victim'
-      const info = await h.stat(victim)
+      if (this.migration.at === this.migration.paths.length) {
+        await this.index.migrated()
+        this.migration = undefined
+      }
+      return
+    }
+    const now = Date.now(),
+      over = summary.bytes > this.retentionBytes
+    if (!over && (summary.earliestExpiry === null || summary.earliestExpiry > now)) return
+    const item = await this.index.oldest()
+    if (!item || h.active.has(h.root + '/' + item.id)) return
+    const key = h.root + '/' + item.id
+    h.active.add(key)
+    try {
+      if (now - item.at < CONDITIONAL_MIN_AGE_MS) {
+        console.debug(
+          '[abele-sync] retained files exceed soft target; minimum age protects them',
+          summary.bytes,
+          this.retentionBytes
+        )
+        return
+      }
+      const intent = item.intent as Intent,
+        folder = h.root + '/trash/' + idOf(item.id)
+      const victim = folder + '/victim',
+        dying = folder + '/dying'
+      h.validate(intent.path, true)
+      if (!(await h.stat(folder + '/ready')) && !(await h.stat(dying))) {
+        const source = h.root + '/objects/' + item.id + '/victim'
+        if (!(await h.stat(victim)) && (await h.stat(source))) {
+          await h.mkdir(folder)
+          await h.capture(source, victim)
+        }
+        const info = await h.stat(victim)
+        if (info) {
+          await h.flush(victim)
+          await h.flush(source, true)
+          await this.index.put({ ...item, at: Date.now() })
+          await maintenance.record(folder + '/ready', true)
+          return
+        }
+      }
+      if (!(await h.stat(victim)) && !(await h.stat(dying))) {
+        const source = h.root + '/objects/' + item.id + '/victim'
+        if (await h.stat(source)) {
+          await h.mkdir(folder)
+          if (await h.stat(folder + '/ready')) {
+            await h.remove(folder + '/ready')
+            await h.flush(folder + '/ready', true)
+          }
+          await h.capture(source, victim)
+          await h.flush(victim)
+          await this.index.put({ ...item, at: Date.now() })
+          await maintenance.record(folder + '/ready', true)
+          return
+        }
+      }
+      if (await h.stat(victim)) {
+        if (await h.stat(dying))
+          throw new EngineError('io', 'retirement contains two retained occupants')
+        await h.capture(victim, dying)
+        await h.flush(dying)
+        await h.flush(victim, true)
+      }
+      const info = await h.stat(dying)
       if (info) {
-        const have = info.type === 'file' ? await h.fingerprint(victim) : null
-        const last = await h.stat(victim),
-          expected = item.intent.expected
-        if (
-          !expected ||
+        let have: FileVersion | null = null
+        try {
+          if (info.type === 'file') have = await h.fingerprint(dying, signal)
+        } catch (error) {
+          if (!(error instanceof EngineError && error.code === 'conflict' && !error.cause))
+            throw error
+        }
+        const last = await h.stat(dying),
+          expected = intent.expected
+        const changed =
           !have ||
+          !expected ||
           !last ||
+          !Number.isFinite(info.ctime) ||
+          !Number.isFinite(last.ctime) ||
           last.type !== 'file' ||
           have.sha !== expected.sha ||
           have.size !== expected.size ||
           Math.round(info.mtime) !== expected.mtime ||
+          last.size !== info.size ||
           last.mtime !== info.mtime ||
-          last.size !== info.size
-        ) {
-          h.validate(item.intent.path, true)
-          const name = item.intent.path.slice(item.intent.path.lastIndexOf('/') + 1),
+          last.ctime !== info.ctime
+        if (changed) {
+          const name = intent.path.slice(intent.path.lastIndexOf('/') + 1),
             dot = name.lastIndexOf('.')
-          const parent = item.intent.path.slice(0, item.intent.path.lastIndexOf('/') + 1)
           const target = fitGeneratedName(
-            parent.normalize('NFC'),
+            intent.path.slice(0, intent.path.lastIndexOf('/') + 1).normalize('NFC'),
             dot > 0 ? name.slice(0, dot) : name,
             dot > 0 ? name.slice(dot) : '',
             ' (Recovered copy ' + item.id + ')'
           )
-          await this.restore(victim, target, true)
+          await maintenance.restore(dying, target, true)
         }
-        // Changed bytes have a durable visible alias before the private alias retires.
-        if (await h.stat(victim)) await h.remove(victim)
-        await h.flush(victim, true)
+        // A descriptor may still write after this last check and before unlink. That residual
+        // native window (normally microseconds) is accepted only after at least 24 hours;
+        // the soft byte target never shortens that minimum age. Rename precedes fresh proof.
+        h.check()
+        if (!changed || (await h.stat(dying))) await h.remove(dying)
+        await h.flush(dying, true)
       }
-      await this.clearPlans(folder)
-      if (await h.stat(folder + '/restored')) await h.remove(folder + '/restored')
-      if (await h.stat(folder + '/ready')) await h.remove(folder + '/ready')
+      await maintenance.clearPlans(folder)
+      for (const name of ['restored', 'ready'])
+        if (await h.stat(folder + '/' + name)) await h.remove(folder + '/' + name)
       if (h.rmdir && (await h.stat(folder))) await h.rmdir(folder)
       await h.flush(folder, true)
-      if (await h.stat(item.pointer)) await h.remove(item.pointer)
-      await h.flush(item.pointer, true)
-      total -= item.size
+      const pointer = h.root + '/retained/' + item.id + '.json'
+      if (await h.stat(pointer)) await h.remove(pointer)
+      await h.flush(pointer, true)
+      await this.index.drop(item.id)
+    } finally {
+      h.active.delete(key)
     }
-    this.maintenance = { bytes: total, nextExpiry }
   }
-
+  async maintenanceDelay(): Promise<number | null> {
+    const summary = await this.index.summary()
+    if (!summary.migrated) return 0
+    if (summary.bytes > this.retentionBytes) {
+      const first = await this.index.oldest()
+      return first ? Math.max(0, first.at + CONDITIONAL_MIN_AGE_MS - Date.now()) : null
+    }
+    return summary.earliestExpiry === null ? null : Math.max(0, summary.earliestExpiry - Date.now())
+  }
   private async clearPlans(folder: string): Promise<void> {
     const h = this.host,
       plans = folder + '/restore-plans'
@@ -486,7 +580,6 @@ export class ConditionalFiles {
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
-    await this.sweepRetained()
     if (!h.sameObject && h.checked) return this.applyChecked(op)
     // Object identity distinguishes allocation sentinels from captured empty files.
     if (op.expected !== null && !h.sameObject)
@@ -809,7 +902,7 @@ export class ConditionalFiles {
       }
     }
     try {
-      await this.sweepRetained(true)
+      await this.index.summary()
     } catch (error) {
       failed ??= error
     }
