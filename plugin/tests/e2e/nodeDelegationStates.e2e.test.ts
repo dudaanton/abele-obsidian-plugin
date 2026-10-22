@@ -73,6 +73,7 @@ const probe = (device: string) =>
   }
   ${NODE_PANEL_FIXTURE}
   try {
+    nodePanel.variant.many = 70;
     await nodePanel.open('feature');
     const model = window.__abeleNodePanelFixture.model;
     const treeGeometry = async () => {
@@ -91,6 +92,20 @@ const probe = (device: string) =>
     seen['quiet connection status'] = !!nodePanel.root().querySelector('[data-connection-status] .abele-status-dot_orange');
     const statusBox = nodePanel.root().querySelector('[data-connection-status]').getBoundingClientRect();
     seen['status visible'] = statusBox.height > 0 && statusBox.top >= 0 && statusBox.bottom <= innerHeight;
+    const rows = [...nodePanel.root().querySelectorAll('.abele-file-tree .tree-item-self')];
+    const visibleBox = el => {
+      const box = el.getBoundingClientRect();
+      let top = Math.max(0, box.top), bottom = Math.min(innerHeight, box.bottom);
+      for(let parent = el.parentElement; parent; parent = parent.parentElement) {
+        if(/auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflowY)) {
+          const clip = parent.getBoundingClientRect();
+          top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom);
+        }
+      }
+      return { top, bottom };
+    };
+    diagnostics.overlap = rows.map(visibleBox).filter(box => box.bottom > box.top && box.bottom > statusBox.top && box.top < statusBox.bottom);
+    seen['no tree overlap'] = rows.length > 70 && diagnostics.overlap.length === 0;
     await shot('reconnecting');
     await model.refreshCurrent();
     await until(() => !nodePanel.root().textContent.includes('No answer from the node'));
@@ -120,6 +135,7 @@ const expectedStates = Object.fromEntries(
     'status visible',
     'recovered',
     'stable tree',
+    'no tree overlap',
   ].map((key) => [key, true])
 )
 

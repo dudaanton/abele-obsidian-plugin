@@ -75,8 +75,9 @@
     </div>
 
     <template v-else-if="node">
-      <div v-if="reconnecting" class="abele-node-panel__status-anchor">
+      <div data-connection-footer class="abele-node-panel__connection-footer">
         <div
+          v-if="reconnecting"
           data-connection-status
           class="abele-node-panel__connection-status"
           role="status"
@@ -182,7 +183,9 @@
           />
         </div>
       </div>
-      <slot v-else />
+      <div v-else class="abele-node-panel__content">
+        <slot />
+      </div>
     </template>
   </div>
 </template>
@@ -379,33 +382,38 @@ body.is-phone .abele-node-panel__link {
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
 }
-// A zero-height sticky anchor follows the host scrollport, including a phone drawer.
-// The line overlays its lower edge and never changes the tree's geometry.
-.abele-node-panel__status-anchor {
-  position: sticky;
-  bottom: 0;
-  flex: 0 0 0;
-  // Keep the tree last in the DOM: the native phone drawer pads its last child.
+// The reserved footer is outside the scrollport, so connection recovery moves no rows.
+.abele-node-panel__content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.abele-node-panel__connection-footer {
+  // Keep content last in the DOM for the native phone drawer's content padding.
   order: 1;
-  z-index: 1;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: calc(1lh + var(--size-4-2) + var(--border-width));
+  padding: var(--size-4-1) var(--size-4-2);
+  border-top: var(--border-width) solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 .abele-node-panel__connection-status {
-  position: absolute;
-  inset-inline: var(--size-4-2);
-  bottom: var(--size-4-1);
-  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-  color: var(--text-muted);
-  background: var(--mobile-sidebar-background, var(--background-secondary));
-  font-size: var(--font-ui-smaller);
-  pointer-events: none;
   > span:last-child {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
+}
+body.is-phone .abele-node-panel__connection-footer {
+  background-color: var(--background-primary);
 }
 .abele-node-panel__notice {
   display: flex;

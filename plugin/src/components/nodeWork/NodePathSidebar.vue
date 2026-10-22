@@ -486,12 +486,15 @@ watch(
   border-top: none;
   border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
-// A phone's drawer is too short to hold the header and the place still with room for files
-// under them: there the whole panel scrolls and only the files' search stays, at the top, so it
-// can always be reached. The drawer then pads the end of the panel clear of its floating buttons.
+// On the phone the place and files scroll together above the reserved connection footer.
+// The native drawer pads the scroll content clear of its floating buttons.
 body.is-phone .abele-node-sidebar {
   .abele-node-panel {
-    height: auto;
+    height: 100%;
+  }
+
+  .abele-node-panel__content {
+    overflow-y: auto;
   }
 
   .abele-file-tree {
