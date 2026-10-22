@@ -1426,6 +1426,8 @@ it.each(['folder', 'group'] as const)(
         conditional,
         conditional + '/active',
         conditional + '/completed',
+        conditional + '/retiring',
+        conditional + '/retained',
       ])
       for (const [calls, metadata] of [
         [list.mock.calls, true],
