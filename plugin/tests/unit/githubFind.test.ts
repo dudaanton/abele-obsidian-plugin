@@ -23,6 +23,29 @@ beforeEach(() => {
 })
 
 describe('finding in a tab', () => {
+  it('selects the current code match when revealing and navigating without editing text', async () => {
+    const code = root.appendChild(document.createElement('div'))
+    const text = 'first widget\nlast widget'
+    const viewer = mountCode(code, text, 'sample.ts')
+    const view = EditorView.findFromDOM(code.querySelector('.cm-editor') as HTMLElement)!
+    const finder = new TabFinder(root, { foldedText: () => null })
+    try {
+      finder.search('widget', false)
+      await finder.reveal(false)
+      expect(view.state.selection.main.from).toBe(6)
+      expect(view.state.selection.main.to).toBe(12)
+      await finder.move(1)
+      expect(view.state.selection.main.from).toBe(18)
+      expect(view.state.selection.main.to).toBe(24)
+      await finder.move(-1)
+      expect(view.state.selection.main.from).toBe(6)
+      expect(view.state.doc.toString()).toBe(text)
+    } finally {
+      finder.clear()
+      viewer.destroy()
+    }
+  })
+
   it('counts matches in text, in code and in a folded diff, in page order', () => {
     root.append(html('<p>The <b>widget</b> renders.</p>'))
     const code = root.appendChild(document.createElement('div'))

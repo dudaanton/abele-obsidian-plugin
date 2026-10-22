@@ -150,9 +150,27 @@ export class TabFinder {
     const now = this.runs[this.flat[this.index]?.[0]]
     if (!now) return
     this.unpin()
-    this.unpin = pinIntoView(this.root, this.locate(now, this.flat[this.index][1]), {
-      context: 96,
-    })
+    if (now.kind === 'code') {
+      const [from, to] = now.ranges[this.flat[this.index][1]]
+      // Decorations alone neither select a result nor ask CodeMirror to render it. Let the
+      // editor reveal its own selection too, including when its scrollDOM scrolls internally.
+      now.view.dispatch({
+        selection: { anchor: from, head: to },
+        effects: EditorView.scrollIntoView(from, { y: 'center' }),
+      })
+    }
+    // The editor's pane can itself be the finder root. Starting at the root skips that
+    // scrolling box; start inside it, at the editor whose match is being revealed.
+    this.unpin = pinIntoView(
+      now.kind === 'code' ? now.view.dom : this.root,
+      this.locate(now, this.flat[this.index][1]),
+      {
+        context: Math.max(
+          96,
+          (this.root.querySelector<HTMLElement>('[role="search"]')?.offsetHeight ?? 0) + 32
+        ),
+      }
+    )
   }
 
   clear(): void {
@@ -313,6 +331,7 @@ export class TabFinder {
         const drawn = pos >= view.viewport.from && pos <= view.viewport.to
         const rect = drawn ? view.coordsAtPos(pos) : null
         if (rect) return rect.top
+        view.requestMeasure()
         return { estimate: view.documentTop + view.lineBlockAt(pos).top }
       }
     }
