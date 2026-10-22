@@ -147,21 +147,39 @@ export function syncPlacementPlugin() {
             const prefetched = fetched[Symbol.for('abele.sync.prefetched-files-v1')] = new Set();
             // pool drains active workers after a failure; no source outlives the run.
             await pool(wanted, 8, async (change) => {
-                const source = await this.client.openVersion(change.file_id, change.version_id,
-                  { sha: change.sha, size: change.size });
+                const destinationReady = async () => {
+                  const inventory = await this.placer.paths(change.path);
+                  if (inventory.blocked(change.path)) return false;
+                  let target;
+                  try { target = inventory.resolve(change.path, 'file'); }
+                  catch { return false; }
+                  if (!await this.placer.destinationMatches(target, change.sha, change.size)) return false;
+                  // Placement repeats verification under its lease; a batch's old absence
+                  // must not suppress adoption of bytes that arrived while prefetch awaited.
+                  this.placer.adoptionCandidates.set(change.file_id, true);
+                  return true;
+                };
+                if (await destinationReady()) return;
                 try {
-                  source.signal?.throwIfAborted();
-                  if (source.size !== change.size) throw new Error('invalid placement source size');
-                  const bytes = change.size === 0 ? new Uint8Array() :
-                    await source.read(0, change.size, source.signal);
-                  await source.assertUnchanged();
-                  if (bytes.length !== change.size || bytes.buffer.byteLength > 1024 * 1024 ||
-                      await this.hash(bytes) !== change.sha) this.placer.disbelieve(change.sha);
-                  else {
-                    fetched.set(change.sha, bytes);
-                    prefetched.add(change.file_id);
-                  }
-                } finally { await source.close(); }
+                  const source = await this.client.openVersion(change.file_id, change.version_id,
+                    { sha: change.sha, size: change.size });
+                  try {
+                    source.signal?.throwIfAborted();
+                    if (source.size !== change.size) throw new Error('invalid placement source size');
+                    const bytes = change.size === 0 ? new Uint8Array() :
+                      await source.read(0, change.size, source.signal);
+                    await source.assertUnchanged();
+                    if (bytes.length !== change.size || bytes.buffer.byteLength > 1024 * 1024 ||
+                        await this.hash(bytes) !== change.sha) this.placer.disbelieve(change.sha);
+                    else {
+                      fetched.set(change.sha, bytes);
+                      prefetched.add(change.file_id);
+                    }
+                  } finally { await source.close(); }
+                } catch (error) {
+                  // A local writer may finish during a failed or cancelled content request.
+                  if (!await destinationReady()) throw error;
+                }
             });
             return fetched;
           }`
