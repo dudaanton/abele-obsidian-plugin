@@ -4,12 +4,51 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { gzipSync } from 'node:zlib'
 import { runInNewContext } from 'node:vm'
+import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { planVault, contentChunk, shapes } from '../scale/generate.mjs'
 import { compareInventory, budgets, pauseMetrics } from '../scale/oracles.mjs'
 import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  it('accepts a framed CLI reply even while a descendant keeps its output pipe open', async () => {
+    const parent = join(process.cwd(), '.scratch')
+    await mkdir(parent, { recursive: true })
+    const root = await mkdtemp(join(parent, 'scale-cli-'))
+    const cli = join(root, 'sample-cli.cjs'),
+      pidFile = join(root, 'holder.pid')
+    await writeFile(
+      cli,
+      `#!${process.execPath}\nconst fs=require('node:fs'),{spawn}=require('node:child_process');(async()=>{const code=process.argv.find(a=>a.startsWith('code=')).slice(5);const value=await eval(code);const holder=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:['ignore',1,2]});fs.writeFileSync(${JSON.stringify(pidFile)},String(holder.pid));fs.writeSync(1,'=> '+value+'\\n');process.exit(0)})()`,
+      { mode: 0o755 }
+    )
+    const vault = new RealVault({ cli }, '/sample-vault')
+    const operation = vault.evaluate('return true')
+    operation.catch(() => {})
+    let timer
+    try {
+      await expect(
+        Promise.race([
+          operation,
+          new Promise((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Framed result was not returned')), 1500)
+          }),
+        ])
+      ).resolves.toBe(true)
+    } finally {
+      clearTimeout(timer)
+      const pid = Number(await readFile(pidFile, 'utf8').catch(() => 0))
+      if (pid)
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch {
+          /* already exited */
+        }
+      await operation.catch(() => {})
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   it('requires server verification to finish before byte equality can pass', () => {
     expect(
       budgets({ verifiedFiles: 1000, mismatches: [] }).find((row) => row.name === 'byte equality')

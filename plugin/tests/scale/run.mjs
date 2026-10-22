@@ -13,6 +13,7 @@ import { compareInventory, budgets, markdown, pauseMetrics } from './oracles.mjs
 
 const exec = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
+const evalProcess = resolve(here, '../e2e/helpers/obsidianEvalProcess.mjs')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const host = 'const h=app.plugins.plugins.abele?.tokenEngines;const u=h?.ui;'
@@ -36,15 +37,21 @@ export class RealVault {
   async evaluate(body) {
     // Only file locations travel in CLI arguments. Never token text or arbitrary product errors.
     let stdout
+    const nonce = randomUUID()
+    const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
     try {
       ;({ stdout } = await exec(
-        this.config.cli,
+        process.execPath,
         [
+          evalProcess,
+          this.config.cli,
+          nonce,
+          String(Date.now() + 12000),
           `vault=${this.name}`,
           'eval',
-          `code=(async()=>{try{${body}}catch{return {scaleError:true}}})().then(value=>JSON.stringify({scaleResult:value}))`,
+          `code=${expression}`,
         ],
-        { timeout: 12000, maxBuffer: 2 * 1024 ** 2 }
+        { timeout: 14000, maxBuffer: 2 * 1024 ** 2 }
       ))
     } catch {
       throw new Error('Vault CLI unavailable')
@@ -52,7 +59,9 @@ export class RealVault {
     const line = stdout.slice(stdout.lastIndexOf('=> ') + 3).trim()
     let result
     try {
-      result = JSON.parse(line).scaleResult
+      const reply = JSON.parse(line)
+      if (reply.__abeleReply !== nonce || !reply.hasValue) throw new Error('Invalid frame')
+      result = reply.value
     } catch {
       throw new Error('Vault CLI returned no JSON result')
     }

@@ -60,6 +60,9 @@ startup by the supervisor. The app must be stopped before invocation. Run from `
 node tests/scale/run.mjs /test-run/config.json
 ```
 
+CLI evaluations reuse the e2e helper's nonce-framed replies and child-process cleanup, so
+a completed action does not wait for an inherited output pipe to close.
+
 Only the smoke shape should be used while developing this tool. The large shape is an
 explicit later reliability gate, not a default test or an npm/CI hook.
 
