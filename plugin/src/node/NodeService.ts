@@ -160,33 +160,56 @@ export class NodeConnection {
     }
   }
 
+  private executionPolicyReady = false
+
+  private async enableExecutionPolicy(): Promise<void> {
+    if (this.executionPolicyReady || !this.client.describe) return
+    const description = (await this.client.describe()) as {
+      capabilities?: { capabilities?: Record<string, { status?: string }> }
+    }
+    if (description.capabilities?.capabilities?.['execution.policy.v1']?.status !== 'supported') {
+      this.executionPolicyReady = true
+      return
+    }
+    const result = await this.client.request('execution.policy.v1.enable', {})
+    if (!(result as { enabled?: boolean }).enabled) throw new Error('execution_policy_not_enabled')
+    // Extended descriptions must be fetched after this connection opts in.
+    await this.client.describe()
+    this.executionPolicyReady = true
+    console.debug('[Abele node] execution policy enabled')
+  }
+
   connect(reason = 'explicit'): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
     if (this.connecting) return this.connecting
     if (this.client.connected) {
-      this.admitObsidianTools()
-      this.state.value = 'connected'
-      return this.obsidian
-        ? this.client
-            .describe()
-            .then((description) => this.obsidian!.connectionChanged(description))
-        : Promise.resolve()
+      return this.enableExecutionPolicy().then(async () => {
+        this.admitObsidianTools()
+        this.state.value = 'connected'
+        return this.obsidian
+          ? this.client
+              .describe()
+              .then((description) => this.obsidian!.connectionChanged(description))
+          : Promise.resolve()
+      })
     }
     console.debug('[Abele node] connect/reconnect', {
       reason,
       backgroundAudio: mobileBackground.active,
     })
     this.state.value = 'connecting'
+    this.executionPolicyReady = false
     ++this.transportGeneration
     const generation = this.generation
     this.connecting = this.client
-      .connect()
+      .connect(() => this.enableExecutionPolicy())
       .then(async () => {
         if (this.disposed || generation !== this.generation) {
           console.debug('[Abele node] disconnect: stale admission')
           await this.client.disconnect()
           return
         }
+        await this.enableExecutionPolicy()
         // Re-negotiate capabilities on every admitted transport, before exposing it.
         if (this.client.describe) {
           const description = await this.client.describe()

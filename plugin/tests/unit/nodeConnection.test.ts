@@ -9,6 +9,105 @@ import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
 
 vi.mock('@/debugger/register', () => ({}))
+it.each([false, true])(
+  'runs the SDK admission hook before replay and closes failed admission (%s)',
+  async (refuse) => {
+    const store = new MemoryClientStore()
+    await store.transaction((s) => {
+      s.cursors['sample-stream'] = 0
+    })
+    const queue = new RecordQueue()
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:12345/channel', profile: 'local-token-v1', token: 'sample-token' },
+      store,
+      {
+        connect: async () => ({
+          authority: { installation_id: 'sample-installation', profile: 'local-token-v1' },
+          welcome: { node_id: 'sample-node', instance_id: 'sample-instance', limits: LIMITS },
+          transport: {
+            receive: () => queue,
+            send: async () => {},
+            close: async () => {
+              queue.end()
+            },
+          },
+        }),
+      } as never
+    )
+    const events: string[] = []
+    vi.spyOn(client, 'subscribe').mockImplementation(async () => {
+      events.push('replay')
+    })
+    vi.spyOn(client, 'flush').mockImplementation(async () => {
+      events.push('flush')
+    })
+    try {
+      const connecting = client.connect(async () => {
+        events.push('enable')
+        if (refuse) throw Error('sample admission refused')
+      })
+      if (refuse) {
+        await expect(connecting).rejects.toThrow('sample admission refused')
+        expect(client.connected).toBe(false)
+        expect(events).toEqual(['enable'])
+      } else {
+        await connecting
+        expect(events).toEqual(['enable', 'replay', 'flush'])
+      }
+    } finally {
+      await client.disconnect()
+    }
+  }
+)
+it('enables execution policy before replay on every connection and skips older peers', async () => {
+  const events: string[] = []
+  let supported = true
+  const client = {
+    connected: false,
+    target: {},
+    describe: vi.fn(async () => {
+      events.push('describe')
+      return {
+        capabilities: {
+          capabilities: supported ? { 'execution.policy.v1': { status: 'supported' } } : {},
+        },
+      }
+    }),
+    request: vi.fn(async () => {
+      events.push('enable')
+      return { enabled: true }
+    }),
+    connect: vi.fn(async (admit?: () => Promise<void>) => {
+      client.connected = true
+      await admit?.()
+      events.push('replay')
+    }),
+    disconnect: vi.fn(async () => {
+      client.connected = false
+    }),
+  }
+  const request = client.request
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  try {
+    await connection.connect()
+    expect(events.indexOf('enable')).toBeGreaterThanOrEqual(0)
+    expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
+    expect(request).toHaveBeenCalledWith('execution.policy.v1.enable', {})
+    expect(events.filter((e) => e === 'describe').length).toBeGreaterThan(1)
+    events.length = 0
+    client.connected = false
+    await connection.connect()
+    expect(events.indexOf('enable')).toBeGreaterThanOrEqual(0)
+    expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
+    client.connected = false
+    supported = false
+    request.mockClear()
+    await connection.connect()
+    expect(request).not.toHaveBeenCalled()
+  } finally {
+    connection.destroy()
+  }
+})
 it('publishes token-node attention using the identity learned at admission', async () => {
   const memory = new MemoryClientStore()
   await memory.transaction((s) => {
