@@ -184,7 +184,7 @@ async function inspectRuns(label: string) {
       expect(report.buttonsVisible).toBe(true)
       expect(report.text).toContain('sample-project')
       const evidence = await evalLong(
-        `(()=>{const root=document.querySelector('[data-manager-approval]');root.querySelector('[data-manager-evidence] .abele-disclosure__control').click();return root.querySelector('[data-manager-evidence]').textContent})()`
+        `(async()=>{const root=document.querySelector('[data-manager-approval]');root.querySelector('[data-manager-evidence] .abele-disclosure__control').click();for(let i=0;i<100&&!root.querySelector('[data-manager-evidence] pre');i++)await new Promise(r=>setTimeout(r,50));return root.querySelector('[data-manager-evidence]').textContent})()`
       )
       expect(evidence).toContain('sample-session')
       expect(report.text).not.toMatch(/[\n\r\u202e\u200b]/u)

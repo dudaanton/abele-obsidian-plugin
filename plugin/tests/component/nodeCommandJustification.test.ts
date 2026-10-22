@@ -30,27 +30,37 @@ it('explains a node bypass refusal without hiding its tightened approval', () =>
   }
 })
 
-it('shows exact integration branches and heads in the child chat too', () => {
-  useVault([])
-  const prompt = nodeManagerFixture().prompts[0]
-  prompt.input = {
-    method: 'git.v1.integrate',
-    params: {
-      source_branch: 'work/sample',
-      target_branch: 'main',
-      expected_source_head: 'a'.repeat(40),
-      expected_target_head: 'b'.repeat(40),
-    },
+it.each(['pending', 'resolved'] as const)(
+  'shows exact integration branches and heads in the %s child card',
+  async (state) => {
+    useVault([])
+    const prompt = nodeManagerFixture().prompts[0]
+    prompt.state = state
+    prompt.input = {
+      method: 'git.v1.integrate',
+      params: {
+        source_branch: 'work/sample',
+        target_branch: 'main',
+        expected_source_head: 'a'.repeat(40),
+        expected_target_head: 'b'.repeat(40),
+      },
+    }
+    const view = mount(NodePermissionCard, { props: { prompt, disabled: false } })
+    try {
+      expect(view.text()).toContain('work/sample → main')
+      expect(view.text()).toContain('a'.repeat(40))
+      expect(view.text()).toContain('b'.repeat(40))
+      if (state === 'resolved')
+        expect(
+          view.findAll('button').filter((b) => ['Allow', 'Deny', 'Stop'].includes(b.text()))
+        ).toHaveLength(0)
+      await view.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+      expect(view.text()).toContain('sample-session')
+    } finally {
+      view.unmount()
+    }
   }
-  const view = mount(NodePermissionCard, { props: { prompt, disabled: false } })
-  try {
-    expect(view.text()).toContain('work/sample → main')
-    expect(view.text()).toContain('a'.repeat(40))
-    expect(view.text()).toContain('b'.repeat(40))
-  } finally {
-    view.unmount()
-  }
-})
+)
 
 it('keeps a local refusal reason readable without a second generic error wrapper', () => {
   useVault([])

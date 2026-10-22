@@ -5,7 +5,7 @@
   <RequestCard
     class="abele-tool-approval"
     :class="{ 'abele-tool-approval_command': justification }"
-    waiting
+    :waiting="!nodePrompt || nodePrompt.state === 'pending'"
   >
     <div class="abele-tool-approval__header">
       <Icon
@@ -141,7 +141,7 @@
         :disabled="disabled || !!answerState"
         :aria-label="t('streamB.questionAnswer.e9700c')"
       />
-      <div v-if="answerState" role="status">
+      <div v-if="answerState && nodePrompt.state === 'pending'" role="status">
         {{
           t('streamBMeta.7c3c58a4a0', {
             p0:
@@ -407,13 +407,37 @@
       <template v-if="answerState.error">{{ answerState.error }}</template>
     </div>
     <Button
-      v-if="nodePrompt && answerState"
+      v-if="nodePrompt?.state === 'pending' && answerState"
       class="abele-tool-approval__stop"
       :text="t('streamB.stop.cae7d5')"
       :disabled="disabled"
       @click="stop"
     />
-    <div v-if="!nodePrompt || !answerState" class="abele-tool-approval__actions">
+    <MetaLine
+      v-if="nodePrompt && nodePrompt.state !== 'pending'"
+      :facts="[
+        {
+          key: '0',
+          value: [
+            streamBLabel(nodePrompt.state),
+            nodePrompt.choice ? streamBLabel(nodePrompt.choice) : '',
+            nodePrompt.state === 'resolved'
+              ? t(
+                  nodePrompt.delivered
+                    ? 'streamB.decisionDeliveredToProvider.784839'
+                    : 'streamB.decisionSavedDeliveryNotConfirmed.75c4c8'
+                )
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        },
+      ]"
+    />
+    <div
+      v-if="(!nodePrompt || nodePrompt.state === 'pending') && (!nodePrompt || !answerState)"
+      class="abele-tool-approval__actions"
+    >
       <Button
         :text="t('streamB.deny.05a2d7')"
         :tooltip="t('streamB.doNotLetTheAgentDoThis.a3a900')"
@@ -447,6 +471,7 @@
 
 <script setup lang="ts">
 import { commandLine, commandFolder } from '@/node/commandPresentation'
+import { streamBLabel } from '@/i18n/streamBLabels'
 import { presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { openMessagingChats } from '@/ai/chatMessaging'
@@ -532,7 +557,15 @@ const managerApproval = computed(() => {
           value: visibleText(promptString(input.cwd)),
         },
       ],
-      evidence: visibleJson(input, 2),
+      evidence: visibleJson(
+        {
+          session_id: props.nodePrompt?.session_id,
+          run_id: props.nodePrompt?.run_id,
+          action_digest: props.nodePrompt?.action_digest,
+          input,
+        },
+        2
+      ),
     }
   }
   if (input?.context_id) {
@@ -550,7 +583,15 @@ const managerApproval = computed(() => {
           value: visibleText(promptString(input.cwd)),
         },
       ],
-      evidence: visibleJson(input, 2),
+      evidence: visibleJson(
+        {
+          session_id: props.nodePrompt?.session_id,
+          run_id: props.nodePrompt?.run_id,
+          action_digest: props.nodePrompt?.action_digest,
+          input,
+        },
+        2
+      ),
     }
   }
   if (!input || !['command.v1.run', 'git.v1.integrate'].includes(promptString(input.method)))
@@ -606,7 +647,15 @@ const managerApproval = computed(() => {
     facts: rows
       .slice(1)
       .map((row, index) => ({ key: String(index), label: row.name, value: row.value })),
-    evidence: visibleJson(input, 2),
+    evidence: visibleJson(
+      {
+        session_id: props.nodePrompt?.session_id,
+        run_id: props.nodePrompt?.run_id,
+        action_digest: props.nodePrompt?.action_digest,
+        input,
+      },
+      2
+    ),
   }
 })
 const nodeValue = ref('')

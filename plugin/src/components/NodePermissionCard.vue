@@ -1,6 +1,6 @@
 <template>
   <AiToolApproval
-    v-if="(obsidianCall || managerCall) && prompt.state === 'pending'"
+    v-if="managerCall || (obsidianCall && prompt.state === 'pending')"
     :message="(obsidianCall || managerCall)!"
     :node-prompt="prompt"
     :disabled="disabled"
