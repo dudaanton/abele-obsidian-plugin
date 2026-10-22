@@ -33,6 +33,7 @@
       :path="model.filePath.value"
       :title="model.filePath.value"
       :context="Number.MAX_SAFE_INTEGER"
+      overview
       :layout="comparison.split ? 'auto' : 'unified'"
     >
       <template #editor="{ layout }">

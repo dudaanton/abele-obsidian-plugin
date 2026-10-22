@@ -19,8 +19,13 @@ function probe(device: string) {
       await nodePanel.open('feature')
       const { registration } = window.__abeleNodePanelFixture
       const client = api.NodeService.getInstance().connection(registration.id).client
-      let current = 'export const sample = true\\n'
-      const original = 'export const sample = false\\n'
+      const original = Array.from({length:220},(_,i)=>'export const sample'+i+' = '+i).join('\\n')+'\\n'
+      const working = original.trimEnd().split('\\n')
+      working[10] = 'export const sample10 = 999'
+      working.splice(40,1)
+      working.splice(100,0,'export const inserted = true')
+      working[175] = 'export const sample175 = 888'
+      let current = working.join('\\n')+'\\n'
       const hash = text => require('crypto').createHash('sha256').update(text).digest('hex')
       const state = { node_id: registration.expectedNodeId, installation_id: 'sample-installation', events: {}, results: {}, outbox: [] }
       client.store.transaction = async fn => fn(state)
@@ -28,7 +33,7 @@ function probe(device: string) {
       client.repository.blob = async () => ({ content_id: hash(current), size: current.length, binary: false, requires_larger_load: false, too_large: false })
       client.repository.patch = async () => ({ content_id: 'sample-patch', size: 100, binary: false, requires_larger_load: false, too_large: false })
       client.repository.content = async ({content_id}) => {
-        const text = content_id === 'sample-patch' ? '@@ -1 +1 @@\\n-'+original.trimEnd()+'\\n+'+current.trimEnd()+'\\n' : current
+        const text = content_id === 'sample-patch' ? '@@ -1,220 +1,'+current.trimEnd().split('\\n').length+' @@\\n'+original.trimEnd().split('\\n').map(line=>'-'+line).join('\\n')+'\\n'+current.trimEnd().split('\\n').map(line=>'+'+line).join('\\n')+'\\n' : current
         return {offset:0,total:text.length,base64:btoa(text)}
       }
       const receipts = new Map()
@@ -66,10 +71,33 @@ function probe(device: string) {
         if(root().querySelector('.cm-merge-a .cm-content').contentEditable!=='false')throw Error('Old side editable')
         await shot('split')
         root().querySelector('.abele-diff__actions [aria-label="One under the other"]')?.click()
-        await until(()=>root().querySelector('.abele-code-change'))
+        await until(()=>root().querySelector('.cm-deletedChunk'))
       }
+      await until(()=>root().querySelector('.cm-deletedChunk'))
+      if(root().querySelector('.abele-code-change'))throw Error('Plain editor gutter returned')
       await shot('unified')
       const editor = () => api.codeView(root().querySelector('.cm-content[contenteditable="true"]'))
+      const added = editor().state.doc.line(11)
+      editor().dispatch({changes:{from:added.to,to:added.to,insert:'0'},selection:{anchor:added.to}})
+      editor().focus()
+      await until(()=>leaf.view.editing.dirty.value)
+      await shot('inline-caret')
+      await until(()=>document.querySelector('.abele-change-overview__band'))
+      await shot('long-overview')
+      const strip = document.querySelector('.abele-change-overview')
+      strip.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))
+      await wait(250)
+      if(Number(strip.getAttribute('aria-valuenow'))<20)throw Error('Overview did not navigate')
+      await shot('overview-scrolled')
+      if(${JSON.stringify(device)} === 'desktop') {
+        const mark = strip.querySelector('.abele-change-overview__mark_changed')
+        mark.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true,clientX:mark.getBoundingClientRect().left,clientY:mark.getBoundingClientRect().top}))
+        await until(()=>document.querySelector('.tooltip')?.textContent.includes('Lines'))
+        await shot('overview-tooltip')
+        mark.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true}))
+      }
+      strip.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}))
+      await wait(250)
       const enter = text => editor().dispatch({changes:{from:0,to:editor().state.doc.length,insert:text}})
       enter('export const sample = 7\\n')
       await until(()=>leaf.view.editing.dirty.value)

@@ -25,6 +25,7 @@
       :text-right="comparison.after"
       :path="path"
       :layout="layout"
+      overview
       class="abele-file-view__card"
     >
       <template #title>

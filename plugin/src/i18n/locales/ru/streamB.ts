@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.diffOverview': 'Обзор изменений',
+  'streamB.diffOverviewAdded': 'Строки {from}–{to} · добавлены',
+  'streamB.diffOverviewRemoved': 'Строки {from}–{to} · удалены',
+  'streamB.diffOverviewChanged': 'Строки {from}–{to} · изменены',
   'streamB.approvalCancelled': 'Отменено',
   'streamB.worktreeDeletionPending':
     'Рабочая копия удаляется. Обновите папку, чтобы проверить результат.',

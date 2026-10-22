@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.diffOverview': 'Vista de cambios',
+  'streamB.diffOverviewAdded': 'Líneas {from}–{to} · añadidas',
+  'streamB.diffOverviewRemoved': 'Líneas {from}–{to} · eliminadas',
+  'streamB.diffOverviewChanged': 'Líneas {from}–{to} · modificadas',
   'streamB.approvalCancelled': 'Cancelado',
   'streamB.worktreeDeletionPending':
     'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',

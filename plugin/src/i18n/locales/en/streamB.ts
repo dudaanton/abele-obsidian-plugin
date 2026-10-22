@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.diffOverview': 'Change overview',
+  'streamB.diffOverviewAdded': 'Lines {from}–{to} · added',
+  'streamB.diffOverviewRemoved': 'Lines {from}–{to} · removed',
+  'streamB.diffOverviewChanged': 'Lines {from}–{to} · changed',
   'streamB.approvalCancelled': 'Cancelled',
   'streamB.worktreeDeletionPending':
     'Worktree deletion is in progress. Refresh the folder to check its result.',

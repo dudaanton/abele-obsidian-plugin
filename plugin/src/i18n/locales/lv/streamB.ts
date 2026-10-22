@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.diffOverview': 'Izmaiņu pārskats',
+  'streamB.diffOverviewAdded': 'Rindas {from}–{to} · pievienotas',
+  'streamB.diffOverviewRemoved': 'Rindas {from}–{to} · dzēstas',
+  'streamB.diffOverviewChanged': 'Rindas {from}–{to} · mainītas',
   'streamB.approvalCancelled': 'Atcelts',
   'streamB.worktreeDeletionPending':
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',

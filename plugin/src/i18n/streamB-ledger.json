@@ -5481,5 +5481,17 @@
   },
   "streamB.permissionBypassDisabled": {
     "englishHash": "d407e25f8d3307ec154320ec627576f54effc189da299f5275b7d18a2934dabb"
+  },
+  "streamB.diffOverview": {
+    "englishHash": "9d85bd260f064827995853f68dd1fccc0953a3d6d13814ec948d41405598a9ec"
+  },
+  "streamB.diffOverviewAdded": {
+    "englishHash": "01df7a70d2fa239d08b351aa375f7d7e9c3a1d89adcfe520c197991ca9449551"
+  },
+  "streamB.diffOverviewRemoved": {
+    "englishHash": "ba3a37c2c8af1807846d5976b9aaffc4ba969735d08e7ae0f51be60f67dc3430"
+  },
+  "streamB.diffOverviewChanged": {
+    "englishHash": "78fec7f8327febf9cf5bbab9867792c7c246c6dc5964f0d2c19b4b61d89eda09"
   }
 }

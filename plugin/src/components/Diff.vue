@@ -2,9 +2,19 @@
   <div
     ref="root"
     class="abele-diff diff-view"
-    :class="[`abele-diff_${shown}`, { 'abele-diff_empty': !changed, 'abele-diff_code': syntax }]"
+    :class="[
+      `abele-diff_${shown}`,
+      { 'abele-diff_empty': !changed, 'abele-diff_code': syntax, 'abele-diff_overview': overview },
+    ]"
     :style="{ '--abele-diff-digits': digits }"
   >
+    <ChangeOverview
+      v-if="overview"
+      :root="root"
+      :changes="overviewMarks"
+      :total-lines="textRight.split('\n').length"
+      @navigate="navigateOverview"
+    />
     <div v-if="title || $slots.title || changed" class="abele-diff__header">
       <span v-if="title || $slots.title" class="abele-diff__title"
         ><slot name="title">{{ title }}</slot></span
@@ -153,6 +163,10 @@ import { useResizeObserver } from '@vueuse/core'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
 import { lineTokens, paint, type PaintedPiece } from './diffSyntax'
 import Icon from './obsidian/Icon.vue'
+import ChangeOverview from './obsidian/ChangeOverview.vue'
+import { overviewChanges } from './diffOverviewModel'
+import { EditorView } from '@codemirror/view'
+import { scrollParent } from '@/github/scrollTo'
 
 const props = withDefaults(
   defineProps<{
@@ -177,6 +191,7 @@ const props = withDefaults(
     title?: string
     /** The compared file's path, when it is code: its extension picks the colours. */
     path?: string
+    overview?: boolean
   }>(),
   {
     layout: 'unified',
@@ -186,12 +201,47 @@ const props = withDefaults(
     emptyText: 'No changes',
     title: undefined,
     path: undefined,
+    overview: false,
   }
 )
 
 const lines = computed(() => diffLines(props.textLeft, props.textRight))
 const foldedRows = computed(() => foldUnchanged(lines.value, props.context))
 const foldable = computed(() => foldedRows.value.some((row) => row.kind === 'fold'))
+const overviewMarks = computed(() =>
+  props.overview ? overviewChanges(props.textLeft, props.textRight) : []
+)
+async function navigateOverview(line: number) {
+  const el = root.value
+  if (!el) return
+  const editor =
+    el.querySelector<HTMLElement>('.cm-merge-b') ?? el.querySelector<HTMLElement>('.cm-editor')
+  if (editor) {
+    const view = EditorView.findFromDOM(editor)
+    if (view) {
+      const at = view.state.doc.line(Math.min(line, view.state.doc.lines)).from
+      view.dispatch({ effects: EditorView.scrollIntoView(at, { y: 'center' }) })
+      return
+    }
+  }
+  const foldedAt = rows.value.findIndex(
+    (row) => row.kind === 'fold' && row.lines.some((item) => item.lineB === line)
+  )
+  if (foldedAt >= 0) {
+    unfold(foldedAt)
+    await nextTick()
+  }
+  const row = el.querySelector<HTMLElement>(`[data-line-b="${line}"]`)
+  const scroll = scrollParent(el)
+  if (scroll) {
+    const box = scroll.getBoundingClientRect()
+    const top =
+      row?.getBoundingClientRect().top ??
+      el.getBoundingClientRect().top +
+        ((line - 1) / props.textRight.split('\n').length) * el.getBoundingClientRect().height
+    scroll.scrollTop += top - box.top - box.height / 2
+  }
+}
 const changed = computed(() => lines.value.some((l) => l.kind !== 'same'))
 const rows = ref<DiffRow[]>([])
 watch(
@@ -331,6 +381,9 @@ const lineClass = (line: DiffLine) => ({
   padding: var(--size-4-2) var(--size-4-3);
   border-bottom: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);
+}
+.abele-diff_overview {
+  padding-inline-end: var(--size-4-3);
 }
 .abele-diff__title {
   flex: 1 1 auto;
