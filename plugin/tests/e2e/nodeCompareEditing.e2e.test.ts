@@ -29,7 +29,9 @@ function probe(device: string) {
       let current = working.join('\\n')+'\\n'
       const hash = text => require('crypto').createHash('sha256').update(text).digest('hex')
       const state = { node_id: registration.expectedNodeId, installation_id: 'sample-installation', events: {}, results: {}, outbox: [] }
-      client.store.transaction = async fn => fn(state)
+      // Match the client store's detached results: mutating retained draft objects in place
+      // would hide a save transition from the model's shallow refs.
+      client.store.transaction = async fn => structuredClone(await fn(state))
       client.repository.editingStatus = async () => ({ enabled: true })
       client.repository.blob = async () => ({ content_id: hash(current), size: current.length, binary: false, requires_larger_load: false, too_large: false })
       client.repository.patch = async () => ({ content_id: 'sample-patch', size: 100, binary: false, requires_larger_load: false, too_large: false })
