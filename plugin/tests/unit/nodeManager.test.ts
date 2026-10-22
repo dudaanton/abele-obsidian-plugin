@@ -15,6 +15,33 @@ const receipt = {
   stderr_truncated: false,
 }
 
+it('marks a known refusal delivered so failed admissions can be retained within the history limit', async () => {
+  const f = fixture()
+  f.client.flush.mockImplementationOnce(async () =>
+    f.store.transaction((s) => {
+      for (const entry of s.outbox) s.results[entry.operation_id] = { error: 'resource_busy' }
+      s.outbox = []
+    })
+  )
+  try {
+    await expect(
+      f.controller.mutate(
+        'sample-parent',
+        'command.v1.run',
+        {
+          session_id: 'sample-session',
+          project_id: 'sample-project',
+          argv: ['pwd'],
+        },
+        'sample-refused'
+      )
+    ).rejects.toThrow(/resource_busy/)
+    expect(await f.store.read((s) => s.managerOperations!['sample-refused'].notified)).toBe(true)
+  } finally {
+    f.store.close()
+  }
+})
+
 it('reports a retained developer worktree only after its integration succeeds, without removing it', async () => {
   const f = fixture()
   try {

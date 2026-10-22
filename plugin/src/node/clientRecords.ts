@@ -115,6 +115,12 @@ export class ClientRecords {
 }
 
 /** Keep recovery and live-operation evidence regardless of age or size. */
+export function uncertainReceiptError(error: string): boolean {
+  return /outcome_unknown|delivery_unknown|idempotency_mismatch|disconnected|timeout|timed_out|connection|unreachable/.test(
+    error
+  )
+}
+
 export function pruneSettledRecords(state: NodeClientState): void {
   // Ordinary receipt updates must not inspect or clone the retained history.
   if (
@@ -124,11 +130,15 @@ export function pruneSettledRecords(state: NodeClientState): void {
     return
   const operations = Object.entries(state.managerOperations ?? {})
   const settled = operations.filter(([id, operation]) => {
-    const run = operation.run ?? (state.results[id]?.result as { state?: string } | undefined)
+    const receipt = state.results[id]
+    const run = operation.run ?? (receipt?.result as { state?: string } | undefined)
     return (
       operation.notified &&
-      run &&
-      ['exited', 'applied', 'failed', 'cancelled', 'denied', 'timed_out'].includes(run.state ?? '')
+      ((run &&
+        ['exited', 'applied', 'failed', 'cancelled', 'denied', 'timed_out'].includes(
+          run.state ?? ''
+        )) ||
+        (receipt?.error && !uncertainReceiptError(receipt.error)))
     )
   })
   for (const [id] of settled.slice(0, Math.max(0, settled.length - 200))) {
@@ -154,7 +164,7 @@ export function pruneSettledRecords(state: NodeClientState): void {
       !['pending', 'pending_approval', 'running', 'outcome_unknown'].includes(
         result?.state ?? ''
       ) &&
-      !/outcome_unknown|delivery_unknown|idempotency_mismatch/.test(receipt.error ?? '')
+      !uncertainReceiptError(receipt.error ?? '')
     )
   })
   for (const id of discardable.slice(0, Math.max(0, discardable.length - 1000))) {

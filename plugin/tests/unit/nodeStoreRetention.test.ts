@@ -71,6 +71,10 @@ it('retains undelivered and uncertain manager runs while bounding delivered term
           run,
         }
         s.results[id] = { result: run }
+        if (i % 2) {
+          delete s.managerOperations[id].run
+          s.results[id] = { error: 'resource_busy' }
+        }
       }
       s.managerOperations.unknown = {
         parent: 'sample-parent',

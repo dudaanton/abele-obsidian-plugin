@@ -7,6 +7,7 @@ import { reduceTranscript } from './NodeTranscriptReducer'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { t } from '@/i18n'
 import { nodeErrorDetails } from './errorWords'
+import { uncertainReceiptError } from './clientRecords'
 
 function outputTail(value: string, capacity: number): { text: string; truncated: boolean } {
   const chars = Array.from(value)
@@ -160,7 +161,13 @@ export class NodeManagerController {
       throw new Error(
         'outcome_unknown: Retry the exact action with the same submitted operation_id; do not create a replacement action.'
       )
-    if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
+    if (receipt.error) {
+      if (!uncertainReceiptError(receipt.error))
+        await this.store.transaction((s) => {
+          if (s.managerOperations?.[operation]) s.managerOperations[operation].notified = true
+        })
+      throw new Error(nodeErrorDetails(receipt.error))
+    }
     const run = ManagerRunSchema.parse(receipt.result)
     await this.client.subscribe(run.session_id).catch((error) => {
       console.debug('[Abele node] accepted command awaits activity refresh', error)
