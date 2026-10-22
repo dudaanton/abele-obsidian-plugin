@@ -99,6 +99,7 @@ describe('the compact chat header', () => {
     const overflow = view.findComponent(SheetHeaderActions)
     expect(view.find('[tooltip="Open a chat you have had"]').exists()).toBe(false)
     expect(overflow.props('actions').map((a) => [a.id, a.section ?? ''])).toEqual([
+      ['rename', ''],
       ['history', ''],
       ['setup', ''],
       ['artifacts', ''],
