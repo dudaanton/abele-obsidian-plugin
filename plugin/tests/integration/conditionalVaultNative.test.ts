@@ -9,26 +9,62 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
-const recoveryCases = ['blocked', 'present', 'missing'].flatMap((parent) =>
-  ['sample.md', 'x'.repeat(248) + '.md', '界'.repeat(80) + '.md', '🙂'.repeat(20) + '.md'].flatMap(
-    (name) => [false, true].map((occupied) => ({ parent, name, occupied }))
+it.each(['inspect', 'mkdir', 'install'])(
+  'falls back visibly after an unexpected %s error',
+  async (boundary) => {
+    const { root, disk } = await setup({
+      lstat: async (path: string) => {
+        if (boundary === 'inspect' && path.endsWith('/folder'))
+          throw new Error('unexpected inspection failure')
+        return fs.lstat(path)
+      },
+      mkdir: async (path: string, options?: { recursive?: boolean }) => {
+        if (boundary === 'mkdir' && path.endsWith('/folder'))
+          throw new Error('unexpected mkdir failure')
+        return fs.mkdir(path, options)
+      },
+      link: async (from: string, to: string) => {
+        if (boundary === 'install' && to.includes('/folder/'))
+          throw new Error('unexpected install failure')
+        await fs.link(from, to)
+      },
+    })
+    await captured(root, 'unexpected-record', 'folder/sample.md')
+    await disk().recoverConditionalFiles()
+    const visible = (await fs.readdir(root)).find(
+      (name) => name.startsWith('sample (Conflicted copy restored ') && name.endsWith('.md')
+    )
+    expect(visible).toBeDefined()
+    expect(await fs.readFile(join(root, visible!), 'utf8')).toBe('recovered bytes')
+  }
+)
+const recoveryCases = ['folder/nested', 'Cafe\u0301/nested', 'Café/Cafe\u0301'].flatMap((folder) =>
+  ['blocked', 'present', 'missing'].flatMap((parent) =>
+    [
+      'sample.md',
+      'x'.repeat(248) + '.md',
+      '界'.repeat(80) + '.md',
+      '🙂'.repeat(20) + '.md',
+      'Re\u0301sume\u0301.md',
+    ].flatMap((name) => [false, true].map((occupied) => ({ folder, parent, name, occupied })))
   )
 )
 it.each(recoveryCases)(
   'exposes captured bytes as a recognised file: %j',
-  async ({ parent, name, occupied }) => {
+  async ({ folder, parent, name, occupied }) => {
     const { root, disk } = await setup()
-    const path = 'folder/nested/' + name
+    const path = folder + '/' + name
+    const ancestor = folder.split('/')[0]
     await captured(root, 'matrix-record', path)
     if (parent === 'blocked') {
-      await fs.writeFile(join(root, 'folder'), 'parent occupant')
+      await fs.writeFile(join(root, ancestor), 'parent occupant')
       if (occupied && name === 'sample.md')
         await fs.writeFile(
           join(root, 'sample (Conflicted copy restored matrix-record).md'),
           'root occupant'
         )
     } else if (parent !== 'missing' || occupied)
-      await fs.mkdir(join(root, 'folder/nested'), { recursive: true })
+      await fs.mkdir(join(root, folder), { recursive: true })
     if (occupied && parent !== 'blocked') await fs.writeFile(join(root, path), 'public occupant')
     await disk().recoverConditionalFiles()
     const visible: string[] = []
@@ -48,7 +84,7 @@ it.each(recoveryCases)(
     for (const part of visible[0].split('/'))
       expect(Buffer.byteLength(part)).toBeLessThanOrEqual(255)
     if (parent === 'blocked')
-      expect(await fs.readFile(join(root, 'folder'), 'utf8')).toBe('parent occupant')
+      expect(await fs.readFile(join(root, ancestor), 'utf8')).toBe('parent occupant')
     else if (occupied) expect(await fs.readFile(join(root, path), 'utf8')).toBe('public occupant')
     if (parent === 'blocked' && occupied && name === 'sample.md')
       expect(

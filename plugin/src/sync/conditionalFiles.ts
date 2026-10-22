@@ -77,59 +77,84 @@ export class ConditionalFiles {
     const id = from.split('/').at(-2)
     let rootFallback = false
     const parents = to.split('/').slice(0, -1)
-    for (let end = 1; end <= parents.length; end++) {
-      const parent = await this.host.stat(parents.slice(0, end).join('/'))
-      if (parent === null) break
-      if (parent.type !== 'folder') {
-        rootFallback = true
-        break
+    try {
+      for (let end = 1; end <= parents.length; end++) {
+        const parent = await this.host.stat(parents.slice(0, end).join('/'))
+        if (parent === null) break
+        if (parent.type !== 'folder') {
+          rootFallback = true
+          break
+        }
       }
+    } catch (error) {
+      this.host.check()
+      console.debug('[abele-sync] sibling inspection failed; restoring at vault root', error)
+      rootFallback = true
     }
+    let rootAttempts = 0
     for (let attempt = 0; attempt < 16; attempt++) {
-      const file = to.slice(to.lastIndexOf('/') + 1),
-        dot = file.lastIndexOf('.')
-      const stem = dot > 0 ? file.slice(0, dot) : file,
-        ext = dot > 0 ? file.slice(dot) : ''
-      const suffix =
-        ' (Conflicted copy restored ' +
-        ((rootFallback ? attempt === 0 : attempt === 1) ? id : crypto.randomUUID()) +
-        ')'
-      let destination =
-        attempt === 0
-          ? to
-          : fitGeneratedName(to.slice(0, to.lastIndexOf('/') + 1), stem, ext, suffix)
-      if (rootFallback) {
-        destination = fitGeneratedName('', stem, ext, suffix)
-      }
-      this.host.validate(
-        destination,
-        rootFallback || (!destination.includes('/') && to.includes('/'))
-      )
-      const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
-      if (parent) await this.host.mkdir(parent)
-      if ((await this.host.stat(destination)) !== null) {
-        if (info.type === 'file' && (await this.host.sameObject?.(from, destination))) {
-          await this.host.flush(destination)
-          return
+      if (attempt >= 8) rootFallback = true
+      this.host.check()
+      try {
+        const file = to.slice(to.lastIndexOf('/') + 1),
+          dot = file.lastIndexOf('.')
+        const stem = dot > 0 ? file.slice(0, dot) : file,
+          ext = dot > 0 ? file.slice(dot) : ''
+        const suffix =
+          ' (Conflicted copy restored ' +
+          ((rootFallback ? rootAttempts++ === 0 : attempt === 1) ? id : crypto.randomUUID()) +
+          ')'
+        // Fit the protocol's NFC spelling, then keep the actual disk parent's spelling.
+        // Normalising a physical parent can select a different directory on some hosts.
+        const physicalParent = to.slice(0, to.lastIndexOf('/') + 1)
+        const fitted =
+          attempt === 0 && !rootFallback
+            ? to
+            : fitGeneratedName(
+                rootFallback ? '' : physicalParent.normalize('NFC'),
+                stem.normalize('NFC'),
+                ext.normalize('NFC'),
+                suffix
+              )
+        let destination =
+          fitted.includes('/') && !(attempt === 0 && !rootFallback)
+            ? physicalParent + fitted.slice(fitted.lastIndexOf('/') + 1)
+            : fitted
+        this.host.validate(
+          destination,
+          rootFallback || (!destination.includes('/') && to.includes('/'))
+        )
+        const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
+        if (parent) await this.host.mkdir(parent)
+        if ((await this.host.stat(destination)) !== null) {
+          if (info.type === 'file' && (await this.host.sameObject?.(from, destination))) {
+            await this.host.flush(destination)
+            return
+          }
+          continue
         }
-        continue
-      }
-      if (info.type === 'file') {
-        if (!(await this.install(from, destination))) continue
-      } else {
-        if (!this.host.restoreDirectory)
-          throw new EngineError('io', 'directory restoration unavailable')
-        try {
-          await this.host.restoreDirectory(from, destination)
-        } catch (error) {
-          if ((await this.host.stat(destination)) !== null) continue
-          throw error
+        if (info.type === 'file') {
+          if (!(await this.install(from, destination))) continue
+        } else {
+          if (!this.host.restoreDirectory)
+            throw new EngineError('io', 'directory restoration unavailable')
+          try {
+            await this.host.restoreDirectory(from, destination)
+          } catch (error) {
+            if ((await this.host.stat(destination)) !== null) continue
+            throw error
+          }
+          await this.host.flush(destination, true)
+          await this.host.flush(from, true)
         }
-        await this.host.flush(destination, true)
-        await this.host.flush(from, true)
+        this.host.changed([destination])
+        return
+      } catch (error) {
+        this.host.check()
+        if (rootFallback) throw error
+        console.debug('[abele-sync] sibling restoration failed; restoring at vault root', error)
+        rootFallback = true
       }
-      this.host.changed([destination])
-      return
     }
     throw new EngineError('io', 'visible recovery destinations are occupied')
   }
