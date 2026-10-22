@@ -58,6 +58,23 @@ const provider = (modes = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk']):
   },
 })
 const journal: LiveProjection = { live: true, tasks: [], context: null, compacting: false }
+it('records an explicit owner mode before sending it and never records a reported mode', async () => {
+  const c = client()
+  const rememberMode = vi.fn(async () => {})
+  const control = new NodeSessionControl(() => c, 's1', {
+    open: vi.fn(),
+    report: vi.fn(),
+    rememberMode,
+  })
+  await control.read()
+  expect(rememberMode).not.toHaveBeenCalled()
+  c.configureSession.mockImplementation(async () => {
+    expect(rememberMode).toHaveBeenLastCalledWith('allow-all')
+  })
+  await control.change({ mode: 'bypass' })
+  expect(rememberMode).toHaveBeenCalledExactlyOnceWith('allow-all')
+})
+
 it('uses the same model family before and after a raw model id is reported', () => {
   expect(modelLabel('sample/gpt-9.7-sol').split(' ')[0]).toBe('GPT-9.7')
   expect(modelLabel('gpt-9.7-sol').split(' ')[0]).toBe('GPT-9.7')

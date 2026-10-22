@@ -10,6 +10,65 @@ import { IDBFactory } from 'fake-indexeddb'
 import type { NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
 import { ObsidianToolsSnapshotSchema, PromptSchema } from '@abele/node-protocol'
+import { rememberSessionOwnerMode } from '@/node/sessionOwnerMode'
+
+it.each([
+  ['confirm-all', undefined, 'bypassPermissions', 'confirm-all'],
+  ['allow-all', undefined, 'manual', 'confirm-all'],
+  ['confirm-all', 'allow-all', 'bypassPermissions', 'allow-all'],
+  ['allow-all', 'confirm-all', 'bypassPermissions', 'confirm-all'],
+  ['allow-all', undefined, 'acceptEdits', 'allow-edit'],
+] as const)(
+  'bounds remote permissions by local owner choice: %s / %s / %s',
+  async (own, choice, remote, expected) => {
+    useVault([])
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
+    const agent = ensureNodeAgents('sample-node', 'Sample node', ['fake'])[0]!
+    agent.permissionMode = own
+    const store = new NodeClientStore('sample-mode-' + crypto.randomUUID(), new IDBFactory())
+    const client = {
+      sessionState: async () => ({
+        tool_permissions: {
+          permission_mode: remote,
+          status: 'supported',
+          per_action_approval: true,
+        },
+      }),
+    } as unknown as NodeClient
+    const runtime = new NodeObsidianTools(client, store, 'sample-node', 'Sample node')
+    try {
+      if (choice) rememberSessionOwnerMode('sample-node', 'sample', choice)
+      const internal = runtime as unknown as {
+        permissionSnapshots: boolean
+        snapshot: (session: string, agent: string) => Promise<unknown>
+        adapter: (
+          session: string,
+          agent: string,
+          revision: string
+        ) => {
+          agent: () => { permissionMode: string }
+          asks: (tool: string) => boolean
+        }
+      }
+      internal.permissionSnapshots = true
+      await internal.snapshot('sample', agent.id)
+      expect(internal.adapter('sample', agent.id, 'test').agent().permissionMode).toBe(expected)
+      expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(
+        expected === 'confirm-all'
+      )
+      if (!choice) {
+        agent.permissionMode = 'confirm-all'
+        expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
+      }
+      rememberSessionOwnerMode('sample-node', 'sample', 'confirm-all')
+      expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
+    } finally {
+      await runtime.destroy()
+      store.close()
+    }
+  }
+)
 
 it('keeps node agent tool settings in ordinary transferable agent definitions without offering them as vault models', () => {
   useVault([])

@@ -18,7 +18,12 @@ import { obsidianDeviceName } from './obsidianDevice'
 import { ensureNodeAgents, nodeToolRunners } from './nodeAgentTools'
 import { nodeProviders } from './providers'
 import { nodeAdvertisesMethod } from './advertisedMethods'
-import { ownerPermissionPatch, readToolPermissions } from './toolPermissions'
+import {
+  delegatedPermissionMode,
+  ownerPermissionPatch,
+  readToolPermissions,
+} from './toolPermissions'
+import { sessionOwnerMode } from './sessionOwnerMode'
 import type { PermissionMode } from '@/ai/types'
 
 const Config = z.object({
@@ -191,7 +196,13 @@ export class NodeObsidianTools {
               )
               .map((receipt) => receipt.result as unknown as AgentToolResult)
           ),
-        () => this.sessionModes.get(session)
+        () => {
+          const owner =
+            sessionOwnerMode(this.nodeId, session) ??
+            AgentRegistry.getInstance().get(agent)?.permissionMode ??
+            'confirm-all'
+          return delegatedPermissionMode(owner, this.sessionModes.get(session)) as PermissionMode
+        }
       )
       this.adapters.set(key, adapter)
     }

@@ -1,6 +1,7 @@
 import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
+import { rememberSessionOwnerMode } from './sessionOwnerMode'
 import { legacyProviderRefusal, readToolPermissions } from './toolPermissions'
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
@@ -217,6 +218,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   ) {
     this.reference = NodeReferenceSchema.parse(reference)
     this.control = new NodeSessionControl(() => connection.client, reference.sessionId, {
+      rememberMode: (mode) => rememberSessionOwnerMode(reference.nodeId, reference.sessionId, mode),
       report: (error) => this.report(error),
       open: (sessionId) => this.openSession?.(sessionId),
     })

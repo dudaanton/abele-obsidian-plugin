@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import type { PermissionMode as OwnerPermissionMode } from '@/ai/types'
 import { ref, type Ref } from 'vue'
 import type { NodeClient } from '@abele/node-client'
 import type { LiveSessionState } from '@abele/node-protocol'
@@ -107,6 +108,7 @@ export const SESSION_COMMANDS: NodeSessionLive['commands'] = [
 export interface SessionActions {
   open: (sessionId: string) => void
   report: (error: unknown) => void
+  rememberMode?: (mode: OwnerPermissionMode) => Promise<void> | void
 }
 
 /**
@@ -157,14 +159,22 @@ export class NodeSessionControl {
   }
 
   change(patch: Partial<SessionSettings>): Promise<void> {
-    return this.act(() =>
-      this.client().configureSession(this.sessionId, {
+    return this.act(async () => {
+      if (patch.mode)
+        await this.actions.rememberMode?.(
+          patch.mode === 'bypass'
+            ? 'allow-all'
+            : patch.mode === 'acceptEdits'
+              ? 'allow-edit'
+              : 'confirm-all'
+        )
+      await this.client().configureSession(this.sessionId, {
         ...(patch.model ? { model: patch.model } : {}),
         ...(patch.effort ? { effort: patch.effort as never } : {}),
         ...(patch.account ? { account: patch.account } : {}),
         ...(patch.mode ? { permission_mode: WIRE_MODE[patch.mode] as never } : {}),
       })
-    )
+    })
   }
 
   /** `then` is sent once compacting is done; none, and the session waits for you. */
