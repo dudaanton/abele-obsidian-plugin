@@ -3770,5 +3770,7 @@ export const es = {
     'Este nodo no puede integrar sin preguntar. Hace falta una actualización del nodo; no se envió ninguna solicitud.',
   'node.manager.resultExit': '{state} · salida {code}',
   'node.manager.integrationLegacyApproval':
-    'Esta versión del nodo todavía pide aprobación para integrar.',
+    'Esta versión del nodo aún pide permiso antes de integrar. Actualiza el nodo para integrar sin preguntar.',
+  'node.manager.integrationContextUpdate':
+    'Actualiza el nodo a la versión 0.4.49 o posterior para integrar desde este chat sin una sesión de gestor.',
 } satisfies TranslationCatalog

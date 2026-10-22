@@ -7,6 +7,68 @@ import NodeManagerRunCard from '@/components/NodeManagerRunCard.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { commandLine } from '@/node/commandPresentation'
 import SessionMarkLine from '@/components/nodeSession/SessionMarkLine.vue'
+import AiChatMessage from '@/components/AiChatMessage.vue'
+
+it('removes the entire empty activity message from layout', () => {
+  useVault([])
+  const view = mount(AiChatMessage, {
+    props: {
+      message: {
+        id: 'sample-notice',
+        role: 'system',
+        content: '',
+        timestamp: 1,
+        sessionMark: { kind: 'notice', text: 'Node activity update' },
+      },
+    },
+  })
+  expect(view.find('.abele-chat-msg').exists()).toBe(false)
+  view.unmount()
+})
+
+it('shows short integration heads and keeps binding details only in Original action', async () => {
+  useVault([])
+  const card = nodeManagerFixture('pending_approval', false, false, {
+    managerLegacyIntegration: true,
+    managerJustification: 'Integrate reviewed changes.',
+  })
+  const view = mount(NodeManagerRunCard, { props: { card } })
+  expect(view.get('[data-manager-command]').text()).toBe(
+    'work/sample-parser aaaaaaa → main bbbbbbb'
+  )
+  expect(view.text()).not.toContain('Source head:')
+  expect(view.text()).not.toContain('sample-session')
+  expect(view.text()).toContain('Update the node to integrate without asking.')
+  await view.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+  expect(view.text()).toContain('a'.repeat(40))
+  expect(view.text()).toContain('sample-session')
+  card.prompts[0].input.context_id = 'sample-context'
+  await view.setProps({ card: { ...card } })
+  expect(view.find('[data-integration-compatibility]').exists()).toBe(false)
+  expect(view.get('[data-manager-command]').text()).toBe(
+    'work/sample-parser aaaaaaa → main bbbbbbb'
+  )
+  view.unmount()
+})
+
+it('preserves full legacy justification prose and collapses on a second click', async () => {
+  useVault([])
+  const reason = 'Inspect the sample runtime before running the checks. '.repeat(6).trim()
+  for (const state of ['pending_approval', 'running'] as const) {
+    const card = nodeManagerFixture(state, false, false, {
+      managerCommand: 'node --version',
+      managerJustification: reason,
+    })
+    const view = mount(NodeManagerRunCard, { props: { card } })
+    const button = view.get('[data-command-justification]')
+    expect(button.text()).toBe(reason)
+    await button.trigger('click')
+    expect(button.attributes('aria-expanded')).toBe('true')
+    await button.trigger('click')
+    expect(button.attributes('aria-expanded')).toBe('false')
+    view.unmount()
+  }
+})
 
 it('hides empty activity markers while retaining meaningful notices', async () => {
   useVault([])
@@ -63,7 +125,7 @@ it('explains a node bypass refusal without hiding its tightened approval', () =>
 })
 
 it.each(['pending', 'resolved'] as const)(
-  'shows exact integration branches and heads in the %s child card',
+  'shows short integration heads and retains full evidence in the %s child card',
   async (state) => {
     useVault([])
     const prompt = nodeManagerFixture().prompts[0]
@@ -79,10 +141,12 @@ it.each(['pending', 'resolved'] as const)(
     }
     const view = mount(NodePermissionCard, { props: { prompt, disabled: false } })
     try {
-      expect(view.text()).toContain('work/sample → main')
-      expect(view.text()).toContain('a'.repeat(40))
-      expect(view.text()).toContain('b'.repeat(40))
-      expect(view.text()).toContain('This node version still asks for integration.')
+      expect(view.text()).toContain('work/sample aaaaaaa → main bbbbbbb')
+      expect(view.text()).not.toContain('a'.repeat(40))
+      expect(view.text()).not.toContain('b'.repeat(40))
+      expect(view.text()).toContain(
+        'This node version still asks before integrating. Update the node to integrate without asking.'
+      )
       if (state === 'pending') expect(view.findAll('.abele-tool-approval')).toHaveLength(1)
       if (state === 'resolved')
         expect(
@@ -90,6 +154,8 @@ it.each(['pending', 'resolved'] as const)(
         ).toHaveLength(0)
       await view.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
       expect(view.text()).toContain('sample-session')
+      expect(view.text()).toContain('a'.repeat(40))
+      expect(view.text()).toContain('b'.repeat(40))
     } finally {
       view.unmount()
     }

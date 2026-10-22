@@ -2,11 +2,13 @@ import type { Prompt, NodeClient } from '@abele/node-client'
 import {
   ManagerRunSchema,
   CommandContextRunSchema,
+  IntegrationContextRunSchema,
   CommandContextSchema,
   PromptSchema,
   validateParams,
   type ManagerRun,
   type CommandContextRun,
+  type IntegrationContextRun,
 } from '@abele/node-protocol'
 import { z } from 'zod'
 import type { NodeClientStore } from './NodeClientStore'
@@ -18,8 +20,11 @@ import { nodeErrorDetails } from './errorWords'
 import { uncertainReceiptError } from './clientRecords'
 import { commandFolder } from './commandPresentation'
 import { delegationBranchLabel } from './delegation'
-const RunSchema = CommandContextRunSchema.or(ManagerRunSchema)
-type Run = ManagerRun | CommandContextRun
+const ContextRunSchema = IntegrationContextRunSchema.or(CommandContextRunSchema)
+const RunSchema = ContextRunSchema.or(ManagerRunSchema)
+type Run = ManagerRun | CommandContextRun | IntegrationContextRun
+const contextKind = (run: { method: string }) =>
+  run.method === 'git.v1.integrate' ? 'integration' : 'command'
 function runUpdate(raw: unknown, current: Run) {
   // Journals publish run fields; only prepare/status carry the exact approval object.
   if (
@@ -29,7 +34,8 @@ function runUpdate(raw: unknown, current: Run) {
     'context_id' in raw &&
     raw.context_id === current.context_id
   )
-    return CommandContextRunSchema.safeParse({
+    return ContextRunSchema.safeParse({
+      ...('stream_id' in current ? { stream_id: current.stream_id } : {}),
       ...raw,
       approval: 'approval' in raw ? raw.approval : current.approval,
     })
@@ -98,10 +104,14 @@ export class NodeManagerController {
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {}
-  async enableContexts() {
-    if (!managerCapability(await this.client.describe(), 'command_context_v1'))
-      throw new Error(t('node.manager.contextUpdate'))
-    await this.client.request('command.context.v1.enable', {})
+  async enableContexts(kind: 'command' | 'integration' = 'command') {
+    if (!managerCapability(await this.client.describe(), `${kind}_context_v1`))
+      throw new Error(
+        kind === 'command'
+          ? t('node.manager.contextUpdate')
+          : t('node.manager.integrationContextUpdate')
+      )
+    await this.client.request(`${kind}.context.v1.enable`, {})
   }
   private async contextOperation(
     parent: string,
@@ -126,7 +136,7 @@ export class NodeManagerController {
       const entry = s.managerOperations?.[operation]
       if (entry && entry.parent !== parent)
         throw new Error('Run does not belong to this parent chat')
-      if (method === 'command.context.v1.prepare')
+      if (/^(command|integration)\.context\.v1\.prepare$/.test(method))
         (s.managerOperations ??= {})[operation] ??= {
           parent,
           method,
@@ -153,8 +163,29 @@ export class NodeManagerController {
     justification: string,
     guard: () => void = () => {}
   ) {
+    return this.prepareContext(parent, raw, operation, mode, justification, guard, 'command')
+  }
+  async integration(
+    parent: string,
+    raw: Record<string, unknown>,
+    operation: string,
+    mode: 'ask' | 'bypass',
+    justification: string,
+    guard: () => void = () => {}
+  ) {
+    return this.prepareContext(parent, raw, operation, mode, justification, guard, 'integration')
+  }
+  private async prepareContext(
+    parent: string,
+    raw: Record<string, unknown>,
+    operation: string,
+    mode: 'ask' | 'bypass',
+    justification: string,
+    guard: () => void = () => {},
+    kind: 'command' | 'integration' = 'command'
+  ) {
     try {
-      await this.enableContexts()
+      await this.enableContexts(kind)
       guard()
       const { project_id, worktree_id, session_id: _session, ...command } = raw
       let presentation = raw
@@ -196,23 +227,24 @@ export class NodeManagerController {
         new TextEncoder().encode(JSON.stringify([parent, target]))
       )
       const contextOperation =
-        'context-' +
+        (kind === 'integration' ? 'integration-context-' : 'context-') +
         Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
       const context = CommandContextSchema.parse(
         await this.contextOperation(
           parent,
-          'command.context.v1.create',
+          `${kind}.context.v1.create`,
           { parent_chat_id: parent, ...target },
           contextOperation
         )
       )
       guard()
-      const run = CommandContextRunSchema.parse(
+      const run = ContextRunSchema.parse(
         await this.contextOperation(
           parent,
-          'command.context.v1.prepare',
+          `${kind}.context.v1.prepare`,
           {
             ...command,
+            ...(kind === 'integration' ? { worktree_id } : {}),
             context_id: context.context_id,
             parent_chat_id: parent,
             permission_mode: mode,
@@ -233,7 +265,7 @@ export class NodeManagerController {
         .catch((error) => console.debug('[Abele node] command context subscription pending', error))
       return run
     } catch (error) {
-      return this.refuse(parent, raw, operation, mode, justification, error)
+      return this.refuse(parent, raw, operation, mode, justification, error, kind)
     }
   }
   async refuse(
@@ -242,7 +274,8 @@ export class NodeManagerController {
     operation: string,
     _mode: 'ask' | 'bypass',
     justification: string,
-    error: unknown
+    error: unknown,
+    kind: 'command' | 'integration' = 'command'
   ): Promise<never> {
     const reason = error instanceof Error ? error.message : String(error)
     if (reason === 'idempotency_mismatch') throw new Error(reason)
@@ -251,12 +284,12 @@ export class NodeManagerController {
     await this.store.transaction((s) => {
       const entry = ((s.managerOperations ??= {})[operation] ??= {
         parent,
-        method: 'command.context.v1.prepare',
+        method: `${kind}.context.v1.prepare`,
         params: {},
         justification,
       })
       uncertain =
-        s.operationRequests?.[operation]?.method === 'command.context.v1.prepare' &&
+        s.operationRequests?.[operation]?.method === `${kind}.context.v1.prepare` &&
         !s.results[operation]?.error
       if (entry.parent !== parent || s.results[operation]?.result) return
       entry.request ??= raw
@@ -264,7 +297,7 @@ export class NodeManagerController {
         run_id: operation,
         prompt_id: operation,
         session_id: 'unsubmitted-command',
-        method: 'command.v1.run',
+        method: kind === 'integration' ? 'git.v1.integrate' : 'command.v1.run',
         state: uncertain ? 'outcome_unknown' : 'failed',
         reason: uncertain ? `outcome_unknown: ${reason}` : reason,
         stdout: '',
@@ -302,23 +335,21 @@ export class NodeManagerController {
     }
     const entry = await this.ownedContext(parent, prompt.session_id, prompt.run_id)
     if (!entry) throw new Error('Run does not belong to this parent chat')
-    const run = CommandContextRunSchema.parse(
-      await this.status(parent, prompt.session_id, prompt.run_id)
-    )
+    const run = ContextRunSchema.parse(await this.status(parent, prompt.session_id, prompt.run_id))
     const approvalGuard =
       choice === 'allow' && this.canApprove ? await this.canApprove(parent, run) : undefined
     if (approvalGuard === false) throw new Error(t('node.manager.permissionChanged'))
     const approval = PromptSchema.parse(run.approval)
     if (approval.prompt_id !== prompt.prompt_id || approval.action_digest !== prompt.action_digest)
       throw new Error('stale_approval')
-    await this.enableContexts()
+    await this.enableContexts(contextKind(run))
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(entry.operation))
     const decision =
       'decision-' +
       Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
     await this.contextOperation(
       parent,
-      'command.context.v1.execute',
+      `${contextKind(run)}.context.v1.execute`,
       {
         context_id: run.context_id,
         parent_chat_id: parent,
@@ -336,7 +367,7 @@ export class NodeManagerController {
     return this.store.read(
       (s) =>
         Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-          const parsed = CommandContextRunSchema.safeParse(s.results[operation]?.result)
+          const parsed = ContextRunSchema.safeParse(s.results[operation]?.result)
           return entry.parent === parent &&
             parsed.success &&
             parsed.data.session_id === session &&
@@ -457,11 +488,11 @@ export class NodeManagerController {
         })
       const context = await this.ownedContext(parent, input.session_id, input.run_id)
       if (context) {
-        await this.enableContexts()
+        await this.enableContexts(contextKind(context.run))
         return RunSchema.parse(
           await this.contextOperation(
             parent,
-            'command.context.v1.cancel',
+            `${contextKind(context.run)}.context.v1.cancel`,
             { context_id: context.run.context_id, parent_chat_id: parent, run_id: input.run_id },
             operation
           )
@@ -583,10 +614,10 @@ export class NodeManagerController {
     if (!owned) throw new Error('Run does not belong to this parent chat')
     const before = await this.store.read((s) => s.cursors[session] ?? 0)
     const context = await this.ownedContext(parent, session, run)
-    if (context) await this.enableContexts()
+    if (context) await this.enableContexts(contextKind(context.run))
     let status = RunSchema.parse(
       await this.client.request(
-        context ? 'command.context.v1.status' : 'command.v1.status',
+        context ? `${contextKind(context.run)}.context.v1.status` : 'command.v1.status',
         context
           ? { context_id: context.run.context_id, parent_chat_id: parent, run_id: run }
           : { session_id: session, run_id: run }
@@ -755,7 +786,7 @@ export class NodeManagerController {
                   const p = request.params as Record<string, unknown>
                   const pending = s.outbox.some((e) => e.operation_id === id)
                   if (
-                    request.method !== 'command.context.v1.execute' ||
+                    !/^(command|integration)\.context\.v1\.execute$/.test(request.method) ||
                     p.run_id !== run.run_id ||
                     p.parent_chat_id !== parent ||
                     (p.choice !== 'allow' && p.choice !== 'deny')

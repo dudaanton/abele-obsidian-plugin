@@ -3595,5 +3595,8 @@ export const en = {
   'node.manager.integrateBypassUpdate':
     'This node cannot run integration without asking. A node update with owner-mode integration is required; nothing was submitted.',
   'node.manager.resultExit': '{state} · exit {code}',
-  'node.manager.integrationLegacyApproval': 'This node version still asks for integration.',
+  'node.manager.integrationLegacyApproval':
+    'This node version still asks before integrating. Update the node to integrate without asking.',
+  'node.manager.integrationContextUpdate':
+    'Update the node to 0.4.49 or later to integrate from this chat without a manager session.',
 } as const

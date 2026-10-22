@@ -9,6 +9,7 @@
   >
     <div class="abele-tool-approval__header">
       <Icon
+        class="abele-tool-approval__glyph"
         :icon="justification ? 'square-terminal' : KIND_ICON[toolKind(message.toolName)]"
         size="xs"
         :interactive="false"
@@ -95,9 +96,24 @@
         :path="diff.path"
       />
       <div v-if="managerApproval" data-manager-approval>
-        <code data-manager-command>{{
+        <code v-if="integrationLine" data-manager-command
+          >{{ integrationLine.source }}
+          <span class="abele-integration-head">{{ integrationLine.sourceHead }}</span> →
+          {{ integrationLine.target }}
+          <span class="abele-integration-head">{{ integrationLine.targetHead }}</span></code
+        >
+        <code v-else data-manager-command>{{
           managerApproval.argv ? commandLine(managerApproval.argv) : managerApproval.command
         }}</code>
+        <MetaLine
+          v-if="integrationLine?.rebase"
+          :facts="[
+            {
+              key: 'rebase',
+              value: t('streamB.rebaseOnto.c43878', { v0: integrationLine.target }),
+            },
+          ]"
+        />
         <p v-if="managerApproval.reason">{{ managerApproval.reason }}</p>
         <div v-if="managerApproval.folder" class="abele-tool-approval__folder" data-command-folder>
           <Icon icon="folder" size="xs" :interactive="false" />
@@ -105,10 +121,6 @@
             folderLabel || commandFolder(managerApproval.folder)
           }}</span>
         </div>
-        <MetaLine
-          v-if="nodePrompt?.input?.method === 'git.v1.integrate'"
-          :facts="managerApproval.facts"
-        />
         <MetaLine
           v-if="nodePrompt?.input?.method === 'git.v1.integrate' && !nodePrompt.input.context_id"
           :facts="[{ key: '0', value: t('node.manager.integrationLegacyApproval') }]"
@@ -483,6 +495,7 @@
 
 <script setup lang="ts">
 import { commandLine, commandFolder } from '@/node/commandPresentation'
+import { displayCommandJustification } from '@/node/commandJustification'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
@@ -580,7 +593,7 @@ const managerApproval = computed(() => {
       ),
     }
   }
-  if (input?.context_id) {
+  if (input?.context_id && input.method !== 'git.v1.integrate') {
     return {
       command: promptString(input.command),
       argv: Array.isArray(input.argv)
@@ -698,6 +711,19 @@ watch(
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
 const justificationOpen = ref(false)
+const integrationLine = computed(() => {
+  const input = props.nodePrompt?.input
+  if (input?.method !== 'git.v1.integrate') return undefined
+  const args = input.params as Record<string, unknown>
+  if (!args) return undefined
+  return {
+    source: visibleText(promptString(args.source_branch)),
+    target: visibleText(promptString(args.target_branch)),
+    sourceHead: visibleText(promptString(args.expected_source_head)).slice(0, 7),
+    targetHead: visibleText(promptString(args.expected_target_head)).slice(0, 7),
+    rebase: args.rebase === true,
+  }
+})
 const justification = computed(() => {
   if (
     !managerApproval.value &&
@@ -705,13 +731,7 @@ const justification = computed(() => {
   )
     return ''
   const text = params.value.justification
-  return typeof text === 'string'
-    ? text
-        .slice(0, 200)
-        .replace(/[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/gu, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-    : ''
+  return typeof text === 'string' ? displayCommandJustification(text) : ''
 })
 const exactCommand = computed(() =>
   Array.isArray(params.value.argv)
@@ -1252,7 +1272,11 @@ const toggleEdit = () => {
 [data-manager-command],
 [data-node-command] {
   white-space: pre-wrap;
+  word-break: normal;
   overflow-wrap: anywhere;
+}
+.abele-integration-head {
+  color: var(--text-muted);
 }
 .abele-tool-approval__folder {
   display: flex;
@@ -1300,6 +1324,9 @@ code[data-manager-command] {
     padding: 0;
     color: var(--icon-color);
   }
+}
+.abele-tool-approval_command .abele-tool-approval__header {
+  align-items: flex-start;
 }
 
 .abele-tool-approval__what {
@@ -1446,9 +1473,11 @@ code[data-manager-command] {
 </style>
 
 <style>
-.abele-command-justification.abele-obsidian-button {
+.abele-command-justification.abele-obsidian-button.abele-obsidian-button_quiet {
   padding: 0;
+  margin: 0;
   height: auto;
+  min-height: 0;
   min-width: 0;
   text-align: left;
   color: var(--text-normal);

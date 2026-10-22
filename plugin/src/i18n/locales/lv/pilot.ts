@@ -3699,5 +3699,7 @@ export const lv = {
     'Šis mezgls nevar integrēt bez jautāšanas. Nepieciešams mezgla atjauninājums; pieprasījums nav nosūtīts.',
   'node.manager.resultExit': '{state} · kods {code}',
   'node.manager.integrationLegacyApproval':
-    'Šī mezgla versija vēl pieprasa integrācijas apstiprinājumu.',
+    'Šī mezgla versija vēl jautā pirms integrēšanas. Atjauniniet mezglu, lai integrētu bez jautāšanas.',
+  'node.manager.integrationContextUpdate':
+    'Atjauniniet mezglu līdz versijai 0.4.49 vai jaunākai, lai integrētu no šīs sarunas bez pārvaldnieka sesijas.',
 } satisfies TranslationCatalog

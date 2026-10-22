@@ -192,6 +192,117 @@ it('applies context journal updates which omit the status-only approval field', 
   }
 })
 
+it.each(['ask', 'bypass'] as const)(
+  'uses the integration context lifecycle in %s mode',
+  async (mode) => {
+    const f = fixture()
+    const original = f.request.getMockImplementation()!
+    const params = {
+      worktree_id: 'sample-tree',
+      source_worktree_id: 'sample-source',
+      source_branch: 'work/sample',
+      target_branch: 'main',
+      expected_source_head: 'a'.repeat(40),
+      expected_target_head: 'b'.repeat(40),
+    }
+    const approval = {
+      ...f.run.approval,
+      tool_name: 'git.v1.integrate',
+      input: {
+        method: 'git.v1.integrate',
+        context_id: 'sample-context',
+        params,
+        cwd: '/workspace/sample-project',
+      },
+    }
+    const run = {
+      ...f.run,
+      method: 'git.v1.integrate',
+      stream_id: 'sample-stream',
+      permission_mode: mode,
+      state: mode === 'ask' ? 'pending_approval' : 'running',
+      approval: mode === 'ask' ? approval : null,
+    }
+    f.request.mockImplementation(async (method, raw) => {
+      if (method === 'node.describe')
+        return {
+          capabilities: { capabilities: { integration_context_v1: { status: 'supported' } } },
+        }
+      if (method === 'integration.context.v1.enable') return { enabled: true }
+      if (method === 'integration.context.v1.create')
+        return original('command.context.v1.create', raw)
+      if (method === 'integration.context.v1.prepare' || method === 'integration.context.v1.status')
+        return run
+      if (method === 'integration.context.v1.execute')
+        return { ...approval, state: 'resolved', choice: raw.choice }
+      if (method === 'integration.context.v1.cancel') return { ...run, state: 'cancelled' }
+      return original(method, raw)
+    })
+    try {
+      // A prior command in the same target must not collide with integration create's operation ID.
+      const hash = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(JSON.stringify(['sample-parent', { worktree_id: 'sample-tree' }]))
+      )
+      const createId =
+        'context-' +
+        Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
+      await f.store.transaction((s) => {
+        ;(s.operationRequests ??= {})[createId] = {
+          method: 'command.context.v1.create',
+          params: { parent_chat_id: 'sample-parent', worktree_id: 'sample-tree' },
+        }
+      })
+      const execute = () =>
+        f.controller.integration(
+          'sample-parent',
+          params,
+          'sample-integration',
+          mode,
+          'Integrate reviewed changes.'
+        )
+      await execute()
+      await execute()
+      expect(
+        f.request.mock.calls.filter(([m]) => m === 'integration.context.v1.prepare')
+      ).toHaveLength(1)
+      expect(
+        f.request.mock.calls.find(([m]) => m === 'integration.context.v1.prepare')?.[1]
+      ).toMatchObject({
+        ...params,
+        permission_mode: mode,
+        context_id: 'sample-context',
+        parent_chat_id: 'sample-parent',
+      })
+      expect(
+        f.request.mock.calls.some(
+          ([m]) => m === 'git.v1.integrate' || m === 'command.context.v1.enable'
+        )
+      ).toBe(false)
+      const cards = await f.controller.cards('sample-parent')
+      expect(cards).toHaveLength(1)
+      expect(cards[0].prompts).toHaveLength(mode === 'ask' ? 1 : 0)
+      if (mode === 'ask') await f.controller.answer('sample-parent', cards[0].prompts[0], 'allow')
+      expect(
+        f.request.mock.calls.filter(([m]) => m === 'integration.context.v1.execute')
+      ).toHaveLength(mode === 'ask' ? 1 : 0)
+      expect(
+        await f.controller.status('sample-parent', 'sample-stream', 'sample-run')
+      ).toMatchObject({ method: 'git.v1.integrate' })
+      expect(
+        await f.controller.mutate(
+          'sample-parent',
+          'command.v1.cancel',
+          { session_id: 'sample-stream', run_id: 'sample-run' },
+          'sample-cancel'
+        )
+      ).toMatchObject({ state: 'cancelled' })
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
 function fixture(supported = true) {
   const store = new NodeClientStore(crypto.randomUUID(), new IDBFactory())
   const client = new NodeClient(

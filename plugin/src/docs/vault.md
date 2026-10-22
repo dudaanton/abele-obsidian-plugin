@@ -3189,13 +3189,13 @@ effect; a final receipt retains its structured result. A missing or unfinished r
 after a node claim means the outcome is unknown, never permission to repeat the handler.
 These receipts are device-local recovery evidence, not vault files or transferable settings.
 
-Command contexts are node-side, provider-independent execution records bound to a parent
+Command and integration contexts are node-side, provider-independent execution records bound to a parent
 chat and target. The installation-local client cache retains exact context creation,
 preparation and owner-decision operation IDs, request parameters, short display-only
 justifications, readable target labels in request display metadata, and their receipts. A
 known preparation refusal is terminal without a synthetic approval; legacy local pending
 refusals project as failed cards. These are recovery records, not transferable execution
-grants. Reconnecting reuses exact operations; interrupted commands are never blindly replayed.
+grants. Integration context receipts include their journal stream identity; their create operation namespace is separate from command creation. Reconnecting reuses exact operations; interrupted commands are never blindly replayed.
 
 The installation-local IndexedDB node cache stores client metadata separately from each
 stream's journal. Legacy single-record caches migrate atomically on opening. Session streams

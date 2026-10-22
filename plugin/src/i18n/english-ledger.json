@@ -27570,7 +27570,7 @@
     ]
   },
   "node.manager.integrationLegacyApproval": {
-    "englishHash": "318ce344e08fafec0ea7e34d9d00224ba15903f31f62719d5df3994e1bb6b8c9",
+    "englishHash": "8be2394277ff0f5e68b5cb768e31dca3f661a59e1a76279df7429ef938f1b0a2",
     "context": "Legacy node integration approval compatibility note",
     "reviewedLocales": [
       "ru",
@@ -27578,5 +27578,15 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.integrationContextUpdate": {
+    "context": "Integration context compatibility guidance",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ],
+    "englishHash": "622b3d7f698781ca20f78325ee553a17159396c889253cafcddb3c4f660c7326"
   }
 }

@@ -2,6 +2,14 @@ import { t, currentLocale, numberFormatter } from '@/i18n'
 // The words and small helpers the node session's pieces share; what the session is lives in
 // `@/node/sessionLive`.
 import type { ChildState, PermissionMode } from '@/node/sessionLive'
+import type { SessionMark } from '@/node/sessionLive'
+import { presentUiField } from '@/i18n/streamBErrors'
+
+export function hiddenSessionMark(mark?: SessionMark): boolean {
+  if (mark?.kind !== 'notice') return false
+  const text = presentUiField(mark, 'text')
+  return !text || text === t('chat.nodeActivityNotice')
+}
 
 export type {
   PermissionMode,

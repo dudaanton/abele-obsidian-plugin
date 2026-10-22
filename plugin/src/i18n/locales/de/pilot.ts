@@ -3742,5 +3742,7 @@ export const de = {
     'Dieser Knoten kann nicht ohne Rückfrage integrieren. Ein Knoten-Update ist erforderlich; nichts wurde übermittelt.',
   'node.manager.resultExit': '{state} · Exit {code}',
   'node.manager.integrationLegacyApproval':
-    'Diese Knotenversion fragt noch nach einer Bestätigung für die Integration.',
+    'Diese Knotenversion fragt noch vor dem Integrieren. Aktualisiere den Knoten, um ohne Nachfrage zu integrieren.',
+  'node.manager.integrationContextUpdate':
+    'Aktualisiere den Knoten auf Version 0.4.49 oder neuer, um aus diesem Chat ohne Managersitzung zu integrieren.',
 } satisfies TranslationCatalog

@@ -56,7 +56,8 @@ export class NodeConnection {
       const chat = ChatService.getInstance()
         .getAllSessions()
         .find((s) => s.delegationParentId === parent)
-      if (!chat || !['ask', 'auto'].includes(chat.getToolMode('node_command_run'))) return false
+      const tool = run.method === 'git.v1.integrate' ? 'node_git_integrate' : 'node_command_run'
+      if (!chat || !['ask', 'auto'].includes(chat.getToolMode(tool))) return false
       const target = await this.manager.targetFor(parent, run.session_id, run.run_id)
       const node = client.target.expected_node_id
       if (!node) return false
@@ -64,7 +65,7 @@ export class NodeConnection {
         const guard = () => {
           if (
             !ChatService.getInstance().getAllSessions().includes(chat) ||
-            !['ask', 'auto'].includes(chat.getToolMode('node_command_run'))
+            !['ask', 'auto'].includes(chat.getToolMode(tool))
           )
             throw new Error(t('node.manager.permissionChanged'))
           requireDelegationScope(chat, node, project, workspace, worktree)
@@ -79,7 +80,7 @@ export class NodeConnection {
       const entries = nodeScopeEntries(chat).filter((e) => e.node_id === node)
       if (entries.some((e) => e.kind === 'node')) return verify()
       if (target?.project_id) return verify(target.project_id)
-      if (target?.worktree_id) {
+      const resolveWorktree = async (worktree: string) => {
         const projects = new Set(entries.flatMap((e) => (e.kind === 'node' ? [] : [e.project_id])))
         for (const project of projects) {
           let cursor: string | undefined
@@ -89,14 +90,28 @@ export class NodeConnection {
               cursor,
               limit: 256,
             })
-            const row = page.entries.find((row) => row.worktree_id === target.worktree_id)
-            if (row) return verify(project, row.workspace_id ?? undefined, target.worktree_id)
+            const row = page.entries.find((row) => row.worktree_id === worktree)
+            if (row) return verify(project, row.workspace_id ?? undefined, worktree)
             if (!page.cursor || page.cursor === cursor) break
             cursor = page.cursor
           } while (cursor)
         }
+        return false as const
       }
-      return false
+      const source = (
+        run.approval?.input as { params?: { source_worktree_id?: string } } | undefined
+      )?.params?.source_worktree_id
+      const guards: (() => void)[] = []
+      for (const worktree of [
+        target?.worktree_id,
+        ...(tool === 'node_git_integrate' ? [source] : []),
+      ]) {
+        if (!worktree) return false
+        const guard = await resolveWorktree(worktree)
+        if (!guard) return false
+        guards.push(guard)
+      }
+      return () => guards.forEach((guard) => guard())
     }
     this.delegation = new NodeDelegationController(client, store)
     this.delegation.ownerNodeId = tools?.nodeId
@@ -233,6 +248,8 @@ export class NodeConnection {
     }
     if (description.capabilities?.capabilities?.command_context_v1?.status === 'supported')
       await this.client.request('command.context.v1.enable', {})
+    if (description.capabilities?.capabilities?.integration_context_v1?.status === 'supported')
+      await this.client.request('integration.context.v1.enable', {})
     if (description.capabilities?.capabilities?.['execution.policy.v1']?.status !== 'supported') {
       this.executionPolicyReady = true
       return

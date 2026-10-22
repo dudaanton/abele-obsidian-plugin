@@ -124,15 +124,12 @@ import MetaLine from './obsidian/MetaLine.vue'
 import Icon from './obsidian/Icon.vue'
 import StatusDot from './obsidian/StatusDot.vue'
 import { commandLine, commandFolder } from '@/node/commandPresentation'
-import { commandJustification } from '@/node/commandJustification'
+import { displayCommandJustification } from '@/node/commandJustification'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
   disabled?: boolean
 }>()
-const justification = computed(() => {
-  const parsed = commandJustification.safeParse(props.card.justification?.slice(0, 200))
-  return parsed.success ? parsed.data : ''
-})
+const justification = computed(() => displayCommandJustification(props.card.justification ?? ''))
 const justificationOpen = ref(false)
 const originalOpen = ref(false)
 const oldNode = computed(
@@ -228,6 +225,9 @@ pre {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
+}
+.abele-node-manager-run__request {
+  align-items: flex-start;
 }
 .abele-node-manager-run__folder {
   color: var(--text-muted);

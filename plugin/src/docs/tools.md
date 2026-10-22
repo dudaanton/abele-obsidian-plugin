@@ -1385,13 +1385,17 @@ In Ask, a refusal before the node creates an approval retains one failed request
 with the exact requested command, folder and readable refusal reason, without approval controls.
 After fixing the stated problem, a new command request gets its own exact node approval.
 
-`node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
-`source_worktree_id`, both branch names and full `expected_target_head` and
-`expected_source_head`, plus `node`, `session_id`, `operation_id`. Ask creates an owner
-prompt. Nodes with the legacy integration API require the same single exact approval
-in without-asking mode too. The card explains that this node version still asks for
-integration. Never refuse solely because the node lacks bypass, and never automatically
-answer an integration prompt to emulate bypass. Default integration is fast-forward; `rebase: true` first rebases the developer
+`node_git_integrate` uses `integration_context_v1` when advertised (node 0.4.49+).
+Supply the target `worktree_id`, `source_worktree_id`, both branch names and full
+`expected_target_head` and `expected_source_head`, plus `node` and a stable `operation_id`.
+No provider session is needed. The plugin creates/reuses a target-bound context, passes
+the owner's mode, and retains exact operations for reconnect recovery. Ask creates one
+exact owner approval; bypass executes directly with the node's own opt-in, otherwise the
+card explains `node_bypass_disabled`. Context decisions are owner UI actions only.
+Older nodes use `git_integrate_v1` and require `session_id` plus the same exact inputs.
+They retain one approval in both modes; the card suggests updating for integration
+without asking. Never refuse solely because the node lacks bypass, or automatically answer
+a legacy prompt to emulate bypass. Default integration is fast-forward; `rebase: true` first rebases the developer
 in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
 `outcome_unknown` directly; inspect both heads before another attempt. Never retry
 blindly or clean up an uncertain integration. Older nodes keep the existing Git tools.

@@ -14,6 +14,54 @@ import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
 import { ref } from 'vue'
 
+it('uses the integration tool permission and rechecks both worktree scopes for approval', async () => {
+  let enabled = true
+  const scope = (id: string) => ({
+    kind: 'target',
+    node_id: 'sample-node',
+    project_id: 'sample-project',
+    target: { kind: 'worktree', worktree_id: id },
+    access: 'read',
+  })
+  const chat = {
+    delegationParentId: 'sample-parent',
+    getToolMode: (tool: string) => (tool === 'node_git_integrate' && enabled ? 'ask' : 'off'),
+    overrides: ref({ nodeScope: [scope('sample-tree'), scope('sample-source')] }),
+  }
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [chat] } as never)
+  const client = {
+    target: { expected_node_id: 'sample-node' },
+    disconnect: async () => {},
+    repository: {
+      worktrees: async () => ({
+        entries: [{ worktree_id: 'sample-tree' }, { worktree_id: 'sample-source' }],
+      }),
+    },
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  vi.spyOn(connection.manager, 'targetFor').mockResolvedValue({ worktree_id: 'sample-tree' })
+  const run = {
+    session_id: 'sample-stream',
+    run_id: 'sample-run',
+    method: 'git.v1.integrate',
+    approval: { input: { params: { source_worktree_id: 'sample-source' } } },
+  }
+  try {
+    const guard = await connection.manager.canApprove!('sample-parent', run as never)
+    expect(typeof guard).toBe('function')
+    chat.overrides.value.nodeScope = [scope('sample-tree')]
+    expect(() => (guard as () => void)()).toThrow()
+    expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
+    enabled = false
+    expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
+  } finally {
+    connection.destroy()
+    chats.mockRestore()
+  }
+})
+
 it('rechecks command approval scope after worktree metadata arrives', async () => {
   const chat = {
     delegationParentId: 'sample-parent',
@@ -157,13 +205,20 @@ it('enables execution policy before replay on every connection and skips older p
             ? {
                 'execution.policy.v1': { status: 'supported' },
                 command_context_v1: { status: 'supported' },
+                integration_context_v1: { status: 'supported' },
               }
             : {},
         },
       }
     }),
     request: vi.fn(async (method: string) => {
-      events.push(method === 'command.context.v1.enable' ? 'context' : 'enable')
+      events.push(
+        method === 'command.context.v1.enable'
+          ? 'context'
+          : method === 'integration.context.v1.enable'
+            ? 'integration'
+            : 'enable'
+      )
       return { enabled: true }
     }),
     connect: vi.fn(async (admit?: () => Promise<void>) => {
@@ -183,6 +238,8 @@ it('enables execution policy before replay on every connection and skips older p
     expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
     expect(request).toHaveBeenCalledWith('execution.policy.v1.enable', {})
     expect(request).toHaveBeenCalledWith('command.context.v1.enable', {})
+    expect(request).toHaveBeenCalledWith('integration.context.v1.enable', {})
+    expect(events.indexOf('integration')).toBeLessThan(events.indexOf('replay'))
     expect(events.indexOf('context')).toBeLessThan(events.indexOf('replay'))
     expect(events.filter((e) => e === 'describe').length).toBeGreaterThan(1)
     events.length = 0
@@ -191,6 +248,7 @@ it('enables execution policy before replay on every connection and skips older p
     expect(events.indexOf('enable')).toBeGreaterThanOrEqual(0)
     expect(events.indexOf('enable')).toBeLessThan(events.indexOf('replay'))
     expect(events.filter((e) => e === 'context')).toHaveLength(1)
+    expect(events.filter((e) => e === 'integration')).toHaveLength(1)
     expect(events.indexOf('context')).toBeLessThan(events.indexOf('replay'))
     client.connected = false
     supported = false

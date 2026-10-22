@@ -36,7 +36,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       name === 'node_command_run'
         ? 'Run argv (literal arguments) OR command in an accessible project_id, worktree_id or delegation workspace_id. Ordinary chats need no provider session, delegation or terminal binding. With one scoped folder it may be inferred; otherwise choose an explicit target. A specific worktree takes precedence over project_id. Requires node 0.4.47+ with command_context_v1. Required justification: one short sentence in the chat language explaining what you want to do and why (max 200 characters). Optional cwd, timeout_ms and output_bytes (1024–16384 per stream). The owner mode controls execution: Ask returns one exact pending approval and executes nothing before the owner allows it; bypass runs without a card. Never supply or change permission_mode. Owner answers in chat; never answer prompts yourself. A receipt is not execution success. Preserve exact body and operation_id after uncertainty; poll node_command_status with the receipt session_id (context journal, not a provider session) and run_id for exit_code, stdout/stderr and truncation flags. Use node_git_status, node_git_diff and node_git_log for read-only Git inspection.'
         : name === 'node_git_integrate'
-          ? 'Integrate source_worktree_id (or source_workspace_id from delegation) into worktree_id (or workspace_id) using git_integrate_v1. Supply target_branch, source_branch and full expected_target_head/expected_source_head from fresh status reads. rebase defaults false (fast-forward only); true rebases the developer in its own worktree first. Ask mode creates an exact owner approval; without-asking mode must not show an approval card on nodes that support it. Poll node_command_status. After successful integration, report the retained developer worktree and offer removal; never remove it without the owner. Show conflicting_files and outcome_unknown plainly; inspect both heads before a new attempt, never retry blindly. Older nodes retain existing git tools; do not emulate integration with a shell command or create unmanaged worktrees through commands.'
+          ? 'Integrate source_worktree_id (or source_workspace_id from delegation) into worktree_id (or workspace_id) using integration_context_v1 when advertised, otherwise the legacy exact approval. No provider session is required on context-capable nodes. Supply target_branch, source_branch and full expected_target_head/expected_source_head from fresh status reads. rebase defaults false (fast-forward only); true rebases the developer in its own worktree first. Ask mode creates an exact owner approval; without-asking mode must not show an approval card on nodes that support it. Poll node_command_status. After successful integration, report the retained developer worktree and offer removal; never remove it without the owner. Show conflicting_files and outcome_unknown plainly; inspect both heads before a new attempt, never retry blindly. Older nodes retain existing git tools; do not emulate integration with a shell command or create unmanaged worktrees through commands.'
           : name === 'node_command_status'
             ? 'Read the current/final status of this parent chat’s command or integration using session_id and run_id. Read-only; no owner approval. Returns bounded output, exit code, truncation flags and conflicts.'
             : 'Cancel this parent chat’s pending or running command using session_id, run_id and stable operation_id. An already running integration refuses cancellation; inspect its status.',
@@ -76,7 +76,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       },
       required: [
         'node',
-        ...(name !== 'node_command_run' ? ['session_id'] : []),
+        ...(['node_command_status', 'node_command_cancel'].includes(name) ? ['session_id'] : []),
         ...(name === 'node_command_status'
           ? ['run_id']
           : name === 'node_command_cancel'
@@ -157,12 +157,16 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           : name === 'node_git_integrate'
             ? 'git.v1.integrate'
             : 'command.v1.cancel'
+      const modernIntegration =
+        name === 'node_git_integrate' && managerCapability(description, 'integration_context_v1')
       const params = await resolveManagerTargets(
         connection.client,
         name === 'node_command_status' ? 'command.v1.status' : method,
-        input
+        input,
+        modernIntegration
       )
-      const sessionId = name === 'node_command_run' ? undefined : id.parse(params.session_id)
+      const sessionId =
+        name === 'node_command_run' || modernIntegration ? undefined : id.parse(params.session_id)
       const storedTarget =
         sessionId && name !== 'node_git_integrate'
           ? await connection.manager.targetFor(parentId, sessionId, id.parse(params.run_id))
@@ -173,7 +177,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       if (entries.some((entry) => entry.kind === 'node')) {
         guards.push(requireDelegationScope(parent, nodeId))
       } else {
-        if (name !== 'node_command_run' && !storedTarget) {
+        if (name !== 'node_command_run' && !modernIntegration && !storedTarget) {
           const session = await connection.client.getSession(sessionId!)
           const binding = await connection.client.nodePath.sessionWorktreeGet({
             session_id: sessionId!,
@@ -239,11 +243,11 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       let value: unknown
       if (name === 'node_command_status')
         value = await connection.manager.status(parentId, sessionId!, id.parse(params.run_id))
-      else if (name === 'node_command_run') {
+      else if (name === 'node_command_run' || modernIntegration) {
         if (!operation_id) throw new Error('A stable operation_id is required')
         const mode = parent.permissionMode?.value === 'allow-all' ? 'bypass' : 'ask'
         try {
-          value = await connection.manager.command(
+          value = await connection.manager[modernIntegration ? 'integration' : 'command'](
             parentId,
             params,
             operation_id,

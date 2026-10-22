@@ -26,9 +26,7 @@ async function inspect(label: string) {
       'long-justification',
       {
         managerJustification:
-          'Check the runtime and the project test setup before selecting the next verification step. '
-            .repeat(3)
-            .slice(0, 200),
+          'Check the runtime and the project test setup before selecting the next verification step. Confirm the available runtime before choosing the checks, then review the results before continuing development.',
         managerCommand: 'node --version',
       },
     ],
@@ -94,8 +92,9 @@ async function inspect(label: string) {
         for(let i=0;i<100&&!document.querySelector('[data-manager-command]');i++)await new Promise(r=>setTimeout(r,50));
         const card=document.querySelector('.abele-node-manager-run');
         const command=card.querySelector('[data-manager-command]'),log=card.querySelector('[role=log]'),stop=card.querySelector('[data-manager-stop] button');
+        const reason=card.querySelector('[data-command-justification]'),glyph=reason?.previousElementSibling;
         await new Promise(r=>setTimeout(r,50));
-        return JSON.stringify({command:command.textContent,overflow:card.scrollWidth>card.clientWidth+1,text:card.textContent,justification:card.querySelector('[data-command-justification]')?.textContent,commandWrap:getComputedStyle(command).whiteSpace,codeBackground:getComputedStyle(command).backgroundColor,logHeight:log?.clientHeight,logFont:log?parseFloat(getComputedStyle(log.querySelector('pre')??log).lineHeight):0,atBottom:log?Math.abs(log.scrollHeight-log.clientHeight-log.scrollTop)<2:true,stopLeft:stop?stop.getBoundingClientRect().left-card.getBoundingClientRect().left:0});
+        return JSON.stringify({command:command.textContent,overflow:card.scrollWidth>card.clientWidth+1,text:card.textContent,justification:reason?.textContent,glyphGap:reason?.getBoundingClientRect().left-glyph?.getBoundingClientRect().right,labelTop:reason?Math.abs(reason.querySelector('.abele-obsidian-button__label').getBoundingClientRect().top-glyph.getBoundingClientRect().top):0,commandWrap:getComputedStyle(command).whiteSpace,wordBreak:getComputedStyle(command).wordBreak,codeBackground:getComputedStyle(command).backgroundColor,logHeight:log?.clientHeight,logFont:log?parseFloat(getComputedStyle(log.querySelector('pre')??log).lineHeight):0,atBottom:log?Math.abs(log.scrollHeight-log.clientHeight-log.scrollTop)<2:true,stopLeft:stop?stop.getBoundingClientRect().left-card.getBoundingClientRect().left:0});
       })()`)
       ) as {
         command: string
@@ -108,11 +107,19 @@ async function inspect(label: string) {
         logFont: number
         atBottom: boolean
         stopLeft: number
+        glyphGap: number
+        labelTop: number
+        wordBreak: string
       }
       expect(report.command).toBe(
-        'managerCommand' in options ? options.managerCommand : 'work/sample-parser → main'
+        'managerCommand' in options
+          ? options.managerCommand
+          : 'work/sample-parser aaaaaaa → main bbbbbbb'
       )
       expect(report.overflow).toBe(false)
+      expect(report.wordBreak).toBe('normal')
+      if (report.justification) expect(report.glyphGap).toBeGreaterThanOrEqual(7)
+      if (report.justification) expect(report.labelTop).toBeLessThanOrEqual(3)
       if (name === 'without')
         expect(report.codeBackground).not.toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/)
       if (name === 'running') {
@@ -124,20 +131,27 @@ async function inspect(label: string) {
       if (name === 'long-justification') {
         const expanded = JSON.parse(
           await evalLong(
-            `(async()=>{const b=document.querySelector('[data-command-justification]');b.click();await new Promise(r=>setTimeout(r,50));return JSON.stringify({open:b.getAttribute('aria-expanded'),text:b.textContent})})()`
+            `(async()=>{const b=document.querySelector('[data-command-justification]');b.click();await new Promise(r=>setTimeout(r,50));return JSON.stringify({open:b.getAttribute('aria-expanded'),text:b.textContent,glyphTop:Math.abs(b.getBoundingClientRect().top-b.previousElementSibling.getBoundingClientRect().top)})})()`
           )
-        ) as { open: string; text: string }
+        ) as { open: string; text: string; glyphTop: number }
         expect(expanded.open).toBe('true')
+        expect(expanded.glyphTop).toBeLessThanOrEqual(3)
         expect(expanded.text.trim()).toBe(
           'managerJustification' in options ? options.managerJustification : ''
         )
         columnShot(`${shots}/${label}-long-justification-expanded.png`)
-        await evalLong(`document.querySelector('[data-command-justification]').click()`)
+        expect(
+          await evalLong(
+            `(async()=>{const b=document.querySelector('[data-command-justification]');b.click();await new Promise(r=>setTimeout(r,50));return b.getAttribute('aria-expanded')})()`
+          )
+        ).toBe('false')
       }
       if (name === 'old-node') expect(report.text).toContain('0.4.47')
       if (name === 'without') expect(report.justification).toBeUndefined()
       if (name === 'bypass-integration-fallback')
-        expect(report.text).toContain('This node version still asks for integration.')
+        expect(report.text).toContain(
+          'This node version still asks before integrating. Update the node to integrate without asking.'
+        )
       columnShot(`${shots}/${label}-${name}.png`)
     } finally {
       await closeCard()
@@ -224,7 +238,7 @@ async function runLive(label: string) {
       let final;for(let i=0;i<200;i++){final=await connection.manager.status(await session.ensureDelegationParentId(),bypass.session_id,bypass.run_id);if(final.state==='exited')break;await new Promise(r=>setTimeout(r,50))}
       session.toolModes.value={...session.toolModes.value,node_command_run:'off'};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
-      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-session-mark')].filter(e=>e.textContent.trim()==='Node activity update').length});
+      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
     })()`,
         60000
       )
