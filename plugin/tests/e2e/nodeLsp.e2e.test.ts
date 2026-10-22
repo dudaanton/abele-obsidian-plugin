@@ -37,6 +37,9 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           const expected = ({loading:'starting',missing:'degraded',untrusted:'degraded',eslint:'degraded',errors:'ready',failed:'failed',off:'off',ready:'ready'})[state];
           await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === expected);
           if (document.querySelector('.abele-lsp-status')) throw Error('Analysis banner rendered inside file');
+          const headerBox = document.querySelector('.abele-lsp-fixture-header').getBoundingClientRect();
+          const fileBox = document.querySelector('.abele-file-view').getBoundingClientRect();
+          if (headerBox.bottom > fileBox.top + 0.5) throw Error('Fixture header overlaps file content');
           if (state === 'errors') await until(() => document.querySelector('.abele-lsp-error') && document.querySelector('[data-lsp-diagnostics]')?.getAttribute('aria-label') === 'Diagnostics: 2');
           await wait(150);
           const modal = document.querySelector('.modal.abele-modal');
@@ -52,6 +55,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent === 'Code analysis').closest('.menu-item').click();
           }
           await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => /TypeScript —|Code analysis/.test(el.textContent)));
+          if (state === 'untrusted' && ![...document.querySelectorAll('.menu-item-title')].some(el => el.textContent === 'Trust this folder…')) throw Error('Owner trust action is missing');
           await shot(state + '-analysis-menu');
           document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
           await until(() => !document.querySelector('.menu'));

@@ -1,8 +1,8 @@
 <template>
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
-    <div class="view-header">
-      <span class="view-header-title">sample.ts</span>
-      <span ref="headerHost" class="view-actions">
+    <div class="abele-lsp-fixture-header">
+      <span>{{ state === 'off' ? 'sample.txt' : 'sample.ts' }}</span>
+      <span ref="headerHost" class="abele-analysis-header">
         <Icon
           v-if="Platform.isPhone"
           data-lsp-overflow
@@ -89,7 +89,7 @@ const client = new NodeClient(
 )
 // Advertised wire metadata, without opening a transport or launching a process.
 Object.defineProperty(client, 'channel', {
-  value: { channel: { welcome: { methods: ['lsp.v1.install'] } } },
+  value: { channel: { welcome: { methods: ['lsp.v1.install', 'project.trust'] } } },
 })
 client.describe = async () => ({
   capabilities: { capabilities: { lsp_v1: { status: 'supported' } } },
@@ -163,3 +163,11 @@ provide(LSP_CONNECTION, {
   },
 })
 </script>
+<style scoped>
+.abele-lsp-fixture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--size-4-2);
+}
+</style>

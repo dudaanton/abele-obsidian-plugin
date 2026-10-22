@@ -16,10 +16,12 @@ import GithubCode from '@/components/github/GithubCode.vue'
 import NodeFileTools from '@/components/nodeWork/NodeFileTools.vue'
 import { LSP_CONNECTION } from '@/node/lspConnection'
 import { FILE_DESTINATION } from '@/node/fileNavigation'
-vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: () => true }))
+import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: vi.fn(() => true) }))
 enableAutoUnmount(afterEach)
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.mocked(nodeAdvertisesMethod).mockReturnValue(true)
   Object.assign(Platform, { isMobile: false, isPhone: false })
 })
 
@@ -596,4 +598,20 @@ describe('node language diagnostics in the shared file viewer', () => {
     )
     view.unmount()
   })
+  it.each([true, false])(
+    'offers trust only when the connection advertises that owner action: %s',
+    async (owner) => {
+      vi.mocked(nodeAdvertisesMethod).mockImplementation(
+        (_client, method) => method !== 'project.trust' || owner
+      )
+      const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+      const view = mount(NodeLspFixture, { props: { state: 'untrusted' }, attachTo: document.body })
+      await flushPromises()
+      document.querySelector<HTMLButtonElement>('[data-lsp-analysis] button')!.click()
+      expect(
+        show.mock.contexts.at(-1)!.items.some((item) => item.title === 'Trust this folder…')
+      ).toBe(owner)
+      view.unmount()
+    }
+  )
 })
