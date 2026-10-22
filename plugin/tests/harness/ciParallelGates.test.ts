@@ -90,7 +90,7 @@ describe('parallel CI verification gates', () => {
       expect(verify.run).toContain('git rev-parse HEAD')
       expect(verify.run).toContain('[ "$REVISION" = "$GITHUB_SHA" ]')
       const node = job.steps.find((entry: any) => entry.uses?.startsWith('actions/setup-node@'))
-      expect(node.with['node-version']).toBe('22.x')
+      expect(node.with['node-version']).toBe('22.23.4')
       if (id === 'guard') continue
       expect(node.with.cache).toBe('npm')
       expect(node.with['cache-dependency-path']).toBe('plugin/package-lock.json')

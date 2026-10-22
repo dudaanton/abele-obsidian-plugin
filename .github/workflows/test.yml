@@ -49,7 +49,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
 
       # Nothing extraneous and no credentials: the tree as it is, then each new commit on its
       # own, because a secret added in one commit and deleted in the next is still published.
@@ -88,7 +88,7 @@ jobs:
           [ "$REVISION" = "$GITHUB_SHA" ]
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         id: node
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
@@ -164,7 +164,7 @@ jobs:
           [ "$REVISION" = "$GITHUB_SHA" ]
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
@@ -207,7 +207,7 @@ jobs:
           [ "$REVISION" = "$GITHUB_SHA" ]
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
@@ -246,7 +246,7 @@ jobs:
           [ "$REVISION" = "$GITHUB_SHA" ]
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
@@ -287,7 +287,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.x"
+          node-version: "22.23.4"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
