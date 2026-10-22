@@ -16,13 +16,15 @@ export function waitForStartupIndex(
     })
   })
 }
+/** Snapshot, root and exclusions use local paths; map ledger paths before comparing them. */
 export async function startupSafetyReason(
   state: StateStore,
   snapshot: (root: string) => Promise<{ files: readonly string[] }>,
   root: string,
   assertCurrent: () => void = () => {},
   excludedRoots: readonly string[] = [],
-  ledgerOnly = false
+  ledgerOnly = false,
+  localPath: (ledgerPath: string) => string = (path) => path
 ): Promise<string | null> {
   let known = 0
   const members = new Set<string>()
@@ -33,9 +35,10 @@ export async function startupSafetyReason(
     !excludedRoots.some((root) => path === root || path.startsWith(root + '/'))
   for await (const entry of state.all()) {
     assertCurrent()
-    if (!comparable(entry.path)) continue
+    const path = localPath(entry.path)
+    if (!comparable(path)) continue
     known++
-    if (ledgerOnly) members.add(entry.path)
+    if (ledgerOnly) members.add(path)
   }
   // Small collections and first joins are handled by ordinary per-file safeguards.
   if (known < 100) return null

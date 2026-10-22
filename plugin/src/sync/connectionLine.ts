@@ -41,7 +41,12 @@ export function connectionTone(row: Row, activity?: ConnectionActivity): Connect
   if (ATTENTION.includes(row.status) || activity?.startup?.outcome === 'failed') return 'red'
   if (row.paused || row.status === 'offline') return 'orange'
   if (connectionBusy(row, activity)) return 'accent'
-  if (activity?.conflicts?.length || activity?.refused?.length || activity?.backgroundAttention)
+  if (
+    activity?.conflicts?.length ||
+    activity?.refused?.length ||
+    activity?.backgroundAttention ||
+    activity?.sharedAttention
+  )
     return 'orange'
   return 'green'
 }
@@ -85,6 +90,7 @@ export function connectionLine(
     })
   if (row.status === 'syncing') return text('Syncing')
   if (activity?.backgroundAttention) return activity.backgroundAttention
+  if (activity?.sharedAttention) return activity.sharedAttention
   if (activity?.conflicts?.length)
     return text(
       '{count} conflict copies',

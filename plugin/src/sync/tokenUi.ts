@@ -193,6 +193,8 @@ export const statusName = (status: string, text: SyncText = englishSyncText) =>
 export interface ConnectionActivity {
   safetyStop?: string
   backgroundAttention?: string
+  /** Derived from child records; never replaces the parent's own recovery evidence. */
+  sharedAttention?: string
   missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
@@ -395,6 +397,9 @@ export class TokenUi {
         activity[row.id] = { lastSync }
     }
     this.activity.value = activity
+    for (const [id, one] of Object.entries(activity))
+      if (one.safetyStop) this.recordEvent(id, one.safetyStop)
+    this.refresh()
   }
   refresh(): void {
     this.itemSets.prune()
@@ -428,6 +433,21 @@ export class TokenUi {
         const status = rank.find((status) => statuses.includes(status)) ?? 'paused'
         return { ...row, status, paused: active.length > 0 && active.every((item) => item.paused) }
       })
+    for (const connection of this.itemSets.store.all()) {
+      const sharedAttention = connection.items
+        .filter((item) => item.recordId && item.recordId !== connection.id)
+        .map((item) => {
+          const activity = item.recordId ? this.activity.value[item.recordId] : undefined
+          return activity?.safetyStop ?? activity?.backgroundAttention
+        })
+        .find(Boolean)
+      const previous = this.activity.value[connection.id]
+      if (previous?.sharedAttention !== sharedAttention)
+        this.activity.value = {
+          ...this.activity.value,
+          [connection.id]: { ...previous, sharedAttention },
+        }
+    }
   }
   setTrusted(id: string, trusted: boolean): void {
     const items = this.itemSets.store.get(id)?.items
@@ -545,6 +565,8 @@ export class TokenUi {
     console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
   recordEvent(id: string, text: string): void {
+    const parent = this.itemSets.store.forRecord(id)?.connection.id
+    if (parent && parent !== id) this.recordEvent(parent, text)
     const previous = this.activity.value[id]?.events
     const events = previous instanceof ActivityHistory ? previous : new ActivityHistory(previous)
     events.append({ at: Date.now(), text })

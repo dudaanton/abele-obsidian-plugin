@@ -5,7 +5,7 @@ import { stagingDirectory } from './stagingDirectory'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { quarantineLocalOnlyJournal, retireLocalOnlyLedger } from './localOnlyJournal'
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
-import { connectionPrivateRoot } from './connectionPaths'
+import { connectionPrivateRoot, withinRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey } from '@abele/sync-sdk/protocol'
@@ -96,7 +96,7 @@ export class TokenEngines {
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
     this.stopBackgroundActivity = observeBackgroundActivity(app, (owner, text) => {
-      for (const row of ui.registry.records()) {
+      for (const row of owner ? ui.registry.records() : ui.rows.value) {
         if (owner && row.id !== owner) continue
         ui.recordEvent(row.id, text)
         ui.publish(row.id, { backgroundAttention: text })
@@ -705,6 +705,18 @@ export class TokenEngines {
       closeStore = () => state.close()
       assertActive()
       const storage = this.ui.registry.storage(record.id)
+      const externalPlacement =
+        record.scope.kind === 'folder' && record.scope.path !== '/'
+          ? new LocalFolderPlacement(record.scope.path, localRoot)
+          : undefined
+      const excludedLocalFolders = record.selective.excludedFolders.flatMap((path) => {
+        if (!externalPlacement) return [path]
+        // Compare server scope boundaries before translating exclusions to the host namespace.
+        if (withinRoot(path, externalPlacement.server)) return [externalPlacement.toLocal(path)]
+        if (path === '/' || withinRoot(externalPlacement.server, path))
+          return [externalPlacement.local]
+        return []
+      })
       const approved = this.ui.startupApprovals.delete(record.id)
       if (!approved) {
         let reason: string | null
@@ -718,9 +730,10 @@ export class TokenEngines {
               this.app.vault.configDir,
               stagingDirectory(this.app.vault.configDir),
               privateRecoveryDirectory(this.app.vault.configDir),
-              ...record.selective.excludedFolders,
+              ...excludedLocalFolders,
             ],
-            record.scope.kind === 'group'
+            record.scope.kind === 'group',
+            (path) => externalPlacement?.toLocal(path) ?? path
           )
         } catch (error) {
           assertActive()
@@ -762,10 +775,6 @@ export class TokenEngines {
       if (record.scope.kind === 'group')
         for await (const entry of state.all()) groupCandidates.add(entry.path.normalize('NFC'))
       let discoveryScope = record.scope
-      const externalPlacement =
-        record.scope.kind === 'folder' && record.scope.path !== '/'
-          ? new LocalFolderPlacement(record.scope.path, localRoot)
-          : undefined
       await stage('Checking kept copies', () =>
         this.localOnly.assertPublishSafe(
           async (path) => !!(await vaultDisk(this.app.vault).stat(path)),

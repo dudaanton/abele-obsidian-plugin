@@ -1,6 +1,6 @@
 import { t } from '@/i18n'
 import { vaultDisk } from './vaultPathLinks'
-import { connectionPrivateArea, connectionJournalOwner } from './connectionPaths'
+import { connectionPrivateArea, connectionJournalOwner, connectionHost } from './connectionPaths'
 import type { App } from 'obsidian'
 import { backgroundActivity } from './backgroundActivity'
 import { makeParents } from './vaultFolders'
@@ -91,8 +91,9 @@ export async function privateArtifactRecovered(app: App, path: string): Promise<
 }
 const notified = new WeakMap<object, Set<string>>()
 export async function showPrivateRecoveryNotice(app: App, freshCopies = false): Promise<void> {
-  let owners = notified.get(app.vault)
-  if (!owners) notified.set(app.vault, (owners = new Set()))
+  const host = connectionHost(app.vault)
+  let owners = notified.get(host)
+  if (!owners) notified.set(host, (owners = new Set()))
   const owner = connectionJournalOwner(app) ?? ''
   if ((!freshCopies && owners.has(owner)) || !(await hasRecoveryCopies(app))) return
   owners.add(owner)

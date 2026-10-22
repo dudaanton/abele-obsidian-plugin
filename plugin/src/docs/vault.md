@@ -96,11 +96,14 @@ The device-local `abele-sync-ordinary-retained-v1` inventory records the size an
 unchanged, completed-operation evidence moved into private retention. Unknown or changed copies
 remain visible in the connection activity log and attention badge; background retention never
 opens a Notice. Retention never deletes these bytes.
+Shared connections include child-item activity in the visible parent log and attention badge.
 The per-connection `abele-sync-token-state:startup-stop` field retains the reason a startup was
 paused because its local files were mostly missing or unreadable. Only index-visible ledger
 paths count: the config directory, hidden paths, private storage and excluded folders are omitted
 from both populations. With at least 100 comparable ledger entries, fewer than 10% as many visible
 files stops exchange before recovery and engine start. Smaller comparable populations are not judged.
+Folder ledger paths and server exclusions are mapped to their local placement before comparison
+with the host index and configuration directory; unrelated server exclusions do not affect local names.
 This count uses the host's in-memory file index after layout readiness; it never walks the
 filesystem or reads file contents. Startup waits for readiness instead of inspecting a partial index.
 For group connections, only distinct ledger member paths count, including their offload
