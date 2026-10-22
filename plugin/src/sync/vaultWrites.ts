@@ -63,6 +63,7 @@ export interface WriterDeps {
 
 export class VaultWriter {
   constructor(private readonly deps: WriterDeps) {}
+  private readonly consumed = new Set<string>()
 
   private receiptPath(receipt: string): string {
     if (!/^[a-zA-Z0-9-]{1,128}$/.test(receipt))
@@ -88,8 +89,16 @@ export class VaultWriter {
         conditionalReceipt: id,
         replacementSha: await signature(bytes),
       }
-      if (await this.deps.journal.currentEntry(temp))
-        throw new EngineError('conflict', 'Installation receipt already has unfinished work')
+      const previous = await this.deps.journal.currentEntry(temp)
+      if (previous) {
+        if (
+          previous.conditionalReceipt !== id ||
+          previous.target !== path ||
+          previous.replacementSha !== entry.replacementSha
+        )
+          throw new EngineError('conflict', 'Installation receipt belongs to another operation')
+        return (await this.installedReceipt(id, path, entry.replacementSha!)) ?? false
+      }
       if (await this.there(temp))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
       await this.deps.makeParents(path)
@@ -111,16 +120,29 @@ export class VaultWriter {
       }
       try {
         if (this.deps.native) await this.deps.native.installExclusive(temp, path)
-        else await this.disk.rename(temp, path)
+        else {
+          await this.disk.rename(temp, path)
+          this.consumed.add(temp)
+        }
       } catch (error) {
         // A lost acknowledgement is uncertain; keep the intent and data for proof/review.
-        if ((await this.disk.stat(path)) !== null) return false
+        const code = (error as { code?: string })?.code
+        if (
+          code === 'EEXIST' ||
+          /^(EEXIST\b|Destination file already exists)/.test(
+            (error as { message?: string })?.message ?? ''
+          )
+        )
+          return false
         throw error
       }
       if (this.deps.native) await this.deps.native.syncPath(path)
       this.deps.installed?.(path)
       if (!receipt) await this.discardReceipt(id)
       return true
+    } catch (error) {
+      console.debug('[abele-sync] buffered conditional publication remains pending', path, error)
+      throw error
     } finally {
       inFlight.delete(temp)
     }
@@ -150,11 +172,12 @@ export class VaultWriter {
     const temp = this.receiptPath(receipt),
       entry = await this.deps.journal.currentEntry(temp)
     if (!entry?.conditionalReceipt) return false
-    if (await this.there(temp)) {
+    if (!this.consumed.has(temp) && (await this.there(temp))) {
       await this.disk.remove(temp)
       if (this.deps.native) await this.deps.native.syncPath(temp, true)
     }
     await this.deps.journal.persist(() => this.deps.journal.drop(entry))
+    this.consumed.delete(temp)
     return true
   }
 

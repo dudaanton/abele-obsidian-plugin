@@ -39,6 +39,50 @@ it('does not overwrite an independently occupied receipt data path', async () =>
   expect(await app.vault.adapter.read(path)).toBe('independent bytes')
 })
 
+it('keeps an uncertain receipt retry quiet without replaying it over a later save', async () => {
+  const app = buildFakeVault([]),
+    disk = new ObsidianFileSystem(app as never)
+  const operation = {
+    path: 'sample.md',
+    expected: null,
+    effect: {
+      kind: 'write' as const,
+      bytes: new Uint8Array([1]),
+      mtime: 1000,
+      receipt: 'sample-retry',
+    },
+  }
+  expect(await disk.conditionalFile(operation)).toBe(true)
+  await app.vault.adapter.write('sample.md', 'later local save')
+  expect(await disk.conditionalFile(operation)).toBe(false)
+  expect(await app.vault.adapter.read('sample.md')).toBe('later local save')
+})
+
+it('propagates a lost publication acknowledgement and keeps its exact journal', async () => {
+  const app = buildFakeVault([]),
+    disk = new ObsidianFileSystem(app as never)
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  const failure = Object.assign(new Error('acknowledgement lost'), { code: 'EIO' })
+  app.vault.adapter.rename = async (from, to) => {
+    await rename(from, to)
+    throw failure
+  }
+  await expect(
+    disk.conditionalFile({
+      path: 'sample.md',
+      expected: null,
+      effect: {
+        kind: 'write',
+        bytes: new Uint8Array([1]),
+        mtime: 1000,
+        receipt: 'sample-uncertain',
+      },
+    })
+  ).rejects.toBe(failure)
+  expect(await new WriteJournal(app).currentEntries()).toHaveLength(1)
+  expect(await app.vault.adapter.exists('sample.md')).toBe(true)
+})
+
 it.each(['write', 'stage', 'respell'] as const)(
   'refuses legacy %s publication when the conditional port refuses',
   async (kind) => {
