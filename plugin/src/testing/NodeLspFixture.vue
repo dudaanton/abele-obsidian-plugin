@@ -1,7 +1,7 @@
 <template>
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
     <FileView :path="'sample.ts'" :text="text" mode="file" :code-target="target" :line="line" />
-    <div v-if="destination" data-lsp-destination>{{ destination }}</div>
+    <span v-if="destination" data-lsp-destination hidden>{{ destination }}</span>
     <FileView
       v-if="destination.startsWith('node_modules/')"
       data-lsp-dependency

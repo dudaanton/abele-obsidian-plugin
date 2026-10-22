@@ -18,7 +18,7 @@ import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
 import { Menu } from 'obsidian'
 import { isIdentifier } from './definitions'
 import { lspFor, lspNavigation } from '@/node/lspContext'
-import { lspMenuLabel } from '@/node/lspMenu'
+import { lspHoverMenuLabel } from '@/node/lspMenu'
 
 export interface CodeNav {
   /** The path of the file a viewer inside the tab shows. */
@@ -182,7 +182,7 @@ function showNavMenu(
       menu.setUseNativeMenu(false)
       menu.addSeparator()
       menu.addItem((item) =>
-        item.setTitle(lspMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
+        item.setTitle(lspHoverMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
       )
     }
     show(menu)

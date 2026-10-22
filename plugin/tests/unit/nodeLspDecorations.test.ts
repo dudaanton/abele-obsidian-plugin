@@ -5,6 +5,16 @@ import { NodeLspDocument } from '@/node/NodeLspDocument'
 import { provideLsp } from '@/node/lspContext'
 import { nodeLspExtension } from '@/node/lspExtension'
 import { codeNavAddon } from '@/github/search/navAddon'
+import { appendLspHoverContent } from '@/node/lspMenu'
+
+it('preserves multiline signatures and treats documentation as plain text', () => {
+  const content = document.createElement('div')
+  const signature = 'function sample(\n  value: string\n): number'
+  appendLspHoverContent(content, `${signature}\n\nReturns <sample>.`)
+  expect(content.querySelector('pre code')?.textContent).toBe(signature)
+  expect(content.querySelector('.abele-lsp-documentation')?.textContent).toBe('Returns <sample>.')
+  expect(content.querySelector('sample')).toBeNull()
+})
 it('includes type documentation in the symbol menu used by long press', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
@@ -28,6 +38,9 @@ it('includes type documentation in the symbol menu used by long press', async ()
     expect((info?.title as unknown as DocumentFragment)?.textContent).toContain(
       'Sample documentation.'
     )
+    expect((info?.title as DocumentFragment).querySelector('code')?.textContent).toBe(
+      'const sample: number'
+    )
   } finally {
     view.destroy()
     remove()
@@ -41,6 +54,12 @@ it('renders the hover response with type and documentation', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
   doc.supported = true
+  doc.diagnostics = [1, 2].map((severity) => ({
+    severity,
+    source: severity === 1 ? 'typescript' : 'eslint',
+    message: severity === 1 ? 'Sample type error' : 'Sample lint warning',
+    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
+  }))
   let finish!: (text: string) => void
   const hover = vi.spyOn(doc, 'hover').mockImplementation(
     () =>
@@ -73,6 +92,28 @@ it('renders the hover response with type and documentation', async () => {
     )
     expect(document.querySelector('.abele-lsp-message')?.textContent).toContain(
       'const sample: number'
+    )
+    const popup = document.querySelector('.abele-lsp-message')!
+    expect([...popup.children].map((child) => child.tagName)).toEqual([
+      'DIV',
+      'DIV',
+      'HR',
+      'PRE',
+      'DIV',
+    ])
+    expect(popup.querySelector('.abele-lsp-problem')?.textContent).toBe(
+      '●Sample type error · TypeScript'
+    )
+    expect(popup.querySelector('.abele-lsp-problem__source')?.textContent).toBe(' · TypeScript')
+    expect(popup.querySelectorAll('.abele-lsp-problem__dot')).toHaveLength(2)
+    expect(
+      [...popup.querySelectorAll<HTMLElement>('.abele-lsp-problem__dot')].map(
+        (dot) => dot.style.color
+      )
+    ).toEqual(['var(--text-error)', 'var(--text-warning)'])
+    expect(popup.querySelector('pre code')?.textContent).toBe('const sample: number')
+    expect(popup.querySelector('.abele-lsp-documentation')?.textContent).toBe(
+      'Sample documentation.'
     )
   } finally {
     view.destroy()

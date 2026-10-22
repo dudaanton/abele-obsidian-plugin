@@ -68,6 +68,10 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y}));
             await until(() => document.querySelector('.cm-tooltip-hover'));
             if (!document.querySelector('.cm-tooltip-hover').textContent.includes('Sample documentation.')) throw Error('Hover documentation missing');
+            const popup = document.querySelector('.cm-tooltip-hover'), signature = popup.querySelector('pre code');
+            if (!signature || !popup.querySelector('.abele-lsp-problem__dot') || !popup.querySelector('hr') || !popup.querySelector('.abele-lsp-documentation')) throw Error('Structured hover content missing');
+            if (popup.textContent.includes('typescript:') || !popup.textContent.includes(' · TypeScript')) throw Error('Hover source is not a suffix');
+            if (parseFloat(getComputedStyle(popup).borderRadius) <= 0 || getComputedStyle(popup).boxShadow === 'none') throw Error('Popover radius or shadow missing');
             await shot('hover');
             const hoverBox = document.querySelector('.cm-tooltip-hover').getBoundingClientRect();
             const hoverBottom = document.elementFromPoint(hoverBox.left+hoverBox.width/2,hoverBox.bottom-3);
@@ -81,6 +85,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               p.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,view:window,touches:[finger],targetTouches:[finger],changedTouches:[finger]}));
               await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Go to definition')));
               if (![...document.querySelectorAll('.abele-lsp-menu-message')].some(e=>e.textContent.includes('Sample documentation.'))) throw Error('Long-press type documentation missing');
+              if (!document.querySelector('.abele-lsp-menu-message pre code')) throw Error('Long-press signature is not code');
               p.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,view:window,touches:[],targetTouches:[],changedTouches:[finger]}));
               await shot('long-press');
               [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Go to definition')).closest('.menu-item').click();
@@ -89,6 +94,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'node_modules/sample-types/index.d.ts:3');
             await until(() => document.querySelector('[data-lsp-dependency] .cm-content')?.textContent.includes('export declare const sample'));
             if (document.querySelector('[data-lsp-dependency] .cm-content').getAttribute('contenteditable') !== 'false') throw Error('Dependency definition is editable');
+            if (document.querySelector('[data-lsp-destination]').getBoundingClientRect().height !== 0) throw Error('Duplicate destination label is visible');
             await shot('definition');
             if (${mobile}) await wait(1100);
             phase = 'references';

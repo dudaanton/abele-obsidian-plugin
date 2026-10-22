@@ -5,3 +5,42 @@
   -webkit-line-clamp: unset;
   max-width: min(60ch, 80vw);
 }
+
+.abele-lsp-signature {
+  margin: 0;
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+  background: var(--code-background);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.abele-lsp-signature code {
+  font-family: var(--font-monospace);
+  font-size: inherit;
+  color: var(--code-normal);
+  background: transparent;
+  padding: 0;
+}
+.abele-lsp-documentation {
+  margin-top: var(--size-4-2);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+.abele-lsp-problem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+  white-space: pre-wrap;
+}
+.abele-lsp-problem__dot {
+  flex-shrink: 0;
+}
+.abele-lsp-problem__source {
+  color: var(--text-muted);
+}
+.abele-lsp-message hr {
+  margin: var(--size-4-2) 0;
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+}

@@ -18,7 +18,7 @@ import type { LspDiagnostic } from '@abele/node-protocol'
 import { Menu } from 'obsidian'
 import { lspFor } from './lspContext'
 import type { LspPosition } from './NodeLspDocument'
-import { lspMenuLabel } from './lspMenu'
+import { appendLspHoverContent, lspMenuLabel } from './lspMenu'
 
 export function lspOffset(doc: Text, position: LspPosition): number | null {
   if (position.line < 0 || position.line >= doc.lines || position.character < 0) return null
@@ -112,21 +112,17 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       const context = lspFor(view.dom)
       if (!context?.document.supported) return null
       const line = view.state.doc.lineAt(pos)
-      const messages = view.state
-        .field(diagnostics)
-        .filter((d) => {
-          const start = lspOffset(view.state.doc, d.range.start),
-            end = lspOffset(view.state.doc, d.range.end)
-          return start !== null && end !== null && pos >= start && pos <= end
-        })
-        .map(diagnosticText)
+      const problems = view.state.field(diagnostics).filter((d) => {
+        const start = lspOffset(view.state.doc, d.range.start),
+          end = lspOffset(view.state.doc, d.range.end)
+        return start !== null && end !== null && pos >= start && pos <= end
+      })
       const text = await context.document.hover({
         line: line.number - 1,
         character: pos - line.from,
       })
-      if (text) messages.push(text)
-      if (!messages.length || !view.dom.isConnected) return null
-      return { pos, create: () => ({ dom: messageDOM(view, messages.join('\n\n')) }) }
+      if ((!problems.length && !text) || !view.dom.isConnected) return null
+      return { pos, create: () => ({ dom: messageDOM(view, problems, text) }) }
     }),
     ViewPlugin.fromClass(
       class {
@@ -172,16 +168,22 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       '.cm-tooltip-hover:has(.abele-lsp-message)': {
         width: 'max-content',
         height: 'max-content',
-        maxWidth: 'min(60ch, 85vw)',
+        maxWidth: 'min(32em, 85vw)',
         right: 'auto',
         bottom: 'auto',
         borderColor: 'var(--background-modifier-border)',
         backgroundColor: 'var(--background-primary)',
+        borderRadius: 'var(--radius-m)',
+        boxShadow: 'var(--shadow-s)',
+        fontFamily: 'var(--font-interface)',
+        fontSize: 'var(--font-ui-small)',
       },
       '.abele-lsp-message': {
         whiteSpace: 'pre-wrap',
         padding: 'var(--size-4-2)',
-        maxWidth: 'min(60ch, 85vw)',
+        maxWidth: 'min(32em, 85vw)',
+        boxSizing: 'border-box',
+        borderRadius: 'inherit',
         overflowWrap: 'anywhere',
         color: 'var(--text-normal)',
         backgroundColor: 'var(--background-primary)',
@@ -189,10 +191,32 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
     }),
   ]
 }
-function messageDOM(view: EditorView, text: string) {
+function messageDOM(view: EditorView, problems: LspDiagnostic[], text: string) {
   const dom = view.dom.ownerDocument.win.createDiv()
   dom.className = 'abele-lsp-message'
-  dom.textContent = text
+  const doc = dom.ownerDocument
+  for (const problem of problems) {
+    const row = dom.appendChild(doc.win.createDiv())
+    row.className = 'abele-lsp-problem'
+    const dot = row.appendChild(doc.win.createSpan())
+    dot.className = 'abele-lsp-problem__dot'
+    dot.setAttribute('aria-hidden', 'true')
+    dot.textContent = '●'
+    dot.style.color = problem.severity === 2 ? 'var(--text-warning)' : 'var(--text-error)'
+    const message = row.appendChild(doc.win.createSpan())
+    message.textContent = problem.message
+    const source = message.appendChild(doc.win.createSpan())
+    source.className = 'abele-lsp-problem__source'
+    const name =
+      problem.source === 'typescript'
+        ? 'TypeScript'
+        : problem.source === 'eslint'
+          ? 'ESLint'
+          : problem.source
+    source.textContent = ` · ${name}`
+  }
+  if (problems.length && text) dom.appendChild(doc.win.createEl('hr'))
+  appendLspHoverContent(dom, text)
   return dom
 }
 function showMessages(view: EditorView, position: number, text: string) {
