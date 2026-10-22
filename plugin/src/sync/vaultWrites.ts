@@ -69,6 +69,7 @@ export function isDroppableTemp(path: string): boolean {
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
   retainInstalled?: boolean
+  published?(entry: JournalEntry): void
   stagingDirectory: string
   filesystem: DataAdapter
   native: NativeFs | null
@@ -169,7 +170,10 @@ export class VaultWriter {
     // A whole-file intent already contains the authenticated replacement hash. A
     // consumed temp retains that intent until the ledger acknowledges publication;
     // writing another installed marker would add a third journal mutation per pull.
-    if (this.deps.retainInstalled && !entry.streaming && !entry.backup) return
+    if (this.deps.retainInstalled && !entry.streaming && !entry.backup) {
+      this.deps.published?.(entry)
+      return
+    }
     await this.deps.journal.persist(() => {
       if (this.deps.retainInstalled)
         this.deps.journal.replace(entry, { ...entry, installed: true, backup: undefined })

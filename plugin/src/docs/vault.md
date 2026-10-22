@@ -2607,6 +2607,8 @@ For a whole-file publication without a backup, the initial intent already carrie
 replacement hash. Recovery retains that intent when publication consumed its temp; it is
 retired only after the ledger commits the matching hash. This needs no intermediate installed
 marker, keeping the small-pull path to intent creation and acknowledged retirement.
+A live publication receipt avoids repeating its temp stat during acknowledgement; the
+committed journal record is still rechecked. After restart, recovery uses the stat fallback.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and

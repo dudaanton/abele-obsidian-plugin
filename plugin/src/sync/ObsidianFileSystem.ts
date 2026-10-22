@@ -665,6 +665,8 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly io: BoundedVaultIo
   private readonly conditional: ConditionalFiles
   private readonly stages = new Map<string, JournalEntry>()
+  /** Completed publications only; durable journal reads still authorize retirement. */
+  private readonly publications = new Map<string, string>()
   private readonly stageOperations: Set<string>
   private readonly journal: WriteJournal
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
@@ -837,10 +839,11 @@ export class ObsidianFileSystem implements FileSystem {
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
+    const journalOwner = options.journalOwner ?? options.connectionId
     this.journal = new WriteJournal(
       options.storage ?? storageOf(app),
       () => this.runtimeFence?.assertOwned(),
-      options.journalOwner ?? options.connectionId,
+      journalOwner,
       options.diagnostic
     )
     this.io = new BoundedVaultIo(
@@ -853,6 +856,13 @@ export class ObsidianFileSystem implements FileSystem {
     )
     this.writer = new VaultWriter({
       retainInstalled: !!options.ledger,
+      published: (entry) => {
+        if (entry.temp)
+          this.publications.set(
+            entry.temp,
+            JSON.stringify(journalOwner === undefined ? entry : { ...entry, owner: journalOwner })
+          )
+      },
       stagingDirectory: stagingDirectory(this.configDir, this.privateRoot),
       filesystem: this.guardedAdapter,
       native: this.native,
@@ -1253,13 +1263,10 @@ export class ObsidianFileSystem implements FileSystem {
         byPath.get(entry.target) !== entry.replacementSha
       )
         continue
-      if (
-        !entry.installed &&
-        (!entry.temp ||
-          this.stageOperations.has(entry.temp) ||
-          adapterWriteInFlight(entry.temp) ||
-          (await this.rawStat(entry.temp)))
-      )
+      if (entry.temp && (this.stageOperations.has(entry.temp) || adapterWriteInFlight(entry.temp)))
+        continue
+      const published = entry.temp && this.publications.get(entry.temp) === JSON.stringify(entry)
+      if (!entry.installed && !published && (!entry.temp || (await this.rawStat(entry.temp))))
         continue
       installed.push(entry)
     }
@@ -1268,6 +1275,7 @@ export class ObsidianFileSystem implements FileSystem {
       for (const entry of installed)
         if (await this.journal.isCurrent(entry)) this.journal.drop(entry)
     })
+    for (const entry of installed) if (entry.temp) this.publications.delete(entry.temp)
   }
 
   async discardPrivateDownloads(): Promise<void> {
@@ -1297,6 +1305,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertOwned()
     this.io.retireReceipts()
     await this.journal.retireGeneration(generation, archive)
+    this.publications.clear()
   }
 
   /** A retained streaming source is not a pending destructive installation. */

@@ -925,54 +925,71 @@ it('does not create a file when the host journal transaction aborts', async () =
   reopened.close()
 })
 
-it('keeps a small pull to two journal writes without retiring evidence before ledger COMMIT', async () => {
-  const factory = new IDBFactory(),
-    storage = local(),
-    app = buildFakeVault([])
-  const host = await HostSyncStorage.open(factory, 'sample-small-pull', storage)
-  const state = await IndexedDbStateStore.open(factory, 'sample-small-ledger')
-  let saves = 0
-  const disk = new ObsidianFileSystem(app as never, {
-    storage,
-    ledger: state,
-    diagnostic: (operation) => {
-      if (operation === 'journal save') saves++
-    },
-  })
-  state.observeCommittedEntries((entries) => disk.acknowledgeWrites(entries))
-  const bytes = new TextEncoder().encode('sample bytes'),
-    sha = await sha256(bytes)
-  const row = {
-    path: 'sample.md',
-    wirePath: 'sample.md',
-    fileId: 'sample-file',
-    versionId: 'sample-version',
-    sha,
-    size: bytes.length,
-    mtime: 1000,
-  }
-  const journal = new WriteJournal(storage)
-  try {
-    await disk.writeAtomic(row.path, bytes, row.mtime)
-    expect(saves).toBe(1)
-    await expect(
-      state.transaction(async () => {
+it.each([undefined, 'sample-owner'])(
+  'keeps a small pull to two journal writes without retiring evidence before ledger COMMIT (owner=%s)',
+  async (owner) => {
+    const factory = new IDBFactory(),
+      storage = local(),
+      app = buildFakeVault([])
+    const host = await HostSyncStorage.open(factory, 'sample-small-pull', storage)
+    const state = await IndexedDbStateStore.open(factory, 'sample-small-ledger')
+    let saves = 0
+    const disk = new ObsidianFileSystem(app as never, {
+      storage,
+      ledger: state,
+      journalOwner: owner,
+      diagnostic: (operation) => {
+        if (operation === 'journal save') saves++
+      },
+    })
+    state.observeCommittedEntries((entries) => disk.acknowledgeWrites(entries))
+    const bytes = new TextEncoder().encode('sample bytes'),
+      sha = await sha256(bytes)
+    const row = {
+      path: 'sample.md',
+      wirePath: 'sample.md',
+      fileId: 'sample-file',
+      versionId: 'sample-version',
+      sha,
+      size: bytes.length,
+      mtime: 1000,
+    }
+    const journal = new WriteJournal(storage, undefined, owner)
+    try {
+      await disk.writeAtomic(row.path, bytes, row.mtime)
+      expect(saves).toBe(1)
+      await expect(
+        state.transaction(async () => {
+          await state.put(row)
+          await disk.recover()
+          expect(await journal.currentEntries()).toHaveLength(1)
+          throw new Error('sample rollback')
+        })
+      ).rejects.toThrow('sample rollback')
+      expect(await journal.currentEntries()).toHaveLength(1)
+      // A restarted file port has no publication receipt; durable evidence must still survive.
+      await new ObsidianFileSystem(app as never, {
+        storage,
+        ledger: state,
+        journalOwner: owner,
+      }).recover()
+      expect(await journal.currentEntries()).toHaveLength(1)
+      const stat = vi.spyOn(app.vault.adapter, 'stat')
+      try {
         await state.put(row)
-        await disk.recover()
-        expect(await journal.currentEntries()).toHaveLength(1)
-        throw new Error('sample rollback')
-      })
-    ).rejects.toThrow('sample rollback')
-    expect(await journal.currentEntries()).toHaveLength(1)
-    await state.put(row)
-    expect(await journal.currentEntries()).toEqual([])
-    expect(saves).toBe(2)
-    expect(await app.vault.adapter.read(row.path)).toBe('sample bytes')
-  } finally {
-    state.close()
-    host.close()
+        expect(stat).not.toHaveBeenCalled()
+      } finally {
+        stat.mockRestore()
+      }
+      expect(await journal.currentEntries()).toEqual([])
+      expect(saves).toBe(2)
+      expect(await app.vault.adapter.read(row.path)).toBe('sample bytes')
+    } finally {
+      state.close()
+      host.close()
+    }
   }
-})
+)
 
 it('retains installed evidence across an SDK rollback and retires it after ledger COMMIT', async () => {
   const factory = new IDBFactory(),
