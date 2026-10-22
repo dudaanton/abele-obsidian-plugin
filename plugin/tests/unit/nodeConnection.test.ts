@@ -175,7 +175,11 @@ it('publishes token-node attention using the identity learned at admission', asy
   const client = { connected: true, target: {}, disconnect: async () => {} }
   const connection = new NodeConnection(
     client as never,
-    { transaction: memory.transaction.bind(memory), close() {} } as never
+    {
+      transaction: memory.transaction.bind(memory),
+      read: memory.transaction.bind(memory),
+      close() {},
+    } as never
   )
   try {
     await connection.refreshDelegations()
