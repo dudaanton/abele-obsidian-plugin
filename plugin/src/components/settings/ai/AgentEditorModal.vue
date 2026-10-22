@@ -187,13 +187,7 @@
             :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
             :desc="
               agent.node
-                ? t(
-                    agent.node.provider === 'codex'
-                      ? agent.permissionMode === 'allow-all'
-                        ? 'streamB.permissionCodexFolder'
-                        : 'streamB.permissionCodexAsk'
-                      : 'streamB.permissionOwnerChoice'
-                  )
+                ? nodePermissionDescription
                 : t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')
             "
           >
@@ -208,24 +202,12 @@
               :options="agent.node ? nodePermissionOptions : PERMISSION_OPTIONS"
               @update:model-value="patchPermissionMode"
             />
-            <span
-              v-if="
-                agent.node &&
-                !agent.node.permissionModeConfigured &&
-                agent.permissionMode === 'confirm-all'
-              "
-              class="setting-item-description"
-            >
-              · {{ t('streamB.permissionAskNow') }}
-            </span>
           </Setting>
           <div
             v-if="agent.node?.provider === 'codex' && agent.permissionMode !== 'allow-all'"
             class="abele-node-permission-warning"
           >
-            <StatusDot tone="orange" :label="t('streamB.permissionCodexAsk')" />{{
-              t('streamB.permissionCodexAsk')
-            }}
+            <StatusDot tone="orange" :label="codexPermissionWarning" />{{ codexPermissionWarning }}
           </div>
 
           <NodeBypassHelp
@@ -508,6 +490,27 @@ const config = AbeleConfig.getInstance()
 
 /** The stored, reactive agent — edits reach open chats as they are typed. */
 const agent = computed(() => registry.get(props.agentId))
+const inheritsNodeMode = computed(
+  () =>
+    !!agent.value?.node &&
+    !agent.value.node.permissionModeConfigured &&
+    agent.value.permissionMode === 'confirm-all'
+)
+const nodePermissionDescription = computed(() =>
+  t(
+    agent.value?.node?.provider !== 'codex'
+      ? 'streamB.permissionOwnerChoice'
+      : inheritsNodeMode.value
+        ? 'streamB.permissionModeInheritedDescription'
+        : agent.value.permissionMode === 'allow-all'
+          ? 'streamB.permissionCodexFolder'
+          : 'streamB.permissionModeAskDescription'
+  )
+)
+const codexPermissionWarning = computed(() =>
+  t(inheritsNodeMode.value ? 'streamB.permissionCodexInheritedAsk' : 'streamB.permissionCodexAsk')
+)
+
 const CONNECTION_MODES = [
   { value: 'off', display: t('settings.ai.AgentEditorModal.off.ca7981b4') },
   { value: 'ask', display: t('settings.ai.AgentEditorModal.ask.b8c209cd') },

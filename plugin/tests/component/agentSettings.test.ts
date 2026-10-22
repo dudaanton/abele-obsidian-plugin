@@ -700,11 +700,22 @@ it('describes the selected Codex mode in its permission row', async () => {
       .find((tab) => tab.text() === 'Access')!
       .trigger('click')
     const row = view.findAll('.setting-item').find((row) => row.text().includes('Permission mode'))!
-    expect(row.text()).toContain("in Ask it won't start")
+    expect(row.text()).toContain('Asks before each action.')
+    expect(view.get('.abele-node-permission-warning').text()).toBe(
+      "Codex can't ask before each action, so it won't start here. Choose Without asking."
+    )
     expect(row.text()).not.toContain('Without asking: edits')
     await row.findComponent(Dropdown).vm.$emit('update:modelValue', 'allow-all')
     await view.vm.$nextTick()
-    expect(row.text()).toContain('Without asking: edits')
+    expect(row.text()).toContain('Edits files in its folder without asking and stays inside it.')
+    expect(view.find('.abele-node-permission-warning').exists()).toBe(false)
+    await row.findComponent(Dropdown).vm.$emit('update:modelValue', 'inherit')
+    await view.vm.$nextTick()
+    expect(row.text()).toContain('Takes the mode of the chat that delegates.')
+    expect(row.text()).not.toContain('Ask now')
+    expect(view.get('.abele-node-permission-warning').text()).toBe(
+      "The delegating chat is in Ask now, so Codex won't start. Choose Without asking."
+    )
   } finally {
     view.unmount()
   }

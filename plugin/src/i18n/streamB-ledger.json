@@ -5459,7 +5459,7 @@
     "englishHash": "610152942e1eeded5d8f429f8a203cfec09665400f90a6fcdfaac3877d50da8b"
   },
   "streamB.permissionCodexFolder": {
-    "englishHash": "8c7da8a696d763270084a8e86cba44ff8a2ced8db9902ef366db3f5d029a29a6"
+    "englishHash": "16f46d2835a57399c1c069266c0379f1a360d1982d6e7c076d7f00c2c39f6c7c"
   },
   "streamB.permissionOwnerChoice": {
     "englishHash": "eb5493a6c674ed2389f5109ae6d68bdda42aaa5ab1b48a2473f9733f337eee83"
@@ -5471,7 +5471,7 @@
     "englishHash": "28f503122085ca4279a4c839a869f82b1a6e148dda69e81fa89718d9f7998ea6"
   },
   "streamB.permissionCodexAsk": {
-    "englishHash": "385601b2033931362a251cbd435156449d89d61233cb76a15ba6c88b637b67ce"
+    "englishHash": "371b94e0619400d2aebb54551a6ecb3f58644fb2a195da56bafdac3d024dd1b8"
   },
   "streamB.permissionAskNow": {
     "englishHash": "458efa400019f53d2f33e2360fb565262b033fab2c5d80d48f622513c95a87a3"
@@ -5507,6 +5507,30 @@
     "englishHash": "8067539c47227f3e9453f01408d0c2d7e0124ef983ae1c386d00c223d6605ab1"
   },
   "streamB.delegationWorkerLost": {
-    "englishHash": "dd154b03ca1ef971873b2f25c3e6b7c315ce59fd19c0fd7a1a75c1465665c1af"
+    "englishHash": "1c9cfb0cdd4caeb65655385556dd1f3c81a5568b059905e3b03b747cba9049ae"
+  },
+  "streamB.delegationLost": {
+    "englishHash": "02c047a29c17f7fd99ad316348f9f28f6aa19c41f445017b075b43b6b4366b5d"
+  },
+  "streamB.delegationRefused": {
+    "englishHash": "832a7e911382e48e449639cd5486df67f2ae19627774b649c79d66c231a141de"
+  },
+  "streamB.delegationCodexRefused": {
+    "englishHash": "3063838c6f31829623d7f29525a534d03abf4ebef152a2210264b422f6bc804a"
+  },
+  "streamB.permissionModeHint": {
+    "englishHash": "02cc9204115c0a095bba5681e26f816cfb4668e461e6f33eb2548aae3f59d2a8"
+  },
+  "streamB.permissionModeInheritedDescription": {
+    "englishHash": "3fdf54562c373458ae620a8567e66041111cbe70fc33d35d2ea04897de05f7d7"
+  },
+  "streamB.permissionModeAskDescription": {
+    "englishHash": "c5521fe1c6a86a66832f4914e687300132a6342b190706bfbf9a39815d2a9587"
+  },
+  "streamB.permissionCodexInheritedAsk": {
+    "englishHash": "f53967f9b0d114b8b54cb7b23688d1bbe481b73478266d606225f630a94474cd"
+  },
+  "streamB.nodeReconnectingLine": {
+    "englishHash": "5f8f397440f4cdea2341387f46db73ea8f8ba7779cac996fda459163e2ba9094"
   }
 }

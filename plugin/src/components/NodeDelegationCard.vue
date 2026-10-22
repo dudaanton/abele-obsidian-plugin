@@ -39,6 +39,8 @@
       {{ t('streamB.delegationWorkerLost') }}
     </p>
     <NodeToolPermissions
+      v-if="permissionExplanation"
+      quiet-reason
       :policy="card.toolPermissions"
       hide-mode
       :reason="card.reason"
@@ -141,6 +143,7 @@ import { computed, ref, watch } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
 import { OWNER_STOP_REASON, delegationBranchLabel, delegationReportText } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
+import { permissionRefusal } from '@/node/toolPermissions'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
@@ -176,11 +179,19 @@ watch(
   }
 )
 const expandedReports = ref<Record<number, boolean>>({})
+const permissionExplanation = computed(
+  () =>
+    permissionRefusal(props.card.reason) || permissionRefusal(props.card.toolPermissions?.reason)
+)
 const stateLabel = computed(() => {
   const state = props.card.state
   if (props.card.reason === OWNER_STOP_REASON) return t('chat.stopped')
   if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
+  if (state === 'unknown' && props.card.reason === 'pi_worker_lost')
+    return t('streamB.delegationLost')
+  if (['failed', 'unsupported'].includes(state) && permissionExplanation.value)
+    return t('streamB.delegationRefused')
   if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')
   if (state === 'cancelled') return t('streamBMeta.8b47045eb7')
   if (state === 'grant revoked') return t('streamB.revoked.f6f738')
@@ -213,6 +224,9 @@ const emit = defineEmits<{
 </script>
 <style scoped>
 .abele-node-delegation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
   min-width: 0;
   font-size: var(--font-ui-small);
   padding: var(--size-4-2);
@@ -220,6 +234,11 @@ const emit = defineEmits<{
   border-radius: var(--radius-m);
   margin-block: var(--size-4-2);
   overflow-wrap: anywhere;
+}
+.abele-node-delegation > :deep(.setting-item) {
+  padding: 0;
+  margin: 0;
+  border: 0;
 }
 .abele-node-delegation__meta {
   display: inline-flex;
@@ -241,6 +260,7 @@ const emit = defineEmits<{
   font-size: inherit;
 }
 .abele-node-delegation__metadata {
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }

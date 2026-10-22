@@ -3,12 +3,18 @@
     v-if="policy && !hideMode"
     class="abele-node-tool-permissions__mode"
     :icon="policy.permission_mode === 'bypassPermissions' ? 'shield-off' : 'shield'"
-    :tooltip="permissionLabel(policy)"
-    :aria-label="permissionLabel(policy)"
+    :tooltip="modeTooltip"
+    :aria-label="modeTooltip"
   />
-  <div v-if="refusal && !modeOnly" class="abele-node-tool-permissions">
+  <div
+    v-if="refusal && !modeOnly"
+    class="abele-node-tool-permissions"
+    :class="{ 'abele-node-tool-permissions_quiet': quietReason }"
+  >
     <div class="abele-node-tool-permissions__reason" role="alert">
-      <StatusDot tone="red" :label="refusal" /><span :title="refusal">{{ refusal }}</span>
+      <StatusDot v-if="!quietReason" tone="red" :label="refusal" /><span :title="refusal">{{
+        refusal
+      }}</span>
     </div>
     <NodeBypassHelp v-if="needsNodeOptIn" />
     <Button
@@ -40,12 +46,23 @@ const props = defineProps<{
   nodeId?: string
   nodeLabel: string
   provider: string
+  quietReason?: boolean
   modeOnly?: boolean
   hideMode?: boolean
 }>()
-const refusal = computed(
-  () => permissionRefusal(props.reason) || permissionRefusal(props.policy?.reason)
+const modeTooltip = computed(() =>
+  props.modeOnly
+    ? t('streamB.permissionModeHint', { mode: permissionLabel(props.policy) })
+    : permissionLabel(props.policy)
 )
+const refusal = computed(() => {
+  const reason = props.reason || props.policy?.reason
+  return props.quietReason &&
+    props.provider === 'codex' &&
+    reason?.includes('interactive_approval_unsupported')
+    ? t('streamB.delegationCodexRefused')
+    : permissionRefusal(reason)
+})
 const needsNodeOptIn = computed(() =>
   /bypass.*(disabled|unsupported|not_allowed|not_enabled)|allow.bypass/.test(
     props.reason || props.policy?.reason || ''
@@ -60,6 +77,12 @@ const needsNodeOptIn = computed(() =>
   gap: var(--size-4-2);
   margin-block: var(--size-4-1);
   font-size: var(--font-ui-small);
+}
+.abele-node-tool-permissions_quiet {
+  margin: 0;
+  gap: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 .abele-node-tool-permissions__reason {
   display: flex;

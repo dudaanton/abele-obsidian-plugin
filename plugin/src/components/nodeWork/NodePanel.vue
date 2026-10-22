@@ -43,7 +43,7 @@
           {{ t('streamB.agentsAndFoldersLiveOnAComputer.069ba6') }}
         </div>
       </template>
-      <div v-if="error" class="abele-node-panel__notice" role="alert">
+      <div v-if="error && !reconnecting" class="abele-node-panel__notice" role="alert">
         <NodeErrorText :error="error" />
       </div>
       <div class="abele-node-panel__intro-actions">
@@ -138,7 +138,11 @@
         />
       </div>
 
-      <div v-if="node.status === 'offline'" class="abele-node-panel__notice" role="status">
+      <div
+        v-if="node.status === 'offline' && !reconnecting"
+        class="abele-node-panel__notice"
+        role="status"
+      >
         <span>{{ t('streamBMeta.5a4afa4c2b', { p0: String(node.seen) }) }}</span>
         <Icon
           icon="rotate-cw"
@@ -148,9 +152,19 @@
         />
       </div>
 
-      <div v-if="error" class="abele-node-panel__notice" role="alert">
+      <div v-if="error && !reconnecting" class="abele-node-panel__notice" role="alert">
         <NodeErrorText :error="error" />
         <slot name="error-action" />
+      </div>
+      <div
+        v-if="reconnecting"
+        data-connection-status
+        class="abele-node-panel__connection-status"
+        role="status"
+        :title="t('streamB.nodeReconnectingLine')"
+      >
+        <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
+        <span>{{ t('streamB.nodeReconnectingLine') }}</span>
       </div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
@@ -234,6 +248,10 @@ const emit = defineEmits<{
   (e: 'copy', text: string): void
 }>()
 
+const reconnecting = computed(() =>
+  /^No answer from the node\.\s*Reconnecting/.test(props.error ?? '')
+)
+
 const nodeTone = computed(() =>
   props.node?.status === 'connected'
     ? 'green'
@@ -268,6 +286,7 @@ watch(
 
 <style lang="scss">
 .abele-node-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -358,6 +377,25 @@ body.is-phone .abele-node-panel__link {
   color: var(--text-normal);
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
+}
+// A transient status overlays the lower edge; it never changes the tree's geometry.
+.abele-node-panel__connection-status {
+  position: absolute;
+  inset-inline: var(--size-4-2);
+  bottom: var(--size-4-1);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  pointer-events: none;
+  > span:last-child {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 }
 .abele-node-panel__notice {
   display: flex;

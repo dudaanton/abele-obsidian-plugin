@@ -1,5 +1,16 @@
 export const streamB = {
-  'streamB.delegationWorkerLost': 'Разработчик отключился. Перезапустите его в его чате.',
+  'streamB.delegationLost': 'Потерян',
+  'streamB.delegationRefused': 'Отказ',
+  'streamB.delegationCodexRefused':
+    'Codex не умеет спрашивать перед каждым действием, поэтому в режиме «Спрашивать» не запустится. Выберите «Без вопросов» в его настройках; передающий задачу чат тоже должен работать без вопросов.',
+  'streamB.permissionModeHint': 'Режим разрешений инструментов: {mode}',
+  'streamB.permissionModeInheritedDescription': 'Использует режим чата, который передаёт задачу.',
+  'streamB.permissionModeAskDescription': 'Спрашивает перед каждым действием.',
+  'streamB.permissionCodexInheritedAsk':
+    'Передающий задачу чат сейчас в режиме «Спрашивать», поэтому Codex не запустится. Выберите «Без вопросов».',
+  'streamB.nodeReconnectingLine': 'Нет ответа от ноды. Переподключение…',
+  'streamB.delegationWorkerLost':
+    'Исполнитель перестал отвечать; неизвестно, завершил ли он работу. Перезапустите его в его чате.',
   'streamB.nodeChangedWhileEditing': 'Файл на узле изменился, пока вы его редактировали.',
   'streamB.useTheirs': 'Взять их версию',
   'streamB.theirVersion': 'Версия на узле',
@@ -16,7 +27,7 @@ export const streamB = {
   'streamB.permissionCopyCommand': 'Скопировать команду',
   'streamB.permissionAskNow': 'Сейчас — спрашивать',
   'streamB.permissionCodexAsk':
-    'Codex не умеет спрашивать перед каждым действием, поэтому в режиме «Спрашивать» не запустится. Выберите «Без вопросов».',
+    'Codex не умеет спрашивать перед каждым действием, поэтому здесь не запустится. Выберите «Без вопросов».',
   'streamB.permissionInherit': 'Как у чата, который делегирует',
   'streamB.permissionUpdateNode':
     'Обновите ноду, чтобы она сообщала и соблюдала режимы разрешений, прежде чем запускать этого провайдера.',
@@ -27,8 +38,7 @@ export const streamB = {
     'Этот провайдер не может спрашивать перед каждым действием. Чтобы включить его, выберите «Без вопросов» в настройках агента. При делегировании родительский чат тоже должен работать без вопросов.',
   'streamB.permissionNodeOptIn': 'На ноде разрешите работу без вопросов:',
   'streamB.permissionOpenSettings': 'Открыть настройки агента',
-  'streamB.permissionCodexFolder':
-    'Без вопросов: редактирует в своей папке без вопросов; остаётся внутри этой папки.',
+  'streamB.permissionCodexFolder': 'Меняет файлы в своей папке без вопросов и остаётся внутри неё.',
   'streamB.permissionOwnerChoice':
     '«Спрашивать» требует подтверждения каждого действия. «Без вопросов» разрешает инструменты агента без подтверждений, в том числе вне его папки.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',

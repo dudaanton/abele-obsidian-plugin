@@ -1,6 +1,16 @@
 export const streamB = {
+  'streamB.delegationLost': 'Verloren',
+  'streamB.delegationRefused': 'Abgelehnt',
+  'streamB.delegationCodexRefused':
+    'Codex kann nicht vor jeder Aktion fragen und startet daher im Modus „Nachfragen“ nicht. Wählen Sie in seinen Einstellungen „Ohne Nachfrage“; auch der delegierende Chat muss ohne Nachfragen laufen.',
+  'streamB.permissionModeHint': 'Berechtigungsmodus der Werkzeuge: {mode}',
+  'streamB.permissionModeInheritedDescription': 'Übernimmt den Modus des delegierenden Chats.',
+  'streamB.permissionModeAskDescription': 'Fragt vor jeder Aktion.',
+  'streamB.permissionCodexInheritedAsk':
+    'Der delegierende Chat ist derzeit im Modus „Nachfragen“, daher startet Codex nicht. Wählen Sie „Ohne Nachfrage“.',
+  'streamB.nodeReconnectingLine': 'Keine Antwort vom Knoten. Verbindung wird wiederhergestellt…',
   'streamB.delegationWorkerLost':
-    'Der Entwickler wurde getrennt. Starten Sie ihn in seinem Chat neu.',
+    'Der Worker antwortet nicht mehr; ob er fertig wurde, ist unbekannt. Starten Sie ihn in seinem Chat neu.',
   'streamB.nodeChangedWhileEditing':
     'Die Datei wurde während der Bearbeitung auf dem Knoten geändert.',
   'streamB.useTheirs': 'Deren Version verwenden',
@@ -18,7 +28,7 @@ export const streamB = {
   'streamB.permissionCopyCommand': 'Befehl kopieren',
   'streamB.permissionAskNow': 'Jetzt fragen',
   'streamB.permissionCodexAsk':
-    'Codex kann nicht vor jeder Aktion fragen und startet daher im Modus „Fragen“ nicht. Wählen Sie „Ohne Nachfrage“.',
+    'Codex kann nicht vor jeder Aktion fragen und startet daher hier nicht. Wählen Sie „Ohne Nachfrage“.',
   'streamB.permissionInherit': 'Wie der delegierende Chat',
   'streamB.permissionUpdateNode':
     'Aktualisieren Sie diesen Knoten, damit er Berechtigungsmodi meldet und durchsetzt, bevor Sie diesen Anbieter starten.',
@@ -30,7 +40,7 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'Auf dem Knoten das Ausführen ohne Nachfrage erlauben:',
   'streamB.permissionOpenSettings': 'Agenteneinstellungen öffnen',
   'streamB.permissionCodexFolder':
-    'Ohne Nachfrage: bearbeitet ohne Nachfrage im eigenen Ordner und bleibt darin.',
+    'Bearbeitet Dateien in seinem Ordner ohne Nachfragen und bleibt darin.',
   'streamB.permissionOwnerChoice':
     '«Nachfragen» verlangt eine Bestätigung für jede Aktion. «Ohne Nachfrage» erlaubt die Werkzeuge des Agenten ohne Bestätigung, auch außerhalb seines Ordners.',
   'streamB.accessWritesWithoutAsking': 'Schreibt ohne Nachfrage',

@@ -1,5 +1,16 @@
 export const streamB = {
-  'streamB.delegationWorkerLost': 'Izstrādātājs atvienojās. Palaidiet to no jauna tā sarunā.',
+  'streamB.delegationLost': 'Zudis',
+  'streamB.delegationRefused': 'Atteikts',
+  'streamB.delegationCodexRefused':
+    'Codex nevar prasīt atļauju pirms katras darbības, tāpēc jautāšanas režīmā tas nesāks darbu. Tā iestatījumos izvēlieties režīmu bez jautāšanas; arī sarunai, kas deleģē uzdevumu, jādarbojas bez jautāšanas.',
+  'streamB.permissionModeHint': 'Rīku atļauju režīms: {mode}',
+  'streamB.permissionModeInheritedDescription': 'Pārņem tās sarunas režīmu, kura deleģē uzdevumu.',
+  'streamB.permissionModeAskDescription': 'Prasa atļauju pirms katras darbības.',
+  'streamB.permissionCodexInheritedAsk':
+    'Saruna, kas deleģē uzdevumu, pašlaik ir jautāšanas režīmā, tāpēc Codex nesāks darbu. Izvēlieties režīmu bez jautāšanas.',
+  'streamB.nodeReconnectingLine': 'Mezgls neatbild. Atkārtoti savienojas…',
+  'streamB.delegationWorkerLost':
+    'Izpildītājs pārstāja atbildēt; nav zināms, vai tas pabeidza darbu. Palaidiet to no jauna tā sarunā.',
   'streamB.nodeChangedWhileEditing': 'Fails mezglā tika mainīts rediģēšanas laikā.',
   'streamB.useTheirs': 'Izmantot viņu versiju',
   'streamB.theirVersion': 'Versija mezglā',
@@ -16,7 +27,7 @@ export const streamB = {
   'streamB.permissionCopyCommand': 'Kopēt komandu',
   'streamB.permissionAskNow': 'Tagad jautāt',
   'streamB.permissionCodexAsk':
-    'Codex nevar jautāt pirms katras darbības, tāpēc režīmā Jautāt tas nesāks darbu. Izvēlieties Bez jautāšanas.',
+    'Codex nevar prasīt atļauju pirms katras darbības, tāpēc šeit tas nesāks darbu. Izvēlieties režīmu bez jautāšanas.',
   'streamB.permissionInherit': 'Tāpat kā čatam, kas deleģē',
   'streamB.permissionUpdateNode':
     'Pirms šī pakalpojuma sniedzēja palaišanas atjauniniet mezglu, lai tas ziņotu par atļauju režīmiem un tos ievērotu.',
@@ -27,8 +38,7 @@ export const streamB = {
     'Šis pakalpojuma sniedzējs nevar jautāt pirms katras darbības. Lai to iespējotu, aģenta iestatījumos izvēlieties «Bez jautāšanas». Deleģējot arī vecāka čatam jādarbojas bez jautāšanas.',
   'streamB.permissionNodeOptIn': 'Mezglā atļaujiet darbību bez jautāšanas:',
   'streamB.permissionOpenSettings': 'Atvērt aģenta iestatījumus',
-  'streamB.permissionCodexFolder':
-    'Bez jautāšanas: rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
+  'streamB.permissionCodexFolder': 'Rediģē failus savā mapē bez jautāšanas un paliek tajā.',
   'streamB.permissionOwnerChoice':
     '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',

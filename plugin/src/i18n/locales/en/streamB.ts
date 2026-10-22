@@ -1,5 +1,16 @@
 export const streamB = {
-  'streamB.delegationWorkerLost': 'The developer disconnected. Restart it from its chat.',
+  'streamB.delegationLost': 'Lost',
+  'streamB.delegationRefused': 'Refused',
+  'streamB.delegationCodexRefused':
+    "Codex can't ask before each action, so in Ask it won't start. Choose Without asking in its settings; the delegating chat must run without asking too.",
+  'streamB.permissionModeHint': 'Tool permission mode: {mode}',
+  'streamB.permissionModeInheritedDescription': 'Takes the mode of the chat that delegates.',
+  'streamB.permissionModeAskDescription': 'Asks before each action.',
+  'streamB.permissionCodexInheritedAsk':
+    "The delegating chat is in Ask now, so Codex won't start. Choose Without asking.",
+  'streamB.nodeReconnectingLine': 'No answer from the node. Reconnecting…',
+  'streamB.delegationWorkerLost':
+    'The worker stopped answering; it is unknown whether it finished. Restart it from its chat.',
   'streamB.nodeChangedWhileEditing': 'Changed on the node while you edited.',
   'streamB.useTheirs': 'Use theirs',
   'streamB.theirVersion': 'Their version',
@@ -16,7 +27,7 @@ export const streamB = {
   'streamB.permissionCopyCommand': 'Copy command',
   'streamB.permissionAskNow': 'Ask now',
   'streamB.permissionCodexAsk':
-    "Codex can't ask before each action, so in Ask it won't start. Choose Without asking.",
+    "Codex can't ask before each action, so it won't start here. Choose Without asking.",
   'streamB.permissionInherit': 'Same as the chat that delegates',
   'streamB.permissionUpdateNode':
     'Update this node to report and enforce provider permission modes before starting this provider.',
@@ -27,8 +38,7 @@ export const streamB = {
     'This provider cannot ask before each action. Choose Without asking in its agent settings to enable it. For delegation, the parent chat must also run without asking.',
   'streamB.permissionNodeOptIn': 'On the node, allow running without asking:',
   'streamB.permissionOpenSettings': 'Open agent settings',
-  'streamB.permissionCodexFolder':
-    'Without asking: edits in its folder without asking; it stays inside that folder.',
+  'streamB.permissionCodexFolder': 'Edits files in its folder without asking and stays inside it.',
   'streamB.permissionOwnerChoice':
     'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',

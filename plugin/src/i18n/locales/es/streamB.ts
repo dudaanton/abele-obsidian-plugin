@@ -1,5 +1,16 @@
 export const streamB = {
-  'streamB.delegationWorkerLost': 'El desarrollador se desconectó. Reinícialo desde su chat.',
+  'streamB.delegationLost': 'Perdido',
+  'streamB.delegationRefused': 'Rechazado',
+  'streamB.delegationCodexRefused':
+    'Codex no puede preguntar antes de cada acción, así que no se iniciará en modo Preguntar. Elige Sin preguntar en sus ajustes; el chat que delega también debe funcionar sin preguntar.',
+  'streamB.permissionModeHint': 'Modo de permisos de herramientas: {mode}',
+  'streamB.permissionModeInheritedDescription': 'Adopta el modo del chat que delega.',
+  'streamB.permissionModeAskDescription': 'Pregunta antes de cada acción.',
+  'streamB.permissionCodexInheritedAsk':
+    'El chat que delega está en modo Preguntar, así que Codex no se iniciará. Elige Sin preguntar.',
+  'streamB.nodeReconnectingLine': 'El nodo no responde. Reconectando…',
+  'streamB.delegationWorkerLost':
+    'El ejecutor dejó de responder; se desconoce si terminó. Reinícialo desde su chat.',
   'streamB.nodeChangedWhileEditing': 'El archivo cambió en el nodo mientras lo editabas.',
   'streamB.useTheirs': 'Usar su versión',
   'streamB.theirVersion': 'Versión del nodo',
@@ -16,7 +27,7 @@ export const streamB = {
   'streamB.permissionCopyCommand': 'Copiar comando',
   'streamB.permissionAskNow': 'Preguntar ahora',
   'streamB.permissionCodexAsk':
-    'Codex no puede preguntar antes de cada acción, así que no se iniciará en Preguntar. Elige Sin preguntar.',
+    'Codex no puede preguntar antes de cada acción, así que no se iniciará aquí. Elige Sin preguntar.',
   'streamB.permissionInherit': 'Igual que el chat que delega',
   'streamB.permissionUpdateNode':
     'Actualice este nodo para que indique y aplique los modos de permisos antes de iniciar este proveedor.',
@@ -28,7 +39,7 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'En el nodo, permite ejecutar sin preguntar:',
   'streamB.permissionOpenSettings': 'Abrir ajustes del agente',
   'streamB.permissionCodexFolder':
-    'Sin preguntar: edita en su carpeta sin preguntar; permanece dentro de ella.',
+    'Edita archivos en su carpeta sin preguntar y permanece dentro de ella.',
   'streamB.permissionOwnerChoice':
     '«Preguntar» requiere aprobar cada acción. «Sin preguntar» permite ejecutar las herramientas del agente sin aprobación, también fuera de su carpeta.',
   'streamB.accessWritesWithoutAsking': 'Escribe sin preguntar',

@@ -5,6 +5,7 @@ import { english } from '@/i18n/catalogs'
 import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { OWNER_STOP_REASON } from '@/node/delegation'
+import { nodePermissionCardFixture } from '@/testing/nodeDelegationFixture'
 
 it('explains a lost worker and directs the owner to restart from its chat', () => {
   const wrapper = mount(NodeDelegationCard, {
@@ -14,7 +15,10 @@ it('explains a lost worker and directs the owner to restart from its chat', () =
     },
   })
   try {
-    expect(wrapper.text()).toContain('The developer disconnected. Restart it from its chat.')
+    expect(wrapper.text()).toContain(
+      'The worker stopped answering; it is unknown whether it finished. Restart it from its chat.'
+    )
+    expect(wrapper.get('.abele-node-delegation__status').text()).toBe('Lost')
     expect(wrapper.find('[data-pending-prompts]').exists()).toBe(false)
   } finally {
     wrapper.unmount()
@@ -545,5 +549,23 @@ it('offers one Stop control for a manager command while its owner approval is vi
     expect(stops()).toHaveLength(1)
   } finally {
     wrapper.unmount()
+  }
+})
+
+it('uses one status dot for a refused card and a plain reason with a settings action', () => {
+  const card = nodePermissionCardFixture('refused')
+  const view = mount(NodeDelegationCard, { props: { card, nodeLabel: 'Sample node' } })
+  try {
+    expect(view.get('.abele-node-delegation__status').text()).toBe('Refused')
+    expect(view.findAll('.abele-status-dot')).toHaveLength(1)
+    expect(view.get('.abele-node-tool-permissions__reason').text()).toBe(
+      "Codex can't ask before each action, so in Ask it won't start. Choose Without asking in its settings; the delegating chat must run without asking too."
+    )
+    expect(view.get('.abele-node-tool-permissions__mode').attributes('aria-label')).toBe(
+      'Tool permission mode: Ask'
+    )
+    expect(view.get('.abele-node-tool-permissions button').text()).toBe('Open agent settings')
+  } finally {
+    view.unmount()
   }
 })
