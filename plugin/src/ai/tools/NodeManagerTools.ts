@@ -114,6 +114,25 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       const nodeId = matches[0].expectedNodeId ?? matches[0].id
       if (!nodeScopeEntries(parent).some((entry) => entry.node_id === nodeId))
         requireDelegationScope(parent, nodeId)
+      if (
+        name === 'node_command_run' &&
+        !input.project_id &&
+        !input.worktree_id &&
+        !input.workspace_id &&
+        !input.session_id
+      ) {
+        const scoped = nodeScopeEntries(parent).filter(
+          (e) => e.node_id === nodeId && e.kind !== 'node'
+        )
+        if (scoped.length === 1) {
+          const entry = scoped[0]
+          if (entry.kind === 'target' && entry.target.kind === 'worktree')
+            input.worktree_id = entry.target.worktree_id
+          else if (entry.kind === 'target' && entry.target.kind === 'workspace')
+            input.workspace_id = entry.target.workspace_id
+          else if (entry.kind === 'project') input.project_id = entry.project_id
+        }
+      }
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
       const description = await connection.client.describe()
@@ -138,25 +157,6 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           : name === 'node_git_integrate'
             ? 'git.v1.integrate'
             : 'command.v1.cancel'
-      if (
-        name === 'node_command_run' &&
-        !input.project_id &&
-        !input.worktree_id &&
-        !input.workspace_id &&
-        !input.session_id
-      ) {
-        const scoped = nodeScopeEntries(parent).filter(
-          (e) => e.node_id === nodeId && e.kind !== 'node'
-        )
-        if (scoped.length === 1) {
-          const entry = scoped[0]
-          if (entry.kind === 'target' && entry.target.kind === 'worktree')
-            input.worktree_id = entry.target.worktree_id
-          else if (entry.kind === 'target' && entry.target.kind === 'workspace')
-            input.workspace_id = entry.target.workspace_id
-          else if (entry.kind === 'project') input.project_id = entry.project_id
-        }
-      }
       const params = await resolveManagerTargets(
         connection.client,
         name === 'node_command_status' ? 'command.v1.status' : method,

@@ -245,7 +245,7 @@ export class NodeManagerController {
           input: {
             ...raw,
             context_id: 'unsubmitted-command',
-            cwd: raw.cwd ?? raw.worktree_id ?? raw.project_id,
+            cwd: raw.cwd ?? raw.worktree_id ?? raw.workspace_id ?? raw.project_id,
             refusal: reason,
           },
         })
@@ -680,9 +680,11 @@ export class NodeManagerController {
                 ? display.cwd
                 : typeof display.worktree_id === 'string'
                   ? display.worktree_id
-                  : typeof display.project_id === 'string'
-                    ? display.project_id
-                    : undefined),
+                  : typeof display.workspace_id === 'string'
+                    ? display.workspace_id
+                    : typeof display.project_id === 'string'
+                      ? display.project_id
+                      : undefined),
             justification: entry.justification,
             title:
               typeof display.command === 'string'

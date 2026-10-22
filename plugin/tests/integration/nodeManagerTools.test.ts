@@ -43,6 +43,44 @@ it('scopes model aliases to the chat, tool and exact intended action while prese
   expect(ids[0]).toBe(ids[1])
   expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
 })
+it('retains the inferred scoped folder in an old-node refusal', async () => {
+  const refuse = vi.fn(async () => {
+    throw new Error('Update the node to 0.4.47')
+  })
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      refreshDelegations: async () => {},
+      manager: { refuse },
+      client: { describe: async () => ({}) },
+    }),
+  } as never)
+  const chat = {
+    overrides: ref({
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          target: { kind: 'worktree', worktree_id: 'sample-tree' },
+          access: 'read',
+        },
+      ],
+    }),
+    getToolMode: () => 'ask',
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as unknown as ChatSession
+  await expect(
+    createNodeManagerTools(chat)[0].execute('sample-call', {
+      node: 'sample-node',
+      argv: ['node', '--version'],
+      operation_id: 'sample-operation',
+      justification: 'Check the runtime.',
+    })
+  ).rejects.toThrow(/0.4.47/)
+  expect(refuse.mock.calls[0][1]).toMatchObject({ worktree_id: 'sample-tree' })
+})
 it('requires justification in both command-like tool schemas', async () => {
   const owner = {
     getToolMode: () => 'auto',
