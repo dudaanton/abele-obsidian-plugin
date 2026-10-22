@@ -3034,6 +3034,7 @@ reveals its folder and hidden ancestors again.
 Manually renamed chats persist `manualTitle: true` beside their title, so background title
 generation cannot replace it after reopening or syncing. With a title-based filename template,
 renaming keeps the transcript in its directory and chooses a free name with ` 2`, ` 3`, etc.
+Identity-based comment and discussion filenames remain stable when their display title changes.
 
 Node file tabs keep their target, path, selected lines and optional matched-word column and
 length in the device's workspace layout. These navigation hints do not copy file contents.

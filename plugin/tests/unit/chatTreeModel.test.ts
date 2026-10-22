@@ -171,6 +171,41 @@ it('renames a closed legacy chat and respects a filename template without a titl
   expect(parseChat(await app.vault.read(file)).metadata?.manualTitle).toBe(true)
   expect(file.path).toBe(path)
 })
+
+it.each(['chat', 'comment'] as const)(
+  'keeps identity-based discussion filenames when renaming a %s',
+  async (kind) => {
+    const path = 'AI/Comments/sample-discussion.abchat'
+    const app = useVault([
+      {
+        path,
+        content: serializeChat({
+          metadata: {
+            type: 'abele-chat',
+            title: 'Old',
+            created: '',
+            providerId: '',
+            modelId: '',
+            kind,
+            commentId: 'sample-discussion',
+            commentLocation: path,
+          },
+          messages: [],
+          internalMessages: [],
+        }),
+      },
+    ])
+    const file = app.vault.getAbstractFileByPath(path) as TFile
+    const rename = vi.spyOn(app.fileManager, 'renameFile')
+    service.tree.rename(path, 'Chosen discussion name')
+    await vi.waitFor(async () =>
+      expect(parseChat(await app.vault.read(file)).metadata?.manualTitle).toBe(true)
+    )
+    await service.tree.refresh()
+    expect(file.path).toBe(path)
+    expect(rename).not.toHaveBeenCalled()
+  }
+)
 it('places fresh empty chats ahead of older chats and folders', async () => {
   await service.folders.create('', 'Collection')
   const old = service.createTab()

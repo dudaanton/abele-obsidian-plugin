@@ -1062,6 +1062,10 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     if (manual && !AbeleConfig.getInstance().ai.chatFolder.split('/').at(-1)?.includes('{{name}}'))
       return null
+    if (manual) {
+      const metadata = parseChatMetadata(await this.readNavigationFile(file))
+      if (metadata?.commentId || metadata?.kind === 'comment') return null
+    }
     const oldPath = file.path
     const proposed = this.resolveChatPath(newTitle)
     const prefix = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/') + 1) : ''
