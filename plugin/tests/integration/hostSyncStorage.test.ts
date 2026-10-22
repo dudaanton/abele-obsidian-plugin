@@ -1,5 +1,9 @@
 import { expect, it, vi } from 'vitest'
-import { IDBFactory, IDBObjectStore as FakeObjectStore } from 'fake-indexeddb'
+import {
+  IDBFactory,
+  IDBObjectStore as FakeObjectStore,
+  IDBIndex as FakeIndex,
+} from 'fake-indexeddb'
 import { HostSyncStorage, prepareHostSyncStorage } from '@/sync/hostSyncStorage'
 import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -22,6 +26,108 @@ function local() {
     },
   }
 }
+
+it('retires 5000 journal entries with linear IndexedDB record reads', async () => {
+  const seed = local()
+  const entries = Array.from({ length: 5000 }, (_, i) => ({
+    target: `sample-${i}.md`,
+    temp: `sample-${i}.tmp`,
+  }))
+  seed.saveLocalStorage(JOURNAL_KEY, entries)
+  const factory = new IDBFactory()
+  const host = await HostSyncStorage.open(factory, 'sample-cost', seed)
+  let touched = 0
+  const all = FakeIndex.prototype.getAll
+  const get = FakeObjectStore.prototype.get
+  const put = FakeObjectStore.prototype.put
+  const remove = FakeObjectStore.prototype.delete
+  const write = vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementation(function (
+    this: FakeObjectStore,
+    ...args
+  ) {
+    touched++
+    return put.apply(this, args)
+  })
+  const erase = vi.spyOn(FakeObjectStore.prototype, 'delete').mockImplementation(function (
+    this: FakeObjectStore,
+    ...args
+  ) {
+    touched++
+    return remove.apply(this, args)
+  })
+  const scan = vi.spyOn(FakeIndex.prototype, 'getAll').mockImplementation(function (
+    this: FakeIndex,
+    ...args
+  ) {
+    const request = all.apply(this, args)
+    request.addEventListener('success', () => {
+      touched += request.result.length
+    })
+    return request
+  })
+  const read = vi.spyOn(FakeObjectStore.prototype, 'get').mockImplementation(function (
+    this: FakeObjectStore,
+    ...args
+  ) {
+    touched++
+    return get.apply(this, args)
+  })
+  try {
+    for (let i = 1; i <= entries.length; i++) {
+      host.saveLocalStorage(JOURNAL_KEY, entries.slice(i))
+      await host.flush()
+      expect(touched).toBeLessThanOrEqual(entries.length * 4)
+    }
+    expect(touched).toBeLessThanOrEqual(entries.length * 4)
+    expect(scan).not.toHaveBeenCalled()
+    expect(host.loadLocalStorage(JOURNAL_KEY)).toEqual([])
+  } finally {
+    scan.mockRestore()
+    read.mockRestore()
+    write.mockRestore()
+    erase.mockRestore()
+    host.close()
+  }
+  const reopened = await HostSyncStorage.open(factory, 'sample-cost', local())
+  expect(reopened.loadLocalStorage(JOURNAL_KEY)).toEqual([])
+  reopened.close()
+}, 120000)
+
+it('initializes the append counter when reopening records written by earlier schema-2 hosts', async () => {
+  const factory = new IDBFactory()
+  const seed = local()
+  const first = { target: 'first.md', temp: 'first.tmp' }
+  const second = { target: 'second.md', temp: 'second.tmp' }
+  seed.saveLocalStorage(JOURNAL_KEY, [first, second])
+  const host = await HostSyncStorage.open(factory, 'sample-order', seed)
+  host.close()
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = factory.open('abele-sync-host-v1', 2)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('host-records', 'readwrite')
+    tx.objectStore('host-records').put({
+      namespace: 'sample-order',
+      key: JOURNAL_KEY,
+      id: '!header',
+      value: { kind: 'array' },
+      order: -1,
+    })
+    tx.oncomplete = () => resolve()
+    tx.onabort = () => reject(tx.error)
+  })
+  db.close()
+  const writer = await HostSyncStorage.open(factory, 'sample-order', local())
+  const third = { target: 'third.md', temp: 'third.tmp' }
+  writer.saveLocalStorage(JOURNAL_KEY, [first, second, third])
+  await writer.flush()
+  writer.close()
+  const reader = await HostSyncStorage.open(factory, 'sample-order', local())
+  expect(reader.loadLocalStorage(JOURNAL_KEY)).toEqual([first, second, third])
+  reader.close()
+})
 
 it('merges independent journal entries from two hydrated hosts without resurrecting retired work', async () => {
   const factory = new IDBFactory(),

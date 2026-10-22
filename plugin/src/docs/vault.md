@@ -2585,6 +2585,9 @@ another host added and rejecting stale changes to retired or conflicting records
 version-1 host values migrate with a separate atomic marker and are not re-imported after
 record retirement. A failed transaction rejects its own flush; later queued work can still
 commit. Recovery of a failed attempt refreshes the cache from committed rows.
+Ordinary commits read changed record IDs and container metadata, never the full journal.
+Container metadata carries an append counter; committed deltas update the cached record
+map incrementally. Hydration and failed-attempt recovery may read the complete group.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and
