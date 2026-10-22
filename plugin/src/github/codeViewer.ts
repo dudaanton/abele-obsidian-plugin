@@ -1,5 +1,6 @@
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { t } from '@/i18n'
+import { comparisonTheme } from './comparisonTheme'
 /**
  * Read-only CodeMirror editors for a file's diff and for a file at a ref.
  *
@@ -111,6 +112,7 @@ function mount(
   originalExtensions: Extension[] = []
 ): Viewer & { view: EditorView; retarget(line: number | null): void } {
   const configured: Extension[] = [
+    ...(comparison ? [comparisonTheme] : []),
     ...(comparison && !comparison.split ? workingComparison(comparison.original) : []),
     ...(onChange
       ? [
@@ -149,6 +151,8 @@ function mount(
           doc: comparison.original,
           extensions: [
             ...readOnly,
+            lineNumbers(),
+            comparisonTheme,
             ...originalExtensions,
             ...(wrap ? [EditorView.lineWrapping] : []),
           ],

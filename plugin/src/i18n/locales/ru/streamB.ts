@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.nodeChangedWhileEditing': 'Файл на узле изменился, пока вы его редактировали.',
+  'streamB.useTheirs': 'Взять их версию',
+  'streamB.theirVersion': 'Версия на узле',
+  'streamB.yourVersion': 'Ваша версия',
   'streamB.diffOverview': 'Обзор изменений',
   'streamB.diffOverviewAdded': 'Строки {from}–{to} · добавлены',
   'streamB.diffOverviewRemoved': 'Строки {from}–{to} · удалены',

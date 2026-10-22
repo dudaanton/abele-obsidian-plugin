@@ -57,15 +57,20 @@
       />
     </div>
     <div v-if="needsChoice" class="abele-node-save__state" role="status">
-      <span>{{
-        error ||
-        presentUiField(model.draftError, 'value') ||
-        (model.draft.value?.status === 'conflict'
-          ? t('streamB.conflictOnDisk.6a2045')
-          : t('streamB.changedOnDisk.c12f35'))
-      }}</span>
+      <span class="abele-node-save__conflict-message">
+        <StatusDot v-if="!actions" tone="orange" :label="t('streamB.nodeChangedWhileEditing')" />
+        {{
+          error ||
+          presentUiField(model.draftError, 'value') ||
+          (!actions
+            ? t('streamB.nodeChangedWhileEditing')
+            : model.draft.value?.status === 'conflict'
+              ? t('streamB.conflictOnDisk.6a2045')
+              : t('streamB.changedOnDisk.c12f35'))
+        }}</span
+      >
       <Button
-        :text="t('streamB.reload.bdc090')"
+        :text="actions ? t('streamB.reload.bdc090') : t('streamB.useTheirs')"
         :tooltip="t('streamB.discardMyDraftAndLoadTheVersion.3d7ebf')"
         :disabled="busy || offline || !model.canReloadDraft.value"
         @click="reload"
@@ -107,11 +112,14 @@
       role="status"
       >{{ t('streamB.savedTheNodeConfirmedThisVersionExternal.f4f869') }}</span
     >
-    <span v-else-if="model.editing.value && model.draftDirty.value" role="status">{{
+    <span v-else-if="actions && model.editing.value && model.draftDirty.value" role="status">{{
       t('streamB.unsentEditStoredOnlyOnThisDevice.49091f')
     }}</span>
-    <details v-if="model.draft.value?.result">
-      <summary>{{ t('streamB.saveReceiptAndRetainedPredecessor.25d4a8') }}</summary>
+    <Disclosure
+      v-if="model.draft.value?.result"
+      v-model="receiptOpen"
+      :label="t('streamB.saveReceiptAndRetainedPredecessor.25d4a8')"
+    >
       <div class="abele-node-save__receipt">
         {{ t('streamBMeta.76be2c0593', { p0: String(model.draft.value.result.operation_id) })
         }}<br />{{ t('streamBMeta.f6c522a17e', { p0: String(model.draft.value.result.state) })
@@ -141,7 +149,7 @@
         :text="model.predecessorText.value"
         :path="model.filePath.value"
       />
-    </details>
+    </Disclosure>
   </div>
 </template>
 <script setup lang="ts">
@@ -155,6 +163,8 @@ import { confirmDialog } from '@/components/obsidian/dialogs'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import GithubCode from './github/GithubCode.vue'
+import Disclosure from './obsidian/Disclosure.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 const props = withDefaults(
   defineProps<{
     model: NodeFilesModel
@@ -170,6 +180,7 @@ const props = withDefaults(
 )
 const busy = ref(false),
   error = ref('')
+const receiptOpen = ref(false)
 const emit = defineEmits<{ reconciled: [] }>()
 const needsChoice = computed(
   () =>
@@ -238,6 +249,15 @@ const keepMine = () =>
     align-items: center;
     flex-wrap: wrap;
     gap: var(--size-4-2);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-medium);
+  }
+  &__conflict-message {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    flex-basis: 100%;
+    color: var(--text-normal);
   }
   &__actions {
     display: flex;
@@ -249,16 +269,10 @@ const keepMine = () =>
     overflow-wrap: anywhere;
     padding-block: var(--size-4-2);
   }
-  details {
+  .abele-disclosure {
     width: 100%;
     min-width: 0;
   }
-}
-body.is-phone .abele-node-save summary {
-  min-height: calc(var(--size-4-10) + var(--size-4-1));
-  padding-block: var(--size-4-2);
-  box-sizing: border-box;
-  align-content: center;
 }
 body.is-phone .abele-node-save .clickable-icon {
   min-width: calc(var(--size-4-10) + var(--size-4-1));

@@ -26,6 +26,7 @@ it.each([false, true])('edits the working comparison live, split=%s', (split) =>
       expect(working.state.doc.sliceString(0, 1)).toBe('a')
     }
     if (split) {
+      expect(editors[0].querySelector('.cm-lineNumbers')).not.toBeNull()
       const original = EditorView.findFromDOM(editors[0])!
       expect(original.state.facet(EditorState.readOnly)).toBe(true)
       expect(original.contentDOM.contentEditable).toBe('false')

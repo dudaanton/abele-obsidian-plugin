@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.nodeChangedWhileEditing': 'Changed on the node while you edited.',
+  'streamB.useTheirs': 'Use theirs',
+  'streamB.theirVersion': 'Their version',
+  'streamB.yourVersion': 'Your version',
   'streamB.diffOverview': 'Change overview',
   'streamB.diffOverviewAdded': 'Lines {from}–{to} · added',
   'streamB.diffOverviewRemoved': 'Lines {from}–{to} · removed',

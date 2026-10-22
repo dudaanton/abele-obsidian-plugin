@@ -7,10 +7,55 @@ import { NodeFileTabActions } from '@/views/nodeFileTabActions'
 import { shallowRef } from 'vue'
 import type { PathDocument } from '@/node/NodePathModel'
 import { mountCode } from '@/github/codeViewer'
+import NodeFileSaveState from '@/components/NodeFileSaveState.vue'
+import Button from '@/components/obsidian/Button.vue'
 
 vi.mock('@/github/codeViewer', () => ({
   mountCode: vi.fn(() => ({ destroy: vi.fn(), setText: vi.fn(), blame: vi.fn() })),
 }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => true) }))
+
+it.each(['Use theirs', 'Keep mine'])(
+  'compares the fresh node version to the retained draft before %s',
+  async (choice) => {
+    const { model } = await nodeFilesFixture('conflict')
+    const mine = model.draftText.value
+    const baseline = model.draft.value!.baseContentId
+    const read = vi.spyOn(model.documents, 'read').mockResolvedValue({
+      text: 'current on node',
+      contentId: 'c'.repeat(64),
+      size: 15,
+      binary: false,
+      large: false,
+      tooLarge: false,
+    })
+    const view = mount(NodePathEditorPane, {
+      props: { model, comparison: { original: 'old git baseline', split: false } },
+    })
+    try {
+      await flushPromises()
+      expect(view.getComponent(GithubCode).props('comparison')?.original).toBe('current on node')
+      expect(view.getComponent(GithubCode).props('text')).toBe(mine)
+      expect(model.draft.value!.baseContentId).toBe(baseline)
+      expect(view.text()).toContain('Changed on the node while you edited.')
+      expect(view.find('.abele-status-dot_orange').exists()).toBe(true)
+      expect(view.find('details').exists()).toBe(false)
+      expect(view.find('.abele-disclosure').exists()).toBe(true)
+      const button = view
+        .getComponent(NodeFileSaveState)
+        .findAllComponents(Button)
+        .find((b) => b.props('text') === choice)!
+      await button.trigger('click')
+      await flushPromises()
+      expect(model.document.value?.text).toBe('current on node')
+      expect(model.draftText.value).toBe(choice === 'Use theirs' ? 'current on node' : mine)
+      expect(model.draft.value?.baseContentId).toBe('c'.repeat(64))
+    } finally {
+      view.unmount()
+      read.mockRestore()
+    }
+  }
+)
 
 it('keeps the comparison baseline while the shared file editor saves a working draft', async () => {
   const { model, initialPath } = await nodeFilesFixture('files')

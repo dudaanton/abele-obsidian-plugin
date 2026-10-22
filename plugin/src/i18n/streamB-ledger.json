@@ -5493,5 +5493,17 @@
   },
   "streamB.diffOverviewChanged": {
     "englishHash": "40a996ef8411ebc6bc1e19c88759e17e243d43499bded2067bbbbd00751b865b"
+  },
+  "streamB.nodeChangedWhileEditing": {
+    "englishHash": "0865437170605bed13a9b866f9a11ef730a21c2eb179648166a14d338b371736"
+  },
+  "streamB.useTheirs": {
+    "englishHash": "9faf131b1889aaea101ce11cbd107b9bb72f152a58ccaa9fa8c8b6338e079c42"
+  },
+  "streamB.theirVersion": {
+    "englishHash": "66537761ac9aa4d1f2236aa77e445f8c6f3a411f4d2809522b6a4df982edb0da"
+  },
+  "streamB.yourVersion": {
+    "englishHash": "8067539c47227f3e9453f01408d0c2d7e0124ef983ae1c386d00c223d6605ab1"
   }
 }

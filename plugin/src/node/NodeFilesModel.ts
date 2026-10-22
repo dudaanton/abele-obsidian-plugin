@@ -770,6 +770,15 @@ export class NodeFilesModel {
       ? { revision: draft.revision, text: this.draftText.value, baseContentId: draft.baseContentId }
       : null
   }
+  /** A fresh comparison read; it never adopts a draft baseline or acknowledges a save. */
+  async readCurrentDocument() {
+    const path = this.filePath.value,
+      generation = this.fileSelectionGeneration
+    const document = await this.documents.read(path)
+    if (generation !== this.fileSelectionGeneration || path !== this.filePath.value)
+      throw new UiError(uiMessage('streamBError.3d0331c807'))
+    return document
+  }
   private async currentForReconciliation(shown: FileDraftSnapshot | null) {
     const path = this.filePath.value,
       generation = this.fileSelectionGeneration

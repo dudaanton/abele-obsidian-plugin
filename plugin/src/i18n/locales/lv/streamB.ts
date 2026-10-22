@@ -1,4 +1,8 @@
 export const streamB = {
+  'streamB.nodeChangedWhileEditing': 'Fails mezglā tika mainīts rediģēšanas laikā.',
+  'streamB.useTheirs': 'Izmantot viņu versiju',
+  'streamB.theirVersion': 'Versija mezglā',
+  'streamB.yourVersion': 'Jūsu versija',
   'streamB.diffOverview': 'Izmaiņu pārskats',
   'streamB.diffOverviewAdded': 'Rindas {from}–{to} · pievienotas',
   'streamB.diffOverviewRemoved': 'Rindas {from}–{to} · dzēstas',

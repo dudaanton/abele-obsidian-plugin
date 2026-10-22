@@ -1,4 +1,9 @@
 export const streamB = {
+  'streamB.nodeChangedWhileEditing':
+    'Die Datei wurde während der Bearbeitung auf dem Knoten geändert.',
+  'streamB.useTheirs': 'Deren Version verwenden',
+  'streamB.theirVersion': 'Version auf dem Knoten',
+  'streamB.yourVersion': 'Ihre Version',
   'streamB.diffOverview': 'Änderungsübersicht',
   'streamB.diffOverviewAdded': 'Zeilen {from}–{to} · hinzugefügt',
   'streamB.diffOverviewRemoved': 'Zeilen {from}–{to} · entfernt',

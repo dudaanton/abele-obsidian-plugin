@@ -1,9 +1,5 @@
 <template>
-  <div
-    ref="editorEl"
-    class="abele-github-code abele-github-blob__code"
-    :class="{ 'abele-github-code_inline-diff': comparison && !comparison.split }"
-  />
+  <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
   <Teleport v-for="host in blameHosts" :key="host.id" :to="host.element">
     <GithubBlameRange :commit="host.range.commit" @open="(sha) => emit('commit', sha)" />
   </Teleport>
@@ -194,28 +190,5 @@ defineExpose({
 }
 .abele-github-code .cm-merge-a {
   color: var(--text-muted);
-}
-.abele-github-code .cm-merge-b .cm-changedLine {
-  background-color: var(--background-modifier-success);
-}
-.abele-github-code .cm-merge-a .cm-changedLine {
-  background-color: var(--background-modifier-error);
-}
-.abele-github-code .cm-changedText {
-  background: var(--background-modifier-hover);
-}
-.abele-github-code .cm-merge-b .cm-changedLineGutter {
-  background: var(--text-success);
-}
-.abele-github-code .cm-merge-a .cm-changedLineGutter {
-  background: var(--text-error);
-}
-.abele-github-code .cm-editor .cm-deletedChunk {
-  background-color: color-mix(in srgb, var(--text-error) 16%, var(--background-primary));
-  color: var(--text-muted);
-}
-.abele-github-code_inline-diff .cm-editor.cm-merge-b .cm-changedLine,
-.abele-github-code_inline-diff .cm-editor .cm-inlineChangedLine {
-  background-color: color-mix(in srgb, var(--text-success) 16%, var(--background-primary));
 }
 </style>
