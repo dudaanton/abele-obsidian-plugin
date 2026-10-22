@@ -60,12 +60,21 @@ it.each(['offline', 'disconnect during admission'])(
           return 3
         })
       }
+      // A loaded event loop can deliver the reconnect grace timers late.
+      const setTimeout = window.setTimeout.bind(window)
+      const delayedTimers = vi
+        .spyOn(window, 'setTimeout')
+        .mockImplementation((handler, delay, ...args) =>
+          setTimeout(handler, delay === 100 ? 250 : delay, ...args)
+        )
+      const send = vi.spyOn(session.presenter, 'send')
       await wrapper.get('textarea').setValue(text)
       await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
-      await vi.waitFor(() =>
-        expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(true)
-      )
-      await vi.waitFor(() => expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false))
+      expect(send).toHaveBeenCalledOnce()
+      await send.mock.results[0].value
+      await flushPromises()
+      expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(true)
+      expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false)
       expect(session.presenter.draft.value.text).toBe(text)
       expect(wrapper.get('textarea').element.value).toBe(text)
       expect(wrapper.get('[role="status"].abele-node-chat__draft-note').text()).toContain(
@@ -74,6 +83,7 @@ it.each(['offline', 'disconnect during admission'])(
       expect(wrapper.find('[role="alert"]').exists()).toBe(false)
       expect(await session.client.pending()).toEqual([])
       expect(wrapper.get('[aria-label="Send again"]').exists()).toBe(true)
+      delayedTimers.mockRestore()
       cursor?.mockRestore()
       online?.mockRestore()
 
@@ -98,9 +108,13 @@ it.each(['offline', 'disconnect during admission'])(
       expect(await session.client.pending()).toEqual([])
       expect(flush).not.toHaveBeenCalled()
       expect(wrapper.get('textarea').element.value).toBe(text)
+      const resend = vi.spyOn(session.presenter, 'send')
       await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
-      await vi.waitFor(() => expect(wrapper.get('textarea').element.value).toBe(''))
-      await vi.waitFor(() => expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false))
+      expect(resend).toHaveBeenCalledOnce()
+      await resend.mock.results[0].value
+      await flushPromises()
+      expect(wrapper.get('textarea').element.value).toBe('')
+      expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false)
       expect(flush).toHaveBeenCalledOnce()
       expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(false)
       subscribe.mockRestore()
