@@ -102,6 +102,11 @@
           v-if="nodePrompt?.input?.method === 'git.v1.integrate'"
           :facts="managerApproval.facts"
         />
+        <MetaLine
+          v-if="nodePrompt?.input?.method === 'git.v1.integrate' && !nodePrompt.input.context_id"
+          :facts="[{ key: '0', value: t('node.manager.integrationLegacyApproval') }]"
+          data-integration-compatibility
+        />
         <Disclosure
           v-model="originalOpen"
           :label="t('streamB.originalAction.67ccdf')"

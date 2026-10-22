@@ -3741,4 +3741,6 @@ export const de = {
   'node.manager.integrateBypassUpdate':
     'Dieser Knoten kann nicht ohne Rückfrage integrieren. Ein Knoten-Update ist erforderlich; nichts wurde übermittelt.',
   'node.manager.resultExit': '{state} · Exit {code}',
+  'node.manager.integrationLegacyApproval':
+    'Diese Knotenversion fragt noch nach einer Bestätigung für die Integration.',
 } satisfies TranslationCatalog

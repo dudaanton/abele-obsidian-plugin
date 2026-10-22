@@ -3767,4 +3767,6 @@ export const ru = {
   'node.manager.integrateBypassUpdate':
     'Эта нода не умеет интегрировать без запросов. Нужно обновление ноды с поддержкой режима владельца; запрос не отправлен.',
   'node.manager.resultExit': '{state} · код {code}',
+  'node.manager.integrationLegacyApproval':
+    'Эта версия ноды пока запрашивает подтверждение интеграции.',
 } satisfies TranslationCatalog

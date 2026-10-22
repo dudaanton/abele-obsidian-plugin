@@ -3698,4 +3698,6 @@ export const lv = {
   'node.manager.integrateBypassUpdate':
     'Šis mezgls nevar integrēt bez jautāšanas. Nepieciešams mezgla atjauninājums; pieprasījums nav nosūtīts.',
   'node.manager.resultExit': '{state} · kods {code}',
+  'node.manager.integrationLegacyApproval':
+    'Šī mezgla versija vēl pieprasa integrācijas apstiprinājumu.',
 } satisfies TranslationCatalog

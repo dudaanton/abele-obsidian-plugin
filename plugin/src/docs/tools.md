@@ -1388,8 +1388,9 @@ After fixing the stated problem, a new command request gets its own exact node a
 `node_git_integrate` requires `git_integrate_v1`, the target `worktree_id`,
 `source_worktree_id`, both branch names and full `expected_target_head` and
 `expected_source_head`, plus `node`, `session_id`, `operation_id`. Ask creates an owner
-prompt. Node 0.4.48 has no integration owner-mode API, so without-asking integration
-is refused before submission with an explicit update explanation. Never automatically
+prompt. Nodes with the legacy integration API require the same single exact approval
+in without-asking mode too. The card explains that this node version still asks for
+integration. Never refuse solely because the node lacks bypass, and never automatically
 answer an integration prompt to emulate bypass. Default integration is fast-forward; `rebase: true` first rebases the developer
 in its own worktree. Poll `node_command_status`. Report `conflicting_files` and
 `outcome_unknown` directly; inspect both heads before another attempt. Never retry

@@ -3770,4 +3770,6 @@ export const es = {
   'node.manager.integrateBypassUpdate':
     'Este nodo no puede integrar sin preguntar. Hace falta una actualización del nodo; no se envió ninguna solicitud.',
   'node.manager.resultExit': '{state} · salida {code}',
+  'node.manager.integrationLegacyApproval':
+    'Esta versión del nodo todavía pide aprobación para integrar.',
 } satisfies TranslationCatalog

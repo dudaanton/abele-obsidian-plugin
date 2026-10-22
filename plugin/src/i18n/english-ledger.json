@@ -27568,5 +27568,15 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.integrationLegacyApproval": {
+    "englishHash": "318ce344e08fafec0ea7e34d9d00224ba15903f31f62719d5df3994e1bb6b8c9",
+    "context": "Legacy node integration approval compatibility note",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

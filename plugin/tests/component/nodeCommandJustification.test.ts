@@ -50,6 +50,8 @@ it.each(['pending', 'resolved'] as const)(
       expect(view.text()).toContain('work/sample → main')
       expect(view.text()).toContain('a'.repeat(40))
       expect(view.text()).toContain('b'.repeat(40))
+      expect(view.text()).toContain('This node version still asks for integration.')
+      if (state === 'pending') expect(view.findAll('.abele-tool-approval')).toHaveLength(1)
       if (state === 'resolved')
         expect(
           view.findAll('button').filter((b) => ['Allow', 'Deny', 'Stop'].includes(b.text()))
