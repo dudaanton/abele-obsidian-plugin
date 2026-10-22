@@ -85,7 +85,15 @@ export class NodeConnection {
               error.code,
               'No answer from the node. Reconnecting; the request may have completed.'
             )
-            if (!this.disposed && generation === this.transportGeneration) {
+            // An operation deadline says nothing about the socket's health. The regular
+            // node.describe probe owns reconnects; do not strand unrelated approval cards.
+            if (
+              !this.disposed &&
+              generation === this.transportGeneration &&
+              (error.code === 'disconnected' ||
+                !this.client.connected ||
+                method === 'node.describe')
+            ) {
               ++this.transportGeneration
               this.state.value = 'offline'
               uiField(this.error, 'value', uiErrorMessage(failure))

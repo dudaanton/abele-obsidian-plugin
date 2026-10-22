@@ -142,6 +142,26 @@ it('enables execution policy before replay on every connection and skips older p
     connection.destroy()
   }
 })
+it('keeps a live connection after one operation has an uncertain outcome', async () => {
+  const client = {
+    connected: true,
+    request: vi.fn(async (_method: string, _params: unknown) => {
+      throw new ChannelError('outcome_unknown')
+    }),
+    disconnect: vi.fn(async () => {}),
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  connection.state.value = 'connected'
+  try {
+    await expect(client.request('repository.diff', {})).rejects.toThrow(
+      /request may have completed/
+    )
+    expect(client.disconnect).not.toHaveBeenCalled()
+    expect(connection.state.value).toBe('connected')
+  } finally {
+    connection.destroy()
+  }
+})
 it('publishes token-node attention using the identity learned at admission', async () => {
   const memory = new MemoryClientStore()
   await memory.transaction((s) => {

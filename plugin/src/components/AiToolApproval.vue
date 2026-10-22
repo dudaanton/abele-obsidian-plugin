@@ -413,7 +413,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Menu, TFile } from 'obsidian'
 import { KIND_ICON, toolKind } from '@/ai/toolRuns'
-import { readableToolName, toolSummary } from '@/ai/toolLine'
+import { commandText, readableToolName, toolSummary } from '@/ai/toolLine'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS, type ChatMessage } from '@/ai/types'
 import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
 
@@ -463,7 +463,7 @@ const managerApproval = computed(() => {
   const input = props.nodePrompt?.input
   if (input && props.nodePrompt?.tool_name === 'codex.command') {
     return {
-      command: visibleText(promptString(input.command)),
+      command: visibleText(commandText(input) ?? ''),
       reason: visibleText(promptString(input.reason)),
       facts: [
         {
@@ -487,13 +487,7 @@ const managerApproval = computed(() => {
   if (input.method === 'command.v1.run') {
     rows.push({
       name: t('node.manager.command'),
-      value: Array.isArray(params.argv)
-        ? params.argv
-            .map((arg) => {
-              return typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : visibleJson(arg)
-            })
-            .join(' ')
-        : visibleText(promptString(params.command)),
+      value: visibleText(commandText(params) ?? ''),
     })
   } else {
     add(
@@ -541,8 +535,7 @@ const session = computed(() =>
 const isEditing = ref(false)
 const originalOpen = ref(false)
 const nodeCommand = computed(() => {
-  const command = props.nodePrompt?.input?.command
-  return typeof command === 'string' ? command : undefined
+  return commandText(props.nodePrompt?.input)
 })
 watch(
   () => [nodeCommand.value, toolSummary(props.message)] as const,
@@ -634,7 +627,10 @@ watch(
         owner,
         { ...effectiveParams.value },
         undefined,
-        controller.signal
+        controller.signal,
+        (listed) => {
+          if (!controller.signal.aborted) commitPreview.value = listed
+        }
       )
       if (!controller.signal.aborted) commitPreview.value = preview
     } catch (error) {

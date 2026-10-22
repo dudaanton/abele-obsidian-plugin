@@ -37,6 +37,15 @@ export function readableToolName(name?: string): string {
 export const truncate = (s: string, max: number): string =>
   s.length > max ? s.slice(0, max) + '…' : s
 
+/** Display argv without losing empty arguments, spaces or shell metacharacters. */
+export function commandText(params?: Record<string, unknown>): string | undefined {
+  if (typeof params?.command === 'string') return params.command
+  if (!Array.isArray(params?.argv) || !params.argv.every((arg) => typeof arg === 'string')) return
+  return params.argv
+    .map((arg: string) => (/^[\w./:=+-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`))
+    .join(' ')
+}
+
 /** The short thing after the tool's name on its line: the file, the address, the query. */
 export function toolSummary(
   message: Pick<
@@ -69,7 +78,8 @@ function paramsSummary(message: Pick<ChatMessage, 'toolName' | 'toolParams' | 't
   }
   if (!p) return ''
   if (p.file_path) return truncate(String(p.file_path), 160)
-  if (p.command) return truncate(String(p.command).replace(/\s+/g, ' '), 160)
+  const command = commandText(p)
+  if (command !== undefined) return truncate(command.replace(/\s+/g, ' '), 160)
   if (p.description) return truncate(String(p.description), 160)
   if (p.pattern) return truncate(String(p.pattern), 160)
   if (p.path) return String(p.path)

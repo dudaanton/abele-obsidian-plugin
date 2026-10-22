@@ -1,4 +1,5 @@
 import type { DelegationCard } from '@/node/delegation'
+import { OWNER_STOP_REASON } from '@/node/delegation'
 export function nodePermissionCardFixture(
   state: 'running' | 'refused' | 'node-opt-in' | 'unknown'
 ): DelegationCard {
@@ -34,8 +35,9 @@ export function nodeDelegationCardFixture(
     | 'paused-prompt'
     | 'warning'
     | 'prompt'
-    | 'answering',
-  command = 'npm test -- tests/sample-parser.test.ts'
+    | 'answering'
+    | 'owner-stopped',
+  command: string | string[] = 'npm test -- tests/sample-parser.test.ts'
 ): DelegationCard {
   const card: DelegationCard = {
     delegationId: 'sample-delegation',
@@ -81,7 +83,7 @@ export function nodeDelegationCardFixture(
         tool_name: 'Bash',
         title: 'Run sample checks',
         input: {
-          command,
+          ...(Array.isArray(command) ? { argv: command } : { command }),
           cwd: '/workspace/sample-project/work/sample-parser',
         },
       },
@@ -117,5 +119,9 @@ export function nodeDelegationCardFixture(
           files: ['src/parser.ts', 'tests/parser-boundaries.test.ts'],
         }
   if (state === 'empty') card.reports = []
+  if (state === 'owner-stopped') {
+    card.state = 'stopped'
+    card.reason = OWNER_STOP_REASON
+  }
   return card
 }

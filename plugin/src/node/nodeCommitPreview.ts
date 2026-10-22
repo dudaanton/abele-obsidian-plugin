@@ -14,7 +14,8 @@ export async function nodeCommitPreview(
   session: ChatSession,
   params: Record<string, unknown>,
   tools?: AgentTool[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  listed?: (preview: { files: { path: string; patch: string; error?: string }[] }) => void
 ): Promise<{ files: { path: string; patch: string; error?: string }[] }> {
   const available = tools ?? (await import('@/ai/tools/node')).createNodeTools()
   const tool = available.find((entry) => entry.name === 'node_git_diff')!
@@ -50,6 +51,7 @@ export async function nodeCommitPreview(
     throw new Error('record_too_large')
   }
   const comparison = await read()
+  listed?.({ files: comparison.entries.map(({ path }) => ({ path, patch: '' })) })
   const files: { path: string; patch: string; error?: string }[] = []
   for (const entry of comparison.entries) {
     try {

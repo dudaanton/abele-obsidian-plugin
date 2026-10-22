@@ -38,6 +38,37 @@ async function inspect(label: string) {
       )
     }
   }
+  try {
+    await evalLong(
+      `window.__abeleTest.openDialog('node-delegation-card', ${JSON.stringify({ delegationState: 'prompt', delegationCommand: ['git', 'add', '--', 'src/sample file.ts'] })})`
+    )
+    const text = await evalLong(`(async()=>{
+      for(let i=0;i<100&&!document.querySelector('[data-node-command]');i++)await new Promise(r=>setTimeout(r,50));
+      const line=document.querySelector('[data-node-command]');line.scrollIntoView({block:'center'});return line.textContent;
+    })()`)
+    expect(text).toBe("git add -- 'src/sample file.ts'")
+    columnShot(`${shots}/${label}-argv.png`)
+  } finally {
+    await evalLong(
+      `document.querySelector('.abele-node-delegation')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()`
+    )
+  }
+  try {
+    await evalLong(
+      `window.__abeleTest.openDialog('node-delegation-card', {delegationState:'owner-stopped'})`
+    )
+    const text = await evalLong(`(async()=>{
+      for(let i=0;i<100&&!document.querySelector('.abele-node-delegation');i++)await new Promise(r=>setTimeout(r,50));
+      return document.querySelector('.abele-node-delegation').textContent;
+    })()`)
+    expect(text).toContain('Stopped by you; restart from the child chat')
+    expect(text).not.toContain('Paused; can continue')
+    columnShot(`${shots}/${label}-owner-stopped.png`)
+  } finally {
+    await evalLong(
+      `document.querySelector('.abele-node-delegation')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()`
+    )
+  }
 }
 
 it('shows complete worker commands on desktop and phone layouts', async () => {

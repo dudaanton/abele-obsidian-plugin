@@ -24,7 +24,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
-  delegationCommand?: string
+  delegationCommand?: string | string[]
   managerCodexApproval?: boolean
   managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']
@@ -38,6 +38,7 @@ export interface DialogFixtureOptions {
     | 'warning'
     | 'prompt'
     | 'answering'
+    | 'owner-stopped'
   permissionState?: 'running' | 'refused' | 'node-opt-in' | 'unknown'
   agentInherit?: boolean
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */

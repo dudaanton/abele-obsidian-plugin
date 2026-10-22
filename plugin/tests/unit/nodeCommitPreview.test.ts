@@ -3,6 +3,42 @@ import { nodeCommitPreview } from '@/node/nodeCommitPreview'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { AgentTool } from '@/ai/client'
 
+it('publishes the staged file list before slow per-file patches finish', async () => {
+  const head = 'a'.repeat(40)
+  let release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const listed = vi.fn()
+  const execute = vi.fn(async (_id: string, params: Record<string, unknown>) => {
+    if (params.path) await waiting
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            head: { kind: 'working', head },
+            entries: [{ path: 'sample.ts' }],
+            patch: '',
+          }),
+        },
+      ],
+    }
+  })
+  const preview = nodeCommitPreview(
+    {} as ChatSession,
+    { expected_head: head },
+    [{ name: 'node_git_diff', execute } as AgentTool],
+    undefined,
+    listed
+  )
+  await vi.waitFor(() =>
+    expect(listed).toHaveBeenCalledWith({ files: [{ path: 'sample.ts', patch: '' }] })
+  )
+  release()
+  await preview
+})
+
 it('reads the staged file list and patches through scoped readonly tools without committing', async () => {
   const head = 'a'.repeat(40)
   const execute = vi.fn(async (_id: string, params: Record<string, unknown>) => ({
