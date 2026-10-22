@@ -6,9 +6,13 @@
       @click="openImagePreview"
       @contextmenu.prevent="onImageContextMenu"
     />
-    <span v-if="imagePath" class="abele-chat-msg__image-link" @click="openImagePreview">{{
-      imagePath
-    }}</span>
+    <span
+      v-if="imagePath"
+      class="abele-chat-msg__image-link"
+      :title="imagePath"
+      @click="openImagePreview"
+      >{{ fileName(imagePath) }}</span
+    >
     <GalleryViewer
       v-if="viewerOpen"
       :images="viewerImages"
@@ -21,6 +25,7 @@
 </template>
 <script setup lang="ts">
 import type { ChatMessage } from '@/ai/types'
+import { fileName } from '@/ai/attachments'
 import { useChatMessageMedia } from '@/composables/useChatMessageMedia'
 import { ChatService } from '@/ai/ChatService'
 import GalleryViewer from '../GalleryViewer.vue'

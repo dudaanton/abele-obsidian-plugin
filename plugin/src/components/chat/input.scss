@@ -66,12 +66,20 @@
   color: inherit;
   font-size: inherit;
 
-  img {
+  img,
+  .abele-chat-picture__fallback {
     flex-shrink: 0;
     width: calc(var(--line-height-normal) * 2em);
     height: calc(var(--line-height-normal) * 2em);
     object-fit: cover;
     border-radius: var(--radius-s);
+    overflow: hidden;
+  }
+
+  .abele-chat-picture__fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
@@ -321,14 +329,17 @@ body.is-phone .abele-chat-input__toolbar {
 // Keep the code inside the existing touch target, using its inset for ink. The native button
 // padding and touch floor stay intact; a longer count can still grow the button naturally.
 body.is-phone .abele-chat-input__scope:has(.abele-chat-input__scope-mode) {
+  column-gap: var(--size-2-2);
   > .abele-obsidian-icon__icon {
     margin-inline-start: calc(-1 * var(--size-2-3));
   }
   > .abele-obsidian-icon__text {
-    margin-inline-start: var(--size-2-2);
+    margin-inline-start: 0;
   }
   > .abele-chat-input__scope-mode {
+    margin-inline-start: 0;
     margin-inline-end: calc(-1 * var(--size-2-3));
+    flex-shrink: 0;
   }
 }
 

@@ -6,6 +6,8 @@ import AiChatMessage from '@/components/AiChatMessage.vue'
 import GalleryViewer from '@/components/GalleryViewer.vue'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import ChatToolImage from '@/components/chat/ChatToolImage.vue'
+import ChatPicture from '@/components/ChatPicture.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import { h } from 'vue'
 import { useVault } from '../helpers/testEnv'
 import { resolveAttachmentsForApi } from '@/ai/attachments'
@@ -21,6 +23,38 @@ beforeEach(() => {
 })
 afterEach(() => {
   for (const w of mounted.splice(0)) w.unmount()
+})
+
+it('shows a generated filename with the full path in its tooltip', () => {
+  const w = mount(ChatToolImage, {
+    props: {
+      message: {
+        id: 'caption',
+        role: 'tool-call',
+        content: '',
+        timestamp: 1,
+        toolName: 'generate_image',
+        toolStatus: 'approved',
+        toolResult: `Image saved: ${image.path}`,
+        toolImagePath: image.path,
+      },
+    },
+  })
+  mounted.push(w)
+  const caption = w.get('.abele-chat-msg__image-link')
+  expect(caption.text()).toBe('sample-image.png')
+  expect(caption.attributes('title')).toBe(image.path)
+})
+
+it('replaces a failed pending picture with a file glyph and retries updated media', async () => {
+  const w = mount(ChatPicture, { props: { path: image.path, pending: true } })
+  mounted.push(w)
+  await w.get('img').trigger('error')
+  expect(w.find('img').exists()).toBe(false)
+  expect(w.findComponent(Icon).props('icon')).toBe('file')
+  expect(w.text()).toContain('sample-image.png')
+  await w.setProps({ version: 1 })
+  expect(w.find('img').exists()).toBe(true)
 })
 
 it('shows a pending thumbnail and opens the plugin preview without sending', async () => {

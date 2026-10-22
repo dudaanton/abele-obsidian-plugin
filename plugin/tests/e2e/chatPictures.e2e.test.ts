@@ -83,7 +83,23 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
           let img = await until(preview); await img.decode()
           const immediate = img.naturalWidth
           const folded = !!pane.view.containerEl.querySelector('.abele-chat-run.is-collapsed')
+          const caption = pane.view.containerEl.querySelector('.abele-chat-msg__image-link')
+          if (caption.textContent.trim() !== path.split('/').pop() || caption.title !== path) throw Error('Generated caption lost filename or tooltip')
+          const captionStyle = getComputedStyle(caption)
+          if (captionStyle.color !== getComputedStyle(paneHost(pane)).getPropertyValue('--text-muted').trim()) {
+            const probe = document.createElement('span'); probe.style.color = 'var(--text-muted)'; caption.append(probe)
+            const muted = getComputedStyle(probe).color; probe.remove()
+            if (captionStyle.color !== muted) throw Error('Generated caption is not muted')
+          }
           await capture('generated-immediate-' + ${JSON.stringify(layout)})
+          paneInput(pane).addAttachment(app.vault.getAbstractFileByPath(path))
+          const thumb = await until(() => paneHost(pane).querySelector('.abele-chat-input__attachments img'))
+          thumb.dispatchEvent(new Event('error'))
+          await until(() => paneHost(pane).querySelector('.abele-chat-picture__fallback'))
+          if (paneHost(pane).querySelector('.abele-chat-input__attachments img')) throw Error('Broken thumbnail still renders alt text')
+          await capture('broken-draft-' + ${JSON.stringify(layout)})
+          paneInput(pane).putDraft({ text: '', attachments: [] })
+
           await session.save(); chatFile = session.currentChatFile.value
           session.getTools = originalTools
           await chats.closeTab(tab)

@@ -4,7 +4,13 @@
     :aria-label="t('streamB.preview.5df5f2', { v0: String(name) })"
     @click="open = true"
   >
-    <img v-if="url" :src="url" :alt="name" loading="lazy" />
+    <img v-if="url && !failed" :src="url" :alt="name" loading="lazy" @error="failed = true" />
+    <Icon
+      v-else-if="pending"
+      icon="file"
+      :interactive="false"
+      class="abele-chat-picture__fallback"
+    />
     <span>{{ name }}</span>
   </button>
   <GalleryViewer
@@ -21,9 +27,10 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { TFile, type EventRef } from 'obsidian'
 import GalleryViewer from './GalleryViewer.vue'
+import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { fileName } from '@/ai/attachments'
@@ -32,6 +39,13 @@ import { vaultUrl } from '@/helpers/vaultUrl'
 const props = defineProps<{ path: string; pending?: boolean; chatId?: string; version?: number }>()
 const open = ref(false)
 const localVersion = ref(0)
+const failed = ref(false)
+watch(
+  () => [props.path, props.version, localVersion.value],
+  () => {
+    failed.value = false
+  }
+)
 const name = computed(() => fileName(props.path))
 // Capture the originating chat before the drawing tab takes focus.
 const chatId = computed(() => props.chatId ?? ChatService.getInstance().activeTabId.value ?? '')

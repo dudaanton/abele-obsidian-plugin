@@ -135,10 +135,13 @@ body.is-mobile .abele-chat-msg_tool-call {
 .abele-chat-msg__image-link {
   display: block;
   margin-top: var(--size-2-1);
-  font-size: var(--font-smallest);
-  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
   cursor: pointer;
-  word-break: break-all;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &:hover {
     text-decoration: underline;
