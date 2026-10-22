@@ -1,6 +1,7 @@
 import { EngineError } from '@abele/sync-sdk/core'
 import type { LocalStorage } from './ledgerId'
-import { flushHostStorage, hostStorageOf } from './hostSyncStorage'
+import { durableHostOf, flushHostStorage, hostStorageOf } from './hostSyncStorage'
+import { hostJournalId, type HostChange } from './hostSyncRecords'
 
 export const JOURNAL_KEY = 'abele-sync-writes'
 export const RECOVERED_WRITES_KEY = 'abele-sync-recovered-writes'
@@ -55,8 +56,8 @@ export class WriteJournal {
   ) {}
 
   /** Commit independently of any SDK overlay before the caller starts its file effect. */
-  async persist(work: () => void): Promise<void> {
-    work()
+  async persist(work: () => void | Promise<void>): Promise<void> {
+    await work()
     if (this.storage) await flushHostStorage(this.storage)
   }
 
@@ -81,8 +82,9 @@ export class WriteJournal {
     if (!Array.isArray(raw)) throw new EngineError('io', 'the write journal is not an array')
     return raw
   }
-  entries(): JournalEntry[] {
-    const raw = this.read(JOURNAL_KEY).filter((entry) => this.owns(entry))
+  entries(values = this.read(JOURNAL_KEY)): JournalEntry[] {
+    if (!Array.isArray(values)) throw new EngineError('io', 'the write journal is not an array')
+    const raw = values.filter((entry) => this.owns(entry))
     const entries = raw.filter((value): value is JournalEntry => {
       if (!value || typeof value !== 'object') return false
       const entry = value as JournalEntry
@@ -109,8 +111,71 @@ export class WriteJournal {
       throw new EngineError('io', 'the write journal contains an unreadable entry')
     return entries
   }
-  recovered(): RecoveredWrite[] {
-    const raw = this.read(RECOVERED_WRITES_KEY).filter((entry) => this.owns(entry))
+  async currentEntries(): Promise<JournalEntry[]> {
+    const host = this.storage && durableHostOf(this.storage)
+    return host
+      ? this.entries(((await host.readValue(JOURNAL_KEY)) as unknown[]) ?? [])
+      : this.entries()
+  }
+  async currentEntry(temp: string): Promise<JournalEntry | undefined> {
+    const host = this.storage && durableHostOf(this.storage)
+    if (!host) return this.entries().find((entry) => entry.temp === temp)
+    const values =
+      this.owner === undefined
+        ? await host.readPath(JOURNAL_KEY, temp)
+        : [
+            await host.readRecord(
+              JOURNAL_KEY,
+              hostJournalId({ owner: this.owner, temp, target: '' })
+            ),
+          ].filter((value) => value !== undefined)
+    return this.entries(values).find((entry) => entry.temp === temp)
+  }
+  async currentForTargets(paths: readonly string[]): Promise<JournalEntry[]> {
+    const host = this.storage && durableHostOf(this.storage)
+    return host
+      ? this.entries(await host.readTargets(JOURNAL_KEY, paths))
+      : this.entries().filter((entry) => paths.includes(entry.target))
+  }
+  async isCurrent(entry: JournalEntry): Promise<boolean> {
+    const host = this.storage && durableHostOf(this.storage)
+    const owned = this.owned(entry)
+    const current = host
+      ? await host.readRecord(JOURNAL_KEY, hostJournalId(owned))
+      : this.entries().find((value) => sameEntry(value, owned))
+    return JSON.stringify(current) === JSON.stringify(owned)
+  }
+  async currentRecovered(): Promise<RecoveredWrite[]> {
+    const host = this.storage && durableHostOf(this.storage)
+    return host
+      ? this.recovered(((await host.readValue(RECOVERED_WRITES_KEY)) as unknown[]) ?? [])
+      : this.recovered()
+  }
+  async currentVaultRecovered(): Promise<RecoveredWrite[]> {
+    return (await this.currentRecovered()).filter(
+      (entry) => !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
+    )
+  }
+  async currentProtects(backup: string): Promise<boolean> {
+    const host = this.storage && durableHostOf(this.storage)
+    return host
+      ? this.recovered(await host.readPath(RECOVERED_WRITES_KEY, backup)).some(
+          (entry) => entry.backup === backup
+        )
+      : this.protects(backup)
+  }
+  async currentRetainsTemp(path: string): Promise<boolean> {
+    const host = this.storage && durableHostOf(this.storage)
+    return host
+      ? (await host.readPath(JOURNAL_KEY, path)).some(
+          (entry) => !!entry && typeof entry === 'object' && Reflect.get(entry, 'temp') === path
+        )
+      : this.retainsTemp(path)
+  }
+  recovered(values = this.read(RECOVERED_WRITES_KEY)): RecoveredWrite[] {
+    if (!Array.isArray(values))
+      throw new EngineError('io', 'the preserved-copy journal is not an array')
+    const raw = values.filter((entry) => this.owns(entry))
     const entries = raw.filter(
       (value): value is RecoveredWrite =>
         !!value &&
@@ -129,8 +194,19 @@ export class WriteJournal {
     generation: string,
     archive: (value: unknown) => Promise<void>
   ): Promise<void> {
-    const entries = this.entries()
+    const entries = await this.currentEntries()
     await archive(entries)
+    if (this.storage && durableHostOf(this.storage)) {
+      for (const entry of entries)
+        if (await this.isCurrent(entry))
+          await this.persist(() =>
+            this.replace(entry, {
+              ...entry,
+              retiredGeneration: entry.retiredGeneration ?? generation,
+            })
+          )
+      return
+    }
     // Re-read after the asynchronous durable archive; another connection may have appended.
     this.save(
       JOURNAL_KEY,
@@ -160,7 +236,16 @@ export class WriteJournal {
     )
   }
   /** Explicitly followed placement changes only settled evidence labels, never file bytes. */
-  relocateRecoveredTargets(from: string, to: string): void {
+  async relocateRecoveredTargets(from: string, to: string): Promise<void> {
+    if (this.storage && durableHostOf(this.storage)) {
+      for (const entry of await this.currentRecovered())
+        if (entry.target === from || entry.target.startsWith(from + '/'))
+          this.change(RECOVERED_WRITES_KEY, entry, {
+            ...entry,
+            target: to + entry.target.slice(from.length),
+          })
+      return
+    }
     this.recovered()
     this.save(
       RECOVERED_WRITES_KEY,
@@ -172,7 +257,13 @@ export class WriteJournal {
       })
     )
   }
-  relocateRecovered(from: string, to: string): void {
+  async relocateRecovered(from: string, to: string): Promise<void> {
+    if (this.storage && durableHostOf(this.storage)) {
+      const host = durableHostOf(this.storage)
+      for (const entry of this.recovered(await host.readPath(RECOVERED_WRITES_KEY, from)))
+        this.change(RECOVERED_WRITES_KEY, entry, { ...entry, backup: to })
+      return
+    }
     this.recovered()
     this.save(
       RECOVERED_WRITES_KEY,
@@ -185,6 +276,19 @@ export class WriteJournal {
   }
   preserve(entry: JournalEntry): void {
     if (!entry.backup) throw new EngineError('io', 'there is no backup to preserve')
+    if (this.storage && durableHostOf(this.storage)) {
+      this.change(
+        RECOVERED_WRITES_KEY,
+        undefined,
+        this.owned({
+          target: entry.target,
+          backup: entry.backup,
+          ...(entry.owner ? { owner: entry.owner } : {}),
+          ...(entry.replacementSha === undefined ? {} : { replacementSha: entry.replacementSha }),
+        })
+      )
+      return
+    }
     const entries = this.recovered()
     if (entries.some((saved) => saved.backup === entry.backup)) return
     const saved: RecoveredWrite = this.owned({
@@ -196,10 +300,12 @@ export class WriteJournal {
     this.save(RECOVERED_WRITES_KEY, [...this.read(RECOVERED_WRITES_KEY), saved])
   }
   add(entry: JournalEntry): void {
+    if (this.change(JOURNAL_KEY, undefined, this.owned(entry))) return
     this.entries()
     this.save(JOURNAL_KEY, [...this.read(JOURNAL_KEY), this.owned(entry)])
   }
   drop(entry: JournalEntry): void {
+    if (this.change(JOURNAL_KEY, this.owned(entry), undefined)) return
     this.entries()
     this.save(
       JOURNAL_KEY,
@@ -209,6 +315,7 @@ export class WriteJournal {
     )
   }
   replace(entry: JournalEntry, next: JournalEntry): void {
+    if (this.change(JOURNAL_KEY, this.owned(entry), this.owned(next))) return
     this.entries()
     this.save(
       JOURNAL_KEY,
@@ -218,6 +325,31 @@ export class WriteJournal {
           : held
       )
     )
+  }
+  private change(
+    key: string,
+    before: JournalEntry | RecoveredWrite | undefined,
+    after: JournalEntry | RecoveredWrite | undefined
+  ): boolean {
+    const host = this.storage && durableHostOf(this.storage)
+    if (!host) return false
+    const startedAt = Date.now()
+    let outcome = 'failed'
+    try {
+      this.assertMutation?.()
+      const priorId = before && hostJournalId(before),
+        nextId = after && hostJournalId(after)
+      const changes: HostChange[] = []
+      if (priorId && priorId !== nextId)
+        changes.push({ key, id: priorId, before, after: undefined })
+      if (nextId)
+        changes.push({ key, id: nextId, before: priorId === nextId ? before : undefined, after })
+      host.changeRecords(changes)
+      outcome = 'complete'
+      return true
+    } finally {
+      this.diagnostic?.('journal save', startedAt, outcome)
+    }
   }
   private save(key: string, entries: unknown[]): void {
     const startedAt = Date.now()

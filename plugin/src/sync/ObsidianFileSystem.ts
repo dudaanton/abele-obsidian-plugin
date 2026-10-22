@@ -915,8 +915,8 @@ export class ObsidianFileSystem implements FileSystem {
       },
       ...(this.native?.sameObject ? { sameObject: (a, b) => this.native.sameObject(a, b) } : {}),
       stage: async (id) => {
-        const entry = this.journal.entries().find((one) => one.temp === id && one.streaming?.sealed)
-        if (!entry || entry.backup || entry.retiredGeneration)
+        const entry = await this.journal.currentEntry(id)
+        if (!entry?.streaming?.sealed || entry.backup || entry.retiredGeneration)
           throw new EngineError('io', 'sealed stage is unavailable')
         return { path: id, target: entry.target, sealed: entry.streaming.sealed }
       },
@@ -1135,12 +1135,11 @@ export class ObsidianFileSystem implements FileSystem {
       this.inventory.publishedParents?.clear()
     }
   }
-  needsRecoveryHandshake(): boolean {
+  async needsRecoveryHandshake(): Promise<boolean> {
     return (
-      this.journal
-        .entries()
-        .some((entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup)) ||
-      this.journal.vaultRecovered().length > 0
+      (await this.journal.currentEntries()).some(
+        (entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup)
+      ) || (await this.journal.currentVaultRecovered()).length > 0
     )
   }
   /** Called only after explicit Follow verified the destination file set. */
@@ -1152,7 +1151,9 @@ export class ObsidianFileSystem implements FileSystem {
     if (!privateRoot || from !== this.scopedRoot())
       throw new EngineError('io', 'The recovery placement changed; sync remains stopped')
     // Unfinished installs cannot be relabelled or replayed into a different placement.
-    if (this.journal.entries().some((entry) => !withinRoot(entry.target, privateRoot)))
+    if (
+      (await this.journal.currentEntries()).some((entry) => !withinRoot(entry.target, privateRoot))
+    )
       throw new EngineError('io', 'Unfinished file recovery prevents following the folder')
     const fullArchive = nativeChunkPort(this.disk)
       .fullPath?.(privateRoot + '/recovery')
@@ -1165,18 +1166,16 @@ export class ObsidianFileSystem implements FileSystem {
         : undefined
     }
     if (
-      this.journal
-        .recovered()
-        .some(
-          (entry) =>
-            (!withinRoot(entry.target, from) &&
-              !withinRoot(entry.target, to) &&
-              !withinRoot(entry.target, privateRoot)) ||
-            backupSuffix(entry.backup) === undefined
-        )
+      (await this.journal.currentRecovered()).some(
+        (entry) =>
+          (!withinRoot(entry.target, from) &&
+            !withinRoot(entry.target, to) &&
+            !withinRoot(entry.target, privateRoot)) ||
+          backupSuffix(entry.backup) === undefined
+      )
     )
       throw new EngineError('io', 'Unproven recovery copy prevents following the folder')
-    for (const entry of this.journal.recovered()) {
+    for (const entry of await this.journal.currentRecovered()) {
       // Private evidence is outside the wire namespace; validate its relative suffix.
       assertPhysicalPath(
         withinRoot(entry.target, privateRoot)
@@ -1193,8 +1192,7 @@ export class ObsidianFileSystem implements FileSystem {
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
     if (this.ledger?.readCommittedEntries) {
-      const paths = this.journal
-        .entries()
+      const paths = (await this.journal.currentEntries())
         .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
         .map((entry) => entry.target)
       if (paths.length)
@@ -1202,7 +1200,10 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (
       this.scopedRoot() &&
-      [...this.journal.entries(), ...this.journal.vaultRecovered()].some(
+      [
+        ...(await this.journal.currentEntries()),
+        ...(await this.journal.currentVaultRecovered()),
+      ].some(
         (entry) =>
           !this.withinFileScope(entry.target) &&
           !(this.privateRoot && withinRoot(entry.target, this.privateRoot)) &&
@@ -1219,8 +1220,8 @@ export class ObsidianFileSystem implements FileSystem {
         'Sync recovery outside this connection is required; local files were kept'
       )
     if (
-      !this.journal.entries().length &&
-      !(this.native?.archiveBackup && this.journal.vaultRecovered().length)
+      !(await this.journal.currentEntries()).length &&
+      !(this.native?.archiveBackup && (await this.journal.currentVaultRecovered()).length)
     )
       return
     await pathCoordinatorOf(this.app.vault).run(
@@ -1244,7 +1245,7 @@ export class ObsidianFileSystem implements FileSystem {
   async acknowledgeWrites(entries: readonly StateEntry[]): Promise<void> {
     const byPath = new Map(entries.map((entry) => [entry.path, entry.sha]))
     const installed: JournalEntry[] = []
-    for (const entry of this.journal.entries()) {
+    for (const entry of await this.journal.currentForTargets([...byPath.keys()])) {
       if (
         entry.backup ||
         entry.retiredGeneration ||
@@ -1263,20 +1264,15 @@ export class ObsidianFileSystem implements FileSystem {
       installed.push(entry)
     }
     if (!installed.length) return
-    await this.journal.persist(() => {
+    await this.journal.persist(async () => {
       for (const entry of installed)
-        if (
-          this.journal
-            .entries()
-            .some((current) => JSON.stringify(current) === JSON.stringify(entry))
-        )
-          this.journal.drop(entry)
+        if (await this.journal.isCurrent(entry)) this.journal.drop(entry)
     })
   }
 
   async discardPrivateDownloads(): Promise<void> {
     if (!this.privateRoot) return
-    for (const entry of this.journal.entries())
+    for (const entry of await this.journal.currentEntries())
       if (
         !entry.retiredGeneration &&
         entry.streaming &&
@@ -1305,9 +1301,9 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** A retained streaming source is not a pending destructive installation. */
   async fenceRecovery(state: StateStore, head: number): Promise<void> {
-    const entries = this.journal
-      .entries()
-      .filter((entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup))
+    const entries = (await this.journal.currentEntries()).filter(
+      (entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup)
+    )
     if (!entries.length) return
     const reconciliation = await readReconciliation(state)
     if (
@@ -1332,7 +1328,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     // Called with path leases held. Recovery takes the whole-vault lease, so it must
     // run before placement; a different connection may have a live journal meanwhile.
-    for (const entry of this.journal.entries())
+    for (const entry of await this.journal.currentEntries())
       if (
         !entry.retiredGeneration &&
         (!entry.streaming || entry.backup !== undefined) &&
@@ -1772,14 +1768,14 @@ export class ObsidianFileSystem implements FileSystem {
   /** Cleanup also works after removal reached disk but journal retirement did not. */
   async discardStage(id: string): Promise<void> {
     this.runtimeFence?.assertReady()
-    const entry = this.journal.entries().find((one) => one.temp === id && one.streaming)
+    const entry = await this.journal.currentEntry(id)
     if (this.stageOperations.has(id) || entry?.backup || entry?.retiredGeneration)
       throw new EngineError('io', 'stage is busy or awaiting recovery')
     this.stageOperations.add(id)
     try {
       const standing = await this.rawStat(id)
       if (standing !== null) {
-        if (!entry || standing.type !== 'file')
+        if (!entry?.streaming || standing.type !== 'file' || !(await this.journal.isCurrent(entry)))
           throw new EngineError('io', 'cannot discard an unowned stage')
         await this.disk.remove(id)
       }
@@ -1793,8 +1789,7 @@ export class ObsidianFileSystem implements FileSystem {
   async reopenStage(
     id: string
   ): Promise<AtomicStage & { readonly target: string; installed(): Promise<boolean> }> {
-    let entry =
-      this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
+    let entry = await this.journal.currentEntry(id)
     const stat = await this.rawStat(id)
     if (!stat) throw Object.assign(new Error('streaming stage is missing'), { code: 'ENOENT' })
     if (!entry?.streaming || entry.backup || entry.retiredGeneration)
@@ -1810,10 +1805,12 @@ export class ObsidianFileSystem implements FileSystem {
       this.stageOperations.add(id)
       try {
         this.runtimeFence?.assertReady()
+        const current = await this.journal.currentEntry(id)
         if (
-          this.journal
-            .entries()
-            .some((one) => one.temp === id && (one.backup || one.retiredGeneration))
+          !current ||
+          current.backup ||
+          current.retiredGeneration ||
+          JSON.stringify(current) !== JSON.stringify(entry)
         )
           throw new EngineError('io', 'stage publication is awaiting recovery')
         return await work()
@@ -1827,6 +1824,7 @@ export class ObsidianFileSystem implements FileSystem {
       target: entry.target,
       installed: async () => {
         const native = this.native
+        if (!(await this.journal.isCurrent(entry))) return false
         if (!entry.streaming.sealed || !native?.sameObject) return false
         try {
           return (
@@ -1903,7 +1901,7 @@ export class ObsidianFileSystem implements FileSystem {
   private async reopenPullStage(id: string) {
     const stage = await this.reopenStage(id)
     if (await this.io.canResumeStage(id)) return stage
-    const entry = this.journal.entries().find((one) => one.temp === id)
+    const entry = await this.journal.currentEntry(id)
     if (!entry?.streaming || entry.backup || this.stageOperations.has(id))
       throw new EngineError('io', 'pull stage cannot restart during publication')
     const restarted: JournalEntry = {
@@ -1931,7 +1929,7 @@ export class ObsidianFileSystem implements FileSystem {
     mtime: number,
     from: string | null = null
   ) {
-    const previous = id ? this.journal.entries().find((one) => one.temp === id) : undefined
+    const previous = id ? await this.journal.currentEntry(id) : undefined
     if (id && (await this.disk.exists(id))) {
       if (!previous?.streaming || previous.backup)
         throw new EngineError('io', 'pull stage is unavailable or awaiting backup recovery')
@@ -1949,7 +1947,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (previous?.backup)
       throw new EngineError('io', 'pull publication is awaiting backup recovery')
     const stage = await this.beginAtomicWrite(target, mtime, null)
-    const entry = this.journal.entries().find((one) => one.temp === stage.id)
+    const entry = await this.journal.currentEntry(stage.id)
     if (!entry?.streaming) throw new EngineError('io', 'Recovery download stage lost its journal')
     if ((await this.rawStat(target)) ?? (from ? await this.rawStat(from) : null)) {
       const retained: JournalEntry = {
@@ -2260,7 +2258,11 @@ export class ObsidianFileSystem implements FileSystem {
       if (isAdapterTemp(path)) {
         // A temp of new bytes a killed write left behind goes; a backup is somebody's only
         // copy, and the write journal puts it back.
-        if (isDroppableTemp(path) && !this.stages.has(path) && !this.journal.retainsTemp(path))
+        if (
+          isDroppableTemp(path) &&
+          !this.stages.has(path) &&
+          !(await this.journal.currentRetainsTemp(path))
+        )
           await this.sweep(path)
         continue
       }

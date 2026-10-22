@@ -85,7 +85,7 @@ it('does not mistake a retained streaming source for destructive startup recover
   await state.setCursor(1)
   const stage = await fs.beginAtomicWrite('sample.bin', 1000, null)
   await stage.append(0, text('retained bytes'))
-  expect(fs.needsRecoveryHandshake()).toBe(false)
+  expect(await fs.needsRecoveryHandshake()).toBe(false)
   await fs.fenceRecovery(state, 2)
   expect(await readReconciliation(state)).toBeNull()
   expect((await fs.reopenStage(stage.id)).offset).toBe(14)

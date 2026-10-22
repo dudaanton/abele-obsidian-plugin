@@ -404,7 +404,8 @@ export class VaultWriter {
    */
   async recover(): Promise<void> {
     if (this.deps.native?.archiveBackup) {
-      for (const retained of this.deps.journal.vaultRecovered()) {
+      for (const retained of await this.deps.journal.currentVaultRecovered()) {
+        if (!(await this.deps.journal.currentProtects(retained.backup))) continue
         if (inFlight.has(retained.backup))
           throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
         const archived = await this.deps.native.archiveBackup(retained.backup)
@@ -413,14 +414,18 @@ export class VaultWriter {
         )
       }
     }
-    for (const entry of this.deps.journal.entries()) {
+    for (const entry of await this.deps.journal.currentEntries()) {
+      if (!(await this.deps.journal.isCurrent(entry))) continue
       if (entry.retiredGeneration) continue
       if (this.deps.retainInstalled && entry.installed && !entry.backup) continue
       if (entry.streaming && !entry.backup) {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue
         if (entry.temp && adapterWriteInFlight(entry.temp)) continue
-        if (entry.temp && (await this.there(entry.temp))) await this.disk.remove(entry.temp)
+        if (entry.temp && (await this.there(entry.temp))) {
+          if (!(await this.deps.journal.isCurrent(entry))) continue
+          await this.disk.remove(entry.temp)
+        }
         await this.deps.journal.persist(() => this.deps.journal.drop(entry))
         console.debug('[abele-sync] retired interrupted disposable placement source')
         continue
@@ -435,10 +440,10 @@ export class VaultWriter {
         continue
       }
       try {
-        if (entry.backup && this.deps.journal.protects(entry.backup))
+        if (entry.backup && (await this.deps.journal.currentProtects(entry.backup)))
           await this.preserveBackup(entry)
         if (entry.backup !== undefined && (await this.there(entry.backup))) {
-          if (this.deps.journal.protects(entry.backup)) {
+          if (await this.deps.journal.currentProtects(entry.backup)) {
             // A completed preservation decision outlives a later target edit/reversion/delete.
           } else if (await this.there(entry.target)) {
             // A restarted streaming publication has no live incremental receipt. Keep its
@@ -451,7 +456,12 @@ export class VaultWriter {
                 ? (await this.deps.fingerprint(entry.target)).sha
                 : await signature(await this.disk.readBinary(entry.target))) ===
                 entry.replacementSha
-            if (matchesReplacement && entry.preserveBackup !== true)
+            if (!(await this.deps.journal.isCurrent(entry))) continue
+            if (
+              matchesReplacement &&
+              entry.preserveBackup !== true &&
+              !(await this.deps.journal.currentProtects(entry.backup))
+            )
               await this.disk.remove(entry.backup)
             else {
               // Do not overwrite the independent target or discard the old copy. Keep the
@@ -462,11 +472,13 @@ export class VaultWriter {
               )
             }
           } else {
+            if (!(await this.deps.journal.isCurrent(entry))) continue
             await this.disk.rename(entry.backup, entry.target)
             console.debug(`[abele-sync] put ${entry.target} back after an interrupted write`)
           }
         }
         if (entry.temp !== undefined && (await this.there(entry.temp))) {
+          if (!(await this.deps.journal.isCurrent(entry))) continue
           await this.disk.remove(entry.temp)
         }
         await this.deps.journal.persist(() => this.deps.journal.drop(entry))

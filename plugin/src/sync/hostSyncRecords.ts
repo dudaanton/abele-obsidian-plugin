@@ -1,10 +1,13 @@
-/** Record deltas are computed against this host's view, never against another host's rows. */
+/** Commands carry expected prior values and are checked against committed rows. */
 export interface HostRecord {
+  keyId?: string
   namespace: string
   key: string
   id: string
   value: unknown
   order: number
+  path?: string
+  target?: string
 }
 export interface HostChange {
   key: string
@@ -13,7 +16,39 @@ export interface HostChange {
   after: unknown
 }
 const HEADER = '!header'
-const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+export const hostJournalId = (entry: {
+  owner?: string
+  temp?: string
+  backup?: string
+  target: string
+}): string =>
+  'entry:' + JSON.stringify([entry.owner ?? null, entry.temp ?? entry.backup ?? entry.target])
+export function hostJournalPath(key: string, value: unknown): string | undefined {
+  if ((key !== 'abele-sync-writes' && key !== 'abele-sync-recovered-writes') || !object(value))
+    return
+  const path = value.temp ?? value.backup ?? value.target
+  return typeof path === 'string' ? path : undefined
+}
+const equal = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true
+  // Flat journal records are common in legacy whole-value drafts. Compare them
+  // without serializing every retained record twice for a one-record edit.
+  if (object(a) && object(b)) {
+    const keys = Object.keys(a),
+      other = Object.keys(b)
+    const scalar = (value: unknown) =>
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    if (keys.every((key) => scalar(a[key])) && other.every((key) => scalar(b[key])))
+      return (
+        keys.length === other.length &&
+        keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key])
+      )
+  }
+  return JSON.stringify(a) === JSON.stringify(b)
+}
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -107,6 +142,15 @@ export function hostChanges(key: string, before: unknown, after: unknown): HostC
 }
 
 export function mergeHostChange(change: HostChange, current: unknown): unknown {
+  // A journal transition authorizes a file effect. Unlike editable registry fields,
+  // it cannot merge across a concurrent retirement or preservation decision.
+  if (
+    (change.key === 'abele-sync-writes' || change.key === 'abele-sync-recovered-writes') &&
+    change.id.startsWith('entry:')
+  ) {
+    if (equal(current, change.before) || equal(current, change.after)) return change.after
+    throw new Error('Concurrent sync host journal changed; retry from committed state')
+  }
   // Independent first item enrollments do not need to fight over the initial selection.
   if (
     change.key === 'abele-sync-item-selection-v1' &&

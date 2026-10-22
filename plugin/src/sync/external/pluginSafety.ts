@@ -315,11 +315,11 @@ export async function recoverOrphanPrivateArtifacts(
         if (path) owned.add(path.normalize('NFC').toLowerCase())
       }
       const journal = new WriteJournal(app)
-      for (const entry of journal.entries()) {
+      for (const entry of await journal.currentEntries()) {
         protect(entry.temp)
         protect(entry.backup)
       }
-      for (const entry of journal.recovered()) protect(entry.backup)
+      for (const entry of await journal.currentRecovered()) protect(entry.backup)
       for (const name of names) {
         assertCurrent()
         const found = await inspectExistingLedger(factory, name)
@@ -343,7 +343,9 @@ export async function recoverOrphanPrivateArtifacts(
         if (
           owned.has(path.normalize('NFC').toLowerCase()) ||
           stagingPathReserved(path) ||
-          adapterWriteInFlight(path)
+          adapterWriteInFlight(path) ||
+          (await journal.currentRetainsTemp(path)) ||
+          (await journal.currentProtects(path))
         )
           continue
         await assertVaultPath(vaultDisk(app.vault), path)
@@ -730,8 +732,8 @@ export async function recoverExternalState(
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.
-  new WriteJournal(app, undefined, connectionJournalOwner(app)).entries()
-  new WriteJournal(app, undefined, connectionJournalOwner(app)).recovered()
+  await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentEntries()
+  await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentRecovered()
   const publication = await store.getJournal()
   if (
     publication !== null &&
@@ -812,14 +814,14 @@ export async function activateExternalFiles(
 
 /** One read-only safety inventory for replacement, enrollment, departure and delayed cleanup.
  * Activation is conservatively retained until the explicit preparation API exists. */
-export function requireExternalEnrollmentSafety(app: App): void {
+export async function requireExternalEnrollmentSafety(app: App): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   activation(app)
   retiredLedgers(app)
   const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
   if (
-    installation.entries().some((entry) => !entry.streaming || entry.backup) ||
-    installation.recovered().length
+    (await installation.currentEntries()).some((entry) => !entry.streaming || entry.backup) ||
+    (await installation.currentRecovered()).length
   )
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
 }
@@ -842,15 +844,13 @@ export async function requireExternalLifecycleSafety(
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
   if (
-    (installation
-      .entries()
-      .some(
-        (entry) =>
-          (!allowRetiredInstallations || !entry.retiredGeneration) &&
-          (!entry.streaming || entry.backup)
-      ) &&
+    ((await installation.currentEntries()).some(
+      (entry) =>
+        (!allowRetiredInstallations || !entry.retiredGeneration) &&
+        (!entry.streaming || entry.backup)
+    ) &&
       !recoverInstallation) ||
-    installation.recovered().length
+    (await installation.currentRecovered()).length
   )
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])

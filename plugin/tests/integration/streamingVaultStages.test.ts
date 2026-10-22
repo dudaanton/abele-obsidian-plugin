@@ -6,7 +6,7 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { WriteJournal } from '@/sync/writeJournal'
 import { EditCopies } from '@/sync/editCopies'
 import { MemoryStateStore } from '@abele/sync-sdk/core'
-import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'
+import { JOURNAL_KEY } from '@/sync/writeJournal'
 import { deferred } from '../helpers/deferred'
 import { isDroppableTemp } from '@/sync/vaultWrites'
 import { connectionAdapter } from '@/sync/connectionScope'
@@ -267,7 +267,9 @@ it('preserves an interrupted streaming backup without hashing the installed larg
   expect(read).not.toHaveBeenCalled()
   expect(await app.vault.adapter.exists('saved.old')).toBe(true)
   expect(new WriteJournal(storage).entries()).toEqual([])
-  expect(storage.loadLocalStorage(RECOVERED_WRITES_KEY)).toMatchObject([{ backup: 'saved.old' }])
+  expect(await new WriteJournal(storage).currentRecovered()).toMatchObject([
+    { backup: 'saved.old' },
+  ])
 })
 it('retains local edits as sealed source locators and verifies retained bytes on every read', async () => {
   const { app, fs } = await setup()

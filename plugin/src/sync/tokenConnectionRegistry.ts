@@ -6,7 +6,7 @@ import { defaultSelective, selectiveProblem } from './connection'
 import { normalizeServerUrl, serverUrlProblem, PathSchema } from '@abele/sync-sdk/protocol'
 import { DEVICE_SECRET_PREFIX } from '@/secrets/deviceSecret'
 import type { LocalStorage } from './ledgerId'
-import { flushHostStorage, hostStorageOf, linkHostStorage } from './hostSyncStorage'
+import { durableHostOf, flushHostStorage, hostStorageOf, linkHostStorage } from './hostSyncStorage'
 import { isLegacyAccessSlot } from './discardLegacyConnections'
 import { LocalPlacementError } from './localFolderPlacement'
 
@@ -157,8 +157,20 @@ export class TokenConnectionRegistry {
     registry.validated()
     return registry
   }
-  flush(): Promise<void> {
-    return flushHostStorage(this.local)
+  async flush(): Promise<void> {
+    try {
+      await flushHostStorage(this.local)
+    } finally {
+      const host = durableHostOf(this.local)
+      if (host)
+        for (const key of [
+          TOKEN_REGISTRY_KEY,
+          ITEM_REGISTRY_KEY,
+          ITEM_SELECTION_KEY,
+          REGISTRY_WRITE_KEY,
+        ])
+          await host.readValue(key)
+    }
   }
   async finishForgottenDurably(
     secrets: Pick<DeviceTokenSecrets, 'get'> & { remove(reference: string): void },

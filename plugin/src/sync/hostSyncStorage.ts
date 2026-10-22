@@ -3,6 +3,8 @@ import type { LocalStorage } from './ledgerId'
 import { completion, connectTo, wait } from './idbRequests'
 import {
   hostChanges,
+  hostJournalPath,
+  hostJournalId,
   joinHostValue,
   mergeHostChange,
   normalizeHostHeader,
@@ -14,9 +16,49 @@ import {
 // This database never participates in an SDK overlay transaction.
 const DATABASE = 'abele-sync-host-v1'
 const STORE = 'host'
-const RECORDS = 'host-records'
+const LEGACY_RECORDS = 'host-records'
+const RECORDS = 'host-records-v3'
+const recordKey = (namespace: string, key: string, id: string): string =>
+  JSON.stringify([namespace, key, id])
+const PATHS_MIGRATED = '!paths-migrated'
 const RECORDS_MIGRATED = '!records-migrated'
 const MIGRATED = '!migrated'
+
+/** The primary key already groups rows by namespace and document. A seek avoids
+ * maintaining a redundant secondary index on every journal retirement. */
+function readGroup(
+  store: IDBObjectStore,
+  namespace: string,
+  key: string,
+  first?: (row: HostRecord) => boolean
+): Promise<HostRecord[]> {
+  return new Promise((resolve, reject) => {
+    const rows: HostRecord[] = []
+    const prefix = JSON.stringify([namespace, key]).slice(0, -1) + ','
+    const request = store.openCursor()
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve(rows)
+        return
+      }
+      const heldKey = cursor.primaryKey as string
+      if (heldKey < prefix) {
+        cursor.continue(prefix)
+        return
+      }
+      if (!heldKey.startsWith(prefix)) {
+        resolve(rows)
+        return
+      }
+      const row = cursor.value as HostRecord
+      if (!first || first(row)) rows.push(row)
+      if (first && rows.length) resolve(rows)
+      else cursor.continue()
+    }
+  })
+}
 const KEYS = [
   'abele-sync-writes',
   'abele-sync-recovered-writes',
@@ -28,14 +70,14 @@ const KEYS = [
 ]
 const prepared = new WeakMap<LocalStorage, HostSyncStorage>()
 const parents = new WeakMap<LocalStorage, LocalStorage>()
-const backend = (local: LocalStorage): HostSyncStorage | undefined => {
+export const durableHostOf = (local: LocalStorage): HostSyncStorage | undefined => {
   if (local instanceof HostSyncStorage) return local
   const own = prepared.get(local)
   if (own) return own
   const parent = parents.get(local)
-  return parent ? backend(parent) : undefined
+  return parent ? durableHostOf(parent) : undefined
 }
-export const hostStorageOf = (local: LocalStorage): LocalStorage => backend(local) ?? local
+export const hostStorageOf = (local: LocalStorage): LocalStorage => durableHostOf(local) ?? local
 export function linkHostStorage(alias: LocalStorage, local: LocalStorage): void {
   parents.set(alias, local)
 }
@@ -44,16 +86,18 @@ export function inheritHostStorage<T extends LocalStorage>(alias: T, local: Loca
   return alias
 }
 export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
-  const store = backend(local)
+  const store = durableHostOf(local)
   await store?.flush()
 }
 
-/** Hydrated synchronous view; callers must await flush before any dependent effect. */
+/** IDB authority with a synchronous draft adapter for legacy settings/forms.
+ * loadLocalStorage is a draft preview, never an ownership or recovery read.
+ * Only explicit record deltas are persisted, with their preconditions checked in IDB.
+ */
 export class HostSyncStorage implements LocalStorage {
   private readonly values = new Map<string, unknown>()
-  private readonly records = new Map<string, Map<string, HostRecord>>()
-  private readonly stale = new Set<string>()
-  private readonly repairView = new Set<string>()
+  private draftVersion = 0
+  private channel: BroadcastChannel | undefined
   private pending: HostChange[] = []
   private tail: Promise<void> = Promise.resolve()
   private running: Promise<void> | undefined
@@ -80,23 +124,35 @@ export class HostSyncStorage implements LocalStorage {
       (db) => {
         if (!db.objectStoreNames.contains(STORE))
           db.createObjectStore(STORE, { keyPath: ['namespace', 'key'] })
-        const records = db.createObjectStore(RECORDS, { keyPath: ['namespace', 'key', 'id'] })
-        records.createIndex('group', ['namespace', 'key'])
+        if (!db.objectStoreNames.contains(LEGACY_RECORDS)) {
+          db.createObjectStore(LEGACY_RECORDS, { keyPath: ['namespace', 'key', 'id'] }).createIndex(
+            'group',
+            ['namespace', 'key']
+          )
+        }
+        const indexed = db.createObjectStore(RECORDS, { keyPath: 'keyId' })
+        indexed.createIndex('path', ['namespace', 'key', 'path'])
+        indexed.createIndex('target', ['namespace', 'key', 'target'])
       },
       (db) => db.close(),
-      2
+      3
     )
     const result = new HostSyncStorage(db, namespace, local)
     let transaction: IDBTransaction | undefined
     let committed: Promise<void> | undefined
     try {
-      const tx = db.transaction([STORE, RECORDS], 'readwrite')
+      const tx = db.transaction([STORE, LEGACY_RECORDS, RECORDS], 'readwrite')
       transaction = tx
       const done = completion(tx, 'cannot migrate sync host storage')
       committed = done
       void done.catch(() => {})
       const rows = tx.objectStore(STORE)
       const records = tx.objectStore(RECORDS)
+      const pathMarker = await wait<{ value: unknown } | undefined>(
+        rows.get([namespace, PATHS_MIGRATED])
+      )
+      if (pathMarker && pathMarker.value !== true)
+        throw new Error('Sync host path migration requires recovery')
       const marker = await wait<{ value: unknown } | undefined>(rows.get([namespace, MIGRATED]))
       if (marker && marker.value !== true)
         throw new Error('Sync host migration marker requires recovery')
@@ -115,7 +171,12 @@ export class HostSyncStorage implements LocalStorage {
           ? (row?.value ?? null)
           : structuredClone(local.loadLocalStorage(key) ?? null)
         if (recordMarker) {
-          const loaded = await wait<HostRecord[]>(records.index('group').getAll([namespace, key]))
+          const loaded = pathMarker
+            ? await readGroup(records, namespace, key)
+            : await wait<HostRecord[]>(
+                tx.objectStore(LEGACY_RECORDS).index('group').getAll([namespace, key])
+              )
+          for (const row of loaded) row.keyId = recordKey(namespace, key, row.id)
           // Earlier schema-2 writers did not maintain an append counter on the header.
           // Repair it during the already-required hydration, in this same transaction.
           const header = loaded.find((row) => row.id === '!header')
@@ -127,31 +188,47 @@ export class HostSyncStorage implements LocalStorage {
             header.order = next
             await wait(records.put(header))
           }
-          result.records.set(key, new Map(loaded.map((row) => [row.id, row])))
+          if (!pathMarker)
+            for (const row of loaded) {
+              row.path = hostJournalPath(key, row.value)
+              if (row.path !== undefined) {
+                row.target = (row.value as { target: string }).target
+              }
+              await wait(records.put(row))
+            }
           result.values.set(key, joinHostValue(loaded))
         } else {
           let order = 0
-          for (const [id, item] of splitHostValue(key, value))
-            await wait(records.put({ namespace, key, id, value: item, order: order++ }))
-          result.records.set(
-            key,
-            new Map(
-              [...splitHostValue(key, value)].map(([id, item], order) => [
+          for (const [id, item] of splitHostValue(key, value)) {
+            const path = hostJournalPath(key, item)
+            await wait(
+              records.put({
+                keyId: recordKey(namespace, key, id),
+                namespace,
+                key,
                 id,
-                { namespace, key, id, value: item, order },
-              ])
+                value: item,
+                order: order++,
+                path,
+                target: path === undefined ? undefined : (item as { target: string }).target,
+              })
             )
-          )
+          }
           result.values.set(key, value)
         }
         if (!marker) await wait(rows.put({ namespace, key, value }))
       }
       if (!marker) await wait(rows.put({ namespace, key: MIGRATED, value: true }))
       if (!recordMarker) await wait(rows.put({ namespace, key: RECORDS_MIGRATED, value: true }))
+      if (!pathMarker) await wait(rows.put({ namespace, key: PATHS_MIGRATED, value: true }))
       await done
       // Only a compatibility view. On every reopen the committed IDB rows win.
       for (const [key, value] of result.values) local.saveLocalStorage(key, structuredClone(value))
       prepared.set(local, result)
+      if (typeof BroadcastChannel !== 'undefined') {
+        result.channel = new BroadcastChannel(DATABASE + ':' + namespace)
+        result.channel.onmessage = () => result.invalidate()
+      }
       return result
     } catch (error) {
       try {
@@ -165,7 +242,6 @@ export class HostSyncStorage implements LocalStorage {
     }
   }
   loadLocalStorage(key: string): unknown {
-    this.refreshView(key)
     return this.values.has(key)
       ? structuredClone(this.values.get(key))
       : this.local.loadLocalStorage(key)
@@ -173,12 +249,11 @@ export class HostSyncStorage implements LocalStorage {
   saveLocalStorage(key: string, value: unknown): void {
     if (this.closed) throw new Error('Sync host storage is closed')
     if (this.values.has(key)) {
-      this.refreshView(key)
+      this.draftVersion++
       const copy = structuredClone(value)
       this.pending = this.pending.concat(hostChanges(key, this.values.get(key), copy))
       this.values.set(key, copy)
-    }
-    this.local.saveLocalStorage(key, value)
+    } else this.local.saveLocalStorage(key, value)
     // Ordinary settings/status saves also drain without waiting for another file exchange.
     // Dependent effects still await flush explicitly and receive any commit failure.
     if (this.values.has(key) && !this.scheduled) {
@@ -189,17 +264,81 @@ export class HostSyncStorage implements LocalStorage {
       })
     }
   }
-  private refreshView(key: string): void {
-    if (!this.stale.delete(key)) return
-    this.values.set(key, joinHostValue([...this.records.get(key).values()]))
+  private invalidate(): void {
+    // Invalidate any outstanding inventory refresh. Submitted drafts remain only
+    // for synchronous forms; no record cache survives to authorize a decision.
+    this.draftVersion++
+  }
+
+  /** Inventory reads are explicit; individual decisions use readRecord below. */
+  async readValue(key: string): Promise<unknown> {
+    await this.flush()
+    const version = this.draftVersion
+    const tx = this.db.transaction(RECORDS, 'readonly')
+    const rows = await readGroup(tx.objectStore(RECORDS), this.namespace, key)
+    const value = joinHostValue(rows)
+    if (this.draftVersion === version) {
+      this.values.set(key, value)
+    }
+    return structuredClone(value)
+  }
+
+  async readRecord(key: string, id: string): Promise<unknown> {
+    await this.flush()
+    const tx = this.db.transaction(RECORDS, 'readonly')
+    const row = await wait<HostRecord | undefined>(
+      tx.objectStore(RECORDS).get(recordKey(this.namespace, key, id))
+    )
+    return row?.value
+  }
+
+  async readPath(key: string, path: string): Promise<unknown[]> {
+    return this.readIndexed(key, 'path', [path])
+  }
+  async readTargets(key: string, targets: readonly string[]): Promise<unknown[]> {
+    return this.readIndexed(key, 'target', targets)
+  }
+  private async readIndexed(
+    key: string,
+    index: string,
+    values: readonly string[]
+  ): Promise<unknown[]> {
+    await this.flush()
+    const tx = this.db.transaction(RECORDS, 'readonly')
+    const rows = (
+      await Promise.all(
+        [...new Set(values)].map((value) =>
+          wait<HostRecord[]>(
+            tx.objectStore(RECORDS).index(index).getAll([this.namespace, key, value])
+          )
+        )
+      )
+    ).flat()
+    return rows.map((row) => row.value)
+  }
+
+  /** Explicit record commands; the compatibility view never supplies their preconditions. */
+  changeRecords(changes: HostChange[]): void {
+    if (this.closed) throw new Error('Sync host storage is closed')
+    this.draftVersion++
+    for (const change of changes) {
+      const value = this.values.get(change.key)
+      const hint: unknown[] = Array.isArray(value) ? value : []
+      const at = hint.findIndex((entry) => hostJournalId(entry as { target: string }) === change.id)
+      if (change.after === undefined) {
+        if (at !== -1) hint.splice(at, 1)
+      } else if (at === -1) hint.push(structuredClone(change.after))
+      else hint[at] = structuredClone(change.after)
+      this.values.set(change.key, hint)
+    }
+    this.pending.push(...structuredClone(changes))
   }
   flush(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Sync host storage is closed'))
     if (!this.pending.length) return this.running ?? Promise.resolve()
     const changes = this.pending
     this.pending = []
-    const snapshots = new Map(this.values)
-    const running = this.tail.then(() => this.commit(changes, snapshots))
+    const running = this.tail.then(() => this.commit(changes))
     this.running = running
     this.tail = running.catch(() => {})
     const settled = () => {
@@ -209,7 +348,7 @@ export class HostSyncStorage implements LocalStorage {
     return running
   }
 
-  private async commit(changes: HostChange[], snapshots: Map<string, unknown>): Promise<void> {
+  private async commit(changes: HostChange[]): Promise<void> {
     const tx = this.db.transaction(RECORDS, 'readwrite')
     const done = completion(tx, 'cannot commit sync host records')
     void done.catch(() => {})
@@ -219,18 +358,21 @@ export class HostSyncStorage implements LocalStorage {
       // Header.order is the append counter (migration places it after the existing rows).
       // Never enumerate a journal to allocate an order or retire a single record.
       for (const key of new Set(changes.map((change) => change.key))) {
-        const header = await wait<HostRecord>(store.get([this.namespace, key, '!header']))
+        const header = await wait<HostRecord>(store.get(recordKey(this.namespace, key, '!header')))
         groups.set(key, new Map([['!header', header]]))
       }
       for (const change of changes) {
         const group = groups.get(change.key)
         if (!group) throw new Error('Sync host transaction group is missing')
-        const prior = group.has(change.id)
+        const held = group.has(change.id)
           ? group.get(change.id)
-          : await wait<HostRecord | undefined>(store.get([this.namespace, change.key, change.id]))
+          : await wait<HostRecord | undefined>(
+              store.get(recordKey(this.namespace, change.key, change.id))
+            )
+        const prior = held?.value === undefined ? undefined : held
         const value = mergeHostChange(change, prior?.value)
         if (value === undefined) {
-          await wait(store.delete([this.namespace, change.key, change.id]))
+          await wait(store.delete(recordKey(this.namespace, change.key, change.id)))
           group.set(change.id, {
             namespace: this.namespace,
             key: change.key,
@@ -240,10 +382,16 @@ export class HostSyncStorage implements LocalStorage {
           })
         } else {
           const row: HostRecord = {
+            keyId: recordKey(this.namespace, change.key, change.id),
             namespace: this.namespace,
             key: change.key,
             id: change.id,
             value,
+            path: hostJournalPath(change.key, value),
+            target:
+              hostJournalPath(change.key, value) === undefined
+                ? undefined
+                : (value as { target: string }).target,
             order: prior?.order ?? group.get('!header').order + 1,
           }
           await wait(store.put(row))
@@ -262,22 +410,14 @@ export class HostSyncStorage implements LocalStorage {
           const id = 'records:' + header?.value?.selectedId
           if (!group.has(id)) {
             const selected = await wait<HostRecord | undefined>(
-              store.get([this.namespace, key, id])
+              store.get(recordKey(this.namespace, key, id))
             )
             if (selected) live.set(id, selected)
           }
           if (!live.has(id)) {
-            const first = await new Promise<HostRecord | undefined>((resolve, reject) => {
-              const request = store.index('group').openCursor([this.namespace, key])
-              request.onerror = () => reject(request.error)
-              request.onsuccess = () => {
-                const cursor = request.result
-                if (!cursor) resolve(undefined)
-                else if ((cursor.value as HostRecord).id.startsWith('records:'))
-                  resolve(cursor.value as HostRecord)
-                else cursor.continue()
-              }
-            })
+            const [first] = await readGroup(store, this.namespace, key, (row) =>
+              row.id.startsWith('records:')
+            )
             if (first) live.set(first.id, first)
           }
           for (const [id, row] of live) if (!group.has(id)) group.set(id, row)
@@ -292,25 +432,8 @@ export class HostSyncStorage implements LocalStorage {
           throw new Error('Unfinished registry update requires retry before host commit')
       }
       await done
-      for (const [key, group] of groups) {
-        const cached = this.records.get(key)
-        for (const [id, row] of group) {
-          if (row.value === undefined) cached.delete(id)
-          else cached.set(id, row)
-        }
-        if (this.values.get(key) === snapshots.get(key)) {
-          const journal = key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes'
-          const merged = changes.some(
-            (change) =>
-              change.key === key &&
-              JSON.stringify(group.get(change.id)?.value) !== JSON.stringify(change.after)
-          )
-          // The caller already supplied the new journal view. Keep it on the ordinary
-          // path; only a merge or failed predecessor needs lazy reconstruction.
-          const repair = this.repairView.delete(key)
-          if (!journal || merged || repair) this.stale.add(key)
-        }
-      }
+      this.invalidate()
+      this.channel?.postMessage(null)
     } catch (error) {
       try {
         tx.abort()
@@ -318,28 +441,14 @@ export class HostSyncStorage implements LocalStorage {
         /* Already settled. */
       }
       await done.catch(() => {})
-      // Drop this failed attempt only. Later queue entries retain their own result and delta.
-      const read = this.db.transaction(RECORDS, 'readonly').objectStore(RECORDS)
-      const restored = await Promise.all(
-        [...snapshots.keys()].map(
-          async (key) =>
-            [
-              key,
-              await wait<HostRecord[]>(read.index('group').getAll([this.namespace, key])),
-            ] as const
-        )
-      )
-      for (const [key, rows] of restored)
-        if (this.values.get(key) === snapshots.get(key)) {
-          this.records.set(key, new Map(rows.map((row) => [row.id, row])))
-          this.values.set(key, joinHostValue(rows))
-          this.stale.delete(key)
-        } else this.repairView.add(key)
+      // Invalidate regardless of queued work. No failed draft is rebuilt into authority.
+      this.invalidate()
       throw error
     }
   }
   close(): void {
     this.closed = true
+    this.channel?.close()
     this.db.close()
   }
 }

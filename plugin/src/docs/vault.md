@@ -2579,15 +2579,24 @@ copies are not retired before that commit. Subsequent starts use IDB as authorit
 or stale localStorage mirrors cannot resurrect retired work. Host commits never join SDK
 state-store overlays. Enrollment commits before runtime startup, and retirement commits
 before credential cleanup or runtime removal.
-Schema version 2 stores journal entries and registry records separately in `host-records`.
+Schema version 3 stores journal entries and registry records separately in `host-records-v3`,
+keyed by a collision-free string encoding of namespace, document key and record ID. Older
+`host-records` rows remain migration input only and cannot resurrect retired entries.
+with indexes for journal paths and acknowledged targets. Index fields and the upgrade marker
+are populated atomically from existing rows; interrupted upgrades retry without losing evidence.
 Each commit applies record deltas inside one IDB readwrite transaction, preserving records
 another host added and rejecting stale changes to retired or conflicting records. The
 version-1 host values migrate with a separate atomic marker and are not re-imported after
 record retirement. A failed transaction rejects its own flush; later queued work can still
-commit. Recovery of a failed attempt refreshes the cache from committed rows.
+commit. Failed transactions invalidate outstanding inventory refreshes, including when later
+work is queued. Other hosts notify invalidation through BroadcastChannel; correctness does not
+depend on delivery because ownership and recovery decisions always read IndexedDB.
 Ordinary commits read changed record IDs and container metadata, never the full journal.
-Container metadata carries an append counter; committed deltas update the cached record
-map incrementally. Hydration and failed-attempt recovery may read the complete group.
+Container metadata carries a monotonic append counter; removal followed by re-enrollment
+allocates a new order in that same transaction. Journal mutations carry explicit record IDs
+and expected prior values. Synchronous storage previews are drafts only and never authorize
+file effects. Recovery inventories read committed groups, then recheck individual entries
+before effects; stage ownership and acknowledgement use direct key or indexed target reads.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and

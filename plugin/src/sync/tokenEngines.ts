@@ -245,7 +245,7 @@ export class TokenEngines {
               root
             )
           : journalApp
-        requireExternalEnrollmentSafety(app)
+        await requireExternalEnrollmentSafety(app)
         await requireExternalLifecycleSafety(
           app,
           factoryOf(this.deps),
@@ -744,7 +744,7 @@ export class TokenEngines {
         },
       })
       state.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
-      if (ordinary.needsRecoveryHandshake() || (await state.getExternalState()) !== null)
+      if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)
           const client = new V2EngineClient(this.ui.itemSets.encoded(record), {
