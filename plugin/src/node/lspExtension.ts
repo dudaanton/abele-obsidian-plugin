@@ -61,6 +61,7 @@ const hoverModifiers = ViewPlugin.fromClass(
     active = false
     revision = 0
     private pointer?: MouseEvent
+    private destroyed = false
     constructor(readonly view: EditorView) {
       view.dom.addEventListener('mousemove', this.move)
       view.dom.addEventListener('mouseleave', this.leave)
@@ -71,6 +72,23 @@ const hoverModifiers = ViewPlugin.fromClass(
     private move = (event: MouseEvent) => {
       this.pointer = event
       this.setActive(event.ctrlKey || event.metaKey)
+      // A navigation mark can replace the event target before it reaches this listener.
+      if (event.target instanceof this.view.dom.ownerDocument.win.Node && !event.target.isConnected)
+        queueMicrotask(() => {
+          if (!this.destroyed && this.pointer === event) this.replay(event)
+        })
+    }
+    private replay(event: MouseEvent | KeyboardEvent) {
+      if (!this.pointer) return
+      this.view.contentDOM.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: this.pointer.clientX,
+          clientY: this.pointer.clientY,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+        })
+      )
     }
     private leave = () => {
       this.pointer = undefined
@@ -85,28 +103,16 @@ const hoverModifiers = ViewPlugin.fromClass(
     }
     private key = (event: KeyboardEvent) => {
       if (!this.setActive(event.ctrlKey || event.metaKey) || !this.pointer) return
-      // Decorations may replace the token DOM while the pointer stays still.
-      const previous = this.pointer.target
-      const target =
-        previous instanceof this.view.dom.ownerDocument.win.Element &&
-        this.view.dom.contains(previous)
-          ? previous
-          : this.view.contentDOM
-      target.dispatchEvent(
-        new MouseEvent('mousemove', {
-          bubbles: true,
-          clientX: this.pointer.clientX,
-          clientY: this.pointer.clientY,
-          ctrlKey: event.ctrlKey,
-          metaKey: event.metaKey,
-        })
-      )
+      // The editor content survives syntax and diagnostic token redraws.
+      this.replay(event)
     }
+
     private blur = () => {
       this.setActive(false)
       this.pointer = undefined
     }
     destroy() {
+      this.destroyed = true
       this.revision++
       this.view.dom.removeEventListener('mousemove', this.move)
       this.view.dom.removeEventListener('mouseleave', this.leave)

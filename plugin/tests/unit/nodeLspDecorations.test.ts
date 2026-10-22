@@ -104,7 +104,13 @@ it('renders the hover response with type and documentation', async () => {
   try {
     vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
     vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
-    view.contentDOM.querySelector('.cm-line')!.dispatchEvent(
+    const token = view.contentDOM
+      .querySelector('.cm-line')!
+      .appendChild(document.createElement('span'))
+    token.textContent = 'sample'
+    // A navigation decoration can redraw the token during the same mouse event.
+    view.contentDOM.addEventListener('mousemove', () => token.remove(), { once: true })
+    token.dispatchEvent(
       new MouseEvent('mousemove', {
         bubbles: true,
         clientX: 10,
