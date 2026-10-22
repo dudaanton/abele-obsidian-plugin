@@ -223,24 +223,26 @@ const drop = (path: string) => {
 /** A folder's own actions: a chat or a folder in it, its access, its name, removing it. */
 function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
   const menu = new Menu()
-  menu.addItem((i) =>
-    i
-      .setTitle(
-        t(
-          folder.hidden
-            ? 'chatTree.showFolder'
-            : chatsOf(folder.children).some((chat) => chat.open)
-              ? 'chatTree.hideFolderAndClose'
-              : 'chatTree.hideFolder'
+  const addVisibilityAction = () =>
+    menu.addItem((i) =>
+      i
+        .setTitle(
+          t(
+            folder.hidden
+              ? 'chatTree.showFolder'
+              : chatsOf(folder.children).some((chat) => chat.open)
+                ? 'chatTree.hideFolderAndClose'
+                : 'chatTree.hideFolder'
+          )
         )
-      )
-      .setIcon(folder.hidden ? 'eye' : 'eye-off')
-      .onClick(() =>
-        folder.hidden
-          ? source.value.showFolder?.(folder.path)
-          : source.value.hideFolder?.(folder.path)
-      )
-  )
+        .setIcon(folder.hidden ? 'eye' : 'eye-off')
+        .onClick(() =>
+          folder.hidden
+            ? source.value.showFolder?.(folder.path)
+            : source.value.hideFolder?.(folder.path)
+        )
+    )
+  if (folder.hidden) addVisibilityAction()
   menu.addItem((i) =>
     i
       .setTitle(t('chatTree.newChat'))
@@ -267,6 +269,10 @@ function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
       .onClick(() => source.value.renameFolder(folder.path))
   )
   menu.addSeparator()
+  if (!folder.hidden) {
+    addVisibilityAction()
+    menu.addSeparator()
+  }
   menu.addItem((i) =>
     i
       .setTitle(t('chatTree.delete'))

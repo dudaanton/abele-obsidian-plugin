@@ -37,6 +37,12 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         const bounds = button.getBoundingClientRect()
         button.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: bounds.left + bounds.width / 2, clientY: bounds.top + bounds.height / 2 }))
         await until(() => document.querySelector('.menu'))
+        const labels = [...document.querySelectorAll('.menu-item')].map(item => item.textContent.trim()).filter(Boolean)
+        const visibility = labels.find(label => label === 'Hide folder' || label === 'Hide folder and close its chats')
+        const expected = service.folders.isHidden(folder)
+          ? ['Show folder', 'New chat', 'New folder', 'Access…', 'Rename…', 'Delete']
+          : ['New chat', 'New folder', 'Access…', 'Rename…', visibility, 'Delete']
+        if (JSON.stringify(labels) !== JSON.stringify(expected)) throw Error('Folder menu order: ' + JSON.stringify(labels))
       }
       const action = text => {
         const item = [...document.querySelectorAll('.menu-item')].find(el => el.textContent.trim() === text)

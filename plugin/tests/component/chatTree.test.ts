@@ -71,6 +71,11 @@ it.each([
     ['Hide folder', 'Hide folder and close its chats', 'Show folder'].includes(item.title)
   )
   expect(visibility.map((item) => item.title)).toEqual([label])
+  expect(menu.items.map((item) => item.title).filter(Boolean)).toEqual(
+    hidden
+      ? ['Show folder', 'New chat', 'New folder', 'Access…', 'Rename…', 'Delete']
+      : ['New chat', 'New folder', 'Access…', 'Rename…', label, 'Delete']
+  )
   await visibility[0].handler!()
   expect(hidden ? source.showFolder : source.hideFolder).toHaveBeenCalledWith('Collection')
   shown.mockRestore()
