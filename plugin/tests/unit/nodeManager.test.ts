@@ -75,7 +75,9 @@ it('reports a retained developer worktree only after its integration succeeds, w
   }
 })
 function fixture(supported = true) {
-  const store = new NodeClientStore(crypto.randomUUID(), new IDBFactory())
+  const namespace = crypto.randomUUID(),
+    factory = new IDBFactory()
+  const store = new NodeClientStore(namespace, factory)
   const client = {
     connected: true,
     store,
@@ -95,11 +97,79 @@ function fixture(supported = true) {
     ),
   }
   return {
+    namespace,
+    factory,
     store,
     client,
     controller: new NodeManagerController(client as unknown as NodeClient, store),
   }
 }
+it('recovers an exact retry from retained terminal evidence after manager history eviction', async () => {
+  const f = fixture()
+  const params = { session_id: 'sample-session', project_id: 'sample-project', argv: ['pwd'] }
+  try {
+    await f.controller.mutate('sample-parent', 'command.v1.run', params, 'sample-oldest')
+    await f.store.transaction((s) => {
+      const original = s.managerOperations!['sample-oldest']
+      original.notified = true
+      original.run = { ...receipt, state: 'exited', exit_code: 0 } as never
+      for (let i = 0; i < 200; i++) {
+        const id = 'sample-newer-' + i
+        s.managerOperations![id] = structuredClone(original)
+        s.results[id] = { result: original.run }
+      }
+    })
+    expect(await f.store.read((s) => s.managerOperations?.['sample-oldest'])).toBeUndefined()
+    const reopened = new NodeClientStore(f.namespace, f.factory)
+    try {
+      const controller = new NodeManagerController(f.client as unknown as NodeClient, reopened)
+      expect(
+        await controller.mutate('sample-parent', 'command.v1.run', params, 'sample-oldest')
+      ).toMatchObject({ state: 'exited', exit_code: 0 })
+    } finally {
+      reopened.close()
+    }
+    expect(await f.store.read((s) => s.outbox)).toEqual([])
+    await expect(
+      f.controller.mutate('other-parent', 'command.v1.run', params, 'sample-oldest')
+    ).rejects.toThrow(/idempotency_mismatch/)
+    await f.store.transaction((s) => {
+      const terminal = Object.values(s.managerOperations!)[0]
+      for (let i = 0; i < 200; i++) {
+        const id = 'sample-later-manager-' + i
+        s.managerOperations![id] = structuredClone(terminal)
+        s.results[id] = { result: terminal.run }
+      }
+      for (let i = 0; i < 1100; i++) s.results['sample-later-' + i] = { result: 'settled' }
+    })
+    expect(await f.store.read((s) => s.results['sample-oldest'])).toBeUndefined()
+  } finally {
+    f.store.close()
+  }
+})
+
+it('marks a successful cancellation delivered without a parent wake', async () => {
+  const f = fixture()
+  const cancelled = { ...receipt, state: 'cancelled' }
+  vi.spyOn(f.controller, 'status').mockResolvedValue(cancelled as never)
+  f.client.flush.mockImplementationOnce(async () =>
+    f.store.transaction((s) => {
+      for (const entry of s.outbox) s.results[entry.operation_id] = { result: cancelled }
+      s.outbox = []
+    })
+  )
+  try {
+    await f.controller.mutate(
+      'sample-parent',
+      'command.v1.cancel',
+      { session_id: 'sample-session', run_id: 'sample-run' },
+      'sample-cancel'
+    )
+    expect(await f.store.read((s) => s.managerOperations!['sample-cancel'].notified)).toBe(true)
+  } finally {
+    f.store.close()
+  }
+})
 it('reuses an admitted legacy ID only for its original chat and exact action after upgrade', async () => {
   const f = fixture()
   const params = { session_id: 'sample-session', project_id: 'sample-project', argv: ['pwd'] }

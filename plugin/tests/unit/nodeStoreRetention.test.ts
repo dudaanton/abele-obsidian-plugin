@@ -2,6 +2,82 @@ import { expect, it, vi } from 'vitest'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { NodeClientStore } from '@/node/NodeClientStore'
 
+it('retains an editor pending receipt and request across pruning and reopening', async () => {
+  const factory = new IDBFactory()
+  const store = new NodeClientStore('sample-editor-recovery-retention', factory)
+  const request = {
+    method: 'workspace.write',
+    params: {
+      workspace_id: 'sample-workspace',
+      path: 'sample.txt',
+      expected_content_id: 'a'.repeat(64),
+      text: 'new text',
+    },
+  }
+  try {
+    await store.transaction((s) => {
+      s.results['sample-editor-write'] = { result: 'saved', request }
+      s.operationRequests = { 'sample-editor-write': request }
+      s.fileDrafts = {
+        sample: {
+          revision: crypto.randomUUID(),
+          baseContentId: 'a'.repeat(64),
+          baseText: 'old text',
+          text: 'new text',
+          status: 'outcome_unknown',
+          pending: { operationId: 'sample-editor-write', params: request.params },
+        },
+      }
+      for (let i = 0; i < 1100; i++) s.results['sample-' + i] = { result: 'settled' }
+    })
+    const reopened = new NodeClientStore('sample-editor-recovery-retention', factory)
+    try {
+      expect(await reopened.read((s) => s.results['sample-editor-write'])).toEqual({
+        result: 'saved',
+        request,
+      })
+      expect(await reopened.read((s) => s.operationRequests?.['sample-editor-write'])).toEqual(
+        request
+      )
+    } finally {
+      reopened.close()
+    }
+  } finally {
+    store.close()
+  }
+})
+
+it('bounds legacy successful cancellations which have no delivery wake', async () => {
+  const store = new NodeClientStore('sample-cancel-retention', new IDBFactory())
+  try {
+    await store.transaction((s) => {
+      s.managerOperations = {}
+      for (let i = 0; i < 250; i++) {
+        const run = {
+          run_id: 'sample-run-' + i,
+          session_id: 'sample-session',
+          method: 'command.v1.run' as const,
+          state: 'cancelled' as const,
+          stdout: '',
+          stderr: '',
+          stdout_truncated: false,
+          stderr_truncated: false,
+        }
+        s.managerOperations['sample-' + i] = {
+          parent: 'sample-parent',
+          method: 'command.v1.cancel',
+          params: {},
+          run,
+        }
+        s.results['sample-' + i] = { result: run }
+      }
+    })
+    expect(await store.read((s) => Object.keys(s.managerOperations!).length)).toBe(200)
+  } finally {
+    store.close()
+  }
+})
+
 it('migrates version-2 receipts atomically and refuses older clients after the layout changes', async () => {
   const factory = new IDBFactory()
   await new Promise<void>((resolve, reject) => {

@@ -15,6 +15,61 @@ import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it('recovers a settled legacy removal receipt without resolving the deleted worktree', async () => {
+    const f = setupGit()
+    const remove = vi.fn()
+    const retained = {
+      request: {
+        method: 'repository.v1.worktree.delete',
+        params: {
+          worktree_id: 'sample-tree',
+          expected_head: '1'.repeat(40),
+          expected_observation_id: 'sample-observation',
+        },
+      },
+      result: {
+        operation_id: 'sample-legacy-remove',
+        state: 'deleted',
+        worktree_id: 'sample-tree',
+      },
+    }
+    Object.assign(f.client, {
+      nodePath: { deleteWorktree: remove },
+      operationResult: vi.fn(async (id: string) =>
+        id === 'sample-legacy-remove' ? retained : undefined
+      ),
+    })
+    f.repository.worktrees.mockResolvedValue({
+      entries: [],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
+    const result = await f.call(
+      'node_worktree_remove',
+      {
+        expected_head: '1'.repeat(40),
+        expected_observation_id: 'sample-observation',
+        operation_id: 'sample-legacy-remove',
+      },
+      true
+    )
+    expect(result.content[0].text).toContain('deleted')
+    expect(f.repository.worktrees).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    await expect(
+      f.call(
+        'node_worktree_remove',
+        {
+          expected_head: '2'.repeat(40),
+          expected_observation_id: 'sample-observation',
+          operation_id: 'sample-legacy-remove',
+        },
+        true
+      )
+    ).rejects.toThrow(/not in folder/)
+    expect(remove).not.toHaveBeenCalled()
+  })
   it('never replaces an unresolved legacy commit with a newly scoped operation', async () => {
     const f = setupGit()
     f.session.permissionMode.value = 'allow-all'

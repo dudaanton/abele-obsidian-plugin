@@ -238,6 +238,10 @@ scoped to the executing chat, tool and exact action. Exact retries retain the sa
 The local cache retains the latest 1,000 unreferenced settled receipts and 200 delivered
 terminal manager actions. Pending, uncertain, undelivered and recovery-linked evidence is
 never removed by these limits. Command output remains bounded by the requested output tail.
+Evicted detailed manager records leave their terminal outcome, executing chat identity and
+exact request in the bounded receipt cache, preserving exact retries while that receipt is
+retained. Pending editor drafts protect their write receipts and requests. Successful terminal
+cancellations participate in retention without a separate parent notification.
 The node-client database is version 3; older clients cannot reopen it and mistake separated
 receipts for missing outcomes. Version-1 journals and version-2 metadata remain migratable.
 

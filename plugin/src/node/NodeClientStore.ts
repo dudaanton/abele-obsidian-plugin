@@ -39,6 +39,8 @@ export interface NodeClientState extends ClientState {
       result?: unknown
       error?: string
       request?: { method: string; params: unknown }
+      /** Retry provenance retained after the detailed manager history is evicted. */
+      managerParent?: string
       input?: { sessionId: string; text: string }
       answer?: { sessionId: string; promptId: string; choice: 'allow' | 'deny'; value?: string }
     }
@@ -108,6 +110,7 @@ const StateSchema = z
         result: z.unknown().optional(),
         error: z.string().optional(),
         request: z.object({ method: z.string(), params: z.unknown() }).optional(),
+        managerParent: z.string().optional(),
         answer: z
           .object({
             sessionId: z.string().min(1).max(128),

@@ -128,8 +128,20 @@ export class NodeManagerController {
         z.string().parse(params.run_id)
       )
     await this.store.transaction((s) => {
+      const retainedOperation = (id: string): ManagerOperation | undefined => {
+        const previous = s.managerOperations?.[id]
+        if (previous) return previous
+        const receipt = s.results[id]
+        if (
+          receipt?.managerParent !== parent ||
+          receipt.request?.method !== method ||
+          JSON.stringify(receipt.request.params) !== JSON.stringify(params)
+        )
+          return
+        return { parent, method, params, notified: true }
+      }
       // An upgrade must not replace an already admitted retry in this same chat.
-      const legacy = legacyAlias ? s.managerOperations?.[legacyAlias] : undefined
+      const legacy = legacyAlias ? retainedOperation(legacyAlias) : undefined
       if (
         legacyAlias &&
         legacy?.parent === parent &&
@@ -137,7 +149,7 @@ export class NodeManagerController {
         JSON.stringify(legacy.params) === JSON.stringify(params)
       )
         operation = legacyAlias
-      const previous = s.managerOperations?.[operation]
+      const previous = retainedOperation(operation)
       if (
         previous &&
         (previous.parent !== parent ||
@@ -169,6 +181,13 @@ export class NodeManagerController {
       throw new Error(nodeErrorDetails(receipt.error))
     }
     const run = ManagerRunSchema.parse(receipt.result)
+    if (
+      method === 'command.v1.cancel' &&
+      !['pending_approval', 'running', 'outcome_unknown'].includes(run.state)
+    )
+      await this.store.transaction((s) => {
+        if (s.managerOperations?.[operation]) s.managerOperations[operation].notified = true
+      })
     await this.client.subscribe(run.session_id).catch((error) => {
       console.debug('[Abele node] accepted command awaits activity refresh', error)
     })

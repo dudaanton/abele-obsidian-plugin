@@ -133,7 +133,7 @@ export function pruneSettledRecords(state: NodeClientState): void {
     const receipt = state.results[id]
     const run = operation.run ?? (receipt?.result as { state?: string } | undefined)
     return (
-      operation.notified &&
+      (operation.notified || operation.method === 'command.v1.cancel') &&
       ((run &&
         ['exited', 'applied', 'failed', 'cancelled', 'denied', 'timed_out'].includes(
           run.state ?? ''
@@ -141,7 +141,15 @@ export function pruneSettledRecords(state: NodeClientState): void {
         (receipt?.error && !uncertainReceiptError(receipt.error)))
     )
   })
-  for (const [id] of settled.slice(0, Math.max(0, settled.length - 200))) {
+  for (const [id, operation] of settled.slice(0, Math.max(0, settled.length - 200))) {
+    // Admission may still say "running". Retire it with the latest terminal evidence
+    // and the exact owner/request, so retained receipts remain safely retryable.
+    state.results[id] = {
+      ...state.results[id],
+      ...(operation.run ? { result: operation.run } : {}),
+      request: { method: operation.method, params: operation.params },
+      managerParent: operation.parent,
+    }
     delete state.managerOperations![id]
   }
   const protectedIds = new Set([
@@ -153,6 +161,9 @@ export function pruneSettledRecords(state: NodeClientState): void {
     ...Object.keys(state.obsidianExecutions ?? {}),
     ...Object.keys(state.nodeLetters ?? {}),
     ...Object.keys(state.delegation?.tasks ?? {}),
+    ...Object.values(state.fileDrafts ?? {}).flatMap((draft) =>
+      draft.pending ? [draft.pending.operationId] : []
+    ),
   ])
   const discardable = Object.keys(state.results).filter((id) => {
     const receipt = state.results[id]

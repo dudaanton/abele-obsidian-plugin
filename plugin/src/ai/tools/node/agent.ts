@@ -643,9 +643,24 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
                   .parse(params.expected_observation_id),
               }),
         }
-        const receipt = await safe(
+        let receipt = await safe(
           () => client.operationResult?.(operation) ?? Promise.resolve(undefined)
         )
+        if (!receipt) {
+          const legacy = await safe(
+            () =>
+              client.operationResult?.(z.string().parse(params.operation_id)) ??
+              Promise.resolve(undefined)
+          )
+          // Pre-namespace receipts have no chat binding. Recover only the exact retained
+          // target/action, never submit effects under their installation-wide alias.
+          if (
+            legacy?.request?.method === method &&
+            nodeMutationKey('', name, target, legacy.request.params) ===
+              nodeMutationKey('', name, target, request)
+          )
+            receipt = legacy
+        }
         const pending = await safe(() =>
           readStore(client.store, (s) => {
             const legacy = s.outbox.find((entry) => entry.operation_id === params.operation_id)
