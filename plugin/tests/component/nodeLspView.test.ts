@@ -184,6 +184,25 @@ describe('node language diagnostics in the shared file viewer', () => {
     await flushPromises()
     expect(context.document.listeners.size).toBe(0)
   })
+  it.each([undefined, 'missing: install eslint in this project'])(
+    'keeps TypeScript diagnostics available when only the optional lint server is missing (%s)',
+    async (projectEslint) => {
+      const view = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+      await flushPromises()
+      const context = lspFor(document.querySelector('.abele-lsp-root')!)!
+      context.document.status = context.document.status.map((status) =>
+        status.language === 'eslint'
+          ? { ...status, found: false, project_eslint: projectEslint }
+          : status
+      )
+      for (const listener of context.document.listeners) listener()
+      await nextTick()
+      expect(document.body.textContent).not.toContain('Language server missing')
+      expect(document.body.textContent).toContain('TypeScript analysis remains available.')
+      expect(document.querySelector('[data-lsp-diagnostics]')).not.toBeNull()
+      view.unmount()
+    }
+  )
   it.each([
     ['missing', 'abele-node lsp install --popular'],
     ['untrusted', 'Trust folder'],

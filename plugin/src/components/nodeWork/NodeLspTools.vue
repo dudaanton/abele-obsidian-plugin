@@ -115,10 +115,13 @@ const relevant = computed(() =>
   )
 )
 const untrusted = computed(() => relevant.value.some((s) => s.reason === 'untrusted_folder'))
-const missing = computed(() => relevant.value.some((s) => !s.found))
+const missing = computed(() =>
+  relevant.value.some((s) => s.language === language.value && !s.found)
+)
 const eslintMissing = computed(() =>
   relevant.value.some(
-    (s) => s.language === 'eslint' && !!s.project_eslint && s.project_eslint !== 'found'
+    (s) =>
+      s.language === 'eslint' && (!s.found || (!!s.project_eslint && s.project_eslint !== 'found'))
   )
 )
 function navigate(locations: LspLocation[]) {

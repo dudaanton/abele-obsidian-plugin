@@ -77,6 +77,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
         await api.openDialog('node-lsp-live', {lspFile:{text:${JSON.stringify(source)},target:{kind:'workspace',id:workspace.workspace_id,projectId:project.project_id,registrationId:${JSON.stringify(node.registration)},nodeId:${JSON.stringify(node.node)}}}});
         await until(()=>document.querySelector('.abele-lsp-root .cm-content'),'Live language viewer');
         await until(()=>document.querySelector('.abele-lsp-error'),'Live diagnostic');
+        if(document.querySelector('.modal.abele-modal').textContent.includes('Language server missing'))throw Error('Optional lint server hid TypeScript status');
         const point = (word, line) => {
           const content=document.querySelectorAll('.abele-lsp-root .cm-line')[line];
           const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);
@@ -102,6 +103,11 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');
           if(!popup.textContent.includes('overload'))throw Error('Overloaded signature missing');
           await shot(theme+'-overloaded');
+          popup.scrollTop=popup.scrollHeight;
+          const docs=popup.querySelector('.abele-lsp-documentation');
+          const docsBox=docs.getBoundingClientRect(), popupBox=popup.getBoundingClientRect();
+          if(docsBox.bottom>popupBox.bottom+1 || docsBox.top<popupBox.top)throw Error('Hover documentation cannot be scrolled into view');
+          await shot(theme+'-overloaded-docs');
           document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));
           await until(()=>!document.querySelector('.abele-lsp-message'),'Modifier release');
           const short=point('sample',1);move(short,true);
