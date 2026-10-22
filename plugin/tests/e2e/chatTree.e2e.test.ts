@@ -94,7 +94,7 @@ const probe = (label: string) => `(async () => {
       const nodeMore = nodeRow.querySelector('[aria-label="Sample node conversation: more"]')
       if(nodeMore)clickAt(nodeMore)
       else nodeRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:nodeRow.getBoundingClientRect().left+20,clientY:nodeRow.getBoundingClientRect().top+10}))
-      await until(()=>document.querySelector('.menu'))
+      await until(()=>document.querySelector('.menu-item'))
     }
     await nodeMenu()
     await shot('node-menu')

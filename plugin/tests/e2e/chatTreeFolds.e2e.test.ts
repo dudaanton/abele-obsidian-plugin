@@ -47,7 +47,7 @@ const check = async (label: string) => {
         files.push(child.currentChatFile.value)
         await service.tree.refresh()
         if(current().getAttribute('aria-expanded')!=='true')current().click()
-        const row=()=>root.querySelector('[data-chat="'+parentId+'"] > .tree-item-self')
+        const row=()=>document.querySelector('[data-chat="'+parentId+'"] > .tree-item-self')
         await until(row)
         if(row().getAttribute('aria-expanded')==='true')row().querySelector('.collapse-icon').click()
         await until(()=>row().getAttribute('aria-expanded')==='false')
@@ -65,6 +65,8 @@ const check = async (label: string) => {
         current().click();await wait(100);current().click()
         await until(row)
         if(row().getAttribute('aria-expanded')!=='false')throw Error('Reopening tree expanded parent')
+        service.switchTab(parentId)
+        await until(()=>service.activeTabId.value===parentId)
         service.switchTab(childId)
         await until(()=>row().getAttribute('aria-expanded')==='true')
         await shot('explicit-selection')
@@ -73,7 +75,7 @@ const check = async (label: string) => {
         if(row().getAttribute('aria-expanded')!=='false')throw Error('Selection was revealed twice')
         return 'true'
       } finally {
-        const parentRow=leaf?.view.containerEl.querySelector('[data-chat="'+ids[0]+'"] > .tree-item-self')
+        const parentRow=document.querySelector('[data-chat="'+ids[0]+'"] > .tree-item-self')
         if(parentRow?.getAttribute('aria-expanded')==='false')parentRow.querySelector('.collapse-icon').click()
         for(const id of ids){const session=service.getSession(id);if(session)session.isStreaming.value=false;await service.closeTab(id)}
         for(const file of files)if(app.vault.getAbstractFileByPath(file.path))await app.vault.delete(file)
