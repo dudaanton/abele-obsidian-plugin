@@ -1,6 +1,6 @@
 # Diagrams
 
-Pele draws Mermaid source in ```mermaid and ```pele fences everywhere notes are rendered:
+Pele draws Mermaid source in `mermaid` and `pele` fences everywhere notes are rendered:
 reading view, Live Preview, embeds, callouts, canvas cards, chat, columns, slides and script views.
 
 ## What you get
