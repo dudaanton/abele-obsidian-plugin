@@ -48,7 +48,7 @@ import type { Pair, RequestDoc } from './wire'
 import { ScriptService } from '@/scripting/ScriptService'
 import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPicker'
 import { assignRequestScript, requestScriptProblems, type ScriptMoment } from './scripts'
-import { collectionOf } from './shapes'
+import { collectionOf, originOf } from './shapes'
 import { DebuggerService } from '@/debugger/DebuggerService'
 
 export const REQUESTS_VIEW = 'abele-requests'
@@ -370,7 +370,7 @@ export class RequestTab extends ItemView {
             const entry = model.entry(s.id)
             const doc = entry.doc
             if (!doc) return h(EmptyState, { text: entry.error ?? 'Reading the request…' })
-            const recording = service.recording(s, addressOf(doc, model.vars(doc, true))).value
+            const recording = service.recording(s, originOf(addressOf(doc, model.vars()))).value
             const binding = DebuggerService.instance.active.value
             if (binding) void binding.revision.value
             const session =

@@ -8,6 +8,26 @@ import {
 import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 
 beforeEach(() => forgetRequestSecrets())
+it('looks up recordings with only the origin of a send containing secrets', async () => {
+  const node = fakeNode()
+  const id = 'Samples/Private.http'
+  node.files.set(
+    id,
+    doc({
+      url: 'https://sample-user:sample-pass@example.test:8443/{{privatePath}}?token=sample-token#hidden',
+    })
+  )
+  const recording = vi.fn(() => undefined)
+  const model = new RequestsModel(node.rpc, 'project-1', ports({ recording }))
+  await model.load()
+  await model.saveEnvironment({
+    name: 'local',
+    vars: [{ key: 'privatePath', secret: true, value: 'sample-private' }],
+  })
+  await model.send(id, { interactive: true, intoRecording: true })
+  expect(recording).toHaveBeenCalledExactlyOnceWith('https://example.test:8443')
+  expect(node.sent[0].url).toContain('/sample-private?token=sample-token')
+})
 it('routes recorded sends by destination and enables instrumentation correlation', async () => {
   const node = fakeNode()
   const model = new RequestsModel(

@@ -50,12 +50,32 @@ it('uses the node destination owner even when program output names another addre
   })
   expect(state.request).toHaveBeenCalledWith('http.v1.destination', {
     project_id: 'sample-project',
-    url: 'http://localhost:4567/items',
+    url: 'http://localhost:4567',
   })
   state.supported = false
   state.request.mockClear()
   expect(await destinationRecording(context, 'http://localhost:4567/items')).toBeUndefined()
   expect(state.request).not.toHaveBeenCalled()
+})
+
+it('shares an origin lookup across credentials, paths, queries and fragments', async () => {
+  state.supported = true
+  state.request.mockClear()
+  state.request.mockResolvedValue({ reason: 'ambiguous', debug_session_id: null, candidates: [] })
+  RequestsService.destroy()
+  const service = RequestsService.instance()
+  const context = { registrationId: 'sample-node', projectId: 'sample-project' }
+  void service.recording(
+    context,
+    'https://sample-user:sample-pass@example.test:8443/private?token=sample-token#hidden'
+  ).value
+  await vi.waitFor(() => expect(state.request).toHaveBeenCalledOnce())
+  void service.recording(context, 'https://example.test:8443/other?token=other-token').value
+  expect(state.request).toHaveBeenCalledExactlyOnceWith('http.v1.destination', {
+    project_id: 'sample-project',
+    url: 'https://example.test:8443',
+  })
+  RequestsService.destroy()
 })
 it('updates the recording label when the node rejects a provisional owner as ambiguous', async () => {
   state.supported = true

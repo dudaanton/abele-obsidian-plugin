@@ -18,6 +18,7 @@ import type { Outgoing } from './resolve'
 import { HttpRpc, nodeHttpSupported, httpRecordingCapabilities } from './wire'
 import type { RequestRecording } from './ports'
 import { distinctProjects, projectOfTab, serverAddress } from './projectContext'
+import { originOf } from './shapes'
 
 export const RequestsContextSchema = z.object({
   registrationId: z.string().min(1),
@@ -170,6 +171,8 @@ export async function destinationRecording(
   url?: string
 ): Promise<RequestRecording | undefined> {
   if (!url) return recordingOf(c)
+  url = originOf(url)
+  if (!url) return undefined
   const connection = NodeService.getInstance().connection(c.registrationId)
   await connection.connect()
   const support = httpRecordingCapabilities(await connection.client.describe())
@@ -286,6 +289,7 @@ export class RequestsService {
     c: Pick<RequestsContext, 'registrationId' | 'projectId'>,
     url?: string
   ): ComputedRef<{ sessionId: string; name: string } | undefined> {
+    url = url ? originOf(url) : undefined
     return computed(() => {
       const fallback = recordingOf(c, url)
       if (!url) return fallback

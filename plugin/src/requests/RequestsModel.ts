@@ -434,7 +434,7 @@ export class RequestsModel {
       const keyed = await this.ports.keys.prepare(out, options.interactive, options.signal)
       const recording =
         (options.intoRecording ?? this.state.intoRecording)
-          ? await this.ports.recording(keyed.out.url)
+          ? await this.ports.recording(originOf(keyed.out.url))
           : undefined
       const into = recording
       const started = await this.rpc.send(this.projectId, {
