@@ -535,9 +535,10 @@ it.each(['desktop', 'phone'])(
       if(leaf.containerEl.querySelector('.abele-debug-source__point'))throw Error('Edited source still offers breakpoints');
       app.workspace.rightSplit.collapse();
       await shot('edited-source-${device}-refused');
+      const previousSession=binding.sessionId;
       await binding.controller.command('stop');
       await binding.rerun();
-      await until(()=>service.active.value!==binding&&service.active.value?.controller.session.status==='paused','edited program restarted');
+      await until(()=>service.active.value?.sessionId&&service.active.value.sessionId!==previousSession&&service.active.value.controller.session.status==='paused','edited program restarted');
       binding=service.active.value;
       await app.workspace.revealLeaf(leaf);
       const mark=await until(()=>marginAt(4,leaf.containerEl),'edited source admitted after restart');
