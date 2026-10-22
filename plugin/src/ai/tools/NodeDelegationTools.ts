@@ -248,7 +248,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
             parent,
             input,
             signal,
-            chat?.permissionMode.value
+            chat?.permissionMode?.value
           )
           if (signal?.aborted && 'delegation_id' in child) {
             await connection.delegation.cancel(parent, child.delegation_id).catch(() => {})

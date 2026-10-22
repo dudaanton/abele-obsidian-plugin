@@ -134,8 +134,10 @@ export function agentChoices(providers: readonly NodeProvider[]): AgentChoice[] 
       provider: name,
       label: providerLabel(name),
       permissionNote:
-        p?.configuration?.per_action_approval === false ||
-        (name === 'codex' && p?.configuration?.per_action_approval !== true)
+        p &&
+        providerAvailable(p) &&
+        (p.configuration?.per_action_approval === false ||
+          (name === 'codex' && p.configuration?.per_action_approval !== true))
           ? t('streamB.permissionNeedsBypass')
           : undefined,
       unavailable: !p

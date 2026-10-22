@@ -705,10 +705,10 @@ export function startNodePathChat(
     await configureOwnerPermissionMode(
       connection.client,
       session.session_id,
-      nodeAgentOwnerMode(model.nodeId, choice.provider),
+      nodeAgentOwnerMode(bound.nodeId, choice.provider),
       choice.provider
     )
-    rememberNodeAgent(model.nodeId, choice, app())
+    rememberNodeAgent(bound.nodeId, choice, app())
     // The returned session already carries this exact target. Refresh drawer metadata
     // in the background; recursively listing its files is not part of opening a chat.
     void model.refresh().catch((error: unknown) => model.report(error))

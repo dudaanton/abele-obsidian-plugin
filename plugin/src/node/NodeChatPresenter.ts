@@ -984,7 +984,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
       }
       const policy = readToolPermissions(this.control.state.value)
       const mode = policy?.permission_mode === 'bypassPermissions' ? 'allow-all' : 'confirm-all'
-      const refusal = legacyProviderRefusal(this.nodeDescription.value ?? await client.describe(), this.provider.value, mode)
+      const refusal = legacyProviderRefusal(
+        this.nodeDescription.value ??
+          (this.provider.value === 'codex' ? await client.describe() : undefined),
+        this.provider.value,
+        mode
+      )
       if (refusal) throw new Error(refusal)
       await this.connection.obsidian?.ensureSession(this.reference.sessionId, this.provider.value)
       const observed_seq = await client.cursor(this.reference.sessionId)

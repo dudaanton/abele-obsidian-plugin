@@ -80,7 +80,7 @@
     <NodeToolPermissions
       :policy="readToolPermissions(presenter.control?.state.value)"
       :reason="presenter.error.value || presenter.connection.error.value"
-      :node-id="presenter.reference.nodeId"
+      :node-id="presenter.reference?.nodeId"
       :node-label="nodeLabel"
       :provider="presenter.provider?.value ?? ''"
     />
