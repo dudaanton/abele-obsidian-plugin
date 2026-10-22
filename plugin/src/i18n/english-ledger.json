@@ -27688,5 +27688,315 @@
       "es",
       "de"
     ]
+  },
+  "node.log.truncated": {
+    "englishHash": "2fcc342d99f5e4b945b3fccc72ebf2806a2794edfe5d1b51e97d4f62da7cf5ee",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.missing": {
+    "englishHash": "18ee3d25fb4c56d6243b40688116aacb19542882d582d51b688e95e12b00749a",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.unavailable": {
+    "englishHash": "380fc5177775fb04339ea718b5adfee1b897aa6462bab88a10f009c347e9d80d",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.unknownTime": {
+    "englishHash": "92eeb71e6ad8f45f9bcb463a6f0697038b56285000967905e86a0486d13d7f88",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.state.offline": {
+    "englishHash": "543f35fd743fd8aa4f0d3c896b138833338ded82d71219bcf444e43aaeca486e",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.state.reconnecting": {
+    "englishHash": "56d7c9b86ad81766a03bed8a9dca1fc868cd8d05f83408d326d7e9021a19ee5a",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.state.slow": {
+    "englishHash": "b86f7a267a1f1f63e7cc4fa7a7424ae8ce8e49df81725635a8dc43f05959b746",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.retry": {
+    "englishHash": "986142cbeebbf68ea11c46025af7a1c5cc7e491d5c2f50967cf92ab2759f924d",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.refresh": {
+    "englishHash": "8a66ad4ea5a09cee9b4ffcc7d050ef1c841560e3ea1ec1083a4d5f60f4b81c57",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.reconnect": {
+    "englishHash": "ab19519e9c88c37bc6cefdabe450793450dc56e12bc9affc738396c9ebac058a",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.trust": {
+    "englishHash": "8ddb0e842c61f39f4c046122d87593066f1bf755b5fc578a0ecfe43725a2c709",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.pair": {
+    "englishHash": "47e546e7275758b3cf0024eed0aaedfeced8105ba264db0338f6b94f37610e25",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.settings": {
+    "englishHash": "d95d12741c9f9fa3040f90bcadfbbbe95f7be138cc641731520664938ec99ba3",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.update": {
+    "englishHash": "99bcf8183c27dbb5a4a15d75a8e9d784d5e512f09ea18eaf97ddbd864e820e8a",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.action.install": {
+    "englishHash": "f42939413ca26561eef8ae57baa16c03f47015789f147a3decad43c219bd118b",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.copyDetails": {
+    "englishHash": "5928438cd886185a522362b211ee0d3c34fa4e538ab4ad001a9b2ab2d76658d7",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.code": {
+    "englishHash": "0083932a4dba1cfd3f1de0ef99c7289417a07b03e071b8b1dd268fa5db50ce34",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.what": {
+    "englishHash": "1145999bb946e05a3507c00cba1b94fa19ead0e85fc6bf8be8f260d6327798c9",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.where": {
+    "englishHash": "0d0184d4fbf03c3204711b34b2ef49aa0b5ca55aa20e79c4f21c616d3a5fb0d5",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.when": {
+    "englishHash": "52889aca6a748e1f4c17a0afe17911d2e493c203019aafaf6c5be04d0e9420be",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.original": {
+    "englishHash": "a6238259a9cb72911914d6ce84de2d119564991ac474b2199a085a6d830edf97",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.title": {
+    "englishHash": "7130666e28f644eede4bbdd136487701efd7200e692d6ccf3ded7f2372885178",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.all": {
+    "englishHash": "d853c0864f817e6676c75976a224108203e37463391e996768ad4eaaa6f57ae2",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.warnings": {
+    "englishHash": "75a72b2650d18d877f4188a06e5e818f753c505c36bd88318000fe1c161b4a78",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.filter": {
+    "englishHash": "ad66bae687e135f99b76aaeced09657c6f853a03c0177001e508587e2c7c42d6",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.copy": {
+    "englishHash": "a3a054340db1263382b860c3853c3ac150ba0fe51ab5a6f7e1ebbf30034c0aed",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.offline": {
+    "englishHash": "23ba9c2ec845b001cb136727afa7f4e5c20624b31ed7c301d60bd2b02cc76ba4",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.empty": {
+    "englishHash": "855d709f277f9929ceedf0414aa84afcda89ad31333c7a5abc5dd5c44a07d306",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.log.loading": {
+    "englishHash": "4fe56e974611de2cb53a6f60c7ec20e438cf5004fa37bfd40f6f2bd9e5ace6d9",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.ownerOnly": {
+    "englishHash": "4af1c8051015127b634d45ba214fae7d5dc5cdc005f4680dab9de6226ee8ed84",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.readingFile": {
+    "englishHash": "55622f7cea395db174e4e6433f2df11a9090574d03d2e8c93b47b29086214dad",
+    "context": "Node state, recovery action or local log reader",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
