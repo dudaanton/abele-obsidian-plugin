@@ -404,7 +404,8 @@ export function syncPlacementPlugin() {
                 () => this.adoptExistingUnlocked(change, entry))) return true;
           // Placement must still validate a move's source, but it needs no body transfer
           // when the destination already contains the immutable remote bytes.
-          if (!recovering && await this.destinationMatches(change.path, sha, change.size))
+          if (!recovering && this.adoptionCandidates?.get(change.file_id) !== false &&
+              await this.destinationMatches(change.path, sha, change.size))
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
               () => this.placeUnlocked(change, sha, entry, fetched, local));
           // Downloads do not own paths. The original placer revalidates the source after waiting.
