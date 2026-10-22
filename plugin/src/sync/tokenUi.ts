@@ -123,7 +123,9 @@ export async function connectStage<T>(
     ])
   } catch (error) {
     controller.abort()
+    if (signal?.aborted) throw error instanceof SyncCancelled ? error : new SyncCancelled()
     if (
+      error instanceof SyncCancelled ||
       error instanceof V2ClientError ||
       error instanceof ConnectStageError ||
       /Sync recovery required|External files:/.test(String(error))
