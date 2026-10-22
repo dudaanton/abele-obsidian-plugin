@@ -95,6 +95,8 @@ counting covers the entire instrumented app lifecycle, including second-device j
 Throughput includes interruption downtime; it is not a raw-link benchmark. Renderer long tasks
 are reported as an upper bound for all renderer activity, without attributing them to sync.
 Missing measurements fail; a failed scenario never becomes an implicit pass.
+Device settle failures are retained while later reachable steps and the byte oracles continue.
+Byte equality cannot pass unless both device scans and every server download finished.
 
 Targeted harness tests:
 

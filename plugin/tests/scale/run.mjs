@@ -94,6 +94,8 @@ export class RealVault {
         const state = await this.snapshot()
         if (state?.job === 'failed')
           throw new Error('Sync action failed (private details suppressed)')
+        if (state?.rows.some((row) => row.status === 'error'))
+          throw new Error('Vault entered an error state')
         return (
           state?.job !== 'pending' &&
           state?.rows.length &&
@@ -178,7 +180,13 @@ export async function run(config) {
     ...config.parameters,
     seed: config.seed ?? 1,
   }
-  const report = { build: config.build, ...options, interruptions: [], phase: 'preflight' }
+  const report = {
+    build: config.build,
+    ...options,
+    interruptions: [],
+    failures: [],
+    phase: 'preflight',
+  }
   const phase = (name) => {
     report.phase = name
     console.debug('[scale]', name)
@@ -189,6 +197,23 @@ export async function run(config) {
   let issued
   let owner
   const devices = config.vaults.map((root) => new RealVault(config, root))
+  const settle = async (device, step) => {
+    try {
+      await device.idle(config.timeoutMs)
+      return true
+    } catch (error) {
+      const reason = [
+        'Vault entered an error state',
+        'Sync action failed (private details suppressed)',
+        'Timed out: vault idle',
+      ].includes(error.message)
+        ? error.message
+        : 'Device state unavailable'
+      report.failures.push({ step, reason, snapshot: await device.snapshot().catch(() => null) })
+      await device.invalidateJob().catch(() => {})
+      return false
+    }
+  }
   const stop = async (hard) => {
     if (!appProcess) return
     if (!hard)
@@ -328,10 +353,13 @@ export async function run(config) {
     await a.evaluate(`await app.plugins.enablePlugin('abele');return true`)
     mark('plugin disable-enable')
     await a.ready()
-    await a.idle(config.timeoutMs)
+    report.firstUploadSettled = await settle(a, 'first upload')
+    const uploaded = (await manifest(token)).filter((file) => file.kind !== 'directory')
+    report.uploadedFiles = uploaded.length
+    report.uploadedBytes = uploaded.reduce((sum, file) => sum + file.size, 0)
     const firstUploadMs = Date.now() - firstUploadAt
-    report.filesPerSecond = options.files / (firstUploadMs / 1000)
-    report.mibPerSecond = options.bytes / 1024 ** 2 / (firstUploadMs / 1000)
+    report.filesPerSecond = report.uploadedFiles / (firstUploadMs / 1000)
+    report.mibPerSecond = report.uploadedBytes / 1024 ** 2 / (firstUploadMs / 1000)
     phase('second device pull')
     await b.ready()
     await triggered(q, 'pull', () => b.connect(tokenFiles[1]))
@@ -347,7 +375,7 @@ export async function run(config) {
     mark('pause mid-pull')
     await b.paused(false)
     await b.sync()
-    await b.idle(config.timeoutMs)
+    await settle(b, 'second device pull')
     phase('edits and settle')
     const edits = [
       { device: a, path: `${prefix}/Notes/Device A.md`, text: '# Device A\n' },
@@ -367,13 +395,21 @@ export async function run(config) {
     for (let i = 0; i < 3; i++) {
       await a.sync()
       await b.sync()
-      await a.idle(config.timeoutMs)
-      await b.idle(config.timeoutMs)
+      await settle(a, `edit cycle ${i} device A`)
+      await settle(b, `edit cycle ${i} device B`)
     }
     await stop(false)
     phase('synced restart')
     const restartAt = Date.now()
     await start()
+    await wait(
+      'restart first server request',
+      () =>
+        proxies.every((proxy) =>
+          proxy.events.some((e) => e.event === 'start' && e.at >= restartAt)
+        ),
+      60000
+    ).catch(() => {})
     report.deviceRestartRequestMs = proxies.map((proxy) => {
       const first = proxy.events.find((e) => e.event === 'start' && e.at >= restartAt)
       return first ? first.at - restartAt : null
@@ -381,9 +417,10 @@ export async function run(config) {
     report.restartRequestMs = report.deviceRestartRequestMs.every((value) => value !== null)
       ? Math.max(...report.deviceRestartRequestMs)
       : undefined
-    await a.idle(config.timeoutMs)
-    await b.idle(config.timeoutMs)
-    report.restartIdleMs = Date.now() - restartAt
+    const settledA = await settle(a, 'restart device A')
+    const settledB = await settle(b, 'restart device B')
+    report.restartIdleMs = settledA && settledB ? Date.now() - restartAt : undefined
+    report.restartObservedMs = Date.now() - restartAt
     await stop(false)
     phase('byte verification')
     report.mismatches = []
@@ -420,6 +457,9 @@ export async function run(config) {
     )
     report.serverFiles = serverFiles.length
     report.verifiedFiles += serverFiles.length
+    report.verificationComplete = true
+    if (report.failures.length)
+      report.failure = 'Device settle checks failed; byte evidence was still collected'
     phase('complete')
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.

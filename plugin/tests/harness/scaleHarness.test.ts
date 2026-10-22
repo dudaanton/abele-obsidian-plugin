@@ -10,6 +10,17 @@ import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  it('requires server verification to finish before byte equality can pass', () => {
+    expect(
+      budgets({ verifiedFiles: 1000, mismatches: [] }).find((row) => row.name === 'byte equality')
+        .status
+    ).toBe('FAIL')
+  })
+  it('reports a device error promptly instead of waiting for an idle timeout', async () => {
+    const vault = new RealVault({}, '/sample-vault')
+    vault.snapshot = async () => ({ rows: [{ status: 'error' }], engines: [] })
+    await expect(vault.idle(5)).rejects.toThrow('Vault entered an error state')
+  })
   it('cuts a content batch after the server applied it and before its acknowledgement reaches the client', async () => {
     let applied = false
     const upstream = createServer(async (req, res) => {

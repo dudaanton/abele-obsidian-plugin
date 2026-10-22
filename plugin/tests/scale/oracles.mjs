@@ -52,7 +52,7 @@ export function budgets(m) {
       'byte equality',
       m.mismatches?.length,
       0,
-      m.verifiedFiles > 0 && m.mismatches?.length === 0
+      m.verificationComplete === true && m.verifiedFiles > 0 && m.mismatches?.length === 0
     ),
     check(
       'interruptions',
