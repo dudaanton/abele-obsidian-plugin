@@ -1,5 +1,5 @@
 import { t } from '@/i18n'
-import type { MessageKey } from '@/i18n/types'
+import type { MessageKey, Params } from '@/i18n/types'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { agentText } from '@/i18n/streamBText'
 
@@ -12,7 +12,11 @@ export function nodeActionError(error: unknown, action: 'Stage' | 'Chat' | 'Read
   return new UiError(uiMessage(`node.error.busy${action}`))
 }
 
-type NodeErrorKey = Extract<MessageKey, `node.error.${string}`>
+type ErrorKey = Extract<MessageKey, `node.error.${string}`>
+// The lookup contains complete sentences; operation labels with slots are rendered by callers.
+type NodeErrorKey = {
+  [K in ErrorKey]: keyof Params<K> extends never ? K : never
+}[ErrorKey]
 const busyActions = ['node.error.busyStage', 'node.error.busyChat', 'node.error.busyRead'] as const
 
 // Exact protocol/client codes: new codes get the generic explanation until classified.
