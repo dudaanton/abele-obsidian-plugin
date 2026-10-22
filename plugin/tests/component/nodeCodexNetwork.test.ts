@@ -5,6 +5,7 @@ import NodeCodexNetworkRefusal from '@/components/NodeCodexNetworkRefusal.vue'
 import { codexProjectNetwork } from '@/node/codexNetwork'
 import NodeMessageTree from '@/components/NodeMessageTree.vue'
 import { useVault } from '../helpers/testEnv'
+import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 
 const f = vi.hoisted(() => ({ connection: undefined as any }))
 vi.mock('@/node/NodeService', () => ({
@@ -40,14 +41,14 @@ it('enables network through the same project controller and replaces the action 
   })
   await flushPromises()
   expect(wrapper.text()).toContain('Network is off for Codex in project.')
-  expect(wrapper.find('.abele-status-dot_orange').exists()).toBe(true)
+  expect(wrapper.find('.abele-status-dot').exists()).toBe(false)
   await wrapper.get('button').trigger('click')
   await flushPromises()
   expect(client.setProjectCodexPermissions).toHaveBeenCalledWith('sample-project', true)
   expect(codexProjectNetwork(client as never, 'sample-project').enabled.value).toBe(true)
   expect(wrapper.text()).toContain('Network is on. Ask the agent to try again.')
   expect(wrapper.find('button').exists()).toBe(false)
-  expect(wrapper.find('.abele-status-dot_faint').exists()).toBe(true)
+  expect(wrapper.find('.abele-status-dot').exists()).toBe(false)
   wrapper.unmount()
 })
 it('gives a non-owner the exact project-menu path without an action', async () => {
@@ -60,6 +61,30 @@ it('gives a non-owner the exact project-menu path without an action', async () =
     'Only the node’s owner can turn it on: the project menu → Network for Codex.'
   )
   expect(wrapper.find('button').exists()).toBe(false)
+  expect(wrapper.find('.abele-status-dot').exists()).toBe(false)
+  wrapper.unmount()
+})
+it('uses the delegation Refused code as the only status dot for a network refusal', async () => {
+  fixture()
+  const wrapper = mount(NodeDelegationCard, {
+    props: {
+      card: {
+        title: 'Sample task',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        provider: 'codex',
+        state: 'failed',
+        reason: 'Network is disabled: package installs require the project network switch.',
+        pendingHumanPrompts: 0,
+        reports: [],
+      },
+      nodeLabel: 'Sample node',
+    },
+  })
+  await flushPromises()
+  expect(wrapper.get('.abele-node-delegation__status').text()).toBe('Refused')
+  expect(wrapper.findAll('.abele-status-dot')).toHaveLength(1)
+  expect(wrapper.find('.abele-node-delegation__status .abele-status-dot_red').exists()).toBe(true)
   wrapper.unmount()
 })
 it('refreshes negotiated permission after reconnecting an initially offline node', async () => {

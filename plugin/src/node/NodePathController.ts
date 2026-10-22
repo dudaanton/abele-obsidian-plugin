@@ -3,7 +3,7 @@ import { nodeActionError } from './errorWords'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { addFolderDebugMenu } from '@/debugger/folderActions'
 import { t } from '@/i18n'
-import { Menu, Notice, Platform, setTooltip } from 'obsidian'
+import { Menu, Notice, Platform } from 'obsidian'
 import { ChannelError } from '@abele/channel-protocol'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
@@ -947,13 +947,15 @@ export function showNodePathPlaceMenu(
   )
   if (network.supported) {
     menu.addItem((i) => {
-      i.setTitle(t('streamB.codexNetwork'))
+      i.setTitle(
+        online
+          ? t('streamB.codexNetwork')
+          : `${t('streamB.codexNetwork')} — ${t('debug.offline')}`
+      )
         .setIcon('globe')
         .setChecked(network.enabled.value)
         .setDisabled(!online || network.busy.value)
         .onClick(() => nodePathAction(() => network.set(!network.enabled.value)))
-      const dom = (i as typeof i & { dom?: HTMLElement }).dom
-      if (!online && dom) setTooltip(dom, t('streamB.codexNetworkOffline'))
       if (online)
         networkLoad = network
           .load()

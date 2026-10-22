@@ -200,7 +200,10 @@ const stateLabel = computed(() => {
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'unknown' && props.card.reason === 'pi_worker_lost')
     return t('streamB.delegationLost')
-  if (['failed', 'unsupported'].includes(state) && permissionExplanation.value)
+  if (
+    ['failed', 'unsupported'].includes(state) &&
+    (permissionExplanation.value || isCodexNetworkRefusal(props.card.reason))
+  )
     return t('streamB.delegationRefused')
   if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')
   if (state === 'cancelled') return t('streamBMeta.8b47045eb7')

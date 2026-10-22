@@ -66,13 +66,6 @@
         @menu="emit('place-menu', $event)"
       >
         <!-- The branch against its base, in codes, close under its name. -->
-        <Icon
-          v-if="network?.enabled.value"
-          icon="globe"
-          size="xs"
-          :interactive="false"
-          :tooltip="t('streamB.codexNetworkHere')"
-        />
         <BranchCodes
           v-if="branch && branchSays"
           :state="branch.state"
@@ -80,6 +73,13 @@
           size="panel"
           pickable
           @choose-base="emit('compare')"
+        />
+        <Icon
+          v-if="network?.enabled.value"
+          icon="globe"
+          size="xs"
+          :interactive="false"
+          :tooltip="t('streamB.codexNetworkHere')"
         />
       </NodePlace>
       <template v-if="!model.unavailable.value">

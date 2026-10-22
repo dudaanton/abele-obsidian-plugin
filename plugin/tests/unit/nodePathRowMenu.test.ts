@@ -134,7 +134,9 @@ it('disables the project switch offline and omits it on old nodes', async () => 
   const menu = await opened()
   expect(
     (
-      menu.items.find((item) => item.title === 'Network for Codex') as unknown as {
+      menu.items.find(
+        (item) => item.title === 'Network for Codex — Reconnect to the node'
+      ) as unknown as {
         disabled: boolean
       }
     ).disabled

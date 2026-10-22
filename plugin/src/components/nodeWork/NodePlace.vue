@@ -34,7 +34,7 @@
          panel's notice when it drops. -->
     <div v-if="(branch && folder) || $slots.default" class="abele-node-place__byline">
       <span v-if="branch && folder" class="abele-node-place__where">{{ folder }}</span>
-      <slot />
+      <span v-if="$slots.default" class="abele-node-place__codes"><slot /></span>
     </div>
   </div>
 </template>
@@ -137,7 +137,7 @@ watch(() => [props.folder, props.branch, props.node], tip)
 .abele-node-place__byline {
   grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--size-2-1) var(--size-4-2);
   min-width: 0;
@@ -147,16 +147,26 @@ watch(() => [props.folder, props.branch, props.node], tip)
 }
 
 .abele-node-place__where {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-// The folder whole, the codes beside it or, where narrow, on the next line close under it.
+// Keep codes together; the folder gives up its space first on a narrow panel.
 .abele-node-place__byline > :not(.abele-node-place__where) {
   flex: none;
+}
+.abele-node-place__codes {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  white-space: nowrap;
+}
+.abele-node-place__codes > .abele-obsidian-icon {
+  color: var(--text-muted);
 }
 
 .abele-node-place__busy {

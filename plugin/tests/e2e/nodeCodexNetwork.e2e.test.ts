@@ -19,7 +19,7 @@ const inspect = (device: string) =>
   ${NODE_PANEL_FIXTURE}
   const seen = {}
   nodePanel.variant.codexNetwork = true
-  const item = menu => [...menu.querySelectorAll('.menu-item')].find(i => i.querySelector('.menu-item-title')?.textContent.trim() === 'Network for Codex')
+  const item = menu => [...menu.querySelectorAll('.menu-item')].find(i => i.querySelector('.menu-item-title')?.textContent.trim().startsWith('Network for Codex'))
   const checked = item => item.classList.contains('mod-checked') || !!item.querySelector('.menu-item-icon.mod-checked,.mod-checked')
   const closeCard = async () => {
     const container = document.querySelector('.abele-node-delegation')?.closest('.modal-container')
@@ -32,11 +32,18 @@ const inspect = (device: string) =>
     const panel = await nodePanel.open('feature')
     const state = window.__abeleNodePanelFixture
     const connection = state.nodes.connection(state.registration.id)
+    const place = panel.querySelector('.abele-node-place')
+    const beforeHeight = place.getBoundingClientRect().height
+    const beforeTree = panel.querySelector('.abele-file-tree').getBoundingClientRect().top
     let menu = await nodePanel.menu()
     seen.off = !!item(menu) && !checked(item(menu))
     await capture('menu-off')
     item(menu).click()
     await until(() => panel.querySelector('.abele-node-place [data-icon="globe"], .abele-node-place .lucide-globe'), 'place globe')
+    const globe = place.querySelector('.lucide-globe').getBoundingClientRect()
+    const drift = place.querySelector('.abele-branch-codes__drift').getBoundingClientRect()
+    seen.rowStable = Math.abs(place.getBoundingClientRect().height - beforeHeight) < 1 && Math.abs(panel.querySelector('.abele-file-tree').getBoundingClientRect().top - beforeTree) < 1
+    seen.globeAfterCodes = globe.left >= drift.right && Math.abs(globe.top + globe.height / 2 - drift.top - drift.height / 2) < 2
     await capture('row-globe')
     menu = await nodePanel.menu()
     seen.on = checked(item(menu))
@@ -46,6 +53,7 @@ const inspect = (device: string) =>
     await window.__abeleTest.openDialog('node-delegation-card', { codexNetworkRefusal: { nodeId: state.registration.id, projectId: 'sample-repository-project' } })
     await until(() => document.querySelector('[data-codex-network-refusal] button'), 'refusal action')
     seen.refusal = document.querySelector('[data-codex-network-refusal]').textContent.includes('Network is off for Codex')
+    seen.quietReason = document.querySelector('.abele-node-delegation__status').textContent.trim() === 'Refused' && document.querySelectorAll('.abele-node-delegation .abele-status-dot').length === 1 && !document.querySelector('[data-codex-network-refusal] .abele-status-dot')
     await capture('refusal-before')
     document.querySelector('[data-codex-network-refusal] button').click()
     await until(() => document.querySelector('[data-codex-network-refusal]').textContent.includes('Network is on. Ask the agent to try again.'), 'enabled guidance')
@@ -59,7 +67,7 @@ const inspect = (device: string) =>
     await closeCard()
     connection.state.value = 'offline'
     menu = await nodePanel.menu()
-    seen.offline = item(menu).classList.contains('is-disabled')
+    seen.offline = item(menu).classList.contains('is-disabled') && item(menu).textContent.includes('Network for Codex — Reconnect to the node')
     await capture('node-offline')
     return seen
   } finally {
@@ -80,6 +88,9 @@ it.each(['desktop', 'phone'])(
       enabled: true,
       nonOwner: true,
       offline: true,
+      rowStable: true,
+      globeAfterCodes: true,
+      quietReason: true,
     })
   }
 )

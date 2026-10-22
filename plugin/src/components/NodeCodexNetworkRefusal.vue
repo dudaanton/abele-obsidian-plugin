@@ -1,7 +1,9 @@
 <template>
-  <div class="abele-node-tool-permissions" data-codex-network-refusal>
+  <div
+    class="abele-node-tool-permissions abele-node-tool-permissions_quiet"
+    data-codex-network-refusal
+  >
     <div class="abele-node-tool-permissions__reason" role="alert">
-      <StatusDot :tone="network?.enabled.value ? 'faint' : 'orange'" :label="label" />
       <span>{{ label }}</span>
     </div>
     <Button
@@ -19,7 +21,6 @@ import { t } from '@/i18n'
 import { NodeService } from '@/node/NodeService'
 import { codexProjectNetwork } from '@/node/codexNetwork'
 import Button from './obsidian/Button.vue'
-import StatusDot from './obsidian/StatusDot.vue'
 import NodeErrorText from './NodeErrorText.vue'
 const props = defineProps<{ nodeId?: string; projectId?: string; project?: string }>()
 const error = ref('')
@@ -69,9 +70,10 @@ async function enable() {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--size-4-2);
-  margin-block: var(--size-4-1);
-  font-size: var(--font-ui-small);
+  gap: var(--size-4-1);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 .abele-node-tool-permissions__reason {
   display: flex;
