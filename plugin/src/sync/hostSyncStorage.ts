@@ -23,6 +23,8 @@ const recordKey = (namespace: string, key: string, id: string): string =>
 const PATHS_MIGRATED = '!paths-migrated'
 const RECORDS_MIGRATED = '!records-migrated'
 const MIGRATED = '!migrated'
+const journalKey = (key: string): boolean =>
+  key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes'
 
 /** The primary key already groups rows by namespace and document. A seek avoids
  * maintaining a redundant secondary index on every journal retirement. */
@@ -244,6 +246,8 @@ export class HostSyncStorage implements LocalStorage {
     }
   }
   loadLocalStorage(key: string): unknown {
+    if (journalKey(key) && !this.journalHints.has(key))
+      throw new Error('Sync journal preview is unknown; await readValue before reading it')
     this.materializeHint(key)
     return this.values.has(key)
       ? structuredClone(this.values.get(key))
@@ -252,11 +256,13 @@ export class HostSyncStorage implements LocalStorage {
   saveLocalStorage(key: string, value: unknown): void {
     if (this.closed) throw new Error('Sync host storage is closed')
     if (this.values.has(key)) {
+      const knownHint = this.journalHints.has(key)
       this.materializeHint(key)
       this.draftVersion++
       const copy = structuredClone(value)
       this.pending = this.pending.concat(hostChanges(key, this.values.get(key), copy))
       this.setView(key, copy)
+      if (journalKey(key) && !knownHint) this.journalHints.delete(key)
     } else this.local.saveLocalStorage(key, value)
     // Ordinary settings/status saves also drain without waiting for another file exchange.
     // Dependent effects still await flush explicitly and receive any commit failure.
@@ -281,7 +287,7 @@ export class HostSyncStorage implements LocalStorage {
   private setView(key: string, value: unknown): void {
     this.values.set(key, value)
     this.dirtyHints.delete(key)
-    if (key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes')
+    if (journalKey(key))
       this.journalHints.set(
         key,
         new Map(
@@ -349,8 +355,8 @@ export class HostSyncStorage implements LocalStorage {
     if (this.closed) throw new Error('Sync host storage is closed')
     this.draftVersion++
     for (const change of changes) {
-      let hint = this.journalHints.get(change.key)
-      if (!hint) this.journalHints.set(change.key, (hint = new Map()))
+      const hint = this.journalHints.get(change.key)
+      if (!hint) continue // A partial mutation cannot reconstruct an invalidated inventory.
       if (change.after === undefined) hint.delete(change.id)
       else hint.set(change.id, structuredClone(change.after))
       this.dirtyHints.add(change.key)

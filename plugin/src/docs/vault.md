@@ -2595,7 +2595,9 @@ Ordinary commits read changed record IDs and container metadata, never the full 
 Container metadata carries a monotonic append counter; removal followed by re-enrollment
 allocates a new order in that same transaction. Journal mutations carry explicit record IDs
 and expected prior values. Synchronous storage previews are drafts only and never authorize
-file effects. Recovery inventories read committed groups, then recheck individual entries
+file effects. An invalidated journal preview throws until an awaited `readValue` refreshes
+the complete inventory; subsequent mutations cannot expose a partial preview.
+Recovery inventories read committed groups, then recheck individual entries
 before effects; stage ownership and acknowledgement use direct key or indexed target reads.
 Journal draft hints index precomputed identities in a Map; commands update one hint without
 scanning or serializing retained identities. Arrays are materialized only for explicit preview

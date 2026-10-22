@@ -6,7 +6,7 @@ import {
 } from 'fake-indexeddb'
 import { HostSyncStorage, prepareHostSyncStorage } from '@/sync/hostSyncStorage'
 import * as hostRecords from '@/sync/hostSyncRecords'
-import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
+import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -27,6 +27,97 @@ function local() {
     },
   }
 }
+
+it.each([JOURNAL_KEY, RECOVERED_WRITES_KEY])(
+  'reports an unknown preview after invalidation and further mutations (%s)',
+  async (key) => {
+    const channels: { onmessage?: () => void }[] = []
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage?: () => void
+        constructor() {
+          channels.push(this)
+        }
+        postMessage() {
+          for (const channel of channels) if (channel !== this) channel.onmessage?.()
+        }
+        close() {}
+      }
+    )
+    const factory = new IDBFactory()
+    const a = await HostSyncStorage.open(factory, 'sample-preview', local())
+    const first = {
+      target: 'first.md',
+      ...(key === JOURNAL_KEY ? { temp: 'first.tmp' } : { backup: 'first.old' }),
+    }
+    const second = {
+      target: 'second.md',
+      ...(key === JOURNAL_KEY ? { temp: 'second.tmp' } : { backup: 'second.old' }),
+    }
+    const third = {
+      target: 'third.md',
+      ...(key === JOURNAL_KEY ? { temp: 'third.tmp' } : { backup: 'third.old' }),
+    }
+    a.saveLocalStorage(key, [first])
+    await a.flush()
+    const b = await HostSyncStorage.open(factory, 'sample-preview', local())
+    try {
+      expect(b.loadLocalStorage(key)).toEqual([first])
+      a.saveLocalStorage(key, [first, second])
+      await a.flush()
+      const journal = new WriteJournal(b)
+      await journal.persist(() =>
+        key === JOURNAL_KEY ? journal.add(third) : journal.preserve(third)
+      )
+      expect(() => b.loadLocalStorage(key)).toThrow('preview is unknown')
+      expect(() => (key === JOURNAL_KEY ? journal.entries() : journal.recovered())).toThrow(
+        'cannot read'
+      )
+      b.saveLocalStorage(key, [first, third])
+      await b.flush()
+      expect(() => b.loadLocalStorage(key)).toThrow('preview is unknown')
+      expect(await b.readValue(key)).toEqual([first, second, third])
+      expect(b.loadLocalStorage(key)).toEqual([first, second, third])
+    } finally {
+      a.close()
+      b.close()
+      vi.unstubAllGlobals()
+    }
+  }
+)
+
+it('keeps a preview unknown after rollback and a later successful command', async () => {
+  const seed = local()
+  const entry = { target: 'sample.md', temp: 'sample.tmp' }
+  seed.saveLocalStorage(JOURNAL_KEY, [entry])
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-rollback-preview', seed)
+  const journal = new WriteJournal(host)
+  const put = FakeObjectStore.prototype.put
+  const aborted = vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementationOnce(function (
+    this: FakeObjectStore,
+    value,
+    key
+  ) {
+    this.transaction.abort()
+    return put.call(this, value, key)
+  })
+  try {
+    await expect(
+      journal.persist(() => journal.add({ target: 'failed.md', temp: 'failed.tmp' }))
+    ).rejects.toThrow()
+    aborted.mockRestore()
+    const later = { target: 'later.md', temp: 'later.tmp' }
+    await journal.persist(() => journal.add(later))
+    expect(() => journal.retainsTemp(entry.temp)).toThrow('cannot read')
+    expect(await journal.currentRetainsTemp(entry.temp)).toBe(true)
+    expect(await journal.currentEntries()).toEqual([entry, later])
+    expect(journal.entries()).toEqual([entry, later])
+  } finally {
+    aborted.mockRestore()
+    host.close()
+  }
+})
 
 it('isolates journal inventories and indexed reads for similar namespace prefixes', async () => {
   const factory = new IDBFactory()
