@@ -35,22 +35,15 @@ export function verifySyncSdkInputs(root = plugin) {
   )
     throw new Error('Retired sync package input remains')
   if (
-    manifest.dependencies?.[name] !== (SDK_INPUT.source ?? SDK_INPUT.version) ||
+    SDK_INPUT.source !== undefined ||
+    manifest.dependencies?.[name] !== SDK_INPUT.version ||
     locked?.version !== SDK_INPUT.version ||
     locked?.link ||
     locked?.resolved !==
-      (SDK_INPUT.source ??
-        `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz`) ||
+      `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz` ||
     locked?.integrity !== SDK_INPUT.integrity
   )
     throw new Error('Unpinned sync SDK version, registry source or integrity')
-  if (SDK_INPUT.source) {
-    if (!SDK_INPUT.source.startsWith('file:vendor/sync/'))
-      throw new Error('Unpinned sync SDK archive location')
-    const archive = readFileSync(join(root, SDK_INPUT.source.slice(5)))
-    if (createHash('sha256').update(archive).digest('hex') !== SDK_INPUT.sha256)
-      throw new Error('Sync SDK archive hash mismatch')
-  }
   const installed = join(root, 'node_modules', name)
   if (lstatSync(installed).isSymbolicLink() || realpathSync(installed) !== resolve(installed))
     throw new Error('Linked sync SDK package refused')
