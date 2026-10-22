@@ -473,7 +473,7 @@ async function openNoFollow(
 
 interface NodeFsPromises {
   lstat(path: string): Promise<{ isSymbolicLink(): boolean }>
-  mkdir(path: string, options: { recursive: true }): Promise<unknown>
+  mkdir(path: string, options: { recursive: boolean }): Promise<unknown>
   unlink(path: string): Promise<void>
   stat(path: string): Promise<{ dev: number; ino: number }>
   rename(from: string, to: string): Promise<void>
@@ -495,6 +495,7 @@ interface NodeFsPromises {
   }>
 }
 export interface NativeFs {
+  restoreDirectoryExclusive?(from: string, to: string): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
   syncPath?(path: string, parentsOnly?: boolean): Promise<void>
   /** Retain the displaced inode outside the vault, including late writes through open handles. */
@@ -732,6 +733,22 @@ export function nativeOf(
         if (cause instanceof EngineError) throw cause
         throw new EngineError('io', `cannot replace ${target} in the local-save queue`, cause)
       }
+    }
+  }
+  if (typeof fsp.mkdir === 'function') {
+    const mkdir = fsp.mkdir.bind(fsp)
+    native.restoreDirectoryExclusive = async (from, to) => {
+      await assertVaultPath(adapter, from)
+      await assertVaultPath(adapter, to)
+      assertEffect([from, to])
+      // Reserve only an absent name. Rename may replace our empty reservation,
+      // but refuses it if a local save has populated the directory meanwhile.
+      await mkdir(at(to), { recursive: false })
+      await assertVaultPath(adapter, from)
+      await assertVaultPath(adapter, to)
+      assertEffect([from, to])
+      await rename(at(from), at(to))
+      await reconcile(from, to)
     }
   }
   if (typeof fsp.link === 'function') {

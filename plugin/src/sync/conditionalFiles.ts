@@ -35,6 +35,7 @@ export interface ConditionalFileHost {
   list(path: string): Promise<{ files: string[]; folders: string[] }>
   capture(from: string, to: string): Promise<void>
   install(from: string, to: string): Promise<void>
+  restoreDirectory?(from: string, to: string): Promise<void>
   flush(path: string, parentsOnly?: boolean): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
   stage(
@@ -68,6 +69,24 @@ export class ConditionalFiles {
     await this.host.flush(to)
     return true
   }
+  private async restore(from: string, to: string) {
+    const info = await this.host.stat(from)
+    if (!info) return
+    this.host.check()
+    if (info.type === 'file') {
+      await this.install(from, to)
+      return
+    }
+    if ((await this.host.stat(to)) !== null || !this.host.restoreDirectory) return
+    try {
+      await this.host.restoreDirectory(from, to)
+    } catch (error) {
+      if ((await this.host.stat(to)) !== null) return
+      throw error
+    }
+    await this.host.flush(to, true)
+    await this.host.flush(from, true)
+  }
   private async archive(_folder: string, id: string, successful: boolean) {
     const parent = this.host.root + (successful ? '/completed' : '/review')
     await this.host.mkdir(parent)
@@ -91,10 +110,7 @@ export class ConditionalFiles {
     let captured = false,
       recorded = false
     const restore = async () => {
-      if ((await h.stat(victim)) !== null) {
-        h.check()
-        await this.install(victim, op.path)
-      }
+      await this.restore(victim, op.path)
     }
     try {
       if ((await h.stat(folder)) !== null) return false
@@ -121,6 +137,12 @@ export class ConditionalFiles {
       recorded = true
       h.check()
       if (op.expected !== null) {
+        // Never move a directory tree out of the user's namespace as a file victim.
+        const before = await h.stat(op.path)
+        if (before !== null && before.type !== 'file') {
+          await this.archive(folder, id, false)
+          return false
+        }
         try {
           await h.capture(op.path, victim)
           captured = true
@@ -208,8 +230,7 @@ export class ConditionalFiles {
         ) as Intent
         h.validate(intent.path)
         h.check()
-        if ((await h.stat(folder + '/victim')) !== null)
-          await this.install(folder + '/victim', intent.path)
+        await this.restore(folder + '/victim', intent.path)
         await this.archive(folder, id, false)
         h.changed([intent.path])
       } finally {

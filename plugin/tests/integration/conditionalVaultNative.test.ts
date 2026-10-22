@@ -9,6 +9,48 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it('refuses a directory replacing a tracked file before capturing it', async () => {
+  const { root, disk } = await setup()
+  await fs.mkdir(join(root, 'sample.bin'))
+  await fs.writeFile(join(root, 'sample.bin/note.md'), 'sample note')
+  expect(
+    await disk().conditionalFile({
+      path: 'sample.bin',
+      expected: { size: 8, mtime: 1000, sha: await sha256(new TextEncoder().encode('sample A')) },
+      effect: { kind: 'remove' },
+    })
+  ).toBe(false)
+  expect(await fs.readFile(join(root, 'sample.bin/note.md'), 'utf8')).toBe('sample note')
+})
+
+it.each([false, true])(
+  'recovers legacy directory captures without blocking later records (occupied=%s)',
+  async (occupied) => {
+    const { root, disk } = await setup()
+    const privateRoot = '.obsidian/plugins/abele/sync-conditional'
+    for (const id of ['a-directory', 'b-file']) {
+      const folder = join(root, privateRoot, 'objects', id)
+      await fs.mkdir(folder, { recursive: true })
+      await fs.mkdir(join(root, privateRoot, 'active'), { recursive: true })
+      const intent = { path: id, kind: 'remove' }
+      await fs.writeFile(join(folder, 'intent.json'), JSON.stringify(intent))
+      await fs.writeFile(join(root, privateRoot, 'active', id + '.json'), JSON.stringify(intent))
+      if (id === 'a-directory') {
+        await fs.mkdir(join(folder, 'victim'))
+        await fs.writeFile(join(folder, 'victim/note.md'), 'retained note')
+      } else await fs.writeFile(join(folder, 'victim'), 'retained file')
+    }
+    if (occupied) await fs.writeFile(join(root, 'a-directory'), 'new occupant')
+    await disk().recoverConditionalFiles()
+    expect(await fs.readFile(join(root, 'b-file'), 'utf8')).toBe('retained file')
+    const directory = occupied
+      ? join(root, privateRoot, 'objects/a-directory/victim')
+      : join(root, 'a-directory')
+    expect(await fs.readFile(join(directory, 'note.md'), 'utf8')).toBe('retained note')
+    if (occupied) expect(await fs.readFile(join(root, 'a-directory'), 'utf8')).toBe('new occupant')
+    expect(await fs.readdir(join(root, privateRoot, 'active'))).toEqual([])
+  }
+)
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true })
 })

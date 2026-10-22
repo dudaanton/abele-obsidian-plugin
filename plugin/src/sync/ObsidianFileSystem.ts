@@ -705,6 +705,12 @@ export class ObsidianFileSystem implements FileSystem {
       list: (path) => this.disk.list(path),
       capture: (from, to) =>
         this.native ? this.native.rename(from, to) : this.disk.rename(from, to),
+      restoreDirectory: (from, to) => {
+        if (!this.native) return this.disk.rename(from, to)
+        if (!this.native.restoreDirectoryExclusive)
+          throw new EngineError('io', 'exclusive directory restoration is unavailable')
+        return this.native.restoreDirectoryExclusive(from, to)
+      },
       install: (from, to) => {
         if (!this.native) return this.disk.rename(from, to)
         if (!this.native.installExclusive)
@@ -769,6 +775,7 @@ export class ObsidianFileSystem implements FileSystem {
             'replaceFenced',
             'replaceFencedIdentity',
             'installExclusive',
+            'restoreDirectoryExclusive',
             'archiveBackup',
             'syncPath',
             'sameObject',
