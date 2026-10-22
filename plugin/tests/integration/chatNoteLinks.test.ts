@@ -3,7 +3,7 @@
  *
  * A chat that changed a note becomes visible from that note, so the record of what it changed
  * has to be exact. Reading links nothing, a call that threw links nothing, and a run — which is
- * never listed anywhere — links nothing either. The record lives in the chat file's own meta,
+ * never listed anywhere — attributes its writes to its durable root. The record lives in that chat's meta,
  * which is the source of truth; the index in the settings is only ever a copy of it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -14,6 +14,8 @@ import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { useChatLinks } from '@/composables/useChatLinks'
+import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
@@ -107,6 +109,44 @@ beforeEach(() => {
 })
 
 describe('a chat that writes to a note', () => {
+  it('lists a created note immediately and retains the link after reload', async () => {
+    const session = newSession()
+    await session.save()
+    const note = 'Notes/New sample.md'
+    const links = useChatLinks(() => note)
+    expect(links.value).toHaveLength(0)
+
+    await toolOf(session, 'create').execute('create-sample', { path: note, content: 'Sample' })
+
+    expect(paths(session)).toEqual([note])
+    expect(links.value.map((link) => link.path)).toEqual([session.currentChatFile.value?.path])
+    await session.save()
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(session.currentChatFile.value as TFile)
+    expect(paths(reopened)).toEqual([note])
+  })
+
+  it('does not associate a manually created note with the open chat', async () => {
+    const session = newSession()
+    await session.save()
+    await app.vault.create('Notes/Manual sample.md', 'Sample')
+    expect(paths(session)).toEqual([])
+    expect(useChatLinks(() => 'Notes/Manual sample.md').value).toEqual([])
+  })
+
+  it('refuses write to a new path without inventing a note or a link', async () => {
+    const session = newSession()
+    const note = 'Notes/Missing sample.md'
+    await expect(
+      createWriteFileTool().execute('write-missing', { path: note, content: 'Sample' }, undefined, {
+        app: GlobalStore.getInstance().app,
+        scope: session.scopeResolver,
+      })
+    ).rejects.toThrow()
+    expect(app.vault.getAbstractFileByPath(note)).toBeNull()
+    expect(paths(session)).toEqual([])
+  })
+
   it('records the path and when it wrote', async () => {
     const session = newSession()
     const before = Date.now()
@@ -185,6 +225,27 @@ describe('a chat that writes to a note', () => {
 })
 
 describe('a delegated run', () => {
+  it('links a created note to the root chat rather than the transient run', async () => {
+    const parent = newSession()
+    await parent.save()
+    const run = new ChatSession(ChatService.getInstance(), undefined, { kind: 'run', root: parent })
+    run.scopeResolver.entries.value = [{ type: 'folder', path: 'Notes' }]
+    run.permissionMode.value = 'allow-all'
+    const note = 'Notes/Delegated sample.md'
+
+    await toolOf(run, 'create').execute('create-delegated', { path: note, content: 'Sample' })
+
+    expect(paths(run)).toEqual([])
+    expect(paths(parent)).toEqual([note])
+    await parent.save()
+    expect(useChatLinks(() => note).value.map((link) => link.path)).toEqual([
+      parent.currentChatFile.value?.path,
+    ])
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(parent.currentChatFile.value as TFile)
+    expect(paths(reopened)).toEqual([note])
+  })
+
   it('records nothing — it is never listed anywhere', async () => {
     const session = newSession('run')
     await toolOf(session, 'edit').execute('c1', {

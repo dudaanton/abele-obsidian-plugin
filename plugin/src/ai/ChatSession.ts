@@ -627,6 +627,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.touched.value = existing
       ? this.touched.value.map((note) => (note.path === clean ? { path: clean, at } : note))
       : [...this.touched.value, { path: clean, at }]
+    // A note can already be open while its creator is still running. Publish the link
+    // without waiting for the coalesced log write; that write persists the same record.
+    this.mirrorNoteLinks()
     this.markDirty()
   }
 
@@ -1613,16 +1616,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           // After the guard, which has to see a file's text as the tool gave it.
           this.results.keep(tool.name, id, result)
           // The one place that sees a tool's name, its arguments and its result together, so
-          // the one place a successful write becomes a link. A run is skipped: it is never
-          // listed anywhere, and its writes belong to the chat that delegated them.
+          // the one place a successful write becomes a link. A run's writes belong to its
+          // root chat, which has the durable file and footer card.
           // A call that failed threw, and never reaches this line — which is the whole check
           // that a write that did not happen links nothing.
-          if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name)) {
+          const linkOwner = this.kind === 'run' ? this.root : this
+          if (linkOwner.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name)) {
             // The tool says what it wrote, and only when it wrote something. Falling back to
             // the `path` argument instead would link a call that came to nothing — a `replace`
             // whose actions all matched nothing asks about a file it then leaves alone.
             const details = result.details as ToolWriteDetails | undefined
-            this.noteTouched(details?.path ?? '')
+            linkOwner.noteTouched(details?.path ?? '')
           }
           return result
         } finally {
@@ -4900,10 +4904,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * Only a pointer: a few dozen bytes, so the parent chat's write cost is unchanged no matter
    * how much conversation the sub-agents produce.
    *
-   * TODO: a run's writes link no note to anything. The run's own wrapper skips them, and the
-   * parent's wrapper never sees them — so a note changed only by a delegated run shows no card
-   * for the chat that asked for the change. Carrying the run's `touched` back through here, so
-   * the parent adopts them, is the follow-up.
+   * The run's tool wrapper records successful writes on the root chat as they happen;
+   * this pointer only locates the transcript.
    */
   attachSubAgentRun(toolCallId: string, run: SubAgentRunRef): void {
     this.updateChatMessage(
