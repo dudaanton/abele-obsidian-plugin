@@ -14,6 +14,13 @@ export type ConnectionTone = 'green' | 'orange' | 'red' | 'accent' | 'faint'
 type Row = Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>
 
 const ATTENTION = ['error', 'needs-token', 'scope_unavailable', 'disconnected']
+const countFormat = new Intl.NumberFormat()
+// Keep the row's spaced grouping while respecting locale digits and group widths.
+const count = (value: number) =>
+  countFormat
+    .formatToParts(value)
+    .map((part) => (part.type === 'group' ? ' ' : part.value))
+    .join('')
 
 /** Something is moving: a first scan, a comparison, a push or a pull. */
 export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean {
@@ -59,8 +66,8 @@ export function connectionLine(
     text(stage) +
     (total > 0
       ? text(' · {completed} of {total}', {
-          completed: completed.toLocaleString(),
-          total: total.toLocaleString(),
+          completed: count(completed),
+          total: count(total),
         })
       : '')
   if (phase)
