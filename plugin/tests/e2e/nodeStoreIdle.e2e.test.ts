@@ -77,6 +77,7 @@ it.skipIf(onPhone())(
     const req=r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
     const wait=ms=>new Promise(r=>setTimeout(r,ms)),heap=()=>performance.memory?.usedJSHeapSize??null;
     const cpu=(()=>{try{return window.require('node:process')}catch{return null}})();
+    const rss=()=>cpu?.memoryUsage?.().rss??null;
     const opening=indexedDB.open(name,2);
     opening.onupgradeneeded=()=>{opening.result.createObjectStore('client');opening.result.createObjectStore('journal')};
     let db=await req(opening),store;
@@ -84,15 +85,15 @@ it.skipIf(onPhone())(
     const initial={cursors:{sample:400},events:{},outbox:[],results:{},artifactData};
     const tx=db.transaction('client','readwrite');tx.objectStore('client').put(initial,'state');await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=reject});
     const measure=async(ms,tick)=>{
-      const start=performance.now(),before=cpu?.cpuUsage(),heapBefore=heap(),samples=[];
+      const start=performance.now(),before=cpu?.cpuUsage(),heapBefore=heap(),rssBefore=rss(),samples=[];
       let ticks=0,writes=0,artifactReads=0;
       const put=IDBObjectStore.prototype.put,get=IDBObjectStore.prototype.get;
       IDBObjectStore.prototype.put=function(value,key){if(key==='state')writes++;return put.call(this,value,key)};
       IDBObjectStore.prototype.get=function(key){if(key==='artifacts')artifactReads++;return get.call(this,key)};
-      try{while(performance.now()-start<ms){await tick();ticks++;if(ticks%50===0)samples.push({ms:performance.now()-start,heap:heap()});await wait(100)}}
+      try{while(performance.now()-start<ms){await tick();ticks++;if(ticks%50===0)samples.push({ms:performance.now()-start,heap:heap(),rss:rss()});await wait(100)}}
       finally{IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.get=get}
       const used=before?cpu.cpuUsage(before):null;
-      return {ticks,writes,artifactReads,elapsedMs:performance.now()-start,heapBefore,heapAfter:heap(),samples,cpuMs:used?(used.user+used.system)/1000:null};
+      return {ticks,writes,artifactReads,elapsedMs:performance.now()-start,heapBefore,heapAfter:heap(),rssBefore,rssAfter:rss(),samples,cpuMs:used?(used.user+used.system)/1000:null};
     };
     try {
       const before=await measure(10000,()=>new Promise((resolve,reject)=>{
