@@ -1,6 +1,6 @@
 <template>
   <!-- Every chat as a tree: Obsidian's search on top with its glyphs beside it, as its search
-       pane has them — closed chats too, a new folder — then folders, chats and what was opened
+       pane has them — closed chats too, a new folder — then chats, folders and what was opened
        from them. Pressing a chat opens it and closes the tree. -->
   <div class="abele-chat-tree" @keydown.esc.stop="emit('close')" @keydown="navigate">
     <div class="abele-chat-tree__head search-row">
@@ -60,7 +60,7 @@ import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ChatTreeRows from './ChatTreeRows.vue'
-import { chatsOf, useChatTreeSource } from '@/chats/chatTree'
+import { chatsOf, useChatTreeSource, type ChatTreeEntry } from '@/chats/chatTree'
 import { dragged, foldsOf, matches, revealSelection } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
@@ -71,11 +71,19 @@ const query = ref('')
 const withClosed = ref(false)
 const folded = foldsOf()
 const flip = (path: string) => (folded.has(path) ? folded.delete(path) : folded.add(path))
+const visibleEntries = (entries: ChatTreeEntry[]): ChatTreeEntry[] =>
+  entries.flatMap((entry) =>
+    entry.kind === 'folder'
+      ? entry.hidden && !withClosed.value
+        ? []
+        : [{ ...entry, children: visibleEntries(entry.children) }]
+      : [entry]
+  )
 
 const nothing = computed(
   () =>
     !!query.value.trim() &&
-    !chatsOf(source.value.root.value).some(
+    !chatsOf(visibleEntries(source.value.root.value)).some(
       (c) => (c.open || withClosed.value) && matches(c.title, query.value)
     )
 )
@@ -243,6 +251,9 @@ const dropAtTop = () => {
 }
 .abele-chat-tree__closed > .tree-item-self {
   color: var(--text-muted);
+}
+.abele-chat-tree__folder_hidden > .tree-item-self {
+  color: var(--text-faint);
 }
 // Where a dragged chat would go, as the file explorer marks a folder under it.
 .abele-chat-tree .is-being-dragged-over > .tree-item-self,

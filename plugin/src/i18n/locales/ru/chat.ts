@@ -1,4 +1,9 @@
 export const chat = {
+  'chatTree.hideFolder': 'Скрыть папку',
+  'chatTree.hideFolderAndClose': 'Скрыть папку и закрыть её чаты',
+  'chatTree.showFolder': 'Показать папку',
+  'chatTree.hiddenFolder': 'Скрытая папка',
+
   'chat.letterAuthority': 'Без подтверждения чат-получатель может использовать: {capabilities}.',
   'chat.letterAuthority.files': 'изменение, копирование, перемещение и удаление файлов',
   'chat.letterAuthority.edit': 'изменение файлов',

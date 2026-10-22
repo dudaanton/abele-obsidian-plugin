@@ -19,6 +19,30 @@ import { approveObsidianChatNodeAccess, nodeAgentHost } from '@/ai/tools/node/ow
 let service: ChatService
 let folders: ChatFolders
 let app: FakeApp
+it('persists hidden state and reloads remote visibility changes', async () => {
+  await folders.create('', 'Collection')
+  await folders.create('Collection', 'Nested')
+  await folders.setHidden('Collection', true)
+  expect(folders.isHidden('Collection/Nested')).toBe(true)
+  const file = app.vault.getAbstractFileByPath('AI/Chats/_folders.abelechats') as TFile
+  const catalog = JSON.parse(await app.vault.read(file))
+  expect(catalog.folders[0].hidden).toBe(true)
+  catalog.folders[0].hidden = false
+  await app.vault.modify(file, JSON.stringify(catalog))
+  await folders.reload()
+  expect(folders.isHidden('Collection')).toBe(false)
+})
+
+it('unhides ancestors when reopening a saved chat outside the tree', async () => {
+  await folders.create('', 'Collection')
+  await folders.create('Collection', 'Nested')
+  await folders.move('AI/Chats/sample.abchat', 'Collection/Nested')
+  await folders.setHidden('Collection', true)
+  await folders.setHidden('Collection/Nested', true)
+  await service.openChatFile(app.vault.getAbstractFileByPath('AI/Chats/sample.abchat') as TFile)
+  expect(folders.isHidden('Collection/Nested')).toBe(false)
+  expect(folders.folderOf('AI/Chats/sample.abchat')).toBe('Collection/Nested')
+})
 it('reuses persisted placement for thousands of unchanged chats and refreshes a remote edit', async () => {
   await folders.reload()
   folders.destroy()

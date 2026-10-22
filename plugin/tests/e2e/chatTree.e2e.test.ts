@@ -74,10 +74,10 @@ const probe = (label: string) => `(async () => {
     await until(() => document.querySelector('.abele-chat-tree'))
     await shot('single')
     document.querySelector('.abele-chat-tree [aria-label="New folder"]').click()
-    await until(() => document.querySelector('input[aria-label="Folder name"]'))
+    await until(() => document.querySelector('[contenteditable][aria-label="Folder name"]'))
     await shot('new-folder')
-    const name = document.querySelector('input[aria-label="Folder name"]')
-    name.value = folder; name.dispatchEvent(new Event('input', { bubbles: true }))
+    const name = document.querySelector('[contenteditable][aria-label="Folder name"]')
+    name.textContent = folder; name.dispatchEvent(new Event('input', { bubbles: true }))
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await until(() => service.folders.paths.includes(folder))
     await service.folders.setNodeScope(folder, [{ kind: 'node', node_id: 'sample-folder-node', access: 'read' }])
@@ -321,6 +321,7 @@ const probe = (label: string) => `(async () => {
     capChat.chatTitle.value = 'Sample least recently used chat'
     await capChat.createInDirectory(path)
     files.push(capChat.currentChatFile.value)
+    const capPath = capChat.currentChatFile.value.path
     while (service.canCreateTab) created.push(await service.newTab())
     // Select every other tab so the synthetic saved chat is the oldest idle candidate.
     for (const id of service.tabOrder.value) if (id !== capCandidate) service.switchTab(id)
@@ -338,7 +339,7 @@ const probe = (label: string) => `(async () => {
     await until(() => document.querySelector('.abele-chat-tree'))
     const closed = document.querySelector('.abele-chat-tree__list > .abele-chat-tree__closed > .tree-item-self')
     if (closed?.getAttribute('aria-expanded') !== 'true') closed?.click()
-    const closedCandidate = await until(() => document.querySelector('[data-chat="' + capChat.currentChatFile.value.path + '"]'))
+    const closedCandidate = await until(() => document.querySelector('[data-chat="' + capPath + '"]'))
     closedCandidate.scrollIntoView({ block: 'nearest' })
     await shot('plus-at-cap')
     return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }

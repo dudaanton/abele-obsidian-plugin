@@ -132,6 +132,50 @@ it('reads conversation time from a legacy index entry instead of a move timestam
 })
 
 let service: ChatService
+it('places fresh empty chats ahead of older chats and folders', async () => {
+  await service.folders.create('', 'Collection')
+  const old = service.createTab()
+  const fresh = service.createTab()
+  expect(
+    service.tree.root.value.map((entry) => (entry.kind === 'chat' ? entry.id : entry.path))
+  ).toEqual([fresh, old, 'Collection'])
+})
+
+it('hides a folder by closing its chats', async () => {
+  await service.folders.create('', 'Collection')
+  const id = service.createTab()
+  await service.folders.move(id, 'Collection')
+  const close = vi.spyOn(service, 'closeTab')
+  service.tree.hideFolder('Collection')
+  await vi.waitFor(() => expect(service.folders.isHidden('Collection')).toBe(true))
+  expect(close).toHaveBeenCalledWith(id)
+})
+
+it('hides an already closed folder without closing another chat', async () => {
+  await service.folders.create('', 'Collection')
+  const active = service.createTab()
+  const close = vi.spyOn(service, 'closeTab')
+  service.tree.hideFolder('Collection')
+  await vi.waitFor(() => expect(service.folders.isHidden('Collection')).toBe(true))
+  expect(close).not.toHaveBeenCalled()
+  expect(service.activeTabId.value).toBe(active)
+  service.tree.showFolder('Collection')
+  await vi.waitFor(() => expect(service.folders.isHidden('Collection')).toBe(false))
+})
+
+it('puts a chat created inside a hidden folder first and reveals the folder', async () => {
+  await service.folders.create('', 'Collection')
+  const old = service.createTab()
+  await service.folders.move(old, 'Collection')
+  await service.folders.setHidden('Collection', true)
+  service.tree.newChat('Collection')
+  await vi.waitFor(() => expect(service.folders.isHidden('Collection')).toBe(false))
+  const folder = service.tree.root.value.find((entry) => entry.kind === 'folder')!
+  expect(folder.children?.map((entry) => entry.kind === 'chat' && entry.id)).toEqual([
+    service.activeTabId.value,
+    old,
+  ])
+})
 beforeEach(() => {
   useVault([])
   AgentRegistry.destroy()

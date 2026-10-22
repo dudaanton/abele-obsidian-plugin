@@ -1,4 +1,9 @@
 export const chat = {
+  'chatTree.hideFolder': 'Ordner ausblenden',
+  'chatTree.hideFolderAndClose': 'Ordner ausblenden und Chats schließen',
+  'chatTree.showFolder': 'Ordner anzeigen',
+  'chatTree.hiddenFolder': 'Ausgeblendeter Ordner',
+
   'chat.letterAuthority': 'Ohne Rückfrage kann der Zielchat Folgendes nutzen: {capabilities}.',
   'chat.letterAuthority.files': 'Dateien bearbeiten, kopieren, verschieben und löschen',
   'chat.letterAuthority.edit': 'Dateien bearbeiten',

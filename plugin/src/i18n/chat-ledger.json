@@ -640,5 +640,17 @@
   },
   "chat.nodeActivityNotice": {
     "englishHash": "a54f26075b975e3ca0b7712ca5918139ba9945517defce5f81c4a3b2f1f078e5"
+  },
+  "chatTree.hideFolder": {
+    "englishHash": "26a73fd38654eb760f63847ae6b06f5766bc843c64b673ca91ffa7c53a90483a"
+  },
+  "chatTree.hideFolderAndClose": {
+    "englishHash": "6964451ab219688c498ddc8e48a6f014d59868d23103e430fbde2fbc7500a4da"
+  },
+  "chatTree.showFolder": {
+    "englishHash": "e3bf58b91b4952cbc20aacda1232be5b23e6cb6d2ff9840f7d8dd7a3f788cca3"
+  },
+  "chatTree.hiddenFolder": {
+    "englishHash": "c3086d0b2ad6eafcb5af7ae5fd574d7f6accf2ff61397fd2f96423f9975a36d6"
   }
 }

@@ -2,8 +2,14 @@
   <!-- A new folder's row, as the file explorer starts one: a folder row whose name is typed in
        place, ringed while it is edited. Enter or a click elsewhere keeps it, Esc drops it. -->
   <div v-if="draft?.parent === props.folder" class="tree-item abele-tree-item">
-    <div class="tree-item-self abele-tree-item__self mod-collapsible is-being-renamed abele-chat-tree__draft">
-      <div :ref="chevron" class="tree-item-icon collapse-icon abele-tree-item__toggle" aria-hidden="true" />
+    <div
+      class="tree-item-self abele-tree-item__self mod-collapsible is-being-renamed abele-chat-tree__draft"
+    >
+      <div
+        :ref="chevron"
+        class="tree-item-icon collapse-icon abele-tree-item__toggle"
+        aria-hidden="true"
+      />
       <div class="tree-item-inner abele-tree-item__inner">
         <span class="abele-tree-item__glyph" aria-hidden="true" />
         <span
@@ -21,14 +27,26 @@
       </div>
     </div>
   </div>
-  <!-- One level of the chat tree, as the file explorer draws one: folders first, then the open
-       chats, then the closed ones folded into one quiet «Closed» branch. A chat's nested chats
+  <!-- One level of the chat tree: newest open chats, folders, then the closed ones folded
+       into one quiet «Closed» branch. A chat's nested chats
        are its children. Codes at a row's end: a folder's shield when it gives its chats more
        tools; a chat's time of its last message and its dot. -->
+  <ChatTreeChatRow
+    v-for="chat in openChats"
+    :key="chat.id"
+    :chat="chat"
+    :folder="folder"
+    :query="query"
+    :with-closed="withClosed"
+    @chose="emit('chose')"
+  />
   <template v-for="folder in folders" :key="folder.path">
     <TreeItem
       class="abele-chat-tree__folder"
-      :class="{ 'is-being-dragged-over': dropOn === folder.path }"
+      :class="{
+        'is-being-dragged-over': dropOn === folder.path,
+        'abele-chat-tree__folder_hidden': folder.hidden,
+      }"
       :text="folder.name"
       :data-path="folder.path"
       collapsible
@@ -39,9 +57,17 @@
       @dragleave="dropOn === folder.path && (dropOn = null)"
       @drop.prevent.stop="drop(folder.path)"
     >
-      <template v-if="accessCount(folder)" #end>
+      <template v-if="accessCount(folder) || folder.hidden" #end>
         <span class="abele-chat-tree__codes">
           <Icon
+            v-if="folder.hidden"
+            icon="eye-off"
+            size="xs"
+            :interactive="false"
+            :tooltip="t('chatTree.hiddenFolder')"
+          />
+          <Icon
+            v-if="accessCount(folder)"
             icon="shield-plus"
             size="xs"
             :interactive="false"
@@ -80,16 +106,6 @@
       />
     </TreeItem>
   </template>
-
-  <ChatTreeChatRow
-    v-for="chat in openChats"
-    :key="chat.id"
-    :chat="chat"
-    :folder="folder"
-    :query="query"
-    :with-closed="withClosed"
-    @chose="emit('chose')"
-  />
 
   <!-- Closed chats wait folded at the end of their folder; a search names them where found. -->
   <template v-if="closedChats.length">
@@ -172,6 +188,7 @@ const searching = computed(() => !!props.query.trim())
 const folders = computed(() =>
   props.entries
     .filter((e) => e.kind === 'folder')
+    .filter((f) => !f.hidden || props.withClosed)
     .filter((f) => !searching.value || chatsOf(f.children).some((c) => shows(c)))
 )
 const shows = (c: { title: string; open: boolean }) =>
@@ -179,7 +196,9 @@ const shows = (c: { title: string; open: boolean }) =>
 const chats = computed(() => props.entries.filter((e) => e.kind === 'chat'))
 const hit = (c: (typeof chats.value)[number]) =>
   !searching.value || [c, ...chatsOf(c.children ?? [])].some((x) => shows(x))
-const openChats = computed(() => chats.value.filter((c) => c.open && hit(c)))
+const openChats = computed(() =>
+  chats.value.filter((c) => c.open && hit(c)).sort((a, b) => b.at - a.at)
+)
 const closedChats = computed(() => {
   const closed = chats.value.filter((chat) => !chat.open)
   return closed.filter((chat) => !searching.value || (props.withClosed && hit(chat)))
@@ -198,6 +217,24 @@ const drop = (path: string) => {
 /** A folder's own actions: a chat or a folder in it, its access, its name, removing it. */
 function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
   const menu = new Menu()
+  menu.addItem((i) =>
+    i
+      .setTitle(
+        t(
+          folder.hidden
+            ? 'chatTree.showFolder'
+            : chatsOf(folder.children).some((chat) => chat.open)
+              ? 'chatTree.hideFolderAndClose'
+              : 'chatTree.hideFolder'
+        )
+      )
+      .setIcon(folder.hidden ? 'eye' : 'eye-off')
+      .onClick(() =>
+        folder.hidden
+          ? source.value.showFolder?.(folder.path)
+          : source.value.hideFolder?.(folder.path)
+      )
+  )
   menu.addItem((i) =>
     i
       .setTitle(t('chatTree.newChat'))

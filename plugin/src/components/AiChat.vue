@@ -656,6 +656,8 @@ const localTreeSource: ChatTreeSource = {
   newFolder: (parent, name) => tree.newFolder(parent, name),
   renameFolder: (path, name) => tree.renameFolder(path, name),
   deleteFolder: (path) => tree.deleteFolder(path),
+  hideFolder: (path) => tree.hideFolder(path),
+  showFolder: (path) => tree.showFolder(path),
   folderAccess: (path) => {
     folderAccessPath.value = path
   },

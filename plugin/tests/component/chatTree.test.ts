@@ -9,6 +9,49 @@ import ChatToolModes from '@/components/ChatToolModes.vue'
 import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
+it.each([
+  [false, false, 'Hide folder'],
+  [false, true, 'Hide folder and close its chats'],
+  [true, false, 'Show folder'],
+])('offers one visibility action for hidden=%s open=%s', async (hidden, open, label) => {
+  source.hideFolder = vi.fn()
+  source.showFolder = vi.fn()
+  source.root.value = [
+    {
+      kind: 'folder',
+      path: 'Collection',
+      name: 'Collection',
+      hidden,
+      children: [{ kind: 'chat', id: 'filed', title: 'Filed', open, at: 1 }],
+    },
+  ]
+  const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  const view = show()
+  if (hidden) await view.get('[aria-label="Search closed chats"]').trigger('click')
+  await view.get('[data-path="Collection"] > .tree-item-self').trigger('contextmenu')
+  const menu = shown.mock.contexts.at(-1) as Menu
+  const visibility = menu.items.filter((item) =>
+    ['Hide folder', 'Hide folder and close its chats', 'Show folder'].includes(item.title)
+  )
+  expect(visibility.map((item) => item.title)).toEqual([label])
+  await visibility[0].handler!()
+  expect(hidden ? source.showFolder : source.hideFolder).toHaveBeenCalledWith('Collection')
+  shown.mockRestore()
+})
+it('renders open chats above folders and reveals hidden folders with the archive glyph', async () => {
+  source.root.value = [
+    { kind: 'folder', path: 'Collection', name: 'Collection', hidden: true, children: [] },
+    { kind: 'folder', path: 'Visible', name: 'Visible', children: [] },
+    { kind: 'chat', id: 'fresh', title: 'Fresh', open: true, at: 100 },
+  ]
+  const view = show()
+  expect(view.find('[data-path="Collection"]').exists()).toBe(false)
+  expect(view.findAll('.abele-chat-tree__list > .tree-item')[0].attributes('data-chat')).toBe(
+    'fresh'
+  )
+  await view.get('[aria-label="Search closed chats"]').trigger('click')
+  expect(view.get('[data-path="Collection"]').classes()).toContain('abele-chat-tree__folder_hidden')
+})
 const views: ReturnType<typeof mount>[] = []
 it('shows the node as the quiet switcher location', () => {
   const view = mount(ChatSwitcher, { props: { title: 'Sample chat', location: 'Sample node' } })

@@ -259,6 +259,7 @@ export interface SessionOptions {
 }
 
 export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStoragePort {
+  readonly createdAt = Date.now()
   private readonly delegateHost?: ToolContext['delegate']
   private readonly toolCeiling?: (tool: AgentTool) => boolean
   private static readonly TITLE_GENERATION_TRIGGERS = [1]

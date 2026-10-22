@@ -22,6 +22,7 @@ interface FolderRecord {
   name: string
   parent: string | null
   order: number
+  hidden?: boolean
   access?: Record<string, ToolMode>
   nodeScope?: NodeScopeEntry[]
 }
@@ -119,6 +120,32 @@ export class ChatFolders {
   }
   folderOf(key: string): string {
     return this.folderPath(this.membershipOf(key))
+  }
+  isHidden(path: string): boolean {
+    void this.revision.value
+    return this.catalog.folders.some((folder) => {
+      const parent = this.folderPath(folder.id)
+      return folder.hidden === true && (path === parent || path.startsWith(`${parent}/`))
+    })
+  }
+  setHidden(path: string, hidden: boolean): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      const record = this.record(path)
+      if (!record) throw new Error(t('chatTree.folderMissing'))
+      record.hidden = hidden
+      if (!hidden) {
+        for (const folder of this.catalog.folders) {
+          const parent = this.folderPath(folder.id)
+          if (path.startsWith(`${parent}/`)) folder.hidden = false
+        }
+      }
+      await this.persist()
+    })
+  }
+  async reveal(key: string): Promise<void> {
+    const path = this.folderOf(key)
+    if (this.isHidden(path)) await this.setHidden(path, false)
   }
   /** The configured storage root, never a logical folder's directory. */
   path(_folder: string): string {
@@ -320,6 +347,10 @@ export class ChatFolders {
       await this.load()
       const target = this.record(folder)
       if (folder && !target) throw new Error(t('chatTree.folderMissing'))
+      for (const ancestor of this.catalog.folders) {
+        const path = this.folderPath(ancestor.id)
+        if (folder === path || folder.startsWith(`${path}/`)) ancestor.hidden = false
+      }
       for (const source of sources) {
         const session = this.service.getSession(source.id)
         if (

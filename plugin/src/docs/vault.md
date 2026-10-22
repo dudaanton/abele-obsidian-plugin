@@ -3028,6 +3028,9 @@ content in the ordinary message, without creating a vault attachment or uploadin
 Chat-tree folders and node chat folder placement live in the synced `_folders.abelechats`
 catalog, with node placement stored in its `nodes` map. Local chats store `treeFolderId` in
 their `.abchat` metadata. Moving a node chat does not move files or sessions on the node.
+Each folder can carry a `hidden` flag in that catalog. Hiding closes its open chats without
+deleting them or moving files. The archive toggle reveals hidden folders; reopening a chat
+reveals its folder and hidden ancestors again.
 
 Node file tabs keep their target, path, selected lines and optional matched-word column and
 length in the device's workspace layout. These navigation hints do not copy file contents.

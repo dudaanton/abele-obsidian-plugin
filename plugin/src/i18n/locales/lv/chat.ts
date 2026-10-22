@@ -1,4 +1,9 @@
 export const chat = {
+  'chatTree.hideFolder': 'Paslēpt mapi',
+  'chatTree.hideFolderAndClose': 'Paslēpt mapi un aizvērt tās sarunas',
+  'chatTree.showFolder': 'Rādīt mapi',
+  'chatTree.hiddenFolder': 'Paslēpta mape',
+
   'chat.letterAuthority': 'Bez apstiprinājuma saņēmējs var izmantot: {capabilities}.',
   'chat.letterAuthority.files': 'failu rediģēšanu, kopēšanu, pārvietošanu un dzēšanu',
   'chat.letterAuthority.edit': 'failu rediģēšanu',

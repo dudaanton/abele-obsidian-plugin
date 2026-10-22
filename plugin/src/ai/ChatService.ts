@@ -1155,6 +1155,9 @@ export class ChatService {
     this.tabSelectionRevision++
     const id = `node:${reference.registrationId}:${reference.sessionId}`
     const intent = this.presentations.begin(id, true)
+    await this.folders.reveal(
+      this.folders.membershipOf(id) !== undefined ? id : this.nodeParentPaths.value[id] ?? id
+    )
     const presenter = this.presentations.apply(intent, () => {
       if (this.nodeSessions.has(id)) {
         this.switchTabNow(id)
@@ -1212,6 +1215,7 @@ export class ChatService {
       return true
     const run = await RunStorage.getInstance().load(runId)
     if (!run) return false
+    await this.folders.reveal(run.parentChat)
     return (
       this.presentations.apply(intent, () => {
         this.runTabs.set(tabId, run)
@@ -1393,6 +1397,8 @@ export class ChatService {
       current
     )
     if (!session || !current()) return
+    await this.folders.reveal(this.folderLocation(session))
+    if (!current()) return
     if (selectionReturn) await session.reconcileForSelectionReturn(current)
     if (intent.contextual && session.kind === 'comment') {
       await this.presentContextualSession(session, current, previous)

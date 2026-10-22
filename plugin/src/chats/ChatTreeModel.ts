@@ -219,6 +219,7 @@ export class ChatTreeModel implements ChatTreeSource {
         name,
         path,
         access: this.service.folders.access.value[path],
+        hidden: this.service.folders.isHidden(path),
         children: [],
       }
       folder.canDelete = true
@@ -245,7 +246,7 @@ export class ChatTreeModel implements ChatTreeSource {
           path,
           presentation.messages.value.findLast((message) =>
             ['user', 'assistant', 'tool-call'].includes(message.role)
-          )?.timestamp
+          )?.timestamp ?? (!path ? session?.createdAt : undefined)
         ),
         children: [],
       }
@@ -370,12 +371,14 @@ export class ChatTreeModel implements ChatTreeSource {
     const sort = (entries: ChatTreeEntry[]) => {
       entries.sort((a, b) =>
         a.kind !== b.kind
-          ? a.kind === 'folder'
+          ? a.kind === 'chat'
             ? -1
             : 1
           : a.kind === 'folder' && b.kind === 'folder'
             ? a.name.localeCompare(b.name)
-            : (b as ChatTreeChat).at - (a as ChatTreeChat).at
+            : (b as ChatTreeChat).at - (a as ChatTreeChat).at ||
+              this.service.tabOrder.value.indexOf((b as ChatTreeChat).id) -
+                this.service.tabOrder.value.indexOf((a as ChatTreeChat).id)
       )
       for (const entry of entries) if (entry.children) sort(entry.children)
     }
@@ -469,7 +472,10 @@ export class ChatTreeModel implements ChatTreeSource {
   newChat(folder: string): void {
     this.run(async () => {
       const id = await this.service.newTab()
-      if (id && folder) await this.service.folders.move(id, folder)
+      if (id) {
+        await this.service.folders.move(id, folder)
+        await this.service.folders.reveal(id)
+      }
     })
   }
   newFolder(parent: string, name: string): void {
@@ -480,6 +486,22 @@ export class ChatTreeModel implements ChatTreeSource {
   }
   deleteFolder(path: string): void {
     this.run(() => this.service.folders.remove(path))
+  }
+  hideFolder(path: string): void {
+    this.run(async () => {
+      await this.refresh()
+      const folder = this.root.value
+        .flatMap(function visit(entry): ChatTreeFolder[] {
+          return entry.kind === 'folder' ? [entry, ...entry.children.flatMap(visit)] : []
+        })
+        .find((entry) => entry.path === path)
+      for (const chat of chatsOf(folder?.children ?? []))
+        if (chat.open) await this.service.closeTab(chat.id)
+      await this.service.folders.setHidden(path, true)
+    })
+  }
+  showFolder(path: string): void {
+    this.run(() => this.service.folders.setHidden(path, false))
   }
   folderAccess(path: string): void {
     this.accessFolder.value = path

@@ -34,6 +34,7 @@ export interface ChatTreeChat {
 
 export interface ChatTreeFolder {
   kind: 'folder'
+  hidden?: boolean
   /** The logical display path; membership uses the folder's stable id. */
   path: string
   name: string
@@ -48,7 +49,7 @@ export type ChatTreeEntry = ChatTreeFolder | ChatTreeChat
 /** What drives the tree: the plugin's chat service, or a prototype's made-up chats. */
 export interface ChatTreeSource {
   refresh?(): Promise<void>
-  /** The whole tree, folders first; reactive. */
+  /** The whole tree, newest chats first; reactive. */
   readonly root: { readonly value: ChatTreeEntry[] }
   readonly activeId: { readonly value: string | null }
   /** Changes on selection, even while the tree is closed; zero is a restored selection. */
@@ -61,6 +62,8 @@ export interface ChatTreeSource {
   newFolder(parent: string, name: string): void
   renameFolder(path: string, name: string): void
   deleteFolder(path: string): void
+  hideFolder?(path: string): void
+  showFolder?(path: string): void
   /** Opens the folder's access, the tools its chats get on top of the default. */
   folderAccess(path: string): void
   rename(id: string): void
