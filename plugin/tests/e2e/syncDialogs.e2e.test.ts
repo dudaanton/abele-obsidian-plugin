@@ -4,6 +4,16 @@ import { captureSyncScreen as captureScreen, closeSyncScreens } from './helpers/
 import { reloadAs as reloadWindowAs, setWindowSize, windowSize } from './helpers/phoneWindow'
 import { rendererMemory } from './helpers/rendererMemory'
 import type { VaultCli } from './helpers/obsidianCli'
+import type { SyncDriver } from './helpers/syncDriver'
+import { installSyncActivityProbe } from './helpers/syncActivityProbe'
+
+function assertResponsive(sync: SyncDriver, phase: string): void {
+  const before = performance.now()
+  expect(sync.run('await new Promise(resolve=>setTimeout(resolve,0));return true')).toBe(true)
+  const roundTripMs = performance.now() - before
+  console.info('[sync responsiveness]', JSON.stringify({ phase, roundTripMs }))
+  expect(roundTripMs, phase + ' eval round trip').toBeLessThan(1000)
+}
 
 function sampleMemory(vault: VaultCli, phase: string): void {
   console.info(
@@ -103,18 +113,16 @@ liveCase(
           `const folder=${JSON.stringify(folder)};for(let i=0;i<160;i++)await app.vault.modify(app.vault.getFileByPath(folder+'/sample-'+i+'.md'),'Revised sample content '+i+' '+${width});return true`
         )
         // Hold real I/O at observable phases, without inventing snapshots or log lines.
-        a.run(`const runtime=host.live.get(${JSON.stringify(id)}),fs=runtime.options.fs,read=fs.fingerprint,fetcher=runtime.options.fetch;
-          const state=window.__sampleActivity={compareReached:false,uploadReached:false,puts:0};
-          const comparison=new Promise(resolve=>state.releaseComparison=resolve),upload=new Promise(resolve=>state.releaseUpload=resolve);
-          fs.fingerprint=async function(...args){if(!state.compareReached){state.compareReached=true;await comparison}return read.apply(this,args)};
-          runtime.options.fetch=async function(input,init){if(init?.method==='PUT'&&String(input).includes('/v2/uploads/')){if(++state.puts===100){state.uploadReached=true;await upload}await sleep(10)}return fetcher(input,init)};
-          state.restore=()=>{state.releaseComparison();state.releaseUpload();fs.fingerprint=read;runtime.options.fetch=fetcher};return true`)
+        a.run(
+          `window.__sampleActivity=(${installSyncActivityProbe.toString()})(host.live.get(${JSON.stringify(id)}),{path:${JSON.stringify(folder + '/')},holdUploadAfter:100,maxHoldMs:15000});return true`
+        )
         try {
           await a.pause(id, false)
           await a.long(
             'comparison visible',
             `await poll(()=>window.__sampleActivity.compareReached);const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes('Compar'));return true`
           )
+          assertResponsive(a, 'comparison-' + width)
           const comparing = await captureSyncScreen(
             a,
             'token-real-comparison-' + width,
@@ -123,10 +131,12 @@ liveCase(
           expect(comparing.error).toBe('')
           expect(comparing.over).toEqual([])
           a.run(`window.__sampleActivity.releaseComparison();return true`)
+          assertResponsive(a, 'comparison-resumed-' + width)
           await a.long(
             'upload visible',
             `await poll(()=>window.__sampleActivity.uploadReached);await poll(()=>inWindows('.abele-sync-window__line')?.textContent.includes('Uploading'));inWindows('.abele-sync-window').closest('.abele-modal__body').scrollTop=0;return true`
           )
+          assertResponsive(a, 'upload-' + width)
           const uploading = await captureSyncScreen(
             a,
             'token-real-upload-' + width,
@@ -147,8 +157,16 @@ liveCase(
             `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=100;window.__sampleActivity.scrollTop=body.scrollTop;window.__sampleActivity.releaseUpload();return true`
           )
           await a.waitIdle()
+          const probe = a.run<{ puts: number; autoReleased: boolean }>(
+            'return {puts:window.__sampleActivity.puts,autoReleased:window.__sampleActivity.autoReleased}'
+          )
+          // The fixture ignore rules exclude unrelated notes, including the large pool fixture.
+          // Each small note has one part; this case must never become a whole-vault upload.
+          expect(probe.puts).toBeGreaterThanOrEqual(100)
+          expect(probe.puts).toBeLessThanOrEqual(160)
+          expect(probe.autoReleased).toBe(false)
           const completedComparisons = a.run<[number, number][]>(
-            `return [...svc.activity.value[${JSON.stringify(id)}].events].filter(one=>one.text.startsWith('Comparing files: ended')).map(one=>{const counts=one.text.match(/(\\d+) of (\\d+) files?/);if(!counts)throw new Error('Ended comparison has no counts: '+one.text);return [Number(counts[1]),Number(counts[2])]})`
+            `return [...svc.activity.value[${JSON.stringify(id)}].events].filter(one=>one.text.startsWith('Comparing files: ended')).map(one=>{const counts=one.text.match(/([0-9]+) of ([0-9]+) files?/);if(!counts)throw new Error('Ended comparison has no counts: '+one.text);return [Number(counts[1]),Number(counts[2])]})`
           )
           expect(completedComparisons.length).toBeGreaterThan(0)
           for (const [completed, total] of completedComparisons) {
