@@ -43,6 +43,28 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('shares a pending hover when diagnostic pushes restart the tooltip', async () => {
+    const f = fixture()
+    await f.doc.open('const sample = 1')
+    const finishes: ((value: { text: string }) => void)[] = []
+    f.lsp.hover.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishes.push(resolve)
+        })
+    )
+    const first = f.doc.hover({ line: 0, character: 7 })
+    await vi.waitFor(() => expect(f.lsp.hover).toHaveBeenCalledOnce())
+    const restarted = f.doc.hover({ line: 0, character: 7 })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    try {
+      expect(f.lsp.hover).toHaveBeenCalledOnce()
+    } finally {
+      for (const finish of finishes) finish({ text: 'const sample: number\nSample documentation.' })
+      await Promise.all([first, restarted])
+      await f.doc.close()
+    }
+  })
   it.each([
     { language: 'typescript', found: false },
     { language: 'typescript', found: true, reason: 'untrusted_folder' },

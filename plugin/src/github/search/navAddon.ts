@@ -18,6 +18,7 @@ import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
 import { Menu } from 'obsidian'
 import { isIdentifier } from './definitions'
 import { lspFor, lspNavigation } from '@/node/lspContext'
+import { lspMenuLabel } from '@/node/lspMenu'
 
 export interface CodeNav {
   /** The path of the file a viewer inside the tab shows. */
@@ -161,6 +162,33 @@ function navMenu(nav: CodeNav, view: EditorView, name: string, offset: number): 
   return menu
 }
 
+function showNavMenu(
+  nav: CodeNav,
+  view: EditorView,
+  name: string,
+  offset: number,
+  show: (menu: Menu) => void
+) {
+  const context = lspFor(view.dom)
+  if (!context?.document.supported) {
+    show(navMenu(nav, view, name, offset))
+    return
+  }
+  const text = view.state.doc
+  void context.document.hover(positionAt(view, offset)).then((message) => {
+    if (!view.dom.isConnected || lspFor(view.dom) !== context || view.state.doc !== text) return
+    const menu = navMenu(nav, view, name, offset)
+    if (message) {
+      menu.setUseNativeMenu(false)
+      menu.addSeparator()
+      menu.addItem((item) =>
+        item.setTitle(lspMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
+      )
+    }
+    show(menu)
+  })
+}
+
 /** What every GitHub code viewer carries; inert outside a tab that provides navigation. */
 export function codeNavAddon(): Extension {
   return [
@@ -201,7 +229,7 @@ export function codeNavAddon(): Extension {
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
-        navMenu(nav, view, word.text, word.from).showAtMouseEvent(e)
+        showNavMenu(nav, view, word.text, word.from, (menu) => menu.showAtMouseEvent(e))
         return true
       },
       touchstart(e, view) {
@@ -219,7 +247,9 @@ export function codeNavAddon(): Extension {
           longPressAt = Date.now()
           // The phone may have begun selecting the word under the finger: the menu is the answer.
           if (selectedIn(view)) view.dom.ownerDocument.getSelection()?.removeAllRanges()
-          navMenu(nav, view, word.text, word.from).showAtPosition(start, view.dom.ownerDocument)
+          showNavMenu(nav, view, word.text, word.from, (menu) =>
+            menu.showAtPosition(start, view.dom.ownerDocument)
+          )
         }, LONG_PRESS_MS)
         pressing = { start, cancel: () => win.clearTimeout(timer) }
         return false

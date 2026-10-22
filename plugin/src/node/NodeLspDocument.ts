@@ -25,6 +25,7 @@ export class NodeLspDocument {
   private abort = new AbortController()
   private admission?: Promise<void>
   private pending: Promise<void> = Promise.resolve()
+  private hoverRequests = new Map<string, Promise<string>>()
   readonly listeners = new Set<() => void>()
   constructor(
     readonly client: Client,
@@ -168,7 +169,18 @@ export class NodeLspDocument {
       return []
     }
   }
-  async hover(position: LspPosition): Promise<string> {
+  hover(position: LspPosition): Promise<string> {
+    // CodeMirror restarts asynchronous hover sources on every view update, including
+    // diagnostic pushes caused by synchronizing this very query. Keep those restarts
+    // on the same request instead of repeatedly reopening the language-server buffer.
+    const key = JSON.stringify([this.text, position.line, position.character])
+    const existing = this.hoverRequests.get(key)
+    if (existing) return existing
+    const request = this.requestHover(position).finally(() => this.hoverRequests.delete(key))
+    this.hoverRequests.set(key, request)
+    return request
+  }
+  private async requestHover(position: LspPosition): Promise<string> {
     await this.pending
     if (!this.supported || this.stopped || this.unavailable) return ''
     try {
