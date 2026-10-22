@@ -29,6 +29,20 @@ it('renders highlighted markdown without interpreting server HTML', () => {
   expect(content.querySelector('script, [onclick], a[href^="javascript:"]')).toBeNull()
 })
 
+it('keeps link labels readable and permits only safe destinations', () => {
+  const content = document.createElement('div')
+  appendLspHoverContent(
+    content,
+    '```ts\nconst sample: number\n```\n\nSee [the `guide`](https://example.invalid/guide) and [unsafe](javascript:alert(1)).'
+  )
+  const links = content.querySelectorAll('a')
+  expect(links[0].textContent).toBe('the guide')
+  expect(links[0].querySelector('code')?.textContent).toBe('guide')
+  expect(links[0].getAttribute('href')).toBe('https://example.invalid/guide')
+  expect(links[1].textContent).toBe('unsafe')
+  expect(links[1].hasAttribute('href')).toBe(false)
+})
+
 it('includes type documentation in the symbol menu used by long press', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')

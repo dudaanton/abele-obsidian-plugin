@@ -61,8 +61,14 @@ function appendMarkdown(parent: HTMLElement, text: string) {
         anchor.target = '_blank'
       }
       target.appendChild(anchor)
-      for (let child = node.firstChild; child; child = child.nextSibling)
-        if (child.name !== 'LinkMark' && child.name !== 'URL') render(child, anchor)
+      let offset = node.firstChild?.to ?? node.from
+      for (let child = node.firstChild?.nextSibling; child; child = child.nextSibling) {
+        if (child.from > offset)
+          anchor.appendChild(doc.createTextNode(text.slice(offset, child.from)))
+        if (child.name === 'LinkMark') break
+        render(child, anchor)
+        offset = child.to
+      }
       return
     }
     const tag: Record<string, keyof HTMLElementTagNameMap> = {
