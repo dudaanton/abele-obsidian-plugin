@@ -1,5 +1,6 @@
 import { EngineError } from '@abele/sync-sdk/core'
 import type { LocalStorage } from './ledgerId'
+import { flushHostStorage, hostStorageOf } from './hostSyncStorage'
 
 export const JOURNAL_KEY = 'abele-sync-writes'
 export const RECOVERED_WRITES_KEY = 'abele-sync-recovered-writes'
@@ -53,6 +54,12 @@ export class WriteJournal {
     private readonly diagnostic?: (operation: string, startedAt: number, outcome: string) => void
   ) {}
 
+  /** Commit independently of any SDK overlay before the caller starts its file effect. */
+  async persist(work: () => void): Promise<void> {
+    work()
+    if (this.storage) await flushHostStorage(this.storage)
+  }
+
   private owns(value: unknown): boolean {
     return (
       this.owner === undefined ||
@@ -66,7 +73,7 @@ export class WriteJournal {
   private read(key: string): unknown[] {
     let raw: unknown
     try {
-      raw = this.storage?.loadLocalStorage(key) ?? null
+      raw = this.storage ? hostStorageOf(this.storage).loadLocalStorage(key) : null
     } catch (cause) {
       throw new EngineError('io', 'cannot read the write journal', cause)
     }
@@ -136,6 +143,7 @@ export class WriteJournal {
           : value
       )
     )
+    if (this.storage) await flushHostStorage(this.storage)
   }
   protects(backup: string): boolean {
     return this.recovered().some((entry) => entry.backup === backup)
@@ -218,8 +226,9 @@ export class WriteJournal {
       this.assertMutation?.()
       if (this.storage === null) throw new Error('no durable local storage')
       const value = entries.length === 0 ? null : entries
-      this.storage.saveLocalStorage(key, value)
-      if (JSON.stringify(this.storage.loadLocalStorage(key)) !== JSON.stringify(value))
+      const storage = hostStorageOf(this.storage)
+      storage.saveLocalStorage(key, value)
+      if (JSON.stringify(storage.loadLocalStorage(key)) !== JSON.stringify(value))
         throw new Error('journal was not kept')
       outcome = 'complete'
     } catch (cause) {

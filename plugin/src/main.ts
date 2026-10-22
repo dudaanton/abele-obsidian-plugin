@@ -125,6 +125,8 @@ import { HeaderCommands } from '@/headerButtons/viewActions'
 import '@/composables/useFooterFold'
 import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
+import { prepareHostSyncStorage } from './sync/hostSyncStorage'
+import { recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
@@ -366,6 +368,7 @@ export default class AbelePlugin extends Plugin {
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
       await startupStepAsync('sync connection', async () => {
+        let hostStorage: Awaited<ReturnType<typeof prepareHostSyncStorage>> | undefined
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
         try {
@@ -375,8 +378,10 @@ export default class AbelePlugin extends Plugin {
               get: (id) => secretStore.getLocal(id),
               remove: (id) => secretStore.forgetLocal(id),
             },
-            loaded?.sync
+            loaded?.sync,
+            window.indexedDB
           )
+          hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
           if (loaded !== null) {
             config.acknowledgeSyncMigration()
             await config.rewrite()
@@ -456,10 +461,16 @@ export default class AbelePlugin extends Plugin {
           }
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
-            void this.tokenEngines
-              ?.close()
-              .catch(() => console.error('[Abele] token sync shutdown requires recovery'))
-              .finally(() => reviews.close())
+            const stopping = this.tokenEngines?.close() ?? Promise.resolve()
+            const closed = stopping.finally(() => {
+              try {
+                reviews.close()
+              } finally {
+                hostStorage?.close()
+              }
+            })
+            recordTeardown(this.app, closed)
+            void closed.catch(() => console.error('[Abele] token sync shutdown requires recovery'))
           })
           this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
@@ -478,6 +489,7 @@ export default class AbelePlugin extends Plugin {
           await ui.refreshReviews()
         } catch (error) {
           if (!this.tokenEngines) {
+            hostStorage?.close()
             this.tokenHostStartup.state = 'failed'
             this.tokenHostStartup.error =
               (error as Error)?.message || 'Token host initialization failed'

@@ -2571,8 +2571,17 @@ namespace `abele-sync-device-token-…`; raw keys never enter the registry, sync
 encrypted synced secrets or settings transfer. Engine-local state is bound to the local
 connection ID under `abele-sync-token-state:`; copied settings cannot carry that identity.
 
-Startup discards old personal/scoped records, journals, ledger references and known access
-credentials. It performs no migration, backup or baseline import. Actual vault files and
+The host write journal, preserved-copy decisions, token/item registries and share membership
+live in the independent `abele-sync-host-v1` IndexedDB database, partitioned by the host's
+local vault identity. Startup hydrates these rows before recovery or scanning. Existing
+localStorage values are copied together with a migration marker in one transaction; legacy
+copies are not retired before that commit. Subsequent starts use IDB as authority, so lost
+or stale localStorage mirrors cannot resurrect retired work. Host commits never join SDK
+state-store overlays. Enrollment commits before runtime startup, and retirement commits
+before credential cleanup or runtime removal.
+
+Startup discards old personal/scoped access records, ledger references and known access
+credentials. It performs no access or baseline import. Actual vault files and
 IndexedDB databases are not deleted. `abele-sync-retired-access-cleanup-v1` temporarily holds
 only credential references until verified deletion succeeds, allowing interrupted cleanup to
 resume. Settings-only credential references and their server proofs are journaled before
@@ -2716,13 +2725,16 @@ Accepted publication also retains the stable local file identity and server file
 that ledger. Group attachment renames follow this recorded identity; replacements at the same
 path do not acquire consent, and scope departures remove the rename eligibility.
 
-The device-local `abele-sync-writes` journal also owns resumable chunk stages in the plugin's
+The device-local `abele-sync-writes` host journal also owns resumable chunk stages in the plugin's
 `sync-staging` directory under the vault configuration directory. Temporary publication files,
 swap backups, external incoming files and capability probes use this private directory rather
 than user content folders. It is excluded from sync inventory; folder cleanup still checks all
 entries in user folders, including hidden files. A streaming entry records mtime, the expected previous content identity (or
 absence), and the sealed replacement identity. Partial stages survive recovery without
 publication; append resumes from the actual disk length, and seal verifies the full digest.
+Each journal transition commits to the host database before its corresponding file effect.
+Installed evidence is retained until the ordinary ledger commits its matching content identity;
+startup also retires already-acknowledged evidence after an interrupted cleanup.
 Publication still uses the write journal and the local-save fence or backup swap. A stage
 with an unresolved backup remains an installation blocker. Sealed retained sources are
 separate from unfinished publication, and are verified again before use.

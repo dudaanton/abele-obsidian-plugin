@@ -727,7 +727,7 @@ export class TokenUi {
           assertCurrent()
           savedId ??= this.registry.add()
           assertCurrent()
-          this.registry.attach(
+          await this.registry.attachDurably(
             savedId,
             { ...token, address: token.address },
             authority,
@@ -737,7 +737,7 @@ export class TokenUi {
         } catch (error) {
           if (stageSignal.aborted && savedId && !pending) {
             this.registry.beginForget(savedId)
-            this.registry.finishForgotten(this.secrets, savedId)
+            await this.registry.finishForgottenDurably(this.secrets, savedId)
           }
           throw new ConnectStageError(
             `Saving the connection failed. Try again. ${error instanceof Error ? error.message : ''}`
@@ -1205,6 +1205,7 @@ export class TokenUi {
     )
       throw new Error('This connection is stopped. Disconnect or finish the server deletion.')
     this.registry.setPaused(id, paused)
+    await this.registry.flush()
     this.refresh()
     await this.runtimes.get(id)?.pause(paused)
   }
@@ -1250,11 +1251,12 @@ export class TokenUi {
     if (JSON.stringify(identity(current)) !== before)
       throw new Error('Connection changed while disconnecting')
     this.registry.beginForget(id)
+    await this.registry.flush()
     this.refresh()
     await this.disconnectRuntime(id)
     await this.reviews?.executables.forgetSource(id)
     // Local disconnect is not revocation: other tokens and all local files remain untouched.
-    this.registry.finishForgotten(this.secrets, id)
+    await this.registry.finishForgottenDurably(this.secrets, id)
     this.deletionStops.delete(id)
     this.runtimes.delete(id)
     const activity = { ...this.activity.value }

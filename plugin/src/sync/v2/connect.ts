@@ -14,6 +14,6 @@ export async function connectToken(
   if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
   const client = new V2Client(token, transport)
   const authority = await client.connection()
-  registry.attach(localId, { ...token, address: token.address }, authority, secrets)
+  await registry.attachDurably(localId, { ...token, address: token.address }, authority, secrets)
   return client
 }

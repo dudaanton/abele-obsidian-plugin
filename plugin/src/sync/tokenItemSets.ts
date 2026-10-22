@@ -310,7 +310,7 @@ export class TokenItemSets implements ShareSetSource {
           throw new Error('Share authority changed')
         const id = index === 0 && existing ? existing.id : this.ui.registry.add(true)
         if (id !== existing?.id) provisional.push(id)
-        this.ui.registry.attach(
+        await this.ui.registry.attachDurably(
           id,
           { v: 1, address: token.address, key: token.key, scope: item.scope },
           authority,
@@ -332,10 +332,11 @@ export class TokenItemSets implements ShareSetSource {
         }
     } catch (error) {
       for (const id of provisional) this.ui.registry.beginForget(id)
-      this.ui.registry.finishForgotten(this.secrets)
+      await this.ui.registry.finishForgottenDurably(this.secrets)
       throw error
     }
     this.capabilities.set(leader, true)
+    await this.ui.registry.flush()
     this.changed()
     return leader
   }
@@ -411,7 +412,7 @@ export class TokenItemSets implements ShareSetSource {
         if (!currentRecord()) return false
         const added = this.ui.registry.add(true)
         try {
-          this.ui.registry.attach(
+          await this.ui.registry.attachDurably(
             added,
             { v: 1, address: record.address, key: this.secrets.get(record.secretReference), scope },
             authority,
@@ -420,7 +421,7 @@ export class TokenItemSets implements ShareSetSource {
           this.store.bind(id, item.id, added)
         } catch (error) {
           this.ui.registry.beginForget(added)
-          this.ui.registry.finishForgotten(this.secrets)
+          await this.ui.registry.finishForgottenDurably(this.secrets)
           throw error
         }
         this.ui.registry.setPaused(added, item.paused)
@@ -459,6 +460,7 @@ export class TokenItemSets implements ShareSetSource {
         'No longer shared — copy kept: ' +
           this.store.get(id).items.find((one) => one.id === item).path
       )
+    await this.ui.registry.flush()
     this.changed()
     return changed
   }

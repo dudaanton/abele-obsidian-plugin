@@ -1,4 +1,5 @@
 import type { App } from 'obsidian'
+import { linkHostStorage } from './hostSyncStorage'
 import { CONNECTION_STORAGE, ConnectionRegistry, type ConnectionStatus } from './connectionRegistry'
 
 interface Context {
@@ -38,6 +39,7 @@ export function connectionAppFor(app: App, id: string): App {
     },
   })
   const context = { app: adapted, local, registry, id }
+  linkHostStorage(adapted, local)
   contexts.set(adapted, context)
   return adapted
 }

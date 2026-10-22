@@ -108,7 +108,7 @@ export interface TokenEngineOptions {
   rootIssue?: ScopeRootIssue
   rootChanged?(issue: ScopeRootIssue | undefined): void
   localRoot?: string
-  followRecoveredRoot?(from: string, to: string): void
+  followRecoveredRoot?(from: string, to: string): void | Promise<void>
   localRootChanged?(path: string): void
   verifyRootFileSystem?(path: string): FileSystem
   inspectRoot?(path: string): Promise<FolderEntries>
@@ -1422,7 +1422,7 @@ export class TokenEngineRuntime
         throw new LocalPlacementError(
           'The folder moved again; check its current location before following'
         )
-      this.options.followRecoveredRoot?.(this.placement.local, issue.path)
+      await this.options.followRecoveredRoot?.(this.placement.local, issue.path)
       this.options.localRootChanged?.(issue.path)
       this.options.localRoot = issue.path
       this.placement.local = issue.path

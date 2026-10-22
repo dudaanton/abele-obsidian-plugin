@@ -145,6 +145,24 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.assertEffect = assertEffect
   }
   private entryObserver: ((entry: StateEntry) => Promise<void>) | null = null
+  private committedEntryObserver: ((entries: StateEntry[]) => Promise<void>) | null = null
+
+  /** Host evidence may retire only after IDB COMMIT, never at overlay put time. */
+  observeCommittedEntries(observer: (entries: StateEntry[]) => Promise<void>): void {
+    this.committedEntryObserver = observer
+  }
+
+  /** Startup retirement must not mistake an open SDK overlay for a committed ledger. */
+  async readCommittedEntries(paths: readonly string[]): Promise<StateEntry[]> {
+    this.assertRecovery()
+    return this.read('cannot read committed write acknowledgements', [ENTRIES], async (tx) => {
+      const entries = tx.objectStore(ENTRIES)
+      const rows = await Promise.all(
+        paths.map((path) => wait<StateEntry | undefined>(entries.get(path)))
+      )
+      return rows.filter((row): row is StateEntry => row !== undefined)
+    })
+  }
 
   /** Independent durable provenance must settle before an identity can be filed/adopted. */
   observeEntries(observer: (entry: StateEntry) => Promise<void>): void {
@@ -343,6 +361,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       }
       await wait(entries.put(copy))
     })
+    await this.committedEntryObserver?.([copy])
   }
 
   async delete(path: string): Promise<void> {
@@ -598,6 +617,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       overlay.discard(error)
       throw error
     }
+    await this.committedEntryObserver?.(
+      [...overlay.entries.values()].filter((entry): entry is StateEntry => entry !== null)
+    )
     return result
   }
 

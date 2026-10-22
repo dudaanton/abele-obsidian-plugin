@@ -6,6 +6,7 @@ import { defaultSelective, selectiveProblem } from './connection'
 import { normalizeServerUrl, serverUrlProblem, PathSchema } from '@abele/sync-sdk/protocol'
 import { DEVICE_SECRET_PREFIX } from '@/secrets/deviceSecret'
 import type { LocalStorage } from './ledgerId'
+import { flushHostStorage, hostStorageOf, linkHostStorage } from './hostSyncStorage'
 import { isLegacyAccessSlot } from './discardLegacyConnections'
 import { LocalPlacementError } from './localFolderPlacement'
 
@@ -144,6 +145,7 @@ export class TokenConnectionRegistry {
   }
   private constructor(private readonly local: LocalStorage) {}
   static open(local: LocalStorage): TokenConnectionRegistry {
+    local = hostStorageOf(local)
     const registry = new TokenConnectionRegistry(local)
     registry.repairWrite()
     if (local.loadLocalStorage(TOKEN_REGISTRY_KEY) != null) {
@@ -154,6 +156,25 @@ export class TokenConnectionRegistry {
     registry.write(TOKEN_REGISTRY_KEY, { version: 2, selectedId: '', records: [] })
     registry.validated()
     return registry
+  }
+  flush(): Promise<void> {
+    return flushHostStorage(this.local)
+  }
+  async finishForgottenDurably(
+    secrets: Pick<DeviceTokenSecrets, 'get'> & { remove(reference: string): void },
+    only?: string
+  ): Promise<void> {
+    const retiring = (this.document().cleanup ?? []).filter(
+      (item) => only === undefined || item.id === only
+    )
+    await this.flush()
+    for (const item of retiring) {
+      const current = (this.document().cleanup ?? []).filter((entry) => entry.id === item.id)
+      if (!current.length) continue
+      if (!same(current, [item])) throw recovery()
+      this.finishForgotten(secrets, item.id)
+    }
+    await this.flush()
   }
   private empty(localId: string): TokenConnectionRecord {
     return {
@@ -372,7 +393,7 @@ export class TokenConnectionRegistry {
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
   finishForgotten(
-    secrets: DeviceTokenSecrets & { remove(reference: string): void },
+    secrets: Pick<DeviceTokenSecrets, 'get'> & { remove(reference: string): void },
     only?: string
   ): void {
     const doc = this.document()
@@ -514,7 +535,7 @@ export class TokenConnectionRegistry {
   /** New engine state is device-only and permanently bound to this local ID. */
   storage(localId: string): LocalStorage {
     this.record(this.validated(), localId)
-    return Object.assign(
+    const storage = Object.assign(
       {
         loadLocalStorage: (key: string) => {
           const record = this.record(this.validated(), localId)
@@ -537,6 +558,8 @@ export class TokenConnectionRegistry {
       },
       { [Symbol.for('abele.sync.connection-storage')]: localId }
     )
+    linkHostStorage(storage, this.local)
+    return storage
   }
   pinLocalRoot(localId: string): string | undefined {
     const doc = this.document(),
@@ -555,6 +578,25 @@ export class TokenConnectionRegistry {
     authority: TokenAuthority,
     secrets: DeviceTokenSecrets
   ): void {
+    this.prepareAttachment(localId, token, authority, secrets)()
+  }
+  async attachDurably(
+    localId: string,
+    token: ConnectionToken,
+    authority: TokenAuthority,
+    secrets: DeviceTokenSecrets
+  ): Promise<void> {
+    const finish = this.prepareAttachment(localId, token, authority, secrets)
+    await this.flush()
+    finish()
+    await this.flush()
+  }
+  private prepareAttachment(
+    localId: string,
+    token: ConnectionToken,
+    authority: TokenAuthority,
+    secrets: DeviceTokenSecrets
+  ): () => void {
     const address = normalizeServerUrl(token.address)
     if (
       token.v !== 1 ||
@@ -589,7 +631,7 @@ export class TokenConnectionRegistry {
       record.scope = clone(authority.scope)
       record.status = status
       this.write(TOKEN_REGISTRY_KEY, doc)
-      return
+      return () => {}
     }
     if (record.secretReference)
       throw new Error(
@@ -624,13 +666,26 @@ export class TokenConnectionRegistry {
       this.write(TOKEN_REGISTRY_KEY, doc)
     }
     const pending = record.pending
-    const saved = secrets.get(pending.secretReference)
-    if (saved != null && saved !== token.key) throw recovery()
-    if (saved == null) secrets.set(pending.secretReference, token.key)
-    if (secrets.get(pending.secretReference) !== token.key) throw recovery()
-    Object.assign(record, pending, { scope: clone(authority.scope) })
-    delete record.pending
-    record.status = status
-    this.write(TOKEN_REGISTRY_KEY, doc)
+    return () => {
+      // An awaited host commit may overlap another registry action. Never publish a stale doc.
+      const current = this.document(),
+        row = this.record(current, localId)
+      if (
+        !row.pending &&
+        row.secretReference === pending.secretReference &&
+        secrets.get(row.secretReference) === token.key
+      )
+        return
+      if (!same(row.pending, pending)) throw recovery()
+      const saved = secrets.get(pending.secretReference)
+      if (saved != null && saved !== token.key) throw recovery()
+      if (saved == null) secrets.set(pending.secretReference, token.key)
+      if (secrets.get(pending.secretReference) !== token.key) throw recovery()
+      Object.assign(row, pending, { scope: clone(authority.scope) })
+      delete row.pending
+      row.status =
+        authority.status === 'active' ? (row.paused ? 'paused' : 'idle') : authority.status
+      this.write(TOKEN_REGISTRY_KEY, current)
+    }
   }
 }

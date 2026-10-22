@@ -12,9 +12,11 @@ import { isDroppableTemp } from '@/sync/vaultWrites'
 import { connectionAdapter } from '@/sync/connectionScope'
 import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { privatePlacementStages } from '@/sync/privatePlacementStages'
+import { IDBFactory } from 'fake-indexeddb'
+import { HostSyncStorage, hostStorageOf } from '@/sync/hostSyncStorage'
 
 const bytes = new TextEncoder().encode('sample streamed replacement')
-const setup = () => {
+const setup = async () => {
   const app = buildFakeVault([{ path: 'sample.bin', content: 'original' }])
   const data = new Map<string, unknown>()
   const storage = {
@@ -23,20 +25,19 @@ const setup = () => {
       data.set(key, structuredClone(value))
     },
   }
+  await HostSyncStorage.open(new IDBFactory(), 'sample-vault', storage)
   const fs = () => new ObsidianFileSystem(app as unknown as App, { storage })
   return { app, fs, storage }
 }
-// BUG: localStorage acknowledgement is not durable stage ownership at process quit.
-// The core intent and host stage record need one durable publication protocol.
-it.fails('reopens a durable stage when the last localStorage update was lost at quit', async () => {
-  const { fs, storage } = setup()
+it('reopens a durable stage when the last localStorage update was lost at quit', async () => {
+  const { fs, storage } = await setup()
   const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
   await stage.append(0, new TextEncoder().encode('sample bytes'))
   storage.saveLocalStorage(JOURNAL_KEY, null)
   expect((await fs().reopenStage(stage.id)).offset).toBe(12)
 })
 it('finishes stage discard after a crash between file removal and journal retirement', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
   // The remove reached disk, but the process quit before the next journal write.
   await app.vault.adapter.remove(stage.id)
@@ -48,7 +49,7 @@ it('finishes stage discard after a crash between file removal and journal retire
   expect(await app.vault.adapter.read('sample.bin')).toBe('original')
 })
 it('excludes appends while idempotent discard awaits its disk check', async () => {
-  const { app, fs } = setup(),
+  const { app, fs } = await setup(),
     disk = fs()
   const stage = await disk.beginAtomicWrite('sample-new.bin', 0, null)
   const entered = deferred<void>(),
@@ -73,7 +74,7 @@ it('excludes appends while idempotent discard awaits its disk check', async () =
   }
 })
 it('awaits stage ownership before journalling or creating its private artifact', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   const disk = fs(),
     owned = deferred<void>(),
     resume = deferred<void>()
@@ -98,7 +99,7 @@ it('awaits stage ownership before journalling or creating its private artifact',
 it.each([false, true])(
   'protects a disposable source while creation awaits acknowledgement (owned=%s)',
   async (owned) => {
-    const { app, fs } = setup()
+    const { app, fs } = await setup()
     const privateRoot = connectionPrivateRoot('sample')
     const make = () =>
       owned
@@ -143,7 +144,7 @@ it.each([false, true])(
   }
 )
 it('does not borrow a live receipt from a different exact spelling on a case-sensitive host', async () => {
-  const { app, fs } = setup(),
+  const { app, fs } = await setup(),
     disk = fs()
   const data = new Uint8Array(2 * 1024 * 1024).fill(17)
   const stage = await disk.beginAtomicWrite('Shared/sample.bin', 123, null)
@@ -165,7 +166,7 @@ it('does not borrow a live receipt from a different exact spelling on a case-sen
   expect(read).not.toHaveBeenCalled()
 })
 it('releases a source reservation when creation fails after writing its temp', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   const disk = fs(),
     write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
   let temp = ''
@@ -182,9 +183,9 @@ it('releases a source reservation when creation fails after writing its temp', a
   expect(new WriteJournal(storage).entries()).toEqual([])
 })
 it('retires an interrupted disposable placement source and its journal on restart', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   await app.vault.adapter.write('source.tmp', 'incomplete network source')
-  storage.saveLocalStorage(JOURNAL_KEY, [
+  hostStorageOf(storage).saveLocalStorage(JOURNAL_KEY, [
     {
       target: '.abele-sync/placement-inbox/sample',
       temp: 'source.tmp',
@@ -197,7 +198,7 @@ it('retires an interrupted disposable placement source and its journal on restar
   expect(await app.vault.adapter.read('sample.bin')).toBe('original')
 })
 it('does not retire a live private network source or an ordinary retained stage', async () => {
-  const { fs } = setup()
+  const { fs } = await setup()
   const disk = fs()
   const source = await disk.beginAtomicWrite('.abele-sync/placement-inbox/sample', 0, null)
   const retained = await disk.beginAtomicWrite('local-copy.bin', 0, null)
@@ -211,7 +212,7 @@ it('does not retire a live private network source or an ordinary retained stage'
 })
 
 it('never whole-reads a large existing file when the incoming atomic write fits one chunk', async () => {
-  const { app, fs } = setup()
+  const { app, fs } = await setup()
   const stat = app.vault.adapter.stat.bind(app.vault.adapter)
   vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
     const actual = await stat(path)
@@ -224,7 +225,7 @@ it('never whole-reads a large existing file when the incoming atomic write fits 
   expect(read).not.toHaveBeenCalled()
 })
 it('pull verification never falls back to reading an entire multi-chunk local file', async () => {
-  const { app, fs } = setup()
+  const { app, fs } = await setup()
   const stat = app.vault.adapter.stat.bind(app.vault.adapter)
   vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
     const actual = await stat(path)
@@ -239,7 +240,7 @@ it('pull verification never falls back to reading an entire multi-chunk local fi
   expect(read).not.toHaveBeenCalled()
 })
 it('preserves an interrupted streaming backup without hashing the installed large file after restart', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   await app.vault.adapter.write('saved.old', 'previous local bytes')
   const stat = app.vault.adapter.stat.bind(app.vault.adapter)
   vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
@@ -249,7 +250,7 @@ it('preserves an interrupted streaming backup without hashing the installed larg
   const read = vi
     .spyOn(app.vault.adapter, 'readBinary')
     .mockRejectedValue(new Error('Whole local read forbidden'))
-  storage.saveLocalStorage(JOURNAL_KEY, [
+  hostStorageOf(storage).saveLocalStorage(JOURNAL_KEY, [
     {
       target: 'sample.bin',
       temp: 'sample.tmp',
@@ -269,7 +270,7 @@ it('preserves an interrupted streaming backup without hashing the installed larg
   expect(storage.loadLocalStorage(RECOVERED_WRITES_KEY)).toMatchObject([{ backup: 'saved.old' }])
 })
 it('retains local edits as sealed source locators and verifies retained bytes on every read', async () => {
-  const { app, fs } = setup()
+  const { app, fs } = await setup()
   const writer = fs(),
     copies = new EditCopies(),
     store = new MemoryStateStore()
@@ -285,7 +286,7 @@ it('retains local edits as sealed source locators and verifies retained bytes on
   await expect(copies.list(store)).rejects.toThrow('integrity')
 })
 it('reopens a partial stage after restart, verifies it, and publishes through the journal', async () => {
-  const { app, fs, storage } = setup()
+  const { app, fs, storage } = await setup()
   const first = fs()
   const base = await first.fingerprint('sample.bin')
   const stage = await first.beginAtomicWrite('sample.bin', 123, base)
@@ -301,7 +302,7 @@ it('reopens a partial stage after restart, verifies it, and publishes through th
   expect(new WriteJournal(storage).entries()).toEqual([])
 })
 it('retains the stage on cancellation and does not publish corrupt or stale bytes', async () => {
-  const { app, fs } = setup()
+  const { app, fs } = await setup()
   const writer = fs()
   const base = await writer.fingerprint('sample.bin')
   const stage = await writer.beginAtomicWrite('sample.bin', 123, base)
@@ -322,7 +323,7 @@ it('retains the stage on cancellation and does not publish corrupt or stale byte
   expect(await app.vault.adapter.exists(stage.id)).toBe(false)
 })
 it('resumes from the actual appended length when cancellation arrives with the disk acknowledgement', async () => {
-  const { app, fs } = setup()
+  const { app, fs } = await setup()
   const writer = fs(),
     abort = new AbortController()
   const stage = await writer.beginAtomicWrite('incoming.bin', 1000, null)
@@ -342,7 +343,7 @@ it('resumes from the actual appended length when cancellation arrives with the d
   expect(new Uint8Array(await app.vault.adapter.readBinary('incoming.bin'))).toEqual(bytes)
 })
 it('rechecks ownership after awaited provenance, before stage publication', async () => {
-  const { app, storage } = setup()
+  const { app, storage } = await setup()
   let held = true
   const fence = {
     assertReady: () => {

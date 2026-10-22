@@ -1,3 +1,4 @@
+import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
 import { diagnosticOrigin } from './nativeDiagnostics'
 import { TFolder } from 'obsidian'
@@ -1376,13 +1377,16 @@ import {
 
 /** Lifecycle checks and filesystem recovery select the same connection's durable intents. */
 export function connectionJournalApp(app: App, owner: string): App {
-  return new Proxy(app, {
-    get(target, key) {
-      if (key === CONNECTION_JOURNAL_OWNER) return owner
-      const value = Reflect.get(target, key)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
+  return inheritHostStorage(
+    new Proxy(app, {
+      get(target, key) {
+        if (key === CONNECTION_JOURNAL_OWNER) return owner
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    }),
+    app
+  )
 }
 
 /** Control inputs only: no directory discovery or filesystem mutation capability. */
@@ -1571,15 +1575,18 @@ export function connectionInspectionApp(
       return typeof value === 'function' ? value.bind(target) : value
     },
   })
-  return new Proxy(app, {
-    get(target, key) {
-      if (key === CONNECTION_ROOT) return currentRoot()
-      if (key === CONNECTION_PRIVATE) return privateRoot
-      if (key === 'vault') return vault
-      const value = Reflect.get(target, key)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
+  return inheritHostStorage(
+    new Proxy(app, {
+      get(target, key) {
+        if (key === CONNECTION_ROOT) return currentRoot()
+        if (key === CONNECTION_PRIVATE) return privateRoot
+        if (key === 'vault') return vault
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    }),
+    app
+  )
 }
 
 export function connectionFilePort(

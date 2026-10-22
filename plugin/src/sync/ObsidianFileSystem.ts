@@ -21,6 +21,7 @@ import {
   type FileInfo,
   type FileSystem,
   type StateStore,
+  type StateEntry,
   type AtomicStage,
   type ContentIdentity,
   type ChunkSource,
@@ -44,6 +45,7 @@ import { makeParents, pruneAbove } from './vaultFolders'
 import { VaultDirectories } from './vaultDirectories'
 import {
   isAdapterTemp,
+  adapterWriteInFlight,
   isDroppableTemp,
   nativeOf,
   storageOf,
@@ -187,7 +189,9 @@ export interface ObsidianFileSystemOptions {
   beforeEngineMutation?: (paths: string[]) => Promise<void>
 
   /** Ledger paths absent from the index are checked on disk before a scan calls them deleted. */
-  ledger?: Pick<StateStore, 'all'>
+  ledger?: Pick<StateStore, 'all'> & {
+    readCommittedEntries?(paths: readonly string[]): Promise<StateEntry[]>
+  }
   /** How often the config folder is polled; 30 s by default. */
   pollMs?: number
   /** The clock the watcher's ceiling reads; `Date.now` by default. */
@@ -652,7 +656,7 @@ export class ObsidianFileSystem implements FileSystem {
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
    * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
   private readonly observedBases = new Map<string, { sha: string } | { absent: true }>()
-  private readonly ledger: Pick<StateStore, 'all'> | null
+  private readonly ledger: ObsidianFileSystemOptions['ledger'] | null
   /** Pulls can finish before Obsidian's file index sees their adapter renames. */
   private readonly awaitingIndex = new Set<string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
@@ -848,6 +852,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.privateRoot
     )
     this.writer = new VaultWriter({
+      retainInstalled: !!options.ledger,
       stagingDirectory: stagingDirectory(this.configDir, this.privateRoot),
       filesystem: this.guardedAdapter,
       native: this.native,
@@ -1139,7 +1144,7 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
   /** Called only after explicit Follow verified the destination file set. */
-  followRecoveredRoot(from: string, to: string): void {
+  async followRecoveredRoot(from: string, to: string): Promise<void> {
     this.runtimeFence?.assertReady()
     assertPhysicalPath(from)
     assertPhysicalPath(to)
@@ -1182,11 +1187,19 @@ export class ObsidianFileSystem implements FileSystem {
       // then validate its suffix without granting access to any native path.
       assertPhysicalPath('Recovery' + backupSuffix(entry.backup))
     }
-    this.journal.relocateRecoveredTargets(from, to)
+    await this.journal.persist(() => this.journal.relocateRecoveredTargets(from, to))
   }
 
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
+    if (this.ledger?.readCommittedEntries) {
+      const paths = this.journal
+        .entries()
+        .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
+        .map((entry) => entry.target)
+      if (paths.length)
+        await this.acknowledgeWrites(await this.ledger.readCommittedEntries([...new Set(paths)]))
+    }
     if (
       this.scopedRoot() &&
       [...this.journal.entries(), ...this.journal.vaultRecovered()].some(
@@ -1227,6 +1240,40 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
 
+  /** Called with committed rows, or a committed startup inventory, never overlay entries. */
+  async acknowledgeWrites(entries: readonly StateEntry[]): Promise<void> {
+    const byPath = new Map(entries.map((entry) => [entry.path, entry.sha]))
+    const installed: JournalEntry[] = []
+    for (const entry of this.journal.entries()) {
+      if (
+        entry.backup ||
+        entry.retiredGeneration ||
+        !entry.replacementSha ||
+        byPath.get(entry.target) !== entry.replacementSha
+      )
+        continue
+      if (
+        !entry.installed &&
+        (!entry.temp ||
+          this.stageOperations.has(entry.temp) ||
+          adapterWriteInFlight(entry.temp) ||
+          (await this.rawStat(entry.temp)))
+      )
+        continue
+      installed.push(entry)
+    }
+    if (!installed.length) return
+    await this.journal.persist(() => {
+      for (const entry of installed)
+        if (
+          this.journal
+            .entries()
+            .some((current) => JSON.stringify(current) === JSON.stringify(entry))
+        )
+          this.journal.drop(entry)
+    })
+  }
+
   async discardPrivateDownloads(): Promise<void> {
     if (!this.privateRoot) return
     for (const entry of this.journal.entries())
@@ -1235,12 +1282,13 @@ export class ObsidianFileSystem implements FileSystem {
         entry.streaming &&
         !entry.backup &&
         entry.temp &&
+        !this.stageOperations.has(entry.temp) &&
         withinRoot(entry.target, this.privateRoot + '/placement-inbox') &&
         withinRoot(entry.temp, this.privateRoot)
       ) {
         if ((await this.rawStat(entry.temp)) === null) {
           // Creation and discard each have a durable-intent/missing-file crash window.
-          this.journal.drop(entry)
+          await this.journal.persist(() => this.journal.drop(entry))
           this.stages.delete(entry.temp)
         } else await (await this.reopenStage(entry.temp)).discard()
       }
@@ -1707,15 +1755,17 @@ export class ObsidianFileSystem implements FileSystem {
       },
     }
     if (entry.disposableSource) reserveSourceStage(temp)
+    this.stageOperations.add(temp)
     let ready = false
     try {
-      this.journal.add(entry)
+      await this.journal.persist(() => this.journal.add(entry))
       this.stages.set(temp, entry)
       await this.io.create(temp, mtime)
       const stage = await this.reopenStage(temp)
       ready = true
       return stage
     } finally {
+      this.stageOperations.delete(temp)
       if (!ready) releaseSourceStage(temp)
     }
   }
@@ -1733,7 +1783,7 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('io', 'cannot discard an unowned stage')
         await this.disk.remove(id)
       }
-      if (entry) this.journal.drop(entry)
+      if (entry) await this.journal.persist(() => this.journal.drop(entry))
       this.stages.delete(id)
       releaseSourceStage(id)
     } finally {
@@ -1814,7 +1864,7 @@ export class ObsidianFileSystem implements FileSystem {
             replacementSha: expected.sha,
             streaming: { ...entry.streaming, sealed: { size: expected.size, sha: expected.sha } },
           }
-          this.journal.replace(entry, sealed)
+          await this.journal.persist(() => this.journal.replace(entry, sealed))
           entry = sealed
           this.stages.set(id, sealed)
         }),
@@ -1839,7 +1889,7 @@ export class ObsidianFileSystem implements FileSystem {
           ? Promise.resolve()
           : exclusive(async () => {
               if ((await this.rawStat(id)) !== null) await this.disk.remove(id)
-              this.journal.drop(entry)
+              await this.journal.persist(() => this.journal.drop(entry))
               this.stages.delete(id)
               finished = true
             }).finally(() => releaseSourceStage(id)),
@@ -1863,7 +1913,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     // Retire the old seal before truncating only this journal-owned private download.
     // No persisted digest authenticates bytes left by a previous process.
-    this.journal.replace(entry, restarted)
+    await this.journal.persist(() => this.journal.replace(entry, restarted))
     this.stages.set(id, restarted)
     await this.io.create(id, entry.streaming.mtime)
     console.debug('[abele-sync] restarting private pull stage without local range reads')
@@ -1892,7 +1942,7 @@ export class ObsidianFileSystem implements FileSystem {
         ...previous,
         streaming: { ...previous.streaming, base: null, retainBase: installed !== null },
       }
-      this.journal.replace(previous, retained)
+      await this.journal.persist(() => this.journal.replace(previous, retained))
       this.stages.set(id, retained)
       return this.reopenPullStage(id)
     }
@@ -1906,10 +1956,10 @@ export class ObsidianFileSystem implements FileSystem {
         ...entry,
         streaming: { ...entry.streaming, retainBase: true },
       }
-      this.journal.replace(entry, retained)
+      await this.journal.persist(() => this.journal.replace(entry, retained))
       this.stages.set(stage.id, retained)
     }
-    if (previous) this.journal.drop(previous)
+    if (previous) await this.journal.persist(() => this.journal.drop(previous))
     console.debug('[abele-sync] redownloading published pull while retaining uncertain local bytes')
     return this.reopenStage(stage.id)
   }

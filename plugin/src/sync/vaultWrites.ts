@@ -68,6 +68,7 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
+  retainInstalled?: boolean
   stagingDirectory: string
   filesystem: DataAdapter
   native: NativeFs | null
@@ -123,7 +124,7 @@ export class VaultWriter {
         replacementSha: stream.sealed.sha,
         ...(this.deps.native || stream.retainBase ? { preserveBackup: true } : {}),
       }
-      this.deps.journal.replace(entry, swapping)
+      await this.deps.journal.persist(() => this.deps.journal.replace(entry, swapping))
       entry = swapping
       await this.holding(backup, async () => {
         if (this.deps.native) await this.deps.native.rename(held, backup)
@@ -138,7 +139,9 @@ export class VaultWriter {
             if (this.deps.native) await this.deps.native.installExclusive(backup, held)
             else await this.disk.rename(backup, held)
             await this.deps.adoptReceipt?.(backup, held)
-            this.deps.journal.replace(entry, { ...entry, backup: undefined })
+            await this.deps.journal.persist(() =>
+              this.deps.journal.replace(entry, { ...entry, backup: undefined })
+            )
           } catch {
             console.debug(
               `[abele-sync] ${held} is retained at ${backup} after stage publication failed`
@@ -149,7 +152,7 @@ export class VaultWriter {
         await this.deps.adoptReceipt?.(entry.temp, held)
         notify()
         const installed = { ...entry, installed: true }
-        this.deps.journal.replace(entry, installed)
+        await this.deps.journal.persist(() => this.deps.journal.replace(entry, installed))
         entry = installed
         if (this.deps.native || stream.retainBase) {
           await this.preserveBackup(entry)
@@ -159,7 +162,15 @@ export class VaultWriter {
     }
     await this.deps.adoptReceipt?.(entry.temp, entry.target)
     notify()
-    this.deps.journal.drop(entry)
+    await this.finishInstallation(entry)
+  }
+
+  private async finishInstallation(entry: JournalEntry): Promise<void> {
+    await this.deps.journal.persist(() => {
+      if (this.deps.retainInstalled)
+        this.deps.journal.replace(entry, { ...entry, installed: true, backup: undefined })
+      else this.deps.journal.drop(entry)
+    })
   }
 
   /**
@@ -177,9 +188,9 @@ export class VaultWriter {
     const view = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
     const temp = await this.freeName(path, 'tmp')
     let entry: JournalEntry = { target: path, temp, replacementSha: await signature(bytes) }
-    this.deps.journal.add(entry)
     inFlight.add(temp)
     try {
+      await this.deps.journal.persist(() => this.deps.journal.add(entry))
       try {
         // Mobile writeBinary base64-encodes its entire input. Keep each bridge
         // message bounded, while the journal-owned staging file remains hidden.
@@ -215,7 +226,7 @@ export class VaultWriter {
           replacementSha: entry.replacementSha,
           ...(this.deps.native !== null ? { preserveBackup: true } : {}),
         }
-        this.deps.journal.replace(entry, swapping)
+        await this.deps.journal.persist(() => this.deps.journal.replace(entry, swapping))
         entry = swapping
         if (this.deps.native !== null && !this.deps.native.installExclusive) {
           throw new EngineError(
@@ -232,7 +243,7 @@ export class VaultWriter {
         }
         this.deps.installed?.(path)
         const installed = { ...entry, installed: true }
-        this.deps.journal.replace(entry, installed)
+        await this.deps.journal.persist(() => this.deps.journal.replace(entry, installed))
         entry = installed
         if (this.deps.native !== null) {
           // An unfenced adapter may have an open writer to the moved inode. Keep that copy
@@ -252,13 +263,13 @@ export class VaultWriter {
           !(await this.there(temp)) &&
           (entry.backup === undefined || !(await this.there(entry.backup)))
         )
-          this.deps.journal.drop(entry)
+          await this.deps.journal.persist(() => this.deps.journal.drop(entry))
       }
       throw error
     } finally {
       inFlight.delete(temp)
     }
-    this.deps.journal.drop(entry)
+    await this.finishInstallation(entry)
   }
 
   /** A file that was not there: the temp takes the name, which the adapter refuses if taken. */
@@ -354,14 +365,14 @@ export class VaultWriter {
   ): Promise<void> {
     const aside = await this.freeName(to, 'old')
     const entry = { target: to, backup: aside }
-    this.deps.journal.add(entry)
     await this.holding(aside, async () => {
+      await this.deps.journal.persist(() => this.deps.journal.add(entry))
       // Out from `to`, not from `from`: on the disk this is for, both names answer to the one
       // file, and `to` is the one that is there whether the rename before this took or not.
       try {
         await this.disk.rename(to, aside)
       } catch (cause) {
-        this.deps.journal.drop(entry)
+        await this.deps.journal.persist(() => this.deps.journal.drop(entry))
         throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
       }
       try {
@@ -371,13 +382,13 @@ export class VaultWriter {
         // disk that will not do that either leaves it to the journal.
         try {
           await this.disk.rename(aside, from)
-          this.deps.journal.drop(entry)
+          await this.deps.journal.persist(() => this.deps.journal.drop(entry))
         } catch {
           console.debug(`[abele-sync] ${from} is left at ${aside} until the next listing`)
         }
         throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
       }
-      this.deps.journal.drop(entry)
+      await this.deps.journal.persist(() => this.deps.journal.drop(entry))
     })
     if ((await spelledExactly(to)) === false) {
       throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
@@ -397,17 +408,20 @@ export class VaultWriter {
         if (inFlight.has(retained.backup))
           throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
         const archived = await this.deps.native.archiveBackup(retained.backup)
-        this.deps.journal.relocateRecovered(retained.backup, archived)
+        await this.deps.journal.persist(() =>
+          this.deps.journal.relocateRecovered(retained.backup, archived)
+        )
       }
     }
     for (const entry of this.deps.journal.entries()) {
       if (entry.retiredGeneration) continue
+      if (this.deps.retainInstalled && entry.installed && !entry.backup) continue
       if (entry.streaming && !entry.backup) {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue
         if (entry.temp && adapterWriteInFlight(entry.temp)) continue
         if (entry.temp && (await this.there(entry.temp))) await this.disk.remove(entry.temp)
-        this.deps.journal.drop(entry)
+        await this.deps.journal.persist(() => this.deps.journal.drop(entry))
         console.debug('[abele-sync] retired interrupted disposable placement source')
         continue
       }
@@ -455,7 +469,7 @@ export class VaultWriter {
         if (entry.temp !== undefined && (await this.there(entry.temp))) {
           await this.disk.remove(entry.temp)
         }
-        this.deps.journal.drop(entry)
+        await this.deps.journal.persist(() => this.deps.journal.drop(entry))
       } catch (error) {
         throw new EngineError(
           'io',
@@ -521,10 +535,12 @@ export class VaultWriter {
     }
   }
   private async preserveBackup(entry: JournalEntry): Promise<void> {
-    this.deps.journal.preserve(entry)
+    await this.deps.journal.persist(() => this.deps.journal.preserve(entry))
     if (entry.backup && this.deps.native?.archiveBackup) {
       const retained = await this.deps.native.archiveBackup(entry.backup)
-      this.deps.journal.relocateRecovered(entry.backup, retained)
+      await this.deps.journal.persist(() =>
+        this.deps.journal.relocateRecovered(entry.backup, retained)
+      )
     }
   }
 }

@@ -594,6 +594,7 @@ export class TokenEngines {
       }
     }
     const start = async () => {
+      await this.ui.registry.flush()
       await stage('Waiting for previous sync', () => beforeOpening.teardown)
       await stage('Reading offloaded file records', async () => {
         await beforeOpening.documents
@@ -742,6 +743,7 @@ export class TokenEngines {
           runtime?.written(path)
         },
       })
+      state.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
       if (ordinary.needsRecoveryHandshake() || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)
