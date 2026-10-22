@@ -92,36 +92,45 @@ export class ConditionalFiles {
       this.host.changed([destination])
     }
     // A durable plan also finds a randomly named publication after restart.
-    if (info.type === 'file' && this.host.sameObject && (await this.host.stat(plans))) {
-      for (const plan of (await this.host.list(plans)).files) {
-        const bytes = await this.host.read(plan)
-        let destination: string
-        try {
-          const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
-          if (
-            !value ||
-            typeof value !== 'object' ||
-            !('destination' in value) ||
-            typeof value.destination !== 'string'
-          )
-            throw new Error('invalid restore plan')
-          destination = value.destination
+    const findPublished = async (): Promise<string | null> => {
+      if (info.type === 'file' && this.host.sameObject && (await this.host.stat(plans))) {
+        for (const plan of (await this.host.list(plans)).files) {
+          const bytes = await this.host.read(plan)
+          let destination: string
+          try {
+            const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
+            if (
+              !value ||
+              typeof value !== 'object' ||
+              !('destination' in value) ||
+              typeof value.destination !== 'string'
+            )
+              throw new Error('invalid restore plan')
+            destination = value.destination
+          } catch (error) {
+            this.host.check()
+            // Publication is never attempted until record() has populated and flushed
+            // the plan. A partial/invalid plan cannot authorize an installation.
+            console.debug('[abele-sync] ignoring incomplete restore plan', plan, error)
+            continue
+          }
+          // Runtime validation (including reservations) is not malformed metadata.
+          // Uncertainty about an earlier publication must keep this record pending.
           this.host.validate(destination, true)
-        } catch (error) {
-          this.host.check()
-          // Publication is never attempted until record() has populated and flushed
-          // the plan. A partial/invalid plan cannot authorize an installation.
-          console.debug('[abele-sync] ignoring incomplete restore plan', plan, error)
-          continue
-        }
-        if (
-          (await this.host.stat(destination)) &&
-          (await this.host.sameObject(from, destination))
-        ) {
-          await finish(destination)
-          return
+          if (
+            (await this.host.stat(destination)) &&
+            (await this.host.sameObject(from, destination))
+          ) {
+            return destination
+          }
         }
       }
+      return null
+    }
+    const previous = await findPublished()
+    if (previous !== null) {
+      await finish(previous)
+      return
     }
     let rootFallback = false
     const parents = to.split('/').slice(0, -1)
@@ -186,6 +195,15 @@ export class ConditionalFiles {
         if (info.type === 'file') {
           await this.host.mkdir(plans)
           await this.record(plans + '/' + crypto.randomUUID() + '.json', { destination })
+          // Re-read all operation destinations after the awaited preparations.
+          // A failed probe must not be turned into another fallback publication.
+          published = true
+          const existing = await findPublished()
+          if (existing !== null) {
+            await finish(existing)
+            return
+          }
+          published = false
           if (
             !(await this.install(from, destination, (value) => {
               published = value

@@ -81,9 +81,14 @@ async function assertNoVisibleAliases(root: string, path: string) {
   await walk('')
   expect(aliases).toEqual([path])
 }
-it.each([false, true])(
-  'does not publish another name after a post-link flush failure (collision=%s)',
-  async (collision) => {
+it.each([
+  [false, false],
+  [true, false],
+  [false, true],
+  [true, true],
+])(
+  'does not publish another name after a post-link flush failure (collision=%s, reservation=%s)',
+  async (collision, reserved) => {
     let published = false,
       failed = false
     const { root, disk } = await setup({
@@ -114,6 +119,24 @@ it.each([false, true])(
     await captured(root, 'flush-record', 'folder/sample.md')
     await expect(disk().recoverConditionalFiles()).rejects.toThrow()
     expect(failed).toBe(true)
+    if (reserved) {
+      const files = await fs.readdir(join(root, 'folder'))
+      let recoveredPath = ''
+      for (const name of files)
+        if ((await fs.readFile(join(root, 'folder', name), 'utf8')) === 'recovered bytes')
+          recoveredPath = 'folder/' + name
+      const reservation = disk().externalCoordination.reserve({
+        operationId: 'sample-reservation',
+        fileId: 'sample-file',
+        paths: [recoveredPath],
+      })
+      try {
+        await expect(disk().recoverConditionalFiles()).rejects.toThrow()
+        await assertNoVisibleAliases(root, recoveredPath)
+      } finally {
+        reservation.release()
+      }
+    }
     await disk().recoverConditionalFiles()
     const names = (await fs.readdir(root)).filter((name) => name.endsWith('.md'))
     expect(names).toEqual([])
