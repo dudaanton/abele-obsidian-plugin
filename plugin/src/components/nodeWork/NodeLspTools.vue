@@ -128,8 +128,15 @@ function analyzerState(status: (typeof relevant.value)[number]) {
   if (status.reason === 'untrusted_folder') return t('node.analysis.untrusted')
   if (!status.found || (status.language === 'eslint' && eslintMissing.value))
     return t('node.analysis.notSetUp')
-  if (status.diagnostic || document.value?.error) return t('node.analysis.failed')
+  const reason = status.diagnostic || actionError.value || document.value?.error
+  if (reason) return t('node.analysis.stopped', { reason })
   return t(analysisState.value === 'starting' ? 'node.analysis.starting' : 'node.analysis.running')
+}
+function analyzerIcon(status: (typeof relevant.value)[number]) {
+  if (status.reason === 'untrusted_folder') return 'shield-alert'
+  if (!status.found || (status.language === 'eslint' && eslintMissing.value)) return 'circle-alert'
+  if (status.diagnostic || actionError.value || document.value?.error) return 'circle-alert'
+  return analysisState.value === 'starting' ? 'loader' : 'check'
 }
 const analysisTooltip = computed(() => {
   if (analysisState.value === 'starting') return t('node.analysis.loading')
@@ -155,40 +162,55 @@ function populateAnalysis(menu: Menu) {
     menu.addItem((item) =>
       item
         .setTitle(`${analyzerNames[status.language] ?? status.language} — ${analyzerState(status)}`)
-        .setChecked(
-          status.found &&
-            !status.reason &&
-            !(status.language === 'eslint' && eslintMissing.value) &&
-            !status.diagnostic &&
-            !document.value?.error
-        )
+        .setIcon(analyzerIcon(status))
         .setDisabled(true)
     )
   if (!relevant.value.length)
-    menu.addItem((item) => item.setTitle(analysisTooltip.value).setDisabled(true))
-  if (actionError.value || document.value?.error)
     menu.addItem((item) =>
-      item.setTitle(actionError.value || document.value?.error || '').setDisabled(true)
+      item
+        .setTitle(analysisTooltip.value)
+        .setIcon(
+          analysisState.value === 'off'
+            ? 'circle-off'
+            : analysisState.value === 'failed'
+              ? 'circle-alert'
+              : 'loader'
+        )
+        .setDisabled(true)
     )
-  menu.addSeparator()
+  const restart =
+    document.value?.supported &&
+    (analysisState.value === 'failed' ||
+      document.value.diagnostics.some((item) => item.severity === 1))
+  const setup =
+    !untrusted.value &&
+    (eslintMissing.value || relevant.value.some((s) => s.language === 'eslint' && !s.found))
+  if (
+    (untrusted.value && canTrust.value) ||
+    restart ||
+    (missing.value && !untrusted.value) ||
+    setup
+  )
+    menu.addSeparator()
   if (untrusted.value && canTrust.value)
     menu.addItem((item) =>
       item.setTitle(t('node.analysis.trust')).setDisabled(busy.value).onClick(trust)
     )
-  if (document.value?.supported)
+  if (restart)
     menu.addItem((item) =>
-      item.setTitle(t('node.lsp.retry')).setDisabled(busy.value).onClick(retry)
+      item.setTitle(t('node.analysis.restart')).setDisabled(busy.value).onClick(retry)
     )
-  if (missing.value && canInstall.value && !untrusted.value) {
-    menu.addItem((item) =>
-      item
-        .setTitle(t('node.lsp.install'))
-        .setDisabled(busy.value || installing.value)
-        .onClick(install)
-    )
+  if (missing.value && !untrusted.value) {
+    if (canInstall.value)
+      menu.addItem((item) =>
+        item
+          .setTitle(t('node.lsp.install'))
+          .setDisabled(busy.value || installing.value)
+          .onClick(install)
+      )
     menu.addItem((item) => item.setTitle(t('node.lsp.copy')).onClick(copyCommand))
   }
-  if (language.value === 'typescript')
+  if (setup)
     menu.addItem((item) =>
       item
         .setTitle(t('node.analysis.eslintHelp'))

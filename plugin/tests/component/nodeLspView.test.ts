@@ -323,6 +323,31 @@ describe('node language diagnostics in the shared file viewer', () => {
     expect(close).toHaveBeenCalledOnce()
   })
   it.each([
+    ['ready', 'check', []],
+    ['loading', 'loader', []],
+    ['eslint', 'check', ['How to set up ESLint']],
+    ['untrusted', 'shield-alert', ['Trust this folder…']],
+    ['failed', 'circle-alert', ['Restart analysis']],
+    ['errors', 'check', ['Restart analysis']],
+    ['off', 'circle-off', []],
+  ] as const)('uses state icons and applicable actions for %s', async (state, icon, actions) => {
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const view = mount(NodeLspFixture, { props: { state }, attachTo: document.body })
+    await flushPromises()
+    document.querySelector<HTMLButtonElement>('[data-lsp-analysis] button')!.click()
+    const items = show.mock.contexts.at(-1)!.items
+    expect(items.filter((item) => !item.disabled).map((item) => item.title)).toEqual(actions)
+    const statuses = items.filter((item) => item.disabled)
+    expect(statuses[0].icon).toBe(icon)
+    expect(statuses.every((item) => item.checked === null)).toBe(true)
+    expect(statuses).toHaveLength(state === 'off' ? 1 : 2)
+    if (state === 'eslint') expect(statuses[1].icon).toBe('circle-alert')
+    if (state === 'failed')
+      expect(statuses[0].title).toBe('TypeScript — stopped: Sample analysis server stopped')
+    expect(document.querySelector('button[data-lsp-settle]')).toBeNull()
+    view.unmount()
+  })
+  it.each([
     'missing',
     'untrusted',
     'loading',
@@ -555,10 +580,10 @@ describe('node language diagnostics in the shared file viewer', () => {
     analysis.handler?.()
     const menu = show.mock.contexts.at(-1)!
     expect(menu.items.map((item) => item.title)).toContain('ESLint — not set up in this project')
-    expect(menu.items.find((item) => item.title === 'TypeScript — running')?.checked).toBe(true)
+    expect(menu.items.find((item) => item.title === 'TypeScript — running')?.icon).toBe('check')
     expect(
-      menu.items.find((item) => item.title === 'ESLint — not set up in this project')?.checked
-    ).toBe(false)
+      menu.items.find((item) => item.title === 'ESLint — not set up in this project')?.icon
+    ).toBe('circle-alert')
     view.unmount()
   })
   it('keeps failures and recovery in the header and exposes analyser states in its menu', async () => {
@@ -574,7 +599,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     document.querySelector<HTMLButtonElement>('[data-lsp-analysis] button')!.click()
     const menu = show.mock.contexts.at(-1)!
     expect(menu.items.filter((item) => item.disabled).map((item) => item.title)).toContain(
-      'TypeScript — failed'
+      'TypeScript — stopped: Sample server stopped'
     )
     expect(document.querySelector('.abele-file-view')?.textContent).not.toContain(
       'Sample server stopped'

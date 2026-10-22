@@ -51,6 +51,9 @@ export const en = {
   'node.file.waitingForNode': 'The file will open when the node is back.',
   'node.file.retry': 'Retry',
   'node.error.details': 'Details',
+  'node.analysis.restart': 'Restart analysis',
+  'node.analysis.stopped': 'stopped: {reason}',
+
   'node.analysis.title': 'Code analysis',
   'node.analysis.untrusted': 'folder not trusted',
   'node.analysis.notSetUp': 'not set up in this project',

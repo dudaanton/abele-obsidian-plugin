@@ -54,6 +54,9 @@ export const de = {
   'node.file.waitingForNode': 'Die Datei wird geöffnet, sobald der Knoten wieder erreichbar ist.',
   'node.file.retry': 'Erneut versuchen',
   'node.error.details': 'Details',
+  'node.analysis.restart': 'Analyse neu starten',
+  'node.analysis.stopped': 'gestoppt: {reason}',
+
   'node.analysis.title': 'Codeanalyse',
   'node.analysis.untrusted': 'Ordner nicht vertrauenswürdig',
   'node.analysis.notSetUp': 'in diesem Projekt nicht eingerichtet',

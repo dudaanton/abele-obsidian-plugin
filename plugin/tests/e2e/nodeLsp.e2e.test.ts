@@ -61,7 +61,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await until(() => !document.querySelector('.menu'));
           if (Math.abs(contentTop() - top) > 0.5) throw Error('Analysis menu shifted file');
           if (state === 'loading') {
-            document.querySelector('[data-lsp-settle]').click();
+            document.querySelector('[data-lsp-settle]').dispatchEvent(new Event('lsp-settle'));
             await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === 'ready');
             if (Math.abs(contentTop() - top) > 0.5) throw Error('Analysis state shifted file');
             if (document.querySelector('[data-lsp-analysis] .abele-status-dot_pulse')) throw Error('Ready analysis still pulses');

@@ -1,6 +1,6 @@
 <template>
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
-    <div class="abele-lsp-fixture-header">
+    <div class="abele-lsp-fixture-header" data-lsp-settle @lsp-settle="settle?.()">
       <span>{{ state === 'off' ? 'sample.txt' : 'sample.ts' }}</span>
       <span ref="headerHost" class="abele-analysis-header">
         <Icon
@@ -29,12 +29,7 @@
       :line="3"
     />
     <template #footer
-      ><Button
-        v-if="state === 'loading'"
-        data-lsp-settle
-        :text="t('node.lsp.retry')"
-        @click="settle?.()" />
-      <Button data-lsp-close :text="t('streamB.close.7d9eb7')" @click="emit('close')"
+      ><Button data-lsp-close :text="t('streamB.close.7d9eb7')" @click="emit('close')"
     /></template>
   </Modal>
 </template>

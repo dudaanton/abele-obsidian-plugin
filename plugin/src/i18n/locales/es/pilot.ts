@@ -53,6 +53,9 @@ export const es = {
   'node.file.waitingForNode': 'El archivo se abrirá cuando el nodo vuelva a estar disponible.',
   'node.file.retry': 'Reintentar',
   'node.error.details': 'Detalles',
+  'node.analysis.restart': 'Reiniciar análisis',
+  'node.analysis.stopped': 'detenido: {reason}',
+
   'node.analysis.title': 'Análisis de código',
   'node.analysis.untrusted': 'carpeta no confiable',
   'node.analysis.notSetUp': 'sin configurar en este proyecto',

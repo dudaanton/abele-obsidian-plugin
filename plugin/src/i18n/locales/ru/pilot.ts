@@ -52,6 +52,9 @@ export const ru = {
   'node.file.waitingForNode': 'Файл откроется, когда нода вернётся.',
   'node.file.retry': 'Повторить',
   'node.error.details': 'Подробности',
+  'node.analysis.restart': 'Перезапустить анализ',
+  'node.analysis.stopped': 'остановлен: {reason}',
+
   'node.analysis.title': 'Анализ кода',
   'node.analysis.untrusted': 'папка не доверенная',
   'node.analysis.notSetUp': 'не настроен в этом проекте',

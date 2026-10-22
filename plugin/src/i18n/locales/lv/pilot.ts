@@ -52,6 +52,9 @@ export const lv = {
   'node.file.waitingForNode': 'Fails tiks atvērts, kad mezgls atkal būs pieejams.',
   'node.file.retry': 'Mēģināt vēlreiz',
   'node.error.details': 'Sīkāka informācija',
+  'node.analysis.restart': 'Restartēt analīzi',
+  'node.analysis.stopped': 'apturēts: {reason}',
+
   'node.analysis.title': 'Koda analīze',
   'node.analysis.untrusted': 'mape nav uzticama',
   'node.analysis.notSetUp': 'šajā projektā nav iestatīts',

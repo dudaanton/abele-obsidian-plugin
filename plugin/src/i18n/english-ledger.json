@@ -28198,5 +28198,25 @@
       "es",
       "de"
     ]
+  },
+  "node.analysis.restart": {
+    "englishHash": "cf64d3dd0f5b8d6904a56210194968cee2d2a363d3cc023b1ecdc0c5e1d0ad54",
+    "context": "Node file analysis menu recovery action and stopped reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.stopped": {
+    "englishHash": "d4271e3cefe9fa654f53208a99b9319166e397a7b28b7a62ad34e42711011fec",
+    "context": "Node file analysis menu recovery action and stopped reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
