@@ -66,6 +66,13 @@
         @menu="emit('place-menu', $event)"
       >
         <!-- The branch against its base, in codes, close under its name. -->
+        <Icon
+          v-if="network?.enabled.value"
+          icon="globe"
+          size="xs"
+          :interactive="false"
+          :tooltip="t('streamB.codexNetworkHere')"
+        />
         <BranchCodes
           v-if="branch && branchSays"
           :state="branch.state"
@@ -238,6 +245,8 @@ import type { TabCode } from '@/github/search/tabCode'
 import { computed, watch } from 'vue'
 import type { NodePathModel, PathFileStage } from '@/node/NodePathModel'
 import { removeNodePathFolder } from '@/node/NodePathController'
+import { NodeService } from '@/node/NodeService'
+import { codexProjectNetwork } from '@/node/codexNetwork'
 import NodePanel from './NodePanel.vue'
 import NodePlace from './NodePlace.vue'
 import NodeModes from './NodeModes.vue'
@@ -338,6 +347,28 @@ const changeCount = computed(
 const history = computed(() => props.model?.panelHistory.value)
 const branch = computed(() => props.model?.panelBranch.value)
 const offline = computed(() => props.node?.status !== 'connected')
+const network = computed(() => {
+  const model = props.model,
+    target = model?.current.value
+  return model && target
+    ? codexProjectNetwork(
+        NodeService.getInstance().connection(model.registrationId).client,
+        target.projectId
+      )
+    : undefined
+})
+watch(
+  [network, offline],
+  () => {
+    if (network.value?.supported && !offline.value)
+      void network.value
+        .load()
+        .catch((error: unknown) =>
+          console.debug('[Abele] Codex network setting unavailable', error)
+        )
+  },
+  { immediate: true }
+)
 /** The node can stage, commit and push in this worktree. */
 const canGit = computed(
   () =>

@@ -39,6 +39,18 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'On the node, allow running without asking:',
   'streamB.permissionOpenSettings': 'Open agent settings',
   'streamB.permissionCodexFolder': 'Edits files in its folder without asking and stays inside it.',
+  'streamB.codexNetwork': 'Network for Codex',
+  'streamB.codexNetworkOnNotice': 'Codex can reach the network in {project}.',
+  'streamB.codexNetworkOffNotice': 'Codex is offline in {project}.',
+  'streamB.codexNetworkOffline': 'The node is offline',
+  'streamB.codexNetworkHere': 'Codex can reach the network here',
+  'streamB.codexNetworkRefusal': 'Network is off for Codex in {project}.',
+  'streamB.codexNetworkEnable': 'Turn on network',
+  'streamB.codexNetworkRetry': 'Network is on. Ask the agent to try again.',
+  'streamB.codexNetworkOwner':
+    'Only the node’s owner can turn it on: the project menu → Network for Codex.',
+  'streamB.permissionCodexFolder':
+    'Without asking: edits in its folder without asking; it stays inside that folder.',
   'streamB.permissionOwnerChoice':
     'Ask requires approval for each action. Without asking allows the agent’s tools to run without approval, including outside its folder.',
   'streamB.accessWritesWithoutAsking': 'Writes without asking',

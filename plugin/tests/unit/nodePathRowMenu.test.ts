@@ -43,7 +43,11 @@ vi.mock('@/node/NodeService', () => ({
           describe: f.describe,
           request: f.request,
           setRepositorySettings: f.settings,
-          getProject: async () => ({ use_repository_claude_permissions: false }),
+          getProject: async () => ({
+            root_path: '/sample/project',
+            codex_network_enabled: false,
+            use_repository_claude_permissions: false,
+          }),
         },
       }),
     }),
@@ -96,6 +100,14 @@ async function opened(): Promise<Shown> {
 }
 const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
+
+it('offers the project Codex network switch after New chat here on capable nodes', async () => {
+  f.methods = ['project.codex_permissions']
+  const menu = await opened()
+  const names = menu.items.map((item) => item.title)
+  expect(names[names.indexOf('New chat here') + 1]).toBe('Network for Codex')
+  expect(menu.items.find((item) => item.title === 'Network for Codex')?.checked).toBe(false)
+})
 
 it('routes node-header Disconnect through the selected registration client', async () => {
   const description = {

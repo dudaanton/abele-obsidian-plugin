@@ -39,6 +39,18 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'Mezglā atļaujiet darbību bez jautāšanas:',
   'streamB.permissionOpenSettings': 'Atvērt aģenta iestatījumus',
   'streamB.permissionCodexFolder': 'Rediģē failus savā mapē bez jautāšanas un paliek tajā.',
+  'streamB.codexNetwork': 'Tīkls Codex',
+  'streamB.codexNetworkOnNotice': 'Codex var piekļūt tīklam projektā {project}.',
+  'streamB.codexNetworkOffNotice': 'Codex ir bezsaistē projektā {project}.',
+  'streamB.codexNetworkOffline': 'Mezgls ir bezsaistē',
+  'streamB.codexNetworkHere': 'Codex šeit var piekļūt tīklam',
+  'streamB.codexNetworkRefusal': 'Codex tīkls projektā {project} ir izslēgts.',
+  'streamB.codexNetworkEnable': 'Ieslēgt tīklu',
+  'streamB.codexNetworkRetry': 'Tīkls ir ieslēgts. Lūdziet aģentam mēģināt vēlreiz.',
+  'streamB.codexNetworkOwner':
+    'To var ieslēgt tikai mezgla īpašnieks: projekta izvēlne → Tīkls Codex.',
+  'streamB.permissionCodexFolder':
+    'Bez jautāšanas: rediģē savā mapē bez jautāšanas un paliek šajā mapē.',
   'streamB.permissionOwnerChoice':
     '«Jautāt» prasa apstiprinājumu katrai darbībai. «Bez jautāšanas» atļauj aģenta rīkus bez apstiprinājuma, arī ārpus tā mapes.',
   'streamB.accessWritesWithoutAsking': 'Raksta bez jautāšanas',

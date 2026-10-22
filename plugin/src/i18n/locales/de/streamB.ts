@@ -39,6 +39,16 @@ export const streamB = {
     'Dieser Anbieter kann nicht vor jeder Aktion fragen. Wählen Sie in den Agenteneinstellungen «Ohne Nachfrage», um ihn zu aktivieren. Beim Delegieren muss auch der übergeordnete Chat ohne Nachfrage laufen.',
   'streamB.permissionNodeOptIn': 'Auf dem Knoten das Ausführen ohne Nachfrage erlauben:',
   'streamB.permissionOpenSettings': 'Agenteneinstellungen öffnen',
+  'streamB.codexNetwork': 'Netzwerk für Codex',
+  'streamB.codexNetworkOnNotice': 'Codex kann in {project} auf das Netzwerk zugreifen.',
+  'streamB.codexNetworkOffNotice': 'Codex ist in {project} offline.',
+  'streamB.codexNetworkOffline': 'Der Knoten ist offline',
+  'streamB.codexNetworkHere': 'Codex kann hier auf das Netzwerk zugreifen',
+  'streamB.codexNetworkRefusal': 'Das Netzwerk für Codex in {project} ist aus.',
+  'streamB.codexNetworkEnable': 'Netzwerk einschalten',
+  'streamB.codexNetworkRetry': 'Das Netzwerk ist an. Bitte den Agenten, es erneut zu versuchen.',
+  'streamB.codexNetworkOwner':
+    'Nur der Eigentümer des Knotens kann es einschalten: Projektmenü → Netzwerk für Codex.',
   'streamB.permissionCodexFolder':
     'Bearbeitet Dateien in seinem Ordner ohne Nachfragen und bleibt darin.',
   'streamB.permissionOwnerChoice':

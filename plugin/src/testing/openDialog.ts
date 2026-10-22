@@ -47,6 +47,7 @@ export interface DialogFixtureOptions {
     | 'owner-stopped'
     | 'lost'
   permissionState?: 'running' | 'refused' | 'node-opt-in' | 'unknown'
+  codexNetworkRefusal?: { nodeId: string; projectId: string }
   agentInherit?: boolean
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
@@ -478,12 +479,22 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
               {
                 default: () =>
                   h(NodeDelegationCard, {
-                    card: options?.permissionState
-                      ? nodePermissionCardFixture(options.permissionState)
-                      : nodeDelegationCardFixture(
-                          options?.delegationState,
-                          options?.delegationCommand
-                        ),
+                    card: options?.codexNetworkRefusal
+                      ? {
+                          ...nodeDelegationCardFixture('failed'),
+                          ...options.codexNetworkRefusal,
+                          provider: 'codex',
+                          pendingHumanPrompts: 0,
+                          reports: [],
+                          reason:
+                            'Network is disabled: package installs require the project network switch.',
+                        }
+                      : options?.permissionState
+                        ? nodePermissionCardFixture(options.permissionState)
+                        : nodeDelegationCardFixture(
+                            options?.delegationState,
+                            options?.delegationCommand
+                          ),
                     nodeLabel: 'Sample node',
                   }),
               }

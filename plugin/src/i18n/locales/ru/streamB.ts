@@ -39,6 +39,18 @@ export const streamB = {
   'streamB.permissionNodeOptIn': 'На ноде разрешите работу без вопросов:',
   'streamB.permissionOpenSettings': 'Открыть настройки агента',
   'streamB.permissionCodexFolder': 'Меняет файлы в своей папке без вопросов и остаётся внутри неё.',
+  'streamB.codexNetwork': 'Сеть для Codex',
+  'streamB.codexNetworkOnNotice': 'Codex может обращаться к сети в {project}.',
+  'streamB.codexNetworkOffNotice': 'Codex работает без сети в {project}.',
+  'streamB.codexNetworkOffline': 'Нода не в сети',
+  'streamB.codexNetworkHere': 'Codex может обращаться к сети здесь',
+  'streamB.codexNetworkRefusal': 'Сеть для Codex в {project} выключена.',
+  'streamB.codexNetworkEnable': 'Включить сеть',
+  'streamB.codexNetworkRetry': 'Сеть включена. Попросите агента попробовать снова.',
+  'streamB.codexNetworkOwner':
+    'Включить её может только владелец ноды: меню проекта → Сеть для Codex.',
+  'streamB.permissionCodexFolder':
+    'Без вопросов: редактирует в своей папке без вопросов; остаётся внутри этой папки.',
   'streamB.permissionOwnerChoice':
     '«Спрашивать» требует подтверждения каждого действия. «Без вопросов» разрешает инструменты агента без подтверждений, в том числе вне его папки.',
   'streamB.accessWritesWithoutAsking': 'Записывает без запроса',

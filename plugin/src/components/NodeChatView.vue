@@ -127,6 +127,7 @@
         />
         <NodeMessageTree
           :messages="segment.messages"
+          :target="segment.target"
           :children="presenter.projection.value.children || {}"
           :queue-states="presentation.states"
           :offline="offline"

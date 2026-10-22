@@ -2,8 +2,16 @@
   <!-- One message of a node chat: the regular chat's message, with what the node adds under it
        (a failed turn's way to send it again, where a queued input stands) and beside a call
        (what allowed it). -->
+  <template v-if="networkRefusal && message.role !== 'tool-call'">
+    <NodeCodexNetworkRefusal :node-id="target?.registrationId" :project-id="target?.projectId" />
+    <Disclosure :label="t('node.delegation.activity')">
+      <pre>{{ message.toolResult || message.content }}</pre>
+    </Disclosure>
+  </template>
   <NodeDelegateHistory
-    v-if="conversation && message.toolName === 'delegate' && message.id.startsWith('obsidian:')"
+    v-else-if="
+      conversation && message.toolName === 'delegate' && message.id.startsWith('obsidian:')
+    "
     :client="conversation.client"
     :message="message"
     :invocation="message.id.slice('obsidian:'.length)"
@@ -29,8 +37,13 @@
       />
     </template>
     <template v-if="!message.id.startsWith('obsidian:')" #tool-note>
+      <NodeCodexNetworkRefusal
+        v-if="networkRefusal"
+        :node-id="target?.registrationId"
+        :project-id="target?.projectId"
+      />
       <span
-        v-if="message.toolResult || message.content"
+        v-else-if="message.toolResult || message.content"
         class="abele-node-message-note"
         :title="message.toolResult ? undefined : message.content"
         :data-find-part="message.toolResult ? 'result' : undefined"
@@ -87,6 +100,10 @@
 </template>
 <script setup lang="ts">
 import { computed, inject } from 'vue'
+import type { PathTarget } from '@/node/NodePathModel'
+import { isCodexNetworkMessage } from '@/node/codexNetwork'
+import NodeCodexNetworkRefusal from './NodeCodexNetworkRefusal.vue'
+import Disclosure from './obsidian/Disclosure.vue'
 import { obsidianConversationPresentation } from '@/node/obsidianConversationPresentation'
 import NodeDelegateHistory from './NodeDelegateHistory.vue'
 import CallPlace from './chat/CallPlace.vue'
@@ -106,6 +123,7 @@ import AiChatMessage from './AiChatMessage.vue'
 import Icon from './obsidian/Icon.vue'
 const props = defineProps<{
   message: ChatMessage
+  target?: PathTarget
   openResource: (path: string) => void
   queueState?: QueueState
   offline?: boolean
@@ -114,6 +132,7 @@ const props = defineProps<{
   promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
   historyState?: { reason: string }
 }>()
+const networkRefusal = computed(() => isCodexNetworkMessage(props.message))
 // Write previews belong to the live approval card. The retained call stays a run line;
 // its ordinary details menu does not reopen the saved preview as another content block.
 const runMessage = computed(() =>

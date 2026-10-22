@@ -3,7 +3,7 @@ import { nodeActionError } from './errorWords'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { addFolderDebugMenu } from '@/debugger/folderActions'
 import { t } from '@/i18n'
-import { Menu, Notice, Platform } from 'obsidian'
+import { Menu, Notice, Platform, setTooltip } from 'obsidian'
 import { ChannelError } from '@abele/channel-protocol'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
@@ -42,6 +42,7 @@ import { nodeTreeAction, type TreeAction } from './nodeTreeActions'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { disconnectNodeDevice } from './disconnectNodeDevice'
 import { worktreeBusy } from './worktreeBusy'
+import { codexProjectNetwork } from './codexNetwork'
 
 const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
@@ -643,7 +644,9 @@ export async function newNodePathChat(
     agentSuggestions(choices).map((item, index) => {
       const choice = choices[index]
       const blocked =
-        !choice.unavailable && !!choice.permissionNote && nodeAgentOwnerMode(model.nodeId, choice.provider) !== 'allow-all'
+        !choice.unavailable &&
+        !!choice.permissionNote &&
+        nodeAgentOwnerMode(model.nodeId, choice.provider) !== 'allow-all'
       return blocked
         ? {
             ...item,
@@ -898,6 +901,7 @@ export function showNodePathPlaceMenu(
   const online =
     NodeService.getInstance().connection(model.registrationId).state.value === 'connected'
   const menu = new Menu()
+  let networkLoad: Promise<void> | undefined
   const tail = (m: Menu) => {
     m.addSeparator()
     m.addItem((i) =>
@@ -922,6 +926,7 @@ export function showNodePathPlaceMenu(
     )
     m.addSeparator()
     nodePathAction(async () => {
+      await networkLoad
       await nodeItems(model, m, target ?? undefined, !target)
       m.showAtPosition(at)
     })
@@ -936,6 +941,31 @@ export function showNodePathPlaceMenu(
       .setDisabled(!online || !model.capabilities.value.includes('node_path_execution'))
       .onClick(() => nodePathAction(() => newNodePathChat(model)))
   )
+  const network = codexProjectNetwork(
+    NodeService.getInstance().connection(model.registrationId).client,
+    model.current.value.projectId
+  )
+  if (network.supported) {
+    menu.addItem((i) => {
+      i.setTitle(t('streamB.codexNetwork'))
+        .setIcon('globe')
+        .setChecked(network.enabled.value)
+        .setDisabled(!online || network.busy.value)
+        .onClick(() => nodePathAction(() => network.set(!network.enabled.value)))
+      const dom = (i as typeof i & { dom?: HTMLElement }).dom
+      if (!online && dom) setTooltip(dom, t('streamB.codexNetworkOffline'))
+      if (online)
+        networkLoad = network
+          .load()
+          .then(() => {
+            i.setChecked(network.enabled.value)
+          })
+          .catch((error: unknown) => {
+            console.debug('[Abele] Codex network setting unavailable', error)
+            i.setDisabled(true)
+          })
+    })
+  }
   menu.addItem((i) =>
     i
       .setTitle(

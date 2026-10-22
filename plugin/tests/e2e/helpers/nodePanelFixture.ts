@@ -75,6 +75,12 @@ const nodePanel = (() => {
   const commit = (hash, subject) => ({ commit: hash, parents: hash === BASE ? [] : [BASE], author: 'Sample author', email: 'sample@example.invalid', authored_at: at, subject, message: subject + '\\n' })
   const supported = { status: 'supported', evidence: 'sample-fixture' }
   const client = {
+    channel: { channel: { welcome: { get methods() { return variant.codexNetwork ? ['project.codex_permissions'] : [] } } } },
+    setProjectCodexPermissions: async (id, enabled) => {
+      const project = allProjects.find((p) => p.project_id === id)
+      project.codex_network_enabled = enabled
+      return { ...project }
+    },
     connected: true,
     describe: async () => ({
       capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported, repository_git_write_v1: supported } },
@@ -89,7 +95,7 @@ const nodePanel = (() => {
     listWorkspaces: async (project, after) =>
       after || project !== ids.folder ? [] : [{ workspace_id: ids.notes, project_id: ids.folder, path: allProjects[1].root_path, kind: 'root', state: 'ready', created_at: at }],
     listFiles: async (_id, path) => ({ entries: path ? [] : [{ name: 'sample-note.md', path: 'sample-note.md', kind: 'file' }, { name: 'drafts', path: 'drafts', kind: 'directory' }], next: null }),
-    getProject: async (id) => allProjects.find((p) => p.project_id === id),
+    getProject: async (id) => ({ ...allProjects.find((p) => p.project_id === id) }),
     request: async (method) => {
       if (method === 'project.repository_settings.get') return { external_read: false }
       throw Error('Unsupported fixture call: ' + method)

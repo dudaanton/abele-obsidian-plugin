@@ -38,8 +38,13 @@
     >
       {{ t('streamB.delegationWorkerLost') }}
     </p>
+    <NodeCodexNetworkRefusal
+      v-if="isCodexNetworkRefusal(card.reason)"
+      :node-id="card.nodeId"
+      :project-id="card.projectId"
+    />
     <NodeToolPermissions
-      v-if="permissionExplanation"
+      v-else-if="permissionExplanation"
       quiet-reason
       :policy="card.toolPermissions"
       hide-mode
@@ -84,10 +89,13 @@
       />
     </template>
     <Disclosure
+      v-model="activityOpen"
       class="abele-node-delegation__details"
       :label="t('node.delegation.activity')"
-      v-model="activityOpen"
     >
+      <p v-if="isCodexNetworkRefusal(card.reason)" class="abele-node-delegation__metadata">
+        {{ card.reason }}
+      </p>
       <p
         v-for="warning in card.warnings ?? []"
         :key="warning"
@@ -134,6 +142,8 @@
 <script setup lang="ts">
 import AiToolApproval from './AiToolApproval.vue'
 import NodeToolPermissions from './NodeToolPermissions.vue'
+import NodeCodexNetworkRefusal from './NodeCodexNetworkRefusal.vue'
+import { isCodexNetworkRefusal } from '@/node/codexNetwork'
 import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
 import NodeQuestionnaire from './NodeQuestionnaire.vue'
 import { obsidianPromptCall } from '@/node/obsidianPresentation'

@@ -5532,5 +5532,32 @@
   },
   "streamB.nodeReconnectingLine": {
     "englishHash": "5f8f397440f4cdea2341387f46db73ea8f8ba7779cac996fda459163e2ba9094"
+  },
+  "streamB.codexNetwork": {
+    "englishHash": "fa70ca3e477f8e5866bfe8bc3010595aef079fc670442d1c422e6f4f3037f2a2"
+  },
+  "streamB.codexNetworkOnNotice": {
+    "englishHash": "69c8125e7329bcce488bb75e9fe12bb87a40465a148343e22e11242a2156f97e"
+  },
+  "streamB.codexNetworkOffNotice": {
+    "englishHash": "e6fb85b0ad68150098fd909ed4e540afb8ce383d0bf695dcfd320fb75601c368"
+  },
+  "streamB.codexNetworkOffline": {
+    "englishHash": "03992ec459ebc6827d822a6b96f537cbd55828a9a99f5734ac56188f1d8ab98b"
+  },
+  "streamB.codexNetworkHere": {
+    "englishHash": "20aa91b4b414c534a41dc4734e4c19c05a3dd2906e6668ad01e37a25cf077e25"
+  },
+  "streamB.codexNetworkRefusal": {
+    "englishHash": "ef48ebecf293bc1357b46d92ce505f4309567ca82bab12ae36a68cbd78dfb7ff"
+  },
+  "streamB.codexNetworkEnable": {
+    "englishHash": "755da5724db8d83481f5a27b095b567ea78337a11aa82cdbe3526cdb0d011c75"
+  },
+  "streamB.codexNetworkRetry": {
+    "englishHash": "6db3ad21bc47bb9669cb436851b89c9a2ccf9ba74aaef1cc8f2b41688df09ae2"
+  },
+  "streamB.codexNetworkOwner": {
+    "englishHash": "2486952c5f6250a82083cbf07ed845ef1617d1d0b77acd219a107f625a09c036"
   }
 }

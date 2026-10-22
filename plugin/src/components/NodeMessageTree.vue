@@ -25,6 +25,7 @@
             :messages="children[message.id]"
             :children="children"
             :depth="depth + 1"
+            :target="target"
             :open-resource="openResource"
             :queue-states="queueStates"
             :offline="offline"
@@ -41,6 +42,14 @@
       v-bind="messageProps(block.message)"
       v-on="handlers"
     />
+    <template v-if="block.kind === 'run' && !isOpen(block)">
+      <NodeCodexNetworkRefusal
+        v-for="call in block.calls.filter(isCodexNetworkMessage)"
+        :key="call.id"
+        :node-id="target?.registrationId"
+        :project-id="target?.projectId"
+      />
+    </template>
     <slot
       name="after-message"
       :message="block.kind === 'run' ? block.messages[block.messages.length - 1] : block.message"
@@ -56,9 +65,13 @@ import { computed, reactive } from 'vue'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
 import ChatToolRun from './ChatToolRun.vue'
 import NodeMessage from './NodeMessage.vue'
+import NodeCodexNetworkRefusal from './NodeCodexNetworkRefusal.vue'
+import { isCodexNetworkMessage } from '@/node/codexNetwork'
+import type { PathTarget } from '@/node/NodePathModel'
 const props = withDefaults(
   defineProps<{
     messages: ChatMessage[]
+    target?: PathTarget
     children: Record<string, ChatMessage[]>
     depth?: number
     openResource: (path: string) => void
@@ -72,6 +85,7 @@ const props = withDefaults(
   }>(),
   {
     depth: 0,
+    target: undefined,
     queueStates: () => ({}),
     toolPrompts: () => ({}),
     promptDiffs: () => ({}),
@@ -95,6 +109,7 @@ const isOpen = (block: Extract<ChatBlock, { kind: 'run' }>) =>
   block.calls.some((c) => callState(c) === 'running' || c.toolStatus === 'pending')
 const messageProps = (message: ChatMessage) => ({
   message,
+  target: props.target,
   openResource: props.openResource,
   queueState: props.queueStates[message.id],
   offline: props.offline,
