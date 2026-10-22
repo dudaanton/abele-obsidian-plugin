@@ -62,6 +62,7 @@ const DEFAULT_POLL_MS = 30000
  * `adapter.list` follows a link without saying it did.
  */
 const CONFIG_WALK_DEPTH = 32
+const INVENTORY_READ_ATTEMPTS = 3
 
 /**
  * The vault's ignore file. It lives at the root rather than under the config folder, and a
@@ -105,12 +106,15 @@ class InventoryCache<T> extends Map<string, T> {
     if (super.get(path) === value) this.revisions.set(path, this.revision(path))
   }
   async stable(path: string, read: () => T): Promise<Awaited<T>> {
-    for (;;) {
+    for (let attempt = 0; attempt < INVENTORY_READ_ATTEMPTS; attempt++) {
       const value = this.get(path) ?? this.observe(path, read)
       const revision = this.revisions.get(path)
       const result = await value
       if (revision === this.revision(path)) return result
     }
+    // An unstable snapshot proves neither presence nor absence. Stop this pass
+    // before adoption or download can act on it; a later pass can retry.
+    throw new EngineError('io', 'Directory inventory kept changing; retry sync later')
   }
   override delete(path: string): boolean {
     this.revisions.delete(path)
@@ -339,7 +343,9 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const refs = [
       this.app.vault.on('create', (file) => invalidate(file, undefined, true)),
-      this.app.vault.on('modify', (file) => recordChange(file.path)),
+      this.app.vault.on('modify', (file) => {
+        if (inventory) this.recordInventoryChange(inventory, file.path, false)
+      }),
       this.app.vault.on('delete', (file) => invalidate(file)),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
     ]
@@ -399,10 +405,11 @@ export class ObsidianFileSystem implements FileSystem {
     if (path === undefined) return this.inventory.localRevision
     return this.pathRevision(path, this.inventory)
   }
-  private recordInventoryChange(inventory: InventoryPass, path: string): void {
+  private recordInventoryChange(inventory: InventoryPass, path: string, membership = true): void {
     const revision = ++inventory.localRevision
     inventory.localChanges.set(caseKey(path), revision)
-    inventory.directoryChanges.set(caseKey(folderOf(path).replace(/^\/$/, '')), revision)
+    if (membership)
+      inventory.directoryChanges.set(caseKey(folderOf(path).replace(/^\/$/, '')), revision)
   }
   private syncInventoryConfig(inventory: InventoryPass): void {
     // Config adapter writes have no vault event. Fold their free counter into the
@@ -448,7 +455,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (!this.inventory) return read()
     const inventory = this.inventory
-    for (;;) {
+    for (let attempt = 0; attempt < INVENTORY_READ_ATTEMPTS; attempt++) {
       this.syncInventoryConfig(inventory)
       const revision = `${inventory.directoryRevision}`
       if (inventory.directories === undefined || inventory.directoryStamp !== revision) {
@@ -460,6 +467,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (revision === `${inventory.directoryRevision}`) return directories
       inventory.directories = undefined
     }
+    throw new EngineError('io', 'Directory inventory kept changing; retry sync later')
   }
   async [Symbol.for('abele.sync.inventory-children-v1')](
     parent: string,
@@ -525,14 +533,18 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of paths) {
       const parent = folderOf(path) === '/' ? '' : folderOf(path)
       const retain: (() => void)[] = []
-      if (known === 'file') inventory.indexedNames?.get(parent)?.add(caseKey(path))
-      else inventory.indexedNames?.delete(parent)
+      const names = known === 'file' ? inventory.indexedNames?.get(parent) : undefined
+      if (names) {
+        names.add(caseKey(path))
+        retain.push(() => inventory.indexedNames?.retain(parent, names))
+      } else inventory.indexedNames?.delete(parent)
       if (
         !inventory.children.has(parent) &&
         !inventory.indexedChildren.has(parent) &&
         !inventory.listings.has(parent)
       ) {
         this.recordInventoryChange(inventory, path)
+        for (const refresh of retain) refresh()
         continue
       }
       const stat =
