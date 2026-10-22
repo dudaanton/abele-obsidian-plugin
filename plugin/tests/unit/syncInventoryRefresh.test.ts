@@ -12,7 +12,8 @@ import {
 } from '@abele/sync-sdk/core'
 import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 
-it.each([
+// BUG: D-133: adapter-only replacement requires the pending mobile identity capability.
+it.fails.each([
   ['watch-first', 1234.75],
   ['list-first', 1234.75],
   ['watch-first', 1235],

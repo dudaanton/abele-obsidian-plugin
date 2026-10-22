@@ -5,7 +5,7 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const data = (text: string) => new TextEncoder().encode(text)
-// D-133: adapter-only capture stays closed until durable mobile identity is available.
+// BUG: D-133: adapter-only capture stays closed until durable mobile identity is available.
 const destructiveHostCase = (name: string, run: (desktop: boolean) => Promise<void>) => {
   it.fails(name.replace('%s', 'false'), () => run(false))
   it(name.replace('%s', 'true'), () => run(true))

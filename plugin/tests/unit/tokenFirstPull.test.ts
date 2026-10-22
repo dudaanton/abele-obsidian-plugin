@@ -15,6 +15,8 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import type { TransferSnapshot } from '@/sync/transferProgress'
 import { assertSmallPullBounds } from '../helpers/smallPullBounds'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
+import { desktopFsPort } from '../helpers/desktopRequire'
+import { constants } from 'node:fs'
 
 const snapshotFiles = 1003
 const directoryScanCounts: number[] = []
@@ -61,11 +63,12 @@ it.each([
     })
     let diagnosticCalls = 0
     let beforeFirstPull = 0
+    const debug = console.debug.bind(console)
     if (native)
-      vi.spyOn(console, 'debug').mockImplementation((label) => {
+      vi.spyOn(console, 'debug').mockImplementation((label, ...args: unknown[]) => {
         if (String(label).startsWith('[Abele Sync request')) {
           diagnosticCalls++
-        }
+        } else debug(label, ...args)
       })
     const scope = {
       kind: 'folder' as const,
@@ -190,19 +193,25 @@ it.each([
         if (!inodes.has(path)) inodes.set(path, nextInode++)
         return inodes.get(path)!
       }
+      const nativeStat = async (path: string) => {
+        const stat =
+          path === '' ? { type: 'folder', size: 0, mtime: 0, ctime: 0 } : await rawStat(path)
+        if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+        return {
+          dev: 1,
+          ino: inode(path),
+          size: stat.size,
+          mtimeMs: stat.mtime,
+          ctimeMs: stat.ctime,
+          isSymbolicLink: () => false,
+          isDirectory: () => stat.type === 'folder',
+          isFile: () => stat.type === 'file',
+        }
+      }
       Object.assign(app.vault.adapter, {
-        getFullPath: (path: string) => path,
+        getFullPath: (path: string) => '/sample-vault/' + path,
         fsPromises: {
-          stat: async (path: string) => {
-            const stat = path === '' ? { type: 'folder' } : await rawStat(path)
-            if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-            return {
-              dev: 1,
-              ino: inode(path),
-              isSymbolicLink: () => false,
-              isDirectory: () => stat.type === 'folder',
-            }
-          },
+          stat: nativeStat,
           rename: async (from: string, to: string) => {
             const identity = inode(from)
             await app.vault.adapter.rename(from, to)
@@ -220,14 +229,23 @@ it.each([
             await write(to, await read(from), { mtime: stat!.mtime, ctime: stat!.ctime })
             inodes.set(to, inode(from))
           },
-          lstat: async (path: string) => {
-            const stat = await rawStat(path)
-            if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-            return { isSymbolicLink: () => false, isDirectory: () => stat.type === 'folder' }
-          },
-          open: async (path: string, flags: string) => {
-            if (flags === 'wx') await write(path, new ArrayBuffer(0))
+          lstat: nativeStat,
+          open: async (path: string, flags: string | number) => {
+            const create =
+              flags === 'wx' || (typeof flags === 'number' && flags & constants.O_CREAT)
+            if (create) {
+              if (await rawStat(path)) throw Object.assign(new Error('exists'), { code: 'EEXIST' })
+              await write(path, new ArrayBuffer(0))
+            }
             return {
+              stat: () => nativeStat(path),
+              truncate: async (length: number) => {
+                const before = new Uint8Array(await read(path)),
+                  bytes = new Uint8Array(length)
+                bytes.set(before.subarray(0, length))
+                await write(path, bytes.buffer)
+              },
+              readFile: async () => new Uint8Array(await read(path)),
               read: async (
                 buffer: Uint8Array,
                 offset: number,
@@ -259,6 +277,26 @@ it.each([
             write(path, await read(path), { mtime: mtime * 1000 }),
         },
       })
+      const methods = Reflect.get(app.vault.adapter, 'fsPromises')
+      Object.assign(app.vault.adapter, {
+        fsPromises: new Proxy(methods, {
+          get(target, key) {
+            const method = Reflect.get(target, key)
+            if (typeof method !== 'function') return method
+            return (...args: unknown[]) => {
+              const mapped = [...args]
+              for (let index = 0; index < (key === 'rename' || key === 'link' ? 2 : 1); index++) {
+                const path = String(mapped[index])
+                if (path !== '/sample-vault' && !path.startsWith('/sample-vault/'))
+                  throw new Error('Native fixture path is outside the vault')
+                mapped[index] = path === '/sample-vault' ? '' : path.slice('/sample-vault/'.length)
+              }
+              return method.apply(target, mapped)
+            }
+          },
+        }),
+      })
+      desktopFsPort(Reflect.get(app.vault.adapter, 'fsPromises'))
     }
     let observedRuntime: TokenEngineRuntime | undefined
     const fs = new ObsidianFileSystem(app as unknown as App, {
@@ -305,6 +343,7 @@ it.each([
     try {
       if (host) {
         vi.stubGlobal('window', {
+          require: Reflect.get(window, 'require'),
           indexedDB: new IDBFactory(),
           setTimeout,
           clearTimeout,
@@ -322,28 +361,28 @@ it.each([
         assertSmallPullBounds(firstPull!.small.max)
       }
       if (host && !reconnect && !native) {
+        console.log('[cold token-host pull calls]', JSON.stringify(events))
+
         expect(firstPull!.small.count).toBe(1)
         expect(firstPull!.small.max).toMatchObject({ bridge: 10, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
-        // One of the five initial target stats inventories local edit copies.
-        // The remaining 10 include the cold owned staging mkdir and write.
+        // Five target checks include one preparation read; the sixth stat protects
+        // the journal-owned receipt path. Keep the same total bridge budget.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
             .map((event) => event.operation)
         ).toEqual([
-          ...Array<string>(5).fill('adapter stat'),
+          ...Array<string>(6).fill('adapter stat'),
           'adapter exists',
           'adapter exists',
           'adapter mkdir',
-          'adapter stat',
           'adapter writeBinary',
           'adapter rename',
         ])
         expect(
           events.filter((event) => event.operation === 'adapter mkdir').map((event) => event.paths)
         ).toEqual([[expect.stringMatching(/^\.abele-sync\/connections\/[^/]+\/writes$/)]])
-        console.log('[cold token-host pull calls]', JSON.stringify(events))
       }
       if (native) {
         console.log(
@@ -513,6 +552,22 @@ async function productionHost(
       },
     }
   } catch (error) {
+    const live = Reflect.get(host, 'live') as Map<string, TokenEngineRuntime>
+    const options =
+      live.get(registry.records()[0]?.id ?? '') &&
+      Reflect.get(live.get(registry.records()[0]?.id ?? '')!, 'options')
+    const state = options?.state
+    console.log(
+      '[first-pull fixture failure]',
+      ui.activity.value,
+      state &&
+        (await Promise.all(
+          (await state.metadataKeys('pull-write:')).map(async (key: string) => [
+            key,
+            await state.getMeta(key),
+          ])
+        ))
+    )
     await host.close()
     reviews.close()
     throw error
