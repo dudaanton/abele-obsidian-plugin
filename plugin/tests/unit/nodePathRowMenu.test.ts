@@ -9,6 +9,12 @@ import {
 
 const f = vi.hoisted(() => ({
   methods: [] as string[],
+  online: true,
+  network: false,
+  setNetwork: vi.fn(async (_project: string, enabled: boolean) => ({
+    root_path: '/sample/project',
+    codex_network_enabled: enabled,
+  })),
   request: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
   settings: vi.fn(async () => ({})),
   refresh: vi.fn(async () => {}),
@@ -29,7 +35,7 @@ vi.mock('@/node/NodeService', () => ({
       ]),
       remove: f.remove,
       connection: () => ({
-        state: ref('connected'),
+        state: ref(f.online ? 'connected' : 'offline'),
         client: {
           channel: {
             channel: {
@@ -43,9 +49,10 @@ vi.mock('@/node/NodeService', () => ({
           describe: f.describe,
           request: f.request,
           setRepositorySettings: f.settings,
+          setProjectCodexPermissions: f.setNetwork,
           getProject: async () => ({
             root_path: '/sample/project',
-            codex_network_enabled: false,
+            codex_network_enabled: f.network,
             use_repository_claude_permissions: false,
           }),
         },
@@ -60,6 +67,8 @@ vi.mock('@/node/NodePathOwnerActions', () => ({
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: async () => true }))
 afterEach(() => {
   f.methods = []
+  f.online = true
+  f.network = false
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -107,6 +116,32 @@ it('offers the project Codex network switch after New chat here on capable nodes
   const names = menu.items.map((item) => item.title)
   expect(names[names.indexOf('New chat here') + 1]).toBe('Network for Codex')
   expect(menu.items.find((item) => item.title === 'Network for Codex')?.checked).toBe(false)
+})
+
+it('checks the persisted project choice and turns it off without a dialog', async () => {
+  f.methods = ['project.codex_permissions']
+  f.network = true
+  const menu = await opened()
+  const item = menu.items.find((item) => item.title === 'Network for Codex')!
+  expect(item.checked).toBe(true)
+  item.handler!()
+  await vi.waitFor(() => expect(f.setNetwork).toHaveBeenCalledWith('sample-project', false))
+})
+
+it('disables the project switch offline and omits it on old nodes', async () => {
+  f.methods = ['project.codex_permissions']
+  f.online = false
+  const menu = await opened()
+  expect(
+    (
+      menu.items.find((item) => item.title === 'Network for Codex') as unknown as {
+        disabled: boolean
+      }
+    ).disabled
+  ).toBe(true)
+  vi.restoreAllMocks()
+  f.methods = []
+  expect((await opened()).items.some((item) => item.title === 'Network for Codex')).toBe(false)
 })
 
 it('routes node-header Disconnect through the selected registration client', async () => {
