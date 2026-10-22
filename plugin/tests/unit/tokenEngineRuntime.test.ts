@@ -29,6 +29,7 @@ import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 
 it('treats intentional cancellation as a settled interruption without publication', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
@@ -1834,6 +1835,292 @@ it('reports a later changes-feed download with fresh byte and file counts', asyn
       expect.objectContaining({ stage: 'Downloading', completed: 1, total: 1, bytes: 6 })
     )
   } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each([false, true])(
+  'uses run cancellation for combined hash/upload (cancel after lookup=%s)',
+  async (cancel) => {
+    const wire = await server('Notes/sample.md', 'sample'),
+      fs = new MemoryFileSystem()
+    const one = runtime(wire, fs),
+      controller = new AbortController()
+    const identity = { size: 1, sha: 'a'.repeat(64) },
+      close = vi.fn(async () => {})
+    const source = {
+      size: 1,
+      read: async () => new Uint8Array([1]),
+      assertUnchanged: async () => {},
+      close,
+    }
+    let observed: AbortSignal | undefined
+    Reflect.set(
+      fs,
+      FINGERPRINT_UPLOAD,
+      async (
+        _path: string,
+        consume: (identity: unknown, source: unknown) => Promise<void>,
+        signal: AbortSignal
+      ) => {
+        observed = signal
+        try {
+          await consume(identity, source)
+          return identity
+        } finally {
+          await close()
+        }
+      }
+    )
+    vi.spyOn(one.runtime.client, 'hasBlob').mockImplementation(async () => {
+      if (cancel) controller.abort()
+      return false
+    })
+    const put = vi.spyOn(one.runtime.client, 'putBlobSource').mockResolvedValue(undefined)
+    try {
+      const result = await Reflect.get(one.runtime, 'fingerprintForUpload')
+        .call(one.runtime, fs, 'Notes/sample.md', controller.signal)
+        .catch((error: unknown) => error)
+      expect(observed).toBe(controller.signal)
+      if (cancel) {
+        expect(result).toBeInstanceOf(SyncCancelled)
+        expect(put).not.toHaveBeenCalled()
+      } else expect(put.mock.calls[0][2]).toBe(controller.signal)
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each([false, true])(
+  'does not reuse a cancelled run fingerprint promise in a fresh run (shared lifetime signal=%s)',
+  async (sharedSignal) => {
+    const wire = await server('Notes/sample.md', 'sample'),
+      fs = new MemoryFileSystem()
+    const one = runtime(wire, fs),
+      controller = new AbortController()
+    let release!: () => void, entered!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const fingerprint = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        entered()
+        await gate
+        return 'old run'
+      })
+      .mockResolvedValue('new run')
+    Reflect.set(fs, FINGERPRINT_UPLOAD, fingerprint)
+    const run = (signal: AbortSignal) =>
+      Reflect.get(one.runtime, 'fingerprintForUpload').call(
+        one.runtime,
+        fs,
+        'Notes/sample.md',
+        signal
+      )
+    const first = run(controller.signal).catch((error: unknown) => error)
+    try {
+      await started
+      if (sharedSignal) {
+        await one.runtime.pause(true)
+        await one.runtime.pause(false)
+      } else controller.abort()
+      const second = run(sharedSignal ? controller.signal : new AbortController().signal)
+      release()
+      expect(await second).toBe('new run')
+      expect(fingerprint).toHaveBeenCalledTimes(2)
+      expect(await first).toBeInstanceOf(SyncCancelled)
+    } finally {
+      release()
+      await one.runtime.close()
+    }
+  }
+)
+
+it('interrupts fallback upload hashing when pause is requested', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  let entered!: () => void, observed!: AbortSignal
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const close = vi.fn(async () => {})
+  Reflect.set(
+    fs,
+    FINGERPRINT_UPLOAD,
+    async (_path: string, _consume: unknown, signal: AbortSignal) => {
+      observed = signal
+      entered()
+      try {
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(new SyncCancelled()), { once: true })
+        )
+      } finally {
+        await close()
+      }
+    }
+  )
+  const work = Reflect.get(one.runtime, 'fingerprintForUpload')
+    .call(one.runtime, fs, 'Notes/sample.md')
+    .catch((error: unknown) => error)
+  try {
+    await started
+    await one.runtime.pause(true)
+    expect(observed.aborted).toBe(true)
+    expect(await work).toBeInstanceOf(SyncCancelled)
+    expect(close).toHaveBeenCalledOnce()
+  } finally {
+    await one.runtime.close()
+    await work
+  }
+})
+
+it('forwards the run cancellation signal through comparison fingerprints', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) =>
+    new URL(String(input)).pathname === '/v2/manifest'
+      ? Response.json({ items: [], cursor: 1, next: null })
+      : send(input, init)
+  )
+  await fs.writeAtomic('Notes/sample.md', new TextEncoder().encode('sample'), 1000)
+  const read = fs.read.bind(fs),
+    signals: (AbortSignal | undefined)[] = []
+  Object.assign(fs, {
+    fingerprint: async (path: string, signal?: AbortSignal) => {
+      signals.push(signal)
+      const bytes = await read(path)
+      return { size: bytes.length, sha: await sha256(bytes), mtime: 1000 }
+    },
+  })
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    expect(signals.length).toBeGreaterThan(0)
+    expect(signals.some((signal) => signal instanceof AbortSignal)).toBe(true)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('stops comparison heartbeat timers after pause has settled', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) =>
+    new URL(String(input)).pathname === '/v2/manifest'
+      ? Response.json({ items: [], cursor: 1, next: null })
+      : send(input, init)
+  )
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 1000)
+  const read = fs.read.bind(fs)
+  let release!: () => void,
+    blocked = false
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  Object.assign(fs, {
+    fingerprint: async (path: string) => {
+      blocked = true
+      await gate
+      const bytes = await read(path)
+      return { size: bytes.length, sha: await sha256(bytes) }
+    },
+  })
+  const events: string[] = [],
+    comparisons: unknown[] = []
+  vi.useFakeTimers()
+  const one = runtime(wire, fs, undefined, undefined, null, {
+    event: (line) => events.push(line),
+    comparing: (value) => comparisons.push(value),
+  })
+  const sync = one.runtime.sync()
+  try {
+    await vi.waitFor(() => expect(blocked).toBe(true))
+    await one.runtime.pause(true)
+    release()
+    await sync
+    expect(one.runtime.engine.status.state).toBe('paused')
+    const count = events.length
+    await vi.advanceTimersByTimeAsync(31000)
+    expect(events).toHaveLength(count)
+    expect(comparisons.at(-1)).toBeUndefined()
+  } finally {
+    release()
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('does not revive comparison progress when an old read finishes after pause', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  let release!: () => void, entered!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  Object.assign(fs, {
+    fingerprint: async () => {
+      entered()
+      await gate
+      return { size: 1, sha: 'a'.repeat(64), mtime: 1000 }
+    },
+  })
+  const comparisons: unknown[] = []
+  const one = runtime(wire, fs, undefined, undefined, null, {
+    comparing: (value) => comparisons.push(value),
+  })
+  const disk = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
+  const pending = disk.fingerprint!('Notes/sample.md').catch((error: unknown) => error)
+  try {
+    await started
+    await one.runtime.pause(true)
+    release()
+    expect(await pending).toBeInstanceOf(SyncCancelled)
+    expect(comparisons.at(-1)).toBeUndefined()
+  } finally {
+    release()
+    await one.runtime.close()
+  }
+})
+
+it('does not publish a late inventory item after pause', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  let release!: () => void, entered!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  fs.list = async function* () {
+    entered()
+    await gate
+    yield { path: 'Notes/sample.md', size: 1, mtime: 1000 }
+  }
+  const one = runtime(wire, fs)
+  const disk = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
+  const iterator = disk.list()[Symbol.asyncIterator]()
+  const pending = iterator.next().catch((error: unknown) => error)
+  try {
+    await started
+    await one.runtime.pause(true)
+    release()
+    expect(await pending).toBeInstanceOf(SyncCancelled)
+  } finally {
+    release()
+    await iterator.return?.()
     await one.runtime.close()
   }
 })

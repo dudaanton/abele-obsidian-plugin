@@ -1,6 +1,16 @@
 import { expect, it, vi } from 'vitest'
 import { SyncActivityLog, appliedActivity, isSyncTriggerLine } from '@/sync/activityLog'
 
+it('starts a fresh counter after abandoning a run with the same inventory size', () => {
+  const lines: string[] = []
+  const log = new SyncActivityLog((line) => lines.push(line))
+  log.update({ stage: 'Comparing files', completed: 2, total: 3, totalKnown: true })
+  log.reset()
+  log.update({ stage: 'Comparing files', completed: 0, total: 3, totalKnown: true })
+  expect(lines.at(-1)).toContain('0 of 3 files')
+  expect(lines.some((line) => line.includes('Comparing files: ended'))).toBe(false)
+})
+
 it.each(['watch', 'fallback', 'events', 'retry', 'reconnect', 'start', 'keep local'])(
   'recognizes the bare %s trigger without hiding outcomes or errors',
   (reason) => {

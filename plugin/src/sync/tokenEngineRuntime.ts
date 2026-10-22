@@ -146,7 +146,10 @@ export class TokenEngineRuntime
   /** Own uploads no commit has used yet. A scoped server admits a new sha only against this
    * principal's own upload and spends it on commit, so only these may skip the blob upload. */
   private readonly uploadEntitlements = new Set<string>()
-  private readonly uploadFingerprints = new Map<string, Promise<unknown>>()
+  private readonly uploadFingerprints = new Map<
+    string,
+    { signal: AbortSignal; run: number; work: Promise<unknown> }
+  >()
   private readonly largeUploadPaths = new Set<string>()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
@@ -204,6 +207,8 @@ export class TokenEngineRuntime
   private readonly comparisonBudget = new SyncTaskBudget()
   private inventoryTotal = 0
   private comparisonPublished = 0
+  private comparisonRun = 0
+  private comparisonCancellation = new AbortController()
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly groupCandidates = new Set<string>()
@@ -219,6 +224,7 @@ export class TokenEngineRuntime
   private readonly sentUploadHashes = new Set<string>()
   private readonly folderProgress: TransferProgress
   private readonly pendingFolders = new Set<string>()
+  private readonly clearActivity: () => void
   private preparingFolders(paths: string[]): void {
     paths = paths.filter(
       (path) =>
@@ -371,6 +377,18 @@ export class TokenEngineRuntime
         return () => window.clearTimeout(timer)
       }
     )
+    this.clearActivity = () => {
+      this.comparisonCancellation.abort()
+      this.comparisonRun++
+      this.pendingFolders.clear()
+      this.progress.clear()
+      this.uploadProgress.clear()
+      this.folderProgress.clear()
+      activityLog.reset()
+      this.pulling = false
+      options.pulling?.()
+      options.comparing?.()
+    }
     this.localFs = options.fs
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
@@ -766,6 +784,9 @@ export class TokenEngineRuntime
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded, signal, deferLocalScan) => {
+      this.comparisonCancellation.abort()
+      this.comparisonCancellation = new AbortController()
+      this.comparisonRun++
       this.journalActive = false
       this.largeUploadPaths.clear()
       this.readyToPublish = false
@@ -774,6 +795,7 @@ export class TokenEngineRuntime
         this.scopeRootGone({ kind: 'deleted' })
       this.assertHeld()
       this.compared.clear()
+      activityLog.reset()
       this.assetPaths.clear()
       if (this.token.scope.kind === 'group') {
         const paths: string[] = []
@@ -1057,18 +1079,27 @@ export class TokenEngineRuntime
             const largeUploads = this.largeUploadPaths
             const budget = this.comparisonBudget
             const checkRoot = () => this.checkRoot()
+            const generation = () => (this.active ? this.comparisonRun : -1)
             const nameTracked = async () => {
               if (this.token.scope.kind !== 'group') return
               for await (const entry of options.state.all()) this.nameCandidates([entry.path])
             }
             return async function* () {
+              const run = generation()
+              const current = () => {
+                if (run < 0 || generation() !== run) throw new SyncCancelled()
+              }
+              current()
               await checkRoot()
+              current()
               await nameTracked()
+              current()
               const finish = trace.begin('fs ' + String(name))
               let completed = 0
               try {
                 for await (const info of value.call(target)) {
                   await budget.account(0)
+                  current()
                   if (name === 'list' && !candidate(info.path)) continue
                   if (name === 'list') {
                     if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
@@ -1078,8 +1109,10 @@ export class TokenEngineRuntime
                   yield info
                 }
               } finally {
-                inventoried(completed)
-                trace.inventory(completed)
+                if (generation() === run) {
+                  inventoried(completed)
+                  trace.inventory(completed)
+                }
                 finish(completed)
               }
             }
@@ -1102,22 +1135,44 @@ export class TokenEngineRuntime
               name === Symbol.for('abele.sync.fingerprint-fresh-v1')) &&
             typeof value === 'function'
           )
-            return async (path: string) => {
+            return async (path: string, ...args: unknown[]) => {
+              const run = this.comparisonRun
+              const signal =
+                (args[0] as AbortSignal | undefined) ?? this.comparisonCancellation.signal
+              const forwarded =
+                args[0] === undefined &&
+                (name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1'))
+                  ? [signal, ...args.slice(1)]
+                  : args
+              const current = () => {
+                if (!this.active || run !== this.comparisonRun || signal.aborted)
+                  throw new SyncCancelled()
+              }
+              const invoke = () => {
+                current()
+                return value.call(target, path, ...forwarded)
+              }
               await this.comparisonBudget.account(0)
+              current()
               return this.trace.run('fs ' + String(name) + ' ' + path, async () => {
-                if (name === 'stat') return value.call(target, path)
+                if (name === 'stat') {
+                  const result = await invoke()
+                  current()
+                  return result
+                }
                 const total = this.inventoryTotal
                 if (this.compared.size === 0) comparing({ completed: 0, total })
                 const bytes =
                   name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
                     ? ((this.largeUploadPaths.has(path)
-                        ? await this.fingerprintForUpload(target, path)
-                        : undefined) ?? (await value.call(target, path)))
+                        ? await this.fingerprintForUpload(target, path, signal)
+                        : undefined) ?? (await invoke()))
                     : await connectStage(
                         'Comparing files',
                         'Comparing a local file could not finish. Try syncing again.',
-                        () => value.call(target, path)
+                        invoke
                       )
+                current()
                 this.compared.add(path)
                 if (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total) {
                   this.comparisonPublished = Date.now()
@@ -1185,12 +1240,12 @@ export class TokenEngineRuntime
         options.pulling?.()
         const rootFailure = vaultRootFailure(error)
         if (rootFailure) {
-          this.engine.pause()
+          this.pauseEngine()
           comparing()
           options.failed(rootFailure)
           return
         }
-        if (error instanceof LocalPlacementError) this.engine.pause()
+        if (error instanceof LocalPlacementError) this.pauseEngine()
         if (
           [
             'scope_unavailable',
@@ -1200,7 +1255,7 @@ export class TokenEngineRuntime
             'protocol',
           ].includes((error as { code?: string }).code ?? '')
         )
-          this.engine.pause()
+          this.pauseEngine()
         comparing()
         if (!this.yieldedForReview(error)) options.failed(error)
       },
@@ -1209,7 +1264,13 @@ export class TokenEngineRuntime
         if (!isSyncTriggerLine(line)) options.event?.(line)
       },
     })
+    let running = false
     this.unstatus = this.engine.onStatus((status) => {
+      if (status.state === 'syncing') running = true
+      else if (status.state === 'paused' || running) {
+        running = false
+        this.clearActivity()
+      }
       if (status.state === 'offline') this.serverAvailable = false
       if (status.state === 'syncing') this.trace.beginPullCycle()
       options.changed(status)
@@ -1274,15 +1335,15 @@ export class TokenEngineRuntime
       this.actions.recordDeleteResults(this.client, ops, outcome.body.results)
       return outcome
     }
-    if (options.paused) this.engine.pause()
+    if (options.paused) this.pauseEngine()
     this.rootIssue = options.rootIssue
-    if (this.rootIssue) this.engine.pause()
+    if (this.rootIssue) this.pauseEngine()
     this.unroot = options.watchRoot?.((issue) => this.scopeRootGone(issue))
   }
   scopeRootGone(issue: ScopeRootIssue): void {
     if (!this.active || JSON.stringify(this.rootIssue) === JSON.stringify(issue)) return
     this.rootIssue = issue
-    this.engine.pause()
+    this.pauseEngine()
     this.options.rootChanged?.(issue)
     console.debug('[abele-sync] folder root unavailable; connection stopped', issue.kind)
   }
@@ -2139,7 +2200,15 @@ export class TokenEngineRuntime
       }
     }
   }
-  private async fingerprintForUpload(fs: FileSystem, path: string) {
+  private async fingerprintForUpload(
+    fs: FileSystem,
+    path: string,
+    signal = this.comparisonCancellation.signal
+  ) {
+    const run = this.comparisonRun
+    const current = () => {
+      if (signal.aborted || !this.active || run !== this.comparisonRun) throw new SyncCancelled()
+    }
     const fingerprint = Reflect.get(fs, FINGERPRINT_UPLOAD) as
       | undefined
       | ((
@@ -2149,34 +2218,47 @@ export class TokenEngineRuntime
           acknowledged: (identity: { size: number; sha: string }) => boolean
         ) => Promise<unknown>)
     if (!fingerprint) return undefined
+    current()
     const pending = this.uploadFingerprints.get(path)
-    if (pending !== undefined) return pending
-    const work = this.transferBudget.run(() =>
-      fingerprint.call(
+    if (pending?.signal === signal && pending.run === run) return pending.work
+    const work = this.transferBudget.run(() => {
+      current()
+      return fingerprint.call(
         fs,
         path,
         async (identity: { size: number; sha: string }, source: ChunkSource) => {
+          current()
           this.assertHeld()
-          if (await this.client.hasBlob(identity.sha)) return
+          const present = await this.client.hasBlob(identity.sha)
+          current()
+          if (present) return
           this.assertHeld()
           await this.client.putBlobSource(
             identity,
             source,
-            this.requests.signal,
+            signal,
             this.transferBudget.maxChunkBytes
           )
           this.wholeReadUploads.add(identity.sha)
           this.uploadEntitlements.add(identity.sha)
         },
-        this.requests.signal,
+        signal,
         (identity: { sha: string }) => this.wholeReadUploads.has(identity.sha)
       )
-    )
-    this.uploadFingerprints.set(path, work)
+    })
+    const owned = { signal, run, work }
+    const retire = () => {
+      if (this.uploadFingerprints.get(path) === owned) this.uploadFingerprints.delete(path)
+    }
+    this.uploadFingerprints.set(path, owned)
+    signal.addEventListener('abort', retire, { once: true })
     try {
-      return await work
+      const result = await work
+      current()
+      return result
     } finally {
-      this.uploadFingerprints.delete(path)
+      signal.removeEventListener('abort', retire)
+      retire()
     }
   }
   async reconcile(): Promise<void> {
@@ -2187,10 +2269,7 @@ export class TokenEngineRuntime
     this.active = false
     // Revoke transport before optional host cleanup: unload cannot await a drain.
     this.requests.abort()
-    this.pendingFolders.clear()
-    this.progress.clear()
-    this.uploadProgress.clear()
-    this.folderProgress.clear()
+    this.clearActivity()
     const unroot = this.unroot
     this.unroot = undefined
     unroot?.()
@@ -2234,9 +2313,13 @@ export class TokenEngineRuntime
     this.invalidate()
     await this.close()
   }
+  private pauseEngine(): void {
+    this.comparisonCancellation.abort()
+    this.engine.pause()
+  }
   async pause(paused: boolean): Promise<void> {
     this.assertHeld()
-    if (paused) this.engine.pause()
+    if (paused) this.pauseEngine()
     else this.engine.resume()
   }
   async resolve(fileId: string): Promise<ConsentTarget | null> {

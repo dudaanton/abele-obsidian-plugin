@@ -29,6 +29,15 @@ export class SyncActivityLog {
     private readonly schedule?: (work: () => void, delay: number) => () => void
   ) {}
 
+  /** A settled interruption or a new run cannot keep the old heartbeat or counter floor. */
+  reset(): void {
+    this.cancel?.()
+    this.cancel = undefined
+    this.last = undefined
+    this.comparison = undefined
+    this.announced = false
+  }
+
   /** The SDK finished the local scan, including metadata/cache checks without content reads. */
   finishComparison(total = this.comparison?.total): void {
     const one = this.comparison
