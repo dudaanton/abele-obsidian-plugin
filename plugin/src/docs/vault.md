@@ -232,6 +232,15 @@ device-local database. Idle metadata reads do not clone those payloads or rewrit
 state. Delegated developers also retain an owner-stop fence there: controller follow-ups
 are refused until the owner submits a new message directly in the child chat.
 
+Operation results, retained requests and manager actions use separate revisioned records;
+changing one receipt does not rewrite the others. Model-supplied manager retry aliases are
+scoped to the executing chat, tool and exact action. Exact retries retain the same identity.
+The local cache retains the latest 1,000 unreferenced settled receipts and 200 delivered
+terminal manager actions. Pending, uncertain, undelivered and recovery-linked evidence is
+never removed by these limits. Command output remains bounded by the requested output tail.
+The node-client database is version 3; older clients cannot reopen it and mistake separated
+receipts for missing outcomes. Version-1 journals and version-2 metadata remain migratable.
+
 Disconnecting a device revokes its own node credential before removing the local registration
 when the node advertises device disconnection. Other devices are unaffected. An older or
 unreachable node offers explicitly disclosed local removal instead; its credential remains on

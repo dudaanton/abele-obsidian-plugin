@@ -115,7 +115,7 @@ export class NodeConnection {
         await this.delegation.restore()
         await this.manager.restore()
       } finally {
-        const parents = await this.store.transaction((s) => [
+        const parents = await this.store.read((s) => [
           ...new Set(Object.values(s.managerOperations ?? {}).map((e) => e.parent)),
         ])
         const managerCards = Object.fromEntries(
@@ -127,7 +127,7 @@ export class NodeConnection {
         if (!this.disposed) {
           this.managerCards.value = managerCards
           this.delegationCards.value = cards
-          const nodeId = await this.store.transaction((s) => s.node_id)
+          const nodeId = await this.store.read((s) => s.node_id)
           if (nodeId) AgentsService.getInstance().setDelegations(nodeId, cards)
           const { ChatService } = await import('@/ai/ChatService')
           await this.delegation.wakeDelivered(cards, (parent, id, notice) => {

@@ -9,6 +9,7 @@ import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/no
 import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
 import { ClientJournal } from './clientJournal'
 import { ClientArtifacts } from './clientArtifacts'
+import { ClientRecords, RECORD_FIELDS, pruneSettledRecords } from './clientRecords'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
 
@@ -131,7 +132,7 @@ function intentOf(state: NodeClientState): string {
 function metadataOf(state: NodeClientState, omit: string[] = []) {
   return Object.fromEntries(
     Object.keys(state)
-      .filter((key) => !['events', 'artifactData', ...omit].includes(key))
+      .filter((key) => !['events', 'artifactData', ...RECORD_FIELDS, ...omit].includes(key))
       .map((key) => [key, state[key as keyof NodeClientState]])
   )
 }
@@ -181,6 +182,13 @@ export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
   private readonly journal = new ClientJournal()
   private readonly artifacts = new ClientArtifacts()
+  private readonly records = new ClientRecords((field, value) => {
+    StateSchema.shape[field].parse({ record: value })
+    if (field === 'operationRequests') {
+      const request = value as { method: string; params: unknown }
+      validateParams(request.method, request.params)
+    }
+  })
   constructor(
     private readonly namespace: string,
     private readonly factory: IDBFactory = indexedDB
@@ -188,11 +196,11 @@ export class NodeClientStore implements ClientStore {
 
   private open(): Promise<IDBDatabase> {
     return (this.database ??= new Promise((resolve, reject) => {
-      const request = this.factory.open(`abele-node-${this.namespace}`, 2)
+      const request = this.factory.open(`abele-node-${this.namespace}`, 3)
       request.onupgradeneeded = (event) => {
         const db = request.result
         if (!db.objectStoreNames.contains('client')) db.createObjectStore('client')
-        db.createObjectStore('journal')
+        if (!db.objectStoreNames.contains('journal')) db.createObjectStore('journal')
         if (event.oldVersion === 1) {
           const tx = request.transaction!
           const legacy = tx.objectStore('client').get('state')
@@ -232,9 +240,11 @@ export class NodeClientStore implements ClientStore {
       let finish: (() => void) | undefined
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
+      let records: Awaited<ReturnType<ClientRecords['load']>> | undefined
       tx.oncomplete = () => {
         journal?.committed()
         artifacts?.committed()
+        records?.committed()
         if (!intent) return resolve(result)
         // A strict commit after it puts this one on disk too: transactions commit in order.
         let flush: IDBTransaction
@@ -289,9 +299,10 @@ export class NodeClientStore implements ClientStore {
           try {
             const state = readState(request.result)
             const metadataBefore = JSON.stringify(metadataOf(request.result ?? state))
-            ;[journal, artifacts] = await Promise.all([
+            ;[journal, artifacts, records] = await Promise.all([
               this.journal.load(tx, state),
               this.artifacts.load(tx, state),
+              this.records.load(tx, state),
             ])
             // Journal/cache reads already keep this transaction alive. Only the user's
             // callback may wait without an IndexedDB request outstanding.
@@ -330,20 +341,23 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
-            intent = intentOf(state) !== before
+            if (records.changed()) pruneSettledRecords(state)
+            intent = intentOf(state) !== before || records.changed()
             executionIntent = JSON.stringify(state.obsidianExecutions) !== executionsBefore
             // An awaited callback may finish in a timer/network task, where IndexedDB is
             // inactive even with pending requests. Commit in the next count success handler.
             finish = () => {
               journal!.save()
               artifacts!.save()
+              records!.save()
               const metadata = metadataOf(state)
               if (
                 request.result === undefined ||
                 JSON.stringify(metadata) !== metadataBefore ||
-                request.result?.artifactData
+                request.result?.artifactData ||
+                RECORD_FIELDS.some((field) => Object.keys(request.result?.[field] ?? {}).length)
               )
-                store.put({ ...metadata, events: {} }, 'state')
+                store.put({ ...metadata, events: {}, results: {} }, 'state')
             }
           } catch (error) {
             failure = error
@@ -363,13 +377,15 @@ export class NodeClientStore implements ClientStore {
       let result: T
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
+      let records: Awaited<ReturnType<ClientRecords['load']>> | undefined
       request.onsuccess = () => {
         void (async () => {
           try {
             const state = readState(request.result)
-            ;[journal, artifacts] = await Promise.all([
+            ;[journal, artifacts, records] = await Promise.all([
               this.journal.load(tx, state),
               this.artifacts.load(tx, state),
+              this.records.load(tx, state),
             ])
             result = look(state)
           } catch (error) {
@@ -381,6 +397,7 @@ export class NodeClientStore implements ClientStore {
       tx.oncomplete = () => {
         journal?.committed()
         artifacts?.committed()
+        records?.committed()
         resolve(result)
       }
       tx.onerror = () => reject(tx.error ?? new Error('Node store read failed'))
