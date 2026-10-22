@@ -6,43 +6,78 @@ import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
-it('scopes model aliases to the chat, tool and exact intended action while preserving retries', async () => {
-  const mutate = vi.fn(async () => ({ run_id: 'sample-run', state: 'running' }))
-  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
-    nodes: { value: [{ id: 'sample-node' }] },
-    connection: () => ({
-      connect: async () => {},
-      client: {
-        describe: async () => ({
-          capabilities: { capabilities: { delegation_without_grant: { status: 'supported' } } },
-        }),
-      },
-      manager: { mutate },
-      refreshDelegations: async () => {},
-    }),
-  } as never)
-  const tools = (parent: string) =>
-    createNodeManagerTools({
-      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }),
-      getToolMode: () => 'auto',
-      ensureDelegationParentId: async () => parent,
-    } as ChatSession)
-  const args = {
-    node: 'sample-node',
-    project_id: 'sample-project',
-    session_id: 'sample-session',
-    argv: ['pwd'],
-    justification: 'Show the sample folder.',
-    operation_id: 'save',
+it.each(['node_command_run', 'node_git_integrate'])(
+  'scopes model aliases to the chat, tool and exact intended action while preserving retries for %s',
+  async (name) => {
+    const context = vi.fn(async () => ({ run_id: 'sample-run', state: 'running' }))
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+      nodes: { value: [{ id: 'sample-node' }] },
+      connection: () => ({
+        connect: async () => {},
+        client: {
+          describe: async () => ({
+            capabilities: {
+              capabilities: {
+                delegation_without_grant: { status: 'supported' },
+                command_context_v1: { status: 'supported' },
+                integration_context_v1: { status: 'supported' },
+              },
+            },
+          }),
+        },
+        manager: { command: context, integration: context },
+        refreshDelegations: async () => {},
+      }),
+    } as never)
+    const tools = (parent: string) =>
+      createNodeManagerTools({
+        overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }),
+        getToolMode: () => 'auto',
+        ensureDelegationParentId: async () => parent,
+      } as ChatSession)
+    const args = {
+      node: 'sample-node',
+      project_id: 'sample-project',
+      session_id: 'sample-session',
+      ...(name === 'node_command_run'
+        ? { argv: ['pwd'] }
+        : {
+            worktree_id: 'sample-target',
+            source_worktree_id: 'sample-source',
+            source_branch: 'work/sample',
+            target_branch: 'main',
+            expected_source_head: 'a'.repeat(40),
+            expected_target_head: 'b'.repeat(40),
+          }),
+      justification: 'Show the sample folder.',
+      operation_id: 'save',
+    }
+    const run = (parent: string, call: string, params = args) =>
+      tools(parent)
+        .find((t) => t.name === name)!
+        .execute(call, params)
+    await run('sample-chat-a', 'call-one')
+    await run('sample-chat-a', 'retry-call')
+    await run('sample-chat-b', 'call-one')
+    await run('sample-chat-a', 'call-two', {
+      ...args,
+      ...(name === 'node_command_run' ? { argv: ['ls'] } : { source_branch: 'work/other' }),
+    })
+    const ids = context.mock.calls.map((call) => (call as unknown[])[2])
+    expect(ids[0]).toBe(ids[1])
+    expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
+    const params = (context.mock.calls[0] as unknown[])[1]
+    expect(ids[0]).toBe(nodeMutationKey('sample-chat-a', name, 'save', params))
+    expect(ids[0]).not.toBe(
+      nodeMutationKey(
+        'sample-chat-a',
+        name === 'node_command_run' ? 'node_git_integrate' : 'node_command_run',
+        'save',
+        params
+      )
+    )
   }
-  await tools('sample-chat-a')[0].execute('call-one', args)
-  await tools('sample-chat-a')[0].execute('retry-call', args)
-  await tools('sample-chat-b')[0].execute('call-one', args)
-  await tools('sample-chat-a')[0].execute('call-two', { ...args, argv: ['ls'] })
-  const ids = mutate.mock.calls.map((call) => (call as unknown[])[3])
-  expect(ids[0]).toBe(ids[1])
-  expect(new Set([ids[0], ids[2], ids[3]]).size).toBe(3)
-})
+)
 it.each(['confirm-all', 'allow-all'] as const)(
   'uses the advertised integration context without a provider session in owner mode %s',
   async (mode) => {
@@ -92,6 +127,7 @@ it.each(['confirm-all', 'allow-all'] as const)(
         worktree_id: 'sample-target',
         source_worktree_id: 'sample-source',
       }),
+      expect.stringMatching(/^[a-f0-9]{64}$/),
       'sample-operation',
       mode === 'allow-all' ? 'bypass' : 'ask',
       'Integrate tested changes.',
@@ -287,7 +323,7 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
       permission_mode: 'bypass',
       session_id: 'sample-provider-session',
     })
-    expect(command.mock.calls[0][3]).toBe(mode === 'allow-all' ? 'bypass' : 'ask')
+    expect(command.mock.calls[0][4]).toBe(mode === 'allow-all' ? 'bypass' : 'ask')
   }
 )
 it('refuses a command for a project outside the chat node chips', async () => {

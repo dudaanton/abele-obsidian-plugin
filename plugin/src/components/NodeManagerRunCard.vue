@@ -32,6 +32,7 @@
     <div
       v-if="card.run.state !== 'pending_approval' || card.run.reason"
       class="abele-node-manager-run__status"
+      data-manager-state
     >
       <StatusDot
         :tone="
@@ -44,6 +45,7 @@
                 : 'faint'
         "
         :label="resultLabel"
+        :pulse="card.run.state === 'running'"
       />
       <MetaLine :facts="[{ key: '0', value: resultLabel }]" />
     </div>
@@ -80,7 +82,6 @@
     >
       <Button :text="t('streamB.stop.cae7d5')" :disabled="disabled" @click="emit('cancel')" />
     </div>
-    <p v-if="card.run.state === 'outcome_unknown'">{{ t('node.error.unknownOutcome') }}</p>
     <ul v-if="card.run.conflicting_files?.length">
       <li v-for="path in card.run.conflicting_files" :key="path">
         <code>{{ path }}</code>
@@ -186,8 +187,6 @@ const stateLabel = computed(() => {
       return t('node.manager.denied')
     case 'outcome_unknown':
       return t('node.error.unknownOutcome')
-    case 'running':
-      return t('node.manager.running')
     case 'cancelled':
       return t('node.manager.cancelled')
     case 'applied':

@@ -5,6 +5,35 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import { ChannelError } from '@abele/channel-protocol'
 
+it('keeps the submitted retry alias stable after an uncertain scoped preparation', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  f.request.mockImplementation(async (method, params) => {
+    if (method === 'command.context.v1.prepare') throw new ChannelError('outcome_unknown')
+    return original(method, params)
+  })
+  try {
+    const error = await f.controller
+      .command(
+        'sample-parent',
+        { worktree_id: 'sample-tree', command: 'pwd' },
+        'sample-internal-wire-id',
+        'save',
+        'ask',
+        'Check the folder.'
+      )
+      .catch((error) => error as Error)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toContain('same submitted operation_id')
+    expect((error as Error).message).not.toContain('sample-internal-wire-id')
+    expect(await f.store.read((s) => s.outbox.map((e) => e.operation_id))).toContain(
+      'sample-internal-wire-id'
+    )
+  } finally {
+    f.store.close()
+  }
+})
+
 it('retains the full target folder for a bypass receipt without an approval payload', async () => {
   const f = fixture()
   vi.spyOn(f.client, 'listProjects').mockResolvedValue([
@@ -25,6 +54,7 @@ it('retains the full target folder for a bypass receipt without an approval payl
       'sample-parent',
       { worktree_id: 'sample-tree', command: 'pwd' },
       'sample-operation',
+      undefined,
       'bypass',
       'Check the folder.'
     )
@@ -32,6 +62,18 @@ it('retains the full target folder for a bypass receipt without an approval payl
     expect(card.prompts).toEqual([])
     expect(card.folderLabel).toBe('sample-project')
     expect(card.folder).toBe('/workspace/sample-project')
+    await f.controller.command(
+      'sample-parent',
+      { worktree_id: 'sample-tree', command: 'pwd' },
+      'sample-scoped-operation',
+      'sample-operation',
+      'bypass',
+      'Check the folder.'
+    )
+    expect(
+      f.request.mock.calls.filter(([method]) => method === 'command.context.v1.prepare')
+    ).toHaveLength(1)
+    expect(await f.controller.cards('sample-parent')).toHaveLength(1)
   } finally {
     f.store.close()
   }
@@ -54,6 +96,7 @@ it('preserves a stopped parent when reconnect recovers an unknown command receip
         'sample-parent',
         { worktree_id: 'sample-tree', command: 'pwd' },
         'sample-operation',
+        undefined,
         'ask',
         'Check the folder.'
       )
@@ -91,6 +134,7 @@ it('replaces the unknown placeholder when SDK reconnect replay recovers the prep
         'sample-parent',
         { worktree_id: 'sample-tree', command: 'node --version' },
         'sample-operation',
+        undefined,
         'ask',
         'Check the runtime.'
       )
@@ -141,6 +185,7 @@ it('keeps a local pre-approval refusal terminal even after the node disconnects'
         'sample-parent',
         { worktree_id: 'sample-tree', command: 'pwd' },
         'sample-operation',
+        undefined,
         'ask',
         'Check the folder.'
       )
@@ -166,6 +211,7 @@ it('applies context journal updates which omit the status-only approval field', 
       'sample-parent',
       { worktree_id: 'sample-tree', command: 'node --version' },
       'sample-operation',
+      undefined,
       'ask',
       'Check the runtime.'
     )
@@ -258,6 +304,7 @@ it.each(['ask', 'bypass'] as const)(
           'sample-parent',
           params,
           'sample-integration',
+          undefined,
           mode,
           'Integrate reviewed changes.'
         )
@@ -384,6 +431,7 @@ it('creates/reuses a durable context and prepares exactly one Ask card without e
       'sample-parent',
       params,
       'sample-operation',
+      undefined,
       'ask',
       'Check the runtime.'
     )
@@ -391,6 +439,7 @@ it('creates/reuses a durable context and prepares exactly one Ask card without e
       'sample-parent',
       params,
       'sample-operation',
+      undefined,
       'ask',
       'Check the runtime.'
     )
@@ -425,6 +474,7 @@ it('passes bypass explicitly and never creates an approval card', async () => {
       'sample-parent',
       { worktree_id: 'sample-tree', command: 'node --version' },
       'sample-operation',
+      undefined,
       'bypass',
       'Check the runtime.'
     )
@@ -445,6 +495,7 @@ it('names the required update before sending anything on an older node', async (
         'sample-parent',
         { worktree_id: 'sample-tree', command: 'pwd' },
         'sample-operation',
+        undefined,
         'ask',
         'Check the folder.'
       )
@@ -470,6 +521,7 @@ it('retains the node resource reason when preparation fails, without executing',
         'sample-parent',
         { worktree_id: 'sample-tree', command: 'pwd' },
         'sample-operation',
+        undefined,
         'ask',
         'Check the folder.'
       )
@@ -501,15 +553,36 @@ it('retains preparation identity across a lost reply and a controller restart', 
   try {
     const args = { worktree_id: 'sample-tree', command: 'node --version' }
     await expect(
-      f.controller.command('sample-parent', args, 'sample-operation', 'ask', 'Check the runtime.')
+      f.controller.command(
+        'sample-parent',
+        args,
+        'sample-operation',
+        undefined,
+        'ask',
+        'Check the runtime.'
+      )
     ).rejects.toThrow(/outcome_unknown/)
     expect((await f.controller.cards('sample-parent'))[0].run.state).toBe('outcome_unknown')
     const restored = new NodeManagerController(f.client, f.store)
-    await restored.command('sample-parent', args, 'sample-operation', 'ask', 'Check the runtime.')
+    await restored.command(
+      'sample-parent',
+      args,
+      'sample-operation',
+      undefined,
+      'ask',
+      'Check the runtime.'
+    )
     expect((await restored.cards('sample-parent'))[0].prompts).toHaveLength(1)
     expect(f.request.mock.calls.filter(([m]) => m === 'command.context.v1.create')).toHaveLength(1)
     await expect(
-      restored.command('sample-parent', args, 'sample-operation', 'bypass', 'Check the runtime.')
+      restored.command(
+        'sample-parent',
+        args,
+        'sample-operation',
+        undefined,
+        'bypass',
+        'Check the runtime.'
+      )
     ).rejects.toThrow(/idempotency_mismatch/)
   } finally {
     f.store.close()
@@ -523,6 +596,7 @@ it('requires fresh local permission for an owner decision and routes cancel thro
       'sample-parent',
       { worktree_id: 'sample-tree', command: 'node --version' },
       'sample-operation',
+      undefined,
       'ask',
       'Check the runtime.'
     )

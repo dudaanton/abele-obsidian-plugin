@@ -6,6 +6,7 @@ import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { OWNER_STOP_REASON } from '@/node/delegation'
 import { nodePermissionCardFixture } from '@/testing/nodeDelegationFixture'
+import { commandLine } from '@/node/commandPresentation'
 
 it('explains a lost worker and directs the owner to restart from its chat', () => {
   const wrapper = mount(NodeDelegationCard, {
@@ -59,9 +60,9 @@ it.each([
   const wrapper = mount(NodeManagerRunCard, { props: { card: nodeManagerFixture(state) } })
   try {
     expect(wrapper.findAll('[data-manager-state]')).toHaveLength(1)
-    expect(wrapper.find('.abele-status-dot').exists()).toBe(true)
+    expect(wrapper.findAll('.abele-status-dot')).toHaveLength(1)
     expect(wrapper.get('[data-manager-state]').text()).not.toContain('(restart)')
-    expect(wrapper.get('[data-manager-output]').text()).toContain('Output')
+    expect(wrapper.find('[data-manager-output]').exists()).toBe(state !== 'denied')
   } finally {
     wrapper.unmount()
   }
@@ -107,8 +108,9 @@ it.each([false, true])(
       expect(wrapper.findAll('.abele-card')).toHaveLength(0)
       expect(wrapper.find('details').exists()).toBe(false)
       expect(wrapper.get('[data-manager-command]').element.tagName).toBe('CODE')
-      expect(wrapper.get('[data-manager-approval] .abele-meta-line').text()).toContain(
-        'Project: sample-project'
+      expect(wrapper.get('[data-command-folder]').text()).toBe('sample-project')
+      expect(wrapper.get('[data-command-folder] [title]').attributes('title')).toBe(
+        '/workspace/sample-project'
       )
       expect(wrapper.text()).not.toMatch(/project_id|session_id/)
       expect(wrapper.find('[data-manager-evidence] pre').exists()).toBe(false)
@@ -117,6 +119,11 @@ it.each([false, true])(
           .findAll('button')
           .filter((button) => ['Stop', 'Deny', 'Allow'].includes(button.text()))
       ).toHaveLength(3)
+      await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+      const evidence = JSON.parse(wrapper.get('[data-manager-evidence] code').text())
+      expect(evidence.session_id).toBe('sample-session')
+      expect(evidence.input).toEqual(card.prompts[0].input)
+      expect(evidence.input.params.project_id).toBe('sample-project')
     } finally {
       wrapper.unmount()
     }
@@ -216,24 +223,21 @@ it.each([
       .map((row) => row.text())
       .join(' ')
     expect(summary).not.toContain(hidden)
-    expect(summary).toContain('sample-session')
-    expect(summary).toContain('tree')
-    const escaped = [...hidden]
-      .flatMap((char) => char.split(''))
-      .map((char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
-      .join('')
-    const marker =
-      ({ '\n': '\\n', '\r': '\\r', '\t': '\\t' } as Record<string, string>)[hidden] ?? escaped
-    expect(summary).toContain(`sample${marker}argument`)
-    expect(summary).toContain(`tree${marker}id`)
-    expect(summary).toContain(`session${marker}id`)
+    expect(summary).not.toContain('sample-session')
+    expect(summary).not.toContain('tree')
+    expect(summary).toBe(commandLine(['printf', `sample${hidden}argument`]))
     expect(
       wrapper.get('[data-manager-evidence] .abele-disclosure__control').attributes('aria-expanded')
     ).toBe('false')
     await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
     const evidence = wrapper.get('[data-manager-evidence] code').text()
     if (hidden !== '\n') expect(evidence).not.toContain(hidden)
-    expect(JSON.parse(evidence)).toEqual(card.prompts[0].input)
+    expect(JSON.parse(evidence)).toMatchObject({
+      session_id: 'sample-session',
+      input: card.prompts[0].input,
+    })
+    expect(JSON.parse(evidence).input.params.worktree_id).toBe(`tree${hidden}id`)
+    expect(JSON.parse(evidence).input.params.session_id).toBe(`session${hidden}id`)
   } finally {
     wrapper.unmount()
   }
@@ -250,7 +254,12 @@ it('shows shell commands and both integration worktrees without hidden formattin
   const wrapper = mount(NodeManagerRunCard, { props: { card } })
   try {
     expect(wrapper.get('[data-manager-approval]').text()).toContain('echo sample\\nnext\\u202e')
-    expect(wrapper.get('[data-manager-approval]').text()).toContain('sample-project')
+    expect(wrapper.text()).not.toContain('sample-session')
+    await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+    expect(
+      JSON.parse(wrapper.get('[data-manager-evidence] code').text()).input.params.project_id
+    ).toBe('sample-project')
+    await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
     card.prompts[0].input = {
       method: 'git.v1.integrate',
       params: {
@@ -262,9 +271,19 @@ it('shows shell commands and both integration worktrees without hidden formattin
     }
     await wrapper.setProps({ card: { ...card, prompts: [{ ...card.prompts[0] }] } })
     const summary = wrapper.get('[data-manager-approval]').text()
-    expect(summary).toContain('sample-source')
-    expect(summary).toContain('sample-target')
-    expect(summary).toContain('sample-session')
+    expect(summary).toContain('feature')
+    expect(summary).toContain('main')
+    expect(summary).not.toContain('sample-source')
+    expect(summary).not.toContain('sample-target')
+    expect(summary).not.toContain('sample-session')
+    await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
+    const evidence = JSON.parse(wrapper.get('[data-manager-evidence] code').text())
+    expect(evidence.session_id).toBe('sample-session')
+    expect(evidence.input).toEqual(card.prompts[0].input)
+    expect(evidence.input.params).toMatchObject({
+      source_worktree_id: 'sample-source',
+      worktree_id: 'sample-target',
+    })
   } finally {
     wrapper.unmount()
   }
@@ -275,7 +294,10 @@ it('presents command approvals as command and folder with raw evidence collapsed
   const wrapper = mount(NodeManagerRunCard, { props: { card: nodeManagerFixture() } })
   try {
     expect(wrapper.get('[data-manager-approval]').text()).toContain('npm test')
-    expect(wrapper.get('[data-manager-approval]').text()).toContain('/workspace/sample-project')
+    expect(wrapper.get('[data-command-folder]').text()).toBe('sample-project')
+    expect(wrapper.get('[data-command-folder] [title]').attributes('title')).toBe(
+      '/workspace/sample-project'
+    )
     expect(
       wrapper.get('[data-manager-evidence] .abele-disclosure__control').attributes('aria-expanded')
     ).toBe('false')

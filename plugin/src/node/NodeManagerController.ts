@@ -151,7 +151,10 @@ export class NodeManagerController {
     })
     await this.client.flush()
     const receipt = await this.store.read((s) => s.results[operation])
-    if (!receipt) throw new Error(`outcome_unknown: retain operation_id ${operation}`)
+    if (!receipt)
+      throw new Error(
+        'outcome_unknown: Retry the exact action with the same submitted operation_id; do not create a replacement action.'
+      )
     if (receipt.error) throw new Error(nodeErrorDetails(receipt.error))
     return receipt.result
   }
@@ -159,21 +162,41 @@ export class NodeManagerController {
     parent: string,
     raw: Record<string, unknown>,
     operation: string,
+    legacyAlias: string | undefined,
     mode: 'ask' | 'bypass',
     justification: string,
     guard: () => void = () => {}
   ) {
-    return this.prepareContext(parent, raw, operation, mode, justification, guard, 'command')
+    return this.prepareContext(
+      parent,
+      raw,
+      operation,
+      mode,
+      justification,
+      guard,
+      'command',
+      legacyAlias
+    )
   }
   async integration(
     parent: string,
     raw: Record<string, unknown>,
     operation: string,
+    legacyAlias: string | undefined,
     mode: 'ask' | 'bypass',
     justification: string,
     guard: () => void = () => {}
   ) {
-    return this.prepareContext(parent, raw, operation, mode, justification, guard, 'integration')
+    return this.prepareContext(
+      parent,
+      raw,
+      operation,
+      mode,
+      justification,
+      guard,
+      'integration',
+      legacyAlias
+    )
   }
   private async prepareContext(
     parent: string,
@@ -182,7 +205,8 @@ export class NodeManagerController {
     mode: 'ask' | 'bypass',
     justification: string,
     guard: () => void = () => {},
-    kind: 'command' | 'integration' = 'command'
+    kind: 'command' | 'integration' = 'command',
+    legacyAlias?: string
   ) {
     try {
       await this.enableContexts(kind)
@@ -238,18 +262,38 @@ export class NodeManagerController {
         )
       )
       guard()
+      const prepareMethod = `${kind}.context.v1.prepare`
+      const preparation = validateParams(prepareMethod, {
+        ...command,
+        ...(kind === 'integration' ? { worktree_id } : {}),
+        context_id: context.context_id,
+        parent_chat_id: parent,
+        permission_mode: mode,
+        justification,
+      }) as Record<string, unknown>
+      // Keep admitted pre-upgrade retries, including receipts whose display cache was evicted.
+      if (legacyAlias) {
+        const matching = await this.store.read((s) => {
+          const legacy = s.managerOperations?.[legacyAlias]
+          const receipt = s.results[legacyAlias]
+          const retained =
+            legacy ??
+            (receipt?.managerParent === parent && receipt.request
+              ? { parent, ...receipt.request }
+              : undefined)
+          return (
+            retained?.parent === parent &&
+            retained.method === prepareMethod &&
+            JSON.stringify(retained.params) === JSON.stringify(preparation)
+          )
+        })
+        if (matching) operation = legacyAlias
+      }
       const run = ContextRunSchema.parse(
         await this.contextOperation(
           parent,
-          `${kind}.context.v1.prepare`,
-          {
-            ...command,
-            ...(kind === 'integration' ? { worktree_id } : {}),
-            context_id: context.context_id,
-            parent_chat_id: parent,
-            permission_mode: mode,
-            justification,
-          },
+          prepareMethod,
+          preparation,
           operation,
           justification,
           guard,
@@ -308,7 +352,7 @@ export class NodeManagerController {
     })
     throw new Error(
       uncertain
-        ? `outcome_unknown: retain operation_id ${operation}; ${reason}`
+        ? `outcome_unknown: Retry the exact action with the same submitted operation_id; do not create a replacement action. ${reason}`
         : t('node.manager.notSubmitted', { reason })
     )
   }

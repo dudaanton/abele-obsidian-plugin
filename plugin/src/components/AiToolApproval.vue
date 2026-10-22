@@ -700,7 +700,7 @@ watch(
   () => [nodeCommand.value, toolSummary(props.message)] as const,
   ([command, summary]) => {
     if (
-      !props.nodePrompt?.input?.context_id &&
+      !managerApproval.value &&
       command !== undefined &&
       (summary !== command || visibleText(command) !== command)
     )

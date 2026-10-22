@@ -141,7 +141,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           return await connection.manager.refuse(
             parentId,
             input,
-            id.parse(operation_id),
+            nodeMutationKey(parentId, name, id.parse(operation_id), input),
             parent.permissionMode?.value === 'allow-all' ? 'bypass' : 'ask',
             justification!,
             new Error(t('node.manager.contextUpdate'))
@@ -250,6 +250,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           value = await connection.manager[modernIntegration ? 'integration' : 'command'](
             parentId,
             params,
+            nodeMutationKey(parentId, name, operation_id, params),
             operation_id,
             mode,
             justification!,

@@ -155,11 +155,13 @@ it('shows a provider escalation as command, folder and reason with protocol iden
   })
   try {
     expect(wrapper.text()).toContain(input.command)
-    expect(wrapper.text()).toContain(input.cwd)
+    expect(wrapper.get('[data-command-folder]').text()).toBe('project')
+    expect(wrapper.get('[data-command-folder] [title]').attributes('title')).toBe(input.cwd)
     expect(wrapper.text()).toContain(input.reason)
     expect(wrapper.text()).not.toContain(input.thread_id)
     await wrapper.get('[data-manager-evidence] .abele-disclosure__control').trigger('click')
     expect(wrapper.text()).toContain(input.thread_id)
+    expect(JSON.parse(wrapper.get('[data-manager-evidence] code').text()).input).toEqual(input)
   } finally {
     wrapper.unmount()
   }
