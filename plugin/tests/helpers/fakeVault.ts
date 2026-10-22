@@ -720,7 +720,13 @@ export function buildFakeVault(
         return file
       },
       /** A picture written whole: only that it exists and where matters to a test. */
-      async createBinary(path: string, data: ArrayBuffer) {
+      async createBinary(
+        path: string,
+        data: ArrayBuffer,
+        options?: { mtime?: number; ctime?: number }
+      ) {
+        if (await self.vault.adapter.exists(path)) throw new Error('File already exists')
+        await self.vault.adapter.writeBinary(path, data, options)
         stats.create++
         stats.written += data.byteLength
         const file = addFile(path)
@@ -731,8 +737,13 @@ export function buildFakeVault(
       async readBinary(file: TFile) {
         return bytesOf(file.path)
       },
-      async modifyBinary(file: TFile, data: ArrayBuffer) {
+      async modifyBinary(
+        file: TFile,
+        data: ArrayBuffer,
+        options?: { mtime?: number; ctime?: number }
+      ) {
         stats.modify++
+        await self.vault.adapter.writeBinary(file.path, data, options)
         binByPath.set(file.path, data.slice(0))
       },
       async rename(file: TAbstractFile, to: string) {

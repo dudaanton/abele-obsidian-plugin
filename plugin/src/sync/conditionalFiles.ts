@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-sdk/core'
+import { EngineError, sha256 } from '@abele/sync-sdk/core'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
 /** Structurally matches the next SDK's host port while the current SDK remains pinned. */
@@ -17,6 +17,7 @@ export interface ConditionalFileOperation {
     | { kind: 'install'; stageId: string }
 }
 interface Intent {
+  checked?: boolean
   receipt?: boolean
   path: string
   expected: FileVersion | null
@@ -25,6 +26,14 @@ interface Intent {
   kind: ConditionalFileOperation['effect']['kind']
 }
 export interface ConditionalFileHost {
+  checked?: {
+    maxBytes: number
+    wait(path: string): Promise<void>
+    prepareWrite(
+      path: string,
+      create: boolean
+    ): (bytes: Uint8Array, mtime: number) => Promise<boolean>
+  }
   root: string
   active: Set<string>
   check(): void
@@ -287,6 +296,7 @@ export class ConditionalFiles {
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
+    if (!h.sameObject && h.checked) return this.applyChecked(op)
     // Object identity distinguishes allocation sentinels from captured empty files.
     if (op.expected !== null && !h.sameObject)
       throw new EngineError('io', 'conditional capture requires durable object identity')
@@ -409,6 +419,145 @@ export class ConditionalFiles {
       throw error
     } finally {
       h.active.delete(activeKey)
+    }
+  }
+  /** Content decision plus a pending-save/stat fence; no object-identity claim. */
+  private async applyChecked(op: ConditionalFileOperation): Promise<boolean> {
+    const h = this.host,
+      checked = h.checked
+    const observe = async (path: string): Promise<FileVersion | null> => {
+      try {
+        return await h.fingerprint(path)
+      } catch (error) {
+        if (error instanceof EngineError && error.code === 'conflict' && !error.cause) return null
+        throw error
+      }
+    }
+    const id = idOf(
+      (op.effect.kind === 'write' ? op.effect.receipt : undefined) ?? crypto.randomUUID()
+    )
+    const folder = h.root + '/objects/' + id,
+      victim = folder + '/victim',
+      key = h.root + '/' + id
+    if (h.active.has(key)) return false
+    h.active.add(key)
+    let recorded = false
+    try {
+      if (await h.stat(folder)) return false
+      let payload: Uint8Array | undefined
+      let mtime = 0
+      if (op.effect.kind === 'write') {
+        payload = op.effect.bytes
+        mtime = op.effect.mtime
+      } else if (op.effect.kind === 'install') {
+        const stage = await h.stage(op.effect.stageId)
+        if (stage.target !== op.path) throw new EngineError('conflict', 'stage target changed')
+        if (stage.sealed.size > checked.maxBytes) return false
+        payload = await h.read(stage.path)
+        if (payload.length !== stage.sealed.size || (await sha256(payload)) !== stage.sealed.sha)
+          throw new EngineError('conflict', 'sealed stage changed')
+        mtime = (await h.stat(stage.path))?.mtime ?? 0
+      }
+      if (payload && payload.length > checked.maxBytes) return false
+      const publish = payload ? checked.prepareWrite(op.path, op.expected === null) : undefined
+      const destination = op.effect.kind === 'move' ? op.effect.to : op.path
+      const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
+      if (parent) await h.mkdir(parent)
+      const first = await h.stat(op.path)
+      if (first && (first.type !== 'file' || first.size > checked.maxBytes)) return false
+      if (op.expected && first === null && op.effect.kind === 'remove') {
+        await checked.wait(op.path)
+        return (await h.stat(op.path)) === null
+      }
+      if (op.expected === null ? first !== null : first === null) return false
+      if (op.expected) {
+        const have = await observe(op.path)
+        if (!have || have.sha !== op.expected.sha || have.size !== op.expected.size) return false
+      }
+      const intent: Intent = {
+        checked: true,
+        receipt: op.effect.kind === 'write' && op.effect.receipt !== undefined,
+        path: op.path,
+        expected: op.expected && { ...op.expected, mtime: Math.max(0, Math.round(first.mtime)) },
+        destination,
+        data: victim,
+        kind: op.effect.kind,
+      }
+      await h.mkdir(folder)
+      await this.record(folder + '/intent.json', intent)
+      await h.mkdir(h.root + '/active')
+      await this.record(h.root + '/active/' + id + '.json', intent)
+      recorded = true
+      await checked.wait(op.path)
+      if (destination !== op.path) await checked.wait(destination)
+      const last = await h.stat(op.path)
+      if (
+        first === null
+          ? last !== null
+          : !last || last.type !== 'file' || last.size !== first.size || last.mtime !== first.mtime
+      ) {
+        console.debug('[abele-sync] conditional file changed locally; retry later', op.path)
+        // No public mutation was attempted; this intent owns no retained user bytes.
+        await this.record(folder + '/complete', true)
+        await this.archive(folder, id, true)
+        await this.discard(id)
+        return false
+      }
+      h.check()
+      if (op.expected) {
+        await h.capture(op.path, victim)
+        // A save at capture itself still belongs to the user, even with unchanged stat.
+        const info = await h.stat(victim)
+        const have = info?.type === 'file' ? await observe(victim) : null
+        if (
+          !have ||
+          !info ||
+          have.sha !== op.expected.sha ||
+          have.size !== op.expected.size ||
+          info.mtime !== first.mtime
+        ) {
+          await this.restore(victim, op.path)
+          await this.archive(folder, id, false)
+          return false
+        }
+      }
+      if (publish) {
+        if (op.expected && (await h.stat(op.path))) {
+          await this.restore(victim, op.path)
+          await this.archive(folder, id, false)
+          return false
+        }
+        if (!(await publish(payload, mtime))) {
+          await this.restore(victim, op.path)
+          await this.archive(folder, id, false)
+          return false
+        }
+      } else if (op.effect.kind === 'move' && !(await this.install(victim, destination))) {
+        await this.restore(victim, op.path)
+        await this.archive(folder, id, false)
+        return false
+      }
+      await this.record(folder + '/complete', true)
+      await this.retireVictim(folder, intent)
+      await this.archive(folder, id, true)
+      if (!intent.receipt) await this.discard(id)
+      h.changed([op.path], op.effect.kind === 'remove' || op.effect.kind === 'move' ? null : 'file')
+      if (op.effect.kind === 'move') h.changed([destination], 'file')
+      return true
+    } catch (error) {
+      if (recorded) await this.restore(victim, op.path)
+      if (
+        (error as { code?: string })?.code === 'EEXIST' ||
+        /^(EEXIST\b|File already exists|Destination file already exists)/.test(
+          (error as Error)?.message ?? ''
+        )
+      ) {
+        if (recorded) await this.archive(folder, id, false)
+        return false
+      }
+      throw error
+    } finally {
+      h.active.delete(key)
     }
   }
   async recover(): Promise<void> {

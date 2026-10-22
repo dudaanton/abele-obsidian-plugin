@@ -1,4 +1,4 @@
-import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
+import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
 import { nativeChunkPort, connectionFilePort, vaultPathIsLink } from './vaultPathLinks'
@@ -855,6 +855,16 @@ export class ObsidianFileSystem implements FileSystem {
       this.privateRoot
     )
     this.writer = new VaultWriter({
+      ...(!this.native
+        ? {
+            createAbsent: async (path: string, bytes: Uint8Array, mtime: number) => {
+              if (bytes.length > MOBILE_WHOLE_READ_MAX)
+                throw new EngineError('io', 'mobile write exceeds the whole-file limit')
+              await this.waitPendingSave(path)
+              await this.prepareCheckedWrite(path, true)(bytes, mtime)
+            },
+          }
+        : {}),
       conditionalFile: (operation) => this.conditionalFile(operation),
       retainInstalled: !!options.ledger,
       published: (entry) => {
@@ -880,9 +890,19 @@ export class ObsidianFileSystem implements FileSystem {
     const active = conditionalOperations.get(app.vault) ?? new Set<string>()
     conditionalOperations.set(app.vault, active)
     this.conditional = new ConditionalFiles({
+      ...(!this.native
+        ? {
+            checked: {
+              maxBytes: MOBILE_WHOLE_READ_MAX,
+              wait: (path: string) => this.waitPendingSave(path),
+              prepareWrite: (path: string, create: boolean) =>
+                this.prepareCheckedWrite(path, create),
+            },
+          }
+        : {}),
       root:
         options.journalOwner || this.privateRoot
-          ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner!)) + '/conditional'
+          ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) + '/conditional'
           : this.configDir + '/plugins/abele/sync-conditional',
       active,
       check: () => this.runtimeFence?.assertReady(),
@@ -937,8 +957,61 @@ export class ObsidianFileSystem implements FileSystem {
         this.wrote(paths, known)
       },
       remove: (path) => this.disk.remove(path),
-      ...(this.native ? { rmdir: (path: string) => this.native.rmdirEmpty(path) } : {}),
+      rmdir: async (path: string) => {
+        if (this.native) return this.native.rmdirEmpty(path)
+        // Only an owned, settled metadata folder reaches this callback. Public
+        // directories use the identity-bearing, empty-only directory port.
+        const entries = await this.disk.list(path)
+        if (entries.files.length || entries.folders.length)
+          throw new EngineError('conflict', 'conditional metadata folder is not empty')
+        await this.disk.rmdir(path, true)
+      },
     })
+  }
+
+  private async waitPendingSave(path: string): Promise<void> {
+    const adapter = this.app.vault.adapter as DataAdapter & { promise?: PromiseLike<unknown> }
+    for (;;) {
+      this.runtimeFence?.assertReady()
+      const file = this.app.vault.getAbstractFileByPath(path) as
+        | (TFile & { saving?: PromiseLike<unknown> | boolean })
+        | null
+      const queue = adapter.promise,
+        saving = file?.saving
+      await queue
+      if (saving === true) await new Promise<void>((resolve) => window.setTimeout(resolve, 10))
+      else if (saving) await saving
+      this.runtimeFence?.assertReady()
+      if (saving !== true && adapter.promise === queue && file?.saving === saving) return
+    }
+  }
+
+  private prepareCheckedWrite(path: string, create: boolean) {
+    const file = this.app.vault.getAbstractFileByPath(path)
+    return async (bytes: Uint8Array, mtime: number): Promise<boolean> => {
+      if (!create && file instanceof TFile && file.path !== path) return false
+      const data = bytes.slice().buffer
+      const work = async () => {
+        if (create) await this.app.vault.createBinary(path, data, { mtime })
+        else if (file instanceof TFile) await this.app.vault.modifyBinary(file, data, { mtime })
+        else await this.guardedAdapter.writeBinary(path, data, { mtime })
+      }
+      const operation = create
+        ? 'vault createBinary'
+        : file instanceof TFile
+          ? 'vault modifyBinary'
+          : undefined
+      const started = Date.now()
+      let outcome: 'complete' | 'failed' = 'failed'
+      try {
+        if (this.runtimeFence) await this.runtimeFence.effect(work)
+        else await work()
+        outcome = 'complete'
+        return true
+      } finally {
+        if (operation) this.diagnostic?.(operation, started, outcome, [path])
+      }
+    }
   }
 
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {
@@ -947,6 +1020,12 @@ export class ObsidianFileSystem implements FileSystem {
       ...(operation.effect.kind === 'move' ? [operation.effect.to] : []),
     ])
     try {
+      if (
+        !this.native &&
+        operation.effect.kind === 'write' &&
+        operation.effect.bytes.length > MOBILE_WHOLE_READ_MAX
+      )
+        return false
       if (operation.expected === null && operation.effect.kind === 'write' && storageOf(this.app)) {
         this.runtimeFence?.assertReady()
         assertPhysicalPath(operation.path)

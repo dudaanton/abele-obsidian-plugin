@@ -12,8 +12,10 @@ export const emptyPullCounts = () => ({
 export type PullCounts = ReturnType<typeof emptyPullCounts>
 export const pullCountKeys = Object.keys(emptyPullCounts()) as (keyof PullCounts)[]
 const requestPattern = /^GET \/v2\/files\/[^/]+\/content$/
-const writePattern = /^(adapter (writeBinary|write|appendBinary)|native (open wx|write))$/
-const publicationPattern = /^(adapter rename|native (rename|link))$/
+const writePattern =
+  /^(adapter (writeBinary|write|appendBinary)|native (open wx|write)|vault (createBinary|modifyBinary))$/
+const publicationPattern =
+  /^(adapter rename|native (rename|link)|vault (createBinary|modifyBinary))$/
 export function countPullOperation(
   counts: PullCounts,
   operation: string,
@@ -24,7 +26,7 @@ export function countPullOperation(
   if (writePattern.test(operation)) counts.writes += amount
   if (publicationPattern.test(operation)) counts.publications += amount
   if (operation === 'journal save') counts.journal += amount
-  if (operation.startsWith('adapter '))
+  if (operation.startsWith('adapter ') || operation.startsWith('vault '))
     counts[preparation ? 'preparationBridge' : 'bridge'] += amount
   if (operation.startsWith('native '))
     counts[preparation ? 'preparationNative' : 'native'] += amount

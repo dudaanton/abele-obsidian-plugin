@@ -12,8 +12,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 
-// BUG: D-133: adapter-only replacement requires the pending mobile identity capability.
-it.fails.each([
+it.each([
   ['watch-first', 1234.75],
   ['list-first', 1234.75],
   ['watch-first', 1235],
@@ -120,7 +119,8 @@ it('does not stat published siblings again after the index observes them during 
   const paths = Array.from({ length: 4 }, (_, i) => `Container/Shared/Notes/sample-${i}.md`)
   for (const path of paths) {
     await fs.writeAtomic(path, bytes, 1000)
-    await app.vault.createBinary(path, bytes.buffer)
+    // The public creation API has already returned an indexed file.
+    expect(app.vault.getFileByPath(path)).not.toBeNull()
   }
   const lagging = 'Container/Shared/Notes/lagging.md'
   await fs.writeAtomic(lagging, bytes, 1000)

@@ -2224,66 +2224,62 @@ it.each(['before-create', 'after-remove', 'other-connection'])(
     }
   }
 )
-// BUG: D-133: the legacy adapter-only fixture cannot prove destructive capture identity.
-it.fails(
-  'starts an unchanged legacy folder connection with saved state and pins its current local root',
-  async () => {
-    const f = inspectionFixture(false, 'Notes')
-    let restarted: TokenEngines | undefined
-    try {
-      f.release()
-      await f.ui.connect(f.encoded)
-      const id = f.registry.records()[0].id
-      await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
-      await f.ui.sync(id)
-      const before = f.registry.records()[0]
-      await f.host.close()
-      const doc = f.app.loadLocalStorage(TOKEN_REGISTRY_KEY) as {
-        records: { localRoot?: string }[]
-      }
-      delete doc.records[0].localRoot
-      f.app.saveLocalStorage(TOKEN_REGISTRY_KEY, doc)
-      const registry = TokenConnectionRegistry.open(f.app),
-        ui = new TokenUi(registry, f.secrets, f.transport, f.ui.reviews)
-      restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
-        fetch: f.transport,
-        indexedDB: f.factory,
-        WebSocket: class {
-          constructor() {
-            throw new Error('No test socket')
-          }
-        } as unknown as typeof WebSocket,
-      })
-      restarted.start()
-      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
-      await ui.sync(id)
-      expect(registry.records()[0]).toMatchObject({
-        localRoot: 'Notes',
-        ledgerId: before.ledgerId,
-        scope: before.scope,
-      })
-      expect(registry.records()[0].rootIssue).toBeUndefined()
-      expect(await f.app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
-      f.transport.mockClear()
-      await f.app.vault.adapter.write('Notes/slow.txt', 'edited after upgrade')
-      await ui.sync(id)
-      const ops = f.transport.mock.calls
-        .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
-        .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
-      expect(ops).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ op: 'modify', file_id: expect.any(String) }),
-        ])
-      )
-      expect(ops.some((op) => op.op === 'delete' || op.op === 'delete_directory')).toBe(false)
-    } finally {
-      f.release()
-      await restarted?.close()
-      await f.host.close()
-      f.probe.mockRestore()
+it('starts an unchanged legacy folder connection with saved state and pins its current local root', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  let restarted: TokenEngines | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+    await f.ui.sync(id)
+    const before = f.registry.records()[0]
+    await f.host.close()
+    const doc = f.app.loadLocalStorage(TOKEN_REGISTRY_KEY) as {
+      records: { localRoot?: string }[]
     }
+    delete doc.records[0].localRoot
+    f.app.saveLocalStorage(TOKEN_REGISTRY_KEY, doc)
+    const registry = TokenConnectionRegistry.open(f.app),
+      ui = new TokenUi(registry, f.secrets, f.transport, f.ui.reviews)
+    restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
+      fetch: f.transport,
+      indexedDB: f.factory,
+      WebSocket: class {
+        constructor() {
+          throw new Error('No test socket')
+        }
+      } as unknown as typeof WebSocket,
+    })
+    restarted.start()
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    expect(registry.records()[0]).toMatchObject({
+      localRoot: 'Notes',
+      ledgerId: before.ledgerId,
+      scope: before.scope,
+    })
+    expect(registry.records()[0].rootIssue).toBeUndefined()
+    expect(await f.app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
+    f.transport.mockClear()
+    await f.app.vault.adapter.write('Notes/slow.txt', 'edited after upgrade')
+    await ui.sync(id)
+    const ops = f.transport.mock.calls
+      .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+      .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+    expect(ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: 'modify', file_id: expect.any(String) }),
+      ])
+    )
+    expect(ops.some((op) => op.op === 'delete' || op.op === 'delete_directory')).toBe(false)
+  } finally {
+    f.release()
+    await restarted?.close()
+    await f.host.close()
+    f.probe.mockRestore()
   }
-)
+})
 
 it.each([false, true])(
   'explicitly follows a moved root with preserved copies without granting the old root access (native archive=%s)',

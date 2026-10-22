@@ -21,6 +21,8 @@ const tempPattern =
   /^(?:\.abele-sync-[a-z0-9]{8}\.(?:tmp|old)|\.abele-receipt-[a-zA-Z0-9-]{1,128}\.tmp)$/
 const ancestorPattern = /^(adapter (stat|exists|mkdir)|native (stat|mkdir))$/
 const localKinds = [
+  'vault createBinary',
+  'vault modifyBinary',
   'adapter stat',
   'adapter exists',
   'adapter list',

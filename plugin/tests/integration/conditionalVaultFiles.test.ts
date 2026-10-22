@@ -5,9 +5,8 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const data = (text: string) => new TextEncoder().encode(text)
-// BUG: D-133: adapter-only capture stays closed until durable mobile identity is available.
 const destructiveHostCase = (name: string, run: (desktop: boolean) => Promise<void>) => {
-  it.fails(name.replace('%s', 'false'), () => run(false))
+  it(name.replace('%s', 'false'), () => run(false))
   it(name.replace('%s', 'true'), () => run(true))
 }
 
@@ -19,18 +18,18 @@ it('settles conditional recovery before legacy startup recovery can return early
   await expect(disk.recover()).rejects.toThrow('pending evidence')
   expect(recover).toHaveBeenCalledOnce()
 })
-it('refuses destructive capture when the host cannot prove object identity', async () => {
+it('checks destructive removal by fresh content on a host without object identity', async () => {
   const app = buildFakeVault([])
   await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
   const disk = new ObsidianFileSystem(app as never)
-  await expect(
-    disk.conditionalFile({
+  expect(
+    await disk.conditionalFile({
       path: 'sample.bin',
       expected: { size: 8, mtime: 1000, sha: await sha256(data('sample A')) },
       effect: { kind: 'remove' },
     })
-  ).rejects.toThrow('object identity')
-  expect(await app.vault.adapter.read('sample.bin')).toBe('sample A')
+  ).toBe(true)
+  expect(await app.vault.adapter.exists('sample.bin')).toBe(false)
 })
 it('drops verified successful victims and keeps only caller-owned installation evidence', async () => {
   const app = buildFakeVault([])
@@ -230,7 +229,13 @@ it.each([false, true])(
       return install(from, to)
     }
     if (desktop) native.link = publish
-    else app.vault.adapter.rename = publish
+    else {
+      const create = app.vault.createBinary.bind(app.vault)
+      app.vault.createBinary = async (path, bytes, options) => {
+        await app.vault.adapter.writeBinary(path, data('sample B').buffer, { mtime: 1000 })
+        return create(path, bytes, options)
+      }
+    }
     expect(
       await disk.conditionalFile({
         path: 'sample.bin',

@@ -364,10 +364,10 @@ it.each([
         console.log('[cold token-host pull calls]', JSON.stringify(events))
 
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 10, preparationBridge: 1 })
+        expect(firstPull!.small.max).toMatchObject({ bridge: 9, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
-        // Five target checks include one preparation read; the sixth stat protects
-        // the journal-owned receipt path. Keep the same total bridge budget.
+        // The vault create replaces private-payload writing and rename publication.
+        // Five target checks include preparation; one stat protects the receipt path.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
@@ -377,9 +377,8 @@ it.each([
           'adapter exists',
           'adapter exists',
           'adapter mkdir',
-          'adapter writeBinary',
-          'adapter rename',
         ])
+        expect(events.filter((event) => event.operation === 'vault createBinary')).toHaveLength(1)
         expect(
           events.filter((event) => event.operation === 'adapter mkdir').map((event) => event.paths)
         ).toEqual([[expect.stringMatching(/^\.abele-sync\/connections\/[^/]+\/writes$/)]])

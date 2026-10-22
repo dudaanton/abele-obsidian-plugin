@@ -45,6 +45,7 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
+  createAbsent?(path: string, bytes: Uint8Array, mtime: number): Promise<void>
   conditionalFile(operation: ConditionalFileOperation): Promise<boolean>
   retainInstalled?: boolean
   published?(entry: JournalEntry): void
@@ -104,6 +105,24 @@ export class VaultWriter {
       await this.deps.makeParents(path)
       await this.deps.makeParents(temp)
       await this.deps.journal.persist(() => this.deps.journal.add(entry))
+      if (!this.deps.native && this.deps.createAbsent) {
+        try {
+          await this.deps.createAbsent(path, bytes, mtime)
+        } catch (error) {
+          if (
+            (error as { code?: string })?.code === 'EEXIST' ||
+            /^(EEXIST\b|File already exists|Destination file already exists)/.test(
+              (error as Error)?.message ?? ''
+            )
+          )
+            return false
+          throw error
+        }
+        this.consumed.add(temp)
+        this.deps.installed?.(path)
+        if (!receipt) await this.discardReceipt(id)
+        return true
+      }
       // This is an owned private path, never a public overwrite. Publication remains exclusive.
       const chunkSize = 1024 * 1024
       if (bytes.length > chunkSize && !this.deps.native) {

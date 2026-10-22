@@ -231,7 +231,13 @@ copy when necessary. Retained reviews survive restart and prevent disconnect unt
 Absence-only buffered writes use an owned installation-journal record with `conditionalReceipt`,
 `target`, `temp` and `replacementSha`; native receipt proof retains the installed inode reference
 until ledger completion. The record and private data are discarded only on explicit receipt
-retirement. Mobile hosts without durable object identity refuse destructive conditional capture.
+retirement. Mobile publication uses a checked tier: fresh content must match the expected
+hash and size, pending host saves drain, and the file's size/mtime must remain unchanged
+across that decision. Displaced files are quarantined before replacement or removal;
+indexed replacements and creates use the vault API. Checked intent records carry
+`checked: true`, use no allocation sentinel, and cannot certify installation identity after
+restart. Uncertain writes retain evidence; settled verified victims retire. Buffered mobile
+creates use the installation journal without a separate private payload copy.
 
 The reserved projection format is `abele.external`, schema 1, at most 16 KiB UTF-8. Its
 `.abele-ref` sidecar contains only vault/file identity, logical path, observed version, SHA-256,
