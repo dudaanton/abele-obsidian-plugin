@@ -7,6 +7,12 @@ import FileTree from '@/components/nodeWork/FileTree.vue'
 import HistoryView from '@/components/nodeWork/HistoryView.vue'
 import NodePanel from '@/components/nodeWork/NodePanel.vue'
 
+// The sidebar asks the node service for the folder's Codex network setting; this fake node advertises
+// no such method, so the globe stays hidden and nothing is loaded.
+vi.mock('@/node/NodeService', () => ({
+  NodeService: { getInstance: () => ({ connection: () => ({ client: {} }) }) },
+}))
+
 const parse = () => ({
   name: 'Sample node',
   host: 'sample.ts.net',
