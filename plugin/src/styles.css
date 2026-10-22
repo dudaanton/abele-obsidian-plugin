@@ -573,7 +573,7 @@ body.is-mobile .abele-comment-marker_pending::after {
   height: 14px;
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
-  border: 2px solid var(--background-primary);
+  border: 2px solid var(--text-on-accent);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
