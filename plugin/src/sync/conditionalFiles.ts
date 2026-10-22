@@ -33,10 +33,8 @@ export interface ConditionalFileHost {
   checked?: {
     maxBytes: number
     wait(path: string): Promise<void>
-    prepareWrite(
-      path: string,
-      create: boolean
-    ): (bytes: Uint8Array, mtime: number) => Promise<boolean>
+    acquire(paths: string[]): Promise<() => void>
+    publicationCheck(path: string): () => boolean
   }
   root: string
   active: Set<string>
@@ -283,6 +281,14 @@ export class ConditionalFiles {
     try {
       await this.host.install(from, to)
     } catch (error) {
+      if (
+        this.host.checked &&
+        (error as { code?: string })?.code !== 'EEXIST' &&
+        !/^(EEXIST\b|File already exists|Destination file already exists)/.test(
+          (error as Error)?.message ?? ''
+        )
+      )
+        throw error
       if ((await this.host.stat(to)) === null) {
         published?.(false)
         throw error
@@ -297,7 +303,8 @@ export class ConditionalFiles {
   }
   private async restore(from: string, to: string, retained = false) {
     const folder = from.slice(0, from.lastIndexOf('/'))
-    if (await this.host.stat(folder + '/restored')) return
+    const restored = folder + (from === folder + '/data' ? '/data-restored' : '/restored')
+    if (await this.host.stat(restored)) return
     const id = from.split('/').at(-2)
     // The existing durable review pointer is also restoration's settlement record.
     // Keep reading the old marker for records written by earlier hosts.
@@ -314,7 +321,7 @@ export class ConditionalFiles {
     const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
     const finish = async (destination: string, durable = false) => {
       if (!durable) await this.host.flush(destination)
-      if (retained) await this.record(folder + '/restored', true)
+      if (retained) await this.record(restored, true)
       else await this.archive(folder, id, false)
       this.host.changed([destination])
     }
@@ -626,6 +633,7 @@ export class ConditionalFiles {
     if (h.active.has(key)) return false
     h.active.add(key)
     let recorded = false
+    let release: (() => void) | undefined
     try {
       if (await h.stat(folder)) return false
       let payload: Uint8Array | undefined
@@ -643,7 +651,7 @@ export class ConditionalFiles {
         mtime = (await h.stat(stage.path))?.mtime ?? 0
       }
       if (payload && payload.length > checked.maxBytes) return false
-      const publish = payload ? checked.prepareWrite(op.path, op.expected === null) : undefined
+      const publicationAllowed = checked.publicationCheck(op.path)
       const destination = op.effect.kind === 'move' ? op.effect.to : op.path
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await h.mkdir(parent)
@@ -664,7 +672,7 @@ export class ConditionalFiles {
         path: op.path,
         expected: op.expected && { ...op.expected, mtime: Math.max(0, Math.round(first.mtime)) },
         destination,
-        data: victim,
+        data: payload ? folder + '/data' : victim,
         kind: op.effect.kind,
       }
       await h.mkdir(folder)
@@ -672,8 +680,13 @@ export class ConditionalFiles {
       await h.mkdir(h.root + '/active')
       await this.record(h.root + '/active/' + id + '.json', intent)
       recorded = true
+      if (payload) {
+        await h.create(intent.data, payload, mtime)
+        await h.flush(intent.data)
+      }
       await checked.wait(op.path)
       if (destination !== op.path) await checked.wait(destination)
+      release = await checked.acquire([op.path, destination])
       const last = await h.stat(op.path)
       if (
         first === null
@@ -690,14 +703,13 @@ export class ConditionalFiles {
       h.check()
       if (op.expected) {
         await h.capture(op.path, victim)
-        // A save at capture itself still belongs to the user, even with unchanged stat.
+        // Content was hashed before taking the gate. Cooperating saves now wait;
+        // an unexpected occupant is preserved without hashing under the public lease.
         const info = await h.stat(victim)
-        const have = info?.type === 'file' ? await observe(victim) : null
         if (
-          !have ||
           !info ||
-          have.sha !== op.expected.sha ||
-          have.size !== op.expected.size ||
+          info.type !== 'file' ||
+          info.size !== op.expected.size ||
           info.mtime !== first.mtime
         ) {
           await this.restore(victim, op.path)
@@ -705,15 +717,20 @@ export class ConditionalFiles {
           return false
         }
       }
-      if (publish) {
-        if (op.expected && (await h.stat(op.path))) {
+      if (payload) {
+        if (
+          !publicationAllowed() ||
+          (await h.stat(op.path)) ||
+          !(await this.install(intent.data, op.path))
+        ) {
           await this.restore(victim, op.path)
+          await this.restore(intent.data, op.path, true)
+          // Both versions now have acknowledged public destinations. Receipt retirement
+          // may remove only this operation's metadata, never either recovered copy.
+          await this.record(folder + '/complete', true)
           await this.archive(folder, id, false)
-          return false
-        }
-        if (!(await publish(payload, mtime))) {
-          await this.restore(victim, op.path)
-          await this.archive(folder, id, false)
+          if (!intent.receipt) await this.discard(id)
+          console.debug('[abele-sync] publication occupied; incoming bytes recovered', op.path)
           return false
         }
       } else if (op.effect.kind === 'move' && !(await this.install(victim, destination))) {
@@ -721,6 +738,8 @@ export class ConditionalFiles {
         await this.archive(folder, id, false)
         return false
       }
+      release?.()
+      release = undefined
       await this.record(folder + '/complete', true)
       await this.retireVictim(folder, intent)
       await this.archive(folder, id, true)
@@ -740,6 +759,38 @@ export class ConditionalFiles {
         return false
       }
       throw error
+    } finally {
+      release?.()
+      h.active.delete(key)
+    }
+  }
+  /** Turn refused first publication into journalled visible conflict evidence. */
+  async recoverIncoming(from: string, path: string): Promise<void> {
+    const h = this.host,
+      id = crypto.randomUUID(),
+      folder = h.root + '/objects/' + id
+    const intent: Intent = {
+      checked: true,
+      path,
+      expected: null,
+      destination: path,
+      data: folder + '/data',
+      kind: 'write',
+    }
+    h.validate(path)
+    const key = h.root + '/' + id
+    h.active.add(key)
+    try {
+      await h.mkdir(folder)
+      await this.record(folder + '/intent.json', intent)
+      await h.mkdir(h.root + '/active')
+      await this.record(h.root + '/active/' + id + '.json', intent)
+      await h.capture(from, intent.data)
+      await this.restore(intent.data, path, true)
+      await this.record(folder + '/complete', true)
+      await this.archive(folder, id, false)
+      await this.discard(id)
+      console.debug('[abele-sync] publication occupied; incoming bytes recovered', path)
     } finally {
       h.active.delete(key)
     }
@@ -794,6 +845,8 @@ export class ConditionalFiles {
           h.validate(intent.path)
           h.check()
           await this.restore(folder + '/victim', intent.path)
+          if (intent.checked && intent.data === folder + '/data')
+            await this.restore(intent.data, intent.path, true)
           await this.archive(folder, id, false)
           h.changed([intent.path])
         } catch (error) {
@@ -887,6 +940,8 @@ export class ConditionalFiles {
     ]) {
       if (await h.stat(path)) await h.remove(path)
     }
+    if (state.intent?.checked && (await h.stat(folder + '/data-restored')))
+      await h.remove(folder + '/data-restored')
     await this.clearPlans(folder)
     if (h.rmdir && (await h.stat(folder))) await h.rmdir(folder)
     await h.flush(folder, true)

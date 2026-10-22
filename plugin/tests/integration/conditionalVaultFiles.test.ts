@@ -134,16 +134,19 @@ destructiveHostCase('preserves a save at the capture boundary (desktop=%s)', asy
   const expected = { size: 8, mtime: 1000, sha: await sha256(data('sample A')) }
   const rename = app.vault.adapter.rename.bind(app.vault.adapter)
   let injected = false
+  let saving: Promise<void> | undefined
   app.vault.adapter.rename = async (from, to) => {
     if (from === 'sample.bin' && to.endsWith('/victim')) {
-      await app.vault.adapter.writeBinary(from, data('sample B').buffer, { mtime: 1000 })
+      saving = app.vault.adapter.writeBinary(from, data('sample B').buffer, { mtime: 1000 })
+      if (desktop) await saving
       injected = true
     }
     return rename(from, to)
   }
   expect(
     await disk.conditionalFile({ path: 'sample.bin', expected, effect: { kind: 'remove' } })
-  ).toBe(false)
+  ).toBe(!desktop)
+  await saving
   expect(injected).toBe(true)
   expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(data('sample B'))
 })
@@ -225,22 +228,16 @@ it.each([false, true])(
     if (desktop) desktopAdapter(app)
     const disk = new ObsidianFileSystem(app as never)
     const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
     const native = Reflect.get(app.vault.adapter, 'fsPromises')
     const install = desktop ? native.link.bind(native) : rename
     const publish = async (from: string, to: string) => {
       const target = desktop ? to.slice('/vault/'.length) : to
-      if (target === 'sample.bin')
-        await app.vault.adapter.writeBinary(target, data('sample B').buffer, { mtime: 1000 })
+      if (target === 'sample.bin') await write(target, data('sample B').buffer, { mtime: 1000 })
       return install(from, to)
     }
     if (desktop) native.link = publish
-    else {
-      const create = app.vault.createBinary.bind(app.vault)
-      app.vault.createBinary = async (path, bytes, options) => {
-        await app.vault.adapter.writeBinary(path, data('sample B').buffer, { mtime: 1000 })
-        return create(path, bytes, options)
-      }
-    }
+    else app.vault.adapter.rename = publish
     expect(
       await disk.conditionalFile({
         path: 'sample.bin',
@@ -251,6 +248,14 @@ it.each([false, true])(
     expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(
       data('sample B')
     )
+    if (!desktop) {
+      const copies = (await app.vault.adapter.list('')).files.filter(
+        (path) => path !== 'sample.bin'
+      )
+      expect(await Promise.all(copies.map((path) => app.vault.adapter.read(path)))).toContain(
+        'sample A'
+      )
+    }
   }
 )
 

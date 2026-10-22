@@ -244,11 +244,21 @@ Absence-only buffered writes use an owned installation-journal record with `cond
 until ledger completion. The record and private data are discarded only on explicit receipt
 retirement. Mobile publication uses a checked tier: fresh content must match the expected
 hash and size, pending host saves drain, and the file's size/mtime must remain unchanged
-across that decision. Displaced files are quarantined before replacement or removal;
-indexed replacements and creates use the vault API. Checked intent records carry
+across that decision. An adapter path gate serializes in-process saves, directory mutations
+and both paths of a move from the final check through capture, publication or restoration.
+Fresh public content hashing and pending-save drainage happen before taking that gate.
+Sync-owned adapter calls use explicit pre-wrap functions, without an ambient bypass flag.
+Displaced files are quarantined before replacement or removal. Incoming bytes are written
+to an owned private staging name, then renamed into the public path without overwriting
+an existing destination. A refused publication keeps the local occupant and surfaces the
+incoming bytes as a journalled recovered copy. Checked intent records carry
+an independent `data-restored` marker after acknowledged conflict-copy publication;
+settled receipt cleanup removes that marker without touching the visible copy. They carry
 `checked: true`, use no allocation sentinel, and cannot certify installation identity after
-restart. Uncertain writes retain evidence; settled victims use the same retention policy. Buffered mobile
-creates use the installation journal without a separate private payload copy.
+restart. Uncertain writes retain evidence; settled victims use the same retention policy.
+Buffered mobile creates use the installation journal's private `temp`; replacements use
+the conditional object's `data` file. Adapter acknowledgements and the gate do not provide
+atomic exclusion against another native process inside the adapter's own move implementation.
 Receipt cleanup first persists `retiring/<id>.json` outside the object directory. That marker
 survives deletion of installation metadata and pointers and is removed last; recovery resumes
 each idempotent step before inspecting ordinary captures. Retained-copy restoration has its

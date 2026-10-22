@@ -364,10 +364,10 @@ it.each([
         console.log('[cold token-host pull calls]', JSON.stringify(events))
 
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 9, preparationBridge: 1 })
+        expect(firstPull!.small.max).toMatchObject({ bridge: 10, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
-        // The vault create replaces private-payload writing and rename publication.
-        // Five target checks include preparation; one stat protects the receipt path.
+        // One private payload write and one exclusive rename replace the overwrite-capable
+        // public create. Five target checks include preparation; one stat protects the receipt.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
@@ -377,8 +377,10 @@ it.each([
           'adapter exists',
           'adapter exists',
           'adapter mkdir',
+          'adapter writeBinary',
+          'adapter rename',
         ])
-        expect(events.filter((event) => event.operation === 'vault createBinary')).toHaveLength(1)
+        expect(events.filter((event) => event.operation === 'adapter rename')).toHaveLength(1)
         expect(
           events.filter((event) => event.operation === 'adapter mkdir').map((event) => event.paths)
         ).toEqual([[expect.stringMatching(/^\.abele-sync\/connections\/[^/]+\/writes$/)]])

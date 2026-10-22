@@ -7,6 +7,7 @@ import { sha256 } from '@noble/hashes/sha2'
 import type { Vault } from 'obsidian'
 import type { DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-sdk/core'
+import { PathCoordinator } from './pathCoordinator'
 
 /** Probe from the vault boundary: lstat of a leaf alone follows linked parents. */
 export async function assertNoLinkedAncestors(
@@ -286,7 +287,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
         // immediate recheck cannot close an on-device attacker racing its async queue.
         for (const path of args.slice(0, paths[String(key)]))
           await assertVaultPath(adapter, pathArgument(path))
-        return value.apply(target, args)
+        return ungatedAdapterMethod(value).apply(adapterEngineReceiver(target), args)
       }
     },
   })
@@ -1247,7 +1248,7 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
       const wrapped = async (...args: unknown[]) => {
         for (const path of args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1))
           await assertVaultPath(target, pathArgument(path))
-        return value.apply(target, args)
+        return ungatedAdapterMethod(value).apply(adapterEngineReceiver(target), args)
       }
       methods.set(key, { source: value, wrapped })
       return wrapped
@@ -1653,9 +1654,39 @@ export function checkedVaultPort(
   }
 ) {
   return {
+    async acquire(paths: string[]): Promise<() => void> {
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let entered!: () => void
+      const entering = new Promise<void>((resolve) => {
+        entered = resolve
+      })
+      const host = (Reflect.get(vault, CONNECTION_HOST) ?? vault) as Vault
+      const operation = adapterPathGate(host.adapter).run(paths, async () => {
+        entered()
+        await held
+      })
+      await entering
+      try {
+        options.ready()
+      } catch (error) {
+        release()
+        throw error
+      }
+      return () => {
+        release()
+        void operation
+      }
+    },
     async wait(path: string): Promise<void> {
       await assertVaultPath(adapter, path)
-      const raw = vault.adapter as DataAdapter & { promise?: PromiseLike<unknown> }
+      const host = (Reflect.get(vault, CONNECTION_HOST) ?? vault) as Vault
+      const raw = host.adapter as DataAdapter & { promise?: PromiseLike<unknown> }
+      // Install before draining: a new writer must either finish before our lease,
+      // or queue behind it, including writers starting between drainage and acquire.
+      adapterPathGate(raw)
       for (;;) {
         options.ready()
         const file = vault.getAbstractFileByPath(path) as
@@ -1670,32 +1701,69 @@ export function checkedVaultPort(
         if (saving !== true && raw.promise === queue && file?.saving === saving) return
       }
     },
-    prepareWrite(path: string, create: boolean) {
+    publicationCheck(path: string): () => boolean {
       const file = vault.getAbstractFileByPath(path)
-      return async (bytes: Uint8Array, mtime: number): Promise<boolean> => {
-        await assertVaultPath(adapter, path)
-        if (!create && file instanceof TFile && file.path !== path) return false
-        const data = bytes.slice().buffer
-        const work = async () => {
-          if (create) await vault.createBinary(path, data, { mtime })
-          else if (file instanceof TFile) await vault.modifyBinary(file, data, { mtime })
-          else await adapter.writeBinary(path, data, { mtime })
-        }
-        const operation = create
-          ? 'vault createBinary'
-          : file instanceof TFile
-            ? 'vault modifyBinary'
-            : undefined
-        const started = Date.now()
-        let outcome = 'failed'
-        try {
-          await options.effect(work)
-          outcome = 'complete'
-          return true
-        } finally {
-          if (operation) options.diagnostic?.(operation, started, outcome, [path])
-        }
-      }
+      return () => !(file instanceof TFile) || file.path === path
     },
   }
+}
+
+type Method = (...args: unknown[]) => unknown
+export const UNGATED_ADAPTER = Symbol.for('abele.adapter.ungated-v1')
+const gates = new WeakMap<
+  object,
+  { locks: PathCoordinator; methods: Map<string, Method>; view: object }
+>()
+const mutator = /^(?:write.*|append.*|process|mkdir|rename|copy|remove|rmdir|trash.*)$/
+
+/** Cooperating wrappers keep exclusion installed while replacing or restoring their layer. */
+export function setGatedAdapterMethod(adapter: object, name: string, value: unknown): void {
+  const gate = gates.get(adapter)
+  if (!gate || typeof value !== 'function' || !mutator.test(name)) {
+    Reflect.set(adapter, name, value)
+    return
+  }
+  const raw = ungatedAdapterMethod(value as Method)
+  gate.methods.set(name, raw)
+  const run = (...args: unknown[]) => raw.apply(gate.view, args)
+  const wrapped = (...args: unknown[]) =>
+    gate.locks.run(
+      args.slice(0, name === 'rename' || name === 'copy' ? 2 : 1).map(String),
+      async () => run(...args)
+    )
+  Reflect.set(wrapped, UNGATED_ADAPTER, run)
+  Reflect.set(adapter, name, wrapped)
+}
+
+/** Explicit receiver-scoped bypass, never an ambient flag shared with concurrent saves. */
+export function ungatedAdapterMethod(method: Method): Method {
+  return Reflect.get(method, UNGATED_ADAPTER) ?? method
+}
+
+export function adapterEngineReceiver(adapter: object): object {
+  return gates.get(adapter)?.view ?? adapter
+}
+
+/** One vault-wide gate; directory operations exclude descendants and moves acquire both paths. */
+export function adapterPathGate(adapter: object): PathCoordinator {
+  const existing = gates.get(adapter)
+  if (existing) return existing.locks
+  const locks = new PathCoordinator(),
+    methods = new Map<string, Method>()
+  const view = new Proxy(adapter, {
+    get(target, key) {
+      const value = methods.get(String(key)) ?? Reflect.get(target, key)
+      return typeof value === 'function' ? ungatedAdapterMethod(value).bind(view) : value
+    },
+  })
+  gates.set(adapter, { locks, methods, view })
+  const names = new Set<string>()
+  for (let at: object | null = adapter; at; at = Object.getPrototypeOf(at))
+    for (const key of Object.getOwnPropertyNames(at)) if (mutator.test(key)) names.add(key)
+  for (const name of names) {
+    const original = Reflect.get(adapter, name)
+    if (typeof original !== 'function') continue
+    setGatedAdapterMethod(adapter, name, original)
+  }
+  return locks
 }

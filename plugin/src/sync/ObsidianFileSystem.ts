@@ -869,11 +869,27 @@ export class ObsidianFileSystem implements FileSystem {
     this.writer = new VaultWriter({
       ...(!this.native
         ? {
-            createAbsent: async (path: string, bytes: Uint8Array, mtime: number) => {
+            createAbsent: async (path: string, bytes: Uint8Array, mtime: number, temp: string) => {
               if (bytes.length > MOBILE_WHOLE_READ_MAX)
                 throw new EngineError('io', 'mobile write exceeds the whole-file limit')
+              await this.guardedAdapter.writeBinary(temp, bytes.slice().buffer, { mtime })
               await checked.wait(path)
-              await checked.prepareWrite(path, true)(bytes, mtime)
+              const release = await checked.acquire([path])
+              try {
+                this.runtimeFence?.assertReady()
+                await this.guardedAdapter.rename(temp, path)
+              } catch (error) {
+                if (
+                  (error as { code?: string })?.code === 'EEXIST' ||
+                  /^(EEXIST\b|File already exists|Destination file already exists)/.test(
+                    (error as Error)?.message ?? ''
+                  )
+                )
+                  await this.conditional.recoverIncoming(temp, path)
+                throw error
+              } finally {
+                release()
+              }
             },
           }
         : {}),
@@ -907,7 +923,8 @@ export class ObsidianFileSystem implements FileSystem {
             checked: {
               maxBytes: MOBILE_WHOLE_READ_MAX,
               wait: (path: string) => checked.wait(path),
-              prepareWrite: (path: string, create: boolean) => checked.prepareWrite(path, create),
+              acquire: (paths: string[]) => checked.acquire(paths),
+              publicationCheck: (path: string) => checked.publicationCheck(path),
             },
           }
         : {}),

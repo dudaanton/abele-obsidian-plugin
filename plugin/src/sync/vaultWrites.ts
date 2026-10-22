@@ -45,7 +45,7 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
-  createAbsent?(path: string, bytes: Uint8Array, mtime: number): Promise<void>
+  createAbsent?(path: string, bytes: Uint8Array, mtime: number, temp: string): Promise<void>
   conditionalFile(operation: ConditionalFileOperation): Promise<boolean>
   retainInstalled?: boolean
   published?(entry: JournalEntry): void
@@ -107,7 +107,7 @@ export class VaultWriter {
       await this.deps.journal.persist(() => this.deps.journal.add(entry))
       if (!this.deps.native && this.deps.createAbsent) {
         try {
-          await this.deps.createAbsent(path, bytes, mtime)
+          await this.deps.createAbsent(path, bytes, mtime, temp)
         } catch (error) {
           if (
             (error as { code?: string })?.code === 'EEXIST' ||

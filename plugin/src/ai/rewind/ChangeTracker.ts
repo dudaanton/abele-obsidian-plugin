@@ -13,6 +13,12 @@ import { contentHash } from '../readGuard'
 import { VaultFs, bytesHash, isTextPath } from './vaultFs'
 import type { After, Before, Change } from './types'
 import { checkedMutation } from './checkedMutation'
+import {
+  adapterEngineReceiver,
+  setGatedAdapterMethod,
+  UNGATED_ADAPTER,
+  ungatedAdapterMethod,
+} from '@/sync/vaultPathLinks'
 
 /** Where an operation's changes go: a chat's log, which also keeps the copies of binaries. */
 export interface Recording {
@@ -271,30 +277,41 @@ export class ChangeTracker {
       const own = Object.prototype.hasOwnProperty.call(target, name)
       const raw = ChangeTracker.originals.get(original as AnyFn) ?? (original as AnyFn)
       const bound = raw.bind(target)
-      const wrapped = (...args: unknown[]) =>
-        this.around(`${layer}.${name}`, spec(args), () => {
-          const mutate = () => Promise.resolve(bound(...args))
-          if (layer === 'adapter' && this.checks) {
-            const operation = spec(args)
-            return checkedMutation(
-              this.app.vault.adapter,
-              this.checks,
-              [
-                ...operation.paths,
-                ...(operation.move ? [operation.move.from, operation.move.to] : []),
-              ],
-              this.emptyFolders,
-              mutate
-            )
-          }
-          return layer === 'adapter' && (name === 'trashLocal' || name === 'trashSystem')
-            ? guardTrashRevision(target, pathOf(args[0]), mutate)
-            : mutate()
-        })
+      const wrap =
+        (bound: AnyFn) =>
+        (...args: unknown[]) =>
+          this.around(`${layer}.${name}`, spec(args), () => {
+            const mutate = () => Promise.resolve(bound(...args))
+            if (layer === 'adapter' && this.checks) {
+              const operation = spec(args)
+              return checkedMutation(
+                this.app.vault.adapter,
+                this.checks,
+                [
+                  ...operation.paths,
+                  ...(operation.move ? [operation.move.from, operation.move.to] : []),
+                ],
+                this.emptyFolders,
+                mutate
+              )
+            }
+            return layer === 'adapter' && (name === 'trashLocal' || name === 'trashSystem')
+              ? guardTrashRevision(target, pathOf(args[0]), mutate)
+              : mutate()
+          })
+      const wrapped = wrap(bound)
+      if (layer === 'adapter')
+        Reflect.set(
+          wrapped,
+          UNGATED_ADAPTER,
+          wrap((...args) => ungatedAdapterMethod(raw).apply(adapterEngineReceiver(target), args))
+        )
       ChangeTracker.originals.set(wrapped, raw)
-      target[name] = wrapped
+      if (layer === 'adapter') setGatedAdapterMethod(target, name, wrapped)
+      else target[name] = wrapped
       this.restores.push(() => {
-        if (own) target[name] = original
+        if (own && layer === 'adapter') setGatedAdapterMethod(target, name, original)
+        else if (own) target[name] = original
         else delete target[name]
       })
     }

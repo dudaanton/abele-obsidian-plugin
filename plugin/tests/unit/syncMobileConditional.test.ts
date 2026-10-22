@@ -1,11 +1,116 @@
 import { expect, it, vi } from 'vitest'
-import { sha256 } from '@abele/sync-sdk/core'
+import { sha256, SyncCancelled } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { MOBILE_WHOLE_READ_MAX } from '@/sync/mobileWholeRead'
 import { countPullOperation, emptyPullCounts } from '@/sync/pullOperationCounts'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
+
+it.each(['error', 'cancel'] as const)(
+  'releases a queued save when capture ends with %s',
+  async (kind) => {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    const failure = kind === 'cancel' ? new SyncCancelled() : new Error('capture failed')
+    let saving: Promise<void> | undefined
+    vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+      await rename(from, to)
+      if (from === 'sample.bin' && to.endsWith('/victim')) {
+        saving = app.vault.adapter.writeBinary('sample.bin', bytes('saved later').buffer)
+        throw failure
+      }
+    })
+    const disk = new ObsidianFileSystem(app as never)
+    await expect(
+      disk.conditionalFile({
+        path: 'sample.bin',
+        expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+        effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000 },
+      })
+    ).rejects.toBe(failure)
+    await saving
+    expect(await app.vault.adapter.read('sample.bin')).toBe('saved later')
+  }
+)
+
+it('preserves a save recreating the path immediately before publication', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  let captured = false,
+    injected = false
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+    await rename(from, to)
+    if (from === 'sample.bin' && to.endsWith('/victim')) captured = true
+  })
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    const result = await stat(path)
+    if (path === 'sample.bin' && captured && !result && !injected) {
+      injected = true
+      // An out-of-gate writer at the last absence observation reproduces the publication race.
+      await write(path, bytes('local save').buffer, { mtime: 3000 })
+    }
+    return result
+  })
+  const disk = new ObsidianFileSystem(app as never)
+  expect(
+    await disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000, receipt: 'race' },
+    })
+  ).toBe(false)
+  expect(injected).toBe(true)
+  expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+  const visible = (await app.vault.adapter.list('')).files.filter((path) => path !== 'sample.bin')
+  expect(await Promise.all(visible.map((path) => app.vault.adapter.read(path)))).toContain(
+    'incoming'
+  )
+  await disk.discardInstallation('race')
+  expect(
+    await app.vault.adapter.exists('.obsidian/plugins/abele/sync-conditional/objects/race')
+  ).toBe(false)
+  expect(await Promise.all(visible.map((path) => app.vault.adapter.read(path)))).toContain(
+    'incoming'
+  )
+})
+
+it.each([false, true])(
+  'queues a save inside checked publication (existing=%s)',
+  async (existing) => {
+    const app = buildFakeVault(
+      existing ? [{ path: 'sample.bin', content: 'before', mtime: 1000 }] : []
+    )
+    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    let saving: Promise<void> | undefined,
+      saved = false
+    vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+      await rename(from, to)
+      if (existing ? from === 'sample.bin' && to.endsWith('/victim') : to === 'sample.bin') {
+        saving = app.vault.adapter
+          .writeBinary('sample.bin', bytes('local save').buffer, { mtime: 3000 })
+          .then(() => {
+            saved = true
+          })
+        await Promise.resolve()
+        expect(saved).toBe(false)
+      }
+    })
+    const disk = new ObsidianFileSystem(app as never)
+    expect(
+      await disk.conditionalFile({
+        path: 'sample.bin',
+        expected: existing ? { sha: await sha256(bytes('before')), size: 6, mtime: 1000 } : null,
+        effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000 },
+      })
+    ).toBe(true)
+    await saving
+    expect(saved).toBe(true)
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+  }
+)
 async function fixture() {
   const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
   const disk = new ObsidianFileSystem(app as never)
@@ -88,6 +193,7 @@ it.each(['mtime', 'size'] as const)(
   'refuses a changed %s between decision stats',
   async (change) => {
     const { app, write } = await fixture()
+    const rawWrite = app.vault.adapter.writeBinary.bind(app.vault.adapter)
     let barrier = false,
       injected = false
     Object.defineProperty(app.vault.adapter, 'promise', {
@@ -100,11 +206,9 @@ it.each(['mtime', 'size'] as const)(
     vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
       if (barrier && !injected && path === 'sample.bin') {
         injected = true
-        await app.vault.adapter.writeBinary(
-          path,
-          bytes(change === 'size' ? 'longer content' : 'before').buffer,
-          { mtime: change === 'mtime' ? 2000 : 1000 }
-        )
+        await rawWrite(path, bytes(change === 'size' ? 'longer content' : 'before').buffer, {
+          mtime: change === 'mtime' ? 2000 : 1000,
+        })
       }
       return stat(path)
     })
@@ -167,10 +271,10 @@ it('restores a real empty file after a lost capture acknowledgement', async () =
 
 it('does not replay an uncertain create over a later edit', async () => {
   const app = buildFakeVault([])
-  const create = app.vault.createBinary.bind(app.vault)
-  const publish = vi.spyOn(app.vault, 'createBinary').mockImplementation(async (...args) => {
-    await create(...args)
-    throw new Error('lost create acknowledgement')
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  const publish = vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+    await rename(from, to)
+    if (to === 'new.bin') throw new Error('lost create acknowledgement')
   })
   const disk = new ObsidianFileSystem(app as never)
   const operation = {
@@ -188,11 +292,11 @@ it('does not replay an uncertain create over a later edit', async () => {
   )
 })
 
-it('publishes indexed replacements through the vault and retains displaced bytes', async () => {
+it('publishes indexed replacements exclusively and retains displaced bytes', async () => {
   const { app, disk, write } = await fixture()
   const modify = vi.spyOn(app.vault, 'modifyBinary')
   expect(await write()).toBe(true)
-  expect(modify).toHaveBeenCalledOnce()
+  expect(modify).not.toHaveBeenCalled()
   expect(await app.vault.adapter.read('sample.bin')).toBe('after')
   const root = '.obsidian/plugins/abele/sync-conditional/objects/sample-mobile'
   expect(await app.vault.adapter.exists(root + '/allocation')).toBe(false)
@@ -207,9 +311,9 @@ it('publishes indexed replacements through the vault and retains displaced bytes
   ).toBe(false)
 })
 
-it('creates absent public files through the vault', async () => {
+it('creates absent public files by moving a private payload exclusively', async () => {
   const app = buildFakeVault([])
-  const create = vi.spyOn(app.vault, 'createBinary')
+  const create = vi.spyOn(app.vault.adapter, 'rename')
   expect(
     await new ObsidianFileSystem(app as never).conditionalFile({
       path: 'new.bin',
@@ -220,7 +324,7 @@ it('creates absent public files through the vault', async () => {
   expect(create).toHaveBeenCalledOnce()
 })
 
-it('counts a vault create as one payload write and one publication', async () => {
+it('counts exclusive creation as one payload write and one publication', async () => {
   const counts = emptyPullCounts()
   const app = buildFakeVault([])
   const disk = new ObsidianFileSystem(app as never, {
@@ -258,10 +362,10 @@ it('refuses an oversized whole-file decision before reading or mutating bytes', 
 
 it('preserves both versions after a lost write acknowledgement and never adopts by equality', async () => {
   const { app, disk, write } = await fixture()
-  const modify = app.vault.modifyBinary.bind(app.vault)
-  vi.spyOn(app.vault, 'modifyBinary').mockImplementation(async (...args) => {
-    await modify(...args)
-    throw new Error('lost acknowledgement')
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+    await rename(from, to)
+    if (to === 'sample.bin' && from.endsWith('/data')) throw new Error('lost acknowledgement')
   })
   await expect(write()).rejects.toThrow('lost acknowledgement')
   expect(await app.vault.adapter.read('sample.bin')).toBe('after')
