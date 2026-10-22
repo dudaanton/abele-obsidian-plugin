@@ -101,12 +101,19 @@ const kids = computed(() =>
         [k, ...chatsOf(k.children ?? [])].some((x) => matches(x.title, props.query)))
   )
 )
-const folds = foldsOf(source.value)
+const folds = foldsOf()
+watch(
+  () => props.chat.foldId ?? props.chat.id,
+  (key, previous) => {
+    if (folds.delete(`chat:${previous}`)) folds.add(`chat:${key}`)
+  },
+  { flush: 'sync' }
+)
 const folded = computed({
-  get: () => folds.has(`chat:${props.chat.id}`),
+  get: () => folds.has(`chat:${props.chat.foldId ?? props.chat.id}`),
   set: (value: boolean) => {
-    if (value) folds.add(`chat:${props.chat.id}`)
-    else folds.delete(`chat:${props.chat.id}`)
+    if (value) folds.add(`chat:${props.chat.foldId ?? props.chat.id}`)
+    else folds.delete(`chat:${props.chat.foldId ?? props.chat.id}`)
   },
 })
 

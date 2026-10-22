@@ -234,6 +234,96 @@ it('reveals the current nested chat on reopening and preserves other folds', asy
   )
 })
 
+it('respects a collapse through activity and reopening until another selection', async () => {
+  source.root.value[0].children = [{ kind: 'chat', id: 'child', title: 'Child', open: true, at: 1 }]
+  source.activeId.value = 'child'
+  const view = show()
+  await view.get('[data-chat="sample"] > .tree-item-self .collapse-icon').trigger('click')
+  for (const state of [undefined, 'working', 'waiting', 'failed'] as const) {
+    source.root.value = source.root.value.map((parent) => ({
+      ...parent,
+      children: [{ kind: 'chat', id: 'child', title: 'Child', open: true, at: 2, state }],
+    }))
+    await view.vm.$nextTick()
+    expect(view.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+      'false'
+    )
+  }
+  view.unmount()
+  views.pop()
+  const reopened = show()
+  await reopened.vm.$nextTick()
+  expect(reopened.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'false'
+  )
+  source.activeId.value = 'sample'
+  await reopened.vm.$nextTick()
+  source.activeId.value = 'child'
+  await reopened.vm.$nextTick()
+  expect(reopened.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'true'
+  )
+})
+
+it('persists parent folds when the tree source is recreated', async () => {
+  source.root.value[0].children = [{ kind: 'chat', id: 'child', title: 'Child', open: true, at: 1 }]
+  const view = show()
+  await view.get('[data-chat="sample"] > .tree-item-self .collapse-icon').trigger('click')
+  view.unmount()
+  views.pop()
+  source = { ...source, activeId: shallowRef('sample') }
+  chatTreeSource.value = source
+  const reopened = show()
+  expect(reopened.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'false'
+  )
+})
+
+it('keeps a restored active descendant folded and reveals a later selection after indexing', async () => {
+  const { GlobalStore } = await import('@/stores/GlobalStore')
+  GlobalStore.getInstance().app.saveLocalStorage('abele-chat-tree-folds', ['chat:sample'])
+  const version = shallowRef(0)
+  source = { ...source, selectionVersion: version }
+  chatTreeSource.value = source
+  source.activeId.value = 'child'
+  const tree = [
+    {
+      kind: 'chat' as const,
+      id: 'sample',
+      title: 'Parent',
+      open: true,
+      at: 1,
+      children: [{ kind: 'chat' as const, id: 'child', title: 'Child', open: true, at: 1 }],
+    },
+  ]
+  source.root.value = tree
+  const view = show()
+  expect(view.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'false'
+  )
+  source.root.value = []
+  version.value = 1
+  await view.vm.$nextTick()
+  source.root.value = tree
+  await view.vm.$nextTick()
+  expect(view.get('[data-chat="sample"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'true'
+  )
+})
+
+it('keeps folds when a parent is saved and reopened with a new tab id', async () => {
+  source.root.value[0].children = [{ kind: 'chat', id: 'child', title: 'Child', open: true, at: 1 }]
+  const view = show()
+  await view.get('[data-chat="sample"] > .tree-item-self .collapse-icon').trigger('click')
+  source.root.value = source.root.value.map((chat) => ({ ...chat, foldId: 'Sample/parent.abchat' }))
+  await view.vm.$nextTick()
+  source.root.value = source.root.value.map((chat) => ({ ...chat, id: 'reopened' }))
+  await view.vm.$nextTick()
+  expect(view.get('[data-chat="reopened"] > .tree-item-self').attributes('aria-expanded')).toBe(
+    'false'
+  )
+})
+
 it('disables tool modes below a folder floor and retains each floor during bulk edits', async () => {
   const menuShown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
   const view = mount(ChatToolModes, {

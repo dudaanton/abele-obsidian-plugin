@@ -16,6 +16,8 @@ export type ChatTreeKind = 'chat' | 'discussion' | 'helper' | 'node'
 export interface ChatTreeChat {
   kind: 'chat'
   id: string
+  /** Stable transcript identity for device-local folds, including closed chats. */
+  foldId?: string
   title: string
   /** Has a tab now; a closed chat is still in its folder, under «Closed». */
   open: boolean
@@ -49,6 +51,8 @@ export interface ChatTreeSource {
   /** The whole tree, folders first; reactive. */
   readonly root: { readonly value: ChatTreeEntry[] }
   readonly activeId: { readonly value: string | null }
+  /** Changes on selection, even while the tree is closed; zero is a restored selection. */
+  readonly selectionVersion?: { readonly value: number }
   open(id: string): void
   close(id: string): void
   /** `folder` is a folder's path, '' for the top. */

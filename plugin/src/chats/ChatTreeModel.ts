@@ -24,6 +24,7 @@ import {
 /** A presentation adapter over live sessions and the vault's existing history index. */
 export class ChatTreeModel implements ChatTreeSource {
   readonly activeId
+  readonly selectionVersion = ref(0)
   readonly accessFolder = ref<string | null>(null)
   private readonly history = shallowRef(AbeleConfig.getInstance().ai.chatHistory ?? [])
   private readonly parents = shallowRef<Record<string, string>>({})
@@ -49,8 +50,24 @@ export class ChatTreeModel implements ChatTreeSource {
   private refreshing: Promise<void> | null = null
   private refreshAgain = false
   private activated = false
+  private selectedRevision = 0
+  requestReveal(): void {
+    this.selectedRevision = this.service.tabSelectionVersion
+    this.selectionVersion.value++
+  }
   constructor(readonly service: ChatService) {
     this.activeId = service.activeTabId
+    this.selectedRevision = service.tabSelectionVersion
+    if (this.selectedRevision > 0) this.selectionVersion.value = 1
+    this.stops.push(
+      watch(
+        this.activeId,
+        (id) => {
+          if (id && service.tabSelectionVersion !== this.selectedRevision) this.requestReveal()
+        },
+        { flush: 'sync' }
+      )
+    )
     this.stops.push(
       watch(service.folders.revision, () => {
         this.refreshInBackground()
@@ -219,6 +236,7 @@ export class ChatTreeModel implements ChatTreeSource {
       const chat: ChatTreeChat = {
         kind: 'chat',
         id: info.id,
+        foldId: path || info.id,
         title: info.title,
         open: true,
         state: info.state === 'idle' ? undefined : info.state,

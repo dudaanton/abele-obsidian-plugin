@@ -1272,6 +1272,11 @@ chat-folder template alone determines where new transcripts live. Tree folder cr
 renaming, deletion, filing and dragging never move or rename transcripts. Unfiled chats appear
 at the tree root, even when their files live in template directories.
 
+Tree folds are device-local, stored under `abele-chat-tree-folds` in Obsidian's local
+storage. Saved parent chats use their transcript path rather than a temporary tab id.
+Selecting a hidden chat reveals its ancestors once; message and activity updates and
+reopening the tree preserve subsequent manual folds. Fold state is not synced or transferred.
+
 Each logical folder may also carry `nodeScope`, an array of the same node/project/target
 read or edit entries as a chat. Chats receive the union of their own entries and every
 ancestor folder's entries. The chat displays these as inherited; moving it out removes that

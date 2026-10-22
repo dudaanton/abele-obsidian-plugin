@@ -61,7 +61,7 @@ import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ChatTreeRows from './ChatTreeRows.vue'
 import { chatsOf, useChatTreeSource } from '@/chats/chatTree'
-import { dragged, foldsOf, matches, revealCurrentChat } from './chatTreeView'
+import { dragged, foldsOf, matches, revealSelection } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -69,7 +69,7 @@ const treeSource = useChatTreeSource()
 const source = computed(() => treeSource.value!)
 const query = ref('')
 const withClosed = ref(false)
-const folded = foldsOf(source.value)
+const folded = foldsOf()
 const flip = (path: string) => (folded.has(path) ? folded.delete(path) : folded.add(path))
 
 const nothing = computed(
@@ -82,10 +82,15 @@ const nothing = computed(
 
 const list = ref<HTMLElement>()
 watch(
-  () => [source.value.root.value, source.value.activeId.value] as const,
-  async ([entries, id]) => {
+  () =>
+    [
+      source.value.root.value,
+      source.value.activeId.value,
+      source.value.selectionVersion?.value,
+    ] as const,
+  async ([, id]) => {
     if (!id) return
-    revealCurrentChat(entries, id, folded)
+    if (!revealSelection(source.value, folded)) return
     await nextTick()
     const row = [...(list.value?.querySelectorAll<HTMLElement>('[data-chat]') ?? [])].find(
       (element) => element.dataset.chat === id

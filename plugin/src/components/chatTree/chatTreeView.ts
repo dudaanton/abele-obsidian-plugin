@@ -1,15 +1,42 @@
 import { t } from '@/i18n'
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch, effectScope } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatTreeEntry, ChatTreeKind, ChatTreeSource, ChatTreeState } from '@/chats/chatTree'
 
-const folds = new WeakMap<ChatTreeSource, Set<string>>()
-export const foldsOf = (source: ChatTreeSource): Set<string> => {
-  let folded = folds.get(source)
+const folds = new WeakMap<object, Set<string>>()
+const FOLDS_KEY = 'abele-chat-tree-folds'
+export const foldsOf = (): Set<string> => {
+  const app = GlobalStore.getInstance().app
+  let folded = folds.get(app)
   if (!folded) {
-    folded = reactive(new Set<string>())
-    folds.set(source, folded)
+    const stored: unknown = app.loadLocalStorage(FOLDS_KEY)
+    folded = reactive(
+      new Set<string>(
+        Array.isArray(stored) ? stored.filter((key): key is string => typeof key === 'string') : []
+      )
+    )
+    const state = folded
+    // Persist each mutation synchronously; component teardown must not lose a last collapse.
+    effectScope(true).run(() =>
+      watch(
+        () => [...state],
+        (value) => app.saveLocalStorage(FOLDS_KEY, value),
+        { flush: 'sync' }
+      )
+    )
+    folds.set(app, folded)
   }
   return folded
+}
+
+const revealed = new WeakMap<ChatTreeSource, string | number>()
+/** Consume a selection only once, allowing the tree to arrive after the selected chat. */
+export function revealSelection(source: ChatTreeSource, folded: Set<string>): boolean {
+  const token = source.selectionVersion?.value ?? source.activeId.value ?? ''
+  if (token === 0 || revealed.get(source) === token || !source.activeId.value) return false
+  if (!revealCurrentChat(source.root.value, source.activeId.value, folded)) return false
+  revealed.set(source, token)
+  return true
 }
 
 /** Reveal the current path without changing unrelated groups. */
@@ -29,7 +56,8 @@ export function revealCurrentChat(
           entry.kind === 'chat'
         )
       if (current || contains) {
-        if (contains) folded.delete(entry.kind === 'folder' ? entry.path : `chat:${entry.id}`)
+        if (contains)
+          folded.delete(entry.kind === 'folder' ? entry.path : `chat:${entry.foldId ?? entry.id}`)
         if (entry.kind === 'chat' && !entry.open && !nested) folded.add(`${folder}#closed`)
         return true
       }

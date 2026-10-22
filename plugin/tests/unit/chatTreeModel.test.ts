@@ -13,6 +13,27 @@ import { TFile } from 'obsidian'
 import { NodeService } from '@/node/NodeService'
 import * as dialogs from '@/components/obsidian/dialogs'
 
+it('records explicitly reopening the selected chat as a new reveal request', () => {
+  useVault([])
+  const id = service.createTab()
+  const tree = service.tree
+  const before = tree.selectionVersion.value
+  service.switchTab(id)
+  expect(tree.selectionVersion.value).toBeGreaterThan(before)
+})
+
+it('does not request a reveal for restored or fallback selections', () => {
+  const first = service.createTab()
+  const second = service.createTab()
+  const tree = service.tree
+  service.activeTabId.value = first
+  expect(tree.selectionVersion.value).toBe(0)
+  service.switchTab(second)
+  const selected = tree.selectionVersion.value
+  service.activeTabId.value = first
+  expect(tree.selectionVersion.value).toBe(selected)
+})
+
 it('shows times for loaded, unloaded and closed chats without loading their sessions', () => {
   const app = useVault(
     ['AI/Chats/loaded.abchat', 'AI/Chats/unloaded.abchat', 'AI/Chats/closed.abchat'].map(
