@@ -317,7 +317,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
         const code = await until(() => leaf.view.containerEl.querySelector('.abele-mermaid-host_editor pre > code.language-text'))
         if (!code) return {found:false,cursorLine:-1,fenceLine:-2}
         code.scrollIntoView({block:'center'})
-        code.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:window.__e2eHost?'touch':'mouse',button:0}))
+        code.dispatchEvent(new PointerEvent('click',{bubbles:true,pointerType:window.__e2eHost?'touch':'mouse',button:0}))
         await wait(100)
         const fenceLine = leaf.view.editor.getValue().split('\\n').findIndex(line => /^\\s*\`\`\`mermaid/.test(line))
         return {found:true,cursorLine:leaf.view.editor.getCursor().line,fenceLine}

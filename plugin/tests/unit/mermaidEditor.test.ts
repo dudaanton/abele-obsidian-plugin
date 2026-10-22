@@ -60,8 +60,17 @@ describe('the mermaid field', () => {
     } as unknown as EditorView
     const widget = new MermaidWidget('graph TD\nA-->B', 'sample.md', false)
     const host = widget.toDOM(view)
+    // A finger beginning a page scroll must not open the editor before it becomes a tap.
     host.querySelector('code')!.dispatchEvent(
       new PointerEvent('pointerdown', {
+        bubbles: true,
+        pointerType,
+        button: 0,
+      })
+    )
+    expect(dispatch).not.toHaveBeenCalled()
+    host.querySelector('code')!.dispatchEvent(
+      new PointerEvent('click', {
         bubbles: true,
         pointerType,
         button: 0,
