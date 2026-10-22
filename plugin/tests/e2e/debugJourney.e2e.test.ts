@@ -424,6 +424,8 @@ it.each(['desktop', 'phone'])(
       if(!app.workspace.rightSplit.containerEl.offsetWidth){app.workspace.rightSplit.collapse();await wait(500);app.workspace.rightSplit.expand()}
       const watchField=await until(()=>visible('.abele-debug-panel__add input'),'watch visible for its picture');
       watchField.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
+      const stopBox=visible('[aria-label="Stop (Shift+F5)"]').getBoundingClientRect(),barBox=visible('.abele-debug-panel > .nav-header').getBoundingClientRect();
+      if(stopBox.right>barBox.right+1||stopBox.bottom>barBox.bottom+1||stopBox.top<0||stopBox.bottom>innerHeight)throw Error('Stop is outside the visible debugger toolbar');
       if(binding.controller.session.watches.find(w=>w.expression==='1 < 2 && "a" < "b"')?.stale)throw Error('Fresh watch is labelled as an old value');
       await shot(${JSON.stringify(name)}+'-watch');
       const evaluatedScope=binding.controller.session.variables.find(value=>value.handle);

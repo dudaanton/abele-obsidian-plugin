@@ -611,11 +611,7 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
 }
 .abele-debug-panel .nav-buttons-container {
   min-width: 0;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  > * {
-    flex-shrink: 0;
-  }
+  flex-wrap: wrap;
 }
 .abele-debug-panel__program {
   display: flex;
