@@ -105,24 +105,28 @@ export class NodePathService {
     )
     this.stops.set(
       registrationId,
-      watch(connection.state, (state) => {
-        model.online.value = state === 'connected'
-        if (state === 'connected')
-          void model
-            .reconnected()
-            .then(async () => {
-              if (
-                connection.state.value !== 'connected' ||
-                this.models.get(registrationId) !== model
-              )
-                return
-              // reconnected() re-lists, drops the previous process's handles and reselects;
-              // panels that read their own lists reload after it.
-              if (model.panelMode.value === 'history') await model.loadPanelHistory()
-              if (model.panelMode.value === 'pulls') await model.loadPanelPulls()
-            })
-            .catch((e) => model.report(e))
-      })
+      watch(
+        () => [connection.state.value, connection.healthEpoch?.value] as const,
+        ([state], previous) => {
+          model.online.value = state === 'connected'
+          if (state === 'connected') model.connectionRecovered()
+          if (state === 'connected' && previous?.[0] !== 'connected')
+            void model
+              .reconnected()
+              .then(async () => {
+                if (
+                  connection.state.value !== 'connected' ||
+                  this.models.get(registrationId) !== model
+                )
+                  return
+                // reconnected() re-lists, drops the previous process's handles and reselects;
+                // panels that read their own lists reload after it.
+                if (model.panelMode.value === 'history') await model.loadPanelHistory()
+                if (model.panelMode.value === 'pulls') await model.loadPanelPulls()
+              })
+              .catch((e) => model.report(e))
+        }
+      )
     )
     this.loads.set(
       registrationId,

@@ -26,6 +26,8 @@ export class NodeConnection {
   obsidian?: NodeObsidianTools
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
+  /** Successful peer probes also signal recovery when the socket stayed admitted. */
+  readonly healthEpoch = ref(0)
   readonly manager: NodeManagerController
   readonly managerCards = ref<Record<string, Awaited<ReturnType<NodeManagerController['cards']>>>>(
     {}
@@ -198,6 +200,8 @@ export class NodeConnection {
       return this.enableExecutionPolicy().then(async () => {
         this.admitObsidianTools()
         this.state.value = 'connected'
+        uiField(this.error, 'value', uiErrorMessage(''))
+        ++this.healthEpoch.value
         return this.obsidian
           ? this.client
               .describe()
@@ -336,8 +340,11 @@ export class NodeConnection {
         await this.client
           .describe()
           .then(() => {
-            if (!this.disposed && transportGeneration === this.transportGeneration)
+            if (!this.disposed && transportGeneration === this.transportGeneration) {
               this.state.value = 'connected'
+              uiField(this.error, 'value', uiErrorMessage(''))
+              ++this.healthEpoch.value
+            }
           })
           .catch(() => {})
       }

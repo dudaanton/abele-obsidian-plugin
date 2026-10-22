@@ -377,3 +377,21 @@ it('does not overwrite refreshed authorization with a late old admission failure
   expect(connection.client).toBe(client)
   connection.destroy()
 })
+
+it('clears an old reconnect error when an admitted socket recovers', async () => {
+  const memory = new MemoryClientStore()
+  const client = { connected: true, describe: async () => ({}), disconnect: async () => {} }
+  const connection = new NodeConnection(
+    client as never,
+    { transaction: memory.transaction.bind(memory), close() {} } as never
+  )
+  try {
+    connection.error.value = 'No answer from the node. Reconnecting'
+    await connection.connect()
+    expect(connection.state.value).toBe('connected')
+    expect(connection.error.value).toBe('')
+    expect(connection.healthEpoch.value).toBeGreaterThan(0)
+  } finally {
+    connection.destroy()
+  }
+})

@@ -190,6 +190,7 @@ export class NodePathModel {
   readonly panelMode = ref<NodePanelMode>('files')
   readonly receivedAt = ref('')
   readonly error = ref('')
+  private connectionError?: string
   readonly busy = ref(false)
   readonly online = ref(true)
   readonly capabilities = shallowRef<string[]>([])
@@ -1410,12 +1411,22 @@ export class NodePathModel {
       .find((f) => f.id === target.projectId)
       ?.copies.find((c) => c.id === target.id)
   }
+  /** A healthy peer reply retires only the transient connection banner. */
+  connectionRecovered(): void {
+    if (this.connectionError !== undefined && this.error.value === this.connectionError)
+      uiField(this.error, 'value', uiErrorMessage(''))
+    this.connectionError = undefined
+  }
   report(error: unknown): void {
     uiField(
       this.error,
       'value',
       error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.6097572d7b')
     )
+    this.connectionError =
+      error instanceof ChannelError && ['outcome_unknown', 'disconnected'].includes(error.code)
+        ? this.error.value
+        : undefined
   }
   destroy(): void {
     this.disposed = true

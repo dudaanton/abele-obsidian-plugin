@@ -3,6 +3,7 @@ import { initializeLocale } from '@/i18n'
 import { presentUiError, presentUiField } from '@/i18n/streamBErrors'
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
+import { ChannelError } from '@abele/channel-protocol'
 import { ProjectSchema, WorktreePageSchema, SessionSchema } from '@abele/node-protocol'
 import {
   NodePathModel,
@@ -141,6 +142,20 @@ function fake() {
 }
 
 describe('node path model', () => {
+  it('clears a transport banner on a healthy reply while retaining action failures', () => {
+    const { model } = fake()
+    try {
+      model.report(new ChannelError('outcome_unknown', 'No answer from the node. Reconnecting'))
+      model.connectionRecovered()
+      expect(model.error.value).toBe('')
+      model.report(new ChannelError('outcome_unknown'))
+      model.report(new Error('Sample action failed'))
+      model.connectionRecovered()
+      expect(model.error.value).toBe('Sample action failed')
+    } finally {
+      model.destroy()
+    }
+  })
   it('metadata refresh after a git write observes disk instead of reusing the pre-write revision', async () => {
     const { model, port } = fake()
     port.git = { discard: vi.fn(async () => {}) } as never
