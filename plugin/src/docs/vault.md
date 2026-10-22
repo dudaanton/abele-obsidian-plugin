@@ -3309,6 +3309,9 @@ Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node
 travel through the Agents settings-transfer section. They are excluded from vault model
 pickers and cannot become the default vault agent.
 
+Node file tabs retain their Markdown reading/code choice in Obsidian's workspace layout as
+`markdownMode`; absent a saved choice, the Markdown display setting applies.
+
 The node client store also retains configured session-to-agent bindings. Delegation requests
 retain their exact trusted tool snapshot with the ordinary idempotent creation intent; the
 node atomically installs it before the child's first turn. These local recovery bindings

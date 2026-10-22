@@ -57,6 +57,8 @@
         :code-target="model.target"
         :offline="offline"
         :refresh="() => model.refresh()"
+        :markdown-mode="markdownMode"
+        @markdown-mode="emit('markdownMode', $event)"
         @find="model.mode.value = 'file'"
         @menu="(event, selection, lines) => emit('menu', event, selection, lines)"
         @ask="emit('ask', $event)"
@@ -98,9 +100,7 @@ import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, provide, ref, watch } from 'vue'
 import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
-import { openNodeFileDestination } from '@/node/nodePathNavigation'
-import { GlobalStore } from '@/stores/GlobalStore'
-import { Platform } from 'obsidian'
+import type { NodePathTabState } from '@/node/nodePathNavigation'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { RepositorySource } from '@/repository/source'
 const props = withDefaults(
@@ -113,6 +113,7 @@ const props = withDefaults(
     line?: number
     endLine?: number
     match?: { column: number; length: number }
+    markdownMode?: 'preview' | 'code'
   }>(),
   {
     offline: false,
@@ -122,6 +123,7 @@ const props = withDefaults(
     line: undefined,
     endLine: undefined,
     match: undefined,
+    markdownMode: undefined,
   }
 )
 const service = DebuggerService.instance
@@ -150,11 +152,7 @@ watch(
 provide(FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false
-  void openNodeFileDestination(
-    GlobalStore.getInstance().app.workspace,
-    state,
-    Platform.isMobile
-  ).catch((e) => console.debug('[node] File navigation unavailable', e))
+  emit('navigate', state)
   return true
 })
 const admissionReason = ref('')
@@ -226,6 +224,8 @@ watch(
 )
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
+  navigate: [state: NodePathTabState]
+  markdownMode: [mode: 'preview' | 'code']
   reveal: [line: number]
   menu: [event: MouseEvent, selection: string, lines?: FileSelection]
   ask: [selection: FileSelection]
@@ -268,6 +268,8 @@ body.is-phone .abele-node-content__chat {
   );
 }
 .abele-node-main {
+  display: flex;
+  flex-direction: column;
   padding: var(--size-4-4);
   min-width: 0;
   overflow: auto;

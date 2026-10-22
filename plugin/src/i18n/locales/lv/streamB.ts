@@ -1,4 +1,10 @@
 export const streamB = {
+  'streamB.showAsCode': 'Rādīt kodu',
+  'streamB.showRendered': 'Rādīt formatētu',
+  'streamB.fileEmpty': 'Šis fails ir tukšs.',
+  'streamB.emptyFileSize': 'Tukšs',
+  'streamB.nodeImageUnavailable': 'Neizdevās nolasīt {path} no mezgla',
+
   'streamB.delegationLost': 'Zudis',
   'streamB.delegationRefused': 'Atteikts',
   'streamB.delegationCodexRefused':

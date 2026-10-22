@@ -141,12 +141,18 @@ const retryThroughApi = (img: HTMLImageElement) => {
   if (node?.identity.provider === 'node' && path && !img.getAttribute('src')) {
     // A picture of the node's project, read from the node; one it cannot give stays its alt text.
     img.classList.add('abele-github-md__image_loading')
-    void (node as { image?: (ref: string, path: string) => Promise<Blob> })
-      .image?.(props.file.ref, path)
+    const mine = renderRun
+    void Promise.resolve()
+      .then(() => {
+        if (!node.image) throw new Error('Image reader unavailable')
+        return node.image(props.file.ref, path)
+      })
       .then(
         (blob) => {
+          if (mine !== renderRun) return
           const url = URL.createObjectURL(blob)
           objectUrls.push(url)
+          img.onerror = () => missingImage(img, path)
           img.src = url
         },
         () => missingImage(img, path)
@@ -161,14 +167,14 @@ const retryThroughApi = (img: HTMLImageElement) => {
  * shows it: short cells stay on one line, a long one wraps at a readable measure.
  */
 const scrollingTable = (table: HTMLTableElement) => {
-  const box = table.ownerDocument.createElement('div')
+  const box = table.ownerDocument.win.createDiv()
   box.className = 'abele-github-md__table'
   table.replaceWith(box)
   box.appendChild(table)
   for (const cell of Array.from(table.querySelectorAll('td, th'))) {
     if ((cell.textContent ?? '').length <= 40) continue
     // A table at its own width gives every cell its whole line; a measure inside one is what wraps it.
-    const measure = cell.ownerDocument.createElement('div')
+    const measure = cell.ownerDocument.win.createDiv()
     measure.className = 'abele-github-md__cell-text'
     measure.append(...Array.from(cell.childNodes))
     cell.appendChild(measure)
@@ -176,17 +182,18 @@ const scrollingTable = (table: HTMLTableElement) => {
 }
 /** A picture the node could not give: its name, quiet, where it would have been. */
 const missingImage = (img: HTMLImageElement, path: string) => {
-  const note = img.ownerDocument.createElement('span')
+  const note = img.ownerDocument.win.createSpan()
   note.className = 'abele-github-md__missing'
   const glyph = note.createSpan()
   setIcon(glyph, 'image-off')
   note.createSpan({ text: img.getAttribute('alt') || path.split('/').pop() || path })
-  note.setAttribute('aria-label', `${path} could not be read from the node`)
+  note.setAttribute('aria-label', t('streamB.nodeImageUnavailable', { path }))
   img.replaceWith(note)
 }
 
 const renderAll = async () => {
   const mine = ++renderRun
+  for (const url of objectUrls.splice(0)) URL.revokeObjectURL(url)
   component?.unload()
   component = new Component()
   component.load()
@@ -194,21 +201,24 @@ const renderAll = async () => {
   const list = blocks.value
   for (let i = 0; i < list.length; i++) {
     const el = contents[i]
-    const source = blockSource(list[i], sources.value)
-    if (!el || !source) continue
+    const markdown = blockSource(list[i], sources.value)
+    if (!el || !markdown) continue
     const next = createDiv()
     try {
       await renderUntrustedMarkdown(
         next,
-        source,
+        markdown,
         component,
         '',
-        githubPolicy(props.file, approvedImages)
+        githubPolicy(
+          source.value?.identity.provider === 'node' ? { ...props.file, host: '' } : props.file,
+          approvedImages
+        )
       )
     } catch (e) {
       // One block that will not render is shown as its text; the rest of the file still is.
       console.debug('Abele: a markdown block did not render', e)
-      next.replaceChildren(createEl('pre', { text: source }))
+      next.replaceChildren(createEl('pre', { text: markdown }))
     }
     if (mine !== renderRun) return
     finishFootnotes(next, list[i], sources.value)
@@ -264,8 +274,8 @@ const onClick = (event: MouseEvent) => {
     event.preventDefault()
     const href = a.getAttribute('href') ?? ''
     const node = source.value
-    if (href.startsWith('node-path:') && node?.identity.provider === 'node') {
-      const path = href.slice('node-path:'.length).split('#')[0]
+    if (data.abeleNodePath !== undefined && node?.identity.provider === 'node') {
+      const path = data.abeleNodePath.split('#')[0]
       emit('open', node.navigation.file(props.file.ref, path))
     } else emit('open', href)
   }
@@ -287,7 +297,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.text,
+  () => [props.text, props.file.path, props.file.ref, props.file.host],
   (): void => void draw()
 )
 // A link to the same lines again brings them back into view.

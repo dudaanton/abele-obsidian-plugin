@@ -17,7 +17,9 @@
         :active="mode === 'preview' && !blaming"
         :label="t('streamB.preview.324b13')"
         :aria-pressed="mode === 'preview' && !blaming"
-        :tooltip="mode === 'preview' && !blaming ? 'Show as code' : 'Show rendered'"
+        :tooltip="
+          mode === 'preview' && !blaming ? t('streamB.showAsCode') : t('streamB.showRendered')
+        "
         @click="switchTo(mode === 'preview' && !blaming ? 'code' : 'preview')"
       />
       <!-- Who last changed each line, as a glyph lit while it is on. -->
@@ -89,7 +91,7 @@
     <EmptyState
       v-if="mode === 'preview' && !blaming && !$slots.code && !text.trim()"
       class="abele-github-blob__empty"
-      text="This file is empty."
+      :text="t('streamB.fileEmpty')"
     />
     <GithubMarkdown
       v-else-if="mode === 'preview' && !blaming && !$slots.code"

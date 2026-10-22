@@ -1,4 +1,10 @@
 export const streamB = {
+  'streamB.showAsCode': 'Mostrar código',
+  'streamB.showRendered': 'Mostrar renderizado',
+  'streamB.fileEmpty': 'Este archivo está vacío.',
+  'streamB.emptyFileSize': 'Vacío',
+  'streamB.nodeImageUnavailable': 'No se pudo leer {path} del nodo',
+
   'streamB.delegationLost': 'Perdido',
   'streamB.delegationRefused': 'Rechazado',
   'streamB.delegationCodexRefused':

@@ -57,7 +57,7 @@
               ? plural(image.bytes.byteLength, 'byte')
               : text
                 ? plural(text.split('\n').length, 'line')
-                : 'Empty'
+                : t('streamB.emptyFileSize')
           }}
         </span>
         <span ref="fileGlyphHost" class="abele-file-view__tools" />
@@ -76,6 +76,8 @@
         :offline="offline"
         :range="linkedRange"
         :refresh="refresh"
+        :mode="markdownMode"
+        @mode="emit('markdownMode', $event)"
         @open="openRepositoryLink"
       >
         <template v-if="$slots.code" #code><slot name="code" /></template>
@@ -150,6 +152,7 @@ const props = withDefaults(
     offline?: boolean
     /** Rereads the file, when its working revision has expired. */
     refresh?: () => Promise<void>
+    markdownMode?: 'preview' | 'code'
   }>(),
   {
     change: undefined,
@@ -164,10 +167,12 @@ const props = withDefaults(
     codeTarget: undefined,
     offline: false,
     refresh: undefined,
+    markdownMode: undefined,
   }
 )
 
 const emit = defineEmits<{
+  (e: 'markdownMode', mode: 'preview' | 'code'): void
   (e: 'find'): void
   /** The context menu, with the selected text, or empty for the whole file. */
   (e: 'menu', event: MouseEvent, selection: string, lines?: FileSelection): void
@@ -323,6 +328,8 @@ function onMenu(e: MouseEvent) {
 <style lang="scss">
 .abele-file-view {
   position: relative;
+  min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-4);
@@ -369,13 +376,22 @@ function onMenu(e: MouseEvent) {
 
 // The whole file in the same card as the comparison: header band, then the code viewer.
 .abele-file-view__file {
+  min-height: 0;
+  flex: 0 1 auto;
   min-width: 0;
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-l);
-  overflow: hidden;
+  overflow: auto;
+  max-height: 75vh;
   background-color: var(--background-primary);
 }
+.abele-node-main > .abele-file-view > .abele-file-view__file {
+  max-height: 100%;
+}
 .abele-file-view__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--size-4-3);

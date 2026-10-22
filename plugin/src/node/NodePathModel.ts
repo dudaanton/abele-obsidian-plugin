@@ -1446,6 +1446,7 @@ export class NodePathModel {
 
 /** One replaceable file leaf owns its target, stage and request lifetime. */
 export class NodePathFileModel {
+  readonly markdownMode = ref<'preview' | 'code'>()
   readonly document = shallowRef<PathDocument>()
   readonly mode = ref<'diff' | 'file'>('diff')
   readonly busy = ref(false)

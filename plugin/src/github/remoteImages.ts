@@ -57,7 +57,8 @@ export function guardGithubImages(root: HTMLElement, repo: RepoFile, approved: S
         return { source, size }
       })
       const held = sources.find(
-        ({ source }) => source && !automatic(source.src, repo) && !approved.has(source.src)
+        ({ source }) =>
+          source && source.src && !automatic(source.src, repo) && !approved.has(source.src)
       )?.source
       // A responsive variant must not silently fetch a different site than the fallback.
       el.removeAttribute('srcset')
@@ -76,7 +77,11 @@ export function guardGithubImages(root: HTMLElement, repo: RepoFile, approved: S
     const source = imageSource(raw, repo)
     el.removeAttribute(attr)
     if (!source) continue
-    if (automatic(source.src, repo) || approved.has(source.src)) {
+    if (
+      (!source.src && source.repoPath) ||
+      automatic(source.src, repo) ||
+      approved.has(source.src)
+    ) {
       el.setAttribute(attr, source.src)
       if (source.repoPath) el.setAttribute('data-abele-repo-path', source.repoPath)
     } else {

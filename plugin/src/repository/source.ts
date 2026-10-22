@@ -129,6 +129,8 @@ export interface RepositorySource {
   tree(commit: string): Promise<RepositoryTree>
   folder(ref: string, path: string): Promise<FolderData>
   blob(ref: string, path: string, contentId?: string): Promise<BlobData>
+  /** Validated raster bytes, bound to this workspace and revision. */
+  image?(ref: string, path: string): Promise<Blob>
   largeBlob?(ref: string, path: string, contentId?: string): Promise<BlobData>
   text(ref: string, path: string, what?: string): Promise<string>
   /** Identity of the bytes just read; never a new mutable read. */

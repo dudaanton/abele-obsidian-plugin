@@ -50,6 +50,7 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
       /** Being edited in this tab. */
       endLine: z.number().int().positive().optional(),
       edit: z.boolean().optional(),
+      markdownMode: z.enum(['preview', 'code']).optional(),
     })
     .strict(),
   // The editor tab of earlier versions: kept only so a saved layout reopens it as an edited file.
@@ -198,7 +199,18 @@ export async function openNodePathTab(
     retained && retained.success && retained.data.kind === 'file' && retained.data.edit
       ? { ...state, edit: true, stage: retained.data.stage, debug: retained.data.debug }
       : state
-  await leaf.setViewState({ type, active: true, state: next })
+  const chosen =
+    retained && retained.success && retained.data.kind === 'file'
+      ? retained.data.markdownMode
+      : undefined
+  await leaf.setViewState({
+    type,
+    active: true,
+    state:
+      next.kind === 'file' && chosen
+        ? { ...next, markdownMode: next.markdownMode ?? chosen }
+        : next,
+  })
   await workspace.revealLeaf(leaf)
   if (mobile) workspace.leftSplit.collapse()
 }
@@ -242,6 +254,9 @@ export async function openNodeFileDestination(
       ...state,
       ...(retained ? { target: retained.target } : {}),
       ...(retained?.edit ? { edit: true } : {}),
+      ...(retained?.markdownMode
+        ? { markdownMode: state.markdownMode ?? retained.markdownMode }
+        : {}),
       ...(retained?.stage ? { stage: retained.stage } : {}),
       ...(retained?.debug
         ? { debug: { ...retained.debug, ...(state.line ? { line: state.line } : {}) } }

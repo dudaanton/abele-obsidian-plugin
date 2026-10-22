@@ -177,7 +177,11 @@ it('reveals a cited range in the whole file even when the existing tab shows a d
   const state = { kind: 'file', target, path: 'sample.ts' }
   ;(view as any).saved = state
   ;(view as any).ui = { unmount: vi.fn() }
-  const file = { mode: shallowRef('diff'), destroy: vi.fn() }
+  const file = {
+    mode: shallowRef('diff'),
+    markdownMode: shallowRef<'code' | 'preview'>(),
+    destroy: vi.fn(),
+  }
   ;(view as any).file = file
   const active = shallowRef(true)
   const stop = vi.fn(() => {
@@ -188,8 +192,9 @@ it('reveals a cited range in the whole file even when the existing tab shows a d
   expect(stop).toHaveBeenCalledOnce()
   expect(file.mode.value).toBe('file')
   expect((view as any).navigationEndLine.value).toBe(7)
-  await view.setState({ ...state, line: 3, endLine: 9 }, {})
+  await view.setState({ ...state, line: 3, endLine: 9, markdownMode: 'code' }, {})
   expect((view as any).navigationEndLine.value).toBe(9)
+  expect(file.markdownMode.value).toBe('code')
 })
 
 it('keeps the mounted file editor across same-file reveals but rebinds another file or target', async () => {

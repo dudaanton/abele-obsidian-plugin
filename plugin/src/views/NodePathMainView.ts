@@ -222,6 +222,7 @@ export class NodePathMainView extends ItemView {
         ? { ...parsed, edit: true }
         : parsed
     if (!same) this.startBinding(parsed)
+    if (parsed.kind === 'file' && this.file) this.file.markdownMode.value = parsed.markdownMode
     if (same && parsed.kind === 'file' && parsed.line && this.file) this.file.mode.value = 'file'
     if (
       same &&
@@ -323,6 +324,7 @@ export class NodePathMainView extends ItemView {
       }))
       if (lifetime !== this.lifetime) return
       const file = (this.file = new NodePathFileModel(model, state.target))
+      file.markdownMode.value = state.markdownMode
       const repository = shallowRef<NodeRepositorySource>()
       const revision = computed<RepositoryRevision | undefined>(() => {
         const value = file.document.value?.revision
@@ -470,6 +472,21 @@ export class NodePathMainView extends ItemView {
                 endLine: this.navigationEndLine.value,
               })
             : h(NodePathFilePane, {
+                markdownMode: file.markdownMode.value,
+                onMarkdownMode: (mode: 'preview' | 'code') => {
+                  if (this.saved?.kind !== 'file') return
+                  this.saved = { ...this.saved, markdownMode: mode }
+                  file.markdownMode.value = mode
+                  this.app.workspace.requestSaveLayout()
+                },
+                onNavigate: (destination: NodePathTabState) =>
+                  this.act(() =>
+                    this.leaf.setViewState({
+                      type: this.viewType,
+                      active: true,
+                      state: destination,
+                    })
+                  ),
                 model: file,
                 match: this.navigationMatch.value,
                 line: this.navigationLine.value,

@@ -48,6 +48,7 @@ import { fullDiff } from '@/github/comparison/text'
 import { parsePatch } from '@/github/patch'
 import { sortNodes, findNode } from '@/github/tree/fileTree'
 import { readNodeText } from '@/node/NodeFilesModel'
+import { readNodeImage } from '@/node/nodeImagePreview'
 import { nodeRepositoryLink } from './nodeLinks'
 import { applyTreeChanges, nodeTreeNode } from './nodeTreeChanges'
 
@@ -512,6 +513,27 @@ export class NodeRepositorySource implements RepositorySource {
       }
     }
     return text
+  }
+  async image(ref: string, path: string): Promise<Blob> {
+    if (
+      !path ||
+      path.startsWith('/') ||
+      path.includes('\\') ||
+      path.split('/').some((part) => part === '..' || part === '.')
+    )
+      throw new Error('Invalid repository image path')
+    const revision = await this.at(await this.resolve(ref))
+    return this.read(async () => {
+      const blob = await this.read(() =>
+        this.client.repository.blob({ ...this.target, revision, path })
+      )
+      const image = await readNodeImage(path, blob, (offset) =>
+        this.read(() =>
+          this.client.repository.content({ ...this.target, content_id: blob.content_id!, offset })
+        )
+      )
+      return new Blob([image.bytes], { type: image.mime })
+    })
   }
   largeBlob(ref: string, path: string, contentId?: string) {
     return this.blob(ref, path, contentId, true)
