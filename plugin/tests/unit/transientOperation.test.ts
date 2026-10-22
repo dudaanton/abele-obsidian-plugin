@@ -1,5 +1,20 @@
 import { expect, it, vi } from 'vitest'
 import { retryTransientOperation } from '@/sync/transientOperation'
+import { SyncCancelled } from '@abele/sync-sdk/core'
+
+it('does not retry a deliberately cancelled explicit operation', async () => {
+  vi.useFakeTimers()
+  try {
+    const cancelled = new SyncCancelled()
+    const work = vi.fn().mockRejectedValue(cancelled)
+    const result = retryTransientOperation(work, () => {}).catch((error) => error)
+    await vi.runAllTimersAsync()
+    expect(await result).toBe(cancelled)
+    expect(work).toHaveBeenCalledOnce()
+  } finally {
+    vi.useRealTimers()
+  }
+})
 
 it('retries explicit offline hydration on the backoff and preserves success', async () => {
   vi.useFakeTimers()

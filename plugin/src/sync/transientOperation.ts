@@ -1,3 +1,5 @@
+import { SyncCancelled } from '@abele/sync-sdk/core'
+
 /** Explicit operations retain their result instead of relying on a later background exchange. */
 export async function retryTransientOperation<T>(
   work: () => Promise<T>,
@@ -11,6 +13,7 @@ export async function retryTransientOperation<T>(
       if ((result as { status?: string } | null)?.status !== 'offline' || attempt === 2)
         return result
     } catch (error) {
+      if (error instanceof SyncCancelled) throw error
       if ((error as { code?: string } | null)?.code !== 'offline' || attempt === 2) throw error
     }
     // Match the engine's initial transport backoff; a persistent failure remains explicit.
