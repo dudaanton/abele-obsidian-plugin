@@ -387,9 +387,14 @@ export function syncPlacementPlugin() {
           } catch { return false; }
         }
         async placeObserved(change, sha, entry, fetched, local) {
+          // Interrupted intents own recovery. Ordinary offline-edit preflight must
+          // not bypass their stage verification, preservation or case-only moves.
+          const recovering = await this.pending.matching(change, entry) !== null;
           // Preflight avoids unnecessary transfers; the lease repeats this content check.
-          if (entry !== null && await this.edited(entry)) return false;
-          if (await this.editedMoveDestination(change, entry)) return false;
+          if (!recovering && ((entry !== null && await this.edited(entry)) ||
+              await this.editedMoveDestination(change, entry)))
+            return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+              async () => false);
           // An own commit may precede its local receipt. Verify and adopt existing bytes before
           // fetching them again, without settling an interrupted pull's retained write intent.
           if (change.op !== 'move' && this.adoptionCandidates?.get(change.file_id) !== false &&
@@ -399,7 +404,7 @@ export function syncPlacementPlugin() {
                 () => this.adoptExistingUnlocked(change, entry))) return true;
           // Placement must still validate a move's source, but it needs no body transfer
           // when the destination already contains the immutable remote bytes.
-          if (await this.destinationMatches(change.path, sha, change.size))
+          if (!recovering && await this.destinationMatches(change.path, sha, change.size))
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
               () => this.placeUnlocked(change, sha, entry, fetched, local));
           // Downloads do not own paths. The original placer revalidates the source after waiting.
@@ -501,7 +506,8 @@ export function syncPlacementPlugin() {
             () => this.placeUnlocked(change, sha, entry, fetched, local));
         }
         async placeUnlocked(change, sha, entry, fetched, local) {
-          if (await this.editedMoveDestination(change, entry)) return false;
+          if (await this.pending.matching(change, entry) === null &&
+              await this.editedMoveDestination(change, entry)) return false;
 `
         )
       } else if (file.endsWith('/pullRecovery.js')) {
