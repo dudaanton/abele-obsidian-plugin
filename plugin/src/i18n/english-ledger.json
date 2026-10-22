@@ -27440,7 +27440,7 @@
     ]
   },
   "node.delegation.ownerStopped": {
-    "englishHash": "b0473e581b52c723bcbea129fa3a950392046dc5659ad2ad3c82962d50ee85b8",
+    "englishHash": "705baaa497db93e1124582ef8753b69737d2f7a9994a555a68f13d7e204988d3",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
@@ -27450,7 +27450,7 @@
     ]
   },
   "node.commit.refresh": {
-    "englishHash": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671",
+    "englishHash": "8a66ad4ea5a09cee9b4ffcc7d050ef1c841560e3ea1ec1083a4d5f60f4b81c57",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
@@ -27460,7 +27460,7 @@
     ]
   },
   "node.manager.running": {
-    "englishHash": "f4ccae29e1bb0c20a124570a1b43f4347ea94bba9f84ffdfddd9c7445b126128",
+    "englishHash": "829caae02a96d488ea5c093c0b2a9f845c851b72dc2d19fc03b9272049f7d334",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
@@ -27470,7 +27470,7 @@
     ]
   },
   "node.manager.cancelled": {
-    "englishHash": "d353a99eb4556847ceeb3c306ac886cf6b4fa13043eb1864b9aeb0607fd5f2cc",
+    "englishHash": "d32bbd065a1de0a304919e5ae21ce9459b9ec26ba7106d2be8abc3774eef84aa",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
@@ -27480,7 +27480,7 @@
     ]
   },
   "node.manager.applied": {
-    "englishHash": "9cf6dbd76c0ce2a2e3ff7243df135c201b76d20cd05c3c5ff037737f8ed60e64",
+    "englishHash": "a3d1bfc7c0d39dd04cc15adcd5a5ede4b2a2d0fc28ace2d94f2cfade466eaa8a",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
@@ -27490,7 +27490,7 @@
     ]
   },
   "node.manager.failed": {
-    "englishHash": "8c45c79c6d1192a31ad25b0ef73829fc9e57546ab383184a6e7064a78ed483a3",
+    "englishHash": "75eee15e7748fecdc475c8dfc509c9d1b06e89fdd3bf8b740e207930374d7cb9",
     "context": "Node execution card status, refresh or owner restart explanation",
     "reviewedLocales": [
       "ru",
