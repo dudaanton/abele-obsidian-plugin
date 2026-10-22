@@ -60,9 +60,15 @@ export class ConnectionEngines {
   }
   /** Drain old effects before a host configuration change opens replacement ledgers. */
   async reset(): Promise<void> {
+    const invalidationFailures: unknown[] = []
     for (const owned of this.runtimes.values()) {
       owned.retiring = true
-      owned.runtime.invalidate()
+      try {
+        owned.runtime.invalidate()
+      } catch (error) {
+        // Quit cannot wait for this promise: revoke every connection before the first await.
+        invalidationFailures.push(error)
+      }
     }
     const closing = [...this.runtimes.values()].map(async ({ runtime, starting }) => {
       const close = runtime.close()
@@ -72,5 +78,6 @@ export class ConnectionEngines {
     const failed = settled.find((item) => item.status === 'rejected')
     if (failed?.status === 'rejected') throw failed.reason
     this.runtimes.clear()
+    if (invalidationFailures.length) throw invalidationFailures[0]
   }
 }

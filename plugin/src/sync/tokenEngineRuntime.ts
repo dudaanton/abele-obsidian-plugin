@@ -2170,13 +2170,19 @@ export class TokenEngineRuntime
     this.progress.clear()
     this.uploadProgress.clear()
     this.folderProgress.clear()
-    this.unroot?.()
-    this.unroot = undefined
+    // Revoke transport before optional host cleanup: unload cannot await a drain.
     this.requests.abort()
+    const unroot = this.unroot
+    this.unroot = undefined
+    unroot?.()
   }
   async close(): Promise<void> {
-    this.invalidate()
     const failures: unknown[] = []
+    try {
+      this.invalidate()
+    } catch (error) {
+      failures.push(error)
+    }
     try {
       await this.engine.stop()
     } catch (error) {

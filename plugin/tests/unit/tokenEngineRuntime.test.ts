@@ -29,6 +29,40 @@ import Button from '@/components/obsidian/Button.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 
+it('aborts in-flight requests synchronously even when root watcher cleanup throws', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    watchRoot: () => () => {
+      throw new Error('watcher cleanup failed')
+    },
+  })
+  let signal: AbortSignal | null | undefined
+  let finish!: () => void
+  let entered!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  wire.fetch.mockImplementation(async (_input, init) => {
+    signal = init?.signal
+    entered()
+    return await new Promise<Response>((_resolve, reject) => {
+      finish = () => reject(new DOMException('Aborted', 'AbortError'))
+      signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+        once: true,
+      })
+    })
+  })
+  const syncing = one.runtime.sync().catch(() => {})
+  await waiting
+  expect(() => one.runtime.invalidate()).toThrow('watcher cleanup failed')
+  const aborted = signal?.aborted
+  // Release the fake transport even on the red implementation.
+  finish()
+  await syncing
+  await one.runtime.close().catch(() => {})
+  expect(aborted).toBe(true)
+})
+
 it.each(['network', 'network shutdown', 'staging', 'trusted'])(
   'installs an approved candidate during a blocked first pull without completing the pull (%s)',
   async (blockedAt) => {

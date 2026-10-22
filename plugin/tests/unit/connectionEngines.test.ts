@@ -2,6 +2,32 @@ import { expect, it, vi } from 'vitest'
 import { ConnectionEngines } from '@/sync/connectionEngines'
 import { deferred } from '../helpers/deferred'
 
+it('revokes every connection synchronously even when an invalidation hook throws at quit', async () => {
+  const engines = new ConnectionEngines()
+  const events: string[] = []
+  engines.start(
+    ['first', 'second'],
+    (id) => ({
+      start: async () => {},
+      invalidate: () => {
+        events.push('invalidate:' + id)
+        if (id === 'first') throw new Error('unsubscribe failed')
+      },
+      close: async () => {
+        events.push('close:' + id)
+      },
+    }),
+    () => {}
+  )
+  await engines.settled()
+  const closing = engines.close()
+  const rejected = expect(closing).rejects.toThrow('unsubscribe failed')
+  expect(events).toContain('invalidate:second')
+  await rejected
+  expect(events).toContain('close:first')
+  expect(events).toContain('close:second')
+})
+
 it('removes a connection before its queued startup can create effects', async () => {
   const engines = new ConnectionEngines()
   const start = vi.fn(async () => {})
