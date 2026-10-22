@@ -42,7 +42,14 @@ it.each([
         points: kinds.map((kind, i) => ({ lat: 48.858 + Math.floor(i / 4) * .004, lon: 2.288 + (i % 4) * .004, ...kind })),
         lines: [], center: { lat: 48.86, lon: 2.294 }, zoom: 14, height: 420, interactive: true,
       })
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // Pins mount before the remote style and tiles finish loading. Attribution is
+      // populated from the source and folded by renderMap's load handler.
+      const deadline = Date.now() + 45000
+      while (!root.querySelector('.maplibregl-ctrl-attrib a') || root.querySelector('.maplibregl-compact-show')) {
+        if (Date.now() > deadline) throw new Error('Map tiles did not finish loading before capture')
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const pins = [...root.querySelectorAll('.abele-map__pin')]
       const badges = pins.filter(pin => pin.classList.contains('mod-badge'))
       const image = await require('electron').remote.getCurrentWindow().webContents.capturePage()
