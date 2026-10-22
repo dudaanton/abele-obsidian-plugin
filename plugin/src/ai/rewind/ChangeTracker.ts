@@ -17,6 +17,7 @@ import {
   adapterEngineReceiver,
   setGatedAdapterMethod,
   UNGATED_ADAPTER,
+  TRACKER_ORIGINAL,
   ungatedAdapterMethod,
 } from '@/sync/vaultPathLinks'
 
@@ -275,7 +276,10 @@ export class ChangeTracker {
       const original = target[name]
       if (typeof original !== 'function') continue
       const own = Object.prototype.hasOwnProperty.call(target, name)
-      const raw = ChangeTracker.originals.get(original as AnyFn) ?? (original as AnyFn)
+      const raw: AnyFn =
+        ChangeTracker.originals.get(original as AnyFn) ??
+        Reflect.get(original, TRACKER_ORIGINAL) ??
+        (original as AnyFn)
       const bound = raw.bind(target)
       const wrap =
         (bound: AnyFn) =>
@@ -307,6 +311,7 @@ export class ChangeTracker {
           wrap((...args) => ungatedAdapterMethod(raw).apply(adapterEngineReceiver(target), args))
         )
       ChangeTracker.originals.set(wrapped, raw)
+      if (layer === 'adapter') Reflect.set(wrapped, TRACKER_ORIGINAL, raw)
       if (layer === 'adapter') setGatedAdapterMethod(target, name, wrapped)
       else target[name] = wrapped
       this.restores.push(() => {

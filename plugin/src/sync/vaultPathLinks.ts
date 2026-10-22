@@ -1710,28 +1710,38 @@ export function checkedVaultPort(
 
 type Method = (...args: unknown[]) => unknown
 export const UNGATED_ADAPTER = Symbol.for('abele.adapter.ungated-v1')
+export const TRACKER_ORIGINAL = Symbol.for('abele.adapter.tracker-original-v1')
 const gates = new WeakMap<
   object,
   { locks: PathCoordinator; methods: Map<string, Method>; view: object }
 >()
 const mutator = /^(?:write.*|append.*|process|mkdir|rename|copy|remove|rmdir|trash.*)$/
+const receivers = new WeakMap<object, object>()
+function inheritedGate(adapter: object) {
+  for (let at: object | null = adapter; at; at = Object.getPrototypeOf(at)) {
+    const gate = gates.get(at)
+    if (gate) return gate
+  }
+}
 
 /** Cooperating wrappers keep exclusion installed while replacing or restoring their layer. */
 export function setGatedAdapterMethod(adapter: object, name: string, value: unknown): void {
-  const gate = gates.get(adapter)
+  const gate = inheritedGate(adapter)
   if (!gate || typeof value !== 'function' || !mutator.test(name)) {
     Reflect.set(adapter, name, value)
     return
   }
   const raw = ungatedAdapterMethod(value as Method)
-  gate.methods.set(name, raw)
-  const run = (...args: unknown[]) => raw.apply(gate.view, args)
+  if (gates.has(adapter)) gate.methods.set(name, raw)
+  const run = (...args: unknown[]) => raw.apply(adapterEngineReceiver(adapter), args)
   const wrapped = (...args: unknown[]) =>
     gate.locks.run(
       args.slice(0, name === 'rename' || name === 'copy' ? 2 : 1).map(String),
       async () => run(...args)
     )
   Reflect.set(wrapped, UNGATED_ADAPTER, run)
+  const original = Reflect.get(value, TRACKER_ORIGINAL) ?? raw
+  Reflect.set(wrapped, TRACKER_ORIGINAL, original)
   Reflect.set(adapter, name, wrapped)
 }
 
@@ -1741,7 +1751,20 @@ export function ungatedAdapterMethod(method: Method): Method {
 }
 
 export function adapterEngineReceiver(adapter: object): object {
-  return gates.get(adapter)?.view ?? adapter
+  const own = gates.get(adapter)
+  if (own) return own.view
+  if (!inheritedGate(adapter)) return adapter
+  let view = receivers.get(adapter)
+  if (!view) {
+    view = new Proxy(adapter, {
+      get(target, key) {
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? ungatedAdapterMethod(value).bind(view) : value
+      },
+    })
+    receivers.set(adapter, view)
+  }
+  return view
 }
 
 /** One vault-wide gate; directory operations exclude descendants and moves acquire both paths. */

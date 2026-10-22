@@ -1,7 +1,8 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { adapterPathGate, adapterEngineReceiver, ungatedAdapterMethod } from '@/sync/vaultPathLinks'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
 
 const bytes = new TextEncoder().encode('saved').buffer
 const tick = async () => {
@@ -121,3 +122,28 @@ it('releases exclusion after a rejected mutation', async () => {
   fail = false
   await adapter.write('sample')
 })
+
+it.each(['before', 'after'] as const)(
+  'keeps owned writes certain with tracking installed %s the gate',
+  async (when) => {
+    const app = buildFakeVault([])
+    queueBinaryAdapter(app.vault.adapter)
+    let tracker: ChangeTracker | undefined
+    try {
+      if (when === 'before') tracker = ChangeTracker.install(app as never)
+      adapterPathGate(app.vault.adapter)
+      if (when === 'after') tracker = ChangeTracker.install(app as never)
+      const record = vi.fn()
+      const owned = tracker!.scope({ record })
+      await owned.app.vault.adapter.write('sample.md', 'owned')
+      owned.close()
+      expect(record).toHaveBeenCalledOnce()
+      expect(record.mock.calls[0][1]).toEqual([
+        expect.objectContaining({ path: 'sample.md', after: expect.any(String) }),
+      ])
+      expect(record.mock.calls[0][1][0].uncertain).not.toBe(true)
+    } finally {
+      tracker?.uninstall()
+    }
+  }
+)
