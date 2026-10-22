@@ -34,9 +34,14 @@ export const placementMethods = {
   move: 'pair',
   moveDirectory: 'pair',
   reopenStage: 'identity',
+  discardStage: 'opaque',
+  conditionalFile: 'opaque',
+  installedFile: 'opaque',
+  discardInstallation: 'opaque',
+  recoverConditionalFiles: 'opaque',
 } satisfies Record<
   keyof PlacementFileSystem,
-  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children'
+  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque'
 >
 /** The host's received-directory identity lookup takes one vault path. */
 const DIRECTORY_IDENTITY = Symbol.for('abele.sync.directory-identity-v1')
@@ -98,8 +103,12 @@ export class LocalFolderPlacement {
     const local = (entry: StateEntry | null) =>
       entry ? { ...entry, path: this.toLocal(entry.path) } : null
     const toServer = (path: string) => this.toServer(path)
+    const placed = (tx: StateStore) => this.localState(tx)
     return new Proxy(store, {
       get(target, key) {
+        if (key === 'transaction')
+          return <T>(work: (tx: StateStore) => Promise<T>) =>
+            target.transaction((tx) => work(placed(tx)))
         if (key === 'get') return async (path: string) => local(await target.get(toServer(path)))
         if (key === 'byFileId') return async (id: string) => local(await target.byFileId(id))
         if (key === 'all')
@@ -154,7 +163,8 @@ export class LocalFolderPlacement {
         if (key === 'installedFile')
           return (receipt: string, path: string, sha: string) =>
             value.call(target, receipt, placement.toLocal(path), sha)
-        if (key === 'recoverConditionalFiles') return value.bind(target)
+        if (key === 'recoverConditionalFiles' || key === 'discardInstallation')
+          return value.bind(target)
         if (key === Symbol.for('abele.sync.local-change-revision-v1'))
           return (path?: string) =>
             value.call(target, path === undefined ? undefined : placement.toLocal(path))
@@ -181,7 +191,8 @@ export class LocalFolderPlacement {
             Symbol.for('abele.sync.fingerprint-pull-v1'),
           ].includes(key as symbol)
         )
-          return (path: string) => value.call(target, placement.toLocal(path))
+          return (path: string, ...args: unknown[]) =>
+            value.call(target, placement.toLocal(path), ...args)
         if (key === FINGERPRINT_UPLOAD || key === UPLOAD_READ)
           return (path: string, ...args: unknown[]) =>
             value.call(target, placement.toLocal(path), ...args)

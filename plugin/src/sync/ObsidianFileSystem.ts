@@ -930,10 +930,12 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('io', 'sealed stage is unavailable')
         return { path: id, target: entry.target, sealed: entry.streaming.sealed }
       },
-      changed: (paths) => {
+      changed: (paths, known) => {
         for (const path of paths) this.awaitingIndex.add(path)
-        this.wrote(paths)
+        this.wrote(paths, known)
       },
+      remove: (path) => this.disk.remove(path),
+      ...(this.native ? { rmdir: (path: string) => this.native.rmdirEmpty(path) } : {}),
     })
   }
 
@@ -950,6 +952,9 @@ export class ObsidianFileSystem implements FileSystem {
   }
   installedFile(receipt: string, path: string, sha: string): Promise<boolean> {
     return this.conditional.installed(receipt, path, sha)
+  }
+  discardInstallation(receipt: string): Promise<void> {
+    return this.conditional.discard(receipt)
   }
   recoverConditionalFiles(): Promise<void> {
     return this.conditional.recover()
@@ -1836,12 +1841,13 @@ export class ObsidianFileSystem implements FileSystem {
         if (!(await this.journal.isCurrent(entry))) return false
         if (!entry.streaming.sealed || !native?.sameObject) return false
         try {
-          return (
+          const installed =
             (await native.sameObject(id, entry.target)) &&
             (await this.io.fingerprint(entry.target, undefined, true)).sha ===
               entry.streaming.sealed.sha &&
             (await native.sameObject(id, entry.target))
-          )
+          if (installed) await native.syncPath(entry.target)
+          return installed
         } catch (error) {
           if ((error as { code?: string }).code === 'ENOENT') return false
           throw error
@@ -1882,7 +1888,17 @@ export class ObsidianFileSystem implements FileSystem {
           try {
             await this.beforeEngineMutation?.([entry.target])
             signal?.throwIfAborted()
-            await this.writer.holding(id, () => this.writer.publishStage(entry))
+            const base = entry.streaming.base
+            if (base && base.mtime === undefined)
+              throw new EngineError('conflict', 'stage base has no modification time')
+            if (
+              !(await this.conditionalFile({
+                path: entry.target,
+                expected: base ? { sha: base.sha, size: base.size, mtime: base.mtime } : null,
+                effect: { kind: 'install', stageId: id },
+              }))
+            )
+              throw new EngineError('conflict', 'stage target changed before publication')
             this.stages.delete(id)
             this.observedBases.delete(caseKey(entry.target))
             finished = true
@@ -1893,7 +1909,7 @@ export class ObsidianFileSystem implements FileSystem {
         }),
       discard: () =>
         finished
-          ? Promise.resolve()
+          ? this.discardStage(id)
           : exclusive(async () => {
               if ((await this.rawStat(id)) !== null) await this.disk.remove(id)
               await this.journal.persist(() => this.journal.drop(entry))
@@ -1984,111 +2000,43 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
+  private async legacyBase(path: string) {
+    const observed = this.observedBases.get(caseKey(path))
+    if (observed && 'absent' in observed) return null
+    const standing = await this.onlyFileOrNothing(path)
+    if (standing === null) return null
+    const have = await this.fingerprint(path)
+    if (observed && 'sha' in observed && observed.sha !== have.sha)
+      throw new EngineError('conflict', 'File changed since the engine byte decision')
+    return { size: have.size, mtime: have.mtime, sha: have.sha }
+  }
+
   private async writeUnreserved(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     this.runtimeFence?.assertReady()
-    const key = caseKey(path),
-      expected = this.observedBases.get(key)
-    // An observed absence authorizes only exclusive creation. The adapter's rename
-    // refuses an occupied target, including a file created after the core's last check.
-    const standing = expected && 'absent' in expected ? null : await this.onlyFileOrNothing(path)
-    if (standing && standing.size > MAX_CHUNK_BYTES)
-      throw new EngineError('conflict', 'Existing file requires bounded streaming replacement')
-    const before = standing === null ? null : await this.disk.readBinary(path)
-    if (
-      expected &&
-      (('absent' in expected && before !== null) ||
-        ('sha' in expected &&
-          (before === null || (await sha256(new Uint8Array(before))) !== expected.sha)))
-    )
-      throw new EngineError('conflict', `${path} changed since the engine byte decision`)
-    // Capture BEFORE the awaited provenance/publication hold. The native final fence must
-    // compare these authorized bytes, not adopt a local save that arrives during that await.
+    const expected = await this.legacyBase(path)
     await this.beforeEngineMutation?.([path])
-    await this.writer.write(path, bytes, mtime, standing !== null, before)
-    this.observedBases.delete(key)
+    if (!(await this.conditionalFile({ path, expected, effect: { kind: 'write', bytes, mtime } })))
+      throw new EngineError('conflict', 'File changed before publication')
+    this.observedBases.delete(caseKey(path))
   }
 
   async move(from: string, to: string): Promise<void> {
-    const release = this.externalCoordination.beginEngineMutation([from, to])
-    try {
-      await this.moveUnreserved(from, to)
-    } finally {
-      release()
-    }
-  }
-
-  private async moveUnreserved(from: string, to: string): Promise<void> {
     this.runtimeFence?.assertReady()
+    const expected = await this.legacyBase(from)
+    if (expected === null) throw new EngineError('io', 'Move source is absent')
+    if (from === to) return
     await this.beforeEngineMutation?.([from, to])
-    if (from === to) {
-      if ((await this.stat(from)) === null) throw new EngineError('io', `no such file: ${from}`)
-      return
-    }
-    // Neither end may be a folder: the engine believes it is moving a file onto a free name,
-    // and a rename would happily carry a folder across or land inside one.
-    await this.onlyFileOrNothing(from)
-    await this.onlyFileOrNothing(to)
-
-    const standing = await this.rawStat(to)
-    if (standing !== null) {
-      // A case-only rename on a case-folding disk finds the source under the target's own
-      // spelling, and it must be renamed rather than refused (ruled 2026-09-05). The two are
-      // told apart by their stats: one file answering to two names answers with itself.
-      if (!caseOnly(from, to) || !(await this.sameFile(from, standing))) {
-        // Somebody else's file holds the name. `conflict`, not `io`: the puller holds such a
-        // change and writes the reason in the log, where an `io` fails the whole sync and
-        // fails it again on every run until a human moves the file.
-        throw new EngineError('conflict', `${to} is held by another file`)
-      }
-      await this.rename(from, to)
-      this.awaitingIndex.add(from)
-      this.awaitingIndex.add(to)
-      this.wrote([from, to])
-      // Only a listing that says outright that the old spelling is still there sends this
-      // round again; a listing that would not answer leaves the rename as done.
-      if ((await this.spelledExactly(to)) !== false) return
-      await this.writer.respell(from, to, (path) => this.spelledExactly(path))
-      return
-    }
-    await makeParents(this.disk, to)
-    await this.rename(from, to)
-    this.awaitingIndex.add(from)
-    this.awaitingIndex.add(to)
-    this.wrote([from, to])
-    await this.directories.removedChild(from)
-    if (!this.preserveEmptyDirectories)
-      await pruneAbove(this.disk, this.native, this.configDir, from)
+    if (!(await this.conditionalFile({ path: from, expected, effect: { kind: 'move', to } })))
+      throw new EngineError('conflict', 'File changed before move')
   }
 
   async remove(path: string): Promise<void> {
-    const release = this.externalCoordination.beginEngineMutation([path])
-    try {
-      await this.removeUnreserved(path)
-    } finally {
-      release()
-    }
-  }
-
-  private async removeUnreserved(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
+    const expected = await this.legacyBase(path)
+    if (expected === null) return
     await this.beforeEngineMutation?.([path])
-    const standing = await this.rawStat(path)
-    if (standing === null) return
-    if (standing.type !== 'file') throw conflictAt(path, standing)
-    try {
-      await this.disk.remove(path)
-    } catch (cause) {
-      if (cause instanceof EngineError && cause.code === 'lost') throw cause
-      // Two removes of one file race, or the user deleted it while this one was asked for.
-      if ((await this.rawStat(path)) === null) return
-      throw new EngineError('io', `cannot remove ${path}`, cause)
-    }
-    if (this.privateRoot && withinRoot(path, this.privateRoot)) return
-    this.awaitingIndex.add(path)
-    this.wrote([path], null)
-    await this.directories.removedChild(path)
-    if (!this.preserveEmptyDirectories)
-      await pruneAbove(this.disk, this.native, this.configDir, path)
+    if (!(await this.conditionalFile({ path, expected, effect: { kind: 'remove' } })))
+      throw new EngineError('conflict', 'File changed before removal')
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */

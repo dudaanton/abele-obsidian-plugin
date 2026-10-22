@@ -300,6 +300,7 @@ it('reopens a partial stage after restart, verifies it, and publishes through th
   await resumed.append(6, bytes.slice(6))
   await resumed.seal({ size: bytes.length, sha: await sha256(bytes) })
   await resumed.commit()
+  await resumed.discard()
   expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(bytes)
   expect(new WriteJournal(storage).entries()).toEqual([])
 })

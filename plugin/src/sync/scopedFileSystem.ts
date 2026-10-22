@@ -92,9 +92,9 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.fingerprint-pull-v1') ||
         key === Symbol.for('abele.sync.fingerprint-fresh-v1')
       )
-        return (path: string) => {
+        return (path: string, ...args: unknown[]) => {
           assertPath(path)
-          return value.call(target, path)
+          return value.call(target, path, ...args)
         }
       if (key === Symbol.for('abele.sync.live-source-stage-v1'))
         return (id: string, work: () => Promise<unknown>) => {
@@ -149,7 +149,8 @@ export function scopedFileSystem(
           assertPath(path)
           return value.call(target, receipt, path, sha)
         }
-      if (key === 'recoverConditionalFiles') return value.bind(target)
+      if (key === 'recoverConditionalFiles' || key === 'discardInstallation')
+        return value.bind(target)
       if (key === 'reopenStage')
         return async (id: string) => {
           assertStage(id)

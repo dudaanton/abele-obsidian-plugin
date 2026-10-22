@@ -17,6 +17,7 @@ export interface ConditionalFileOperation {
     | { kind: 'install'; stageId: string }
 }
 interface Intent {
+  receipt?: boolean
   path: string
   expected: FileVersion | null
   destination: string
@@ -42,7 +43,9 @@ export interface ConditionalFileHost {
   stage(
     id: string
   ): Promise<{ path: string; target: string; sealed: { size: number; sha: string } }>
-  changed(paths: string[]): void
+  changed(paths: string[], known?: 'file' | null): void
+  remove(path: string): Promise<void>
+  rmdir?(path: string): Promise<void>
 }
 const idOf = (id: string) => {
   if (!/^[a-zA-Z0-9-]{1,128}$/.test(id))
@@ -59,6 +62,26 @@ export class ConditionalFiles {
   private async record(path: string, value: unknown) {
     await this.host.create(path, new TextEncoder().encode(JSON.stringify(value)), 0)
     await this.host.flush(path)
+  }
+  private async retireVictim(folder: string, intent: Intent): Promise<void> {
+    const victim = folder + '/victim',
+      h = this.host
+    const info = await h.stat(victim)
+    if (!info) return
+    if (!intent.expected) return // Legacy records cannot authorize retirement without a base.
+    const have = info.type === 'file' ? await h.fingerprint(victim) : null
+    if (
+      intent.expected &&
+      have &&
+      have.sha === intent.expected.sha &&
+      have.size === intent.expected.size &&
+      Math.round(info.mtime) === intent.expected.mtime
+    ) {
+      await h.remove(victim)
+      await h.flush(victim, true)
+    } else {
+      await this.restore(victim, intent.path)
+    }
   }
   private async install(
     from: string,
@@ -82,13 +105,22 @@ export class ConditionalFiles {
     return true
   }
   private async restore(from: string, to: string) {
+    const folder = from.slice(0, from.lastIndexOf('/'))
+    if (await this.host.stat(folder + '/restored')) return
     const info = await this.host.stat(from)
     if (!info) return
+    const allocation = folder + '/allocation'
+    if ((await this.host.stat(allocation)) && (await this.host.sameObject?.(from, allocation))) {
+      await this.host.remove(from)
+      await this.host.flush(from, true)
+      return
+    }
     this.host.check()
     const id = from.split('/').at(-2)
     const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
     const finish = async (destination: string) => {
       await this.host.flush(destination)
+      await this.record(folder + '/restored', { destination })
       this.host.changed([destination])
     }
     // A durable plan also finds a randomly named publication after restart.
@@ -223,7 +255,7 @@ export class ConditionalFiles {
           await this.host.flush(destination, true)
           await this.host.flush(from, true)
         }
-        this.host.changed([destination])
+        await finish(destination)
         return
       } catch (error) {
         this.host.check()
@@ -235,6 +267,7 @@ export class ConditionalFiles {
     throw new EngineError('io', 'visible recovery destinations are occupied')
   }
   private async archive(_folder: string, id: string, successful: boolean) {
+    if (!(await this.host.stat(this.host.root + '/active/' + id + '.json'))) return
     const parent = this.host.root + (successful ? '/completed' : '/review')
     await this.host.mkdir(parent)
     await this.host.capture(this.host.root + '/active/' + id + '.json', parent + '/' + id + '.json')
@@ -246,6 +279,9 @@ export class ConditionalFiles {
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
+    // Object identity distinguishes allocation sentinels from captured empty files.
+    if (op.expected !== null && !h.sameObject)
+      throw new EngineError('io', 'conditional capture requires durable object identity')
     const id = idOf(
       (op.effect.kind === 'write' ? op.effect.receipt : undefined) ?? crypto.randomUUID()
     )
@@ -271,6 +307,7 @@ export class ConditionalFiles {
         source = stage.path
       }
       const intent: Intent = {
+        receipt: op.effect.kind === 'write' && op.effect.receipt !== undefined,
         path: op.path,
         expected: op.expected,
         destination: op.effect.kind === 'move' ? op.effect.to : op.path,
@@ -278,6 +315,10 @@ export class ConditionalFiles {
         kind: op.effect.kind,
       }
       await h.mkdir(folder)
+      if (op.expected !== null) {
+        await h.create(folder + '/allocation', new Uint8Array(), 0)
+        await h.flush(folder + '/allocation')
+      }
       await this.record(folder + '/intent.json', intent)
       await h.mkdir(h.root + '/active')
       await this.record(h.root + '/active/' + id + '.json', intent)
@@ -291,13 +332,19 @@ export class ConditionalFiles {
           return false
         }
         try {
+          // The filesystem refuses a directory substituted at the capture boundary.
+          if (!(await this.install(folder + '/allocation', victim)))
+            throw new EngineError('io', 'capture sentinel is occupied')
           await h.capture(op.path, victim)
           captured = true
         } catch (error) {
-          if (!missing(error)) throw error
-          if ((await h.stat(victim)) !== null) throw error
+          const standing = await h.stat(op.path)
+          if (!missing(error) && standing?.type !== 'folder') throw error
+          await restore()
           const removed = op.effect.kind === 'remove' && (await h.stat(op.path)) === null
+          if (removed) await this.record(folder + '/complete', true)
           await this.archive(folder, id, removed)
+          if (removed) await this.discard(id)
           return removed
         }
         await h.flush(victim)
@@ -340,8 +387,13 @@ export class ConditionalFiles {
       }
       // A completed marker is durable before the operation leaves the recovery queue.
       await this.record(folder + '/complete', true)
+      await this.retireVictim(folder, intent)
       await this.archive(folder, id, true)
-      h.changed([op.path, ...(op.effect.kind === 'move' ? [op.effect.to] : [])])
+      if (!intent.receipt) await this.discard(id)
+      if (op.effect.kind === 'move') {
+        h.changed([op.path], null)
+        h.changed([op.effect.to], 'file')
+      } else h.changed([op.path], op.effect.kind === 'remove' ? null : 'file')
       return true
     } catch (error) {
       // Capture itself may have reached disk before its acknowledgement was lost.
@@ -352,42 +404,49 @@ export class ConditionalFiles {
     }
   }
   async recover(): Promise<void> {
-    const h = this.host,
-      root = h.root + '/active'
-    if ((await h.stat(root)) === null) return
+    const h = this.host
     let failed: unknown
-    for (const pointer of (await h.list(root)).files) {
-      const candidate = pointer.slice(root.length + 1).replace(/\.json$/, '')
-      const activeKey = h.root + '/' + candidate
-      if (h.active.has(activeKey)) continue
-      h.active.add(activeKey)
-      try {
-        const id = idOf(candidate)
-        const folder = h.root + '/objects/' + id
-        if ((await h.stat(pointer)) === null) continue
-        if ((await h.stat(folder + '/complete')) !== null) {
-          await this.archive(folder, id, true)
-          continue
-        }
-        if ((await h.stat(folder + '/intent.json')) === null) {
-          // No capture was authorized before this file existed.
+    for (const root of [h.root + '/active', h.root + '/completed']) {
+      if ((await h.stat(root)) === null) continue
+      for (const pointer of (await h.list(root)).files) {
+        const candidate = pointer.slice(root.length + 1).replace(/\.json$/, '')
+        const activeKey = h.root + '/' + candidate
+        if (h.active.has(activeKey)) continue
+        h.active.add(activeKey)
+        try {
+          const id = idOf(candidate)
+          const folder = h.root + '/objects/' + id
+          if ((await h.stat(pointer)) === null) continue
+          if ((await h.stat(folder + '/complete')) !== null) {
+            const intent = JSON.parse(
+              new TextDecoder().decode(await h.read(folder + '/intent.json'))
+            ) as Intent
+            await h.flush(intent.destination ?? intent.path, true)
+            await this.retireVictim(folder, intent)
+            await this.archive(folder, id, true)
+            if (!intent.receipt) await this.discard(id)
+            continue
+          }
+          if ((await h.stat(folder + '/intent.json')) === null) {
+            // No capture was authorized before this file existed.
+            await this.archive(folder, id, false)
+            continue
+          }
+          const intent = JSON.parse(
+            new TextDecoder().decode(await h.read(folder + '/intent.json'))
+          ) as Intent
+          h.validate(intent.path)
+          h.check()
+          await this.restore(folder + '/victim', intent.path)
           await this.archive(folder, id, false)
-          continue
+          h.changed([intent.path])
+        } catch (error) {
+          // Keep this pointer outstanding, but do not strand independent victims.
+          failed ??= error
+          console.debug('[abele-sync] conditional recovery remains pending', pointer, error)
+        } finally {
+          h.active.delete(activeKey)
         }
-        const intent = JSON.parse(
-          new TextDecoder().decode(await h.read(folder + '/intent.json'))
-        ) as Intent
-        h.validate(intent.path)
-        h.check()
-        await this.restore(folder + '/victim', intent.path)
-        await this.archive(folder, id, false)
-        h.changed([intent.path])
-      } catch (error) {
-        // Keep this pointer outstanding, but do not strand independent victims.
-        failed ??= error
-        console.debug('[abele-sync] conditional recovery remains pending', pointer, error)
-      } finally {
-        h.active.delete(activeKey)
       }
     }
     if (failed) throw new EngineError('io', 'conditional recovery remains pending', failed)
@@ -403,14 +462,42 @@ export class ConditionalFiles {
     ) as Intent
     if (intent.destination !== path || !['write', 'install'].includes(intent.kind)) return false
     try {
-      return (
+      const installed =
         (await h.sameObject(intent.data, path)) &&
         (await h.fingerprint(path)).sha === sha &&
         (await h.sameObject(intent.data, path))
-      )
+      if (installed) await h.flush(path)
+      return installed
     } catch (error) {
       if (!missing(error)) throw error
     }
     return false
+  }
+  async discard(receipt: string): Promise<void> {
+    const h = this.host,
+      id = idOf(receipt),
+      folder = h.root + '/objects/' + id
+    if ((await h.stat(folder + '/intent.json')) === null) return
+    const intent = JSON.parse(
+      new TextDecoder().decode(await h.read(folder + '/intent.json'))
+    ) as Intent
+    if ((await h.stat(folder + '/complete')) === null)
+      throw new EngineError('io', 'installation has not settled')
+    await h.flush(intent.destination ?? intent.path, true)
+    await this.retireVictim(folder, intent)
+    if (await h.stat(folder + '/victim')) return
+    for (const path of [
+      folder + '/data',
+      folder + '/allocation',
+      folder + '/complete',
+      folder + '/intent.json',
+      h.root + '/completed/' + id + '.json',
+    ]) {
+      if (await h.stat(path)) await h.remove(path)
+    }
+    if (h.rmdir && !(await h.stat(folder + '/restore-plans'))) {
+      await h.rmdir(folder)
+    }
+    await h.flush(folder, true)
   }
 }

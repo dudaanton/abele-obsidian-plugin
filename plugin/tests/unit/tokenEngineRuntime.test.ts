@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import {
   EngineError,
+  SyncCancelled,
   GENERATION_KEY,
   MemoryFileSystem,
   MemoryStateStore,
@@ -28,6 +29,18 @@ import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+
+it('treats intentional cancellation as a settled interruption without publication', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const one = runtime(wire, new MemoryFileSystem())
+  vi.spyOn(one.runtime.engine, 'sync').mockRejectedValue(new SyncCancelled())
+  try {
+    await expect(one.runtime.sync()).resolves.toBeUndefined()
+    expect(wire.requests).toEqual([])
+  } finally {
+    await one.runtime.close()
+  }
+})
 
 it('aborts in-flight requests synchronously even when root watcher cleanup throws', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
@@ -373,9 +386,9 @@ it.each([
     state.setMeta = (key, value) =>
       key === 'content-sweep-after' ? durableMetadata.setMeta(key, value) : setMeta(key, value)
     const sha = await sha256(payload)
-    await state.transaction(async () => {
+    await state.transaction(async (tx) => {
       for (const file of app.vault.getFiles())
-        await state.put({
+        await tx.put({
           path: file.path,
           wirePath: file.path,
           fileId: file.path,
@@ -384,7 +397,7 @@ it.each([
           size: file.stat.size,
           mtime: file.stat.mtime,
         })
-      await state.setCursor(1)
+      await tx.setCursor(1)
     })
     const metadata = new MemoryStateStore()
     const make = () =>

@@ -13,6 +13,7 @@ import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
 import {
   SyncEngine,
+  SyncCancelled,
   V2EngineClient,
   selectiveDefaults,
   scan,
@@ -506,6 +507,7 @@ export class TokenEngineRuntime
               const error = Object.assign(new Error('Scope deleted on the server'), {
                 code: 'scope_deleted',
               })
+              this.runFailure = error
               options.failed(error)
               throw error
             }
@@ -745,10 +747,25 @@ export class TokenEngineRuntime
       return this.uploadEntitlements.has(sha) || (await hasBlob(sha))
     }
     const prepare = this.client.prepare.bind(this.client)
+    const inventoryFs = (fs: FileSystem): FileSystem =>
+      new Proxy(fs, {
+        get: (target, name) => {
+          if (name === 'list')
+            return async function* (this: TokenEngineRuntime) {
+              for await (const info of target.list())
+                if (this.namedCandidate(info.path) && !this.localExcluded(info.path, info.size))
+                  yield info
+            }.bind(this)
+          const value = Reflect.get(target, name)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    const scanLocal = this.client.scanLocal.bind(this.client)
+    this.client.scanLocal = (fs, signal, changed) => scanLocal(inventoryFs(fs), signal, changed)
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
-    this.client.prepare = async (fs, state, excluded) => {
+    this.client.prepare = async (fs, state, excluded, signal, deferLocalScan) => {
       this.journalActive = false
       this.largeUploadPaths.clear()
       this.readyToPublish = false
@@ -787,23 +804,7 @@ export class TokenEngineRuntime
       this.pullPaths.clear()
       this.pulledPaths.clear()
       this.pullProgress('Reading server inventory')
-      const localExcluded = (path: string, size: number) => this.localExcluded(path, size)
-      const candidate = (path: string) => this.namedCandidate(path)
-      await prepare(
-        new Proxy(fs, {
-          get(target, name) {
-            if (name === 'list')
-              return async function* () {
-                for await (const info of target.list())
-                  if (candidate(info.path) && !localExcluded(info.path, info.size)) yield info
-              }
-            const value = Reflect.get(target, name)
-            return typeof value === 'function' ? value.bind(target) : value
-          },
-        }),
-        options.state,
-        excluded
-      )
+      await prepare(inventoryFs(fs), state, excluded, signal, deferLocalScan)
       const generation = await options.state.getMeta(GENERATION_KEY)
       if (generation !== this.generation) {
         this.wholeReadUploads.clear()
@@ -932,11 +933,6 @@ export class TokenEngineRuntime
     }
     const progressState = new Proxy(options.engineState ?? options.state, {
       get: (target, name) => {
-        if (name === 'put')
-          return async (entry: Parameters<StateStore['put']>[0]) => {
-            await target.put(entry)
-            if (this.progress.stage === 'Downloading') this.pulled(entry.path)
-          }
         if (name === 'setJournal')
           return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
             await target.setJournal(journal)
@@ -1144,6 +1140,7 @@ export class TokenEngineRuntime
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onApplied: (change) => {
+        if (change.origin === 'remote' && change.kind === 'upsert') this.pulled(change.path)
         options.event?.(
           change.origin === 'remote' &&
             change.kind === 'upsert' &&
@@ -1174,10 +1171,11 @@ export class TokenEngineRuntime
         this.trace.finishPull(false)
         // Deliberate unload revokes the runtime before aborting requests. Its durable
         // intent remains for restart; the cancellation is not an actionable failure.
-        if (!this.active) {
+        if (!this.active || error instanceof SyncCancelled) {
           this.trace.log('sync: stopped with recoverable work')
           return
         }
+        this.runFailure = error
         this.pendingFolders.clear()
         this.folderProgress.clear()
         if (!this.yieldedForReview(error)) options.event?.('Error: ' + connectionError(error))
@@ -1300,12 +1298,12 @@ export class TokenEngineRuntime
       )
         throw new Error('A previous server operation is unresolved; sync remains stopped')
       // Explicitly pull a new snapshot. Old absence must never become outgoing deletes.
-      await this.options.state.transaction(async () => {
-        await this.options.state.setCursor(0)
-        await this.options.state.setMeta('v2-directories', null)
+      await this.options.state.transaction(async (tx) => {
+        await tx.setCursor(0)
+        await tx.setMeta('v2-directories', null)
         const entries = []
-        for await (const entry of this.options.state.all()) entries.push(entry.path)
-        for (const path of entries) await this.options.state.delete(path)
+        for await (const entry of tx.all()) entries.push(entry.path)
+        for (const path of entries) await tx.delete(path)
       })
       this.rootIssue = undefined
       this.options.rootChanged?.(undefined)
@@ -1452,6 +1450,7 @@ export class TokenEngineRuntime
     try {
       return this.serverPaths ? this.serverPaths.map(value, true) : value
     } catch (error) {
+      this.runFailure = error
       this.engine?.pause()
       throw error
     }
@@ -1567,8 +1566,11 @@ export class TokenEngineRuntime
       } catch {
         /* Malformed physical paths cannot reach filesystem operations. */
       }
+      this.runFailure = new FolderScopeError(
+        'The local file is outside this connection; sync stopped: ' + path
+      )
       this.engine?.pause()
-      throw new FolderScopeError('The local file is outside this connection; sync stopped: ' + path)
+      throw this.runFailure
     }
   }
   private assertIncomingPaths(paths: readonly string[]): void {
@@ -1580,10 +1582,11 @@ export class TokenEngineRuntime
       } catch {
         /* Refuse aliases and traversal. */
       }
-      this.engine?.pause()
-      throw new FolderScopeError(
+      this.runFailure = new FolderScopeError(
         'The server returned a path outside this connection; sync stopped: ' + path
       )
+      this.engine?.pause()
+      throw this.runFailure
     }
   }
   private assertScopedPayload(value: unknown): void {
@@ -2033,12 +2036,22 @@ export class TokenEngineRuntime
       this.scopeRootGone({ kind: 'deleted' })
     this.assertHeld()
   }
+  private runFailure: unknown
   async sync(retryHeld = true): Promise<void> {
+    this.runFailure = undefined
     await this.checkRoot()
     await this.refreshHolds()
     this.assertHeld()
-    await this.syncThroughReviews()
-    await this.outbox.drain(retryHeld)
+    try {
+      await this.syncThroughReviews()
+      await this.outbox.drain(retryHeld)
+    } catch (error) {
+      if (this.rootIssue) this.assertHeld()
+      if (this.runFailure !== undefined && !this.yieldedForReview(this.runFailure))
+        throw this.runFailure
+      if (!(error instanceof SyncCancelled)) throw error
+      console.debug('[abele-sync] sync intentionally interrupted')
+    }
   }
   private async publishRetainedCopies(): Promise<void> {
     if (!this.options.retainedChanged) return
@@ -2467,6 +2480,12 @@ export class TokenEngineRuntime
             throw new Error('Reviewed content changed')
           const localClient = new Proxy(this.client, {
             get(target, name) {
+              if (name === 'versionBytes')
+                return async (fileId: string, versionId: string) => {
+                  if (fileId !== candidate.fileId || versionId !== candidate.versionId || !bytes)
+                    throw new Error('Unreviewed content requested')
+                  return bytes.slice()
+                }
               if (name === 'openVersion')
                 return async (
                   fileId: string,

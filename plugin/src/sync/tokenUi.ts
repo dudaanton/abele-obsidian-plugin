@@ -1151,8 +1151,7 @@ export class TokenUi {
     await this.waitForDeletion(finishing, 'disconnect')
   }
   /**
-   * A paused engine still finishes its running pass, so its transfers and commits would race
-   * the deletion and could keep it from ever being sent. Stop the connection instead; the saved
+   * Stop and await settlement before server deletion. The saved
    * deletion attempt keeps it from starting again until the deletion settles or it is
    * disconnected. A timeout releases the UI attempt, but retains the actual drain and its
    * ownership barrier. Retry joins that same drain; deletion never races an overdue writer.

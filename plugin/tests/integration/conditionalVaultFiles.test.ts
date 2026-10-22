@@ -1,10 +1,71 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const data = (text: string) => new TextEncoder().encode(text)
+it('refuses destructive capture when the host cannot prove object identity', async () => {
+  const app = buildFakeVault([])
+  await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
+  const disk = new ObsidianFileSystem(app as never)
+  await expect(
+    disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { size: 8, mtime: 1000, sha: await sha256(data('sample A')) },
+      effect: { kind: 'remove' },
+    })
+  ).rejects.toThrow('object identity')
+  expect(await app.vault.adapter.read('sample.bin')).toBe('sample A')
+})
+it('drops verified successful victims and keeps only caller-owned installation evidence', async () => {
+  const app = buildFakeVault([])
+  desktopAdapter(app)
+  const disk = new ObsidianFileSystem(app as never)
+  await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
+  expect(
+    await disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { size: 8, mtime: 1000, sha: await sha256(data('sample A')) },
+      effect: { kind: 'write', bytes: data('sample B'), mtime: 2000, receipt: 'sample-retirement' },
+    })
+  ).toBe(true)
+  const folder = '.obsidian/plugins/abele/sync-conditional/objects/sample-retirement'
+  expect(await app.vault.adapter.exists(folder + '/victim')).toBe(false)
+  expect(
+    await disk.installedFile('sample-retirement', 'sample.bin', await sha256(data('sample B')))
+  ).toBe(true)
+  await disk.discardInstallation('sample-retirement')
+  await disk.discardInstallation('sample-retirement')
+  expect(await app.vault.adapter.exists(folder)).toBe(false)
+  expect(await app.vault.adapter.read('sample.bin')).toBe('sample B')
+})
+it.each(['write', 'move', 'remove'] as const)(
+  'routes the legacy %s entry point through conditional publication',
+  async (kind) => {
+    const app = buildFakeVault([])
+    await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
+    const disk = new ObsidianFileSystem(app as never)
+    const gate = vi.spyOn(disk, 'conditionalFile').mockResolvedValue(false)
+    const operation = () =>
+      kind === 'write'
+        ? disk.writeAtomic('sample.bin', data('sample B'), 1000)
+        : kind === 'move'
+          ? disk.move('sample.bin', 'other.bin')
+          : disk.remove('sample.bin')
+    await expect(operation()).rejects.toMatchObject({ code: 'conflict' })
+    expect(gate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'sample.bin',
+        expected: { size: 8, mtime: 1000, sha: await sha256(data('sample A')) },
+        effect: expect.objectContaining({ kind }),
+      })
+    )
+    expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(
+      data('sample A')
+    )
+  }
+)
 function desktopAdapter(app: ReturnType<typeof buildFakeVault>) {
   withDesktopFs(app, { fenced: false })
   // Model hard links' preservation of the source timestamps (the generic fake copies bytes).
@@ -249,6 +310,8 @@ it.each([false, true])(
       return list(path)
     }
     await new ObsidianFileSystem(app as never).recoverConditionalFiles()
-    expect(visited.every((path) => path.endsWith('/active'))).toBe(true)
+    expect(visited.every((path) => path.endsWith('/active') || path.endsWith('/completed'))).toBe(
+      true
+    )
   }
 )
