@@ -1,6 +1,7 @@
 import type { App } from 'obsidian'
 import type { LocalStorage } from './ledgerId'
 import { completion, connectTo, wait } from './idbRequests'
+import { IndexedRetention } from './retentionIndex'
 import {
   hostChanges,
   hostJournalPath,
@@ -97,6 +98,9 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
  * Only explicit record deltas are persisted, with their preconditions checked in IDB.
  */
 export class HostSyncStorage implements LocalStorage {
+  retentionIndex(root: string): IndexedRetention {
+    return new IndexedRetention(this.db, this.namespace, root)
+  }
   private readonly values = new Map<string, unknown>()
   private readonly journalHints = new Map<string, Map<string, unknown>>()
   private readonly dirtyHints = new Set<string>()
