@@ -46,9 +46,10 @@ const probe = (device: string) =>
       await until(() => pane.querySelector('.abele-node-error-words')?.textContent.includes('Git on the node'));
       const line = pane.querySelector('.abele-node-error-words');
       const retry = [...pane.querySelectorAll('button')].find(el => el.textContent.trim() === 'Retry');
-      const box = line.getBoundingClientRect();
-      if (!retry || line.textContent.includes('git_timeout') || box.left < 0 || box.right > innerWidth || box.bottom > innerHeight) return false;
       await capture('timeout');
+      const box = line.getBoundingClientRect();
+      if (!retry || line.textContent.includes('git_timeout') || box.width <= 0 || box.left < 0 || box.right > innerWidth || box.bottom > innerHeight)
+        throw Error('Timeout controls outside the visible file pane: ' + JSON.stringify({retry:!!retry,text:line.textContent,box:box.toJSON(),width:innerWidth,height:innerHeight}));
       retry.click();
       await until(() => pane.querySelector('.abele-file-view'));
       if (reads !== 2) return false;
