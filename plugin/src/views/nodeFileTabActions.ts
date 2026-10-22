@@ -1,3 +1,4 @@
+import { canEditNodeFile } from '@/node/fileEditContext'
 import { t } from '@/i18n'
 import { nodeActionError } from '@/node/errorWords'
 import { presentUiError } from '@/i18n/streamBErrors'
@@ -32,7 +33,7 @@ export class NodeFileTabActions {
     for (const el of this.shown) el.remove()
     this.shown = []
     const add = (icon: string, title: string, run: () => void, lit = false) => {
-      const el = this.host.addAction(icon, title, run) as HTMLElement | undefined
+      const el = this.host.addAction(icon, title, run)
       if (!el) return
       el.toggleClass('is-active', lit)
       this.shown.push(el)
@@ -67,7 +68,7 @@ export class NodeFileTabActions {
     if (Platform.isPhone) return
     add('chevron-left', t('streamBMeta.55f8f16499'), () => this.step(-1))
     add('chevron-right', t('streamBMeta.123245f14b'), () => this.step(1))
-    add('pencil', t('streamBMeta.de780488d5'), () => this.start())
+    if (this.canEdit()) add('pencil', t('streamBMeta.de780488d5'), () => this.start())
   }
   paneMenu(menu: Menu): void {
     const item = (title: string, icon: string, run: () => void, disabled = false) =>
@@ -87,7 +88,14 @@ export class NodeFileTabActions {
       )
       item(t('streamBMeta.8357152356'), 'undo-2', () => this.host.act(() => editing.discard()))
       item(t('streamB.stopEditing.ec8404'), 'pencil-off', () => this.stop())
-    } else item(t('streamBMeta.de780488d5'), 'pencil', () => this.start())
+    } else if (this.canEdit()) item(t('streamBMeta.de780488d5'), 'pencil', () => this.start())
+  }
+  private canEdit(): boolean {
+    const state = this.host.saved()
+    return canEditNodeFile(
+      this.host.file()?.document.value,
+      state?.kind === 'file' ? state.stage : undefined
+    )
   }
   step(by: 1 | -1): void {
     this.host.act(() => this.host.file()?.step(by))
@@ -95,7 +103,8 @@ export class NodeFileTabActions {
   start(): void {
     const doc = this.host.file()?.document.value,
       editing = this.host.editing()
-    if (doc && editing)
+    const state = this.host.saved()
+    if (doc && editing && canEditNodeFile(doc, state?.kind === 'file' ? state.stage : undefined))
       this.host.act(async () => {
         await editing.start(doc.path)
         if (editing.locked.value) await this.unlock()

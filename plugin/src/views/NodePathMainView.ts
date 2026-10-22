@@ -1,3 +1,4 @@
+import { canEditNodeFile } from '@/node/fileEditContext'
 import { presentUiError, UiError, uiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import {
@@ -145,6 +146,11 @@ export class NodePathMainView extends ItemView {
     this.contentEl.addClass('abele-node-content')
     // ⌘ S saves while editing, as Obsidian's own save command does in a note.
     this.scope = new Scope((this.app as { scope?: Scope }).scope)
+    this.scope.register([], 'Escape', () => {
+      if (!this.editing?.active.value || this.editing.dirty.value) return true
+      this.fileTab.stop()
+      return false
+    })
     this.scope.register(['Mod'], 's', () => {
       if (!this.editing?.active.value) return true
       this.act(() => this.editing?.save())
@@ -217,7 +223,13 @@ export class NodePathMainView extends ItemView {
         : parsed
     if (!same) this.startBinding(parsed)
     if (same && parsed.kind === 'file' && parsed.line && this.file) this.file.mode.value = 'file'
-    if (same && parsed.kind === 'file' && parsed.edit && !this.editing?.active.value)
+    if (
+      same &&
+      parsed.kind === 'file' &&
+      parsed.edit &&
+      !this.editing?.active.value &&
+      canEditNodeFile(this.file?.document.value, parsed.stage)
+    )
       this.act(() => this.editing?.start(parsed.path))
     // The same history tab, asked for another commit from the panel: it opens that one.
     else if (same && parsed.kind === 'history' && parsed.commit && this.history) {
@@ -419,6 +431,15 @@ export class NodePathMainView extends ItemView {
         })
       )
       this.fileTab.render()
+      const comparison = shallowRef<{ original: string; split: boolean }>()
+      this.stops.push(
+        watch(editing.active, (active) => {
+          comparison.value =
+            active && file.mode.value === 'diff' && file.document.value?.change
+              ? { original: file.document.value.change.before, split: !Platform.isMobile }
+              : undefined
+        })
+      )
       const root = {
         provide: {
           [FILE_NAVIGATION as symbol]: (url: string) => {
@@ -439,6 +460,7 @@ export class NodePathMainView extends ItemView {
             ? h(NodePathEditorPane, {
                 target: state.target,
                 model: editing.editor.value as NodeFilesModel,
+                comparison: comparison.value,
                 offline: offline(),
                 error: this.error.value,
                 locked: editing.locked.value,
@@ -535,6 +557,7 @@ export class NodePathMainView extends ItemView {
       }
       this.stops.push(
         watch(file.document, (doc) => {
+          this.fileTab.render()
           if (doc && this.saved?.kind === 'file') {
             this.saved = { ...this.saved, path: doc.path }
             this.app.workspace.requestSaveLayout()
@@ -550,7 +573,11 @@ export class NodePathMainView extends ItemView {
         await file.open(state.path, state.stage).catch(() => {})
         if (state.debug || state.line) file.mode.value = 'file'
       }
-      if (lifetime === this.lifetime && state.edit)
+      if (
+        lifetime === this.lifetime &&
+        state.edit &&
+        canEditNodeFile(file.document.value, state.stage)
+      )
         await editing.start(state.path).catch((error: unknown) => {
           this.error.value =
             error instanceof Error ? presentUiError(error) : t('streamBMeta.8d247c53c5')

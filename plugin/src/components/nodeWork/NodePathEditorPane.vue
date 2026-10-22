@@ -26,20 +26,38 @@
       {{ t('streamB.savingIsNotAllowedInThisWorktree.8eb83d') }}
     </div>
     <NodeFileSaveState :model="model" :offline="offline" :locked="locked" :actions="false" />
+    <Diff
+      v-if="model.document.value && comparison"
+      :text-left="comparison.original"
+      :text-right="visibleText"
+      :path="model.filePath.value"
+      :title="model.filePath.value"
+      :context="Number.MAX_SAFE_INTEGER"
+      :layout="comparison.split ? 'auto' : 'unified'"
+    >
+      <template #editor="{ layout }">
+        <GithubCode
+          :text="visibleText"
+          :comparison="{ original: comparison.original, split: layout === 'split' }"
+          :path="model.filePath.value"
+          :editable="editable"
+          @change="model.editText($event)"
+        />
+      </template>
+    </Diff>
     <GithubCode
-      v-if="model.document.value"
+      v-else-if="model.document.value"
       :text="visibleText"
       :path="model.filePath.value"
       :range="range"
-      :editable="
-        model.editing.value && !locked && !model.saving.value && !model.draft.value?.pending
-      "
+      :editable="editable"
       @change="model.editText($event)"
     />
   </div>
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import type { CodeComparison } from '@/github/codeViewer'
 import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import type { RepositorySource } from '@/repository/source'
@@ -49,9 +67,11 @@ import type { PathTarget } from '@/node/NodePathModel'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import GithubCode from '../github/GithubCode.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
+import Diff from '../Diff.vue'
 const props = withDefaults(
   defineProps<{
     model: NodeFilesModel
+    comparison?: CodeComparison
     target?: PathTarget
     error?: string
     offline?: boolean
@@ -62,6 +82,7 @@ const props = withDefaults(
     endLine?: number
   }>(),
   {
+    comparison: undefined,
     error: '',
     offline: false,
     locked: false,
@@ -74,6 +95,13 @@ const props = withDefaults(
 )
 const visibleText = computed(() =>
   props.model.editing.value ? props.model.draftText.value : (props.model.document.value?.text ?? '')
+)
+const editable = computed(
+  () =>
+    props.model.editing.value &&
+    !props.locked &&
+    !props.model.saving.value &&
+    !props.model.draft.value?.pending
 )
 const range = computed(() => {
   if (!props.line) return

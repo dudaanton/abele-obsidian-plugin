@@ -42,7 +42,8 @@
       <div class="abele-diff__label">{{ labelBefore }}</div>
       <div class="abele-diff__label">{{ labelAfter }}</div>
     </div>
-    <div v-if="!changed" class="abele-diff__empty">{{ emptyText }}</div>
+    <slot v-if="$slots.editor" name="editor" :layout="shown" />
+    <div v-else-if="!changed" class="abele-diff__empty">{{ emptyText }}</div>
     <div v-else-if="shown === 'unified'" class="abele-diff__body">
       <template v-for="(row, index) in rows" :key="index">
         <div

@@ -23,6 +23,8 @@ import {
   keymap,
   type DecorationSet,
 } from '@codemirror/view'
+import { workingComparison } from './workingComparison'
+import { MergeView } from '@codemirror/merge'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { parsePatch, type DiffLine } from './patch'
 import type { LineRange } from './urls'
@@ -63,6 +65,11 @@ export interface CodeViewer extends Viewer {
   setText(text: string): void
 }
 
+export interface CodeComparison {
+  original: string
+  split: boolean
+}
+
 const restoredText = Annotation.define<boolean>()
 
 class NumberMarker extends GutterMarker {
@@ -99,47 +106,59 @@ function mount(
   extensions: Extension[],
   firstHighlighted: number | null,
   wrap = true,
-  onChange?: (text: string) => void
+  onChange?: (text: string) => void,
+  comparison?: CodeComparison,
+  originalExtensions: Extension[] = []
 ): Viewer & { view: EditorView; retarget(line: number | null): void } {
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc,
-      extensions: [
-        ...(onChange
-          ? [
-              history(),
-              keymap.of([...defaultKeymap, ...historyKeymap]),
-              EditorView.contentAttributes.of({
-                'aria-label': t('streamB.workspaceFileEditor.753cf7'),
-              }),
-              EditorView.updateListener.of((update) => {
-                if (
-                  update.docChanged &&
-                  !update.transactions.some((translationItem) =>
-                    translationItem.annotation(restoredText)
-                  )
-                )
-                  onChange(update.state.doc.toString())
-              }),
-            ]
-          : readOnly),
-        ...(wrap ? [EditorView.lineWrapping] : []),
-        // Obsidian makes its interface unselectable; code is there to be read and quoted, so the
-        // text takes selection back wherever a viewer is placed. Line numbers stay out of a copy.
-        EditorView.baseTheme({
-          '.cm-content': { userSelect: 'text', WebkitUserSelect: 'text' },
-          '.cm-gutters': { userSelect: 'none', WebkitUserSelect: 'none' },
-        }),
-        ...extensions,
-        // Go to definition, for a viewer inside a tab that knows its repository.
-        codeNavAddon(),
-        nodeLspExtension(
-          parent.closest<HTMLElement>('.modal-container') ?? parent.ownerDocument.body
-        ),
-      ],
+  const configured: Extension[] = [
+    ...(comparison && !comparison.split ? workingComparison(comparison.original) : []),
+    ...(onChange
+      ? [
+          history(),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          EditorView.contentAttributes.of({
+            'aria-label': t('streamB.workspaceFileEditor.753cf7'),
+          }),
+          EditorView.updateListener.of((update) => {
+            if (
+              update.docChanged &&
+              !update.transactions.some((translationItem) =>
+                translationItem.annotation(restoredText)
+              )
+            )
+              onChange(update.state.doc.toString())
+          }),
+        ]
+      : readOnly),
+    ...(wrap ? [EditorView.lineWrapping] : []),
+    // Obsidian makes its interface unselectable; code is there to be read and quoted, so the
+    // text takes selection back wherever a viewer is placed. Line numbers stay out of a copy.
+    EditorView.baseTheme({
+      '.cm-content': { userSelect: 'text', WebkitUserSelect: 'text' },
+      '.cm-gutters': { userSelect: 'none', WebkitUserSelect: 'none' },
     }),
-  })
+    ...extensions,
+    // Go to definition, for a viewer inside a tab that knows its repository.
+    codeNavAddon(),
+    nodeLspExtension(parent.closest<HTMLElement>('.modal-container') ?? parent.ownerDocument.body),
+  ]
+  const merge = comparison?.split
+    ? new MergeView({
+        parent,
+        a: {
+          doc: comparison.original,
+          extensions: [
+            ...readOnly,
+            ...originalExtensions,
+            ...(wrap ? [EditorView.lineWrapping] : []),
+          ],
+        },
+        b: { doc, extensions: configured },
+      })
+    : undefined
+  const view =
+    merge?.b ??
+    new EditorView({ parent, state: EditorState.create({ doc, extensions: configured }) })
   const lineTop = (n: number | null) => {
     if (n === null || n < 1 || n > view.state.doc.lines) return null
     if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
@@ -192,7 +211,8 @@ function mount(
       return top < rect.bottom && bottom > rect.top
     },
     destroy() {
-      view.destroy()
+      if (merge) merge.destroy()
+      else view.destroy()
     },
   }
 }
@@ -319,7 +339,8 @@ export function mountCode(
   hooks: SelectionHooks = {},
   focus?: number,
   onChange?: (text: string) => void,
-  wrap = true
+  wrap = true,
+  comparison?: CodeComparison
 ): CodeViewer {
   const lines = (r?: LineRange) => {
     const out: number[] = []
@@ -343,7 +364,9 @@ export function mountCode(
     ],
     focus ?? (range ? range.start : null),
     wrap,
-    onChange
+    onChange,
+    comparison,
+    [...languageFor(path), codeSyntax(path)]
   )
   const markMatch = (range?: LineRange) => {
     const doc = viewer.view.state.doc

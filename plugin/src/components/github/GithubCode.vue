@@ -12,7 +12,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
-import { mountCode, type CodeViewer } from '@/github/codeViewer'
+import { mountCode, type CodeViewer, type CodeComparison } from '@/github/codeViewer'
 import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
 import type { BlameRange } from '@/repository/model'
 import type { BlameHost } from '@/github/blameGutter'
@@ -29,6 +29,7 @@ const props = withDefaults(
     path: string
     /** Opt-in workspace editor; ordinary GitHub code/diff views remain read only. */
     editable?: boolean
+    comparison?: CodeComparison
     keepVisibleInShortPane?: boolean
     blame?: BlameRange[] | null
     /** The lines the link named. */
@@ -44,6 +45,7 @@ const props = withDefaults(
     focus: null,
     blame: null,
     editable: false,
+    comparison: undefined,
     keepVisibleInShortPane: false,
   }
 )
@@ -107,7 +109,9 @@ const draw = async (focus: { line: number; context: number } | null) => {
     marked,
     { ...selectionHooks, initialBar: !!carried },
     focus?.line,
-    props.editable ? (text) => emit('change', text) : undefined
+    props.editable ? (text) => emit('change', text) : undefined,
+    true,
+    props.comparison
   )
   viewer = drawn
   applyBlame()
@@ -133,7 +137,7 @@ watch(
   }
 )
 watch(
-  () => props.editable,
+  [() => props.editable, () => props.comparison?.original, () => props.comparison?.split],
   (): void => void draw(null)
 )
 // A link to lines of the same file — the same lines again, a new range object, or others — marks
@@ -176,5 +180,58 @@ defineExpose({
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
+}
+
+.abele-github-code .cm-mergeView {
+  min-width: 0;
+}
+.abele-github-code .cm-mergeViewEditor {
+  min-width: 0;
+}
+.abele-github-code .cm-merge-a {
+  color: var(--text-muted);
+}
+.abele-github-code .cm-merge-b .cm-changedLine {
+  background-color: var(--background-modifier-success);
+}
+.abele-github-code .cm-merge-a .cm-changedLine {
+  background-color: var(--background-modifier-error);
+}
+.abele-github-code .cm-changedText {
+  background: var(--background-modifier-hover);
+}
+.abele-github-code .cm-merge-b .cm-changedLineGutter {
+  background: var(--text-success);
+}
+.abele-github-code .cm-merge-a .cm-changedLineGutter {
+  background: var(--text-error);
+}
+.abele-github-code .abele-code-changes {
+  width: var(--size-4-5);
+}
+.abele-github-code .abele-code-change {
+  display: block;
+  width: var(--size-4-5);
+  height: 100%;
+  min-height: 1em;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  border-inline-start: 3px solid var(--text-accent);
+  cursor: pointer;
+}
+.abele-code-change.abele-code-change_added {
+  border-color: var(--text-success);
+}
+.abele-code-change.abele-code-change_removed {
+  border-color: var(--text-error);
+}
+.abele-code-original {
+  white-space: pre-wrap;
+  padding: var(--size-4-2);
+  background: var(--background-secondary);
+  color: var(--text-muted);
 }
 </style>
