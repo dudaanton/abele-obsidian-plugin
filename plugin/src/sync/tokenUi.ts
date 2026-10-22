@@ -440,7 +440,7 @@ export class TokenUi {
       })
     for (const connection of this.itemSets.store.all()) {
       const children = connection.items
-        .filter((item) => item.recordId && item.recordId !== connection.id)
+        .filter((item) => !item.detached && item.recordId && item.recordId !== connection.id)
         .map((item) => (item.recordId ? this.activity.value[item.recordId] : undefined))
       const sharedAttention = children
         .map((activity) => activity?.backgroundAttention)
@@ -573,7 +573,8 @@ export class TokenUi {
     console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
   recordEvent(id: string, text: string): void {
-    const parent = this.itemSets.store.forRecord(id)?.connection.id
+    const binding = this.itemSets.store.forRecord(id)
+    const parent = binding && !binding.item.detached ? binding.connection.id : undefined
     if (parent && parent !== id) this.recordEvent(parent, text)
     const previous = this.activity.value[id]?.events
     const events = previous instanceof ActivityHistory ? previous : new ActivityHistory(previous)

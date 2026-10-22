@@ -31,6 +31,47 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('drops detached children from live shared aggregates and future activity', () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage)
+    const parent = registry.add(),
+      child = registry.add()
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    const first = folder('first', 'First'),
+      second = folder('second', 'Second')
+    ui.itemSets.store.create(parent, 'Sample share', [first, second], {
+      first: parent,
+      second: child,
+    })
+    ui.publish(child, {
+      safetyStop: 'Missing files; Resume required',
+      backgroundAttention: 'Recovery retained',
+      pending: 42,
+    })
+    ui.recordEvent(child, 'Earlier recovery')
+    ui.refresh()
+    expect(ui.activity.value[parent].sharedSafetyStop).toBe('Missing files; Resume required')
+    expect(ui.activity.value[parent].sharedAttention).toBe('Recovery retained')
+    const before = ui.activity.value[parent].eventsRevision
+    ui.itemSets.store.reconcile(parent, [first])
+    ui.refresh()
+    expect(ui.activity.value[parent].sharedSafetyStop).toBeUndefined()
+    expect(ui.activity.value[parent].sharedAttention).toBeUndefined()
+    expect(ui.activity.value[parent].pending).toBeUndefined()
+    expect(ui.rows.value[0].status).toBe(
+      registry.records().find((row) => row.id === parent)?.status
+    )
+    ui.recordEvent(child, 'Detached recovery')
+    expect(ui.activity.value[parent].eventsRevision).toBe(before)
+    expect(ui.activity.value[child].eventsRevision).toBeGreaterThan(0)
+  })
   it('explicitly resumes a safety-stopped shared item through its own connection', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)
