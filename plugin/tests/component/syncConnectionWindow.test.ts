@@ -21,6 +21,7 @@ it('prints comparison progress once with locale-grouped counters', () => {
   })
   try {
     expect(view.text().match(/Comparing files/g)).toHaveLength(1)
+    expect(view.get('.abele-sync-window__line').attributes('role')).toBe('status')
     expect(view.get('.abele-sync-window__line').text()).toBe(
       `Comparing files · ${(1).toLocaleString()} of ${(12274).toLocaleString()}`
     )

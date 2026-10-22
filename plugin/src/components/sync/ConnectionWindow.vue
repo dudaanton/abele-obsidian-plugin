@@ -5,7 +5,7 @@
       <div class="abele-sync-window__state">
         <div class="abele-sync-window__status">
           <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
-          <span class="abele-sync-window__line">{{ line }}</span>
+          <span class="abele-sync-window__line" role="status">{{ line }}</span>
         </div>
       </div>
       <Progress v-if="progress" :label="line" :value="progress.completed" :max="progress.total" />
