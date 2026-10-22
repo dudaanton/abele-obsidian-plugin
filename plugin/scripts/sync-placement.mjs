@@ -267,15 +267,17 @@ export function syncPlacementPlugin() {
             : this.fs.reopenStage(pending.stageId))`
         )
         for (const name of ['adopt', 'adoptExisting']) {
+          const args = name === 'adoptExisting' ? 'change, entry, newest = false' : 'change, entry'
+          const forward = name === 'adoptExisting' ? 'change, entry, newest' : 'change, entry'
           code = replaceOnce(
             code,
-            `async ${name}(change, entry) {`,
-            `async ${name}(change, entry) {
+            `async ${name}(${args}) {`,
+            `async ${name}(${args}) {
             // Adoption verifies existing bytes and records metadata; it never overwrites files.
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-              () => this.${name}Unlocked(change, entry), false);
+              () => this.${name}Unlocked(${forward}), false);
           }
-          async ${name}Unlocked(change, entry) {`
+          async ${name}Unlocked(${args}) {`
           )
         }
         code = replaceOnce(

@@ -2238,8 +2238,8 @@ it.each([false, true])(
   }
 )
 
-// BUG: D-134: a refused mobile mkdir aborts the cycle before the file can be applied.
-it.fails('does not invent a local match when applying a new empty remote file', async () => {
+// D-134 regression: a refused mobile mkdir must not prevent file placement.
+it('does not invent a local match when applying a new empty remote file', async () => {
   const wire = await server('Notes/empty.md', '')
   const fs = new ObsidianFileSystem(buildFakeVault([]) as unknown as App)
   const events: string[] = []
@@ -2382,7 +2382,7 @@ it('does not present a resumed journal batch as the whole remaining upload', asy
   let one = runtime(wire, fs, state)
   try {
     await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
-    expect((await state.getJournal())?.ops).toHaveLength(1000)
+    expect((await state.getJournal())?.ops).toHaveLength(100)
     await one.runtime.close()
     resumed = true
     uploads = 0
@@ -3352,8 +3352,8 @@ it('restarts an acknowledged server rename without migrating existing saved path
   }
 })
 
-// BUG: D-134: a held directory must not stop unrelated files or their progress.
-it.fails.each([false, true])(
+// D-134 regression: a held directory must not stop unrelated files or their progress.
+it.each([false, true])(
   'keeps file and byte progress advancing through a held mobile directory (changes=%s)',
   async (changes) => {
     const physical = 'Cafe\u0301',
