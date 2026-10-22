@@ -176,12 +176,17 @@ async function inspectRuns(label: string) {
         overflow: boolean
       }
       expect(report.open).toBe(false)
-      expect(report.command).toBe(escaped ? 'printf "sample\\nline\\r\\u202e\\u200b"' : 'npm test')
+      expect(report.command).toBe(
+        escaped ? "printf $'sample\\U0000000aline\\U0000000d\\U0000202e\\U0000200b'" : 'npm test'
+      )
       expect(report.duplicate).toBe(false)
       expect(report.nativeDetails).toBe(false)
       expect(report.buttonsVisible).toBe(true)
       expect(report.text).toContain('sample-project')
-      expect(report.text).toContain('sample-session')
+      const evidence = await evalLong(
+        `(()=>{const root=document.querySelector('[data-manager-approval]');root.querySelector('[data-manager-evidence] .abele-disclosure__control').click();return root.querySelector('[data-manager-evidence]').textContent})()`
+      )
+      expect(evidence).toContain('sample-session')
       expect(report.text).not.toMatch(/[\n\r\u202e\u200b]/u)
       expect(report.overflow).toBe(false)
       columnShot(`${shots}/${label}-approval-${escaped ? 'escaped' : 'normal'}.png`)

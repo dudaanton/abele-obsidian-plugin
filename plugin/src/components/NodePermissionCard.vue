@@ -1,12 +1,12 @@
 <template>
   <AiToolApproval
-    v-if="obsidianCall && prompt.state === 'pending'"
-    :message="obsidianCall"
+    v-if="(obsidianCall || managerCall) && prompt.state === 'pending'"
+    :message="(obsidianCall || managerCall)!"
     :node-prompt="prompt"
     :disabled="disabled"
     :answer-state="answerState"
     :diffs="diffs"
-    :location="obsidianCall.toolPath"
+    :location="obsidianCall?.toolPath || location"
     @answer="(choice, answer) => emit('answer', choice, answer)"
     @stop="emit('stop')"
   />
@@ -199,6 +199,18 @@ const emit = defineEmits<{
 }>()
 const value = ref('')
 const obsidianCall = computed(() => obsidianPromptCall(props.prompt))
+const managerCall = computed(() =>
+  props.prompt.input?.context_id ||
+  ['command.v1.run', 'git.v1.integrate'].includes(String(props.prompt.input?.method))
+    ? ({
+        id: props.prompt.prompt_id,
+        role: 'tool-call' as const,
+        content: '',
+        toolName: props.prompt.tool_name,
+        toolParams: props.prompt.input,
+      } as import('@/ai/types').ChatMessage)
+    : undefined
+)
 const detailOpen = ref(false)
 const title = computed(() => {
   const name = props.prompt.tool_name

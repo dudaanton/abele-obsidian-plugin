@@ -164,7 +164,13 @@
         v-for="prompt in standalonePrompts"
         :key="prompt.prompt_id"
         :prompt="prompt"
-        :location="[nodeLabel, folder, worktree?.branch].filter(Boolean).join(' · ')"
+        :location="
+          worktree
+            ? [folder, worktree.kind === 'project' ? '' : worktree.branch]
+                .filter(Boolean)
+                .join(' · ')
+            : folder
+        "
         :allow-label="!presenter.provider?.value || presenter.provider.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"

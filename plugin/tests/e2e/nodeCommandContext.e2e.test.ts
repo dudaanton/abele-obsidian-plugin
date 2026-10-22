@@ -116,7 +116,7 @@ it('renders the approved request form in desktop and phone geometry', async () =
   }
 }, 180000)
 
-it('runs an ordinary scoped chat command only after the owner approval, and keeps bypass and Off distinct', async () => {
+async function runLive(label: string) {
   const node = await startPairedNode()
   const setup = `const api=window.__abeleTest,chats=api.ChatService.getInstance(),connection=api.NodeService.getInstance().connection(${JSON.stringify(node.registration)}),client=connection.client;`
   try {
@@ -136,8 +136,8 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       const result=JSON.parse((await tool.execute('sample-command',args,undefined,{session})).content[0].text);
       window.__sampleCommandRun=result;
       for(let i=0;i<100&&!document.querySelector('.abele-tool-approval');i++)await new Promise(r=>setTimeout(r,50));
-      const argv=document.querySelector('.abele-tool-approval__argv');
-      return JSON.stringify({state:result.state,cards:document.querySelectorAll('.abele-tool-approval').length,context:!!result.context_id,sessions:(await client.listSessions()).length,arguments:argv?.querySelectorAll('[data-command-argument]').length,argvDisplay:argv?getComputedStyle(argv).display:''});
+      const argv=document.querySelector('.abele-tool-approval [data-manager-command]');
+      return JSON.stringify({state:result.state,cards:document.querySelectorAll('.abele-tool-approval').length,context:!!result.context_id,sessions:(await client.listSessions()).length,command:argv?.textContent.trim()});
     })()`,
         90000
       )
@@ -146,18 +146,16 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       cards: number
       context: boolean
       sessions: number
-      arguments: number
-      argvDisplay: string
+      command: string
     }
     expect(prepared).toEqual({
       state: 'pending_approval',
       cards: 1,
       context: true,
       sessions: 0,
-      arguments: 2,
-      argvDisplay: 'flex',
+      command: 'node --version',
     })
-    columnShot(`${shots}/${onPhone() ? 'phone' : 'desktop'}-live-ask.png`)
+    columnShot(`${shots}/${label}-live-ask.png`)
     await evalLong(
       `(()=>{const button=[...document.querySelectorAll('.abele-tool-approval button')].find(b=>b.textContent.trim()==='Allow');if(!button)throw Error('Approval missing');button.click()})()`
     )
@@ -172,6 +170,10 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
     ) as { exit_code: number; stdout: string }
     expect(completed.exit_code).toBe(0)
     expect(completed.stdout).toMatch(/^v\d+\./)
+    await evalLong(
+      `(async()=>{${setup}await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150))})()`
+    )
+    columnShot(`${shots}/${label}-live-finished.png`)
     const other = JSON.parse(
       await evalLong(
         `(async()=>{${setup}
@@ -181,11 +183,12 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       let final;for(let i=0;i<200;i++){final=await connection.manager.status(await session.ensureDelegationParentId(),bypass.session_id,bypass.run_id);if(final.state==='exited')break;await new Promise(r=>setTimeout(r,50))}
       session.toolModes.value={...session.toolModes.value,node_command_run:'off'};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
-      return JSON.stringify({mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id});
+      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id});
     })()`,
         60000
       )
     ) as {
+      cards: number
       mode: string
       approval: unknown
       refused: string
@@ -193,6 +196,8 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       expectedCwd: string
       reused: boolean
     }
+    expect(other.cards).toBe(0)
+    columnShot(`${shots}/${label}-bypass-manager.png`)
     expect(other.mode).toBe('bypass')
     expect(other.approval).toBeNull()
     expect(other.cwd).toBe(other.expectedCwd)
@@ -205,24 +210,33 @@ it('runs an ordinary scoped chat command only after the owner approval, and keep
       session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
       const tool=session.getTools().find(t=>t.name==='node_command_run');
       let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder'},undefined,{session})}catch(error){reason=error.message}
-      for(let i=0;i<100&&!document.querySelector('.abele-tool-approval');i++)await new Promise(r=>setTimeout(r,50));
-      const cards=[...document.querySelectorAll('.abele-tool-approval')];
-      return JSON.stringify({reason,cards:cards.length,text:cards[0]?.closest('.abele-node-manager-run').textContent});
+      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
+      const cards=[...document.querySelectorAll('.abele-tool-approval')],runs=[...document.querySelectorAll('.abele-node-manager-run')];
+      return JSON.stringify({reason,cards:cards.length,text:runs.at(-1)?.textContent});
     })()`,
         60000
       )
     ) as { reason: string; cards: number; text: string }
     expect(refused.reason).toContain('cwd')
-    expect(refused.cards).toBe(1)
-    expect(refused.text).toContain('not submitted for execution')
-    columnShot(`${shots}/${onPhone() ? 'phone' : 'desktop'}-live-error.png`)
-    await evalLong(
-      `(async()=>{const card=document.querySelector('.abele-tool-approval');[...card.querySelectorAll('button')].find(b=>b.textContent.trim()==='Stop').click();for(let i=0;i<100&&card.isConnected;i++)await new Promise(r=>setTimeout(r,50));if(card.isConnected)throw Error('Local refusal did not stop')})()`
-    )
+    expect(refused.cards).toBe(0)
+    expect(refused.text).toContain("The folder sample-missing-folder doesn't exist on the node.")
+    expect(refused.text).not.toContain('Waiting for approval')
+    columnShot(`${shots}/${label}-live-error.png`)
   } finally {
     await evalLong(
       `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun})()`
     )
     await node.close()
   }
-}, 240000)
+}
+it('runs scoped owner actions with one Ask approval and no bypass cards', async () => {
+  await runLive(onPhone() ? 'phone' : 'desktop')
+  if (!onPhone()) {
+    try {
+      await enterPhone()
+      await runLive('phone-emulated')
+    } finally {
+      await reloadApp('app.emulateMobile(false)')
+    }
+  }
+}, 360000)

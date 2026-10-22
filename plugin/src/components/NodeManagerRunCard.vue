@@ -13,39 +13,38 @@
           >{{ justification }}</span
         >
       </div>
-      <div v-if="card.argv" data-manager-command>
-        <code v-for="(arg, index) in card.argv" :key="index" data-command-argument
-          >{{ JSON.stringify(arg) }}
-        </code>
-      </div>
-      <code v-else data-manager-command>{{ card.command || card.title }}</code>
+      <code data-manager-command>{{
+        card.argv ? commandLine(card.argv) : card.command || card.title
+      }}</code>
       <div v-if="card.folder" class="abele-node-manager-run__folder">
-        <Icon icon="folder" size="xs" :interactive="false" />{{ card.folder }}
+        <Icon icon="folder" size="xs" :interactive="false" />
+        <span class="abele-command-folder" :title="card.folder">{{
+          card.folderLabel || commandFolder(card.folder)
+        }}</span>
       </div>
     </template>
-    <MetaLine
+    <div
       v-if="card.run.state !== 'pending_approval' || card.run.reason"
-      :facts="[
-        {
-          key: '0',
-          value: [
-            stateLabel,
-            card.run.reason
-              ? card.run.session_id === 'unsubmitted-command'
-                ? card.run.reason
-                : nodeErrorDetails(card.run.reason)
-              : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        },
-      ]"
-    />
+      class="abele-node-manager-run__status"
+    >
+      <StatusDot :tone="failed ? 'red' : 'faint'" :label="resultLabel" />
+      <MetaLine :facts="[{ key: '0', value: resultLabel }]" />
+    </div>
+    <Disclosure v-if="failed" v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
+      <pre>{{
+        JSON.stringify(
+          { command: card.command, argv: card.argv, folder: card.folder, reason: card.run.reason },
+          null,
+          2
+        )
+      }}</pre>
+    </Disclosure>
     <AiToolApproval
       v-for="prompt in card.prompts"
       :key="prompt.prompt_id"
       :message="message(prompt)"
       :node-prompt="prompt"
+      :folder-label="card.folderLabel"
       :disabled="disabled"
       :answer-state="card.answers[prompt.prompt_id]"
       @answer="(choice, value) => emit('answer', prompt, choice, value)"
@@ -58,16 +57,20 @@
       :disabled="disabled"
       @click="emit('cancel')"
     />
+    <p v-if="card.run.state === 'outcome_unknown'">{{ t('node.error.unknownOutcome') }}</p>
     <ul v-if="card.run.conflicting_files?.length">
       <li v-for="path in card.run.conflicting_files" :key="path">
         <code>{{ path }}</code>
       </li>
     </ul>
-    <Disclosure v-model="outputOpen" :label="t('node.manager.output')" data-manager-output>
-      <p v-if="card.run.exit_code !== undefined && card.run.exit_code !== null">
-        {{ t('node.manager.exitCode', { code: String(card.run.exit_code) }) }}
-      </p>
-      <p v-if="card.run.reason">{{ nodeErrorDetails(card.run.reason) }}</p>
+    <Disclosure
+      v-if="
+        card.run.stdout || card.run.stderr || card.run.stdout_truncated || card.run.stderr_truncated
+      "
+      v-model="outputOpen"
+      :label="t('node.manager.output')"
+      data-manager-output
+    >
       <p v-if="card.run.stdout_truncated || card.run.stderr_truncated">
         {{ t('node.manager.truncated') }}
       </p>
@@ -82,7 +85,7 @@ import type { NodeManagerController } from '@/node/NodeManagerController'
 import type { ChatMessage } from '@/ai/types'
 import { computed, ref, watch } from 'vue'
 import { streamBLabel } from '@/i18n/streamBLabels'
-import { nodeErrorDetails } from '@/node/errorWords'
+import { nodeErrorWords } from '@/node/errorWords'
 import { t } from '@/i18n'
 import Disclosure from './obsidian/Disclosure.vue'
 import Button from './obsidian/Button.vue'
@@ -90,6 +93,8 @@ import AiToolApproval from './AiToolApproval.vue'
 import RequestCard from './obsidian/RequestCard.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import Icon from './obsidian/Icon.vue'
+import StatusDot from './obsidian/StatusDot.vue'
+import { commandLine, commandFolder } from '@/node/commandPresentation'
 import { commandJustification } from '@/node/commandJustification'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
@@ -98,6 +103,25 @@ const props = defineProps<{
 const justification = computed(() => {
   const parsed = commandJustification.safeParse(props.card.justification?.slice(0, 200))
   return parsed.success ? parsed.data : ''
+})
+const originalOpen = ref(false)
+const failed = computed(
+  () =>
+    ['failed', 'timed_out'].includes(props.card.run.state) || (props.card.run.exit_code ?? 0) !== 0
+)
+const resultLabel = computed(() => {
+  const run = props.card.run
+  if (run.reason?.includes('node_bypass_disabled')) return t('node.manager.bypassDisabled')
+  if (run.reason && failed.value) {
+    if (/unsafe_path|not_found/.test(run.reason) && /cwd/.test(run.reason))
+      return t('node.manager.folderMissing', { folder: commandFolder(props.card.folder ?? '') })
+    if (run.session_id === 'unsubmitted-command' && !/^[a-z_]+:/.test(run.reason)) return run.reason
+    return run.reason.match(/^[a-z_]+:\s*(.+)$/)?.[1] ?? nodeErrorWords(run.reason).split(' (')[0]
+  }
+  const label = failed.value ? t('kit.failed') : stateLabel.value
+  return run.exit_code !== undefined && run.exit_code !== null
+    ? t('node.manager.resultExit', { state: label, code: String(run.exit_code) })
+    : label
 })
 const outputOpen = ref(props.card.run.state === 'running')
 watch(
@@ -168,5 +192,13 @@ pre {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-weight: var(--font-normal);
+}
+</style>
+
+<style scoped>
+.abele-node-manager-run__status {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
 }
 </style>

@@ -27528,5 +27528,45 @@
       "es",
       "de"
     ]
+  },
+  "node.manager.folderMissing": {
+    "englishHash": "fea4cc7675eec655116bd4fdd9a9725fc1f2747aaf2a6a008e9228b9cb27941f",
+    "context": "Node command approval and result metadata",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.bypassDisabled": {
+    "englishHash": "11fa45c2156db2462792bea22d4403a394c519a1ccaca60f0a5f092d50a16c46",
+    "context": "Node command approval and result metadata",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.integrateBypassUpdate": {
+    "englishHash": "bfe7c7310abe2c0c5b9ac8038ed5de55f0472f689edf4ee8b1fd5ad930d92335",
+    "context": "Node command approval and result metadata",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.manager.resultExit": {
+    "englishHash": "26a9bfd1ee561f1f5558db78160086b9fdadd83ff78bc582cc942d395da0e155",
+    "context": "Node command approval and result metadata",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

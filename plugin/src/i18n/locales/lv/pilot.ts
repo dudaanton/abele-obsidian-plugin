@@ -3692,4 +3692,10 @@ export const lv = {
   'node.manager.denied': 'Noraidīts',
   'node.error.backpressure':
     'Savienojums atpalika no mezgla izvades. Izveidojiet savienojumu vēlreiz, lai saņemtu atlikušos notikumus.',
+  'node.manager.folderMissing': 'Mape {folder} mezglā nepastāv.',
+  'node.manager.bypassDisabled':
+    'Mezgls pieprasa apstiprinājumu, jo tā režīms bez jautāšanas ir izslēgts.',
+  'node.manager.integrateBypassUpdate':
+    'Šis mezgls nevar integrēt bez jautāšanas. Nepieciešams mezgla atjauninājums; pieprasījums nav nosūtīts.',
+  'node.manager.resultExit': '{state} · kods {code}',
 } satisfies TranslationCatalog

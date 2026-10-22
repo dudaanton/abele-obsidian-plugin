@@ -50,7 +50,7 @@ export function nodeManagerFixture(
     prompt.input.params = { command: presentation.managerCommand }
   }
   if (presentation?.managerOldNode) {
-    state = 'pending_approval'
+    state = 'failed'
     prompt.session_id = 'unsubmitted-command'
     prompt.input.context_id = 'unsubmitted-command'
   }
@@ -60,6 +60,7 @@ export function nodeManagerFixture(
     command: presentation?.managerCommand,
     argv: presentation?.managerCommand !== undefined ? undefined : ['npm', 'test'],
     folder: '/workspace/sample-project',
+    folderLabel: 'sample-project',
     title: ['failed', 'applied', 'outcome_unknown'].includes(state)
       ? 'work/sample-parser → main'
       : 'npm test -- tests/sample-parser.test.ts',
@@ -75,11 +76,12 @@ export function nodeManagerFixture(
           ? 'git.v1.integrate'
           : 'command.v1.run',
       state,
-      stdout: ['pending_approval', 'denied'].includes(state)
-        ? ''
-        : 'Sample check output\n'.repeat(20),
+      stdout:
+        presentation?.managerOldNode || ['pending_approval', 'denied'].includes(state)
+          ? ''
+          : 'Sample check output\n'.repeat(20),
       stderr:
-        state === 'failed'
+        state === 'failed' && !presentation?.managerOldNode
           ? presentation?.managerCommand === undefined
             ? 'Sample rebase conflict'
             : 'Sample executable not found'

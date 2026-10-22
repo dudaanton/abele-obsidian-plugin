@@ -3734,4 +3734,10 @@ export const de = {
   'node.manager.denied': 'Abgelehnt',
   'node.error.backpressure':
     'Die Verbindung konnte der Knotenausgabe nicht folgen. Verbinden Sie sich erneut, um aufzuholen.',
+  'node.manager.folderMissing': 'Der Ordner {folder} existiert auf dem Knoten nicht.',
+  'node.manager.bypassDisabled':
+    'Der Knoten benötigt eine Bestätigung, da sein Modus ohne Rückfrage deaktiviert ist.',
+  'node.manager.integrateBypassUpdate':
+    'Dieser Knoten kann nicht ohne Rückfrage integrieren. Ein Knoten-Update ist erforderlich; nichts wurde übermittelt.',
+  'node.manager.resultExit': '{state} · Exit {code}',
 } satisfies TranslationCatalog

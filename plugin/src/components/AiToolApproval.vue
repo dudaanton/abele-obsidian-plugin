@@ -88,18 +88,20 @@
         :path="diff.path"
       />
       <div v-if="managerApproval" data-manager-approval>
-        <div v-if="managerApproval.argv" data-manager-command class="abele-tool-approval__argv">
-          <code v-for="(arg, index) in managerApproval.argv" :key="index" data-command-argument>{{
-            JSON.stringify(arg) + (index < managerApproval.argv.length - 1 ? ' ' : '')
-          }}</code>
-        </div>
-        <code v-else data-manager-command>{{ managerApproval.command }}</code>
+        <code data-manager-command>{{
+          managerApproval.argv ? commandLine(managerApproval.argv) : managerApproval.command
+        }}</code>
         <p v-if="managerApproval.reason">{{ managerApproval.reason }}</p>
-        <div v-if="justification" class="abele-tool-approval__folder" data-command-folder>
+        <div v-if="managerApproval.folder" class="abele-tool-approval__folder" data-command-folder>
           <Icon icon="folder" size="xs" :interactive="false" />
-          <span>{{ managerApproval.folder }}</span>
+          <span class="abele-command-folder" :title="managerApproval.folder">{{
+            folderLabel || commandFolder(managerApproval.folder)
+          }}</span>
         </div>
-        <MetaLine v-else :facts="managerApproval.facts" />
+        <MetaLine
+          v-if="nodePrompt?.input?.method === 'git.v1.integrate'"
+          :facts="managerApproval.facts"
+        />
         <Disclosure
           v-model="originalOpen"
           :label="t('streamB.originalAction.67ccdf')"
@@ -444,6 +446,7 @@
 </template>
 
 <script setup lang="ts">
+import { commandLine, commandFolder } from '@/node/commandPresentation'
 import { presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { openMessagingChats } from '@/ai/chatMessaging'
@@ -492,6 +495,7 @@ const props = defineProps<{
   nodePrompt?: import('@abele/node-client').Prompt
   disabled?: boolean
   location?: string
+  folderLabel?: string
   answerState?: import('@/node/promptAnswers').PromptAnswerState
   diffs?: { path: string; old: string; new: string }[]
 }>()
@@ -562,11 +566,10 @@ const managerApproval = computed(() => {
     rows.push({
       name: t('node.manager.command'),
       value: Array.isArray(params.argv)
-        ? params.argv
-            .map((arg) =>
-              typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : visibleJson(arg)
-            )
-            .join(' ')
+        ? // Every argument stays on the card; hidden and line-separating characters are spelled out.
+          commandLine(
+            params.argv.map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+          ).replace(/[\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16)}`)
         : visibleText(promptString(params.command)),
     })
   } else {
@@ -1365,5 +1368,17 @@ code[data-manager-command] {
 }
 .abele-tool-approval__refresh {
   align-self: flex-start;
+}
+</style>
+
+<style>
+.abele-command-folder {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
 }
 </style>

@@ -16,6 +16,8 @@ import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { t } from '@/i18n'
 import { nodeErrorDetails } from './errorWords'
 import { uncertainReceiptError } from './clientRecords'
+import { commandFolder } from './commandPresentation'
+import { delegationBranchLabel } from './delegation'
 const RunSchema = CommandContextRunSchema.or(ManagerRunSchema)
 type Run = ManagerRun | CommandContextRun
 function runUpdate(raw: unknown, current: Run) {
@@ -155,6 +157,39 @@ export class NodeManagerController {
       await this.enableContexts()
       guard()
       const { project_id, worktree_id, session_id: _session, ...command } = raw
+      let presentation = raw
+      if (typeof this.client.listProjects === 'function') {
+        try {
+          const projects = await this.client.listProjects()
+          for (const project of projects) {
+            if (project_id && project.project_id !== project_id) continue
+            if (worktree_id) {
+              const page = await this.client.repository.worktrees({
+                project_id: project.project_id,
+                limit: 256,
+              })
+              const tree = page.entries.find((tree) => tree.worktree_id === worktree_id)
+              if (!tree) continue
+              presentation = {
+                ...raw,
+                target_label:
+                  tree.kind === 'root'
+                    ? commandFolder(project.root_path)
+                    : delegationBranchLabel(tree.branch) || commandFolder(tree.path_label),
+                target_path: tree.path_label,
+              }
+            } else
+              presentation = {
+                ...raw,
+                target_label: commandFolder(project.root_path),
+                target_path: project.root_path,
+              }
+            break
+          }
+        } catch (error) {
+          console.debug('[Abele node] command folder label unavailable', error)
+        }
+      }
       const target = worktree_id ? { worktree_id } : { project_id }
       const hash = await crypto.subtle.digest(
         'SHA-256',
@@ -186,7 +221,7 @@ export class NodeManagerController {
           operation,
           justification,
           guard,
-          raw
+          presentation
         )
       )
       await this.store.transaction((s) => {
@@ -205,7 +240,7 @@ export class NodeManagerController {
     parent: string,
     raw: Record<string, unknown>,
     operation: string,
-    mode: 'ask' | 'bypass',
+    _mode: 'ask' | 'bypass',
     justification: string,
     error: unknown
   ): Promise<never> {
@@ -231,39 +266,11 @@ export class NodeManagerController {
         session_id: 'unsubmitted-command',
         method: 'command.v1.run',
         state: uncertain ? 'outcome_unknown' : 'failed',
-        reason: uncertain
-          ? `outcome_unknown: ${reason}`
-          : t('node.manager.notSubmitted', { reason }),
+        reason: uncertain ? `outcome_unknown: ${reason}` : reason,
         stdout: '',
         stderr: '',
         stdout_truncated: false,
         stderr_truncated: false,
-      }
-      if (mode === 'ask' && !uncertain && entry.run.state === 'failed') {
-        const prompt = PromptSchema.parse({
-          kind: 'permission',
-          prompt_id: crypto.randomUUID(),
-          session_id: 'unsubmitted-command',
-          run_id: operation,
-          revision: 1,
-          action_digest: '0'.repeat(64),
-          expires_at: Number.MAX_SAFE_INTEGER,
-          state: 'pending',
-          choice: null,
-          installation_id: null,
-          delivered: false,
-          tool_name: 'node_command_run',
-          title: t('node.manager.command'),
-          input: {
-            ...raw,
-            context_id: 'unsubmitted-command',
-            cwd: raw.cwd ?? raw.worktree_id ?? raw.workspace_id ?? raw.project_id,
-            refusal: reason,
-          },
-        })
-        entry.fallback ??= prompt
-        entry.run.state = 'pending_approval'
-        entry.run.prompt_id = entry.fallback.prompt_id
       }
     })
     throw new Error(
@@ -647,6 +654,8 @@ export class NodeManagerController {
         const receipt = RunSchema.safeParse(s.results[operation]?.result)
         if (!receipt.success && !entry.run) return []
         let run = receipt.success ? retainedRun(entry, receipt.data) : entry.run!
+        if (run.session_id === 'unsubmitted-command' && run.state === 'pending_approval')
+          run = { ...run, state: 'failed' }
         const display = entry.request ?? entry.params
         const events = s.events[run.session_id] ?? []
         for (const event of events) {
@@ -706,6 +715,14 @@ export class NodeManagerController {
                     : typeof display.project_id === 'string'
                       ? display.project_id
                       : undefined),
+            folderLabel:
+              typeof display.target_label === 'string'
+                ? commandFolder(
+                    typeof display.cwd === 'string' ? display.cwd : '',
+                    typeof display.target_path === 'string' ? display.target_path : undefined,
+                    display.target_label
+                  )
+                : undefined,
             justification: entry.justification,
             title:
               typeof display.command === 'string'

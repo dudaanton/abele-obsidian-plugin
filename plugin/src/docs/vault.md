@@ -3192,7 +3192,9 @@ These receipts are device-local recovery evidence, not vault files or transferab
 Command contexts are node-side, provider-independent execution records bound to a parent
 chat and target. The installation-local client cache retains exact context creation,
 preparation and owner-decision operation IDs, request parameters, short display-only
-justifications and their receipts. These are recovery records, not transferable execution
+justifications, readable target labels in request display metadata, and their receipts. A
+known preparation refusal is terminal without a synthetic approval; legacy local pending
+refusals project as failed cards. These are recovery records, not transferable execution
 grants. Reconnecting reuses exact operations; interrupted commands are never blindly replayed.
 
 The installation-local IndexedDB node cache stores client metadata separately from each

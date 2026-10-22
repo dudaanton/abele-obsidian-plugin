@@ -101,7 +101,7 @@ it('replaces the unknown placeholder when SDK reconnect replay recovers the prep
   }
 })
 
-it('stops a local pre-approval refusal even after the node disconnects', async () => {
+it('keeps a local pre-approval refusal terminal even after the node disconnects', async () => {
   const f = fixture(false)
   try {
     await expect(
@@ -120,7 +120,7 @@ it('stops a local pre-approval refusal even after the node disconnects', async (
       { session_id: 'unsubmitted-command', run_id: 'sample-operation' },
       'sample-stop'
     )
-    expect(run.state).toBe('cancelled')
+    expect(run.state).toBe('failed')
     expect((await f.controller.cards('sample-parent'))[0].prompts).toEqual([])
   } finally {
     f.store.close()
@@ -197,6 +197,7 @@ function fixture(supported = true) {
     approval,
   }
   const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
+    if (method === 'project.list') return []
     if (method === 'node.describe')
       return {
         capabilities: {
@@ -231,7 +232,11 @@ function fixture(supported = true) {
 it('creates/reuses a durable context and prepares exactly one Ask card without executing', async () => {
   const f = fixture()
   try {
-    const params = { worktree_id: 'sample-tree', command: 'node --version' }
+    const params = {
+      worktree_id: 'sample-tree',
+      command: 'node --version',
+      session_id: 'sample-provider-session',
+    }
     await f.controller.command(
       'sample-parent',
       params,
@@ -249,6 +254,9 @@ it('creates/reuses a durable context and prepares exactly one Ask card without e
     const cards = await f.controller.cards('sample-parent')
     expect(cards).toHaveLength(1)
     expect(cards[0].prompts).toHaveLength(1)
+    expect(
+      f.request.mock.calls.filter(([method]) => method === 'command.context.v1.prepare')[0][1]
+    ).not.toHaveProperty('session_id')
     expect(f.request.mock.calls.filter(([m]) => m === 'command.context.v1.create')).toHaveLength(1)
     expect(f.request.mock.calls.filter(([m]) => m === 'command.context.v1.prepare')).toHaveLength(1)
     expect(
@@ -325,11 +333,10 @@ it('retains the node resource reason when preparation fails, without executing',
     ).rejects.toThrow(/worktree no longer exists/)
     expect(f.request.mock.calls.some(([m]) => m === 'command.context.v1.execute')).toBe(false)
     const cards = await f.controller.cards('sample-parent')
-    expect(cards[0].run.state).toBe('pending_approval')
-    expect(cards[0].prompts).toHaveLength(1)
-    expect(cards[0].run.reason).toContain('not submitted')
+    expect(cards[0].run.state).toBe('failed')
+    expect(cards[0].prompts).toHaveLength(0)
+    expect(cards[0].run.reason).toContain('worktree no longer exists')
     expect(cards[0].justification).toBe('Check the folder.')
-    await f.controller.answer('sample-parent', cards[0].prompts[0], 'allow')
     expect((await f.controller.cards('sample-parent'))[0].run.state).toBe('failed')
     expect(f.request.mock.calls.some(([m]) => m === 'command.context.v1.execute')).toBe(false)
   } finally {
