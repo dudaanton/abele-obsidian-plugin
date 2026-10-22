@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { NodeLspDocument } from '@/node/NodeLspDocument'
+import { NodeLspDocument, acquireLspDocument } from '@/node/NodeLspDocument'
 import { provideLsp, lspNavigation } from '@/node/lspContext'
 const problem = (source: string) => ({
   source,
@@ -43,6 +43,97 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('retains diagnostics until the next analysis answers', async () => {
+    const f = fixture()
+    await f.doc.open('before')
+    f.doc.diagnostics = [problem('eslint')]
+    f.lsp.open.mockImplementation(async () => {
+      expect(f.doc.diagnostics).toEqual([problem('eslint')])
+      return { servers: ['typescript'] }
+    })
+    await f.doc.open('after')
+    expect(f.doc.error).toBe('')
+    await f.doc.close()
+  })
+  it('keeps fast analysis invisible and diagnostics present during an update', async () => {
+    const f = fixture()
+    const loading: boolean[] = []
+    f.doc.listeners.add(() => loading.push(f.doc.loading))
+    await f.doc.open('sample')
+    expect(loading).not.toContain(true)
+    f.doc.diagnostics = [problem('typescript')]
+    let finish!: () => void
+    f.lsp.open.mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { servers: ['typescript'] }
+    })
+    const update = f.doc.open('changed')
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    try {
+      expect(f.doc.diagnostics).toEqual([problem('typescript')])
+      await vi.waitFor(() => expect(f.doc.loading).toBe(true))
+    } finally {
+      finish()
+      await update
+      await f.doc.close()
+    }
+  })
+  it('shares a buffer and closes only when its last view releases it', async () => {
+    const f = fixture()
+    const a = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'shared.ts')
+    const b = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'shared.ts')
+    expect(a.document).toBe(b.document)
+    await Promise.all([a.document.open('same'), b.document.open('same')])
+    expect(f.lsp.open).toHaveBeenCalledOnce()
+    await a.release()
+    await a.release()
+    expect(f.lsp.close).not.toHaveBeenCalled()
+    await b.release()
+    expect(f.lsp.close).toHaveBeenCalledOnce()
+  })
+  it('waits for the previous final close before reacquiring the same buffer', async () => {
+    const f = fixture()
+    const a = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'shared.ts')
+    await a.document.open('first')
+    let finish!: () => void
+    f.lsp.close.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const closing = a.release()
+    const b = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'shared.ts')
+    const opening = b.document.open('second')
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    expect(f.lsp.open).toHaveBeenCalledOnce()
+    finish()
+    await Promise.all([closing, opening])
+    expect(f.lsp.open).toHaveBeenCalledTimes(2)
+    f.lsp.close.mockResolvedValue(undefined)
+    await b.release()
+  })
+  it('isolates clients, root kinds and paths and keeps diagnostics when another file opens', async () => {
+    const f = fixture()
+    const a = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'a.ts')
+    const b = acquireLspDocument(f.client as any, { workspace_id: 'sample-workspace' }, 'b.ts')
+    const c = acquireLspDocument(f.client as any, { worktree_id: 'sample-workspace' }, 'a.ts')
+    const d = acquireLspDocument(
+      fixture().client as any,
+      { workspace_id: 'sample-workspace' },
+      'a.ts'
+    )
+    expect(new Set([a.document, b.document, c.document, d.document]).size).toBe(4)
+    await a.document.open('a')
+    a.document.diagnostics = [problem('typescript')]
+    await b.document.open('b')
+    expect(a.document.diagnostics).toEqual([problem('typescript')])
+    await b.release()
+    expect(a.document.diagnostics).toHaveLength(1)
+    await Promise.all([a.release(), c.release(), d.release()])
+  })
   it('shares a pending hover when diagnostic pushes restart the tooltip', async () => {
     const f = fixture()
     await f.doc.open('const sample = 1')

@@ -10,7 +10,7 @@ export type LspPosition = { line: number; character: number }
 export type LspLocation = { path: string; range: { start: LspPosition; end: LspPosition } }
 type Client = Pick<NodeClient, 'lsp' | 'describe' | 'onEvent' | 'subscribe'>
 
-/** One visible document. Transport-independent; no persistent settings or automatic installs. */
+/** One shared document buffer. Transport-independent; no automatic installs. */
 export class NodeLspDocument {
   diagnostics: LspDiagnostic[] = []
   status: Awaited<ReturnType<Client['lsp']['status']>> = []
@@ -19,6 +19,7 @@ export class NodeLspDocument {
   error = ''
   private opens = 0
   private text = ''
+  private openedText?: string
   private stopped = false
   private unsubscribe?: () => unknown
   private pushes = 0
@@ -30,8 +31,11 @@ export class NodeLspDocument {
   constructor(
     readonly client: Client,
     readonly root: LspRoot,
-    readonly path: string
-  ) {}
+    readonly path: string,
+    ready: Promise<void> = Promise.resolve()
+  ) {
+    this.pending = ready
+  }
   private changed() {
     for (const listener of this.listeners) listener()
   }
@@ -99,7 +103,13 @@ export class NodeLspDocument {
     // Serialize updates so a slow open can never replace a newer version of the draft.
     this.pending = this.pending.then(async () => {
       if (this.stopped) return
-      this.loading = true
+      if (this.openedText === text && !this.error && !this.unavailable) return
+      const loadingTimer = window.setTimeout(() => {
+        if (!this.stopped) {
+          this.loading = true
+          this.changed()
+        }
+      }, 300)
       this.error = ''
       this.changed()
       try {
@@ -113,11 +123,10 @@ export class NodeLspDocument {
           return
         }
         const pushes = this.pushes
-        this.diagnostics = []
-        this.changed()
         ++this.opens
         // Versions belong to the shared node buffer, including refreshes from other clients.
         await this.client.lsp.open(this.root, this.path, text, undefined, this.abort.signal)
+        this.openedText = text
         const diagnostics = await this.client.lsp.diagnostics(
           this.root,
           this.path,
@@ -135,6 +144,7 @@ export class NodeLspDocument {
           this.error = error instanceof Error ? error.message : String(error)
         }
       } finally {
+        window.clearTimeout(loadingTimer)
         this.loading = false
         if (!this.stopped) this.changed()
       }
@@ -204,5 +214,35 @@ export class NodeLspDocument {
       await this.client.lsp
         .close(this.root, this.path)
         .catch((error) => console.debug('[node] Language document close unavailable', error))
+  }
+}
+
+type SharedDocument = { document: NodeLspDocument; references: number; closing?: Promise<void> }
+const documents = new WeakMap<Client, Map<string, SharedDocument>>()
+
+/** Each view owns a lease; only the final release closes the node's connection-owned buffer. */
+export function acquireLspDocument(client: Client, root: LspRoot, path: string) {
+  let pool = documents.get(client)
+  if (!pool) documents.set(client, (pool = new Map()))
+  const key = JSON.stringify([root.workspace_id, root.worktree_id, path])
+  let entry = pool.get(key)
+  if (!entry || entry.references === 0) {
+    entry = { document: new NodeLspDocument(client, root, path, entry?.closing), references: 0 }
+    pool.set(key, entry)
+  }
+  const shared = entry
+  ++shared.references
+  let released = false
+  return {
+    document: shared.document,
+    release(this: void): Promise<void> {
+      if (released) return shared.closing ?? Promise.resolve()
+      released = true
+      if (--shared.references) return Promise.resolve()
+      shared.closing = shared.document.close().finally(() => {
+        if (pool.get(key) === shared) pool.delete(key)
+      })
+      return shared.closing
+    },
   }
 }

@@ -76,7 +76,7 @@ export const de = {
   'node.lsp.locations': 'Fundstellen: {count}',
   'node.lsp.noLocations': 'Keine passenden Fundstellen',
   'node.lsp.count': 'Diagnosen: {count}',
-  'node.lsp.loading': 'Codeanalyse wird geladen…',
+  'node.lsp.loading': 'Code wird analysiert…',
   'node.lsp.error': 'Codeanalyse nicht verfügbar: {message}',
   'node.lsp.retry': 'Erneut versuchen',
   'node.lsp.untrusted':

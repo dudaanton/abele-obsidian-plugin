@@ -72,7 +72,7 @@ export const en = {
   'node.lsp.locations': 'Locations: {count}',
   'node.lsp.noLocations': 'No matching locations',
   'node.lsp.count': 'Diagnostics: {count}',
-  'node.lsp.loading': 'Loading language analysis…',
+  'node.lsp.loading': 'Analyzing code…',
   'node.lsp.error': 'Language analysis unavailable: {message}',
   'node.lsp.retry': 'Retry',
   'node.lsp.untrusted': 'Language servers need permission to run project code in this folder.',

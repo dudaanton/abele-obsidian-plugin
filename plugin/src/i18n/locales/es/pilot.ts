@@ -75,7 +75,7 @@ export const es = {
   'node.lsp.locations': 'Ubicaciones: {count}',
   'node.lsp.noLocations': 'No hay ubicaciones coincidentes',
   'node.lsp.count': 'Diagnósticos: {count}',
-  'node.lsp.loading': 'Cargando análisis de código…',
+  'node.lsp.loading': 'Analizando código…',
   'node.lsp.error': 'Análisis de código no disponible: {message}',
   'node.lsp.retry': 'Reintentar',
   'node.lsp.untrusted':

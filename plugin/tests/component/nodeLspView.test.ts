@@ -13,11 +13,38 @@ import { Menu } from 'obsidian'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import GithubCode from '@/components/github/GithubCode.vue'
 import NodeFileTools from '@/components/nodeWork/NodeFileTools.vue'
+import { LSP_CONNECTION } from '@/node/lspConnection'
 vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: () => true }))
 enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('node language diagnostics in the shared file viewer', () => {
+  it('keeps a shared document alive and detaches only the departing view listener', async () => {
+    const fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+    await flushPromises()
+    const tools = fixture.getComponent(NodeLspTools)
+    const doc = lspFor(document.querySelector('.cm-editor')!)!.document
+    const open = vi.spyOn(doc.client.lsp, 'open')
+    const close = vi.spyOn(doc.client.lsp, 'close')
+    const listeners = doc.listeners.size
+    const split = mount(NodeLspTools, {
+      props: { ...tools.props(), root: document.createElement('div'), glyphHost: null },
+      global: {
+        provide: { [LSP_CONNECTION as symbol]: { client: doc.client, connect: async () => {} } },
+      },
+    })
+    await flushPromises()
+    expect(open).not.toHaveBeenCalled()
+    expect(doc.listeners.size).toBe(listeners + 1)
+    split.unmount()
+    await flushPromises()
+    expect(close).not.toHaveBeenCalled()
+    expect(doc.listeners.size).toBe(listeners)
+    expect(doc.diagnostics).toHaveLength(2)
+    fixture.unmount()
+    await flushPromises()
+    expect(close).toHaveBeenCalledOnce()
+  })
   it('analyzes and searches the displayed text when a locked editor retains a different draft', async () => {
     const model = {
       filePath: ref('sample.ts'),

@@ -34,7 +34,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await window.__abeleTest.openDialog('node-lsp-' + state);
           await until(() => document.querySelector('.abele-lsp-root .cm-content'));
           phase = state + '-status';
-          await until(() => document.body.textContent.includes(({loading: 'Loading language analysis', missing: 'Language server missing', untrusted: 'Trust folder', eslint: 'TypeScript analysis remains available', errors: 'sample'})[state]));
+          await until(() => document.body.textContent.includes(({loading: 'Analyzing code', missing: 'Language server missing', untrusted: 'Trust folder', eslint: 'TypeScript analysis remains available', errors: 'sample'})[state]));
           if (state === 'errors') await until(() => document.querySelector('.abele-lsp-error') && document.querySelector('[data-lsp-diagnostics]')?.getAttribute('aria-label') === 'Diagnostics: 2');
           await wait(150);
           const modal = document.querySelector('.modal.abele-modal');

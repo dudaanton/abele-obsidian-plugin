@@ -73,7 +73,7 @@ export const lv = {
   'node.lsp.locations': 'Vietas kodā: {count}',
   'node.lsp.noLocations': 'Nav atbilstošu vietu',
   'node.lsp.count': 'Diagnostika: {count}',
-  'node.lsp.loading': 'Ielādē koda analīzi…',
+  'node.lsp.loading': 'Analizē kodu…',
   'node.lsp.error': 'Koda analīze nav pieejama: {message}',
   'node.lsp.retry': 'Mēģināt vēlreiz',
   'node.lsp.untrusted': 'Valodu serveriem ir vajadzīga atļauja izpildīt projekta kodu šajā mapē.',

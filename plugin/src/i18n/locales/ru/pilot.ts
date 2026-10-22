@@ -73,7 +73,7 @@ export const ru = {
   'node.lsp.locations': 'Места в коде: {count}',
   'node.lsp.noLocations': 'Совпадений нет',
   'node.lsp.count': 'Диагностика: {count}',
-  'node.lsp.loading': 'Проверка кода…',
+  'node.lsp.loading': 'Анализ кода…',
   'node.lsp.error': 'Проверка кода недоступна: {message}',
   'node.lsp.retry': 'Повторить',
   'node.lsp.untrusted':

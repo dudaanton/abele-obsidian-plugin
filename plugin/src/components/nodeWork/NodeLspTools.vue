@@ -70,7 +70,7 @@ import Icon from '../obsidian/Icon.vue'
 import { t } from '@/i18n'
 import { NodeService } from '@/node/NodeService'
 import { NodePathMutations } from '@/node/NodePathMutations'
-import { NodeLspDocument, type LspLocation } from '@/node/NodeLspDocument'
+import { acquireLspDocument, type NodeLspDocument, type LspLocation } from '@/node/NodeLspDocument'
 import { provideLsp } from '@/node/lspContext'
 import type { PathTarget } from '@/node/NodePathModel'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
@@ -102,6 +102,8 @@ const actionError = ref('')
 const canInstall = ref(false)
 const installCommand = 'abele-node lsp install --popular'
 let removeContext: (() => void) | undefined
+let releaseDocument: (() => Promise<void>) | undefined
+let removeListener: (() => void) | undefined
 let picker: DefinitionPicker | undefined
 const statuses = computed(() => {
   void revision.value
@@ -234,9 +236,10 @@ watch(
   [() => props.root, () => JSON.stringify(props.target), () => props.path, () => props.offline],
   (_values, _old, cleanup) => {
     removeContext?.()
-    const old = document.value
+    removeListener?.()
+    void releaseDocument?.()
+    releaseDocument = undefined
     document.value = undefined
-    if (old) void old.close()
     if (!props.root || props.offline || !language.value) return
     const connection = connectionForTarget()
     if (!connection) return
@@ -244,13 +247,17 @@ watch(
       props.target.kind === 'worktree'
         ? { worktree_id: props.target.id }
         : { workspace_id: props.target.id }
-    const doc = new NodeLspDocument(connection.client, root, props.path)
+    const lease = acquireLspDocument(connection.client, root, props.path)
+    const doc = lease.document
+    releaseDocument = lease.release
     document.value = doc
-    doc.listeners.add(() => {
+    const listener = () => {
       ++revision.value
       document.value = doc
       triggerRevision()
-    })
+    }
+    doc.listeners.add(listener)
+    removeListener = () => doc.listeners.delete(listener)
     removeContext = provideLsp(props.root, { document: doc, navigate })
     let stopped = false
     cleanup(() => {
@@ -286,7 +293,8 @@ watch(
 onBeforeUnmount(() => {
   removeContext?.()
   picker?.close()
-  void document.value?.close()
+  removeListener?.()
+  void releaseDocument?.()
 })
 </script>
 <style scoped>
