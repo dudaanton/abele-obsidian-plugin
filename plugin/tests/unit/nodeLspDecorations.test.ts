@@ -281,41 +281,46 @@ it('requires Ctrl or Cmd for types, including a key pressed over a stationary sy
   }
 })
 
-it('discards a pending type response when the modifier is released', async () => {
-  const root = document.body.appendChild(document.createElement('div'))
-  const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
-  doc.supported = true
-  let finish!: (text: string) => void
-  const hover = vi.spyOn(doc, 'hover').mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      })
-  )
-  const remove = provideLsp(root, { document: doc, navigate: () => {} })
-  const view = new EditorView({
-    parent: root,
-    doc: 'const sample = 1',
-    extensions: [nodeLspExtension()],
-  })
-  try {
-    vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
-    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
-    view.contentDOM
-      .querySelector('.cm-line')!
-      .dispatchEvent(
-        new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20, ctrlKey: true })
-      )
-    await vi.waitFor(() => expect(hover).toHaveBeenCalled())
-    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control' }))
-    finish('const sample: number')
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    expect(document.querySelector('.abele-lsp-message')).toBeNull()
-  } finally {
-    view.destroy()
-    remove()
-    await doc.close()
-    root.remove()
-    vi.restoreAllMocks()
+it.each(['release', 'leave'])(
+  'discards a pending type response after %s, even across view updates',
+  async (action) => {
+    const root = document.body.appendChild(document.createElement('div'))
+    const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+    doc.supported = true
+    let finish!: (text: string) => void
+    const response = new Promise<string>((resolve) => {
+      finish = resolve
+    })
+    const hover = vi.spyOn(doc, 'hover').mockReturnValue(response)
+    const remove = provideLsp(root, { document: doc, navigate: () => {} })
+    const view = new EditorView({
+      parent: root,
+      doc: 'const sample = 1',
+      extensions: [nodeLspExtension()],
+    })
+    try {
+      vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+      vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+      view.contentDOM
+        .querySelector('.cm-line')!
+        .dispatchEvent(
+          new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20, ctrlKey: true })
+        )
+      await vi.waitFor(() => expect(hover).toHaveBeenCalled())
+      if (action === 'release')
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control' }))
+      else view.dom.dispatchEvent(new MouseEvent('mouseleave'))
+      view.dispatch({})
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      finish('const sample: number')
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      expect(document.querySelector('.abele-lsp-message')).toBeNull()
+    } finally {
+      view.destroy()
+      remove()
+      await doc.close()
+      root.remove()
+      vi.restoreAllMocks()
+    }
   }
-})
+)

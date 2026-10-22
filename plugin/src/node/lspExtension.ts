@@ -62,6 +62,9 @@ const hoverModifiers = ViewPlugin.fromClass(
     revision = 0
     private pointer?: MouseEvent
     private destroyed = false
+    get overEditor() {
+      return !!this.pointer
+    }
     constructor(readonly view: EditorView) {
       view.dom.addEventListener('mousemove', this.move)
       view.dom.addEventListener('mouseleave', this.leave)
@@ -189,6 +192,7 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       })
       const modifier = view.plugin(hoverModifiers)
       const revision = modifier?.revision
+      if (!modifier?.overEditor) return null
       if (!modifier?.active && !problems.length) return null
       const text = modifier?.active
         ? await context.document.hover({
