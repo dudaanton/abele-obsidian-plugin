@@ -5,7 +5,7 @@
     v-model="expanded"
   >
     <div class="abele-node-bypass-command">
-      <Input :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
+      <Input as-text-area :rows="2" :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
       <Icon icon="copy" :tooltip="t('streamB.permissionCopyCommand')" @click="copy" />
     </div>
   </Disclosure>
@@ -34,7 +34,7 @@ const copy = () => navigator.clipboard.writeText(command)
   align-items: center;
   gap: var(--size-4-2);
 }
-.abele-node-bypass-command :deep(input) {
+.abele-node-bypass-command :deep(textarea) {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }

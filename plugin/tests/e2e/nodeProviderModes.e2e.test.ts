@@ -75,8 +75,9 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
           : state==='running' ? !!card.querySelector('[aria-label="Without asking"]') : !card.querySelector('[aria-label="Without asking"],[aria-label="Ask"]');
         await shot('delegation-'+state);
         if(state==='node-opt-in'){
-          card.querySelector('.abele-disclosure__control').click();await until(()=>card.querySelector('input'));
-          if(card.querySelector('input').value!=='abele-node service flags set --allow-bypass on')throw Error('Missing node opt-in command');
+          card.querySelector('.abele-disclosure__control').click();await until(()=>card.querySelector('textarea'));
+          if(card.querySelector('textarea').value!=='abele-node service flags set --allow-bypass on')throw Error('Missing node opt-in command');
+          if(card.querySelector('textarea').scrollHeight > card.querySelector('textarea').clientHeight + 2)throw Error('Node opt-in command clipped');
           await shot('delegation-node-opt-in-command');
         }
         if(state==='refused' || state==='node-opt-in'){

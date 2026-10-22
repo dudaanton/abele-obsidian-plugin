@@ -83,7 +83,8 @@ it('shows a refusal with an exact owner settings action without changing mode', 
   })
   expect(wrapper.text()).toContain('On the node, allow running without asking:')
   await wrapper.get('.abele-disclosure__control').trigger('click')
-  expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
+  expect((wrapper.get('textarea').element as HTMLTextAreaElement).readOnly).toBe(true)
+  expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe(
     'abele-node service flags set --allow-bypass on'
   )
   wrapper.unmount()
