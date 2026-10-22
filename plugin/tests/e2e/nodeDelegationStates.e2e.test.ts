@@ -8,12 +8,18 @@ import { NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 targets('desktop')
 const shots = shotDir('abele-delegation-states')
 
+interface StateReport {
+  checks: Record<string, boolean>
+  diagnostics: Record<string, unknown>
+}
+
 const probe = (device: string) =>
-  evalAsync<Record<string, boolean>>(`(async () => {
+  evalAsync<StateReport>(`(async () => {
   const api = window.__abeleTest;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const until = async fn => { for(let i=0;i<100;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Sample state did not appear: ' + fn.toString()) };
   const seen = {};
+  const diagnostics = {};
   const close = async () => {
     const modal = document.querySelector('.modal.abele-modal');
     if (!modal) return;
@@ -41,7 +47,10 @@ const probe = (device: string) =>
       const card = modal.querySelector('.abele-node-delegation');
       const header = card.querySelector('.setting-item');
       const next = header.nextElementSibling;
-      seen[name + ' spacing'] = !!next && next.getBoundingClientRect().top - header.getBoundingClientRect().bottom <= 8;
+      const meta = card.querySelector('.abele-node-delegation__meta');
+      const gap = next.getBoundingClientRect().top - meta.getBoundingClientRect().bottom;
+      diagnostics[name] = { gap, headerMargin: getComputedStyle(header).marginBottom, headerPadding: getComputedStyle(header).paddingBottom, headerHeight: header.getBoundingClientRect().height, metaHeight: meta.getBoundingClientRect().height };
+      seen[name + ' spacing'] = !!next && gap <= 8;
       if(name === 'refused') seen[name + ' dot'] = card.querySelectorAll('.abele-status-dot').length === 1;
       if(name === 'lost') seen[name + ' label'] = card.querySelector('.abele-node-delegation__status').textContent.trim() === 'Lost';
       await shot(name);
@@ -81,7 +90,7 @@ const probe = (device: string) =>
     seen['stable tree'] = Math.abs(treeTop - duringTop) < 1 && Math.abs(afterTop - duringTop) < 1;
     await shot('recovered');
   } finally { await nodePanel.close(); }
-  return JSON.stringify(seen);
+  return JSON.stringify({ checks: seen, diagnostics });
 })()`)
 
 const expectedStates = Object.fromEntries(
@@ -105,10 +114,11 @@ const expectedStates = Object.fromEntries(
 )
 
 it('shows refusal, lost-worker recovery and the selected provider mode on desktop', () => {
-  expect(probe('desktop')).toEqual(expectedStates)
+  const report = probe('desktop')
+  expect(report.checks, JSON.stringify(report.diagnostics)).toEqual(expectedStates)
 }, 180000)
 
 it('shows the same states in the phone layout', async () => {
   const result = await withEmulatedPhone(async () => probe('phone'))
-  expect(result).toEqual(expectedStates)
+  expect(result.checks, JSON.stringify(result.diagnostics)).toEqual(expectedStates)
 }, 240000)
