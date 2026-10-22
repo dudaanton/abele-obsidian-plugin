@@ -2125,6 +2125,24 @@ it('does not publish a late inventory item after pause', async () => {
   }
 })
 
+it('ends comparison at the confirmed boundary when a clean pass becomes idle', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/sample.md', new TextEncoder().encode('sample'), 1000)
+  const bytes = new TextEncoder().encode('sample')
+  Object.assign(fs, {
+    fingerprint: async () => ({ size: bytes.length, sha: await sha256(bytes), mtime: 1000 }),
+  })
+  const events: string[] = []
+  const one = runtime(wire, fs, undefined, undefined, null, { event: (line) => events.push(line) })
+  try {
+    await one.runtime.sync()
+    expect(events.some((line) => line.startsWith('Comparing files: ended'))).toBe(true)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it.each([false, true])(
   'reports long comparison progress after the pull (download first=%s)',
   async (downloadFirst) => {

@@ -384,7 +384,9 @@ export class TokenEngineRuntime
       this.progress.clear()
       this.uploadProgress.clear()
       this.folderProgress.clear()
-      activityLog.reset()
+      // SDK status settles before onSync confirms the completed comparison.
+      // Stop its heartbeat now; retain the floor until onSync or the next prepare.
+      activityLog.update()
       this.pulling = false
       options.pulling?.()
       options.comparing?.()
