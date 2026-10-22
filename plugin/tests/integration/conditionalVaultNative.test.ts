@@ -7,8 +7,33 @@ import { join } from 'node:path'
 import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { connectionAdapter, nativeOf } from '@/sync/vaultPathLinks'
 
 const roots: string[] = []
+it('flushes the full directory ancestry without granting ancestor reads to a scoped adapter', async () => {
+  const { root, app } = await setup()
+  await fs.mkdir(join(root, 'Scoped/nested'), { recursive: true })
+  await fs.writeFile(join(root, 'Scoped/nested/sample.md'), 'sample')
+  const adapter = connectionAdapter(
+    app.vault.adapter as never,
+    'Scoped',
+    '.abele-sync/connections/sample'
+  )
+  const opened: string[] = []
+  const port = nativeOf(
+    adapter,
+    () => {},
+    '.abele-sync/connections/sample/recovery',
+    (operation, _started, _outcome, paths) => {
+      if (operation === 'native open r') opened.push(...(paths ?? []))
+    }
+  )!
+  await port.syncPath!('Scoped/nested/sample.md')
+  expect(opened).toContain(root)
+  expect(() =>
+    (adapter as unknown as { getFullPath(path: string): string }).getFullPath('')
+  ).toThrow('outside this connection')
+})
 it.each(['active', 'completed'] as const)(
   'does not replay a settled %s restoration after intentional deletion',
   async (state) => {

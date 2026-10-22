@@ -1088,7 +1088,15 @@ export class TokenEngines {
               : undefined,
           rootChanged: (issue) => {
             this.ui.registry.setRootIssue(record.id, issue)
-            this.ui.publish(record.id, { inspection: undefined, comparison: undefined })
+            this.ui.publish(record.id, {
+              inspection: undefined,
+              comparison: undefined,
+              ...(issue?.kind === 'server-renamed'
+                ? {
+                    error: `Shared folder renamed on the server: ${issue.from} → ${issue.to}; sync stopped`,
+                  }
+                : {}),
+            })
           },
           selective: current.selective,
           fallbackMs: fallbackMsOf(this.deps),

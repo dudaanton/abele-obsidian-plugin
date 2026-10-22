@@ -1,6 +1,6 @@
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
-import { diagnosticOrigin } from './nativeDiagnostics'
+import { diagnosticOrigin, nativeDiagnostics } from './nativeDiagnostics'
 import { TFolder } from 'obsidian'
 import { Platform } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
@@ -518,7 +518,8 @@ export interface NativeFs {
 export function nativeOf(
   adapter: DataAdapter,
   assertEffect: (paths?: readonly string[]) => void = () => {},
-  recoveryRoot?: string
+  recoveryRoot?: string,
+  diagnostic?: Parameters<typeof nativeDiagnostics>[1]
 ): NativeFs | null {
   adapter = guardedVaultAdapter(adapter)
   const raw = adapter as unknown as {
@@ -594,6 +595,12 @@ export function nativeOf(
           await handle.close()
         }
       }
+    }
+  const scopedSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
+  if (typeof scopedSync === 'function')
+    native.syncPath = async (path, parentsOnly = false) => {
+      assertEffect([path])
+      await scopedSync(path, parentsOnly, diagnostic)
     }
   if (fsp.mkdir && fsp.stat && fsp.link && fsp.unlink) {
     const hex = (value: string) =>
@@ -1523,6 +1530,40 @@ export function connectionAdapter(
       return true
     },
     get(_target, key) {
+      if (key === Symbol.for('abele.sync.scoped-sync-path-v1')) {
+        if (!native?.open || typeof full !== 'function') return undefined
+        // This capability only flushes an authorized path and its directory ancestry.
+        // It never returns handles or grants the scoped port general ancestor access.
+        return async (
+          path: string,
+          parentsOnly: boolean,
+          diagnostic?: Parameters<typeof nativeDiagnostics>[1]
+        ) => {
+          check(path, 'stat')
+          await assertVaultPath(adapter, path)
+          const parentSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
+          if (typeof parentSync === 'function') return parentSync(path, parentsOnly, diagnostic)
+          const fs = diagnostic ? nativeDiagnostics(native, diagnostic) : native
+          const paths = parentsOnly ? [] : [path]
+          for (
+            let parent = path.slice(0, Math.max(0, path.lastIndexOf('/')));
+            ;
+            parent = parent.slice(0, Math.max(0, parent.lastIndexOf('/')))
+          ) {
+            paths.push(parent)
+            if (!parent) break
+          }
+          for (const part of new Set(paths)) {
+            const handle = await fs.open(full.call(adapter, part), 'r')
+            try {
+              if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
+              await handle.sync()
+            } finally {
+              await handle.close()
+            }
+          }
+        }
+      }
       if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink
       if (key === Symbol.for('abele.sync.scoped-path-guard-v1'))
         return (path: string) => {

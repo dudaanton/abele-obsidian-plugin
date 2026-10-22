@@ -72,6 +72,10 @@ it('keeps paused status ahead of stale comparison counters', () => {
   ).toBe('Paused')
 })
 
+it('waits for the engine to settle before displaying paused', () => {
+  expect(connectionStatusText({ status: 'syncing', paused: true })).toBe('Syncing')
+})
+
 it('names a granted folder or group the server no longer shows to its issuer', () => {
   expect(scopeName({ kind: 'folder', id: 'moved', path: '(unavailable)' })).toBe(
     'Folder outside this connection'

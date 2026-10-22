@@ -844,16 +844,27 @@ export async function requireExternalLifecycleSafety(
   const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
-  if (!recoverInstallation) {
-    const owner = connectionJournalOwner(app)
-    const roots = [
-      app.vault.configDir + '/plugins/abele/sync-conditional',
-      ...(owner
-        ? [connectionPrivateRoot(owner) + '/conditional']
-        : TokenConnectionRegistry.open(app)
-            .records()
-            .map((record) => connectionPrivateRoot(record.id) + '/conditional')),
-    ]
+  const owner = connectionJournalOwner(app)
+  // Enrollment uses a fresh, not-yet-persisted owner and a metadata-only scoped adapter.
+  // It cannot have file artifacts; do not grant that adapter access to private namespaces.
+  const enrolling =
+    metadataOnly &&
+    owner !== undefined &&
+    !TokenConnectionRegistry.open(app)
+      .records()
+      .some((record) => record.id === owner)
+  if (!recoverInstallation && !enrolling) {
+    const owned = connectionPrivateArea(app) ?? (owner ? connectionPrivateRoot(owner) : undefined)
+    const roots = owned
+      ? [owned + '/conditional']
+      : [
+          app.vault.configDir + '/plugins/abele/sync-conditional',
+          ...(owner
+            ? [connectionPrivateRoot(owner) + '/conditional']
+            : TokenConnectionRegistry.open(app)
+                .records()
+                .map((record) => connectionPrivateRoot(record.id) + '/conditional')),
+        ]
     const disk = guardedVaultAdapter(vaultDisk(app.vault))
     for (const root of roots) {
       assertCurrent()

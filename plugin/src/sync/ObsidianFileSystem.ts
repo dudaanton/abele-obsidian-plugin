@@ -880,9 +880,10 @@ export class ObsidianFileSystem implements FileSystem {
     const active = conditionalOperations.get(app.vault) ?? new Set<string>()
     conditionalOperations.set(app.vault, active)
     this.conditional = new ConditionalFiles({
-      root: this.privateRoot
-        ? this.privateRoot + '/conditional'
-        : this.configDir + '/plugins/abele/sync-conditional',
+      root:
+        options.journalOwner || this.privateRoot
+          ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner!)) + '/conditional'
+          : this.configDir + '/plugins/abele/sync-conditional',
       active,
       check: () => this.runtimeFence?.assertReady(),
       validate: (path, recovery = false) => {
@@ -956,7 +957,9 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('conflict', 'conditional operation is outside this connection')
         this.externalCoordination.assertEnginePaths([operation.path])
         const { bytes, mtime, receipt } = operation.effect
-        return await this.writer.publishAbsent(operation.path, bytes, mtime, receipt)
+        const applied = await this.writer.publishAbsent(operation.path, bytes, mtime, receipt)
+        if (applied) this.writtenStat = { path: operation.path, size: bytes.length, mtime }
+        return applied
       }
       return await this.conditional.apply(operation)
     } finally {
@@ -985,7 +988,8 @@ export class ObsidianFileSystem implements FileSystem {
         this.runtimeFence?.assertOwned()
         this.externalCoordination.assertEnginePaths(paths)
       },
-      this.privateRoot ? this.privateRoot + '/recovery' : undefined
+      this.privateRoot ? this.privateRoot + '/recovery' : undefined,
+      this.diagnostic
     )
     return native && this.runtimeFence
       ? fencedPort(

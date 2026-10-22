@@ -260,7 +260,7 @@ export function connectionStatusText(
     return text('Server folder or group unavailable; local files kept')
   if (row.status === 'needs-token' && activity?.error)
     return text('Access closed; local files kept')
-  if (row.paused || row.status === 'paused') return statusName('paused', text)
+  if (row.status === 'paused') return statusName('paused', text)
   if (activity?.startup) {
     const one = activity.startup
     return text('{stage}… {completed}/{total}{attention}', {
@@ -272,15 +272,14 @@ export function connectionStatusText(
   }
   if (activity?.inspection)
     return text('Checking the vault… {completed}/{total}', activity.inspection)
-  if (!row.paused && row.status === 'syncing' && activity?.transfer)
-    return transferText(activity.transfer, text)
+  if (row.status === 'syncing' && activity?.transfer) return transferText(activity.transfer, text)
   if (activity?.comparison) return text('Comparing files {completed}/{total}', activity.comparison)
   if (
     row.status === 'offline' &&
     activity?.error === 'The server response was cut off before it finished. Try syncing again.'
   )
     return text('Server response interrupted')
-  return statusName(row.paused ? 'paused' : row.status, text)
+  return statusName(row.status, text)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
   localPath?(path: string): string
