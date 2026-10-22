@@ -206,32 +206,12 @@ defineExpose({
 .abele-github-code .cm-merge-a .cm-changedLineGutter {
   background: var(--text-error);
 }
-.abele-github-code .abele-code-changes {
-  width: var(--size-4-5);
-}
-.abele-github-code .abele-code-change {
-  display: block;
-  width: var(--size-4-5);
-  height: 100%;
-  min-height: 1em;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-  border-inline-start: 3px solid var(--text-accent);
-  cursor: pointer;
-}
-.abele-code-change.abele-code-change_added {
-  border-color: var(--text-success);
-}
-.abele-code-change.abele-code-change_removed {
-  border-color: var(--text-error);
-}
-.abele-code-original {
-  white-space: pre-wrap;
-  padding: var(--size-4-2);
-  background: var(--background-secondary);
+.abele-github-code .cm-editor .cm-deletedChunk {
+  background-color: var(--background-modifier-error);
   color: var(--text-muted);
+}
+.abele-github-code .cm-editor.cm-merge-b .cm-changedLine,
+.abele-github-code .cm-editor .cm-inlineChangedLine {
+  background-color: var(--background-modifier-success);
 }
 </style>

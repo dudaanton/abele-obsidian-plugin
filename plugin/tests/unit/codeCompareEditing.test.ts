@@ -16,11 +16,14 @@ it.each([false, true])('edits the working comparison live, split=%s', (split) =>
     const editors = [...parent.querySelectorAll<HTMLElement>('.cm-editor')]
     expect(editors).toHaveLength(split ? 2 : 1)
     const working = EditorView.findFromDOM(editors.at(-1)!)!
-    if (split) expect(getChunks(working.state)?.chunks).toHaveLength(1)
-    else {
-      expect(parent.querySelector('.abele-code-original')).toBeNull()
-      parent.querySelector<HTMLButtonElement>('.abele-code-change')!.click()
-      expect(parent.querySelector('.abele-code-original')?.textContent).toBe('before')
+    expect(getChunks(working.state)?.chunks).toHaveLength(1)
+    if (!split) {
+      expect(parent.querySelector('.cm-deletedChunk')?.textContent).toContain('before')
+      expect(parent.querySelector<HTMLElement>('.cm-deletedChunk')?.contentEditable).toBe('false')
+      expect(parent.querySelector('.abele-code-change')).toBeNull()
+      expect(working.state.doc.toString()).toBe('after')
+      working.dispatch({ selection: { anchor: 0 } })
+      expect(working.state.doc.sliceString(0, 1)).toBe('a')
     }
     if (split) {
       const original = EditorView.findFromDOM(editors[0])!
@@ -29,8 +32,8 @@ it.each([false, true])('edits the working comparison live, split=%s', (split) =>
     }
     working.dispatch({ changes: { from: 0, to: 5, insert: 'before' } })
     expect(change).toHaveBeenLastCalledWith('before')
-    if (split) expect(getChunks(working.state)?.chunks).toHaveLength(0)
-    else expect(parent.querySelector('.abele-code-change')).toBeNull()
+    expect(getChunks(working.state)?.chunks).toHaveLength(0)
+    if (!split) expect(parent.querySelector('.cm-deletedChunk')).toBeNull()
     viewer.setText('saved')
     expect(change).toHaveBeenCalledTimes(1)
     expect(working.state.doc.toString()).toBe('saved')
