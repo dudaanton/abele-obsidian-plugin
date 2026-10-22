@@ -37,7 +37,7 @@ import { stagingDirectory } from './stagingDirectory'
 import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
 import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
-import { adapterConfigRevision } from './adapterConfigChanges'
+import { adapterConfigRevision, observeAdapterConfig } from './adapterConfigChanges'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
@@ -73,18 +73,89 @@ const stageOperations = new WeakMap<object, Set<string>>()
 const conditionalOperations = new WeakMap<object, Set<string>>()
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
+/** Revisions belong to reads, never to a later consumer of a cached value. */
+class InventoryCache<T> extends Map<string, T> {
+  private readonly revisions = new Map<string, number>()
+  constructor(private readonly revision: (path: string) => number) {
+    super()
+  }
+  override get(path: string): T | undefined {
+    return this.revisions.get(path) === this.revision(path) ? super.get(path) : undefined
+  }
+  override has(path: string): boolean {
+    return this.get(path) !== undefined
+  }
+  wasRead(path: string): boolean {
+    // Once a directory needed disk discovery, an expired observation must re-read
+    // disk rather than fall back to an index which may not contain adapter writes.
+    return super.has(path)
+  }
+  override set(path: string, value: T): this {
+    this.revisions.set(path, this.revision(path))
+    return super.set(path, value)
+  }
+  observe(path: string, read: () => T): T {
+    const revision = this.revision(path)
+    const value = read()
+    this.revisions.set(path, revision)
+    super.set(path, value)
+    return value
+  }
+  retain(path: string, value: T): void {
+    if (super.get(path) === value) this.revisions.set(path, this.revision(path))
+  }
+  async stable(path: string, read: () => T): Promise<Awaited<T>> {
+    for (;;) {
+      const value = this.get(path) ?? this.observe(path, read)
+      const revision = this.revisions.get(path)
+      const result = await value
+      if (revision === this.revision(path)) return result
+    }
+  }
+  override delete(path: string): boolean {
+    this.revisions.delete(path)
+    return super.delete(path)
+  }
+  override clear(): void {
+    this.revisions.clear()
+    super.clear()
+  }
+}
+class InventoryProofs extends Set<string> {
+  private readonly revisions = new Map<string, number>()
+  constructor(private readonly revision: (path: string) => number) {
+    super()
+  }
+  override has(path: string): boolean {
+    return this.revisions.get(path) === this.revision(path) && super.has(path)
+  }
+  override add(path: string): this {
+    this.revisions.set(path, this.revision(path))
+    return super.add(path)
+  }
+  [Symbol.for('abele.sync.parent-proof-v1')](path: string): () => void {
+    const revision = this.revision(path)
+    return () => {
+      this.revisions.set(path, revision)
+      super.add(path)
+    }
+  }
+}
 interface InventoryPass {
-  indexedNames?: Map<string, Set<string>>
+  indexedNames?: InventoryCache<Set<string>>
   parentFolders?: Set<string>
   publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
-  listings: Map<string, Promise<ListedFiles>>
+  listings: InventoryCache<Promise<ListedFiles>>
   mutations: Set<string>
   localChanges: Map<string, number>
+  directoryChanges: Map<string, number>
   localRevision: number
   configRevision: number
-  children: Map<string, Promise<InventoryChild[]>>
-  indexedChildren: Map<string, Promise<InventoryChild[]>>
+  children: InventoryCache<Promise<InventoryChild[]>>
+  indexedChildren: InventoryCache<Promise<InventoryChild[]>>
+  directoryStamp?: string
+  directoryRevision: number
 }
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
 const normalizationPossible = (path: string) =>
@@ -192,11 +263,16 @@ export class ObsidianFileSystem implements FileSystem {
     if (this.app.vault.getAbstractFileByPath(path)) return false
     const parent = this.app.vault.getAbstractFileByPath(folderOf(path))
     if (!(parent instanceof TFolder)) return false
-    const cache = (this.inventory.indexedNames ??= new Map())
+    const inventory = this.inventory
+    const cache = (inventory.indexedNames ??= new InventoryCache((path) =>
+      this.inventoryRevision(path, inventory)
+    ))
     let names = cache.get(parent.path)
     if (names === undefined) {
-      names = new Set(parent.children.map((child) => caseKey(child.path)))
-      cache.set(parent.path, names)
+      names = cache.observe(
+        parent.path,
+        () => new Set(parent.children.map((child) => caseKey(child.path)))
+      )
     }
     return !names.has(caseKey(path))
   }
@@ -222,21 +298,10 @@ export class ObsidianFileSystem implements FileSystem {
 
   async [Symbol.for('abele.sync.inventory-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
     // Shared filesystem instances may have overlapping engines. Never share their snapshots.
-    this.inventory =
-      ++this.inventoryDepth === 1
-        ? {
-            listings: new Map(),
-            mutations: new Set(),
-            localChanges: new Map(),
-            localRevision: 0,
-            configRevision: this.configRevision(),
-            children: new Map(),
-            indexedChildren: new Map(),
-          }
-        : null
+    this.inventory = ++this.inventoryDepth === 1 ? this.createInventory() : null
     const inventory = this.inventory
     const recordChange = (path: string) => {
-      if (inventory) inventory.localChanges.set(caseKey(path), ++inventory.localRevision)
+      if (inventory) this.recordInventoryChange(inventory, path)
     }
     const invalidate = (
       file: { path: string; children?: unknown[] },
@@ -264,6 +329,7 @@ export class ObsidianFileSystem implements FileSystem {
             if (key === path || (file.children && key.startsWith(path + '/'))) cache.delete(key)
         }
         if (file.children) {
+          inventory.directoryRevision++
           inventory.directories = undefined
           for (const parent of inventory.publishedParents ?? [])
             if (parent === path || parent.startsWith(path + '/'))
@@ -277,6 +343,22 @@ export class ObsidianFileSystem implements FileSystem {
       this.app.vault.on('delete', (file) => invalidate(file)),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
     ]
+    const stopConfig = observeAdapterConfig(
+      this.scopedAdapter,
+      this.configDir,
+      (paths, directory) => {
+        if (!inventory) return
+        for (const path of paths) {
+          recordChange(path)
+          for (const parent of inventory.publishedParents ?? [])
+            if (parent === path || parent.startsWith(path + '/'))
+              inventory.publishedParents?.delete(parent)
+        }
+        inventory.configRevision = this.configRevision()
+        if (directory && paths.some((path) => !isDeviceLocalPluginState(path, this.configDir)))
+          inventory.directoryRevision++
+      }
+    )
     try {
       return await work()
     } finally {
@@ -290,21 +372,49 @@ export class ObsidianFileSystem implements FileSystem {
         ])
       } finally {
         for (const ref of refs) this.app.vault.offref(ref)
+        stopConfig()
         this.inventoryDepth--
         this.inventory = null
       }
     }
   }
+  private createInventory(): InventoryPass {
+    const cache = <T>() => new InventoryCache<T>((path) => this.inventoryRevision(path, inventory))
+    const inventory: InventoryPass = {
+      listings: cache(),
+      mutations: new Set(),
+      localChanges: new Map(),
+      directoryChanges: new Map(),
+      localRevision: 0,
+      directoryRevision: 0,
+      configRevision: this.configRevision(),
+      children: cache(),
+      indexedChildren: cache(),
+    }
+    return inventory
+  }
   [Symbol.for('abele.sync.local-change-revision-v1')](path?: string): number | undefined {
     if (!this.inventory) return undefined
+    this.syncInventoryConfig(this.inventory)
+    if (path === undefined) return this.inventory.localRevision
+    return this.pathRevision(path, this.inventory)
+  }
+  private recordInventoryChange(inventory: InventoryPass, path: string): void {
+    const revision = ++inventory.localRevision
+    inventory.localChanges.set(caseKey(path), revision)
+    inventory.directoryChanges.set(caseKey(folderOf(path).replace(/^\/$/, '')), revision)
+  }
+  private syncInventoryConfig(inventory: InventoryPass): void {
     // Config adapter writes have no vault event. Fold their free counter into the
     // same clock so cached observations and per-path revisions remain comparable.
     const configRevision = this.configRevision()
-    if (this.inventory.configRevision !== configRevision) {
-      this.inventory.configRevision = configRevision
-      this.inventory.localChanges.set(caseKey(this.configDir), ++this.inventory.localRevision)
+    if (inventory.configRevision !== configRevision) {
+      inventory.configRevision = configRevision
+      inventory.localChanges.set(caseKey(this.configDir), ++inventory.localRevision)
+      inventory.directoryRevision++
     }
-    if (path === undefined) return this.inventory.localRevision
+  }
+  private pathRevision(path: string, inventory: InventoryPass): number {
     let revision = 0
     // Ancestor renames/deletions also invalidate observations of their children.
     for (
@@ -312,10 +422,22 @@ export class ObsidianFileSystem implements FileSystem {
       current;
       current = current.slice(0, current.lastIndexOf('/'))
     ) {
-      revision = Math.max(revision, this.inventory.localChanges.get(current) ?? 0)
+      revision = Math.max(revision, inventory.localChanges.get(current) ?? 0)
       if (!current.includes('/')) break
     }
     return revision
+  }
+  private inventoryRevision(path: string, inventory = this.inventory): number {
+    if (!inventory) return 0
+    this.syncInventoryConfig(inventory)
+    return Math.max(
+      this.pathRevision(path, inventory),
+      inventory.directoryChanges.get(caseKey(path)) ?? 0
+    )
+  }
+  private parentRevision(path: string, inventory: InventoryPass): number {
+    this.syncInventoryConfig(inventory)
+    return this.pathRevision(path, inventory)
   }
   async [INVENTORY_DIRECTORIES](settle = false): Promise<DirectoryInfo[]> {
     if (settle) await this.settleInventoryParents()
@@ -325,7 +447,19 @@ export class ObsidianFileSystem implements FileSystem {
       return result
     }
     if (!this.inventory) return read()
-    return (this.inventory.directories ??= read())
+    const inventory = this.inventory
+    for (;;) {
+      this.syncInventoryConfig(inventory)
+      const revision = `${inventory.directoryRevision}`
+      if (inventory.directories === undefined || inventory.directoryStamp !== revision) {
+        inventory.directoryStamp = revision
+        inventory.directories = read()
+      }
+      const directories = await inventory.directories
+      this.syncInventoryConfig(inventory)
+      if (revision === `${inventory.directoryRevision}`) return directories
+      inventory.directories = undefined
+    }
   }
   async [Symbol.for('abele.sync.inventory-children-v1')](
     parent: string,
@@ -333,83 +467,81 @@ export class ObsidianFileSystem implements FileSystem {
     filesOnly = false
   ): Promise<InventoryChild[]> {
     const inventory = this.inventory
-    if (!inventory || normalizationPossible(target) || inventory.listings.has(parent))
+    if (!inventory || normalizationPossible(target) || inventory.listings.wasRead(parent))
       return this.listChildren(parent)
-    let children = filesOnly ? undefined : inventory.indexedChildren.get(parent)
-    if (children === undefined) {
-      children = (async () => {
-        // Download preflight needs only file membership, not directory identities.
-        // Do not populate the full placement inventory with this narrower snapshot.
-        const indexedOnly = filesOnly && !target.split('/').some((part) => part.startsWith('.'))
-        const directories = indexedOnly ? [] : await this[INVENTORY_DIRECTORIES]()
-        // Discovery may itself have revealed a Unicode alias at this parent.
-        if (inventory.listings.has(parent)) return this.listChildren(parent)
-        const node = (
-          parent === '' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(parent)
-        ) as {
-          children?: { path: string; children?: unknown[] }[]
-        } | null
-        const files = new Set(
-          (node?.children ?? []).filter((one) => !one.children).map((one) => one.path)
+    const read = async () => {
+      // Download preflight needs only file membership, not directory identities.
+      // Do not populate the full placement inventory with this narrower snapshot.
+      const indexedOnly = filesOnly && !target.split('/').some((part) => part.startsWith('.'))
+      const directories = indexedOnly ? [] : await this[INVENTORY_DIRECTORIES]()
+      // Discovery may itself have revealed a Unicode alias at this parent.
+      if (inventory.listings.wasRead(parent)) return this.listChildren(parent)
+      const node = (
+        parent === '' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(parent)
+      ) as {
+        children?: { path: string; children?: unknown[] }[]
+      } | null
+      const files = new Set(
+        (node?.children ?? []).filter((one) => !one.children).map((one) => one.path)
+      )
+      // Indexed siblings already prove membership. Only watcher-lagged names need I/O.
+      for (const path of this.awaitingIndex)
+        if (
+          !files.has(path) &&
+          folderOf(path).replace(/^\/$/, '') === parent &&
+          (await this.rawStat(path))?.type === 'file'
         )
-        // Indexed siblings already prove membership. Only watcher-lagged names need I/O.
-        for (const path of this.awaitingIndex)
-          if (
-            !files.has(path) &&
-            folderOf(path).replace(/^\/$/, '') === parent &&
-            (await this.rawStat(path))?.type === 'file'
+          files.add(path)
+      return [
+        ...[...files].map((path) => ({ path, kind: 'file' as const })),
+        ...[...(inventory.publishedParents ?? [])]
+          .filter(
+            (path) =>
+              folderOf(path).replace(/^\/$/, '') === parent &&
+              !directories.some((one) => one.path === path)
           )
-            files.add(path)
-        return [
-          ...[...files].map((path) => ({ path, kind: 'file' as const })),
-          ...[...(inventory.publishedParents ?? [])]
-            .filter(
-              (path) =>
-                folderOf(path).replace(/^\/$/, '') === parent &&
-                !directories.some((one) => one.path === path)
-            )
-            .map((path) => ({ path, kind: 'directory' as const })),
-          ...directories
-            .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
-            .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
-        ]
-      })()
-      if (!filesOnly) inventory.indexedChildren.set(parent, children)
+          .map((path) => ({ path, kind: 'directory' as const })),
+        ...directories
+          .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
+          .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
+      ]
     }
-    return (await children).map((one) => ({ ...one }))
+    const children = filesOnly ? await read() : await inventory.indexedChildren.stable(parent, read)
+    return children.map((one) => ({ ...one }))
   }
   private inventoryListing(parent: string): Promise<ListedFiles> {
-    const prior = this.inventory?.listings.get(parent)
-    if (prior !== undefined) return prior
     const inventory = this.inventory
-    const listing = this.disk.list(parent).catch((error): ListedFiles => {
-      if (notFound(error)) return { files: [], folders: [] }
-      if (inventory?.listings.get(parent) === listing) inventory.listings.delete(parent)
-      throw error
-    })
-    this.inventory?.listings.set(parent, listing)
-    return listing
+    const read = () =>
+      this.disk.list(parent).catch((error): ListedFiles => {
+        if (notFound(error)) return { files: [], folders: [] }
+        inventory?.listings.delete(parent)
+        throw error
+      })
+    return inventory ? inventory.listings.stable(parent, read) : read()
   }
   private updateInventory(paths: readonly string[], known?: 'file' | null): void {
     const inventory = this.inventory
     if (!inventory) return
     for (const path of paths) {
       const parent = folderOf(path) === '/' ? '' : folderOf(path)
+      const retain: (() => void)[] = []
       if (known === 'file') inventory.indexedNames?.get(parent)?.add(caseKey(path))
       else inventory.indexedNames?.delete(parent)
       if (
         !inventory.children.has(parent) &&
         !inventory.indexedChildren.has(parent) &&
         !inventory.listings.has(parent)
-      )
+      ) {
+        this.recordInventoryChange(inventory, path)
         continue
+      }
       const stat =
         known === undefined
           ? this.rawStat(path)
           : Promise.resolve(known === null ? null : { type: known })
       for (const cache of [inventory.children, inventory.indexedChildren]) {
         const children = cache.get(parent)
-        if (children !== undefined)
+        if (children !== undefined) {
           cache.set(
             parent,
             Promise.all([children, stat]).then(async ([rows, standing]) => [
@@ -427,9 +559,12 @@ export class ObsidianFileSystem implements FileSystem {
                   : []),
             ])
           )
+          const patched = cache.get(parent)
+          retain.push(() => cache.retain(parent, patched))
+        }
       }
       const prior = inventory.listings.get(parent)
-      if (prior !== undefined)
+      if (prior !== undefined) {
         inventory.listings.set(
           parent,
           Promise.all([prior, stat]).then(([listing, stat]) => ({
@@ -443,6 +578,11 @@ export class ObsidianFileSystem implements FileSystem {
             ],
           }))
         )
+        const patched = inventory.listings.get(parent)
+        retain.push(() => inventory.listings.retain(parent, patched))
+      }
+      this.recordInventoryChange(inventory, path)
+      for (const refresh of retain) refresh()
     }
   }
   private async settleInventoryParents(): Promise<void> {
@@ -825,7 +965,11 @@ export class ObsidianFileSystem implements FileSystem {
 
   private async makeParents(path: string): Promise<void> {
     const inventory = this.inventory
-    const known = inventory ? (inventory.parentFolders ??= new Set()) : undefined
+    const known = inventory
+      ? (inventory.parentFolders ??= new InventoryProofs((path) =>
+          this.parentRevision(path, inventory)
+        ))
+      : undefined
     try {
       await makeParents(this.disk, path, known)
     } catch (error) {
@@ -885,11 +1029,10 @@ export class ObsidianFileSystem implements FileSystem {
   /** Bounded alias recheck inside an existing placement lease; recovery runs before it. */
   async listChildren(parent: string) {
     this.runtimeFence?.assertReady()
-    const prior = this.inventory?.children.get(parent)
-    if (prior !== undefined) return (await prior).map((one) => ({ ...one }))
-    const children = this.readInventoryChildren(parent)
-    this.inventory?.children.set(parent, children)
-    return (await children).map((one) => ({ ...one }))
+    const children = this.inventory
+      ? await this.inventory.children.stable(parent, () => this.readInventoryChildren(parent))
+      : await this.readInventoryChildren(parent)
+    return children.map((one) => ({ ...one }))
   }
   private async readInventoryChildren(parent: string): Promise<InventoryChild[]> {
     const scope = this.scopedRoot()
@@ -946,7 +1089,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(made))?.type === 'folder') await this.directories.identity(made)
     // Every cached listing above the new folder has to learn about them, including raw
     // listings read before the folder existed.
-    this.updateInventory(prefixes.filter((one) => this.withinFileScope(one)))
+    this.updateInventory(missing.filter((one) => this.withinFileScope(one)))
     await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
@@ -1152,14 +1295,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async *list(): AsyncIterable<FileInfo> {
     const own = this.inventory === null && this.inventoryDepth === 0
-    const inventory = own
-      ? {
-          listings: new Map(),
-          mutations: new Set<string>(),
-          children: new Map(),
-          indexedChildren: new Map(),
-        }
-      : this.inventory
+    const inventory = own ? this.createInventory() : this.inventory
     if (own) this.inventory = inventory
     try {
       yield* this.listUnlocked()
@@ -1900,7 +2036,8 @@ export class ObsidianFileSystem implements FileSystem {
         const parts = parent.split('/')
         for (let length = 1; length <= parts.length; length++) {
           const prefix = parts.slice(0, length).join('/')
-          if (!this.withinFileScope(prefix) || inventory.publishedParents.has(prefix)) continue
+          if (!prefix || !this.withinFileScope(prefix) || inventory.publishedParents.has(prefix))
+            continue
           inventory.publishedParents.add(prefix)
           const containing = folderOf(prefix).replace(/^\/$/, '')
           inventory.indexedChildren.delete(containing)

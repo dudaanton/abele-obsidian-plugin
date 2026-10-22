@@ -800,9 +800,36 @@ export function guardedVaultPort<T extends object>(port: T): T {
 }
 
 const REVISIONS = Symbol.for('abele.sync.adapter-config-revisions-v1')
+const CONFIG_OBSERVERS = Symbol.for('abele.sync.adapter-config-observers-v1')
+type ConfigObserver = (paths: readonly string[], directory: boolean) => void
+
+/** Scoped observation only; the caller removes its callback at the end of the pass. */
+export function observeAdapterConfig(
+  adapter: DataAdapter,
+  root: string,
+  observe: ConfigObserver
+): () => void {
+  adapter = adapterOrigins.get(adapter) ?? adapter
+  adapterConfigRevision(adapter, root)
+  const shared = adapter as DataAdapter & { [CONFIG_OBSERVERS]?: Set<ConfigObserver> }
+  if (!shared[CONFIG_OBSERVERS])
+    Object.defineProperty(shared, CONFIG_OBSERVERS, { value: new Set<ConfigObserver>() })
+  const callback: ConfigObserver = (paths, directory) => {
+    const relevant = paths.filter(
+      (path) => path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
+    )
+    if (relevant.length) observe(relevant, directory)
+  }
+  const observers = shared[CONFIG_OBSERVERS]
+  observers.add(callback)
+  return () => {
+    observers.delete(callback)
+  }
+}
 
 /** Config writes have no vault-index event. Track adapter mutations without stat/list calls.
- * One wrapper per adapter, shared by all connections; no runtime or callbacks are retained.
+ * One wrapper per adapter, shared by all connections. Counters retain no runtime;
+ * pass observers are explicitly released by their callers.
  * Changes outside the adapter are still discovered by the existing config poll. */
 export function adapterConfigRevision(adapter: DataAdapter, root: string): () => number {
   adapter = adapterOrigins.get(adapter) ?? adapter
@@ -837,6 +864,12 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
           )
             held.set(root, revision + 1)
         }
+        const observers = Reflect.get(adapter, CONFIG_OBSERVERS) as Set<ConfigObserver> | undefined
+        for (const observe of observers ?? [])
+          observe(
+            paths.filter((path): path is string => typeof path === 'string'),
+            key === 'mkdir' || key === 'rmdir' || key === 'rename'
+          )
       }
       Object.defineProperty(adapter, key, {
         configurable: true,

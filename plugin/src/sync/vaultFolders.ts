@@ -23,13 +23,15 @@ export async function makeParents(
   if (cut <= 0) return
   const folder = target.slice(0, cut)
   if (known?.has(folder)) return
+  const observe = known && Reflect.get(known, Symbol.for('abele.sync.parent-proof-v1'))
+  const remember = observe ? observe.call(known, folder) : () => known?.add(folder)
   if (await adapter.exists(folder)) {
-    known?.add(folder)
+    remember()
     return
   }
   const failed = await tryMkdir(adapter, folder)
   if (failed === null) {
-    known?.add(folder)
+    remember()
     return
   }
 
@@ -41,7 +43,7 @@ export async function makeParents(
   if (!(await adapter.exists(folder))) {
     throw new EngineError('io', `cannot create the folder ${folder}`, failed)
   }
-  known?.add(folder)
+  remember()
 }
 
 /** Makes a folder; answers what went wrong, or null when the folder is there afterwards. */

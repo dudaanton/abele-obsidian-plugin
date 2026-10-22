@@ -10,9 +10,9 @@ import {
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
-it.each([false, true])(
-  'uses the sibling observation clock for a later local write (config=%s)',
-  async (config) => {
+it.each([false, true].flatMap((config) => [false, true].map((cached) => ({ config, cached }))))(
+  'uses the sibling observation clock for a later local write (config=$config, cached=$cached)',
+  async ({ config, cached }) => {
     const paths = config ? ['.obsidian/a.json', '.obsidian/b.json'] : ['a.md', 'b.md']
     const content = 'sample local bytes'
     const bytes = new TextEncoder().encode(content)
@@ -24,7 +24,7 @@ it.each([false, true])(
     const byFileId = state.byFileId.bind(state)
     let injected = false
     vi.spyOn(state, 'byFileId').mockImplementation(async (id) => {
-      if (id === 'sample-1' && !injected) {
+      if (id === (cached ? 'sample-0' : 'sample-1') && !injected) {
         injected = true
         await app.vault.adapter.write(paths[1], content)
         // Config writes deliberately have no vault event.
@@ -53,8 +53,9 @@ it.each([false, true])(
       throw new Error('Content offline')
     })
     const stage = vi.spyOn(fs, 'beginAtomicWrite')
-    await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, () =>
-      pull(
+    await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+      if (cached) await fs.listChildren(config ? '.obsidian' : '')
+      return pull(
         {
           changes: async () => ({ items, head_seq: 3, next_since: 3 }),
           openVersion,
@@ -64,7 +65,7 @@ it.each([false, true])(
         state,
         { dirty: new Set(), expected: new ExpectedWrites(), filter: { excluded: () => false } }
       )
-    )
+    })
     expect(injected).toBe(true)
     expect(openVersion).not.toHaveBeenCalled()
     expect(getBlob).not.toHaveBeenCalled()

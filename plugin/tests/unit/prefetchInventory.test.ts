@@ -7,6 +7,68 @@ import { scopedFileSystem } from '@/sync/scopedFileSystem'
 const inventory = Symbol.for('abele.sync.inventory-children-v1')
 const pass = Symbol.for('abele.sync.inventory-pass-v1')
 
+it('keeps the root out of cached published directory membership', async () => {
+  const app = buildFakeVault([])
+  const fs = new ObsidianFileSystem(app as never)
+  await Reflect.get(fs, pass).call(fs, async () => {
+    await Reflect.get(fs, Symbol.for('abele.sync.inventory-directories-v1')).call(fs)
+    await fs.writeAtomic('sample.md', new TextEncoder().encode('sample'), 1000)
+    expect(await fs.listChildren('')).not.toContainEqual(expect.objectContaining({ path: '' }))
+  })
+})
+
+it('reloads only changed config directory snapshots and removes adapter observers', async () => {
+  const app = buildFakeVault([
+    { path: '.obsidian/a.json', content: '{}' },
+    { path: 'shared/sample.md', content: 'sample' },
+  ])
+  const fs = new ObsidianFileSystem(app as never)
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const observers = Symbol.for('abele.sync.adapter-config-observers-v1')
+  await Reflect.get(fs, pass).call(fs, async () => {
+    await fs.listChildren('shared')
+    await fs.listChildren('.obsidian')
+    list.mockClear()
+    await app.vault.adapter.write('.obsidian/b.json', '{}')
+    expect(await fs.listChildren('.obsidian')).toContainEqual({
+      path: '.obsidian/b.json',
+      kind: 'file',
+    })
+    expect(list.mock.calls.filter(([path]) => path === '.obsidian')).toHaveLength(1)
+    await fs.listChildren('shared')
+    expect(list.mock.calls.filter(([path]) => path === 'shared')).toHaveLength(0)
+    await app.vault.adapter.remove('.obsidian/a.json')
+    expect(await fs.listChildren('.obsidian')).not.toContainEqual({
+      path: '.obsidian/a.json',
+      kind: 'file',
+    })
+    expect(Reflect.get(app.vault.adapter, observers).size).toBeGreaterThan(0)
+  })
+  expect(Reflect.get(app.vault.adapter, observers).size).toBe(0)
+})
+
+it('does not promote a listing changed while its read was awaiting', async () => {
+  const app = buildFakeVault([{ path: '.obsidian/a.json', content: '{}' }])
+  const fs = new ObsidianFileSystem(app as never)
+  const list = app.vault.adapter.list.bind(app.vault.adapter)
+  let injected = false
+  const reads = vi.spyOn(app.vault.adapter, 'list').mockImplementation(async (path) => {
+    const result = await list(path)
+    if (path === '.obsidian' && !injected) {
+      injected = true
+      await app.vault.adapter.write('.obsidian/b.json', '{}')
+    }
+    return result
+  })
+  await Reflect.get(fs, pass).call(fs, async () => {
+    expect(await fs.listChildren('.obsidian')).toContainEqual({
+      path: '.obsidian/b.json',
+      kind: 'file',
+    })
+    expect(reads.mock.calls.filter(([path]) => path === '.obsidian')).toHaveLength(2)
+  })
+})
+
 it('reports local event revisions without filesystem operations and retires them after a pass', async () => {
   const app = buildFakeVault([])
   const fs = new ObsidianFileSystem(app as never)

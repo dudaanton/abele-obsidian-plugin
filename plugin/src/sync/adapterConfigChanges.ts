@@ -1,1 +1,1 @@
-export { adapterConfigRevision } from './vaultPathLinks'
+export { adapterConfigRevision, observeAdapterConfig } from './vaultPathLinks'
