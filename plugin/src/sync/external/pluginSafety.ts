@@ -869,7 +869,7 @@ export async function requireExternalLifecycleSafety(
     for (const root of roots) {
       assertCurrent()
       if ((await disk.stat(root)) === null) continue
-      for (const area of ['active', 'completed', 'review', 'objects']) {
+      for (const area of ['active', 'completed', 'review', 'objects', 'retiring']) {
         const path = root + '/' + area
         if ((await disk.stat(path)) === null) continue
         const entries = await disk.list(path)

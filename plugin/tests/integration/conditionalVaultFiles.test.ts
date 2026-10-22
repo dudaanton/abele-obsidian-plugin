@@ -31,7 +31,7 @@ it('checks destructive removal by fresh content on a host without object identit
   ).toBe(true)
   expect(await app.vault.adapter.exists('sample.bin')).toBe(false)
 })
-it('drops verified successful victims and keeps only caller-owned installation evidence', async () => {
+it('separates retained victims from caller-owned installation evidence', async () => {
   const app = buildFakeVault([])
   desktopAdapter(app)
   const disk = new ObsidianFileSystem(app as never)
@@ -45,6 +45,11 @@ it('drops verified successful victims and keeps only caller-owned installation e
   ).toBe(true)
   const folder = '.obsidian/plugins/abele/sync-conditional/objects/sample-retirement'
   expect(await app.vault.adapter.exists(folder + '/victim')).toBe(false)
+  expect(
+    await app.vault.adapter.read(
+      '.obsidian/plugins/abele/sync-conditional/trash/sample-retirement/victim'
+    )
+  ).toBe('sample A')
   expect(
     await disk.installedFile('sample-retirement', 'sample.bin', await sha256(data('sample B')))
   ).toBe(true)
@@ -343,8 +348,6 @@ destructiveHostCase(
       return list(path)
     }
     await new ObsidianFileSystem(app as never).recoverConditionalFiles()
-    expect(visited.every((path) => path.endsWith('/active') || path.endsWith('/completed'))).toBe(
-      true
-    )
+    expect(visited.every((path) => /\/(active|completed|retiring|retained)$/.test(path))).toBe(true)
   }
 )

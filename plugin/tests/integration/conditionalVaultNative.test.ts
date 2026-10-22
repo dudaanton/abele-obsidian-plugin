@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { desktopFsPort } from '../helpers/desktopRequire'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { CONDITIONAL_RETENTION_MS } from '@/sync/conditionalFiles'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -594,11 +595,21 @@ it('retains a captured inode for saves through a handle opened before removal', 
   } finally {
     await handle.close()
   }
-  const folder = join(root, '.obsidian/plugins/abele/sync-conditional/objects')
+  const folder = join(root, '.obsidian/plugins/abele/sync-conditional/trash')
   const ids = await fs.readdir(folder)
   expect(await fs.readFile(join(folder, ids[0], 'victim'))).toEqual(Buffer.from(b))
   await disk().recoverConditionalFiles()
   await expect(fs.stat(path)).rejects.toMatchObject({ code: 'ENOENT' })
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + CONDITIONAL_RETENTION_MS + 1000)
+  try {
+    await disk().recoverConditionalFiles()
+    const recovered = (await fs.readdir(root)).find((name) => name.includes('Recovered copy'))
+    expect(recovered).toBeDefined()
+    expect(await fs.readFile(join(root, recovered!))).toEqual(Buffer.from(b))
+    await expect(fs.stat(path)).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally {
+    clock.mockRestore()
+  }
 }, 30_000)
 
 // Native durability work can exceed the default 5s on a busy volume.

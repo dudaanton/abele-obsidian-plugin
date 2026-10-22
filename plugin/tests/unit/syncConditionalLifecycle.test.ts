@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
 import { buildFakeVault } from '../helpers/fakeVault'
 
-it.each(['active', 'completed', 'review', 'objects'])(
+it.each(['active', 'completed', 'review', 'objects', 'retiring'])(
   'refuses departure with conditional %s evidence',
   async (area) => {
     const app = buildFakeVault([])
@@ -37,4 +37,15 @@ it('allows empty conditional namespaces at departure', async () => {
   await expect(
     requireExternalLifecycleSafety(app as never, new IDBFactory())
   ).resolves.toBeUndefined()
+})
+
+it('keeps settled retention at departure without treating it as unfinished publication', async () => {
+  const app = buildFakeVault([])
+  const path = '.obsidian/plugins/abele/sync-conditional/trash/sample/victim'
+  await app.vault.adapter.mkdir(path.slice(0, path.lastIndexOf('/')))
+  await app.vault.adapter.write(path, 'retained bytes')
+  await expect(
+    requireExternalLifecycleSafety(app as never, new IDBFactory())
+  ).resolves.toBeUndefined()
+  expect(await app.vault.adapter.read(path)).toBe('retained bytes')
 })

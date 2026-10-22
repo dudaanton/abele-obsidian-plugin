@@ -188,7 +188,7 @@ it('does not replay an uncertain create over a later edit', async () => {
   )
 })
 
-it('publishes indexed replacements through the vault and retires verified quarantine', async () => {
+it('publishes indexed replacements through the vault and retains displaced bytes', async () => {
   const { app, disk, write } = await fixture()
   const modify = vi.spyOn(app.vault, 'modifyBinary')
   expect(await write()).toBe(true)
@@ -197,6 +197,11 @@ it('publishes indexed replacements through the vault and retires verified quaran
   const root = '.obsidian/plugins/abele/sync-conditional/objects/sample-mobile'
   expect(await app.vault.adapter.exists(root + '/allocation')).toBe(false)
   expect(await app.vault.adapter.exists(root + '/victim')).toBe(false)
+  expect(
+    await app.vault.adapter.read(
+      '.obsidian/plugins/abele/sync-conditional/trash/sample-mobile/victim'
+    )
+  ).toBe('before')
   expect(
     await disk.installedFile('sample-mobile', 'sample.bin', await sha256(bytes('after')))
   ).toBe(false)
