@@ -658,21 +658,6 @@ body.is-phone .abele-file-tree .tree-item-self {
   min-height: var(--touch-size-m);
   align-items: center;
 }
-body.is-phone .abele-file-tree .abele-tree-item__text {
-  flex: 1 1 auto;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-body.is-phone .abele-file-tree__change > .tree-item-self {
-  flex-wrap: wrap;
-  row-gap: var(--size-4-1);
-}
-body.is-phone .abele-file-tree__change > .tree-item-self > .abele-tree-item__inner {
-  flex-basis: 100%;
-}
-body.is-phone .abele-file-tree__change > .tree-item-self > .tree-item-flair-outer {
-  margin-inline-start: auto;
-}
 // One line over the tree, its glyph where a row's glyph stands and its words on the rows' text.
 .abele-file-tree__status {
   display: flex;

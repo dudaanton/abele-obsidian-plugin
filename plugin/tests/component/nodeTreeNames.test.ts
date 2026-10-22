@@ -38,4 +38,14 @@ describe('names in the node’s file tree', () => {
     expect(rule).toContain('white-space: nowrap')
     expect(rule).toContain('text-overflow: ellipsis')
   })
+
+  it('preserve the single-line name and badge layout on a phone', () => {
+    const source = readFileSync('src/components/nodeWork/FileTree.vue', 'utf8')
+    const phoneRules = [...source.matchAll(/body\.is-phone[^{}]+\{([^}]+)\}/g)]
+      .map((match) => match[1])
+      .join('\n')
+    expect(phoneRules).not.toMatch(/white-space:\s*normal/)
+    expect(phoneRules).not.toMatch(/flex-wrap:\s*wrap/)
+    expect(phoneRules).not.toMatch(/flex-basis:\s*100%/)
+  })
 })
