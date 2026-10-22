@@ -295,7 +295,8 @@ it.each(['ledger', 'exclusions', 'resume'] as const)(
       }
       state.close()
       if (where === 'resume') f.ui.startupApprovals.add(id)
-      mapping = vi.spyOn(LocalFolderPlacement.prototype, 'toLocal').mockImplementation(() => {
+      // Fail the safety translation once; later journal translations remain valid.
+      mapping = vi.spyOn(LocalFolderPlacement.prototype, 'toLocal').mockImplementationOnce(() => {
         throw new Error('sample mapping failure')
       })
       recover = vi
