@@ -40,6 +40,7 @@ vi.mock('@/node/NodePathModel', () => ({
     async refreshCurrent() {
       fixture.calls.push('old-watch')
     }
+    connectionRecovered() {}
     report(error: unknown) {
       throw error
     }
