@@ -102,7 +102,7 @@ const probe = (device: string) =>
       const { model } = window.__abeleNodePanelFixture
       const inspected = model.inspections.value
       model.inspections.value = {}
-      seen.initialLoading = await until(() => panel.querySelector('[aria-busy="true"]')?.textContent.includes('Loading the file changes'))
+      seen.initialLoading = await until(() => panel.querySelector('.abele-node-sidebar__first [aria-busy="true"] .abele-state-line__text')?.textContent === 'Loading changes…')
       if (panel.querySelector('.abele-file-tree')) throw Error('Uninitialized status rendered as a file list')
       await shot('changes-loading')
       model.inspections.value = inspected

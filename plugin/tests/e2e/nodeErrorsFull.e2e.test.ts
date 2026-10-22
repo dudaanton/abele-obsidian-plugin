@@ -79,7 +79,7 @@ const probe = (device: string) =>
     const select=document.querySelector('.abele-node-log select');select.value='warn';select.dispatchEvent(new Event('change',{bubbles:true}));
     await until(()=>document.querySelectorAll('.abele-node-log__line').length===2,'Log filter failed');
     await capture('04-log-warnings');
-    const closeLog=async()=>{document.querySelector('.abele-node-log-modal .modal-close-button').click();await until(()=>!document.querySelector('.abele-node-log'),'Log did not close')};
+    const closeLog=async()=>{document.querySelector('.abele-node-log-modal').closest('.modal-container').querySelector('.modal-header-button, .modal-close-button').click();await until(()=>!document.querySelector('.abele-node-log'),'Log did not close')};
     await closeLog();
     code='';await file.open('sample.ts');connection.activity.slowSince.value=Date.now()-10000;touch();
     app.workspace.leftSplit.expand();await until(()=>nodePanel.root().textContent.includes('Waiting…'),'Slow state missing');
@@ -108,7 +108,7 @@ const probe = (device: string) =>
       const card=document.querySelector('.abele-node-manager-run');
       if(card.textContent.includes(error))throw Error('Command exposes the raw code outside Original action');
       await capture(name);
-      card.closest('.modal-container').querySelector('.modal-close-button').click();
+      card.closest('.modal-container').querySelector('.modal-header-button, .modal-close-button').click();
       await until(()=>!document.querySelector('.abele-node-manager-run'),'Command fixture did not close');
     }
     for(const [name,error] of [['refused','permission_denied'],['provider-missing','provider_unavailable'],['busy','resource_busy'],['size-limit','file_too_large'],['unknown','sample_future_failure']]){
