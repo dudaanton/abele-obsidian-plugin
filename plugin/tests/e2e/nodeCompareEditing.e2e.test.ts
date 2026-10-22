@@ -95,14 +95,21 @@ function probe(device: string) {
       if(${JSON.stringify(device)} === 'desktop') {
         const mark = strip.querySelector('.abele-change-overview__mark_changed')
         const box = mark.getBoundingClientRect()
+        const x = box.left + box.width/2, y = box.top + box.height/2
+        const hit = document.elementFromPoint(x,y)
+        if(hit !== mark && !mark.contains(hit))throw Error('Overview marker is covered: '+hit?.outerHTML)
+        require('@electron/remote').getCurrentWindow().focus()
+        for(let i=0;i<2;i++)document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerType:'mouse'}))
         const cdp = require('@electron/remote').getCurrentWebContents().debugger
         const owned = !cdp.isAttached()
         if(owned)cdp.attach('1.3')
         try {
-          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:box.left+box.width/2,y:box.top+box.height/2,button:'none'})
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'none'})
+          mark.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse',relatedTarget:document.body,clientX:x,clientY:y}))
           await until(()=>[...document.querySelectorAll('.tooltip')].some(el=>el.textContent.includes('Lines')))
           await shot('overview-tooltip')
           await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:20,button:'none'})
+          mark.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}))
         } finally {if(owned)cdp.detach()}
       }
       strip.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}))
