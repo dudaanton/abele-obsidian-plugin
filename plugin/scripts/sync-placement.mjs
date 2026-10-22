@@ -392,6 +392,11 @@ export function syncPlacementPlugin() {
               await this.pending.read(change.file_id) === null &&
               await coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
                 () => this.adoptExistingUnlocked(change, entry))) return true;
+          // Placement must still validate a move's source, but it needs no body transfer
+          // when the destination already contains the immutable remote bytes.
+          if (await this.destinationMatches(change.path, sha, change.size))
+            return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+              () => this.placeUnlocked(change, sha, entry, fetched, local));
           // Downloads do not own paths. The original placer revalidates the source after waiting.
           // Keep the network source bounded and fetch it only once. The core's durable target
           // stage and local-edit checks still run under the placement lease.

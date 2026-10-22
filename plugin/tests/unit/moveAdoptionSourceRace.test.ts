@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import {
   ExpectedWrites,
   MemoryFileSystem,
@@ -49,6 +49,7 @@ it('retains a source recreated while an unchanged move destination is fingerprin
       return { sha: await sha256(bytes), size: bytes.length }
     },
   })
+  const getBlob = vi.fn(async () => a)
   const client = {
     changes: async () => ({
       items: [
@@ -70,7 +71,7 @@ it('retains a source recreated while an unchanged move destination is fingerprin
       head_seq: 2,
       next_since: 2,
     }),
-    getBlob: async () => a,
+    getBlob,
   } as unknown as EngineClient
   await pull(client, fs, state, {
     dirty: new Set(),
@@ -81,4 +82,5 @@ it('retains a source recreated while an unchanged move destination is fingerprin
   expect(await fs.read('old.md')).toEqual(b)
   expect(await fs.read('new.md')).toEqual(a)
   expect(await state.byFileId('sample')).toEqual(base)
+  expect(getBlob).not.toHaveBeenCalled()
 })
