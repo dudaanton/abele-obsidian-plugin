@@ -33,10 +33,13 @@ it('publishes the staged file list before slow per-file patches finish', async (
     listed
   )
   await vi.waitFor(() =>
-    expect(listed).toHaveBeenCalledWith({ files: [{ path: 'sample.ts', patch: '' }] })
+    expect(listed).toHaveBeenCalledWith({
+      files: [{ path: 'sample.ts', patch: '', pending: true }],
+    })
   )
   release()
   await preview
+  expect(listed).toHaveBeenLastCalledWith({ files: [{ path: 'sample.ts', patch: '' }] })
 })
 
 it('reads the staged file list and patches through scoped readonly tools without committing', async () => {

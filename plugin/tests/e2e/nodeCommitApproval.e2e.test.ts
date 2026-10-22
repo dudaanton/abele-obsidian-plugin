@@ -75,8 +75,12 @@ async function inspectCommit(label: string) {
     const binary = await evalLong(`(async()=>{
       const row=[...document.querySelectorAll('[data-node-commit-diff]')].find(el=>el.textContent.includes('sample.bin'));
       row.querySelector('.abele-disclosure__control').click();
-      await new Promise(r=>setTimeout(r,100));
-      return row.querySelector('.abele-disclosure__content')?.textContent.trim()??'';
+      for(let i=0;i<300;i++){
+        const content=row.querySelector('.abele-disclosure__content');
+        if(content&&!content.querySelector('[data-node-commit-loading]'))return content.textContent.trim();
+        await new Promise(r=>setTimeout(r,50));
+      }
+      throw Error('Binary patch preview did not settle');
     })()`)
     expect(binary.length).toBeGreaterThan(0)
     await inspect('binary-diff', 'sample.bin')

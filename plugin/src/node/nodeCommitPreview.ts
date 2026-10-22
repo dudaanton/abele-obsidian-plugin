@@ -9,14 +9,21 @@ const Comparison = z.object({
   patch: z.string().optional(),
 })
 
+export interface NodeCommitFile {
+  path: string
+  patch: string
+  error?: string
+  pending?: boolean
+}
+
 /** Owner-side inspection uses the same read scope and authority fences as ordinary Git reads. */
 export async function nodeCommitPreview(
   session: ChatSession,
   params: Record<string, unknown>,
   tools?: AgentTool[],
   signal?: AbortSignal,
-  listed?: (preview: { files: { path: string; patch: string; error?: string }[] }) => void
-): Promise<{ files: { path: string; patch: string; error?: string }[] }> {
+  listed?: (preview: { files: NodeCommitFile[] }) => void
+): Promise<{ files: NodeCommitFile[] }> {
   const available = tools ?? (await import('@/ai/tools/node')).createNodeTools()
   const tool = available.find((entry) => entry.name === 'node_git_diff')!
   const target = Object.fromEntries(
@@ -51,21 +58,27 @@ export async function nodeCommitPreview(
     throw new Error('record_too_large')
   }
   const comparison = await read()
-  listed?.({ files: comparison.entries.map(({ path }) => ({ path, patch: '' })) })
-  const files: { path: string; patch: string; error?: string }[] = []
-  for (const entry of comparison.entries) {
+  const files: NodeCommitFile[] = comparison.entries.map(({ path }) => ({
+    path,
+    patch: '',
+    pending: true,
+  }))
+  const publish = () => listed?.({ files: files.map((file) => ({ ...file })) })
+  publish()
+  for (const [index, entry] of comparison.entries.entries()) {
     try {
       const detail = await read(entry.path)
-      files.push({ path: entry.path, patch: detail.patch ?? '' })
+      files[index] = { path: entry.path, patch: detail.patch ?? '' }
     } catch (error) {
       signal?.throwIfAborted()
       if (error instanceof Error && error.message === 'stale_resource') throw error
-      files.push({
+      files[index] = {
         path: entry.path,
         patch: '',
         error: error instanceof Error ? error.message : String(error),
-      })
+      }
     }
+    publish()
   }
   return { files }
 }

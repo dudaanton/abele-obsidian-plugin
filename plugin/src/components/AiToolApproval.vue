@@ -141,8 +141,9 @@
           data-node-commit-diff
           @update:model-value="commitDiffs[file.path] = $event"
         >
-          <p v-if="file.error">{{ nodeErrorDetails(file.error) }}</p>
-          <pre class="abele-tool-approval__code"><code>{{ file.patch }}</code></pre>
+          <p v-if="file.pending" data-node-commit-loading role="status">{{ t('kit.loading') }}</p>
+          <p v-else-if="file.error">{{ nodeErrorDetails(file.error) }}</p>
+          <pre v-else class="abele-tool-approval__code"><code>{{ file.patch }}</code></pre>
         </Disclosure>
       </template>
       <Disclosure v-model="originalOpen" :label="t('node.manager.evidence')">
@@ -487,7 +488,13 @@ const managerApproval = computed(() => {
   if (input.method === 'command.v1.run') {
     rows.push({
       name: t('node.manager.command'),
-      value: visibleText(commandText(params) ?? ''),
+      value: Array.isArray(params.argv)
+        ? params.argv
+            .map((arg) =>
+              typeof arg === 'string' && /^[\w./=-]+$/.test(arg) ? arg : visibleJson(arg)
+            )
+            .join(' ')
+        : visibleText(promptString(params.command)),
     })
   } else {
     add(

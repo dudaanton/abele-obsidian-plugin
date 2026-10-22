@@ -7,6 +7,17 @@ import { shotDir } from './helpers/shots'
 targets('desktop')
 const shots = shotDir('abele-approval-command')
 
+async function closeFixture() {
+  await evalLong(`(async()=>{
+    const card=document.querySelector(".abele-node-delegation");
+    const close=[...(card?.closest(".modal-container")?.querySelectorAll(".modal-header-button,.modal-close-button")??[])].find(el=>el.getBoundingClientRect().width);
+    if(close)close.click();
+    else document.body.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",code:"Escape",keyCode:27,bubbles:true}));
+    for(let i=0;i<100;i++){if(!card?.isConnected)return true;await new Promise(r=>setTimeout(r,50))}
+    throw Error("The previous command fixture did not unmount");
+  })()`)
+}
+
 async function inspect(label: string) {
   for (const [name, command, open] of [
     ['normal', 'npm test', false],
@@ -33,9 +44,7 @@ async function inspect(label: string) {
       expect(report.overflow).toBe(false)
       columnShot(`${shots}/${label}-${name}.png`)
     } finally {
-      await evalLong(
-        `(() => {document.querySelector('.abele-node-delegation')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click();return true})()`
-      )
+      await closeFixture()
     }
   }
   try {
@@ -49,9 +58,7 @@ async function inspect(label: string) {
     expect(text).toBe("git add -- 'src/sample file.ts'")
     columnShot(`${shots}/${label}-argv.png`)
   } finally {
-    await evalLong(
-      `document.querySelector('.abele-node-delegation')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()`
-    )
+    await closeFixture()
   }
   try {
     await evalLong(
@@ -65,9 +72,7 @@ async function inspect(label: string) {
     expect(text).not.toContain('Paused; can continue')
     columnShot(`${shots}/${label}-owner-stopped.png`)
   } finally {
-    await evalLong(
-      `document.querySelector('.abele-node-delegation')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()`
-    )
+    await closeFixture()
   }
 }
 

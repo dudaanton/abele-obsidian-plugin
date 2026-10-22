@@ -3,6 +3,37 @@ import { expect, it, vi } from 'vitest'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import { useVault } from '../helpers/testEnv'
+it('keeps the established JSON quoting and escaped controls on manager argv approvals', () => {
+  useVault([])
+  const wrapper = mount(AiToolApproval, {
+    props: {
+      message: {
+        id: 'sample-manager-call',
+        role: 'tool-call',
+        content: '',
+        timestamp: 0,
+        toolName: 'command',
+      },
+      nodePrompt: {
+        prompt_id: 'sample-manager-prompt',
+        title: 'Run sample checks',
+        tool_name: 'command',
+        state: 'pending',
+        input: {
+          method: 'command.v1.run',
+          params: { argv: ['printf', 'sample\nline\r\u202e\u200b'] },
+        },
+      } as never,
+    },
+  })
+  try {
+    expect(wrapper.get('[data-manager-command]').text()).toBe(
+      'printf "sample\\nline\\r\\u202e\\u200b"'
+    )
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('calls an invalidated approval stopped instead of denied', () => {
   useVault([])
   const wrapper = mount(NodePermissionCard, {
