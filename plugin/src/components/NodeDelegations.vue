@@ -1,11 +1,13 @@
 <template>
-  <div v-if="cards.length || runs.length" class="abele-node-delegations">
+  <div v-if="cards.length || runs.length || error" class="abele-node-delegations">
     <NodeDelegationCard
       v-for="item in cards"
       :key="item.node.id + ':' + (item.card.delegationId ?? item.card.title)"
       :card="item.card"
       :node-label="item.node.label"
       :disabled="service.connection(item.node.id).state.value !== 'connected'"
+      :registration-id="item.node.id"
+      :refresh="() => service.connection(item.node.id).refreshDelegations()"
       @answer="(prompt, choice, value) => answer(item.node.id, prompt, choice, value)"
       @questionnaire="(prompt, answers) => answerQuestionnaire(item.node.id, prompt, answers)"
       @stop="(prompt) => stop(item.node.id, prompt)"
@@ -19,17 +21,38 @@
         item.card.run.session_id !== 'unsubmitted-command' &&
         service.connection(item.node.id).state.value !== 'connected'
       "
+      :registration-id="item.node.id"
+      :refresh="
+        item.card.run.session_id === 'unsubmitted-command'
+          ? undefined
+          : () =>
+              service
+                .connection(item.node.id)
+                .manager.status(parentId, item.card.run.session_id, item.card.run.run_id)
+                .then(() => service.connection(item.node.id).refreshDelegations())
+      "
+      :retry="
+        item.card.run.state !== 'outcome_unknown' &&
+        item.card.run.session_id !== 'unsubmitted-command'
+          ? () => retryCommand(item)
+          : undefined
+      "
       @answer="(prompt, choice, value) => answerRun(item, prompt, choice, value)"
       @cancel="cancel(item)"
     />
-    <NodeErrorText v-if="error" :error="error" />
+    <NodeErrorLine
+      v-if="error"
+      :error="error"
+      :registration-id="errorNode"
+      :refresh="errorNode ? () => service.connection(errorNode).refreshDelegations() : undefined"
+    />
   </div>
 </template>
 <script setup lang="ts">
 import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
 import { answerOwnerPrompt } from '@/node/promptAnswers'
 import NodeManagerRunCard from './NodeManagerRunCard.vue'
-import NodeErrorText from './NodeErrorText.vue'
+import NodeErrorLine from './nodeWork/NodeErrorLine.vue'
 import { computed, ref } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { ChatService } from '@/ai/ChatService'
@@ -50,6 +73,13 @@ const cards = computed(() =>
   })
 )
 const error = ref('')
+const errorNode = ref('')
+async function retryCommand(item: (typeof runs.value)[number]) {
+  const connection = service.connection(item.node.id)
+  if (item.card.run.state === 'outcome_unknown') return
+  await connection.manager.retry(props.parentId, item.card.operation, crypto.randomUUID())
+  await connection.refreshDelegations()
+}
 async function answerQuestionnaire(
   node: string,
   prompt: Prompt,
@@ -59,6 +89,7 @@ async function answerQuestionnaire(
     await service.connection(node).client.answerQuestionnaire(prompt, answers)
     await service.connection(node).refreshDelegations()
   } catch (err) {
+    errorNode.value = node
     error.value = err instanceof Error ? err.message : String(err)
   }
 }
@@ -77,6 +108,7 @@ const runs = computed(() =>
   })
 )
 async function ownerAction(node: string, action: () => Promise<unknown>) {
+  errorNode.value = node
   error.value = ''
   try {
     await action()

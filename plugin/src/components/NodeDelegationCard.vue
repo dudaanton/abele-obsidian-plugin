@@ -31,6 +31,19 @@
     >
       {{ t('node.delegation.ownerStopped') }}
     </p>
+    <NodeErrorLine
+      v-if="
+        card.reason &&
+        !permissionExplanation &&
+        ![OWNER_STOP_REASON, 'pi_worker_lost', 'time_limit'].includes(card.reason)
+      "
+      original
+      :error="card.state === 'unknown' ? `outcome_unknown: ${card.reason}` : card.reason"
+      :registration-id="registrationId"
+      :operation="card.title"
+      :disabled="disabled"
+      :refresh="refresh"
+    />
     <p
       v-if="card.state === 'unknown' && card.reason === 'pi_worker_lost'"
       data-delegation-reason
@@ -140,6 +153,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import NodeErrorLine from './nodeWork/NodeErrorLine.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import NodeToolPermissions from './NodeToolPermissions.vue'
 import NodeCodexNetworkRefusal from './NodeCodexNetworkRefusal.vue'
@@ -159,7 +173,13 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Disclosure from './obsidian/Disclosure.vue'
 import StatusDot from './obsidian/StatusDot.vue'
-const props = defineProps<{ card: DelegationCard; nodeLabel: string; disabled?: boolean }>()
+const props = defineProps<{
+  card: DelegationCard
+  nodeLabel: string
+  disabled?: boolean
+  registrationId?: string
+  refresh?: () => Promise<unknown>
+}>()
 const activityPreview = computed(() => {
   const text = props.card.activity?.message ?? ''
   const characters = Array.from(text)

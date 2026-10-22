@@ -270,9 +270,9 @@ it('keeps a live connection after one operation has an uncertain outcome', async
   const connection = new NodeConnection(client as never, { close() {} } as never)
   connection.state.value = 'connected'
   try {
-    await expect(client.request('repository.diff', {})).rejects.toThrow(
-      /request may have completed/
-    )
+    const request = client.request('repository.diff', {})
+    await expect(request).rejects.toThrow(/request may have completed/)
+    await expect(request).rejects.toThrow(/^outcome_unknown:/)
     expect(client.disconnect).not.toHaveBeenCalled()
     expect(connection.state.value).toBe('connected')
   } finally {

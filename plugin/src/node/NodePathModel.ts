@@ -1453,6 +1453,10 @@ export class NodePathFileModel {
   private generation = 0
   private stage?: PathFileStage
   private requested?: { path: string; stage?: PathFileStage }
+  private busyRetry?: number
+  get requestedPath(): string | undefined {
+    return this.requested?.path
+  }
   private stopRefresh: () => void
   private stopTarget?: () => void
   private disposed = false
@@ -1509,6 +1513,7 @@ export class NodePathFileModel {
     preserveMode = false
   ): Promise<void> {
     const generation = ++this.generation
+    window.clearTimeout(this.busyRetry)
     this.requested = { path, stage }
     this.busy.value = true
     try {
@@ -1527,12 +1532,28 @@ export class NodePathFileModel {
         preserveMode && this.mode.value === 'file' ? 'file' : file.change ? 'diff' : 'file'
       uiField(this.error, 'value', uiErrorMessage(''))
     } catch (error) {
-      if (generation === this.generation)
+      if (generation === this.generation) {
         uiField(
           this.error,
           'value',
           error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.2bf254e296')
         )
+        if (
+          error instanceof Error &&
+          (('code' in error && error.code === 'resource_busy') ||
+            /\bresource_busy\b/.test(error.message))
+        )
+          this.busyRetry = window.setTimeout(() => {
+            if (
+              !this.disposed &&
+              generation === this.generation &&
+              this.pathModel.online?.value !== false
+            )
+              void this.refresh().catch((error) =>
+                console.debug('[node] Busy file retry pending', error)
+              )
+          }, 2000)
+      }
       throw error
     } finally {
       if (generation === this.generation) this.busy.value = false
@@ -1546,6 +1567,7 @@ export class NodePathFileModel {
   }
   destroy(): void {
     this.disposed = true
+    window.clearTimeout(this.busyRetry)
     this.stopTarget?.()
     this.stopRefresh()
     ++this.generation

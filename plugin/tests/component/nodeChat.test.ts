@@ -7,6 +7,7 @@ import AiChatMessage from '@/components/AiChatMessage.vue'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import AiChatInput from '@/components/AiChatInput.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
+import Button from '@/components/obsidian/Button.vue'
 import { useVault } from '../helpers/testEnv'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
@@ -293,12 +294,15 @@ it.each([false, true])(
       )
       // The regular chat shows no raw records: the failure is said on its answer, nothing else.
       expect(wrapper.find('details').exists()).toBe(false)
-      await wrapper.get('[aria-label="Send again"]').trigger('click')
+      const retry = wrapper
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Retry')!
+      await retry.vm.$emit('click')
       await flushPromises()
       expect(presenter.send).toHaveBeenCalledExactlyOnceWith('Sample failed question')
       presenter.connection.state.value = 'offline'
       await flushPromises()
-      expect(wrapper.get('[aria-label="Send again"]').attributes('disabled')).toBeDefined()
+      expect(retry.props('disabled')).toBe(true)
     } finally {
       wrapper.unmount()
     }

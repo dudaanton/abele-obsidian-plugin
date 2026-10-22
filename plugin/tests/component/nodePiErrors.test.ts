@@ -6,6 +6,7 @@ import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import { nodeQueueView } from '@/node/presentation'
 import type { JournalEvent } from '@abele/channel-protocol'
 import { useVault } from '../helpers/testEnv'
+import Button from '@/components/obsidian/Button.vue'
 
 const fixture = (status = 400) => {
   useVault([])
@@ -63,7 +64,10 @@ it('resends the canonical failed input after receipt identity changes the displa
   const { wrapper, presenter } = fixture()
   try {
     expect(presenter.presentation.value.messages[0].id).toBe('operation:sample-operation')
-    await wrapper.get('[aria-label="Send again"]').trigger('click')
+    wrapper
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Retry')!
+      .vm.$emit('click')
     await flushPromises()
     expect(presenter.send).toHaveBeenCalledExactlyOnceWith('Sample failed question')
   } finally {
@@ -81,12 +85,15 @@ it.each([502, 400])('shows the retained HTTP %s cause without internal codes', (
     wrapper.unmount()
   }
 })
-it('places the native resend action inside the error row', () => {
+it('places the kit Retry action inside the error row', () => {
   const { wrapper } = fixture()
   try {
-    expect(wrapper.get('[role="alert"] button[aria-label="Send again"]').classes()).toContain(
-      'clickable-icon'
-    )
+    const retry = wrapper
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Retry')!
+    expect(retry.exists()).toBe(true)
+    expect(wrapper.get('[role="alert"]').element.contains(retry.element)).toBe(true)
+    expect(retry.props('plain')).toBe(false)
   } finally {
     wrapper.unmount()
   }

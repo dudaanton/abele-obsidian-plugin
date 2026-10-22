@@ -44,7 +44,7 @@
         </div>
       </template>
       <div v-if="error && !reconnecting" class="abele-node-panel__notice" role="alert">
-        <NodeErrorText :error="error" />
+        <NodeErrorLine :error="error" :refresh="() => emit('connect')" />
       </div>
       <div class="abele-node-panel__intro-actions">
         <Button
@@ -76,16 +76,19 @@
 
     <template v-else-if="node">
       <div data-connection-footer class="abele-node-panel__connection-footer">
-        <div
-          v-if="reconnecting"
+        <NodeErrorLine
+          v-if="error || slowSince || node.status !== 'connected'"
           data-connection-status
-          class="abele-node-panel__connection-status"
-          role="status"
-          :title="t('streamB.nodeReconnectingLine')"
-        >
-          <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
-          <span>{{ t('streamB.nodeReconnectingLine') }}</span>
-        </div>
+          footer
+          :error="error"
+          :registration-id="registrationId"
+          :target="target"
+          :reconnecting="reconnecting || node.status === 'connecting'"
+          :offline="node.status === 'offline'"
+          :slow-since="node.status === 'connected' ? slowSince : undefined"
+          :location="here"
+          :refresh="refresh || (() => emit('refresh'))"
+        />
       </div>
       <div class="nav-header">
         <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's
@@ -150,24 +153,7 @@
         />
       </div>
 
-      <div
-        v-if="node.status === 'offline' && !reconnecting"
-        class="abele-node-panel__notice"
-        role="status"
-      >
-        <span>{{ t('streamBMeta.5a4afa4c2b', { p0: String(node.seen) }) }}</span>
-        <Icon
-          icon="rotate-cw"
-          size="xs"
-          :tooltip="t('streamB.tryToReconnect.aedae4')"
-          @click="emit('retry')"
-        />
-      </div>
-
-      <div v-if="error && !reconnecting" class="abele-node-panel__notice" role="alert">
-        <NodeErrorText :error="error" />
-        <slot name="error-action" />
-      </div>
+      <slot name="error-action" />
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
           {{ t('streamBMeta.f7d3ed8268', { p0: String(node.name) }) }}
@@ -191,7 +177,8 @@
 </template>
 
 <script setup lang="ts">
-import NodeErrorText from '@/components/NodeErrorText.vue'
+import NodeErrorLine from './NodeErrorLine.vue'
+import type { PathTarget } from '@/node/NodePathModel'
 import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The node's side panel, a tab of the left sidebar beside the file explorer: the computer where
@@ -226,6 +213,10 @@ const props = withDefaults(
     /** History is one of the panel's own modes, so the header has no glyph for it. */
     historyInPanel?: boolean
     error?: string
+    registrationId?: string
+    target?: PathTarget
+    slowSince?: number
+    refresh?: () => Promise<unknown> | void
   }>(),
   {
     node: undefined,
@@ -237,6 +228,10 @@ const props = withDefaults(
       'curl -fsSL https://raw.githubusercontent.com/dudaanton/abele-node/main/install.sh | sh',
     chatAvailable: true,
     error: undefined,
+    registrationId: undefined,
+    target: undefined,
+    slowSince: undefined,
+    refresh: undefined,
   }
 )
 
@@ -252,8 +247,10 @@ const emit = defineEmits<{
   (e: 'copy', text: string): void
 }>()
 
-const reconnecting = computed(() =>
-  /^No answer from the node\.\s*Reconnecting/.test(props.error ?? '')
+const reconnecting = computed(
+  () =>
+    props.node?.status !== 'connected' &&
+    /^No answer from the node\.\s*Reconnecting/.test(props.error ?? '')
 )
 
 const nodeTone = computed(() =>
@@ -395,12 +392,17 @@ body.is-phone .abele-node-panel__link {
   order: 1;
   flex: 0 0 auto;
   box-sizing: border-box;
-  height: calc(1lh + var(--size-4-2) + var(--border-width));
-  padding: var(--size-4-1) var(--size-4-2);
+  min-height: calc(1lh + var(--size-4-2) + var(--border-width));
+  max-height: 50%;
+  overflow-y: auto;
   border-top: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+.abele-node-panel__connection-footer > .abele-state-line {
+  border-top: 0;
+  background: inherit;
 }
 .abele-node-panel__connection-status {
   display: flex;

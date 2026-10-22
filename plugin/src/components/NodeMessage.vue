@@ -66,17 +66,14 @@
     <template #metadata>
       <div v-if="message.error" class="abele-ai-chat__error" role="alert">
         <div class="abele-ai-chat__error-line">
-          <span class="abele-node-error-text"><NodeErrorText :error="message.error" /></span>
-          <button
-            v-if="message.retryInputId"
-            class="clickable-icon"
-            type="button"
-            :aria-label="t('streamB.sendAgain.feead9')"
+          <NodeErrorLine
+            :error="message.error"
+            :at="message.timestamp"
+            original
+            :operation="message.toolName"
             :disabled="offline"
-            @click="emit('retry', message.id)"
-          >
-            <Icon icon="rotate-cw" :tooltip="t('streamB.sendAgain.feead9')" no-hover />
-          </button>
+            :retry="message.retryInputId ? () => emit('retry', message.id) : undefined"
+          />
         </div>
       </div>
       <div v-if="queueState" class="abele-node-queue-state" role="status">
@@ -108,7 +105,7 @@ import { obsidianConversationPresentation } from '@/node/obsidianConversationPre
 import NodeDelegateHistory from './NodeDelegateHistory.vue'
 import CallPlace from './chat/CallPlace.vue'
 const conversation = inject(obsidianConversationPresentation, null)
-import NodeErrorText from '@/components/NodeErrorText.vue'
+import NodeErrorLine from './nodeWork/NodeErrorLine.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import type { Prompt } from '@abele/node-client'
 import type { Menu } from 'obsidian'

@@ -691,6 +691,26 @@ export class NodeManagerController {
     })
     return status
   }
+  /** An explicit owner retry is a new operation, fenced by a fresh terminal status. */
+  async retry(parent: string, operation: string, nextOperation: string): Promise<ManagerRun> {
+    if (!nextOperation || operation === nextOperation) throw new Error('idempotency_mismatch')
+    const original = await this.store.read((state) => ({
+      entry: state.managerOperations?.[operation],
+      receipt: ManagerRunSchema.safeParse(state.results[operation]?.result),
+    }))
+    const entry = original.entry
+    if (!entry || entry.parent !== parent || !original.receipt.success)
+      throw new Error('permission_denied')
+    const method = entry.method
+    if (method !== 'command.v1.run' && method !== 'git.v1.integrate')
+      throw new Error('unsupported_method')
+    const receipt = original.receipt.data
+    const current = await this.status(parent, receipt.session_id, receipt.run_id)
+    if (current.state === 'outcome_unknown') throw new Error('outcome_unknown')
+    if (current.state !== 'failed' && current.state !== 'timed_out')
+      throw new Error('resource_busy')
+    return this.mutate(parent, method, entry.params, nextOperation)
+  }
   async restore() {
     if (!this.client.connected) return
     const entries = await this.store.read((s) =>

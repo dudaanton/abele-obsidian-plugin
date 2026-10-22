@@ -115,6 +115,17 @@ Connections, tokens, non-extractable device keys, pending invitations and histor
 settings or the synced key store. Workspaces offer Claude Code, pi and non-executing fake sessions
 according to the node's availability/capability report. See [Node sessions](ai-chat#node-sessions).
 
+Node failures use a status dot and a plain explanation, with one recovery action where it is
+safe to offer one. An operation timeout does not mean the node disconnected. **Details**
+retains the code, operation, location and time; command cards keep this in **Original action**.
+When a command's result is unknown, **Refresh** checks its result before another attempt.
+
+On nodes that advertise log reading, **Node log** is available inside error details and in the
+node menu. It shows the latest 200 lines, with a local warnings/errors filter, Copy and Refresh.
+Opening it from an error highlights the nearest loaded timestamp. The last snapshot remains in
+memory for reopening offline; it is not written to the vault or settings. The log is an owner
+screen, not an agent tool.
+
 ## Books
 
 The reader's text and layout, reading aloud, where reading places are kept, where highlights go,

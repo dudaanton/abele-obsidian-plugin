@@ -45,10 +45,16 @@ import { worktreeBusy } from './worktreeBusy'
 import { codexProjectNetwork } from './codexNetwork'
 
 const app = () => GlobalStore.getInstance().app
-export const nodePathAction = (run: () => Promise<unknown> | void): void => {
+export const nodePathAction = (
+  run: () => Promise<unknown> | void,
+  report?: (error: unknown) => void
+): void => {
   void Promise.resolve()
     .then(run)
-    .catch((error: unknown) => nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e')))
+    .catch((error: unknown) => {
+      if (report) report(error)
+      else nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e'))
+    })
 }
 export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): void {
   event.preventDefault()
@@ -522,6 +528,15 @@ async function nodeItems(
     )
   const node = service.nodes.value.find((n) => n.id === model.registrationId)
   if (node) {
+    if (nodeAdvertisesMethod(service.connection(model.registrationId).client, 'node.log.v1.tail'))
+      menu.addItem((item) =>
+        item
+          .setTitle(t('node.log.title'))
+          .setIcon('scroll-text')
+          .onClick(() => {
+            void import('./nodeLog').then(({ openNodeLog }) => openNodeLog(model.registrationId))
+          })
+      )
     menu.addItem((i) =>
       i
         .setTitle(t('streamB.nodeDetails.835881'))

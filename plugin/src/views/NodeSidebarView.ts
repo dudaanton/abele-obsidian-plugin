@@ -118,12 +118,17 @@ export class NodeSidebarView extends ItemView {
             file.target.projectId === current.projectId &&
             pathTargetKey(file.target) === pathTargetKey(current)
           const selected = () => model?.current.value
+          const act = (run: () => Promise<unknown> | void) =>
+            nodePathAction(run, (error) => {
+              if (model) model.report(error)
+              else this.localError.value = presentUiError(error)
+            })
           // A chat chosen in the place search opens in its tab, as its row in the panel did.
           const openChat = (id: string) => {
             const session = model?.sessions.value.find((s) => s.session.session_id === id)
             if (session?.target && model) {
               model.selectedChat.value = id
-              nodePathAction(() =>
+              act(() =>
                 openNodePathTab(
                   this.app.workspace,
                   {
@@ -141,7 +146,14 @@ export class NodeSidebarView extends ItemView {
             model,
             file: fileHere ? nodeResourceTarget(file.path).path : undefined,
             phase: node ? 'ready' : this.localPhase.value,
-            error: this.localError.value || undefined,
+            error: this.localError.value || connection?.error.value || undefined,
+            slowSince: connection?.activity?.slowSince.value,
+            refresh: async () => {
+              if (connection && model) {
+                await connection.connect()
+                await model.refreshCurrent()
+              }
+            },
             onConnect: () => this.connectLocal(),
             node:
               node && connection && model
@@ -149,6 +161,7 @@ export class NodeSidebarView extends ItemView {
                     name: node.label,
                     address: node.url,
                     status: connection.state.value,
+                    version: connection.version?.value,
                     seen: formatTimestamp(model.receivedAt.value).label,
                   }
                 : this.local.value
@@ -161,15 +174,15 @@ export class NodeSidebarView extends ItemView {
                   : undefined,
             onPair: openNodePathPairing,
             onOpenFolder: () => {
-              if (model) nodePathAction(() => openFolderForNode(model))
+              if (model) act(() => openFolderForNode(model))
             },
             onNewChat: () => {
-              if (model) nodePathAction(() => newNodePathChat(model))
+              if (model) act(() => newNodePathChat(model))
             },
             onHistory: () => {
               const target = selected()
               if (target)
-                nodePathAction(() =>
+                act(() =>
                   openNodePathTab(
                     this.app.workspace,
                     { kind: 'history', target },
@@ -180,7 +193,7 @@ export class NodeSidebarView extends ItemView {
             onOpenFile: (path: string, stage?: PathFileStage) => {
               const target = selected()
               if (target)
-                nodePathAction(() =>
+                act(() =>
                   openNodePathTab(
                     this.app.workspace,
                     { kind: 'file', target, path, ...(stage ? { stage } : {}) },
@@ -198,7 +211,7 @@ export class NodeSidebarView extends ItemView {
             onOpenCommit: (hash: string) => {
               const target = selected()
               if (target)
-                nodePathAction(() =>
+                act(() =>
                   openNodePathTab(
                     this.app.workspace,
                     { kind: 'history', target, commit: hash },
@@ -210,20 +223,20 @@ export class NodeSidebarView extends ItemView {
               if (model) chooseNodePathBase(model)
             },
             onStep: (id: BranchStep['id']) => {
-              if (model) nodePathAction(() => takeNodePathStep(model, id))
+              if (model) act(() => takeNodePathStep(model, id))
             },
             onDiscard: (path: string) => {
-              if (model) nodePathAction(() => discardNodePathFile(model, path))
+              if (model) act(() => discardNodePathFile(model, path))
             },
             onOpenPull: (number: number) => new Notice(t('streamBMeta.7721daf433', { v0: number })),
             onConnectService: () => new Notice(t('streamBMeta.167ee6d92e')),
             onRefresh: () => {
               if (model && connection)
-                nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
+                act(() => connection.connect().then(() => model.refreshCurrent()))
             },
             onRetry: () => {
               if (connection && model)
-                nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
+                act(() => connection.connect().then(() => model.refreshCurrent()))
             },
             onNodeMenu: (event: MouseEvent) => {
               if (model) showNodePathNodeMenu(model, event)
@@ -243,7 +256,7 @@ export class NodeSidebarView extends ItemView {
                   directory: directory(model?.entries.value ?? []),
                 })
             },
-            onCopy: (text: string) => nodePathAction(() => navigator.clipboard.writeText(text)),
+            onCopy: (text: string) => act(() => navigator.clipboard.writeText(text)),
           })
         },
       },

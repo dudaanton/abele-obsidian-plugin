@@ -1,6 +1,10 @@
 <template>
   <NodePanel
     :phase="phase"
+    :registration-id="model?.registrationId"
+    :target="model?.current.value ?? undefined"
+    :slow-since="slowSince"
+    :refresh="refresh"
     :node="node"
     :empty="!model?.folders.value.length"
     :here="model?.currentCopy.value?.branch ?? model?.currentFolder.value?.name"
@@ -270,8 +274,17 @@ const props = withDefaults(
     node?: NodeSummary
     file?: string
     error?: string
+    slowSince?: number
+    refresh?: () => Promise<unknown> | void
   }>(),
-  { model: undefined, node: undefined, file: undefined, error: undefined }
+  {
+    model: undefined,
+    node: undefined,
+    file: undefined,
+    error: undefined,
+    slowSince: undefined,
+    refresh: undefined,
+  }
 )
 const emit = defineEmits<{
   connect: []

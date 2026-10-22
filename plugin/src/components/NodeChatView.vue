@@ -85,11 +85,17 @@
       :provider="presenter.provider?.value ?? ''"
     />
     <div
-      v-if="presenter.error.value || presenter.connection.error.value"
+      v-if="
+        (presenter.error.value || presenter.connection.error.value) &&
+        !permissionRefusal(presenter.error.value || presenter.connection.error.value)
+      "
       class="abele-ai-chat__error"
       role="alert"
     >
-      <NodeErrorText :error="presenter.error.value || presenter.connection.error.value" />
+      <NodeErrorLine
+        :error="presenter.error.value || presenter.connection.error.value"
+        :refresh="() => presenter.load()"
+      />
     </div>
     <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages" @scroll="onScroll">
       <!-- A long session shows its end; what came before is read from the node as you scroll up. -->
@@ -210,7 +216,7 @@
         role="alert"
       >
         {{ t('streamB.reapply.1eca68d7d7') }} {{ rejected.text }} ·
-        <NodeErrorText :error="rejected.error" />
+        <NodeErrorLine :error="rejected.error" original :refresh="() => presenter.load()" />
       </div>
     </div>
     <MetaLine
@@ -332,7 +338,8 @@ import NodeQuestionnaire from './NodeQuestionnaire.vue'
 import { provide } from 'vue'
 import { obsidianConversationPresentation } from '@/node/obsidianConversationPresentation'
 import type { Prompt, QuestionnaireAnswer } from '@abele/node-client'
-import NodeErrorText from '@/components/NodeErrorText.vue'
+import NodeErrorLine from './nodeWork/NodeErrorLine.vue'
+import { NODE_ERROR_CONTEXT } from '@/node/errorContext'
 import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
 import { streamBCount } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
@@ -342,7 +349,7 @@ import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
 import NodeToolPermissions from './NodeToolPermissions.vue'
-import { readToolPermissions } from '@/node/toolPermissions'
+import { readToolPermissions, permissionRefusal } from '@/node/toolPermissions'
 import { nodeAgentOwnerMode } from '@/node/nodeAgentTools'
 import { openNodeAgentSettings } from '@/node/openNodeAgentSettings'
 import { nodeAttachmentText } from '@/node/nodeChatAttachments'
@@ -401,6 +408,15 @@ const props = withDefaults(
     openNodeResource: undefined,
   }
 )
+provide(NODE_ERROR_CONTEXT, {
+  get registrationId() {
+    return props.presenter.reference?.registrationId
+  },
+  get target() {
+    return props.currentTarget
+  },
+  refresh: () => props.presenter.load(),
+})
 const emit = defineEmits<{
   (e: 'new-chat'): void
   (e: 'choose-worktree'): void

@@ -13,6 +13,33 @@ const target: PathTarget = {
   id: 'sample-worktree',
 }
 
+it('rereads a busy file automatically, but stops retrying when its tab closes', async () => {
+  useVault([])
+  vi.useFakeTimers()
+  const openFile = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('resource_busy'))
+    .mockResolvedValue({ path: 'sample.ts', text: 'sample' })
+  const model = new NodePathFileModel(
+    { openFile, fileRefresh: ref({}), online: ref(true) } as unknown as NodePathModel,
+    target
+  )
+  try {
+    await expect(model.open('sample.ts')).rejects.toThrow('resource_busy')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(openFile).toHaveBeenCalledTimes(2)
+    expect(model.document.value?.text).toBe('sample')
+    openFile.mockRejectedValueOnce(new Error('resource_busy'))
+    await expect(model.open('other.ts')).rejects.toThrow('resource_busy')
+    model.destroy()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(openFile).toHaveBeenCalledTimes(3)
+  } finally {
+    model.destroy()
+    vi.useRealTimers()
+  }
+})
+
 it('keeps uncertain outcomes as alerts without a timeout retry', async () => {
   useVault([])
   const model = new NodePathFileModel(

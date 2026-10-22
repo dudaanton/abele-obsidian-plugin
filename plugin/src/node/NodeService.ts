@@ -20,12 +20,24 @@ import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ensureNodeAgents } from './nodeAgentTools'
 import { nodeScopeEntries } from '@/ai/nodeScope'
 import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
+import { NodeRequestActivity } from './NodeRequestActivity'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
+  readonly activity = new NodeRequestActivity()
+  readonly version = ref('')
+  private recordVersion(description: unknown): void {
+    if (
+      description &&
+      typeof description === 'object' &&
+      'node_version' in description &&
+      typeof description.node_version === 'string'
+    )
+      this.version.value = description.node_version
+  }
   obsidian?: NodeObsidianTools
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
@@ -127,6 +139,7 @@ export class NodeConnection {
     const request = client.request?.bind(client)
     if (request)
       client.request = async (method, params) => {
+        const settled = this.activity.start()
         const generation = this.transportGeneration
         let timer: number | undefined
         try {
@@ -150,7 +163,7 @@ export class NodeConnection {
           ) {
             const failure = new ChannelError(
               error.code,
-              'No answer from the node. Reconnecting; the request may have completed.'
+              `${error.code}: No answer from the node; the request may have completed.`
             )
             // An operation deadline says nothing about the socket's health. The regular
             // node.describe probe owns reconnects; do not strand unrelated approval cards.
@@ -171,6 +184,7 @@ export class NodeConnection {
           }
           throw error
         } finally {
+          settled()
           window.clearTimeout(timer)
         }
       }
@@ -270,6 +284,7 @@ export class NodeConnection {
         this.admitObsidianTools()
         if (this.client.describe) {
           const description = await this.client.describe()
+          this.recordVersion(description)
           await this.obsidian?.connectionChanged(description)
         }
         this.state.value = 'connected'
@@ -297,6 +312,7 @@ export class NodeConnection {
         // Re-negotiate capabilities on every admitted transport, before exposing it.
         if (this.client.describe) {
           const description = await this.client.describe()
+          this.recordVersion(description)
           this.admitObsidianTools()
           await this.obsidian?.connectionChanged(description)
         }
@@ -437,6 +453,7 @@ export class NodeConnection {
 
   destroy(): void {
     this.disposed = true
+    this.activity.destroy()
     ++this.generation
     ++this.transportGeneration
     this.state.value = 'offline'
@@ -450,6 +467,13 @@ export class NodeConnection {
 
 /** Obsidian adapter: local preferences + local keychain, not AbeleSettings/transfer. */
 export class NodeService {
+  /** Presentation may inspect an existing connection without initializing storage. */
+  static peekConnection(id: string): NodeConnection | undefined {
+    const service = this.instance
+    return service?.nodes.value.some((node) => node.id === id)
+      ? service.connections.get(id)
+      : undefined
+  }
   private static instance: NodeService | null = null
   readonly nodes: Ref<RegisteredNode[]>
   readonly registry: NodeRegistry

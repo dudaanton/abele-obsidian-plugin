@@ -1,25 +1,27 @@
 <template>
   <div class="abele-node-main">
     <div v-if="model.busy.value" role="status">{{ t('streamB.loadingFile.e937ad') }}</div>
-    <EmptyState
-      v-if="offline && !model.document.value"
-      icon="file-clock"
-      :text="t('node.file.waitingForNode')"
-    />
-    <template v-else-if="model.error.value && !offline">
-      <EmptyState
-        :icon="model.document.value ? undefined : 'file-warning'"
-        :variant="nodeOperationTimedOut(model.error.value) ? 'empty' : 'error'"
-      >
-        <NodeErrorText :error="model.error.value" />
-        <template v-if="nodeOperationTimedOut(model.error.value)" #action>
-          <Button :text="t('node.file.retry')" :disabled="model.busy.value" @click="retry" />
-        </template>
-      </EmptyState>
-      <Disclosure v-model="detailsOpen" :label="t('node.error.details')">
-        <code>{{ model.error.value }}</code>
-      </Disclosure>
-    </template>
+    <div v-if="offline && !model.document.value" class="abele-node-file-state">
+      <StateLine tone="faint" :text="t('node.file.waitingForNode')" />
+    </div>
+    <div
+      v-else-if="model.error.value && !offline"
+      :class="{ 'abele-node-file-state': !model.document.value }"
+    >
+      <NodeErrorLine
+        :error="model.error.value"
+        :registration-id="model.target.registrationId"
+        :target="model.target"
+        :operation="
+          model.requestedPath
+            ? t('node.error.readingFile', { path: model.requestedPath })
+            : undefined
+        "
+        :location="sourceLocation"
+        :disabled="model.busy.value"
+        :refresh="() => model.refresh()"
+      />
+    </div>
     <div v-if="offline && model.document.value" role="status">
       {{ t('streamB.offlineRetainedVersion.ddf2fd') }}
     </div>
@@ -86,11 +88,8 @@
   </div>
 </template>
 <script setup lang="ts">
-import NodeErrorText from '@/components/NodeErrorText.vue'
-import EmptyState from '@/components/obsidian/EmptyState.vue'
-import Button from '@/components/obsidian/Button.vue'
-import Disclosure from '@/components/obsidian/Disclosure.vue'
-import { nodeOperationTimedOut } from '@/node/errorWords'
+import StateLine from '@/components/obsidian/StateLine.vue'
+import NodeErrorLine from './NodeErrorLine.vue'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import type { NodePathFileModel } from '@/node/NodePathModel'
@@ -126,7 +125,14 @@ const props = withDefaults(
   }
 )
 const service = DebuggerService.instance
-const detailsOpen = ref(false)
+const sourceLocation = computed(
+  () =>
+    props.model.pathModel?.copy?.(props.model.target)?.path ??
+    props.model.pathModel?.folders?.value.find(
+      (folder) => folder.id === props.model.target.projectId
+    )?.path ??
+    props.model.target.projectId
+)
 async function retry() {
   try {
     await props.model.refresh()
@@ -267,6 +273,17 @@ body.is-phone .abele-node-content__chat {
   overflow: auto;
   height: 100%;
   box-sizing: border-box;
+}
+.abele-node-file-state {
+  display: flex;
+  min-height: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: var(--size-4-4);
+}
+.abele-node-file-state > .abele-state-line {
+  width: min(100%, 34em);
 }
 .abele-node-main > [role='alert'] {
   color: var(--text-error);

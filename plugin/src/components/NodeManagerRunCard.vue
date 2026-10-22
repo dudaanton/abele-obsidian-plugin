@@ -29,8 +29,20 @@
         }}</span>
       </div>
     </template>
+    <NodeErrorLine
+      v-if="failure"
+      data-manager-state
+      original
+      :error="failure"
+      :text="failed ? resultLabel : undefined"
+      :registration-id="registrationId"
+      :operation="card.title"
+      :disabled="disabled"
+      :refresh="refresh"
+      :retry="retry"
+    />
     <div
-      v-if="card.run.state !== 'pending_approval' || card.run.reason"
+      v-else-if="card.run.state !== 'pending_approval' || card.run.reason"
       class="abele-node-manager-run__status"
       data-manager-state
     >
@@ -116,6 +128,7 @@ import type { ChatMessage } from '@/ai/types'
 import { computed, ref, watch, nextTick } from 'vue'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { nodeErrorWords } from '@/node/errorWords'
+import NodeErrorLine from './nodeWork/NodeErrorLine.vue'
 import { t } from '@/i18n'
 import Disclosure from './obsidian/Disclosure.vue'
 import Button from './obsidian/Button.vue'
@@ -129,7 +142,18 @@ import { displayCommandJustification } from '@/node/commandJustification'
 const props = defineProps<{
   card: Awaited<ReturnType<NodeManagerController['cards']>>[number]
   disabled?: boolean
+  registrationId?: string
+  refresh?: () => Promise<unknown>
+  retry?: () => Promise<unknown>
 }>()
+const failure = computed(() =>
+  ['failed', 'timed_out', 'outcome_unknown', 'denied'].includes(props.card.run.state)
+    ? (props.card.run.state === 'outcome_unknown'
+        ? `outcome_unknown: ${props.card.run.reason ?? ''}`
+        : props.card.run.reason) ||
+      (props.card.run.state === 'denied' ? 'permission_denied' : props.card.run.state)
+    : ''
+)
 const justification = computed(() => displayCommandJustification(props.card.justification ?? ''))
 const justificationOpen = ref(false)
 const originalOpen = ref(false)
