@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.loading.changes': 'Загружаем изменения…',
+  'node.loading.history': 'Загружаем историю…',
+  'node.loading.files': 'Загружаем файлы…',
+  'node.loading.updatingChanges': 'Обновляем изменения…',
+  'node.loading.updatingFiles': 'Обновляем файлы…',
+  'node.loading.slow': 'Ещё читаем файлы… пока {loaded}',
+
   'node.error.readingFile': 'Чтение {path}',
   'node.log.truncated': 'Показана только последняя часть журнала.',
   'node.log.missing': 'На этой ноде нет файлов журнала.',

@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.loading.changes': 'Ielādē izmaiņas…',
+  'node.loading.history': 'Ielādē vēsturi…',
+  'node.loading.files': 'Ielādē failus…',
+  'node.loading.updatingChanges': 'Atjaunina izmaiņas…',
+  'node.loading.updatingFiles': 'Atjaunina failus…',
+  'node.loading.slow': 'Vēl lasa failus… līdz šim {loaded}',
+
   'node.error.readingFile': 'Lasa {path}',
   'node.log.truncated': 'Tiek rādīta tikai žurnāla pēdējā daļa.',
   'node.log.missing': 'Šajā mezglā nav pieejamu žurnāla failu.',

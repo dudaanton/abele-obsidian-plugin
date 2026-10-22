@@ -112,6 +112,10 @@ watch(() => [props.folder, props.branch, props.node], tip)
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
     outline: none;
   }
+  &:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
 
   .abele-icon {
     flex: none;

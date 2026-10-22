@@ -77,7 +77,7 @@
     <template v-else-if="node">
       <div data-connection-footer class="abele-node-panel__connection-footer">
         <NodeErrorLine
-          v-if="error || slowSince || node.status !== 'connected'"
+          v-if="error || node.status !== 'connected'"
           data-connection-status
           footer
           :error="error"
@@ -89,6 +89,15 @@
           :location="here"
           :refresh="refresh || (() => emit('refresh'))"
         />
+        <slot v-else name="status">
+          <NodeErrorLine
+            v-if="slowSince"
+            footer
+            :registration-id="registrationId"
+            :slow-since="slowSince"
+            :refresh="refresh"
+          />
+        </slot>
       </div>
       <div class="nav-header">
         <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's

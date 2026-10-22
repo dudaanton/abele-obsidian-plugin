@@ -14,13 +14,14 @@
     </div>
     <div v-if="details.length || log" class="abele-state-line__body">
       <FoldHeading
+        v-if="details.length || !logWithoutDetails"
         class="abele-state-line__fold"
         :text="detailsLabel || t('node.error.details')"
         collapsible
         :collapsed="!open"
         @toggle="open = !open"
       />
-      <div v-if="open" class="abele-state-line__more">
+      <div v-if="open || (logWithoutDetails && !details.length)" class="abele-state-line__more">
         <div v-if="details.length" class="abele-state-line__facts">
           <template v-for="fact in details" :key="fact.label">
             <span class="abele-state-line__label">{{ fact.label }}</span>
@@ -65,6 +66,8 @@ const props = defineProps<{
   disabled?: boolean
   detailsLabel?: string
   log?: boolean
+  /** Loading progress has a direct log link rather than error evidence. */
+  logWithoutDetails?: boolean
   footer?: boolean
   expanded?: boolean
 }>()

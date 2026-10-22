@@ -29,6 +29,18 @@
     @menu="emit('node-menu', $event)"
     @copy="emit('copy', $event)"
   >
+    <template v-if="loading" #status>
+      <StateLine
+        v-if="loadingFooter"
+        footer
+        tone="faint"
+        pulse
+        :text="loadingFooter"
+        :log="slowLoading && logAvailable"
+        log-without-details
+        @log="showLog"
+      />
+    </template>
     <!-- The panel's modes stand in its header, as the file explorer's buttons do; what stood
          there as glyphs is in the place's menu. -->
     <template v-if="model?.current.value && !model.unavailable.value" #nav>
@@ -146,12 +158,16 @@
               : t('streamBMeta.b8b90dce28')
           }}
         </div>
-        <EmptyState
-          v-else-if="(mode === 'files' || mode === 'changes') && !model.inspection.value"
-          :text="t('streamB.loadingTheFileChanges.167dbf')"
-          variant="loading"
-          role="status"
-        />
+        <div
+          v-else-if="
+            (mode === 'files' || mode === 'changes') &&
+            !model.inspection.value &&
+            model.treeProgress.value?.state !== 'failed'
+          "
+          class="abele-node-sidebar__first"
+        >
+          <StateLine tone="faint" pulse :text="loadingText" />
+        </div>
         <FileTree
           v-else-if="mode === 'files' || mode === 'changes'"
           :key="`${model.current.value?.id}:${mode}`"
@@ -163,9 +179,14 @@
           "
           :cursors="model.treeCursors.value"
           :progress="model.treeProgress.value"
+          external-progress
           :changes="model.changes.value"
           :branch-changes="mode === 'changes' ? (branch?.committed ?? []) : []"
-          :base="branch?.state.base ?? undefined"
+          :base="
+            model.panelBase.value || branch?.committed.length
+              ? (branch?.state.base ?? undefined)
+              : undefined
+          "
           :grouped="mode === 'changes'"
           :actions="canGit && mode === 'changes' && !offline"
           :mode="mode === 'files' ? 'all' : 'changed-tree'"
@@ -212,6 +233,7 @@
             <NodeErrorText :error="history.error.value" />
           </div>
           <HistoryView
+            v-if="!history?.busy.value || history.commits.value.length"
             :commits="history?.commits.value ?? []"
             :copy="model.currentCopy.value"
             :head="false"
@@ -220,6 +242,7 @@
             @open-commit="(hash) => emit('open-commit', hash)"
             @more="history?.load(true).catch((error) => model?.report(error))"
           />
+          <StateLine v-else tone="faint" pulse :text="t('node.loading.history')" />
         </div>
         <NodePullList
           v-else
@@ -238,7 +261,11 @@ import NodeErrorText from '@/components/NodeErrorText.vue'
 import { presentUiField } from '@/i18n/streamBErrors'
 import { streamBWord } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
-import EmptyState from '../obsidian/EmptyState.vue'
+import StateLine from '../obsidian/StateLine.vue'
+import { NodeService } from '@/node/NodeService'
+import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+import { openNodeLog } from '@/node/nodeLog'
+import { streamBNumber } from '@/i18n/streamBDate'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { resolveNodeCodeLink } from '@/node/codeLinks'
@@ -246,7 +273,7 @@ import { openNodeFileDestination } from '@/node/nodePathNavigation'
 import type { TabCode } from '@/github/search/tabCode'
 // The node's side panel: one place (a folder and its branch) chosen from a row that opens the
 // search of all of them, and the place's files, changes, history or pull requests under it.
-import { computed, watch } from 'vue'
+import { computed, watch, ref, onUnmounted } from 'vue'
 import type { NodePathModel, PathFileStage } from '@/node/NodePathModel'
 import { removeNodePathFolder } from '@/node/NodePathController'
 import { NodeService } from '@/node/NodeService'
@@ -338,6 +365,52 @@ const mode = computed(() => {
   const chosen = props.model?.panelMode.value
   return git.value || chosen === 'sessions' ? chosen : 'files'
 })
+const loading = computed(
+  () =>
+    (mode.value === 'files' || mode.value === 'changes') &&
+    !!props.model?.current.value &&
+    props.model.treeProgress.value?.state !== 'failed' &&
+    (!props.model.inspection.value || props.model.treeProgress.value?.state === 'reading')
+)
+const loadingText = computed(() =>
+  t(mode.value === 'changes' ? 'node.loading.changes' : 'node.loading.files')
+)
+const elapsed = ref(0)
+let loadingClock: number | undefined
+watch(
+  () => [loading.value, props.model?.current.value?.id] as const,
+  ([active]) => {
+    window.clearInterval(loadingClock)
+    elapsed.value = 0
+    if (active) {
+      const since = Date.now()
+      loadingClock = window.setInterval(() => {
+        elapsed.value = Date.now() - since
+      }, 1000)
+    }
+  },
+  { immediate: true }
+)
+onUnmounted(() => window.clearInterval(loadingClock))
+const slowLoading = computed(() => loading.value && (!!props.slowSince || elapsed.value >= 3000))
+const loadingFooter = computed(() => {
+  if (slowLoading.value)
+    return t('node.loading.slow', {
+      loaded: streamBNumber(props.model?.treeProgress.value?.count ?? 0),
+    })
+  if (!props.model?.inspection.value) return ''
+  return t(mode.value === 'changes' ? 'node.loading.updatingChanges' : 'node.loading.updatingFiles')
+})
+const logAvailable = computed(() => {
+  void props.node?.status
+  return nodeAdvertisesMethod(
+    props.model && NodeService.peekConnection(props.model.registrationId)?.client,
+    'node.log.v1.tail'
+  )
+})
+const showLog = () => {
+  if (props.model) openNodeLog(props.model.registrationId)
+}
 /** The sessions at this place as the tree draws them: the node does not say yet which one
  *  started which, so they stand side by side. */
 const sessions = computed<ChildSession[]>(() =>
@@ -459,6 +532,9 @@ watch(
 )
 </script>
 <style lang="scss">
+.abele-node-sidebar__first {
+  padding: var(--size-4-2) var(--size-4-3);
+}
 .abele-node-sidebar__step {
   display: flex;
   padding: var(--size-4-4) var(--size-4-2) 0;

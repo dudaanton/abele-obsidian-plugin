@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.loading.changes': 'Änderungen werden geladen…',
+  'node.loading.history': 'Verlauf wird geladen…',
+  'node.loading.files': 'Dateien werden geladen…',
+  'node.loading.updatingChanges': 'Änderungen werden aktualisiert…',
+  'node.loading.updatingFiles': 'Dateien werden aktualisiert…',
+  'node.loading.slow': 'Dateien werden noch gelesen… bisher {loaded}',
+
   'node.error.readingFile': '{path} lesen',
   'node.log.truncated': 'Nur der neueste Teil des Protokolls wird angezeigt.',
   'node.log.missing': 'Auf diesem Knoten sind keine Protokolldateien verfügbar.',

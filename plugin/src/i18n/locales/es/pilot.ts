@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.loading.changes': 'Cargando cambios…',
+  'node.loading.history': 'Cargando historial…',
+  'node.loading.files': 'Cargando archivos…',
+  'node.loading.updatingChanges': 'Actualizando cambios…',
+  'node.loading.updatingFiles': 'Actualizando archivos…',
+  'node.loading.slow': 'Leyendo archivos todavía… {loaded} hasta ahora',
+
   'node.error.readingFile': 'Leyendo {path}',
   'node.log.truncated': 'Solo se muestra la parte más reciente del registro.',
   'node.log.missing': 'No hay archivos de registro disponibles en este nodo.',

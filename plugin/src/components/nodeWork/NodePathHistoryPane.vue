@@ -1,7 +1,7 @@
 <template>
   <div class="abele-node-main">
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
-    <div v-if="model.busy.value" role="status">{{ t('streamB.loadingHistory.a960c4') }}</div>
+    <div v-if="model.busy.value" role="status">{{ t('node.loading.history') }}</div>
     <div v-if="offline" role="status">{{ t('streamB.offlineRetainedHistory.ebd3ac') }}</div>
     <HistoryView
       :commits="model.commits.value"

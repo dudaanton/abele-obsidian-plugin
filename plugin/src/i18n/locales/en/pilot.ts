@@ -1,4 +1,10 @@
 export const en = {
+  'node.loading.changes': 'Loading changes…',
+  'node.loading.history': 'Loading history…',
+  'node.loading.files': 'Loading files…',
+  'node.loading.updatingChanges': 'Updating changes…',
+  'node.loading.updatingFiles': 'Updating files…',
+  'node.loading.slow': 'Still reading the files… {loaded} so far',
   'node.error.readingFile': 'Reading {path}',
   'node.log.truncated': 'Only the latest part of the log is shown.',
   'node.log.missing': 'No log files are available on this node.',

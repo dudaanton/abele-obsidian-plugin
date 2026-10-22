@@ -55,7 +55,9 @@
       <!-- Reading again under rows already shown: said here, in a slot that is always there,
            so neither the rows nor the field move when it comes and goes. -->
       <span class="abele-file-tree__state">
-        <template v-if="progress && !statusLine">
+        <template
+          v-if="progress && !statusLine && (!externalProgress || progress.state === 'failed')"
+        >
           <Icon
             v-if="progress.state === 'failed'"
             class="abele-file-tree__state-failed"
@@ -303,7 +305,7 @@
           @open="openChanged"
           @menu="(e, path) => emit('menu', e, path)"
         />
-        <div v-if="!allChanges.length" class="search-empty-state">
+        <div v-if="!allChanges.length && !progress" class="search-empty-state">
           {{
             base
               ? t('streamB.nothingDiffersFrom.71f83c', { v0: String(base) })
@@ -380,6 +382,7 @@ const props = withDefaults(
     git?: boolean
     label?: string
     progress?: { state: 'reading' | 'failed'; count?: number; error?: string }
+    externalProgress?: boolean
     cursors?: Record<string, string | null>
     /**
      * Files committed on this branch and not in its base, for a third group under the two of the
@@ -407,6 +410,7 @@ const props = withDefaults(
     label: () => t('streamB.files.abc7e9'),
     cursors: undefined,
     progress: undefined,
+    externalProgress: false,
     branchChanges: () => [],
     base: undefined,
     modes: true,
@@ -482,8 +486,9 @@ watch([query, () => props.searchKey], async ([value], _previous, cleanup) => {
 const statusLine = computed(
   () =>
     !!props.progress &&
+    (!props.externalProgress || props.progress.state === 'failed') &&
     !props.entries.length &&
-    (props.mode === 'all' || !props.git) &&
+    (props.mode === 'all' || !props.git || props.progress.state === 'failed') &&
     !query.value.trim()
 )
 
