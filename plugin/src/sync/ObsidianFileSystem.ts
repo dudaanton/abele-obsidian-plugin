@@ -1,7 +1,12 @@
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
-import { nativeChunkPort, connectionFilePort, vaultPathIsLink } from './vaultPathLinks'
+import {
+  nativeChunkPort,
+  connectionFilePort,
+  vaultPathIsLink,
+  checkedVaultPort,
+} from './vaultPathLinks'
 import {
   connectionPrivateRoot,
   privateDownload,
@@ -854,14 +859,21 @@ export class ObsidianFileSystem implements FileSystem {
       this.configDir,
       this.privateRoot
     )
+    const checked = !this.native
+      ? checkedVaultPort(app.vault, this.guardedAdapter, {
+          ready: () => this.runtimeFence?.assertReady(),
+          effect: (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
+          diagnostic: options.diagnostic,
+        })
+      : undefined
     this.writer = new VaultWriter({
       ...(!this.native
         ? {
             createAbsent: async (path: string, bytes: Uint8Array, mtime: number) => {
               if (bytes.length > MOBILE_WHOLE_READ_MAX)
                 throw new EngineError('io', 'mobile write exceeds the whole-file limit')
-              await this.waitPendingSave(path)
-              await this.prepareCheckedWrite(path, true)(bytes, mtime)
+              await checked.wait(path)
+              await checked.prepareWrite(path, true)(bytes, mtime)
             },
           }
         : {}),
@@ -894,9 +906,8 @@ export class ObsidianFileSystem implements FileSystem {
         ? {
             checked: {
               maxBytes: MOBILE_WHOLE_READ_MAX,
-              wait: (path: string) => this.waitPendingSave(path),
-              prepareWrite: (path: string, create: boolean) =>
-                this.prepareCheckedWrite(path, create),
+              wait: (path: string) => checked.wait(path),
+              prepareWrite: (path: string, create: boolean) => checked.prepareWrite(path, create),
             },
           }
         : {}),
@@ -967,51 +978,6 @@ export class ObsidianFileSystem implements FileSystem {
         await this.disk.rmdir(path, true)
       },
     })
-  }
-
-  private async waitPendingSave(path: string): Promise<void> {
-    const adapter = this.app.vault.adapter as DataAdapter & { promise?: PromiseLike<unknown> }
-    for (;;) {
-      this.runtimeFence?.assertReady()
-      const file = this.app.vault.getAbstractFileByPath(path) as
-        | (TFile & { saving?: PromiseLike<unknown> | boolean })
-        | null
-      const queue = adapter.promise,
-        saving = file?.saving
-      await queue
-      if (saving === true) await new Promise<void>((resolve) => window.setTimeout(resolve, 10))
-      else if (saving) await saving
-      this.runtimeFence?.assertReady()
-      if (saving !== true && adapter.promise === queue && file?.saving === saving) return
-    }
-  }
-
-  private prepareCheckedWrite(path: string, create: boolean) {
-    const file = this.app.vault.getAbstractFileByPath(path)
-    return async (bytes: Uint8Array, mtime: number): Promise<boolean> => {
-      if (!create && file instanceof TFile && file.path !== path) return false
-      const data = bytes.slice().buffer
-      const work = async () => {
-        if (create) await this.app.vault.createBinary(path, data, { mtime })
-        else if (file instanceof TFile) await this.app.vault.modifyBinary(file, data, { mtime })
-        else await this.guardedAdapter.writeBinary(path, data, { mtime })
-      }
-      const operation = create
-        ? 'vault createBinary'
-        : file instanceof TFile
-          ? 'vault modifyBinary'
-          : undefined
-      const started = Date.now()
-      let outcome: 'complete' | 'failed' = 'failed'
-      try {
-        if (this.runtimeFence) await this.runtimeFence.effect(work)
-        else await work()
-        outcome = 'complete'
-        return true
-      } finally {
-        if (operation) this.diagnostic?.(operation, started, outcome, [path])
-      }
-    }
   }
 
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {

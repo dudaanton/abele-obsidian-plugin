@@ -1,7 +1,7 @@
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
 import { diagnosticOrigin, nativeDiagnostics } from './nativeDiagnostics'
-import { TFolder } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
 import { Platform } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
 import type { Vault } from 'obsidian'
@@ -1635,4 +1635,67 @@ export function connectionFilePort(
   options: { adapter?: DataAdapter }
 ): DataAdapter {
   return options.adapter ?? vaultDisk(vault)
+}
+
+/** Narrow checked-publication port; raw queue and vault writes stay at the guarded boundary. */
+export function checkedVaultPort(
+  vault: Vault,
+  adapter: DataAdapter,
+  options: {
+    ready(): void
+    effect(work: () => Promise<void>): Promise<void>
+    diagnostic?(
+      operation: string,
+      started: number,
+      outcome: string,
+      paths?: readonly string[]
+    ): void
+  }
+) {
+  return {
+    async wait(path: string): Promise<void> {
+      await assertVaultPath(adapter, path)
+      const raw = vault.adapter as DataAdapter & { promise?: PromiseLike<unknown> }
+      for (;;) {
+        options.ready()
+        const file = vault.getAbstractFileByPath(path) as
+          | (TFile & { saving?: PromiseLike<unknown> | boolean })
+          | null
+        const queue = raw.promise,
+          saving = file?.saving
+        await queue
+        if (saving === true) await new Promise<void>((resolve) => window.setTimeout(resolve, 10))
+        else if (saving) await saving
+        options.ready()
+        if (saving !== true && raw.promise === queue && file?.saving === saving) return
+      }
+    },
+    prepareWrite(path: string, create: boolean) {
+      const file = vault.getAbstractFileByPath(path)
+      return async (bytes: Uint8Array, mtime: number): Promise<boolean> => {
+        await assertVaultPath(adapter, path)
+        if (!create && file instanceof TFile && file.path !== path) return false
+        const data = bytes.slice().buffer
+        const work = async () => {
+          if (create) await vault.createBinary(path, data, { mtime })
+          else if (file instanceof TFile) await vault.modifyBinary(file, data, { mtime })
+          else await adapter.writeBinary(path, data, { mtime })
+        }
+        const operation = create
+          ? 'vault createBinary'
+          : file instanceof TFile
+            ? 'vault modifyBinary'
+            : undefined
+        const started = Date.now()
+        let outcome = 'failed'
+        try {
+          await options.effect(work)
+          outcome = 'complete'
+          return true
+        } finally {
+          if (operation) options.diagnostic?.(operation, started, outcome, [path])
+        }
+      }
+    },
+  }
 }
