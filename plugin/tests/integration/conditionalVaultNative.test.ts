@@ -192,7 +192,27 @@ const recoveryCases = ['folder/nested', 'Cafe\u0301/nested', 'Café/Cafe\u0301']
 it.each(recoveryCases)(
   'exposes captured bytes as a recognised file: %j',
   async ({ folder, parent, name, occupied }) => {
-    const { root, disk } = await setup()
+    const calls = { open: 0, sync: 0, link: 0, rename: 0 }
+    const { root, disk } = await setup({
+      open: async (path, flags) => {
+        calls.open++
+        const handle = await fs.open(path, flags)
+        const sync = handle.sync.bind(handle)
+        handle.sync = async () => {
+          calls.sync++
+          await sync()
+        }
+        return handle
+      },
+      link: async (from, to) => {
+        calls.link++
+        await fs.link(from, to)
+      },
+      rename: async (from, to) => {
+        calls.rename++
+        await fs.rename(from, to)
+      },
+    })
     const path = folder + '/' + name
     const ancestor = folder.split('/')[0]
     await captured(root, 'matrix-record', path)
@@ -207,6 +227,11 @@ it.each(recoveryCases)(
       await fs.mkdir(join(root, folder), { recursive: true })
     if (occupied && parent !== 'blocked') await fs.writeFile(join(root, path), 'public occupant')
     await disk().recoverConditionalFiles()
+    // Name length must not turn one recovery into repeated publication or flush work.
+    expect(calls.link).toBe(1)
+    expect(calls.rename).toBe(1)
+    expect(calls.open).toBeLessThanOrEqual(32)
+    expect(calls.sync).toBeLessThanOrEqual(32)
     const visible: string[] = []
     const walk = async (folder: string) => {
       for (const entry of await fs.readdir(join(root, folder), { withFileTypes: true })) {
@@ -231,7 +256,11 @@ it.each(recoveryCases)(
       expect(
         await fs.readFile(join(root, 'sample (Conflicted copy restored matrix-record).md'), 'utf8')
       ).toBe('root occupant')
-  }
+  },
+  // Each case flushes real files and ancestors for the restore plan, publication and
+  // archived pointer. A busy native volume can exceed the default 5s despite bounded
+  // syscall counts; retain the native durability path with scheduling headroom.
+  30_000
 )
 it('recreates a parent removed after capture and recovers following records', async () => {
   let injected = false
