@@ -7,6 +7,39 @@ import {
 import { connectionError } from '@/sync/tokenUi'
 import { deferred } from '../helpers/deferred'
 
+it('marks an aborted native commit as unknown and retries its durable key without another effect', async () => {
+  const entered = deferred<void>(),
+    finish = deferred<void>()
+  const url = 'https://sync.example/v2/commit'
+  const receipts = new Map<string, string>()
+  let effects = 0
+  const send = fetchViaCapacitorHttp({
+    request: async (options) => {
+      const key = options.headers['idempotency-key']
+      if (!receipts.has(key)) {
+        effects++
+        receipts.set(key, '{}')
+        entered.resolve()
+        await finish.promise
+      }
+      return { status: 200, headers: {}, data: btoa(receipts.get(key)!), url }
+    },
+  })
+  const controller = new AbortController()
+  const init = { method: 'POST', headers: { 'idempotency-key': 'sample-journal-key' }, body: '{}' }
+  const pending = send(url, { ...init, signal: controller.signal })
+  const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError', outcome: 'unknown' })
+  await entered.promise
+  controller.abort()
+  try {
+    await rejected
+  } finally {
+    finish.resolve()
+  }
+  await expect(send(url, init)).resolves.toHaveProperty('status', 200)
+  expect(effects).toBe(1)
+})
+
 // BUG: the native HTTP port has no cancellation handle; abort only rejects JavaScript.
 it.fails('prevents a native mutation from landing after its caller aborts', async () => {
   const entered = deferred<void>(),

@@ -89,6 +89,13 @@ export function nativeSyncFailure(error: unknown): NativeSyncFailure | undefined
   }
 }
 const abortError = () => new DOMException('The native sync request was aborted', 'AbortError')
+/** Native cancellation has no acknowledgement: retain the journal and reconcile its key. */
+export class NativeSyncUnknownOutcome extends DOMException {
+  readonly outcome = 'unknown' as const
+  constructor() {
+    super('The native sync request was aborted with an unknown outcome', 'AbortError')
+  }
+}
 function base64(bytes: Uint8Array): string {
   let text = ''
   for (let at = 0; at < bytes.length; at += 32768)
@@ -116,10 +123,7 @@ export function mobileTransport(): typeof fetch {
     }
   ).Capacitor
   const http = capacitor?.Plugins?.CapacitorHttp
-  if (
-    capacitor?.getPlatform?.() !== 'ios' ||
-    typeof http?.request !== 'function'
-  )
+  if (capacitor?.getPlatform?.() !== 'ios' || typeof http?.request !== 'function')
     throw new Error(
       'Native sync transport is unsupported until its non-following runtime is verified'
     )
@@ -259,7 +263,12 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
       // timeouts remain 30s; this last-resort overall bound allows 32 KiB/s.
       const deadlineMs = 30000 + Math.ceil((requestBytes + expectedBytes) / (32 * 1024)) * 1000
       let timer: number | undefined
-      const aborted = () => rejectRequest?.(abortError())
+      let sent = false
+      const cancellation = () =>
+        sent && method !== 'GET' && method !== 'HEAD'
+          ? new NativeSyncUnknownOutcome()
+          : abortError()
+      const aborted = () => rejectRequest?.(cancellation())
       let rejectRequest: ((error: unknown) => void) | undefined
       const answer = await new Promise<NativeHttpResponse>((resolve, reject) => {
         rejectRequest = reject
@@ -272,9 +281,10 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
         Promise.resolve()
           .then(() => {
             if (signal?.aborted) throw abortError()
+            sent = true
             return native.request(options)
           })
-          .then((value) => (signal?.aborted ? reject(abortError()) : resolve(value)), reject)
+          .then((value) => (signal?.aborted ? reject(cancellation()) : resolve(value)), reject)
       }).finally(() => {
         window.clearTimeout(timer)
         signal?.removeEventListener('abort', aborted)
