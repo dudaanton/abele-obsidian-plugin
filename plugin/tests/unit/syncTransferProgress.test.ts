@@ -43,7 +43,7 @@ it('uses the short transfer form in the status bar', () => {
 it('names startup, inspection and comparison with readable counts', () => {
   const row = { status: 'syncing' as const, paused: false }
   expect(connectionLine(row, { inspection: { completed: 4000, total: 31000 } })).toBe(
-    'Checking the vault · 4 000 of 31 000'
+    `Checking the vault · ${(4000).toLocaleString()} of ${(31000).toLocaleString()}`
   )
   expect(connectionLine(row, { comparison: { completed: 1, total: 4 } })).toBe(
     'Comparing files · 1 of 4'
