@@ -157,6 +157,12 @@ export class NodeDelegationController {
         if (previous.cancelled) throw new Error('Delegation call cancelled; use a new task key')
         if (JSON.stringify(previous.input) !== JSON.stringify(input))
           throw new Error('idempotency_mismatch: preserve the same task key and body')
+        // An exact retry cannot change the node's retained request, nor retain revoked bypass.
+        if (
+          previous.request.permission_mode === 'bypassPermissions' &&
+          ownerPermissionPatch(description, ownerMode).permission_mode !== 'bypassPermissions'
+        )
+          throw new Error('idempotency_mismatch: owner permission mode changed; use a new task key')
         return previous.request
       }
       const { task_key: _key, ...body } = input

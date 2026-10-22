@@ -35,6 +35,9 @@ Node delegation records retain the owner's permission mode in the exact create r
 the node's effective tool-permission snapshot with the child and latest status. Missing
 snapshots on older nodes remain unknown. Refusals retain their status reason; they never
 authorize changing the owner's agent settings.
+An exact create retry is refused if its retained bypass is no longer authorized by the
+current owner mode; changing the retained mode requires a new task key. Stricter retained
+requests remain exact retries even if the owner subsequently allows bypass.
 Explicit session choices made on a device are stored in vault-scoped device local storage
 under `abele-node-session-owner-mode:` plus
 the JSON pair of node and session IDs. For device-side Obsidian tool execution, this choice

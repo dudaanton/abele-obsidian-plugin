@@ -1140,6 +1140,35 @@ it('retains an outstanding cancellation while recovering an accepted follow-up',
   f.store.close()
 })
 
+it('refuses a retained bypass request after the owner switches to Ask', async () => {
+  const f = fixture()
+  const description = await f.client.describe()
+  f.client.describe.mockResolvedValue({
+    ...description,
+    capabilities: {
+      capabilities: {
+        ...description.capabilities.capabilities,
+        'tool.permissions.v1': { status: 'supported' },
+      },
+    },
+  })
+  f.controller.ownerPermissionMode = () => 'allow-all'
+  f.client.createDelegation.mockRejectedValueOnce(new Error('connection lost'))
+  try {
+    await expect(f.controller.create('parent', task)).rejects.toThrow('connection lost')
+    f.controller.ownerPermissionMode = () => 'confirm-all'
+    await expect(f.controller.create('parent', task)).rejects.toThrow('idempotency_mismatch')
+    expect(f.client.createDelegation).toHaveBeenCalledTimes(1)
+    f.controller.ownerPermissionMode = () => 'allow-all'
+    await f.controller.create('parent', task)
+    expect(f.client.createDelegation.mock.calls[1][0]).toEqual(
+      f.client.createDelegation.mock.calls[0][0]
+    )
+  } finally {
+    f.store.close()
+  }
+})
+
 it('takes delegation permission mode from owner configuration only', async () => {
   const f = fixture()
   const description = await f.client.describe()
