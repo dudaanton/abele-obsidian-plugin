@@ -75,10 +75,10 @@ const probe = (device: string) =>
   try {
     await nodePanel.open('feature');
     const model = window.__abeleNodePanelFixture.model;
-    const treeTop = nodePanel.root().querySelector('.abele-node-place').getBoundingClientRect().top;
+    const treeTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
     model.report(new Error('No answer from the node. Reconnecting'));
     await until(() => nodePanel.root().textContent.includes('No answer from the node'));
-    const duringTop = nodePanel.root().querySelector('.abele-node-place').getBoundingClientRect().top;
+    const duringTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
     seen['quiet connection status'] = !!nodePanel.root().querySelector('[data-connection-status] .abele-status-dot_orange');
     const statusBox = nodePanel.root().querySelector('[data-connection-status]').getBoundingClientRect();
     seen['status visible'] = statusBox.height > 0 && statusBox.top >= 0 && statusBox.bottom <= innerHeight;
@@ -86,7 +86,8 @@ const probe = (device: string) =>
     await model.refreshCurrent();
     await until(() => !nodePanel.root().textContent.includes('No answer from the node'));
     seen.recovered = !nodePanel.root().textContent.includes('No answer from the node');
-    const afterTop = nodePanel.root().querySelector('.abele-node-place').getBoundingClientRect().top;
+    const afterTop = nodePanel.root().querySelector('.abele-file-tree').getBoundingClientRect().top;
+    diagnostics.tree = { before: treeTop, during: duringTop, after: afterTop };
     seen['stable tree'] = Math.abs(treeTop - duringTop) < 1 && Math.abs(afterTop - duringTop) < 1;
     await shot('recovered');
   } finally { await nodePanel.close(); }
