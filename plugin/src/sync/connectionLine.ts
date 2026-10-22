@@ -59,8 +59,8 @@ export function connectionLine(
     text(stage) +
     (total > 0
       ? text(' · {completed} of {total}', {
-          completed: completed.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
-          total: total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
+          completed: completed.toLocaleString(),
+          total: total.toLocaleString(),
         })
       : '')
   if (phase)

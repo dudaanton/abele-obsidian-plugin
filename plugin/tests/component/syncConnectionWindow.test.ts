@@ -11,6 +11,27 @@ import { shareSetSource, type ConnectionItem } from '@/sync/shareSets'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
 import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
 
+it('prints comparison progress once with locale-grouped counters', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.publish(id, { comparison: { completed: 1, total: 12274 } })
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.text().match(/Comparing files/g)).toHaveLength(1)
+    expect(view.get('.abele-sync-window__line').text()).toBe(
+      `Comparing files · ${(1).toLocaleString()} of ${(12274).toLocaleString()}`
+    )
+    expect(view.get('progress').attributes('aria-label')).toBe(
+      view.get('.abele-sync-window__line').text()
+    )
+  } finally {
+    view.unmount()
+  }
+})
+
 it('keeps the dot beside long status text in a non-wrapping row at phone width', () => {
   const ui = tokenUiFixture()
   const id = ui.rows.value[0].id
@@ -210,7 +231,9 @@ it('shows the shared transfer line, current path and timed recent activity', () 
     expect(view.find('.abele-sync-window__line').text()).toBe(
       'Downloading · 2 of 3 files · 2 of 4 KB'
     )
-    expect(view.find('progress').attributes('aria-label')).toBe('2 of 3')
+    expect(view.find('progress').attributes('aria-label')).toBe(
+      'Downloading · 2 of 3 files · 2 of 4 KB'
+    )
     expect(view.text()).toContain('Notes/sample.md')
     expect(view.findAll('.abele-sync-window__time')).toHaveLength(2)
     expect(view.text()).toContain('Downloaded Notes/earlier.md')
@@ -267,7 +290,10 @@ it('shows first-pull stage and counts as quiet visible text', () => {
     global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
   })
   try {
-    expect(view.find('.abele-sync-window__progress').text()).toBe('Receiving files · 3 of 12')
+    expect(view.get('.abele-sync-window__line').text()).toBe(
+      'Receiving files · 3 of at least 12 files'
+    )
+    expect(view.text().match(/Receiving files/g)).toHaveLength(1)
   } finally {
     view.unmount()
   }

@@ -8,13 +8,7 @@
           <span class="abele-sync-window__line">{{ line }}</span>
         </div>
       </div>
-      <Progress
-        v-if="progress"
-        :label="t('sync.window.progress', { completed: progress.completed, total: progress.total })"
-        :value="progress.completed"
-        :max="progress.total"
-      />
-      <p v-if="counts" class="abele-sync-window__progress" role="status">{{ counts }}</p>
+      <Progress v-if="progress" :label="line" :value="progress.completed" :max="progress.total" />
       <p v-if="activity?.transfer?.currentFile" class="abele-sync-window__progress">
         {{ activity.transfer.currentFile }}
       </p>
@@ -256,22 +250,6 @@ const tone = computed(() =>
       : 'faint'
 )
 const progress = computed(() => connectionProgress(activity.value))
-const counts = computed(() => {
-  const one = activity.value
-  if (one?.transfer) return ''
-  if (one?.pull)
-    return `${settingsSyncText(one.pull.stage)} · ${t('sync.window.progress', one.pull)}`
-  const stage =
-    one?.startup?.stage ??
-    (one?.inspection
-      ? t('settings.sync.presentation.54272d517782b52a')
-      : one?.comparison
-        ? t('settings.sync.presentation.6a534e2d9b68ac18')
-        : t('settings.sync.presentation.5c8b9e1ce0a2bc31'))
-  return progress.value
-    ? `${settingsSyncText(stage)} · ${t('sync.window.progress', progress.value)}`
-    : ''
-})
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
