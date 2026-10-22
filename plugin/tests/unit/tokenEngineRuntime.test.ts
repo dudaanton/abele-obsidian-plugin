@@ -2080,6 +2080,8 @@ it('does not revive comparison progress when an old read finishes after pause', 
   const one = runtime(wire, fs, undefined, undefined, null, {
     comparing: (value) => comparisons.push(value),
   })
+  // Model a read issued by a running SDK job, rather than an explicit manual host job.
+  Reflect.get(one.runtime.engine, 'set').call(one.runtime.engine, { state: 'syncing' })
   const disk = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
   const pending = disk.fingerprint!('Notes/sample.md').catch((error: unknown) => error)
   try {
@@ -2110,6 +2112,7 @@ it('does not publish a late inventory item after pause', async () => {
     yield { path: 'Notes/sample.md', size: 1, mtime: 1000 }
   }
   const one = runtime(wire, fs)
+  Reflect.get(one.runtime.engine, 'set').call(one.runtime.engine, { state: 'syncing' })
   const disk = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
   const iterator = disk.list()[Symbol.asyncIterator]()
   const pending = iterator.next().catch((error: unknown) => error)
@@ -2121,6 +2124,28 @@ it('does not publish a late inventory item after pause', async () => {
   } finally {
     release()
     await iterator.return?.()
+    await one.runtime.close()
+  }
+})
+
+it('allows explicit host reads while paused without restarting sync comparison progress', async () => {
+  const wire = await server('Notes/sample.md', 'sample'),
+    fs = new MemoryFileSystem()
+  const bytes = new TextEncoder().encode('sample')
+  await fs.writeAtomic('Notes/sample.md', bytes, 1000)
+  Object.assign(fs, {
+    fingerprint: async () => ({ size: bytes.length, sha: await sha256(bytes), mtime: 1000 }),
+  })
+  const comparisons: unknown[] = []
+  const one = runtime(wire, fs, undefined, undefined, null, {
+    comparing: (value) => comparisons.push(value),
+  })
+  try {
+    await one.runtime.pause(true)
+    const disk = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
+    expect(await disk.fingerprint!('Notes/sample.md')).toMatchObject({ size: bytes.length })
+    expect(comparisons.every((value) => value === undefined)).toBe(true)
+  } finally {
     await one.runtime.close()
   }
 })

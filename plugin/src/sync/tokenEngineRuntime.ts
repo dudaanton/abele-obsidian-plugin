@@ -1082,14 +1082,16 @@ export class TokenEngineRuntime
             const budget = this.comparisonBudget
             const checkRoot = () => this.checkRoot()
             const generation = () => (this.active ? this.comparisonRun : -1)
+            const syncing = () => this.engine.status.state === 'syncing'
             const nameTracked = async () => {
               if (this.token.scope.kind !== 'group') return
               for await (const entry of options.state.all()) this.nameCandidates([entry.path])
             }
             return async function* () {
               const run = generation()
+              const managed = syncing()
               const current = () => {
-                if (run < 0 || generation() !== run) throw new SyncCancelled()
+                if (generation() < 0 || (managed && generation() !== run)) throw new SyncCancelled()
               }
               current()
               await checkRoot()
@@ -1103,7 +1105,7 @@ export class TokenEngineRuntime
                   await budget.account(0)
                   current()
                   if (name === 'list' && !candidate(info.path)) continue
-                  if (name === 'list') {
+                  if (managed && name === 'list') {
                     if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
                     else largeUploads.delete(info.path)
                   }
@@ -1111,7 +1113,7 @@ export class TokenEngineRuntime
                   yield info
                 }
               } finally {
-                if (generation() === run) {
+                if (managed && generation() === run) {
                   inventoried(completed)
                   trace.inventory(completed)
                 }
@@ -1138,16 +1140,18 @@ export class TokenEngineRuntime
             typeof value === 'function'
           )
             return async (path: string, ...args: unknown[]) => {
+              const managed = this.engine.status.state === 'syncing'
               const run = this.comparisonRun
               const signal =
-                (args[0] as AbortSignal | undefined) ?? this.comparisonCancellation.signal
+                (args[0] as AbortSignal | undefined) ??
+                (managed ? this.comparisonCancellation.signal : this.requests.signal)
               const forwarded =
                 args[0] === undefined &&
                 (name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1'))
                   ? [signal, ...args.slice(1)]
                   : args
               const current = () => {
-                if (!this.active || run !== this.comparisonRun || signal.aborted)
+                if (!this.active || (managed && run !== this.comparisonRun) || signal.aborted)
                   throw new SyncCancelled()
               }
               const invoke = () => {
@@ -1163,10 +1167,10 @@ export class TokenEngineRuntime
                   return result
                 }
                 const total = this.inventoryTotal
-                if (this.compared.size === 0) comparing({ completed: 0, total })
+                if (managed && this.compared.size === 0) comparing({ completed: 0, total })
                 const bytes =
                   name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
-                    ? ((this.largeUploadPaths.has(path)
+                    ? ((managed && name === 'fingerprint' && this.largeUploadPaths.has(path)
                         ? await this.fingerprintForUpload(target, path, signal)
                         : undefined) ?? (await invoke()))
                     : await connectStage(
@@ -1175,8 +1179,11 @@ export class TokenEngineRuntime
                         invoke
                       )
                 current()
-                this.compared.add(path)
-                if (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total) {
+                if (managed) this.compared.add(path)
+                if (
+                  managed &&
+                  (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total)
+                ) {
                   this.comparisonPublished = Date.now()
                   comparing({ completed: this.compared.size, total })
                 }
