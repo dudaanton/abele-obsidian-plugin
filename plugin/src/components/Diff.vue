@@ -17,13 +17,14 @@
           >+{{ stats.added }}</span
         >
       </span>
-      <span v-if="changed && (layout === 'auto' || folded)" class="abele-diff__actions">
+      <span v-if="changed && (layout === 'auto' || foldable)" class="abele-diff__actions">
         <Icon
-          v-if="folded"
-          icon="unfold-vertical"
+          v-if="foldable"
+          :icon="folded ? 'unfold-vertical' : 'fold-vertical'"
           size="xs"
-          tooltip="Show all lines"
-          @click="unfoldAll"
+          :tooltip="t(folded ? 'chat.diffShowAll' : 'chat.diffCollapse')"
+          :active="!folded"
+          @click="toggleContext"
         />
         <Icon
           v-if="layout === 'auto'"
@@ -47,6 +48,8 @@
         <div
           v-if="row.kind === 'fold'"
           class="diff-collapsed abele-diff__fold"
+          :data-line-start="row.lines[0]?.lineA"
+          :data-line-end="row.lines.at(-1)?.lineA"
           role="button"
           tabindex="0"
           @click="unfold(index)"
@@ -86,6 +89,8 @@
         <div
           v-if="pair.kind === 'fold'"
           class="diff-collapsed abele-diff__fold"
+          :data-line-start="pair.lines?.[0]?.lineA"
+          :data-line-end="pair.lines?.at(-1)?.lineA"
           role="button"
           tabindex="0"
           @click="unfoldPair(index)"
@@ -141,7 +146,8 @@
 // success colour, the changed words inside them stronger, unchanged stretches folded away.
 // A sign before each line says the same without colour. A file's code is coloured the way the
 // plugin's code view colours it.
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { t } from '@/i18n'
 import { useResizeObserver } from '@vueuse/core'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
 import { lineTokens, paint, type PaintedPiece } from './diffSyntax'
@@ -183,12 +189,14 @@ const props = withDefaults(
 )
 
 const lines = computed(() => diffLines(props.textLeft, props.textRight))
+const foldedRows = computed(() => foldUnchanged(lines.value, props.context))
+const foldable = computed(() => foldedRows.value.some((row) => row.kind === 'fold'))
 const changed = computed(() => lines.value.some((l) => l.kind !== 'same'))
 const rows = ref<DiffRow[]>([])
 watch(
   [lines, () => props.context],
   () => {
-    rows.value = foldUnchanged(lines.value, props.context)
+    rows.value = foldedRows.value.slice()
   },
   { immediate: true }
 )
@@ -227,8 +235,39 @@ const shown = computed(() =>
   props.layout !== 'auto' ? props.layout : (chosen.value ?? (roomy.value ? 'split' : 'unified'))
 )
 
-function unfoldAll(): void {
-  rows.value = rows.value.flatMap((r) => (r.kind === 'fold' ? r.lines : [r]))
+async function toggleContext(): Promise<void> {
+  const el = root.value
+  // Keep a visible source line at the same height, including when it becomes a fold marker.
+  // Compensate only the nearest scroll container so nested dialogs do not move the workspace.
+  let scroller = el?.parentElement
+  while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+    scroller = scroller.parentElement
+  }
+  const top = scroller?.getBoundingClientRect().top ?? 0
+  const bottom =
+    scroller?.getBoundingClientRect().bottom ?? el?.ownerDocument.defaultView?.innerHeight ?? 0
+  const anchor = Array.from(
+    el?.querySelectorAll<HTMLElement>('.abele-diff__line, .abele-diff__fold') ?? []
+  ).find((row) => {
+    const box = row.getBoundingClientRect()
+    return box.height > 0 && box.top >= top && box.top < bottom
+  })
+  const lineA = anchor?.dataset.lineA ?? anchor?.dataset.lineStart
+  const lineB = anchor?.dataset.lineB
+  const offset = anchor?.getBoundingClientRect().top
+  rows.value = folded.value ? lines.value.slice() : foldedRows.value.slice()
+  await nextTick()
+  if (!scroller || offset === undefined || !anchor) return
+  const replacement = Array.from(
+    el?.querySelectorAll<HTMLElement>('.abele-diff__line, .abele-diff__fold') ?? []
+  ).find((row) =>
+    lineA
+      ? row.dataset.lineA === lineA ||
+        (Number(row.dataset.lineStart) <= Number(lineA) &&
+          Number(row.dataset.lineEnd) >= Number(lineA))
+      : lineB && row.dataset.lineB === lineB
+  )
+  if (replacement) scroller.scrollTop += replacement.getBoundingClientRect().top - offset
 }
 const stats = computed(() => ({
   removed: lines.value.filter((l) => l.kind === 'removed').length,

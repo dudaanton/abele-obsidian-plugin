@@ -4,6 +4,8 @@ export const chat = {
   'chatTree.showFolder': 'Показать папку',
   'chatTree.hiddenFolder': 'Скрытая папка',
 
+  'chat.diffShowAll': 'Показать все строки',
+  'chat.diffCollapse': 'Свернуть неизменённые строки',
   'chat.letterAuthority': 'Без подтверждения чат-получатель может использовать: {capabilities}.',
   'chat.letterAuthority.files': 'изменение, копирование, перемещение и удаление файлов',
   'chat.letterAuthority.edit': 'изменение файлов',

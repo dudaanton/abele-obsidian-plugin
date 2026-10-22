@@ -4,6 +4,8 @@ export const chat = {
   'chatTree.showFolder': 'Show folder',
   'chatTree.hiddenFolder': 'Hidden folder',
 
+  'chat.diffShowAll': 'Show all lines',
+  'chat.diffCollapse': 'Collapse unchanged lines',
   'chat.letterAuthority': 'Without asking, the target may use: {capabilities}.',
   'chat.letterAuthority.files': 'file edits, copies, moves and deletion',
   'chat.letterAuthority.edit': 'file edits',

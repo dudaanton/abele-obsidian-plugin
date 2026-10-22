@@ -2,7 +2,7 @@
  * The comparison drawn the way Obsidian draws its own: removed and added lines with a sign, the
  * changed words marked, long unchanged runs folded and opened on request.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Diff from '@/components/Diff.vue'
 import { loadedPrism } from '@/components/codeSyntax'
@@ -14,6 +14,74 @@ const after = before.replace('line 6', 'line six')
 await loadedPrism()
 
 describe('Diff', () => {
+  it('keeps a visible source line anchored through expansion and collapse', async () => {
+    const host = document.createElement('div')
+    host.style.overflowY = 'auto'
+    document.body.append(host)
+    const view = mount(Diff, {
+      attachTo: host,
+      props: { textLeft: before, textRight: after, context: 1 },
+    })
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this === host) return { top: 0, bottom: 100, height: 100 } as DOMRect
+        const rows = [...host.querySelectorAll('.abele-diff__line, .abele-diff__fold')]
+        const top = rows.indexOf(this) * 20 - host.scrollTop
+        return { top, bottom: top + 20, height: 20 } as DOMRect
+      })
+    try {
+      host.scrollTop = 20
+      await view.get('button[aria-label="Show all lines"]').trigger('click')
+      await flushPromises()
+      expect(host.scrollTop).toBe(80)
+      // A retained context line stays at the same height on collapse.
+      await view.get('button[aria-label="Collapse unchanged lines"]').trigger('click')
+      await flushPromises()
+      expect(host.scrollTop).toBe(20)
+      await view.get('button[aria-label="Show all lines"]').trigger('click')
+      await flushPromises()
+      host.scrollTop = 40
+      // A line inside the unchanged run is replaced by that run's fold marker.
+      await view.get('button[aria-label="Collapse unchanged lines"]').trigger('click')
+      await flushPromises()
+      expect(host.scrollTop).toBe(0)
+    } finally {
+      rect.mockRestore()
+      view.unmount()
+      host.remove()
+    }
+  })
+
+  it.each(['unified', 'split', 'auto'] as const)(
+    'toggles unchanged context in %s',
+    async (layout) => {
+      const view = mount(Diff, {
+        props: { textLeft: before, textRight: after, context: 1, layout },
+      })
+      const initial = view.findAll('.abele-diff__line').map((line) => line.text())
+      const button = view.get('button[aria-label="Show all lines"]')
+      expect(button.attributes('aria-pressed')).toBe('false')
+      await button.trigger('click')
+      expect(view.findAll('.abele-diff__fold')).toHaveLength(0)
+      expect(button.attributes('aria-label')).toBe('Collapse unchanged lines')
+      expect(button.attributes('aria-pressed')).toBe('true')
+      await button.trigger('click')
+      expect(view.findAll('.abele-diff__fold')).toHaveLength(2)
+      expect(view.findAll('.abele-diff__line').map((line) => line.text())).toEqual(initial)
+    }
+  )
+
+  it('can collapse individually opened folds and resets for new text', async () => {
+    const view = mount(Diff, { props: { textLeft: before, textRight: after, context: 1 } })
+    while (view.find('.abele-diff__fold').exists())
+      await view.get('.abele-diff__fold').trigger('click')
+    await view.get('button[aria-label="Collapse unchanged lines"]').trigger('click')
+    expect(view.findAll('.abele-diff__fold')).toHaveLength(2)
+    await view.setProps({ textLeft: 'a', textRight: 'b' })
+    expect(view.find('button[aria-label="Show all lines"]').exists()).toBe(false)
+  })
+
   it("uses Obsidian's diff lines, with a sign that says what colour says", () => {
     const view = mount(Diff, { props: { textLeft: 'a\nb', textRight: 'a\nB' } })
 

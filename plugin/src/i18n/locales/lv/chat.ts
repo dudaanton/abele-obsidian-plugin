@@ -4,6 +4,8 @@ export const chat = {
   'chatTree.showFolder': 'Rādīt mapi',
   'chatTree.hiddenFolder': 'Paslēpta mape',
 
+  'chat.diffShowAll': 'Rādīt visas rindas',
+  'chat.diffCollapse': 'Sakļaut nemainītās rindas',
   'chat.letterAuthority': 'Bez apstiprinājuma saņēmējs var izmantot: {capabilities}.',
   'chat.letterAuthority.files': 'failu rediģēšanu, kopēšanu, pārvietošanu un dzēšanu',
   'chat.letterAuthority.edit': 'failu rediģēšanu',

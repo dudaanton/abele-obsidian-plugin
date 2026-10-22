@@ -652,5 +652,11 @@
   },
   "chatTree.hiddenFolder": {
     "englishHash": "c3086d0b2ad6eafcb5af7ae5fd574d7f6accf2ff61397fd2f96423f9975a36d6"
+  },
+  "chat.diffShowAll": {
+    "englishHash": "978ac995c6d1cb8a59abff315e654f4bf769ae3c586748bdbe888410f620734a"
+  },
+  "chat.diffCollapse": {
+    "englishHash": "3aa2cc0f158cfe97fc0784987f38bff9e52ed2a4cc0dc05f487f446e27332ab3"
   }
 }

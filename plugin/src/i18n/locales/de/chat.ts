@@ -4,6 +4,8 @@ export const chat = {
   'chatTree.showFolder': 'Ordner anzeigen',
   'chatTree.hiddenFolder': 'Ausgeblendeter Ordner',
 
+  'chat.diffShowAll': 'Alle Zeilen anzeigen',
+  'chat.diffCollapse': 'Unveränderte Zeilen einklappen',
   'chat.letterAuthority': 'Ohne Rückfrage kann der Zielchat Folgendes nutzen: {capabilities}.',
   'chat.letterAuthority.files': 'Dateien bearbeiten, kopieren, verschieben und löschen',
   'chat.letterAuthority.edit': 'Dateien bearbeiten',
