@@ -107,6 +107,10 @@ export class ConditionalFiles {
   private async restore(from: string, to: string) {
     const folder = from.slice(0, from.lastIndexOf('/'))
     if (await this.host.stat(folder + '/restored')) return
+    const id = from.split('/').at(-2)
+    // The existing durable review pointer is also restoration's settlement record.
+    // Keep reading the old marker for records written by earlier hosts.
+    if (await this.host.stat(this.host.root + '/review/' + id + '.json')) return
     const info = await this.host.stat(from)
     if (!info) return
     const allocation = folder + '/allocation'
@@ -116,11 +120,10 @@ export class ConditionalFiles {
       return
     }
     this.host.check()
-    const id = from.split('/').at(-2)
     const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
-    const finish = async (destination: string) => {
-      await this.host.flush(destination)
-      await this.record(folder + '/restored', { destination })
+    const finish = async (destination: string, durable = false) => {
+      if (!durable) await this.host.flush(destination)
+      await this.archive(folder, id, false)
       this.host.changed([destination])
     }
     // A durable plan also finds a randomly named publication after restart.
@@ -255,7 +258,7 @@ export class ConditionalFiles {
           await this.host.flush(destination, true)
           await this.host.flush(from, true)
         }
-        await finish(destination)
+        await finish(destination, true)
         return
       } catch (error) {
         this.host.check()
@@ -267,12 +270,17 @@ export class ConditionalFiles {
     throw new EngineError('io', 'visible recovery destinations are occupied')
   }
   private async archive(_folder: string, id: string, successful: boolean) {
-    if (!(await this.host.stat(this.host.root + '/active/' + id + '.json'))) return
+    let source = this.host.root + '/active/' + id + '.json'
+    if (!(await this.host.stat(source))) {
+      if (successful) return
+      source = this.host.root + '/completed/' + id + '.json'
+      if (!(await this.host.stat(source))) return
+    }
     const parent = this.host.root + (successful ? '/completed' : '/review')
     await this.host.mkdir(parent)
-    await this.host.capture(this.host.root + '/active/' + id + '.json', parent + '/' + id + '.json')
+    await this.host.capture(source, parent + '/' + id + '.json')
     await this.host.flush(parent + '/' + id + '.json')
-    await this.host.flush(this.host.root + '/active/' + id + '.json', true)
+    await this.host.flush(source, true)
   }
   async apply(op: ConditionalFileOperation): Promise<boolean> {
     const h = this.host

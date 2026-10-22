@@ -225,6 +225,14 @@ and checks inode identity before unlinking an alias. These locators never travel
 or sync. A recently published path continues to use disk metadata until the asynchronous
 Obsidian index agrees, so a stale row cannot become an apparent local edit or deleted-file echo.
 
+Conditional publication records intent before capture. Verified displaced bases retire after
+settlement; mismatches are restored without replacing an occupied name, using a visible conflict
+copy when necessary. Retained reviews survive restart and prevent disconnect until resolved.
+Absence-only buffered writes use an owned installation-journal record with `conditionalReceipt`,
+`target`, `temp` and `replacementSha`; native receipt proof retains the installed inode reference
+until ledger completion. The record and private data are discarded only on explicit receipt
+retirement. Mobile hosts without durable object identity refuse destructive conditional capture.
+
 The reserved projection format is `abele.external`, schema 1, at most 16 KiB UTF-8. Its
 `.abele-ref` sidecar contains only vault/file identity, logical path, observed version, SHA-256,
 size, MIME, mtime and optional media dimensions/duration. Strict parsing, placement and local

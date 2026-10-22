@@ -7,34 +7,10 @@ import { WriteJournal, type JournalEntry } from './writeJournal'
 import { sha256 } from './external/hash'
 export { WriteJournal, JOURNAL_KEY, RECOVERED_WRITES_KEY, type JournalEntry } from './writeJournal'
 import type { NativeFs } from './nativeVaultFs'
+import type { ConditionalFileOperation } from './conditionalFiles'
 export { nativeOf, type NativeFs } from './nativeVaultFs'
 
-/**
- * How the sync replaces a file in the vault without ever leaving half of one behind.
- *
- * The engine's `writeAtomic` asks for the old bytes or the new ones and nothing in between: a
- * short file is read by the next scan as an edit made here, and sent to every device (pi review
- * #1). `adapter.writeBinary` truncates the file and writes into it, so it cannot be used on the
- * file itself. The new bytes go to a private staging name instead, in full, and only then take the
- * file's name.
- *
- * Obsidian's `adapter.rename` refuses a name that is taken, on the desktop and on a phone alike
- * (`Destination file already exists!`), so how the name is taken depends on what is underneath:
- *
- * - **Desktop.** The adapter is Node's `fs` under a queue, and holds it as `fsPromises`;
- *   `getFullPath` maps a vault path to the disk's spelling. Final comparison and `rename(2)`
- *   run inside that same local-save queue. Unfenced native adapters instead preserve a backup
- *   and install exclusively (or hold if no safe capability exists).
- * - **Anything else (a phone).** Capacitor's filesystem is reachable only through the adapter, so
- *   the file steps aside first: the old one to a backup name, the new one into its place, the
- *   backup removed. Between the two renames the file is at the backup name and nowhere else, so
- *   every step is written down first in this vault's local storage (`JOURNAL_KEY`), and the next
- *   listing puts back whatever a crash left half done, before the scan can read the gap as a
- *   delete.
- *
- * The temp and backup names start with a dot, which keeps them out of Obsidian's file index, and
- * `isAdapterTemp` keeps them out of the config-folder walk, where hidden names are listed.
- */
+/** Legacy publication delegates to the host conditional gate; recovery retains unproven backups. */
 
 /**
  * The temp names this process is using right now, whichever `ObsidianFileSystem` made them — a
@@ -54,7 +30,8 @@ export function adapterWriteInFlight(path: string): boolean {
 }
 
 /** `.abele-sync-<8>.tmp` holds new bytes (safe to drop); `.old` holds the only copy of a file. */
-const TEMP_NAME = /^\.abele-sync-[a-z0-9]{8}\.(tmp|old)$/
+const TEMP_NAME =
+  /^(?:\.abele-sync-[a-z0-9]{8}\.(?:tmp|old)|\.abele-receipt-[a-zA-Z0-9-]{1,128}\.tmp)$/
 
 /** Whether a path is one of the names this file writes through, so no listing reports it. */
 export function isAdapterTemp(path: string): boolean {
@@ -68,6 +45,7 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
+  conditionalFile(operation: ConditionalFileOperation): Promise<boolean>
   retainInstalled?: boolean
   published?(entry: JournalEntry): void
   stagingDirectory: string
@@ -86,84 +64,173 @@ export interface WriterDeps {
 export class VaultWriter {
   constructor(private readonly deps: WriterDeps) {}
 
-  private get disk(): DataAdapter {
-    return guardedVaultAdapter(this.deps.filesystem)
+  private receiptPath(receipt: string): string {
+    if (!/^[a-zA-Z0-9-]{1,128}$/.test(receipt))
+      throw new EngineError('protocol', 'invalid installation receipt')
+    return this.deps.stagingDirectory + '/.abele-receipt-' + receipt + '.tmp'
   }
 
-  /** Publish authenticated disk bytes without assembling either old or new contents. */
-  async publishStage(entry: JournalEntry): Promise<void> {
-    let notified = false
-    const notify = () => {
-      if (!notified) {
-        notified = true
-        this.deps.installed?.(entry.target)
+  /** An absent target needs no displaced-victim journal. The durable intent owns its data. */
+  async publishAbsent(
+    path: string,
+    bytes: Uint8Array,
+    mtime: number,
+    receipt?: string
+  ): Promise<boolean> {
+    const id = receipt ?? crypto.randomUUID(),
+      temp = this.receiptPath(id)
+    if (inFlight.has(temp)) throw new EngineError('conflict', 'Installation receipt is active')
+    inFlight.add(temp)
+    try {
+      const entry: JournalEntry = {
+        target: path,
+        temp,
+        conditionalReceipt: id,
+        replacementSha: await signature(bytes),
       }
-    }
-    const stream = entry.streaming
-    if (!entry.temp || !stream?.sealed || !this.deps.fingerprint)
-      throw new EngineError('io', 'unsealed streaming stage')
-    const matches = async (path: string, expected: { size: number; sha: string }) => {
-      const actual = await this.deps.fingerprint(path)
-      if (actual.size !== expected.size || actual.sha !== expected.sha)
-        throw new EngineError('conflict', `${path} changed before publication`)
-    }
-    await matches(entry.temp, stream.sealed)
-    const held = await this.held(entry.target)
-    if (stream.base === null && !stream.retainBase) {
-      await this.takeFreeName(entry.temp, entry.target)
-    } else if (this.deps.native?.replaceFencedIdentity && !stream.retainBase) {
-      await this.deps.native.replaceFencedIdentity(entry.temp, held, stream.base)
-    } else {
-      if (!stream.retainBase) await matches(held, stream.base)
-      if (this.deps.native && !this.deps.native.installExclusive)
-        throw new EngineError('io', 'native replacement has no safe publication capability')
-      const backup = await this.freeName(held, 'old')
-      const swapping: JournalEntry = {
-        ...entry,
-        target: held,
-        backup,
-        replacementSha: stream.sealed.sha,
-        ...(this.deps.native || stream.retainBase ? { preserveBackup: true } : {}),
-      }
-      await this.deps.journal.persist(() => this.deps.journal.replace(entry, swapping))
-      entry = swapping
-      await this.holding(backup, async () => {
-        if (this.deps.native) await this.deps.native.rename(held, backup)
-        else await this.disk.rename(held, backup)
-        await this.deps.adoptReceipt?.(held, backup)
-        try {
-          if (!stream.retainBase) await matches(backup, stream.base)
-          if (this.deps.native) await this.deps.native.installExclusive(entry.temp, held)
-          else await this.disk.rename(entry.temp, held)
-        } catch (error) {
-          try {
-            if (this.deps.native) await this.deps.native.installExclusive(backup, held)
-            else await this.disk.rename(backup, held)
-            await this.deps.adoptReceipt?.(backup, held)
-            await this.deps.journal.persist(() =>
-              this.deps.journal.replace(entry, { ...entry, backup: undefined })
-            )
-          } catch {
-            console.debug(
-              `[abele-sync] ${held} is retained at ${backup} after stage publication failed`
-            )
-          }
-          throw error
+      if (await this.deps.journal.currentEntry(temp))
+        throw new EngineError('conflict', 'Installation receipt already has unfinished work')
+      if (await this.there(temp))
+        throw new EngineError('conflict', 'Installation path contains retained evidence')
+      await this.deps.makeParents(path)
+      await this.deps.makeParents(temp)
+      await this.deps.journal.persist(() => this.deps.journal.add(entry))
+      // This is an owned private path, never a public overwrite. Publication remains exclusive.
+      const chunkSize = 1024 * 1024
+      if (bytes.length > chunkSize && !this.deps.native) {
+        for (let at = 0; at < bytes.length; at += chunkSize) {
+          const chunk = bytesOf(bytes.slice(at, at + chunkSize))
+          if (at === 0) await this.disk.writeBinary(temp, chunk, { mtime })
+          else await this.disk.appendBinary(temp, chunk, { mtime })
         }
-        await this.deps.adoptReceipt?.(entry.temp, held)
-        notify()
-        const installed = { ...entry, installed: true }
-        await this.deps.journal.persist(() => this.deps.journal.replace(entry, installed))
-        entry = installed
-        if (this.deps.native || stream.retainBase) {
-          await this.preserveBackup(entry)
-          await this.dropQuietly(entry.temp)
-        } else await this.disk.remove(backup)
-      })
+      } else await this.disk.writeBinary(temp, bytesOf(bytes), { mtime })
+      if (this.deps.native) {
+        if (!this.deps.native.syncPath || !this.deps.native.installExclusive)
+          throw new EngineError('io', 'durable exclusive installation is unavailable')
+        await this.deps.native.syncPath(temp)
+      }
+      try {
+        if (this.deps.native) await this.deps.native.installExclusive(temp, path)
+        else await this.disk.rename(temp, path)
+      } catch (error) {
+        // A lost acknowledgement is uncertain; keep the intent and data for proof/review.
+        if ((await this.disk.stat(path)) !== null) return false
+        throw error
+      }
+      if (this.deps.native) await this.deps.native.syncPath(path)
+      this.deps.installed?.(path)
+      if (!receipt) await this.discardReceipt(id)
+      return true
+    } finally {
+      inFlight.delete(temp)
     }
-    await this.deps.adoptReceipt?.(entry.temp, entry.target)
-    notify()
+  }
+
+  async installedReceipt(receipt: string, path: string, sha: string): Promise<boolean | undefined> {
+    const temp = this.receiptPath(receipt),
+      entry = await this.deps.journal.currentEntry(temp)
+    if (!entry?.conditionalReceipt) return undefined
+    if (
+      entry.target !== path ||
+      entry.replacementSha !== sha ||
+      !this.deps.native?.sameObject ||
+      !this.deps.native.syncPath ||
+      !this.deps.fingerprint
+    )
+      return false
+    if (!(await this.there(temp)) || !(await this.there(path))) return false
+    if (!(await this.deps.native.sameObject(temp, path))) return false
+    if ((await this.deps.fingerprint(path)).sha !== sha) return false
+    if (!(await this.deps.native.sameObject(temp, path))) return false
+    await this.deps.native.syncPath(path)
+    return true
+  }
+
+  async discardReceipt(receipt: string): Promise<boolean> {
+    const temp = this.receiptPath(receipt),
+      entry = await this.deps.journal.currentEntry(temp)
+    if (!entry?.conditionalReceipt) return false
+    if (await this.there(temp)) {
+      await this.disk.remove(temp)
+      if (this.deps.native) await this.deps.native.syncPath(temp, true)
+    }
+    await this.deps.journal.persist(() => this.deps.journal.drop(entry))
+    return true
+  }
+
+  private async conditional(operation: ConditionalFileOperation): Promise<void> {
+    console.debug('[abele-sync] conditional legacy effect', operation.path, operation.effect.kind)
+    if (!(await this.deps.conditionalFile(operation)))
+      throw new EngineError('conflict', 'File changed before legacy publication')
+  }
+
+  async publishStage(entry: JournalEntry): Promise<void> {
+    console.debug('[abele-sync] publishing legacy stage', entry.target, entry.temp)
+    if (!entry.temp || !entry.streaming?.sealed)
+      throw new EngineError('io', 'unsealed streaming stage')
+    const base = entry.streaming.base
+    if (base && base.mtime === undefined)
+      throw new EngineError('conflict', 'Stage has no authorized modification time')
+    await this.conditional({
+      path: entry.target,
+      expected: base ? { ...base, mtime: base.mtime } : null,
+      effect: { kind: 'install', stageId: entry.temp },
+    })
+    this.deps.installed?.(entry.target)
     await this.finishInstallation(entry)
+  }
+
+  async write(
+    path: string,
+    bytes: ArrayBuffer | Uint8Array,
+    mtime: number,
+    exists: boolean,
+    before: ArrayBuffer | null
+  ): Promise<void> {
+    console.debug('[abele-sync] publishing legacy bytes', path)
+    const stat = exists ? await this.disk.stat(path) : null
+    if (exists && (!stat || stat.type !== 'file' || before === null))
+      throw new EngineError('conflict', 'Legacy replacement has no authorized base')
+    await this.conditional({
+      path,
+      expected:
+        stat && before
+          ? {
+              size: before.byteLength,
+              mtime: Math.round(stat.mtime),
+              sha: await signature(before),
+            }
+          : null,
+      effect: {
+        kind: 'write',
+        bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+        mtime,
+      },
+    })
+    this.deps.installed?.(path)
+  }
+
+  async respell(
+    from: string,
+    to: string,
+    spelledExactly: (path: string) => Promise<boolean | null>
+  ): Promise<void> {
+    console.debug('[abele-sync] respelling legacy file', from, to)
+    const stat = await this.disk.stat(from)
+    if (!stat || stat.type !== 'file' || !this.deps.fingerprint)
+      throw new EngineError('conflict', 'Legacy move has no authorized base')
+    const have = await this.deps.fingerprint(from)
+    await this.conditional({
+      path: from,
+      expected: { ...have, mtime: Math.round(stat.mtime) },
+      effect: { kind: 'move', to },
+    })
+    if ((await spelledExactly(to)) === false)
+      throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
+  }
+
+  private get disk(): DataAdapter {
+    return guardedVaultAdapter(this.deps.filesystem)
   }
 
   private async finishInstallation(entry: JournalEntry): Promise<void> {
@@ -179,161 +246,6 @@ export class VaultWriter {
         this.deps.journal.replace(entry, { ...entry, installed: true, backup: undefined })
       else this.deps.journal.drop(entry)
     })
-  }
-
-  /**
-   * `bytes` at `path`, dated `mtime`, the old file or the new one at every instant. `exists` says
-   * whether a file stands at `path` now, which decides between taking a free name and replacing.
-   */
-  async write(
-    path: string,
-    bytes: ArrayBuffer | Uint8Array,
-    mtime: number,
-    exists: boolean,
-    before: ArrayBuffer | null
-  ): Promise<void> {
-    await this.deps.makeParents(path)
-    const view = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
-    const temp = await this.freeName(path, 'tmp')
-    let entry: JournalEntry = { target: path, temp, replacementSha: await signature(bytes) }
-    inFlight.add(temp)
-    try {
-      await this.deps.journal.persist(() => this.deps.journal.add(entry))
-      try {
-        // Mobile writeBinary base64-encodes its entire input. Keep each bridge
-        // message bounded, while the journal-owned staging file remains hidden.
-        const chunkSize = 1024 * 1024
-        if (
-          !this.deps.native &&
-          typeof this.disk.appendBinary === 'function' &&
-          bytes.byteLength > chunkSize
-        ) {
-          for (let at = 0; at < bytes.byteLength; at += chunkSize) {
-            const chunk = bytesOf(view.slice(at, at + chunkSize))
-            if (at === 0) await this.disk.writeBinary(temp, chunk, { mtime })
-            else await this.disk.appendBinary(temp, chunk, { mtime })
-          }
-        } else await this.disk.writeBinary(temp, bytesOf(view), { mtime })
-      } catch (cause) {
-        throw new EngineError('io', `cannot write ${path}`, cause)
-      }
-      if (before !== null) await this.unchanged(path, before)
-      if (!exists) {
-        await this.takeFreeName(temp, path)
-        this.deps.installed?.(path)
-      } else if (this.deps.native?.replaceFenced) {
-        await this.deps.native.replaceFenced(temp, await this.held(path), before)
-        this.deps.installed?.(path)
-      } else {
-        const held = await this.held(path)
-        const backup = await this.freeName(path, 'old')
-        const swapping: JournalEntry = {
-          target: held,
-          temp,
-          backup,
-          replacementSha: entry.replacementSha,
-          ...(this.deps.native !== null ? { preserveBackup: true } : {}),
-        }
-        await this.deps.journal.persist(() => this.deps.journal.replace(entry, swapping))
-        entry = swapping
-        if (this.deps.native !== null && !this.deps.native.installExclusive) {
-          throw new EngineError(
-            'io',
-            'native replacement has no write fence or exclusive-install capability'
-          )
-        }
-        if (!(await this.replaceBySwap(temp, held, backup, before, this.deps.native))) {
-          // The old file could not be put back under its name: the entry stays for the next
-          // listing, which tries again.
-          await this.dropQuietly(temp)
-          inFlight.delete(temp)
-          throw new EngineError('io', `cannot write ${path}; ${held} is kept at ${backup}`)
-        }
-        this.deps.installed?.(path)
-        const installed = { ...entry, installed: true }
-        await this.deps.journal.persist(() => this.deps.journal.replace(entry, installed))
-        entry = installed
-        if (this.deps.native !== null) {
-          // An unfenced adapter may have an open writer to the moved inode. Keep that copy
-          // recoverable instead of claiming the original byte check excluded every writer.
-          await this.preserveBackup(entry)
-          await this.dropQuietly(temp)
-        } else {
-          await this.dropQuietly(backup)
-          // A backup that would not be removed stays in the journal, for the next listing.
-          if (await this.there(backup)) return
-        }
-      }
-    } catch (error) {
-      if (inFlight.has(temp)) {
-        await this.dropQuietly(temp)
-        if (
-          !(await this.there(temp)) &&
-          (entry.backup === undefined || !(await this.there(entry.backup)))
-        )
-          await this.deps.journal.persist(() => this.deps.journal.drop(entry))
-      }
-      throw error
-    } finally {
-      inFlight.delete(temp)
-    }
-    await this.finishInstallation(entry)
-  }
-
-  /** A file that was not there: the temp takes the name, which the adapter refuses if taken. */
-  private async takeFreeName(temp: string, path: string): Promise<void> {
-    try {
-      await this.disk.rename(temp, path)
-    } catch (cause) {
-      // Somebody made the file in the moment since it was looked for. Theirs is not written over;
-      // the puller holds the change and the next scan sends theirs.
-      if (await this.there(path)) {
-        throw new EngineError('conflict', `${path} is held by another file`, cause)
-      }
-      throw new EngineError('io', `cannot write ${path}`, cause)
-    }
-  }
-
-  /**
-   * Adapter swap: the old file to its backup name, the new one into its place —
-   * written down in the journal first, so a crash between them is put back (`recover`). False
-   * when the new file would not take the name and the old one would not go back under it either:
-   * it is left at the backup name, for the next listing to put back.
-   */
-  private async replaceBySwap(
-    temp: string,
-    path: string,
-    backup: string,
-    before: ArrayBuffer | null,
-    native: NativeFs | null
-  ): Promise<boolean> {
-    inFlight.add(backup)
-    try {
-      try {
-        if (native) await native.rename(path, backup)
-        else await this.disk.rename(path, backup)
-      } catch (cause) {
-        throw new EngineError('io', `cannot write ${path}`, cause)
-      }
-      try {
-        if (before !== null) await this.unchanged(backup, before)
-        if (native?.installExclusive) await native.installExclusive(temp, path)
-        else await this.disk.rename(temp, path)
-      } catch (cause) {
-        try {
-          if (native?.installExclusive) await native.installExclusive(backup, path)
-          else await this.disk.rename(backup, path)
-        } catch {
-          console.debug(`[abele-sync] ${path} is left at ${backup} until the next listing`)
-          return false
-        }
-        if (cause instanceof EngineError) throw cause
-        throw new EngineError('io', `cannot write ${path}`, cause)
-      }
-      return true
-    } finally {
-      inFlight.delete(backup)
-    }
   }
 
   /**
@@ -358,52 +270,6 @@ export class VaultWriter {
   }
 
   /**
-   * The new spelling of a name the disk would not respell in one go.
-   *
-   * POSIX lets `rename` between two names of one file do nothing at all, and some mounts take
-   * it literally, so the file goes out to a name nothing holds and comes back under the
-   * spelling that was asked for. A rename carries the whole file or none of it, but between the
-   * two steps the file is at the aside name and nowhere else — so that name is a backup in the
-   * write journal, and a crash between the steps is put back under `to` by the next listing.
-   */
-  async respell(
-    from: string,
-    to: string,
-    spelledExactly: (path: string) => Promise<boolean | null>
-  ): Promise<void> {
-    const aside = await this.freeName(to, 'old')
-    const entry = { target: to, backup: aside }
-    await this.holding(aside, async () => {
-      await this.deps.journal.persist(() => this.deps.journal.add(entry))
-      // Out from `to`, not from `from`: on the disk this is for, both names answer to the one
-      // file, and `to` is the one that is there whether the rename before this took or not.
-      try {
-        await this.disk.rename(to, aside)
-      } catch (cause) {
-        await this.deps.journal.persist(() => this.deps.journal.drop(entry))
-        throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
-      }
-      try {
-        await this.disk.rename(aside, to)
-      } catch (cause) {
-        // Back under the name it had, rather than leaving the vault holding an aside name. A
-        // disk that will not do that either leaves it to the journal.
-        try {
-          await this.disk.rename(aside, from)
-          await this.deps.journal.persist(() => this.deps.journal.drop(entry))
-        } catch {
-          console.debug(`[abele-sync] ${from} is left at ${aside} until the next listing`)
-        }
-        throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
-      }
-      await this.deps.journal.persist(() => this.deps.journal.drop(entry))
-    })
-    if ((await spelledExactly(to)) === false) {
-      throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
-    }
-  }
-
-  /**
    * Put back whatever a crash left half done, from the journal: a file found only at its
    * backup name goes back under its own. A backup beside exact replacement bytes can go;
    * beside an independently edited target it is preserved with a durable locator instead.
@@ -425,6 +291,7 @@ export class VaultWriter {
     for (const entry of await this.deps.journal.currentEntries()) {
       if (!(await this.deps.journal.isCurrent(entry))) continue
       if (entry.retiredGeneration) continue
+      if (entry.conditionalReceipt) continue // Owned by SDK receipt recovery, not legacy replay.
       if (
         this.deps.retainInstalled &&
         !entry.backup &&
@@ -463,34 +330,23 @@ export class VaultWriter {
           if (await this.deps.journal.currentProtects(entry.backup)) {
             // A completed preservation decision outlives a later target edit/reversion/delete.
           } else if (await this.there(entry.target)) {
-            // A restarted streaming publication has no live incremental receipt. Keep its
-            // old bytes as recovery evidence without reading a potentially large target.
-            const matchesReplacement =
-              !entry.streaming &&
-              entry.preserveBackup !== true &&
-              entry.replacementSha !== undefined &&
-              (this.deps.fingerprint
-                ? (await this.deps.fingerprint(entry.target)).sha
-                : await signature(await this.disk.readBinary(entry.target))) ===
-                entry.replacementSha
-            if (!(await this.deps.journal.isCurrent(entry))) continue
-            if (
-              matchesReplacement &&
-              entry.preserveBackup !== true &&
-              !(await this.deps.journal.currentProtects(entry.backup))
+            // A legacy backup has no captured-base proof. Matching replacement
+            // bytes do not authorize deleting a possibly newer private victim.
+            await this.preserveBackup(entry)
+            console.debug(
+              `[abele-sync] preserved previous bytes of ${entry.target} at ${entry.backup}; scanning can resume`
             )
-              await this.disk.remove(entry.backup)
-            else {
-              // Do not overwrite the independent target or discard the old copy. Keep the
-              // backup hidden (not a new uploadable identity), and persist its locator first.
-              await this.preserveBackup(entry)
-              console.debug(
-                `[abele-sync] preserved previous bytes of ${entry.target} at ${entry.backup}; scanning can resume`
-              )
-            }
           } else {
             if (!(await this.deps.journal.isCurrent(entry))) continue
-            await this.disk.rename(entry.backup, entry.target)
+            const stat = await this.disk.stat(entry.backup)
+            if (!stat || stat.type !== 'file' || !this.deps.fingerprint)
+              throw new EngineError('io', 'Legacy backup has no authorized file identity')
+            const have = await this.deps.fingerprint(entry.backup)
+            await this.conditional({
+              path: entry.backup,
+              expected: { ...have, mtime: Math.round(stat.mtime) },
+              effect: { kind: 'move', to: entry.target },
+            })
             console.debug(`[abele-sync] put ${entry.target} back after an interrupted write`)
           }
         }
@@ -546,23 +402,6 @@ export class VaultWriter {
     }
   }
 
-  private async unchanged(path: string, before: ArrayBuffer): Promise<void> {
-    if (!(await this.there(path)))
-      throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
-    const current = new Uint8Array(await this.disk.readBinary(path))
-    const original = new Uint8Array(before)
-    if (current.length !== original.length || current.some((value, at) => value !== original[at])) {
-      throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
-    }
-  }
-
-  private async dropQuietly(path: string): Promise<void> {
-    try {
-      if (await this.there(path)) await this.disk.remove(path)
-    } catch (error) {
-      console.debug(`[abele-sync] left ${path} behind`, error)
-    }
-  }
   private async preserveBackup(entry: JournalEntry): Promise<void> {
     await this.deps.journal.persist(() => this.deps.journal.preserve(entry))
     if (entry.backup && this.deps.native?.archiveBackup) {

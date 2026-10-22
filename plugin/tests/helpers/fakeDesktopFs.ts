@@ -110,12 +110,11 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
         const standing = await adapter.stat(to)
         if (standing?.type === 'folder') throw new Error(`EISDIR: ${to}`)
         if (standing !== null) {
-          // What `rename(2)` does in one step, done here in two with nothing in between.
-          const bytes = await adapter.readBinary(from)
-          const at = await adapter.stat(from)
-          await adapter.remove(from)
-          await write(to, bytes, { mtime: at?.mtime ?? 0, ctime: at?.ctime ?? 0 })
-          return
+          const source = await adapter.stat(from)
+          if (source?.type === 'folder') throw new Error(`ENOTDIR: ${to}`)
+          // Keep capture fault injection on the adapter rename boundary, including
+          // replacement of the allocation sentinel.
+          await adapter.remove(to)
         }
         await adapter.rename(from, to)
       },

@@ -41,7 +41,7 @@ import { folderMutations } from './folderMutations'
 import { adapterConfigRevision, observeAdapterConfig } from './adapterConfigChanges'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
-import { makeParents, pruneAbove } from './vaultFolders'
+import { makeParents } from './vaultFolders'
 import { VaultDirectories } from './vaultDirectories'
 import {
   isAdapterTemp,
@@ -855,6 +855,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.privateRoot
     )
     this.writer = new VaultWriter({
+      conditionalFile: (operation) => this.conditionalFile(operation),
       retainInstalled: !!options.ledger,
       published: (entry) => {
         if (entry.temp)
@@ -945,16 +946,31 @@ export class ObsidianFileSystem implements FileSystem {
       ...(operation.effect.kind === 'move' ? [operation.effect.to] : []),
     ])
     try {
+      if (operation.expected === null && operation.effect.kind === 'write' && storageOf(this.app)) {
+        this.runtimeFence?.assertReady()
+        assertPhysicalPath(operation.path)
+        if (
+          !this.withinFileScope(operation.path) &&
+          !(this.privateRoot && withinRoot(operation.path, this.privateRoot))
+        )
+          throw new EngineError('conflict', 'conditional operation is outside this connection')
+        this.externalCoordination.assertEnginePaths([operation.path])
+        const { bytes, mtime, receipt } = operation.effect
+        return await this.writer.publishAbsent(operation.path, bytes, mtime, receipt)
+      }
       return await this.conditional.apply(operation)
     } finally {
       release()
     }
   }
-  installedFile(receipt: string, path: string, sha: string): Promise<boolean> {
-    return this.conditional.installed(receipt, path, sha)
+  async installedFile(receipt: string, path: string, sha: string): Promise<boolean> {
+    return (
+      (await this.writer.installedReceipt(receipt, path, sha)) ??
+      this.conditional.installed(receipt, path, sha)
+    )
   }
-  discardInstallation(receipt: string): Promise<void> {
-    return this.conditional.discard(receipt)
+  async discardInstallation(receipt: string): Promise<void> {
+    if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
   }
   recoverConditionalFiles(): Promise<void> {
     return this.conditional.recover()
@@ -1206,6 +1222,8 @@ export class ObsidianFileSystem implements FileSystem {
 
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
+    await this.recoverConditionalFiles()
+    this.runtimeFence?.assertOwned()
     if (this.ledger?.readCommittedEntries) {
       const paths = (await this.journal.currentEntries())
         .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
@@ -1263,6 +1281,7 @@ export class ObsidianFileSystem implements FileSystem {
     for (const entry of await this.journal.currentForTargets([...byPath.keys()])) {
       if (
         entry.backup ||
+        entry.conditionalReceipt ||
         entry.retiredGeneration ||
         !entry.replacementSha ||
         byPath.get(entry.target) !== entry.replacementSha
@@ -2394,45 +2413,12 @@ export class ObsidianFileSystem implements FileSystem {
       return null
     }
   }
-
-  private async rename(from: string, to: string): Promise<void> {
-    try {
-      const base = this.observedBases.get(caseKey(from))
-      await this.disk.rename(from, to)
-      await this.io.adoptReceipt(from, to)
-      if (caseKey(from) !== caseKey(to)) {
-        this.observedBases.set(caseKey(from), { absent: true })
-        if (base) this.observedBases.set(caseKey(to), base)
-        else this.observedBases.delete(caseKey(to))
-      }
-    } catch (cause) {
-      // A name taken between the look and the rename — by the user, or by Obsidian itself —
-      // is the puller's to hold rather than the sync's to fail on. Anything else is a disk
-      // that would not do it, which the engine should hear about as a failure.
-      if ((await this.rawStat(to)) !== null) {
-        throw new EngineError('conflict', `${to} is held by another file`, cause)
-      }
-      throw new EngineError('io', `cannot move ${from} to ${to}`, cause)
-    }
-  }
 }
 
 /** The folder holding `target`; `/` for a file at the root, which is what `list` takes. */
 function folderOf(target: string): string {
   const cut = target.lastIndexOf('/')
   return cut === -1 ? '/' : target.slice(0, cut)
-}
-
-/**
- * Whether two paths are one name under two spellings.
- *
- * `caseKey` is the protocol's own fold — NFC, then lower case — and it has to be both:
- * a vault on macOS keeps `Café.md` decomposed, the server sends it back composed, and a
- * comparison that only folded case would call the two different files and hold the rename
- * for ever.
- */
-function caseOnly(source: string, target: string): boolean {
-  return caseKey(source) === caseKey(target)
 }
 
 /** The wire has no time before 1970; a file that claims one is dated at the epoch. */

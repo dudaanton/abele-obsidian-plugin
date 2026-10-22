@@ -6,6 +6,8 @@ import { hostJournalId, type HostChange } from './hostSyncRecords'
 export const JOURNAL_KEY = 'abele-sync-writes'
 export const RECOVERED_WRITES_KEY = 'abele-sync-recovered-writes'
 export interface JournalEntry {
+  /** Absence-only publication: private data remains owned until the SDK retires its receipt. */
+  conditionalReceipt?: string
   owner?: string
   /** Retained evidence from a server restore; never replayed or swept. */
   retiredGeneration?: string
@@ -90,6 +92,9 @@ export class WriteJournal {
       const entry = value as JournalEntry
       return (
         typeof entry.target === 'string' &&
+        (entry.conditionalReceipt === undefined ||
+          (typeof entry.conditionalReceipt === 'string' &&
+            /^[a-zA-Z0-9-]{1,128}$/.test(entry.conditionalReceipt))) &&
         (entry.owner === undefined ||
           (typeof entry.owner === 'string' && entry.owner.length > 0)) &&
         (entry.retiredGeneration === undefined || typeof entry.retiredGeneration === 'string') &&

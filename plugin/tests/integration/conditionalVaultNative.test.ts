@@ -9,6 +9,42 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it.each(['active', 'completed'] as const)(
+  'does not replay a settled %s restoration after intentional deletion',
+  async (state) => {
+    const { root, disk } = await setup()
+    await captured(root, 'settled-review', 'sample.md')
+    if (state === 'completed') {
+      const base = join(root, '.obsidian/plugins/abele/sync-conditional')
+      await fs.mkdir(join(base, 'completed'))
+      await fs.rename(
+        join(base, 'active/settled-review.json'),
+        join(base, 'completed/settled-review.json')
+      )
+      await fs.writeFile(join(base, 'objects/settled-review/complete'), '{}')
+      await fs.writeFile(
+        join(base, 'objects/settled-review/intent.json'),
+        JSON.stringify({
+          path: 'sample.md',
+          kind: 'remove',
+          receipt: true,
+          expected: { size: 1, mtime: 1000, sha: '0'.repeat(64) },
+        })
+      )
+    }
+    await disk().recoverConditionalFiles()
+    await fs.unlink(join(root, 'sample.md'))
+    const restarted = await setup({}, root)
+    await restarted.disk().recoverConditionalFiles()
+    expect(await fs.readdir(root)).not.toContain('sample.md')
+    expect(
+      await fs.readFile(
+        join(root, '.obsidian/plugins/abele/sync-conditional/objects/settled-review/victim'),
+        'utf8'
+      )
+    ).toBe('recovered bytes')
+  }
+)
 it.each(['', '{"destination":', 'null', '{"destination":5}'])(
   'recovers after an interrupted restore-plan write (%j)',
   async (partial) => {
@@ -350,6 +386,9 @@ it('makes a directory swapped at capture visible even when its public name is re
         await fs.unlink(from)
         await fs.mkdir(from)
         await fs.writeFile(join(from, 'note.md'), 'swapped notes')
+        // Force a lost capture acknowledgement even across the regular-file
+        // sentinel's kernel type fence; retain the directory recovery guarantee.
+        await fs.unlink(to)
         await fs.rename(from, to)
         await fs.writeFile(from, 'new occupant')
       } else await fs.rename(from, to)
@@ -476,6 +515,12 @@ async function setup(overrides: Partial<typeof fs> = {}, existingRoot?: string) 
       const bytes = await fs.readFile(join(root, path))
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     },
+    writeBinary: async (path: string, bytes: ArrayBuffer, options?: { mtime?: number }) => {
+      await fs.writeFile(join(root, path), new Uint8Array(bytes))
+      if (options?.mtime !== undefined)
+        await fs.utimes(join(root, path), options.mtime / 1000, options.mtime / 1000)
+    },
+    remove: (path: string) => fs.unlink(join(root, path)),
   })
   desktopFsPort(Reflect.get(app.vault.adapter, 'fsPromises'))
   return { root, app, disk: () => new ObsidianFileSystem(app as never) }

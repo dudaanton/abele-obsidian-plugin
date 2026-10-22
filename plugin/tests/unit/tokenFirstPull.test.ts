@@ -184,9 +184,42 @@ it.each([
       const rawStat = app.vault.adapter.stat.bind(app.vault.adapter)
       const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
       const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+      const inodes = new Map<string, number>()
+      let nextInode = 1
+      const inode = (path: string) => {
+        if (!inodes.has(path)) inodes.set(path, nextInode++)
+        return inodes.get(path)!
+      }
       Object.assign(app.vault.adapter, {
         getFullPath: (path: string) => path,
         fsPromises: {
+          stat: async (path: string) => {
+            const stat = path === '' ? { type: 'folder' } : await rawStat(path)
+            if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+            return {
+              dev: 1,
+              ino: inode(path),
+              isSymbolicLink: () => false,
+              isDirectory: () => stat.type === 'folder',
+            }
+          },
+          rename: async (from: string, to: string) => {
+            const identity = inode(from)
+            await app.vault.adapter.rename(from, to)
+            inodes.delete(from)
+            inodes.set(to, identity)
+          },
+          rmdir: async (path: string) => {
+            const entries = await app.vault.adapter.list(path)
+            if (entries.files.length || entries.folders.length) throw new Error('ENOTEMPTY')
+            await app.vault.adapter.rmdir(path, true)
+          },
+          link: async (from: string, to: string) => {
+            if (await rawStat(to)) throw Object.assign(new Error('exists'), { code: 'EEXIST' })
+            const stat = await rawStat(from)
+            await write(to, await read(from), { mtime: stat!.mtime, ctime: stat!.ctime })
+            inodes.set(to, inode(from))
+          },
           lstat: async (path: string) => {
             const stat = await rawStat(path)
             if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })

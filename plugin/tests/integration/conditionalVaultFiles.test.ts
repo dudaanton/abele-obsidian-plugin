@@ -5,6 +5,20 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const data = (text: string) => new TextEncoder().encode(text)
+// D-133: adapter-only capture stays closed until durable mobile identity is available.
+const destructiveHostCase = (name: string, run: (desktop: boolean) => Promise<void>) => {
+  it.fails(name.replace('%s', 'false'), () => run(false))
+  it(name.replace('%s', 'true'), () => run(true))
+}
+
+it('settles conditional recovery before legacy startup recovery can return early', async () => {
+  const disk = new ObsidianFileSystem(buildFakeVault([]) as never)
+  const recover = vi
+    .spyOn(disk, 'recoverConditionalFiles')
+    .mockRejectedValue(new Error('pending evidence'))
+  await expect(disk.recover()).rejects.toThrow('pending evidence')
+  expect(recover).toHaveBeenCalledOnce()
+})
 it('refuses destructive capture when the host cannot prove object identity', async () => {
   const app = buildFakeVault([])
   await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
@@ -72,10 +86,23 @@ function desktopAdapter(app: ReturnType<typeof buildFakeVault>) {
   const native = Reflect.get(app.vault.adapter, 'fsPromises')
   const link = native.link.bind(native)
   const aliases = new Map<string, number>()
+  let nextInode = 0x100000000
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  app.vault.adapter.writeBinary = async (path, bytes, options) => {
+    if (!(await app.vault.adapter.exists(path))) aliases.set('/vault/' + path, nextInode++)
+    await write(path, bytes, options)
+  }
   const lstat = native.lstat.bind(native)
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
   native.stat = async (path: string) => {
     const info = await lstat(path)
     return { ...info, ino: aliases.get(path) ?? info.ino }
+  }
+  app.vault.adapter.rename = async (from: string, to: string) => {
+    const identity = await native.stat('/vault/' + from)
+    await rename(from, to)
+    aliases.delete('/vault/' + from)
+    aliases.set('/vault/' + to, identity.ino)
   }
   native.utimes = async (full: string, _atime: number, mtime: number) => {
     const path = full.slice('/vault/'.length)
@@ -95,7 +122,7 @@ function desktopAdapter(app: ReturnType<typeof buildFakeVault>) {
     })
   }
 }
-it.each([false, true])('preserves a save at the capture boundary (desktop=%s)', async (desktop) => {
+destructiveHostCase('preserves a save at the capture boundary (desktop=%s)', async (desktop) => {
   const app = buildFakeVault([])
   await app.vault.adapter.writeBinary('sample.bin', data('sample A').buffer, { mtime: 1000 })
   if (desktop) desktopAdapter(app)
@@ -117,7 +144,7 @@ it.each([false, true])('preserves a save at the capture boundary (desktop=%s)', 
   expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(data('sample B'))
 })
 
-it.each([false, true])(
+destructiveHostCase(
   'applies conditional write, move and removal with retained victims (desktop=%s)',
   async (desktop) => {
     const app = buildFakeVault([])
@@ -150,7 +177,7 @@ it.each([false, true])(
   }
 )
 
-it.each([false, true])(
+destructiveHostCase(
   'restores an interrupted capture into a still-absent public name (desktop=%s)',
   async (desktop) => {
     const app = buildFakeVault([])
@@ -179,6 +206,7 @@ it.each([false, true])(
     ).rejects.toThrow()
     app.vault.adapter.rename = rename
     app.vault.adapter.stat = stat
+    expect(crashed).toBe(true)
     await new ObsidianFileSystem(app as never).recoverConditionalFiles()
     expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(
       data('sample A')
@@ -216,7 +244,7 @@ it.each([false, true])(
   }
 )
 
-it.each([false, true])(
+destructiveHostCase(
   'recovers an interrupted capture without overwriting a recreated path (desktop=%s)',
   async (desktop) => {
     const app = buildFakeVault([])
@@ -293,7 +321,7 @@ it.each([false, true])(
   }
 )
 
-it.each([false, true])(
+destructiveHostCase(
   'retires an already absent conditional removal without replaying history (desktop=%s)',
   async (desktop) => {
     const app = buildFakeVault([])
