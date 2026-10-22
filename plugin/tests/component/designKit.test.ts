@@ -99,10 +99,7 @@ describe('MetaLine', () => {
         ],
       },
     })
-    expect(view.findAll('.abele-meta-line__fact').map((fact) => fact.text())).toEqual([
-      'Count: 0',
-      'Time: Unknown',
-    ])
+    expect(view.text()).toBe('Count: 0 · Time: Unknown')
     expect(view.findAll('.abele-meta-line__fact')).toHaveLength(2)
   })
 })
@@ -169,7 +166,7 @@ describe('PathLabel parts', () => {
   })
 })
 describe('MetaLine and RelativeTime parts', () => {
-  it('separates wrapping facts with gaps instead of stray or spoken punctuation', () => {
+  it('names the separator between facts and keeps it from a screen reader', () => {
     const view = mount(MetaLine, {
       props: {
         facts: [
@@ -178,9 +175,10 @@ describe('MetaLine and RelativeTime parts', () => {
         ],
       },
     })
-    expect(view.find('.abele-meta-line__separator').exists()).toBe(false)
-    expect(view.findAll('.abele-meta-line__fact').map((fact) => fact.text())).toEqual(['a', 'b'])
-    expect(view.text()).not.toContain('·')
+    const separator = view.get('.abele-meta-line__separator')
+    expect(separator.attributes('aria-hidden')).toBe('true')
+    expect(view.text()).toBe('a · b')
+    expect(view.findAll('.abele-meta-line__fact')[0].element.contains(separator.element)).toBe(true)
   })
 
   it('names the label of a time and marks one it cannot read', () => {

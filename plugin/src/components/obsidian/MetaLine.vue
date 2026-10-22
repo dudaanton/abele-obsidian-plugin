@@ -1,10 +1,17 @@
 <template>
   <span v-if="present.length" class="abele-meta-line">
-    <template v-for="fact in present" :key="fact.key">
+    <template v-for="(fact, index) in present" :key="fact.key">
       <span class="abele-meta-line__fact"
-        ><template v-if="fact.label">{{ fact.label }}: </template>{{ fact.value }}</span
+        ><span class="abele-meta-line__value"
+          ><template v-if="fact.label">{{ fact.label }}: </template>{{ fact.value }}</span
+        ><span
+          v-if="index < present.length - 1"
+          class="abele-meta-line__separator"
+          aria-hidden="true"
+        >
+          ·
+        </span></span
       >
-      {{ ' ' }}
     </template>
     <slot />
   </span>
@@ -50,7 +57,6 @@ const present = computed(() =>
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--size-4-1) var(--size-4-2);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
@@ -59,6 +65,16 @@ const present = computed(() =>
   overflow-wrap: anywhere;
 }
 .abele-meta-line__fact {
-  display: inline;
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  max-width: 100%;
+}
+.abele-meta-line__value {
+  min-width: 0;
+}
+.abele-meta-line__separator {
+  flex-shrink: 0;
+  white-space: pre;
 }
 </style>

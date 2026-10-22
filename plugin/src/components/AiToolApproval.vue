@@ -135,7 +135,6 @@
       <Button
         v-if="commitPreviewError"
         class="abele-tool-approval__refresh"
-        plain
         :text="t('node.commit.refresh')"
         :disabled="disabled"
         @click="commitRefresh++"
