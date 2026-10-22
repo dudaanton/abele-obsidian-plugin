@@ -4,17 +4,19 @@ import { mount } from '@vue/test-utils'
 import FileTreeLevel from '@/components/nodeWork/FileTreeLevel.vue'
 
 describe('names in the node’s file tree', () => {
-  it('carry the whole path in the row’s tooltip', () => {
+  it('carry full long file and folder paths in row labels, expanded or collapsed', async () => {
+    const folder = 'docs/a-very-long-sample-folder-name-for-the-tree'
+    const file = `${folder}/a-very-long-sample-file-name-for-the-tree.md`
     const wrapper = mount(FileTreeLevel, {
       props: {
         entries: [
           {
-            path: 'docs/guide',
-            name: 'docs/guide',
+            path: folder,
+            name: 'a-very-long-sample-folder-name-for-the-tree',
             kind: 'folder',
             children: [
               {
-                path: 'docs/guide/a-very-long-sample-file-name-for-the-tree.md',
+                path: file,
                 name: 'a-very-long-sample-file-name-for-the-tree.md',
                 kind: 'file',
               },
@@ -25,10 +27,11 @@ describe('names in the node’s file tree', () => {
       },
     })
     const rows = wrapper.findAll('.tree-item-self')
-    expect(rows.map((r) => r.attributes('aria-label'))).toEqual([
-      'docs/guide',
-      'docs/guide/a-very-long-sample-file-name-for-the-tree.md',
-    ])
+    expect(rows.map((r) => r.attributes('aria-label'))).toEqual([folder, file])
+    await wrapper.setProps({ folded: new Set([folder]) })
+    const collapsedRows = wrapper.findAll('.tree-item-self')
+    expect(collapsedRows).toHaveLength(1)
+    expect(collapsedRows[0].attributes('aria-label')).toBe(folder)
     wrapper.unmount()
   })
 
