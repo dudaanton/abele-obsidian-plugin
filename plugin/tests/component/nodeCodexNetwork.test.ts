@@ -62,6 +62,20 @@ it('gives a non-owner the exact project-menu path without an action', async () =
   expect(wrapper.find('button').exists()).toBe(false)
   wrapper.unmount()
 })
+it('refreshes negotiated permission after reconnecting an initially offline node', async () => {
+  const client = fixture(false)
+  f.connection.state.value = 'offline'
+  const wrapper = mount(NodeCodexNetworkRefusal, {
+    props: { nodeId: 'sample-node', projectId: 'sample-project' },
+  })
+  await flushPromises()
+  client.channel.channel.welcome.methods.push('project.codex_permissions')
+  f.connection.state.value = 'connected'
+  await flushPromises()
+  expect(wrapper.text()).toContain('Network is off for Codex in project.')
+  expect(wrapper.find('button').exists()).toBe(true)
+  wrapper.unmount()
+})
 it('keeps a failed setting change actionable and disables it while offline', async () => {
   const client = fixture()
   client.setProjectCodexPermissions.mockRejectedValueOnce(new Error('disconnected'))

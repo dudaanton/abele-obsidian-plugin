@@ -18,20 +18,25 @@ export class CodexProjectNetwork {
   readonly busy = ref(false)
   readonly name = ref('')
   private loading?: Promise<void>
-  private advertised = false
+  private readonly advertised = ref(false)
   private revision = 0
   constructor(
     readonly client: Client,
     readonly projectId: string
   ) {}
+  private refreshSupport() {
+    if (nodeAdvertisesMethod(this.client, 'project.codex_permissions')) this.advertised.value = true
+  }
   get supported() {
-    return (this.advertised ||= nodeAdvertisesMethod(this.client, 'project.codex_permissions'))
+    this.refreshSupport()
+    return this.advertised.value
   }
   private receive(project: Project) {
     this.enabled.value = project.codex_network_enabled === true
     this.name.value = project.root_path.replace(/\/$/, '').split('/').pop() || this.projectId
   }
   load(): Promise<void> {
+    this.refreshSupport()
     const revision = this.revision
     return (this.loading ??= this.client
       .getProject(this.projectId)
