@@ -5,7 +5,7 @@ import {
   resetSyncTokenState,
   captureSyncTokenOwnership,
 } from '../../src/testing/resetSyncTokenState'
-import { TokenConnectionRegistry } from '../../src/sync/tokenConnectionRegistry'
+import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '../../src/sync/tokenConnectionRegistry'
 import { IndexedDbStateStore } from '../../src/sync/IndexedDbStateStore'
 import { openDeviceReviews } from '../../src/sync/openDeviceReviews'
 import { TokenUi } from '../../src/sync/tokenUi'
@@ -17,6 +17,8 @@ import { projectionEvidence } from '@/sync/external/pluginSafety'
 import { EXTERNAL_STATE_KEY } from '@/sync/external/state'
 import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
+import { HostSyncStorage, inheritHostStorage } from '@/sync/hostSyncStorage'
+import { SETS_KEY } from '@/sync/connectionSets'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
     start() {}
@@ -36,7 +38,8 @@ it('refuses to clear offload state while a provider still owns it', () => {
   expect(manager.files()).toEqual([])
 })
 
-it.each(cases)('resets owned state and private artifacts (retry=%s)', async (retry) => {
+const resetCases = cases.flatMap((retry) => [false, true].map((durable) => ({ retry, durable })))
+it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, durable }) => {
   const factory = new IDBFactory()
   const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -48,6 +51,7 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
       local.set(key, structuredClone(value))
     },
   }
+  let host = durable ? await HostSyncStorage.open(factory, 'sample-reset', storage) : undefined
   const registry = TokenConnectionRegistry.open(storage)
   const secrets = {
     get: (id: string) => keys.get(id) ?? null,
@@ -67,6 +71,10 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     secrets
   )
   const record = registry.records()[0]
+  await registry.flush()
+  // Model a migrated installation whose compatibility copy still contains a connection.
+  if (durable)
+    storage.saveLocalStorage(TOKEN_REGISTRY_KEY, host!.loadLocalStorage(TOKEN_REGISTRY_KEY))
   local.set(EXTERNAL_ACTIVATION_KEY, {
     schema: 1,
     ledgers: [
@@ -83,6 +91,11 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
   local.set('abele-sync-device-review-id-v1', reviewId)
   const reviews = await openDeviceReviews(factory, reviewId)
   const ui = new TokenUi(registry, secrets, vi.fn(), reviews)
+  registry.localStorage.saveLocalStorage(SETS_KEY, {
+    version: 1,
+    connections: [{ id, label: 'Sample share', items: [] }],
+  })
+  await registry.flush()
   const ledger = await IndexedDbStateStore.open(factory, record.ledgerId)
   const staging = '.obsidian/plugins/abele/sync-staging/.abele-external-sample-reset.incoming'
   const markerBytes = new TextEncoder().encode('{"format":"abele.external"}')
@@ -181,7 +194,7 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     snapshots.close()
   })
   const plugin = {
-    app: { ...storage, vault },
+    app: inheritHostStorage({ ...storage, vault }, storage),
     register: (callback: () => void) => registered.push(callback),
     tokenEngines: {
       ui,
@@ -219,6 +232,15 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     expect(manager.files()).toEqual([])
     expect(ui.rows.value).toEqual([])
     expect(registry.records()).toEqual([])
+    expect(ui.itemSets.store.all()).toEqual([])
+    expect(storage.loadLocalStorage(TOKEN_REGISTRY_KEY)).toMatchObject({
+      version: 2,
+      selectedId: '',
+      records: [],
+    })
+    expect(
+      (storage.loadLocalStorage(TOKEN_REGISTRY_KEY) as { cleanup?: unknown[] }).cleanup ?? []
+    ).toEqual([])
     expect(local.get(EXTERNAL_ACTIVATION_KEY)).toBeNull()
     expect(keys).toEqual(new Map([['unrelated-key', 'keep']]))
     expect(local.get('other-plugin')).toEqual({ keep: true })
@@ -248,7 +270,14 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     expect(await fresh.getMeta('token-attachment-consent-v1')).toBeNull()
     expect(await fresh.getMeta('token-executable-review-v1')).toBeNull()
     fresh.close()
+    if (host) {
+      host.close()
+      host = await HostSyncStorage.open(factory, 'sample-reset', storage)
+      expect(TokenConnectionRegistry.open(storage).records()).toEqual([])
+      expect(await host.readValue(SETS_KEY)).toEqual({ version: 1, connections: [] })
+    }
   } finally {
+    host?.close()
     unrelated.close()
     reviews.close()
     for (const closeReview of registered) closeReview()
@@ -256,3 +285,53 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     else Reflect.deleteProperty(window, 'indexedDB')
   }
 })
+
+it.each([false, true])(
+  'does not resurrect a disconnected durable connection (item=%s)',
+  async (item) => {
+    const factory = new IDBFactory()
+    const local = new Map<string, unknown>()
+    const storage = {
+      loadLocalStorage: (key: string) => local.get(key) ?? null,
+      saveLocalStorage: (key: string, value: unknown) => local.set(key, structuredClone(value)),
+    }
+    let host = await HostSyncStorage.open(factory, 'sample-disconnect', storage)
+    try {
+      const registry = TokenConnectionRegistry.open(storage)
+      const removed = registry.add(item)
+      const retained = registry.add(!item)
+      const keys = new Map<string, string>()
+      const secrets = {
+        get: (reference: string) => keys.get(reference) ?? null,
+        set: (reference: string, value: string) => keys.set(reference, value),
+        remove: vi.fn((reference: string) => keys.delete(reference)),
+      }
+      const scope = { kind: 'folder' as const, id: 'sample-root', path: '/' }
+      await registry.attachDurably(
+        removed,
+        { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
+        {
+          protocol: 2,
+          token_id: 'sample-token',
+          space_id: 'sample-space',
+          status: 'active',
+          scope,
+        },
+        secrets
+      )
+      const ui = new TokenUi(registry, secrets, vi.fn())
+      await ui.disconnect(removed)
+      expect(keys.size).toBe(0)
+      expect(secrets.remove).toHaveBeenCalledTimes(1)
+      host.close()
+      host = await HostSyncStorage.open(factory, 'sample-disconnect', storage)
+      expect(
+        TokenConnectionRegistry.open(storage)
+          .records()
+          .map((record) => record.id)
+      ).toEqual([retained])
+    } finally {
+      host.close()
+    }
+  }
+)

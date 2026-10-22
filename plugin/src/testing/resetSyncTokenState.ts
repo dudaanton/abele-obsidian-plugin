@@ -5,7 +5,13 @@ import { TokenEngines } from '../sync/tokenEngines'
 import type { TokenUi } from '../sync/tokenUi'
 import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'
 import { openDeviceReviews } from '../sync/openDeviceReviews'
-import type { DeviceTokenSecrets } from '../sync/tokenConnectionRegistry'
+import {
+  ITEM_REGISTRY_KEY,
+  TOKEN_REGISTRY_KEY,
+  type DeviceTokenSecrets,
+} from '../sync/tokenConnectionRegistry'
+import { durableHostOf } from '../sync/hostSyncStorage'
+import { SETS_KEY } from '../sync/connectionSets'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
 import { inspectExistingLedger, recoverOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
@@ -147,7 +153,19 @@ async function performResetSyncTokenState(
           ui as unknown as { secrets: DeviceTokenSecrets & { remove(reference: string): void } }
         ).secrets
         for (const record of ui.registry.records()) ui.registry.beginForget(record.id)
-        ui.registry.finishForgotten(secrets)
+        await ui.registry.finishForgottenDurably(secrets)
+        for (const connection of ui.itemSets.store.all()) ui.itemSets.store.forget(connection.id)
+        await ui.registry.flush()
+        // IDB owns these rows; the raw localStorage copy is compatibility state only.
+        // Publish it after durable retirement, never as a substitute for that commit.
+        const host = durableHostOf(plugin.app)
+        if (host)
+          for (const key of [TOKEN_REGISTRY_KEY, ITEM_REGISTRY_KEY, SETS_KEY]) {
+            const value = await host.readValue(key)
+            plugin.app.saveLocalStorage(key, value)
+            if (JSON.stringify(plugin.app.loadLocalStorage(key)) !== JSON.stringify(value))
+              throw new Error('Pool connection cleanup was not stored')
+          }
         await recoverOrphanPrivateArtifacts(plugin.app, window.indexedDB)
         plugin.app.saveLocalStorage(JOURNAL, null)
         ui.runtimes.clear()
