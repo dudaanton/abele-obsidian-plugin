@@ -11,6 +11,36 @@ import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
 
 const bytes = new TextEncoder().encode('saved').buffer
 
+it('does not multiply the save deadline through queued checked leases', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const app = buildFakeVault([])
+  const port = checkedVaultPort(app.vault as never, app.vault.adapter as never, {
+    ready() {},
+    effect: (work) => work(),
+  })
+  const first = await port.acquire(['sample.md'])
+  const second = port.acquire(['sample.md']).then(
+    (release) => ({ release }),
+    (error: unknown) => ({ error })
+  )
+  let saved = false
+  const pending = app.vault.adapter.writeBinary('sample.md', bytes).then(() => {
+    saved = true
+  })
+  try {
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(saved).toBe(true)
+  } finally {
+    first()
+    const next = await second
+    if ('release' in next) next.release()
+    await pending
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it('revokes an overdue checked lease without dropping the waiting save', async () => {
   vi.useFakeTimers()
   const loud = vi.spyOn(console, 'error').mockImplementation(() => {})

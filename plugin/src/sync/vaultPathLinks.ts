@@ -1689,17 +1689,7 @@ export function checkedVaultPort(
         entered = resolve
       })
       const host = (Reflect.get(vault, CONNECTION_HOST) ?? vault) as Vault
-      const operation = adapterPathGate(host.adapter).run(paths, async () => {
-        entered()
-        await held
-      })
-      await entering
-      try {
-        options.ready()
-      } catch (error) {
-        release()
-        throw error
-      }
+      // Count queued acquisition too: older checked requests cannot multiply a save deadline.
       const abort = new AbortController()
       const expired = Object.assign(
         new EngineError('conflict', 'checked file lease expired; retry later'),
@@ -1719,6 +1709,19 @@ export function checkedVaultPort(
         )
         release()
       }, CHECKED_LEASE_MS)
+      const operation = adapterPathGate(host.adapter).run(paths, async () => {
+        entered()
+        await held
+      })
+      await entering
+      try {
+        if (abort.signal.aborted) throw expired
+        options.ready()
+      } catch (error) {
+        window.clearTimeout(timer)
+        release()
+        throw error
+      }
       return Object.assign(
         () => {
           window.clearTimeout(timer)
