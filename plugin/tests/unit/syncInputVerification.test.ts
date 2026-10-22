@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, readFileSync, cpSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  constants,
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  cpSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,9 +22,15 @@ function sample() {
   const installed = join(root, 'node_modules/@abele/sync-sdk')
   cpSync(source, installed, {
     recursive: true,
+    mode: constants.COPYFILE_FICLONE,
     filter: (file) => !file.startsWith(join(source, 'node_modules')),
   })
-  cpSync(resolve('vendor'), join(root, 'vendor'), { recursive: true })
+  // Independent copy-on-write extents avoid copying the archive payload for every
+  // mutation case. Unsupported filesystems retain ordinary copy semantics.
+  cpSync(resolve('vendor'), join(root, 'vendor'), {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
+  })
   for (const file of ['package.json', 'package-lock.json']) cpSync(resolve(file), join(root, file))
   return { root, installed }
 }
