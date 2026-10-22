@@ -32,6 +32,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => document.querySelector('.abele-chat-tree'))
       }
       const menu = async () => {
+        await until(() => !document.querySelector('.menu'))
         const row = document.querySelector('[data-path="' + folder + '"]')
         const button = row.querySelector('[aria-label="' + folder + ': more"]')
         const bounds = button.getBoundingClientRect()
