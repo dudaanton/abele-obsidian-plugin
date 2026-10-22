@@ -15,6 +15,7 @@ import { syncSdkBrowserPlugin } from './scripts/sync-sdk-browser.mjs'
 import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
 import { hyperFormulaCataloguePlugin } from './scripts/hyperformula-catalogue.mjs'
 import { i18nAssetsPlugin } from './scripts/i18n-assets.mjs'
+import { deferredPackagePlugin } from './scripts/deferred-package.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -102,6 +103,13 @@ export default defineConfig(async ({ mode }) => {
       __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
     },
     plugins: [
+      // Inline imports must not evaluate parser tables until a diagram is requested.
+      deferredPackagePlugin({
+        source: 'pele/lazy',
+        exports: ['renderAsync', 'load', 'parse'],
+        target: BUILD_TARGET,
+        minify: prod,
+      }),
       i18nAssetsPlugin(__dirname),
       syncPlacementPlugin(),
       syncSdkBrowserPlugin(),

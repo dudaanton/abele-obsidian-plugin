@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { deferredPackagePlugin } from '../../scripts/deferred-package.mjs'
 
 describe('deferred packages in the single-file build', () => {
-  it.fails('BUG: production configuration does not defer pele module evaluation', () => {
+  it('defers pele module evaluation in the production configuration', () => {
     const result = execFileSync(
       process.execPath,
       [
