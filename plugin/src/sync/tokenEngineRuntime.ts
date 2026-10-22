@@ -1172,6 +1172,12 @@ export class TokenEngineRuntime
         this.wholeReadUploads.clear()
         this.uploadEntitlements.clear()
         this.trace.finishPull(false)
+        // Deliberate unload revokes the runtime before aborting requests. Its durable
+        // intent remains for restart; the cancellation is not an actionable failure.
+        if (!this.active) {
+          this.trace.log('sync: stopped with recoverable work')
+          return
+        }
         this.pendingFolders.clear()
         this.folderProgress.clear()
         if (!this.yieldedForReview(error)) options.event?.('Error: ' + connectionError(error))
