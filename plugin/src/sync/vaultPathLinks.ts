@@ -287,7 +287,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
         // immediate recheck cannot close an on-device attacker racing its async queue.
         for (const path of args.slice(0, paths[String(key)]))
           await assertVaultPath(adapter, pathArgument(path))
-        return ungatedAdapterMethod(value).apply(adapterEngineReceiver(target), args)
+        return engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
       }
     },
   })
@@ -1271,7 +1271,7 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
       const wrapped = async (...args: unknown[]) => {
         for (const path of args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1))
           await assertVaultPath(target, pathArgument(path))
-        return ungatedAdapterMethod(value).apply(adapterEngineReceiver(target), args)
+        return engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
       }
       methods.set(key, { source: value, wrapped })
       return wrapped
@@ -1661,6 +1661,8 @@ export function connectionFilePort(
   return options.adapter ?? vaultDisk(vault)
 }
 
+export const CHECKED_LEASE_MS = 2000
+
 /** Narrow checked-publication port; raw queue and vault writes stay at the guarded boundary. */
 export function checkedVaultPort(
   vault: Vault,
@@ -1677,7 +1679,7 @@ export function checkedVaultPort(
   }
 ) {
   return {
-    async acquire(paths: string[]): Promise<() => void> {
+    async acquire(paths: string[]) {
       let release!: () => void
       const held = new Promise<void>((resolve) => {
         release = resolve
@@ -1698,10 +1700,40 @@ export function checkedVaultPort(
         release()
         throw error
       }
-      return () => {
+      const abort = new AbortController()
+      const expired = Object.assign(
+        new EngineError('conflict', 'checked file lease expired; retry later'),
+        { leaseExpired: true }
+      )
+      let rejectExpired!: (error: Error) => void
+      const revoked = new Promise<never>((_, reject) => {
+        rejectExpired = reject
+      })
+      void revoked.catch(() => {})
+      const timer = window.setTimeout(() => {
+        abort.abort()
+        rejectExpired(expired)
+        console.error(
+          '[abele-sync] BUG: checked file lease exceeded its time limit; releasing waiting saves',
+          CHECKED_LEASE_MS
+        )
         release()
-        void operation
-      }
+      }, CHECKED_LEASE_MS)
+      return Object.assign(
+        () => {
+          window.clearTimeout(timer)
+          release()
+          void operation
+        },
+        {
+          check() {
+            if (abort.signal.aborted) throw expired
+          },
+          wait<T>(work: Promise<T>): Promise<T> {
+            return Promise.race([work, revoked])
+          },
+        }
+      )
     },
     async wait(path: string): Promise<void> {
       await assertVaultPath(adapter, path)
@@ -1771,6 +1803,10 @@ export function setGatedAdapterMethod(adapter: object, name: string, value: unkn
 /** Explicit receiver-scoped bypass, never an ambient flag shared with concurrent saves. */
 export function ungatedAdapterMethod(method: Method): Method {
   return Reflect.get(method, UNGATED_ADAPTER) ?? method
+}
+
+function engineAdapterMethod(adapter: object, key: PropertyKey, fallback: Method): Method {
+  return gates.get(adapter)?.methods.get(String(key)) ?? ungatedAdapterMethod(fallback)
 }
 
 export function adapterEngineReceiver(adapter: object): object {

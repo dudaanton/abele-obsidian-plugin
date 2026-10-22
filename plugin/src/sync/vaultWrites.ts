@@ -160,6 +160,7 @@ export class VaultWriter {
       if (!receipt) await this.finishAnonymous(entry)
       return true
     } catch (error) {
+      if (error instanceof EngineError && Reflect.get(error, 'leaseExpired') === true) return false
       console.debug('[abele-sync] buffered conditional publication remains pending', path, error)
       throw error
     } finally {

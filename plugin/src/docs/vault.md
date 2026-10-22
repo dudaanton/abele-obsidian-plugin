@@ -261,7 +261,14 @@ hash and size, pending host saves drain, and the file's size/mtime must remain u
 across that decision. An adapter path gate serializes in-process saves, directory mutations
 and both paths of a move from the final check through capture, publication or restoration.
 Fresh public content hashing and pending-save drainage happen before taking that gate.
-Sync-owned adapter calls use explicit pre-wrap functions, without an ambient bypass flag.
+After capture, the private victim is hashed again against the expected base before any
+publication or retirement; same-size, same-mtime edits are restored and refused.
+Sync-owned adapter mutations use functions captured beneath the gate, including when
+a later third-party wrapper forwards to the gated public method. There is no ambient bypass flag.
+A checked lease has a two-second deadline. Expiry logs a bug, releases queued user saves
+and refuses the sync operation; its active journal and any captured bytes remain for recovery.
+The host API cannot cancel an already-issued adapter syscall. Late acknowledgements cannot
+resume the revoked operation or authorize journal retirement.
 Displaced files are quarantined before replacement or removal. Incoming bytes are written
 to an owned private staging name, then renamed into the public path without overwriting
 an existing destination. A refused publication keeps the local occupant and surfaces the

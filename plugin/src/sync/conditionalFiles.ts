@@ -31,11 +31,16 @@ interface Intent {
   data: string
   kind: ConditionalFileOperation['effect']['kind']
 }
+interface CheckedLease {
+  (): void
+  check?(): void
+  wait?<T>(work: Promise<T>): Promise<T>
+}
 export interface ConditionalFileHost {
   checked?: {
     maxBytes: number
     wait(path: string): Promise<void>
-    acquire(paths: string[]): Promise<() => void>
+    acquire(paths: string[]): Promise<CheckedLease>
     publicationCheck(path: string): () => boolean
   }
   retention?: RetentionIndex
@@ -709,8 +714,27 @@ export class ConditionalFiles {
   }
   /** Content decision plus a pending-save/stat fence; no object-identity claim. */
   private async applyChecked(op: ConditionalFileOperation): Promise<boolean> {
-    const h = this.host,
+    const h = new Proxy(this.host, {
+        get(target, key) {
+          const value = Reflect.get(target, key)
+          if (typeof value !== 'function') return value
+          return (...args: unknown[]) => {
+            release?.check?.()
+            const result = value.apply(target, args)
+            if (result && typeof result.then === 'function')
+              return (release?.wait ? release.wait(Promise.resolve(result)) : result).then(
+                (answer: unknown) => {
+                  release?.check?.()
+                  return answer
+                }
+              )
+            release?.check?.()
+            return result
+          }
+        },
+      }),
       checked = h.checked
+    const operation = new ConditionalFiles(h)
     const observe = async (path: string): Promise<FileVersion | null> => {
       try {
         return await h.fingerprint(path)
@@ -728,7 +752,7 @@ export class ConditionalFiles {
     if (h.active.has(key)) return false
     h.active.add(key)
     let recorded = false
-    let release: (() => void) | undefined
+    let release: CheckedLease | undefined
     try {
       if (await h.stat(folder)) return false
       let payload: Uint8Array | undefined
@@ -771,9 +795,9 @@ export class ConditionalFiles {
         kind: op.effect.kind,
       }
       await h.mkdir(folder)
-      await this.record(folder + '/intent.json', intent)
+      await operation.record(folder + '/intent.json', intent)
       await h.mkdir(h.root + '/active')
-      await this.record(h.root + '/active/' + id + '.json', intent)
+      await operation.record(h.root + '/active/' + id + '.json', intent)
       recorded = true
       if (payload) {
         await h.create(intent.data, payload, mtime)
@@ -790,25 +814,29 @@ export class ConditionalFiles {
       ) {
         console.debug('[abele-sync] conditional file changed locally; retry later', op.path)
         // No public mutation was attempted; this intent owns no retained user bytes.
-        await this.record(folder + '/complete', true)
-        await this.archive(folder, id, true)
-        await this.discard(id)
+        await operation.record(folder + '/complete', true)
+        await operation.archive(folder, id, true)
+        await operation.discard(id)
         return false
       }
       h.check()
       if (op.expected) {
         await h.capture(op.path, victim)
-        // Content was hashed before taking the gate. Cooperating saves now wait;
-        // an unexpected occupant is preserved without hashing under the public lease.
+        // The pre-gate hash is only a decision hint. Authenticate the captured bytes
+        // before publication or retirement, including same-size, same-time edits.
         const info = await h.stat(victim)
+        const captured = info?.type === 'file' ? await observe(victim) : null
         if (
           !info ||
           info.type !== 'file' ||
           info.size !== op.expected.size ||
-          info.mtime !== first.mtime
+          info.mtime !== first.mtime ||
+          !captured ||
+          captured.sha !== op.expected.sha ||
+          captured.size !== op.expected.size
         ) {
-          await this.restore(victim, op.path)
-          await this.archive(folder, id, false)
+          await operation.restore(victim, op.path)
+          await operation.archive(folder, id, false)
           return false
         }
       }
@@ -816,41 +844,52 @@ export class ConditionalFiles {
         if (
           !publicationAllowed() ||
           (await h.stat(op.path)) ||
-          !(await this.install(intent.data, op.path))
+          !(await operation.install(intent.data, op.path))
         ) {
-          await this.restore(victim, op.path)
-          await this.restore(intent.data, op.path, true)
+          await operation.restore(victim, op.path)
+          await operation.restore(intent.data, op.path, true)
           // Both versions now have acknowledged public destinations. Receipt retirement
           // may remove only this operation's metadata, never either recovered copy.
-          await this.record(folder + '/complete', true)
-          await this.archive(folder, id, false)
-          if (!intent.receipt) await this.discard(id)
+          await operation.record(folder + '/complete', true)
+          await operation.archive(folder, id, false)
+          if (!intent.receipt) await operation.discard(id)
           console.debug('[abele-sync] publication occupied; incoming bytes recovered', op.path)
           return false
         }
-      } else if (op.effect.kind === 'move' && !(await this.install(victim, destination))) {
-        await this.restore(victim, op.path)
-        await this.archive(folder, id, false)
+      } else if (op.effect.kind === 'move' && !(await operation.install(victim, destination))) {
+        await operation.restore(victim, op.path)
+        await operation.archive(folder, id, false)
         return false
       }
       release?.()
       release = undefined
-      await this.record(folder + '/complete', true)
-      await this.retireVictim(folder, intent)
-      await this.archive(folder, id, true)
-      if (!intent.receipt) await this.discard(id)
+      await operation.record(folder + '/complete', true)
+      await operation.retireVictim(folder, intent)
+      await operation.archive(folder, id, true)
+      if (!intent.receipt) await operation.discard(id)
       h.changed([op.path], op.effect.kind === 'remove' || op.effect.kind === 'move' ? null : 'file')
       if (op.effect.kind === 'move') h.changed([destination], 'file')
       return true
-    } catch (error) {
-      if (recorded) await this.restore(victim, op.path)
+    } catch (cause) {
+      let error = cause
+      try {
+        release?.check?.()
+      } catch (expired) {
+        error = expired
+      }
+      if (error instanceof EngineError && Reflect.get(error, 'leaseExpired') === true) {
+        // Keep active intent and captured bytes for recovery; never continue a revoked mutation.
+        console.debug('[abele-sync] checked operation refused after lease expiry', op.path)
+        return false
+      }
+      if (recorded) await operation.restore(victim, op.path)
       if (
         (error as { code?: string })?.code === 'EEXIST' ||
         /^(EEXIST\b|File already exists|Destination file already exists)/.test(
           (error as Error)?.message ?? ''
         )
       ) {
-        if (recorded) await this.archive(folder, id, false)
+        if (recorded) await operation.archive(folder, id, false)
         return false
       }
       throw error

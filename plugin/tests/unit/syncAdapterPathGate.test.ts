@@ -1,10 +1,43 @@
 import { expect, it, vi } from 'vitest'
-import { adapterPathGate, adapterEngineReceiver, ungatedAdapterMethod } from '@/sync/vaultPathLinks'
+import {
+  adapterPathGate,
+  adapterEngineReceiver,
+  ungatedAdapterMethod,
+  checkedVaultPort,
+} from '@/sync/vaultPathLinks'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
 
 const bytes = new TextEncoder().encode('saved').buffer
+
+it('revokes an overdue checked lease without dropping the waiting save', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const app = buildFakeVault([])
+  const port = checkedVaultPort(app.vault as never, app.vault.adapter as never, {
+    ready() {},
+    effect: (work) => work(),
+  })
+  const release = await port.acquire(['sample.md'])
+  let saved = false
+  const pending = app.vault.adapter.writeBinary('sample.md', bytes).then(() => {
+    saved = true
+  })
+  try {
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(saved).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(saved).toBe(true)
+    expect(() => Reflect.get(release, 'check')()).toThrow('lease')
+    expect(loud).toHaveBeenCalledOnce()
+  } finally {
+    release()
+    await pending
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
 const tick = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }

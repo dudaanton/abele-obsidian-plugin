@@ -4,8 +4,172 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { MOBILE_WHOLE_READ_MAX } from '@/sync/mobileWholeRead'
 import { countPullOperation, emptyPullCounts } from '@/sync/pullOperationCounts'
+import { adapterPathGate } from '@/sync/vaultPathLinks'
+import { deferred } from '../helpers/deferred'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
+
+it('refuses a stalled publication at the lease deadline and preserves a later acknowledgement', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const stalled = deferred<void>()
+  try {
+    const app = buildFakeVault([])
+    const previous = app.vault.adapter.rename
+    let reached = false
+    app.vault.adapter.rename = async function (...args) {
+      await previous.apply(this, args)
+      if (args[1] === 'sample.bin') {
+        reached = true
+        await stalled.promise
+      }
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    const operation = disk.conditionalFile({
+      path: 'sample.bin',
+      expected: null,
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 1000, receipt: 'stalled' },
+    })
+    let result: boolean | undefined
+    void operation.then((value) => {
+      result = value
+    })
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(reached).toBe(true)
+    const saving = app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(result).toBe(false)
+    await saving
+    stalled.resolve()
+    await operation
+    await disk.recoverConditionalFiles()
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+    expect(loud).toHaveBeenCalledOnce()
+  } finally {
+    stalled.resolve()
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
+it('refuses an expired publication lease when a reentrant event awaits a user save', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+    const previous = app.vault.adapter.rename
+    let notified = false
+    let published = ''
+    app.vault.adapter.rename = async function (...args) {
+      await previous.apply(this, args)
+      if (args[1] === 'sample.bin' && !notified) {
+        notified = true
+        published = await app.vault.adapter.read('sample.bin')
+        await app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer, {
+          mtime: 3000,
+        })
+      }
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    const operation = disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000 },
+    })
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(notified).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await operation).toBe(false)
+    expect(loud).toHaveBeenCalledOnce()
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+    await disk.recoverConditionalFiles()
+    const files = app.vault.adapter.list('')
+    const contents = await Promise.all(
+      (await files).files.map((path) => app.vault.adapter.read(path))
+    )
+    expect(contents).toContain('before')
+    expect(published).toBe('incoming')
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+  } finally {
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
+it.each(['before', 'after'] as const)(
+  'publishes beneath nested forwarding wrappers installed %s the gate',
+  async (when) => {
+    const app = buildFakeVault([])
+    const wrap = () => {
+      const previous = app.vault.adapter.rename
+      app.vault.adapter.rename = async function (...args) {
+        return previous.apply(this, args)
+      }
+    }
+    if (when === 'before') {
+      wrap()
+      wrap()
+    }
+    adapterPathGate(app.vault.adapter)
+    if (when === 'after') {
+      wrap()
+      wrap()
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    let timer: ReturnType<typeof setTimeout>
+    try {
+      expect(
+        await Promise.race([
+          disk.conditionalFile({
+            path: 'sample.bin',
+            expected: null,
+            effect: { kind: 'write', bytes: bytes('incoming'), mtime: 1000 },
+          }),
+          new Promise((resolve) => {
+            timer = setTimeout(() => resolve('deadlocked'), 100)
+          }),
+        ])
+      ).toBe(true)
+      expect(await app.vault.adapter.read('sample.bin')).toBe('incoming')
+    } finally {
+      clearTimeout(timer!)
+    }
+  }
+)
+
+it.each(['remove', 'write', 'move'] as const)(
+  'refuses %s when same-size same-time content changes after hashing',
+  async (kind) => {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+    const raw = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+    let changed = false
+    Object.defineProperty(app.vault.adapter, 'promise', {
+      get() {
+        if (!changed) {
+          changed = true
+          return raw('sample.bin', bytes('edited').buffer, { mtime: 1000 })
+        }
+        return undefined
+      },
+    })
+    const disk = new ObsidianFileSystem(app as never)
+    const effect =
+      kind === 'write'
+        ? { kind, bytes: bytes('incoming'), mtime: 2000 }
+        : kind === 'move'
+          ? { kind, to: 'other.bin' }
+          : { kind }
+    expect(
+      await disk.conditionalFile({
+        path: 'sample.bin',
+        expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+        effect,
+      })
+    ).toBe(false)
+    expect(await app.vault.adapter.read('sample.bin')).toBe('edited')
+    expect(await app.vault.adapter.exists('other.bin')).toBe(false)
+  }
+)
 
 it.each(['error', 'cancel'] as const)(
   'releases a queued save when capture ends with %s',

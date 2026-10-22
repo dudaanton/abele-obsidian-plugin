@@ -882,7 +882,9 @@ export class ObsidianFileSystem implements FileSystem {
               const release = await checked.acquire([path])
               try {
                 this.runtimeFence?.assertReady()
-                await this.guardedAdapter.rename(temp, path)
+                release.check()
+                await release.wait(this.guardedAdapter.rename(temp, path))
+                release.check()
               } catch (error) {
                 if (
                   (error as { code?: string })?.code === 'EEXIST' ||
