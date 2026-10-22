@@ -118,7 +118,7 @@ export function syncPlacementPlugin() {
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
               if (this.placer.initialLocal.has(change.sha)) continue;
-              const observed = revision?.call(this.fs, change.path);
+              let observed;
               // A missing receipt does not mean missing bytes. Let placement verify and adopt
               // an existing portable spelling before spending a content request on it.
               {
@@ -130,16 +130,22 @@ export function syncPlacementPlugin() {
                 let exists;
                 if (this.fs[Symbol.for('abele.sync.inventory-children-v1')]) {
                   const parent = target.slice(0, Math.max(0, target.lastIndexOf('/')));
-                  let names = siblings.get(parent);
-                  if (!names) {
+                  let observation = siblings.get(parent);
+                  if (!observation) {
                     // Reuse the pull's parent inventory once, rather than adding a bridge
                     // stat for every absent target. Placement still performs live checks.
-                    names = new Set((await inventoryChildren(this.fs, parent, target, true))
+                    const clock = revision?.call(this.fs);
+                    const names = new Set((await inventoryChildren(this.fs, parent, target, true))
                       .map((child) => child.path.normalize('NFC').toLowerCase()));
-                    siblings.set(parent, names);
+                    observation = { names, clock };
+                    siblings.set(parent, observation);
                   }
-                  exists = names.has(target.normalize('NFC').toLowerCase());
-                } else exists = await this.fs.stat(target) !== null;
+                  observed = observation.clock;
+                  exists = observation.names.has(target.normalize('NFC').toLowerCase());
+                } else {
+                  observed = revision?.call(this.fs);
+                  exists = await this.fs.stat(target) !== null;
+                }
                 this.placer.adoptionCandidates.set(change.file_id, exists);
                 if (exists && (entry === null || await this.placer.destinationMatches(target, change.sha, change.size))) continue;
               }
@@ -165,7 +171,7 @@ export function syncPlacementPlugin() {
                 };
                 // Event revisions are free; hosts without them use the failure fallback.
                 const observed = observations.get(change);
-                if (observed !== undefined && revision.call(this.fs, change.path) !== observed &&
+                if (observed !== undefined && revision.call(this.fs, change.path) > observed &&
                     await destinationReady()) return;
                 try {
                   const source = await this.client.openVersion(change.file_id, change.version_id,

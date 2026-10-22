@@ -155,6 +155,9 @@ export class LocalFolderPlacement {
           return (receipt: string, path: string, sha: string) =>
             value.call(target, receipt, placement.toLocal(path), sha)
         if (key === 'recoverConditionalFiles') return value.bind(target)
+        if (key === Symbol.for('abele.sync.local-change-revision-v1'))
+          return (path?: string) =>
+            value.call(target, path === undefined ? undefined : placement.toLocal(path))
         if (
           [
             Symbol.for('abele.sync.inventory-pass-v1'),
@@ -176,7 +179,6 @@ export class LocalFolderPlacement {
           [
             Symbol.for('abele.sync.fingerprint-fresh-v1'),
             Symbol.for('abele.sync.fingerprint-pull-v1'),
-            Symbol.for('abele.sync.local-change-revision-v1'),
           ].includes(key as symbol)
         )
           return (path: string) => value.call(target, placement.toLocal(path))

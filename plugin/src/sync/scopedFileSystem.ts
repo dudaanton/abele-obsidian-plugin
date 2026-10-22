@@ -50,8 +50,8 @@ export function scopedFileSystem(
       if (typeof value !== 'function') return value
       if (key === Symbol.for('abele.sync.inventory-pass-v1')) return value.bind(target)
       if (key === Symbol.for('abele.sync.local-change-revision-v1'))
-        return (path: string) => {
-          assertPath(path)
+        return (path?: string) => {
+          if (path !== undefined) assertPath(path)
           return value.call(target, path)
         }
       if (key === Symbol.for('abele.sync.inventory-directories-v1'))

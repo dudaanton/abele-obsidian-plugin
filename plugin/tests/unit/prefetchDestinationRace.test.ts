@@ -7,6 +7,75 @@ import {
   sha256,
   type EngineClient,
 } from '@abele/sync-sdk/core'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { buildFakeVault } from '../helpers/fakeVault'
+
+it.each([false, true])(
+  'uses the sibling observation clock for a later local write (config=%s)',
+  async (config) => {
+    const paths = config ? ['.obsidian/a.json', '.obsidian/b.json'] : ['a.md', 'b.md']
+    const content = 'sample local bytes'
+    const bytes = new TextEncoder().encode(content)
+    const sha = await sha256(bytes)
+    const app = buildFakeVault([{ path: paths[0], content }])
+    const fs = new ObsidianFileSystem(app as never)
+    const state = new MemoryStateStore()
+    await state.setCursor(1)
+    const byFileId = state.byFileId.bind(state)
+    let injected = false
+    vi.spyOn(state, 'byFileId').mockImplementation(async (id) => {
+      if (id === 'sample-1' && !injected) {
+        injected = true
+        await app.vault.adapter.write(paths[1], content)
+        // Config writes deliberately have no vault event.
+        if (!config) app.emit('vault', 'create', { path: paths[1] })
+      }
+      return byFileId(id)
+    })
+    const items = paths.map((path, i) => ({
+      seq: i + 2,
+      file_id: `sample-${i}`,
+      version_id: 'created',
+      path,
+      prev_path: null,
+      op: 'create',
+      sha,
+      size: bytes.length,
+      mtime: 1000,
+      kind: 'note',
+      at: '',
+      actor: { kind: 'system', id: 'sample', name: 'Sample' },
+    }))
+    const openVersion = vi.fn(async () => {
+      throw new Error('Content offline')
+    })
+    const getBlob = vi.fn(async () => {
+      throw new Error('Content offline')
+    })
+    const stage = vi.spyOn(fs, 'beginAtomicWrite')
+    await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, () =>
+      pull(
+        {
+          changes: async () => ({ items, head_seq: 3, next_since: 3 }),
+          openVersion,
+          getBlob,
+        } as unknown as EngineClient,
+        fs,
+        state,
+        { dirty: new Set(), expected: new ExpectedWrites(), filter: { excluded: () => false } }
+      )
+    )
+    expect(injected).toBe(true)
+    expect(openVersion).not.toHaveBeenCalled()
+    expect(getBlob).not.toHaveBeenCalled()
+    expect(stage).not.toHaveBeenCalled()
+    for (const item of items) {
+      expect(await fs.read(item.path)).toEqual(bytes)
+      expect(await state.byFileId(item.file_id)).toMatchObject({ path: item.path, sha })
+    }
+    expect(await state.getCursor()).toBe(3)
+  }
+)
 
 it.each(
   [true, false].flatMap((signal) =>

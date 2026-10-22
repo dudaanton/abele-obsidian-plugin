@@ -82,6 +82,7 @@ interface InventoryPass {
   mutations: Set<string>
   localChanges: Map<string, number>
   localRevision: number
+  configRevision: number
   children: Map<string, Promise<InventoryChild[]>>
   indexedChildren: Map<string, Promise<InventoryChild[]>>
 }
@@ -228,6 +229,7 @@ export class ObsidianFileSystem implements FileSystem {
             mutations: new Set(),
             localChanges: new Map(),
             localRevision: 0,
+            configRevision: this.configRevision(),
             children: new Map(),
             indexedChildren: new Map(),
           }
@@ -293,8 +295,16 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
   }
-  [Symbol.for('abele.sync.local-change-revision-v1')](path: string): number | undefined {
+  [Symbol.for('abele.sync.local-change-revision-v1')](path?: string): number | undefined {
     if (!this.inventory) return undefined
+    // Config adapter writes have no vault event. Fold their free counter into the
+    // same clock so cached observations and per-path revisions remain comparable.
+    const configRevision = this.configRevision()
+    if (this.inventory.configRevision !== configRevision) {
+      this.inventory.configRevision = configRevision
+      this.inventory.localChanges.set(caseKey(this.configDir), ++this.inventory.localRevision)
+    }
+    if (path === undefined) return this.inventory.localRevision
     let revision = 0
     // Ancestor renames/deletions also invalidate observations of their children.
     for (
