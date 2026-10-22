@@ -3,6 +3,28 @@ import { VaultWriter, WriteJournal } from '@/sync/vaultWrites'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
+it('does not archive an unproven public retained-backup locator', async () => {
+  const app = buildFakeVault([]),
+    disk = app.vault.adapter
+  await disk.write('sample.md', 'independent local bytes')
+  const journal = new WriteJournal(app)
+  await journal.persist(() => journal.preserve({ target: 'other.md', backup: 'sample.md' }))
+  const archiveBackup = vi.fn(async () => '/sample-recovery/retained.old')
+  const writer = new VaultWriter({
+    conditionalFile: vi.fn(async () => false),
+    stagingDirectory: '.staging',
+    filesystem: disk as never,
+    native: { archiveBackup } as never,
+    journal,
+    indexed: () => false,
+    makeParents: async () => {},
+  })
+  await expect(writer.recover()).rejects.toThrow('private artifact')
+  expect(archiveBackup).not.toHaveBeenCalled()
+  expect(await disk.read('sample.md')).toBe('independent local bytes')
+  expect((await journal.currentRecovered())[0].backup).toBe('sample.md')
+})
+
 it('uses two durable journal mutations and one payload write for an absent publication', async () => {
   const app = buildFakeVault([])
   const diagnostic = vi.fn()
@@ -154,3 +176,30 @@ it('does not restore a legacy backup through an unconditional rename', async () 
   expect(await disk.exists(entry.target)).toBe(false)
   expect(await journal.currentEntries()).toEqual([entry])
 })
+
+it.each(['temp', 'backup'] as const)(
+  'refuses an unproven public %s locator in legacy recovery',
+  async (field) => {
+    const app = buildFakeVault([]),
+      disk = app.vault.adapter
+    await disk.write('sample.md', 'independent local bytes')
+    const journal = new WriteJournal(app)
+    const entry = { target: 'other.md', [field]: 'sample.md' }
+    await journal.persist(() => journal.add(entry))
+    const conditionalFile = vi.fn(async () => false)
+    const writer = new VaultWriter({
+      conditionalFile,
+      stagingDirectory: '.staging',
+      filesystem: disk as never,
+      native: null,
+      journal,
+      indexed: () => false,
+      makeParents: async () => {},
+      fingerprint: async () => ({ size: 23, sha: 'a'.repeat(64) }),
+    })
+    await expect(writer.recover()).rejects.toThrow('private artifact')
+    expect(conditionalFile).not.toHaveBeenCalled()
+    expect(await disk.read('sample.md')).toBe('independent local bytes')
+    expect(await journal.currentEntries()).toEqual([entry])
+  }
+)

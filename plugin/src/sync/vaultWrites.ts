@@ -303,6 +303,8 @@ export class VaultWriter {
     if (this.deps.native?.archiveBackup) {
       for (const retained of await this.deps.journal.currentVaultRecovered()) {
         if (!(await this.deps.journal.currentProtects(retained.backup))) continue
+        if (!isAdapterTemp(retained.backup) || !retained.backup.endsWith('.old'))
+          throw new EngineError('io', 'Retained recovery locator is not an owned private artifact')
         if (inFlight.has(retained.backup))
           throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
         const archived = await this.deps.native.archiveBackup(retained.backup)
@@ -314,6 +316,11 @@ export class VaultWriter {
     for (const entry of await this.deps.journal.currentEntries()) {
       if (!(await this.deps.journal.isCurrent(entry))) continue
       if (entry.retiredGeneration) continue
+      if (
+        (entry.temp && (!isAdapterTemp(entry.temp) || !entry.temp.endsWith('.tmp'))) ||
+        (entry.backup && (!isAdapterTemp(entry.backup) || !entry.backup.endsWith('.old')))
+      )
+        throw new EngineError('io', 'Legacy recovery locator is not an owned private artifact')
       if (entry.conditionalReceipt) continue // Owned by SDK receipt recovery, not legacy replay.
       if (
         this.deps.retainInstalled &&
