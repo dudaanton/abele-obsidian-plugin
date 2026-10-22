@@ -192,12 +192,13 @@ describe('background connection liveness', () => {
     await requests.close()
   })
 
-  it('still closes on a request timeout with audio off and clears probe timers on explicit Stop', async () => {
+  it('keeps the connection on a request timeout with audio off and clears probe timers on explicit Stop', async () => {
     const first = channel()
     const failed = first.requests.request('session.send', {}).catch((error) => error)
     await vi.advanceTimersByTimeAsync(5000)
     expect(await failed).toMatchObject({ code: 'outcome_unknown' })
-    expect(first.transport.close).toHaveBeenCalledWith('request_timeout')
+    // Since node 0.4.39 a request deadline leaves liveness to heartbeats; the transport stays open.
+    expect(first.transport.close).not.toHaveBeenCalled()
     await first.requests.close()
     active = true
     const second = channel()
