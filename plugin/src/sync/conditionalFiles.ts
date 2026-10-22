@@ -83,12 +83,12 @@ export class ConditionalFiles {
       if (parent.type !== 'folder') { rootFallback = true; break }
     }
     for (let attempt = 0; attempt < 16; attempt++) {
-      let destination =
-        attempt === 0 ? to : to + '.recovered-' + (attempt === 1 ? id : crypto.randomUUID())
+      const file = to.slice(to.lastIndexOf('/') + 1), dot = file.lastIndexOf('.')
+      const stem = dot > 0 ? file.slice(0, dot) : file, ext = dot > 0 ? file.slice(dot) : ''
+      const suffix = ' (Conflicted copy restored ' + (attempt <= 1 ? id : crypto.randomUUID()) + ')'
+      let destination = attempt === 0 ? to : to.slice(0, to.lastIndexOf('/') + 1) + stem + suffix + ext
       if (rootFallback) {
-        const file = to.slice(to.lastIndexOf('/') + 1), dot = file.lastIndexOf('.')
-        destination = fitGeneratedName('', dot > 0 ? file.slice(0, dot) : file,
-          dot > 0 ? file.slice(dot) : '', ' (Conflicted copy restored ' + (attempt === 0 ? id : crypto.randomUUID()) + ')')
+        destination = fitGeneratedName('', stem, ext, suffix)
       }
       this.host.validate(destination, rootFallback)
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))

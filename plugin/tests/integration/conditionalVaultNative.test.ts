@@ -12,6 +12,8 @@ const roots: string[] = []
 const recoveryCases = [
   { parent: 'blocked', name: 'sample.md', occupied: false },
   { parent: 'blocked', name: 'sample.md', occupied: true },
+  { parent: 'present', name: 'sample.md', occupied: true },
+  { parent: 'missing', name: 'sample.md', occupied: false },
 ]
 it.each(recoveryCases)('exposes captured bytes as a recognised file: %j', async ({ parent, name, occupied }) => {
   const { root, disk } = await setup()
@@ -141,7 +143,7 @@ it('makes a directory swapped at capture visible even when its public name is re
     })
   ).toBe(false)
   expect(injected).toBe(true)
-  const visible = (await fs.readdir(root)).find((name) => name.startsWith('sample.bin.recovered-'))
+  const visible = (await fs.readdir(root)).find((name) => name.startsWith('sample (Conflicted copy restored '))
   expect(visible).toBeDefined()
   expect(await fs.readFile(join(root, visible!, 'note.md'), 'utf8')).toBe('swapped notes')
   expect(await fs.readFile(join(root, 'sample.bin'), 'utf8')).toBe('new occupant')
@@ -199,7 +201,7 @@ it.each([false, true])(
     await disk().recoverConditionalFiles()
     expect(await fs.readFile(join(root, 'b-file'), 'utf8')).toBe('retained file')
     const directory = occupied
-      ? join(root, 'a-directory.recovered-a-directory')
+      ? join(root, 'a-directory (Conflicted copy restored a-directory)')
       : join(root, 'a-directory')
     expect(await fs.readFile(join(directory, 'note.md'), 'utf8')).toBe('retained note')
     if (occupied) expect(await fs.readFile(join(root, 'a-directory'), 'utf8')).toBe('new occupant')

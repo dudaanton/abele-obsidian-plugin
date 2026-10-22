@@ -186,7 +186,7 @@ it.each([false, true])(
     expect((await app.vault.adapter.list(root + '/active')).files).toHaveLength(0)
     const objects = await app.vault.adapter.list(root + '/objects')
     const id = objects.folders[0].split('/').at(-1)
-    const recovered = 'sample.bin.recovered-' + id
+    const recovered = 'sample (Conflicted copy restored ' + id + ').bin'
     expect(new Uint8Array(await app.vault.adapter.readBinary(recovered))).toEqual(data('sample A'))
   }
 )
