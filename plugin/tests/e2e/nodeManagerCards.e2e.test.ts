@@ -87,8 +87,9 @@ async function inspectCards(label: string) {
       const report = JSON.parse(
         await evalLong(`(async () => {
         for (let i=0;i<100&&!document.querySelector('.abele-node-delegation');i++) await new Promise(r=>setTimeout(r,50));
-        const card=document.querySelector('.abele-node-delegation'), details=card.querySelector('details');
-        return JSON.stringify({overflow:card.scrollWidth>card.clientWidth+1,open:details.open,prompt:!!card.querySelector('[data-pending-prompts],.abele-tool-approval'),text:card.textContent})
+        const card=document.querySelector('.abele-node-delegation'), details=card.querySelector('.abele-node-delegation__details > .abele-disclosure__control');
+        if(!details)throw Error('The activity disclosure control is missing');
+        return JSON.stringify({overflow:card.scrollWidth>card.clientWidth+1,open:details.getAttribute('aria-expanded')==='true',prompt:!!card.querySelector('[data-pending-prompts],.abele-tool-approval'),text:card.textContent})
       })()`)
       ) as { overflow: boolean; open: boolean; prompt: boolean; text: string }
       expect(report.overflow).toBe(false)
@@ -195,10 +196,22 @@ async function inspectRuns(label: string) {
         await evalLong(`(async () => {
         for(let i=0;i<100&&!document.querySelector('.abele-node-manager-run');i++) await new Promise(r=>setTimeout(r,50));
         const root=document.querySelector('.abele-node-manager-run');
-        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval'),stops:[...root.querySelectorAll('button')].filter(button => button.textContent.trim()==='Stop').length});
+        const states=[...root.querySelectorAll('[data-manager-state]')];
+        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,stateLines:states.length,stateText:states[0]?.textContent,dot:!!states[0]?.querySelector('.abele-status-dot'),approval:!!root.querySelector('.abele-tool-approval'),stops:[...root.querySelectorAll('button')].filter(button => button.textContent.trim()==='Stop').length});
       })()`)
-      ) as { overflow: boolean; text: string; approval: boolean; stops: number }
+      ) as {
+        overflow: boolean
+        text: string
+        stateLines: number
+        stateText: string
+        dot: boolean
+        approval: boolean
+        stops: number
+      }
       expect(report.overflow).toBe(false)
+      expect(report.stateLines).toBe(1)
+      expect(report.dot).toBe(true)
+      expect(report.stateText).not.toContain('(restart)')
       expect(report.approval).toBe(state === 'pending_approval')
       expect(report.stops).toBe(['pending_approval', 'running'].includes(state) ? 1 : 0)
       if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')
