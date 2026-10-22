@@ -37,9 +37,11 @@ async function inspect(mode: string) {
       let root
       for(let i=0;i<100;i++) {
         root=document.querySelector('.abele-node-chat')
-        if(root?.querySelector('.abele-chat-msg')) break
+        if(root?.querySelector('.abele-chat-run, .abele-chat-msg')) break
         await wait(50)
       }
+      const group = root?.querySelector('.abele-chat-run > .abele-tree-item__self[aria-expanded="false"]')
+      if(group) { group.click(); await wait(200) }
       if(!root?.querySelector('.abele-diff')) {
         root?.querySelector('.abele-chat-msg__icon')?.click()
         await wait(200)
