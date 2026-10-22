@@ -3,6 +3,23 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it('commits before the host document keymap can consume Enter', async () => {
+    const hostKey = (event: KeyboardEvent) => event.stopImmediatePropagation()
+    document.addEventListener('keydown', hostKey, true)
+    const row = mount(TreeItem, {
+      attachTo: document.body,
+      props: { text: 'Sample', renaming: true },
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      row.get('[contenteditable]').element.textContent = 'Chosen name'
+      await row.get('[contenteditable]').trigger('keydown', { key: 'Enter' })
+      expect(row.emitted('rename')?.[0]).toEqual(['Chosen name'])
+    } finally {
+      row.unmount()
+      document.removeEventListener('keydown', hostKey, true)
+    }
+  })
   it('selects the whole name and commits or cancels an in-row rename', async () => {
     const row = mount(TreeItem, {
       attachTo: document.body,

@@ -9,6 +9,17 @@ import ChatToolModes from '@/components/ChatToolModes.vue'
 import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
+it('starts F2 rename before the host document keymap consumes it', async () => {
+  const view = show()
+  const hostKey = (event: KeyboardEvent) => event.stopImmediatePropagation()
+  document.addEventListener('keydown', hostKey, true)
+  try {
+    await view.get('[data-chat="sample"] > .tree-item-self').trigger('keydown', { key: 'F2' })
+    expect(source.rename).toHaveBeenCalledWith('sample')
+  } finally {
+    document.removeEventListener('keydown', hostKey, true)
+  }
+})
 it('renames chats and folders in the same row editor, including F2 and empty cancellation', async () => {
   Object.assign(source, { renaming: shallowRef(null) })
   source.cancelRename = () => {

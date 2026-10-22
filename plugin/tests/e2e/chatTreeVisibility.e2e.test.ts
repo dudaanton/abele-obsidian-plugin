@@ -108,7 +108,16 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await shot('row-rename')
         editor().textContent = 'Manually chosen sample'
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-        await until(() => reopened.chatTitle.value === 'Manually chosen sample' && !editor())
+        try {
+          await until(() => reopened.chatTitle.value === 'Manually chosen sample' && !editor())
+        } catch (error) {
+          throw Error(error.message + ' ' + JSON.stringify({
+            title: reopened.chatTitle.value, destroyed: reopened.isDestroyed,
+            active: service.activeTabId.value, renamed: service.tree.renaming.value,
+            editor: editor()?.textContent, file: files[0].path,
+            current: service.getSessionByFile(files[0].path)?.chatTitle.value,
+          }))
+        }
         await until(() => files[0].basename === 'Manually chosen sample')
         if (!reopened.manualTitle.value) throw Error('Manual title is not protected')
         chatRow().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
@@ -140,6 +149,8 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         if (!service.folders.paths.includes(folder)) throw Error('Empty rename removed the folder name')
         return JSON.stringify(true)
       } finally {
+        service.tree.cancelRename()
+        document.querySelector('.abele-chat-tree')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         document.querySelector('.menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         for (const file of files) {
           const session = service.getSessionByFile(file.path)

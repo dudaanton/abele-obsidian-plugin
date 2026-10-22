@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
@@ -109,6 +109,34 @@ const nothing = computed(
 )
 
 const list = ref<HTMLElement>()
+const renameKey = (event: KeyboardEvent) => {
+  if (event.key !== 'F2' || event.isComposing) return
+  const target = event.target as HTMLElement
+  if (!target?.closest || target.closest('[contenteditable], input, textarea')) return
+  const row = target.closest('.tree-item-self')?.parentElement
+  if (!row || !list.value?.contains(row)) return
+  const id = row.dataset.chat
+  const folder = row.dataset.path
+  if (id) {
+    if (chatsOf(source.value.root.value).find((chat) => chat.id === id)?.nested === 'helper') return
+    source.value.rename(id)
+  } else if (folder) source.value.renameFolder(folder)
+  else return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}
+let keyWindow: Window | null = null
+const detachRenameKey = () => keyWindow?.removeEventListener('keydown', renameKey, true)
+watch(
+  list,
+  (element) => {
+    detachRenameKey()
+    keyWindow = element?.ownerDocument.defaultView ?? null
+    keyWindow?.addEventListener('keydown', renameKey, true)
+  },
+  { flush: 'sync' }
+)
+onBeforeUnmount(detachRenameKey)
 watch(
   () =>
     [

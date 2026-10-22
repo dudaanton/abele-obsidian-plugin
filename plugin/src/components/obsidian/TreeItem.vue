@@ -57,8 +57,7 @@
           :aria-label="label || text"
           spellcheck="false"
           @click.stop
-          @keydown.enter.prevent.stop="finishRename"
-          @keydown.esc.prevent.stop="cancelRename"
+          @keydown="renameKey"
           @blur="finishRename"
           >{{ renameText }}</span
         >
@@ -83,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { setIcon } from 'obsidian'
 
 /**
@@ -175,6 +174,28 @@ const cancelRename = () => {
   renameFinished = true
   emit('rename-cancel')
 }
+// The host's document keymap handles Enter before an editable row hears it.
+// Capture only this editor's keys, as the chat find field does.
+const renameKey = (event: KeyboardEvent) => {
+  if (event.target !== editor.value || event.isComposing) return
+  if (event.key !== 'Enter' && event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  if (event.key === 'Enter') finishRename()
+  else cancelRename()
+}
+let renameWindow: Window | null = null
+const detachRenameKey = () => renameWindow?.removeEventListener('keydown', renameKey, true)
+watch(
+  editor,
+  (element) => {
+    detachRenameKey()
+    renameWindow = element?.ownerDocument.defaultView ?? null
+    renameWindow?.addEventListener('keydown', renameKey, true)
+  },
+  { flush: 'post' }
+)
+onBeforeUnmount(detachRenameKey)
 watch(
   () => props.renaming,
   async (editing) => {
@@ -184,9 +205,9 @@ watch(
     await nextTick()
     editor.value?.focus()
     if (editor.value) {
-      const range = document.createRange()
+      const range = editor.value.ownerDocument.createRange()
       range.selectNodeContents(editor.value)
-      const selection = document.getSelection()
+      const selection = editor.value.ownerDocument.getSelection()
       selection?.removeAllRanges()
       selection?.addRange(range)
     }
