@@ -33,6 +33,10 @@ export class SyncActivityLog {
   finishComparison(total = this.comparison?.total): void {
     const one = this.comparison
     if (!one) return
+    // Counts cannot identify which confirmed paths survived an inventory change.
+    // The SDK has confirmed the entire new inventory at this boundary.
+    if (total !== one.total)
+      this.update({ ...one, total, totalKnown: total !== undefined, completed: total ?? 0 })
     if (total)
       this.write(
         `Comparing files: ended · ${transferText({ ...one, total, totalKnown: true, completed: total })}`
@@ -49,15 +53,24 @@ export class SyncActivityLog {
   update(value?: TransferSnapshot): void {
     this.cancel?.()
     this.cancel = undefined
+    const restarted =
+      value?.stage === 'Comparing files' &&
+      this.comparison !== undefined &&
+      value.total !== this.comparison.total
     if (value?.stage === 'Comparing files') {
+      const completed = Math.max(
+        0,
+        value.completed,
+        restarted ? 0 : (this.comparison?.completed ?? 0)
+      )
       value = {
         ...value,
-        completed: Math.max(value.completed, this.comparison?.completed ?? 0),
+        completed: value.total === undefined ? completed : Math.min(completed, value.total),
       }
       this.comparison = { ...value }
     }
     const now = this.now()
-    const changed = value?.stage !== this.last?.stage
+    const changed = restarted || value?.stage !== this.last?.stage
     if (changed && this.last && this.announced)
       this.write(
         this.last.stage === 'Comparing files' ||
@@ -82,11 +95,15 @@ export class SyncActivityLog {
     const advance = Math.max(fraction, byteFraction)
     const elapsed = now - this.at >= 30000
     if (
-      (!this.announced && (hasWork || (elapsed && value.stage !== 'Downloading'))) ||
+      (!this.announced && (restarted || hasWork || (elapsed && value.stage !== 'Downloading'))) ||
       (this.announced && (advance - this.fraction >= 0.05 - Number.EPSILON || elapsed))
     ) {
       this.write(
-        !this.announced ? `${value.stage}: started · ${transferText(value)}` : transferText(value)
+        !this.announced
+          ? restarted
+            ? `${value.stage}: started again (inventory changed)${value.total === 0 ? '' : ' · ' + transferText(value)}`
+            : `${value.stage}: started · ${transferText(value)}`
+          : transferText(value)
       )
       this.announced = true
       this.at = now

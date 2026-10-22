@@ -49,6 +49,78 @@ it('retains interrupted comparison work and only ends at the confirmed scan boun
   expect(lines.at(-1)).toContain('0 of 120 files')
 })
 
+it('starts comparison again when the interrupted inventory shrinks', () => {
+  const lines: string[] = []
+  const log = new SyncActivityLog((line) => lines.push(line))
+  log.update({ stage: 'Comparing files', completed: 80, total: 100, totalKnown: true })
+  log.update()
+  log.update({ stage: 'Comparing files', completed: 0, total: 50, totalKnown: true })
+  expect(lines.at(-1)).toBe(
+    'Comparing files: started again (inventory changed) · Comparing files · 0 of 50 files'
+  )
+  log.finishComparison()
+  expect(lines.at(-1)).toContain('50 of 50 files')
+})
+
+it.each(Array.from({ length: 20 }, (_, i) => i + 1))(
+  'keeps comparison counters bounded and monotonic through random lifecycle sequences (seed %s)',
+  (seed) => {
+    let random = seed,
+      now = 0,
+      floor = 0,
+      observed = 0
+    const next = (bound: number) => {
+      random = (Math.imul(random, 1664525) + 1013904223) >>> 0
+      return Math.floor((random / 0x100000000) * bound)
+    }
+    const log = new SyncActivityLog(
+      (line) => {
+        if (line.includes('started again (inventory changed)')) floor = 0
+        const counts = line.match(/(\d+) of (\d+) files?/)
+        if (!counts) return
+        const done = Number(counts[1]),
+          total = Number(counts[2])
+        expect(done, line).toBeGreaterThanOrEqual(0)
+        expect(done, line).toBeLessThanOrEqual(total)
+        expect(done, line).toBeGreaterThanOrEqual(floor)
+        floor = done
+        observed++
+      },
+      () => now
+    )
+    let total = 100
+    const actions = new Set<number>()
+    for (let step = 0; step < 400; step++) {
+      now += 31000
+      const action = next(4)
+      actions.add(action)
+      switch (action) {
+        case 0:
+          log.update()
+          break
+        case 1:
+          total = next(101)
+          log.update({ stage: 'Checking the vault', completed: 0 })
+          break
+        case 2:
+          log.finishComparison(total)
+          floor = 0
+          break
+        default:
+          log.update({
+            stage: 'Comparing files',
+            completed: next(total + 1),
+            total,
+            totalKnown: true,
+          })
+      }
+    }
+    log.finishComparison(total)
+    expect(actions.size).toBe(4)
+    expect(observed).toBeGreaterThan(20)
+  }
+)
+
 it('still reports an indeterminate phase if checking takes thirty seconds', async () => {
   vi.useFakeTimers()
   const lines: string[] = []
