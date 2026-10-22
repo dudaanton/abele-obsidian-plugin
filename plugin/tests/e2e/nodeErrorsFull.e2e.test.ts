@@ -118,6 +118,7 @@ const probe = (device: string) =>
       await showFile('git_timeout');
       const line=pane.querySelector('.abele-state-line');
       if(!line.querySelector('a'))line.querySelector('.abele-fold-heading').click();
+      await until(()=>[...line.querySelectorAll('a')].some(link=>link.textContent==='Node log'),'Log link missing after opening Details');
       logFailure=mode==='error';
       logPage={lines:mode==='long'?[{time:new Date().toISOString(),level:'warn',text:'Sample diagnostic with a long path and message. '.repeat(35),source:'stderr'}]:[],truncated:mode==='long',files:[],reason:mode==='missing'?'logs_missing':'empty'};
       [...line.querySelectorAll('a')].find(link=>link.textContent==='Node log').click();
