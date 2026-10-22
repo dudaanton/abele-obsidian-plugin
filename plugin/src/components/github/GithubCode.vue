@@ -1,5 +1,9 @@
 <template>
-  <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
+  <div
+    ref="editorEl"
+    class="abele-github-code abele-github-blob__code"
+    :class="{ 'abele-github-code_inline-diff': comparison && !comparison.split }"
+  />
   <Teleport v-for="host in blameHosts" :key="host.id" :to="host.element">
     <GithubBlameRange :commit="host.range.commit" @open="(sha) => emit('commit', sha)" />
   </Teleport>
@@ -207,11 +211,11 @@ defineExpose({
   background: var(--text-error);
 }
 .abele-github-code .cm-editor .cm-deletedChunk {
-  background-color: var(--background-modifier-error);
+  background-color: color-mix(in srgb, var(--text-error) 16%, var(--background-primary));
   color: var(--text-muted);
 }
-.abele-github-code .cm-editor.cm-merge-b .cm-changedLine,
-.abele-github-code .cm-editor .cm-inlineChangedLine {
-  background-color: var(--background-modifier-success);
+.abele-github-code_inline-diff .cm-editor.cm-merge-b .cm-changedLine,
+.abele-github-code_inline-diff .cm-editor .cm-inlineChangedLine {
+  background-color: color-mix(in srgb, var(--text-success) 16%, var(--background-primary));
 }
 </style>

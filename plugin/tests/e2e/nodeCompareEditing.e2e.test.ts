@@ -4,6 +4,7 @@ import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
+import { withNativeInput } from './helpers/nativeInput'
 
 targets('desktop')
 const SHOTS = shotDir('abele-compare-editing')
@@ -91,10 +92,16 @@ function probe(device: string) {
       await shot('overview-scrolled')
       if(${JSON.stringify(device)} === 'desktop') {
         const mark = strip.querySelector('.abele-change-overview__mark_changed')
-        mark.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true,clientX:mark.getBoundingClientRect().left,clientY:mark.getBoundingClientRect().top}))
-        await until(()=>document.querySelector('.tooltip')?.textContent.includes('Lines'))
-        await shot('overview-tooltip')
-        mark.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true}))
+        const box = mark.getBoundingClientRect()
+        const cdp = require('@electron/remote').getCurrentWebContents().debugger
+        const owned = !cdp.isAttached()
+        if(owned)cdp.attach('1.3')
+        try {
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:box.left+box.width/2,y:box.top+box.height/2,button:'none'})
+          await until(()=>[...document.querySelectorAll('.tooltip')].some(el=>el.textContent.includes('Lines')))
+          await shot('overview-tooltip')
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:20,button:'none'})
+        } finally {if(owned)cdp.detach()}
       }
       strip.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}))
       await wait(250)
@@ -125,8 +132,8 @@ function probe(device: string) {
   })()`)
 }
 
-it('edits, saves and rejects stale comparison writes on desktop', () => {
-  expect(probe('desktop')).toBe(true)
+it('edits, saves and rejects stale comparison writes on desktop', async () => {
+  expect(await withNativeInput(() => probe('desktop'))).toBe(true)
 })
 
 it('edits the unified working comparison in the phone layout', async () => {
