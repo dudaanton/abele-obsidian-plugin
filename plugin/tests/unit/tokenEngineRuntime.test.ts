@@ -5,6 +5,8 @@ import {
   MemoryFileSystem,
   MemoryStateStore,
   sha256,
+  scan,
+  type FileSystem,
 } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
@@ -1573,6 +1575,53 @@ function runtime(
     reviews,
   }
 }
+it.each(['adapter', 'SDK'])(
+  'yields to host timers while comparing twelve thousand cached files (%s)',
+  async (mode) => {
+    const wire = await server('Notes/unused.md', '')
+    const fs = new MemoryFileSystem()
+    for (let i = 0; i < 12000; i++)
+      await fs.writeAtomic('Notes/sample-' + i + '.md', new Uint8Array([1]), 1000)
+    Object.assign(fs, { fingerprint: async () => ({ size: 1, sha: 'b'.repeat(64) }) })
+    const one = runtime(wire, fs)
+    const scanning = (one.runtime.engine as unknown as { opts: { fs: FileSystem } }).opts.fs
+    let ticks = 0,
+      longestMs = 0,
+      last = performance.now()
+    const started = last
+    const timer = setInterval(() => {
+      const now = performance.now()
+      longestMs = Math.max(longestMs, now - last)
+      last = now
+      ticks++
+    }, 0)
+    try {
+      if (mode === 'SDK') {
+        const found = await scan(
+          scanning,
+          one.state,
+          { excluded: () => false },
+          { readOnly: true, pairMoves: false }
+        )
+        expect(found.ops).toHaveLength(12000)
+      } else {
+        for await (const info of scanning.list()) await scanning.fingerprint!(info.path)
+      }
+      const elapsedMs = performance.now() - started
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      console.info(
+        '[comparison responsiveness]',
+        JSON.stringify({ mode, files: 12000, elapsedMs, longestMs, ticks })
+      )
+      expect(ticks).toBeGreaterThan(1)
+      expect(longestMs).toBeLessThan(50)
+    } finally {
+      clearInterval(timer)
+      await one.runtime.close()
+    }
+  }
+)
+
 it('publishes growing inventory, settled files and received bytes across a paginated first pull', async () => {
   const wire = await server('Notes/first.md', 'first')
   const secondBytes = new TextEncoder().encode('second')

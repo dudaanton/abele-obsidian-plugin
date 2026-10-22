@@ -1,4 +1,5 @@
 import { localOnlyJournalState } from './localOnlyJournal'
+import { SyncTaskBudget } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
@@ -199,6 +200,7 @@ export class TokenEngineRuntime
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private readonly compared = new Set<string>()
+  private readonly comparisonBudget = new SyncTaskBudget()
   private inventoryTotal = 0
   private comparisonPublished = 0
   private held = new Set<string>()
@@ -1057,6 +1059,7 @@ export class TokenEngineRuntime
             }
             const candidate = (path: string) => this.namedCandidate(path)
             const largeUploads = this.largeUploadPaths
+            const budget = this.comparisonBudget
             const checkRoot = () => this.checkRoot()
             const nameTracked = async () => {
               if (this.token.scope.kind !== 'group') return
@@ -1069,6 +1072,7 @@ export class TokenEngineRuntime
               let completed = 0
               try {
                 for await (const info of value.call(target)) {
+                  await budget.account(0)
                   if (name === 'list' && !candidate(info.path)) continue
                   if (name === 'list') {
                     if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
@@ -1102,8 +1106,9 @@ export class TokenEngineRuntime
               name === Symbol.for('abele.sync.fingerprint-fresh-v1')) &&
             typeof value === 'function'
           )
-            return (path: string) =>
-              this.trace.run('fs ' + String(name) + ' ' + path, async () => {
+            return async (path: string) => {
+              await this.comparisonBudget.account(0)
+              return this.trace.run('fs ' + String(name) + ' ' + path, async () => {
                 if (name === 'stat') return value.call(target, path)
                 const total = this.inventoryTotal
                 if (this.compared.size === 0) comparing({ completed: 0, total })
@@ -1124,6 +1129,7 @@ export class TokenEngineRuntime
                 }
                 return bytes
               })
+            }
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
