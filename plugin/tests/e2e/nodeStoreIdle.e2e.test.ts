@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { evalLong } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import { onPhone, targets } from './helpers/target'
 import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 
 targets('desktop', 'phone')
@@ -66,3 +66,58 @@ it('measures idle polling before and after migrating a large synthetic client st
   expect(report.after.reads).toBe(report.after.ticks)
   expect(report.awaited.reads).toBe(report.awaited.ticks)
 }, 240000)
+
+it.skipIf(onPhone())(
+  'soaks idle metadata polling with a large retained artifact cache',
+  async () => {
+    const report = JSON.parse(
+      await evalLong(
+        `(async () => {
+    const namespace='sample-artifacts-'+crypto.randomUUID(),name='abele-node-'+namespace;
+    const req=r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+    const wait=ms=>new Promise(r=>setTimeout(r,ms)),heap=()=>performance.memory?.usedJSHeapSize??null;
+    const cpu=(()=>{try{return window.require('node:process')}catch{return null}})();
+    const opening=indexedDB.open(name,2);
+    opening.onupgradeneeded=()=>{opening.result.createObjectStore('client');opening.result.createObjectStore('journal')};
+    let db=await req(opening),store;
+    const artifactData=Object.fromEntries(Array.from({length:160},(_,i)=>['sample-'+i,{text:('sample artifact '+i+' ').repeat(8000)}]));
+    const initial={cursors:{sample:400},events:{},outbox:[],results:{},artifactData};
+    const tx=db.transaction('client','readwrite');tx.objectStore('client').put(initial,'state');await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=reject});
+    const measure=async(ms,tick)=>{
+      const start=performance.now(),before=cpu?.cpuUsage(),heapBefore=heap(),samples=[];
+      let ticks=0,writes=0,artifactReads=0;
+      const put=IDBObjectStore.prototype.put,get=IDBObjectStore.prototype.get;
+      IDBObjectStore.prototype.put=function(value,key){if(key==='state')writes++;return put.call(this,value,key)};
+      IDBObjectStore.prototype.get=function(key){if(key==='artifacts')artifactReads++;return get.call(this,key)};
+      try{while(performance.now()-start<ms){await tick();ticks++;if(ticks%50===0)samples.push({ms:performance.now()-start,heap:heap()});await wait(100)}}
+      finally{IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.get=get}
+      const used=before?cpu.cpuUsage(before):null;
+      return {ticks,writes,artifactReads,elapsedMs:performance.now()-start,heapBefore,heapAfter:heap(),samples,cpuMs:used?(used.user+used.system)/1000:null};
+    };
+    try {
+      const before=await measure(10000,()=>new Promise((resolve,reject)=>{
+        const tx=db.transaction('client','readwrite'),object=tx.objectStore('client'),r=object.get('state');
+        r.onsuccess=()=>object.put(r.result,'state');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
+      }));
+      db.close();db=null;store=new window.__abeleTest.NodeClientStore(namespace);
+      await store.transaction(()=>{});
+      const retained=await store.read(state=>Object.keys(state.artifactData).length);
+      const after=await measure(210000,()=>store.transaction(()=>{}));
+      return JSON.stringify({artifactBytes:JSON.stringify(artifactData).length,retained,before,after});
+    } finally {db?.close();store?.close();await wait(50);await req(indexedDB.deleteDatabase(name))}
+  })()`,
+        270000
+      )
+    ) as {
+      retained: number
+      before: { writes: number }
+      after: { writes: number; artifactReads: number }
+    }
+    console.log('NODE_ARTIFACT_IDLE ' + JSON.stringify(report))
+    expect(report.retained).toBe(160)
+    expect(report.before.writes).toBeGreaterThan(0)
+    expect(report.after.writes).toBe(0)
+    expect(report.after.artifactReads).toBe(0)
+  },
+  300000
+)

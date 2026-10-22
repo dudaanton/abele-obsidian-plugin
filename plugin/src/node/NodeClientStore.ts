@@ -8,6 +8,7 @@ import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
 import { ManagerOperationSchema, type ManagerOperation } from './NodeManagerController'
 import { ClientJournal } from './clientJournal'
+import { ClientArtifacts } from './clientArtifacts'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
 
@@ -124,8 +125,15 @@ const StateSchema = z
 
 /** Everything but the streamed journal and caches: what must reach the disk before it counts. */
 function intentOf(state: NodeClientState): string {
-  const { events: _events, cursors: _cursors, artifactData: _artifacts, ...rest } = state
-  return JSON.stringify(rest)
+  return JSON.stringify(metadataOf(state, ['cursors']))
+}
+
+function metadataOf(state: NodeClientState, omit: string[] = []) {
+  return Object.fromEntries(
+    Object.keys(state)
+      .filter((key) => !['events', 'artifactData', ...omit].includes(key))
+      .map((key) => [key, state[key as keyof NodeClientState]])
+  )
 }
 
 function readState(raw: unknown): NodeClientState {
@@ -172,6 +180,7 @@ export function readStore<T>(store: ClientStore, look: (state: NodeClientState) 
 export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
   private readonly journal = new ClientJournal()
+  private readonly artifacts = new ClientArtifacts()
   constructor(
     private readonly namespace: string,
     private readonly factory: IDBFactory = indexedDB
@@ -222,8 +231,10 @@ export class NodeClientStore implements ClientStore {
       let pending = true
       let finish: (() => void) | undefined
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
+      let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
       tx.oncomplete = () => {
         journal?.committed()
+        artifacts?.committed()
         if (!intent) return resolve(result)
         // A strict commit after it puts this one on disk too: transactions commit in order.
         let flush: IDBTransaction
@@ -278,7 +289,11 @@ export class NodeClientStore implements ClientStore {
         void (async () => {
           try {
             const state = readState(request.result)
-            journal = await this.journal.load(tx, state)
+            const metadataBefore = JSON.stringify(metadataOf(request.result ?? state))
+            ;[journal, artifacts] = await Promise.all([
+              this.journal.load(tx, state),
+              this.artifacts.load(tx, state),
+            ])
             const before = intentOf(state)
             const executionsBefore = JSON.stringify(state.obsidianExecutions)
             const submitted = state.outbox.slice()
@@ -319,7 +334,14 @@ export class NodeClientStore implements ClientStore {
             // inactive even with pending requests. Commit in the next count success handler.
             finish = () => {
               journal!.save()
-              store.put({ ...state, events: {} }, 'state')
+              artifacts!.save()
+              const metadata = metadataOf(state)
+              if (
+                request.result === undefined ||
+                JSON.stringify(metadata) !== metadataBefore ||
+                request.result?.artifactData
+              )
+                store.put({ ...metadata, events: {} }, 'state')
             }
           } catch (error) {
             failure = error
@@ -338,11 +360,15 @@ export class NodeClientStore implements ClientStore {
       const request = tx.objectStore('client').get('state')
       let result: T
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
+      let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
       request.onsuccess = () => {
         void (async () => {
           try {
             const state = readState(request.result)
-            journal = await this.journal.load(tx, state)
+            ;[journal, artifacts] = await Promise.all([
+              this.journal.load(tx, state),
+              this.artifacts.load(tx, state),
+            ])
             result = look(state)
           } catch (error) {
             reject(error instanceof Error ? error : new Error(String(error)))
@@ -352,6 +378,7 @@ export class NodeClientStore implements ClientStore {
       }
       tx.oncomplete = () => {
         journal?.committed()
+        artifacts?.committed()
         resolve(result)
       }
       tx.onerror = () => reject(tx.error ?? new Error('Node store read failed'))

@@ -227,6 +227,11 @@ guards. Credential retirement clears them. No persistent private-source cache is
 
 ## Node path views (device-local)
 
+The node client keeps replaceable artifact payloads separately from client metadata in its
+device-local database. Idle metadata reads do not clone those payloads or rewrite unchanged
+state. Delegated developers also retain an owner-stop fence there: controller follow-ups
+are refused until the owner submits a new message directly in the child chat.
+
 Disconnecting a device revokes its own node credential before removing the local registration
 when the node advertises device disconnection. Other devices are unaffected. An older or
 unreachable node offers explicitly disclosed local removal instead; its credential remains on

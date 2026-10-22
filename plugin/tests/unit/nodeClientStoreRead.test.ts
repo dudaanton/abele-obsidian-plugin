@@ -7,6 +7,42 @@ import { NodeEventSchema } from '@abele/node-protocol'
 import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
 
+it('keeps artifact payloads out of idle metadata reads and skips unchanged writes', async () => {
+  const factory = new IDBFactory()
+  const store = new NodeClientStore('sample-artifact-idle', factory)
+  const payload = { text: 'sample payload '.repeat(10000) }
+  await store.transaction((state) => {
+    state.artifactData = { sample: payload }
+  })
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+  try {
+    await store.transaction(() => {})
+    expect(put).not.toHaveBeenCalled()
+    expect(get.mock.calls.some(([key]) => key === 'artifacts')).toBe(false)
+    const db = await (store as unknown as { open(): Promise<IDBDatabase> }).open()
+    const raw = await new Promise<unknown>((resolve) => {
+      const request = db.transaction('client').objectStore('client').get('state')
+      request.onsuccess = () => resolve(request.result)
+    })
+    expect(raw).not.toHaveProperty('artifactData')
+    const second = new NodeClientStore('sample-artifact-idle', factory)
+    try {
+      expect(await second.read((state) => state.artifactData?.sample)).toEqual(payload)
+      await second.transaction((state) => {
+        state.artifactData!.sample = { text: 'changed' }
+      })
+      expect(await store.read((state) => state.artifactData?.sample)).toEqual({ text: 'changed' })
+    } finally {
+      second.close()
+    }
+  } finally {
+    get.mockRestore()
+    put.mockRestore()
+    store.close()
+  }
+})
+
 it('uses protocol-valid synthetic events for the idle measurement', () => {
   for (const event of idleStoreJournal(3)) expect(() => NodeEventSchema.parse(event)).not.toThrow()
 })
