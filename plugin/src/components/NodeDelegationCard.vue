@@ -235,7 +235,7 @@ const emit = defineEmits<{
   margin-block: var(--size-4-2);
   overflow-wrap: anywhere;
 }
-.abele-node-delegation > :deep(.setting-item) {
+.abele-node-delegation > :deep(.setting-item.abele-obsidian-setting) {
   padding: 0;
   margin: 0;
   border: 0;

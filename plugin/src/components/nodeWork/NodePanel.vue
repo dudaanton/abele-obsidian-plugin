@@ -156,16 +156,6 @@
         <NodeErrorText :error="error" />
         <slot name="error-action" />
       </div>
-      <div
-        v-if="reconnecting"
-        data-connection-status
-        class="abele-node-panel__connection-status"
-        role="status"
-        :title="t('streamB.nodeReconnectingLine')"
-      >
-        <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
-        <span>{{ t('streamB.nodeReconnectingLine') }}</span>
-      </div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
           {{ t('streamBMeta.f7d3ed8268', { p0: String(node.name) }) }}
@@ -182,6 +172,17 @@
         </div>
       </div>
       <slot v-else />
+      <div v-if="reconnecting" class="abele-node-panel__status-anchor">
+        <div
+          data-connection-status
+          class="abele-node-panel__connection-status"
+          role="status"
+          :title="t('streamB.nodeReconnectingLine')"
+        >
+          <StatusDot tone="orange" :label="t('streamB.nodeReconnectingLine')" />
+          <span>{{ t('streamB.nodeReconnectingLine') }}</span>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -378,7 +379,14 @@ body.is-phone .abele-node-panel__link {
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
 }
-// A transient status overlays the lower edge; it never changes the tree's geometry.
+// A zero-height sticky anchor follows the host scrollport, including a phone drawer.
+// The line overlays its lower edge and never changes the tree's geometry.
+.abele-node-panel__status-anchor {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 0;
+  z-index: 1;
+}
 .abele-node-panel__connection-status {
   position: absolute;
   inset-inline: var(--size-4-2);
@@ -388,7 +396,7 @@ body.is-phone .abele-node-panel__link {
   align-items: center;
   gap: var(--size-4-1);
   color: var(--text-muted);
-  background: var(--background-secondary);
+  background: var(--mobile-sidebar-background, var(--background-secondary));
   font-size: var(--font-ui-smaller);
   pointer-events: none;
   > span:last-child {

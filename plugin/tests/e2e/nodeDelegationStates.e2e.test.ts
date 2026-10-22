@@ -71,6 +71,8 @@ const probe = (device: string) =>
     await until(() => nodePanel.root().textContent.includes('No answer from the node'));
     const duringTop = nodePanel.root().querySelector('.abele-node-place').getBoundingClientRect().top;
     seen['quiet connection status'] = !!nodePanel.root().querySelector('[data-connection-status] .abele-status-dot_orange');
+    const statusBox = nodePanel.root().querySelector('[data-connection-status]').getBoundingClientRect();
+    seen['status visible'] = statusBox.height > 0 && statusBox.top >= 0 && statusBox.bottom <= innerHeight;
     await shot('reconnecting');
     await model.refreshCurrent();
     await until(() => !nodePanel.root().textContent.includes('No answer from the node'));
@@ -82,11 +84,31 @@ const probe = (device: string) =>
   return JSON.stringify(seen);
 })()`)
 
+const expectedStates = Object.fromEntries(
+  [
+    'refused',
+    'refused spacing',
+    'refused dot',
+    'lost',
+    'lost spacing',
+    'lost label',
+    'completed',
+    'completed spacing',
+    'confirm-all',
+    'inherit',
+    'allow-all',
+    'quiet connection status',
+    'status visible',
+    'recovered',
+    'stable tree',
+  ].map((key) => [key, true])
+)
+
 it('shows refusal, lost-worker recovery and the selected provider mode on desktop', () => {
-  expect(Object.values(probe('desktop'))).toEqual(Array(14).fill(true))
+  expect(probe('desktop')).toEqual(expectedStates)
 }, 180000)
 
 it('shows the same states in the phone layout', async () => {
   const result = await withEmulatedPhone(async () => probe('phone'))
-  expect(Object.values(result)).toEqual(Array(14).fill(true))
+  expect(result).toEqual(expectedStates)
 }, 240000)
