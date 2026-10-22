@@ -5,6 +5,65 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import { ChannelError } from '@abele/channel-protocol'
 
+it('replaces the unknown placeholder when SDK reconnect replay recovers the preparation receipt', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  let lost = true
+  f.request.mockImplementation(async (method, params) => {
+    if (method === 'command.context.v1.prepare' && lost) {
+      lost = false
+      throw new ChannelError('outcome_unknown')
+    }
+    return original(method, params)
+  })
+  try {
+    await expect(
+      f.controller.command(
+        'sample-parent',
+        { worktree_id: 'sample-tree', command: 'node --version' },
+        'sample-operation',
+        'ask',
+        'Check the runtime.'
+      )
+    ).rejects.toThrow(/outcome_unknown/)
+    await f.client.flush()
+    const restored = new NodeManagerController(f.client, f.store)
+    const card = (await restored.cards('sample-parent'))[0]
+    expect(card.run.session_id).toBe('sample-stream')
+    expect(card.run.state).toBe('pending_approval')
+    expect(card.prompts).toHaveLength(1)
+    await f.store.transaction((s) => {
+      s.managerOperations!['sample-operation'].notified = true
+    })
+    await restored.restore()
+    expect(await f.store.read((s) => s.managerOperations!['sample-operation'].notified)).toBe(false)
+    const { approval: _approval, ...update } = f.run
+    await f.store.transaction((s) => {
+      s.events['sample-stream'] = [
+        {
+          kind: 'event',
+          node_id: 'sample-node',
+          stream_id: 'sample-stream',
+          actor: { kind: 'node' },
+          at: '2028-01-01T00:00:00Z',
+          type: 'command.updated',
+          seq: 1,
+          data: { ...update, state: 'exited', exit_code: 0 },
+        },
+      ] as never
+    })
+    const wake = vi.fn(() => true)
+    await restored.wakeDelivered(wake)
+    await restored.wakeDelivered(wake)
+    expect(wake).toHaveBeenCalledTimes(1)
+    expect(f.request.mock.calls.some(([method]) => method === 'command.context.v1.execute')).toBe(
+      false
+    )
+  } finally {
+    f.store.close()
+  }
+})
+
 it('stops a local pre-approval refusal even after the node disconnects', async () => {
   const f = fixture(false)
   try {
@@ -128,6 +187,7 @@ function fixture(supported = true) {
   })
   Object.assign(client, { channel: { request } })
   vi.spyOn(client, 'subscribe').mockResolvedValue(undefined as never)
+  vi.spyOn(client, 'head').mockResolvedValue(0)
   return { store, client, request, run, controller: new NodeManagerController(client, store) }
 }
 

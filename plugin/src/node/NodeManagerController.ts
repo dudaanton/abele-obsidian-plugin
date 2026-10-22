@@ -61,6 +61,17 @@ export const ManagerOperationSchema = z
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
+function retainedRun(entry: ManagerOperation, receipt: Run, recover = false): Run {
+  // A durable receipt replaces local transport uncertainty, never a newer node status.
+  if (entry.run?.session_id === 'unsubmitted-command') {
+    if (recover) {
+      entry.run = receipt
+      entry.notified = false
+    }
+    return receipt
+  }
+  return entry.run ?? receipt
+}
 export type ManagerMethod = 'command.v1.run' | 'command.v1.cancel' | 'git.v1.integrate'
 const Description = z.object({
   capabilities: z.object({ capabilities: z.record(z.string(), z.object({ status: z.string() })) }),
@@ -179,7 +190,7 @@ export class NodeManagerController {
       )
       await this.store.transaction((s) => {
         const entry = s.managerOperations?.[operation]
-        if (entry?.run?.session_id === 'unsubmitted-command') entry.run = run
+        if (entry) retainedRun(entry, run, true)
       })
       await this.client
         .subscribe(context.stream_id)
@@ -378,11 +389,16 @@ export class NodeManagerController {
     })
   }
   async wakeDelivered(wake: (parent: string, notice: string) => boolean) {
-    const entries = await this.store.read((s) =>
-      Object.entries(s.managerOperations ?? {}).filter(
+    const entries = await this.store.transaction((s) => {
+      for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
+        if (entry.run?.session_id !== 'unsubmitted-command') continue
+        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        if (receipt.success) retainedRun(entry, receipt.data, true)
+      }
+      return Object.entries(s.managerOperations ?? {}).filter(
         ([, entry]) => !entry.notified && entry.method !== 'command.v1.cancel'
       )
-    )
+    })
     for (const [operation, entry] of entries) {
       const card = (await this.cards(entry.parent)).find((card) => card.operation === operation)
       if (!card || ['pending_approval', 'running'].includes(card.run.state)) continue
@@ -581,6 +597,7 @@ export class NodeManagerController {
           receipt.data.run_id === run &&
           receipt.data.session_id === session
         ) {
+          retainedRun(entry, status, true)
           entry.run = status
           entry.observedSeq = s.cursors[session] ?? 0
         }
@@ -594,7 +611,7 @@ export class NodeManagerController {
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         const receipt = RunSchema.safeParse(s.results[operation]?.result)
         return receipt.success && entry.method !== 'command.v1.cancel'
-          ? [{ parent: entry.parent, run: entry.run ?? receipt.data }]
+          ? [{ parent: entry.parent, run: retainedRun(entry, receipt.data, true) }]
           : []
       })
     )
@@ -625,7 +642,7 @@ export class NodeManagerController {
         if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
         const receipt = RunSchema.safeParse(s.results[operation]?.result)
         if (!receipt.success && !entry.run) return []
-        let run = entry.run ?? (receipt.success ? receipt.data : undefined)!
+        let run = receipt.success ? retainedRun(entry, receipt.data) : entry.run!
         const display = entry.request ?? entry.params
         const events = s.events[run.session_id] ?? []
         for (const event of events) {
