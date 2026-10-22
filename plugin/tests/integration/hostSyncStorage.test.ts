@@ -991,8 +991,8 @@ it.each([undefined, 'sample-owner'])(
       await disk.writeAtomic(row.path, bytes, row.mtime)
       expect(saves).toBe(1)
       await expect(
-        state.transaction(async () => {
-          await state.put(row)
+        state.transaction(async (tx) => {
+          await tx.put(row)
           await disk.recover()
           expect(await journal.currentEntries()).toHaveLength(1)
           throw new Error('sample rollback')
@@ -1030,13 +1030,18 @@ it('retains installed evidence across an SDK rollback and retires it after ledge
   const host = await HostSyncStorage.open(factory, 'sample-vault', storage)
   const state = await IndexedDbStateStore.open(factory, 'sample-ledger')
   const disk = new ObsidianFileSystem(app as never, { storage, ledger: state })
-  state.observeCommittedEntries((entries) => disk.acknowledgeWrites(entries))
   const bytes = new TextEncoder().encode('sample bytes'),
     sha = await sha256(bytes)
   const stage = await disk.beginAtomicWrite('sample.md', 1000, null)
   await stage.append(0, bytes)
   await stage.seal({ size: bytes.length, sha })
   await stage.commit()
+  expect(await stage.installed()).toBe(false)
+  state.observeCommittedEntries(async (entries) => {
+    await disk.acknowledgeWrites(entries)
+    if (entries.some((entry) => entry.path === 'sample.md' && entry.sha === sha))
+      await stage.discard()
+  })
   const row = {
     path: 'sample.md',
     wirePath: 'sample.md',
@@ -1046,16 +1051,22 @@ it('retains installed evidence across an SDK rollback and retires it after ledge
     size: bytes.length,
     mtime: 1000,
   }
-  expect(new WriteJournal(storage).entries()).toMatchObject([{ installed: true }])
+  expect(new WriteJournal(storage).entries()).toMatchObject([
+    { replacementSha: sha, streaming: { sealed: { sha, size: bytes.length } } },
+  ])
   await expect(
-    state.transaction(async () => {
-      await state.put(row)
+    state.transaction(async (tx) => {
+      await tx.put(row)
       await disk.recover()
-      expect(new WriteJournal(storage).entries()).toMatchObject([{ installed: true }])
+      expect(new WriteJournal(storage).entries()).toMatchObject([
+        { replacementSha: sha, streaming: { sealed: { sha, size: bytes.length } } },
+      ])
       throw new Error('rollback')
     })
   ).rejects.toThrow('rollback')
-  expect(new WriteJournal(storage).entries()).toMatchObject([{ installed: true }])
+  expect(new WriteJournal(storage).entries()).toMatchObject([
+    { replacementSha: sha, streaming: { sealed: { sha, size: bytes.length } } },
+  ])
   await state.put(row)
   expect(new WriteJournal(storage).entries()).toEqual([])
   const journal = new WriteJournal(storage)
@@ -1174,8 +1185,10 @@ it('does not recover a live write while its host journal commit is pending', asy
     release = deferred<void>()
   const flush = host.flush.bind(host)
   const blocked = vi.spyOn(host, 'flush').mockImplementation(async () => {
-    entered.resolve()
-    await release.promise
+    if (Reflect.get(host, 'pending').length) {
+      entered.resolve()
+      await release.promise
+    }
     await flush()
   })
   const disk = new ObsidianFileSystem(app as never, { storage })

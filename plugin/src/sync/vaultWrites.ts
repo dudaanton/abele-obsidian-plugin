@@ -87,7 +87,7 @@ export class VaultWriter {
       const entry: JournalEntry = {
         target: path,
         temp,
-        conditionalReceipt: id,
+        ...(receipt ? { conditionalReceipt: id } : {}),
         replacementSha: await signature(bytes),
       }
       const previous = await this.deps.journal.currentEntry(temp)
@@ -120,7 +120,7 @@ export class VaultWriter {
         }
         this.consumed.add(temp)
         this.deps.installed?.(path)
-        if (!receipt) await this.discardReceipt(id)
+        if (!receipt) await this.finishAnonymous(entry)
         return true
       }
       // This is an owned private path, never a public overwrite. Publication remains exclusive.
@@ -157,7 +157,7 @@ export class VaultWriter {
       }
       if (this.deps.native) await this.deps.native.syncPath(path)
       this.deps.installed?.(path)
-      if (!receipt) await this.discardReceipt(id)
+      if (!receipt) await this.finishAnonymous(entry)
       return true
     } catch (error) {
       console.debug('[abele-sync] buffered conditional publication remains pending', path, error)
@@ -165,6 +165,17 @@ export class VaultWriter {
     } finally {
       inFlight.delete(temp)
     }
+  }
+
+  private async finishAnonymous(entry: JournalEntry): Promise<void> {
+    // A legacy buffered pull is acknowledged by the ledger, without an SDK receipt.
+    // Drop only the private hard-link alias; the exclusive public name owns the bytes.
+    if (this.deps.native && (await this.there(entry.temp))) {
+      await this.disk.remove(entry.temp)
+      await this.deps.native.syncPath(entry.temp, true)
+    }
+    this.consumed.delete(entry.temp)
+    await this.finishInstallation(entry)
   }
 
   async installedReceipt(receipt: string, path: string, sha: string): Promise<boolean | undefined> {
