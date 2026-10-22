@@ -67,7 +67,8 @@ describe.skipIf(!available)('diagram startup cost', () => {
         const wait = ms => new Promise(r => setTimeout(r, ms))
         const mark = name => performance.getEntriesByName('abele:' + name).at(-1)?.startTime
         try {
-          await ws.changeLayout({main:{id:'sample-main',type:'split',direction:'vertical',children:[{id:'sample-tabs',type:'tabs',children:[{id:'sample-empty',type:'leaf',state:{type:'empty',state:{}}}]}]},active:'sample-empty'})
+          const side = (id,type) => ({id,type:'split',direction:'horizontal',width:300,children:[{id:id+'-tabs',type:'tabs',children:[{id:id+'-leaf',type:'leaf',state:{type,state:{}}}]}]})
+          await ws.changeLayout({main:{id:'sample-main',type:'split',direction:'vertical',children:[{id:'sample-tabs',type:'tabs',children:[{id:'sample-empty',type:'leaf',state:{type:'empty',state:{}}}]}]},left:side('sample-left','file-explorer'),right:side('sample-right','outline'),active:'sample-empty'})
           for (let round = 0; round < 5; round++) {
             for (const variant of (round % 2 ? ['without-pele','with-pele'] : ['with-pele','without-pele'])) {
               await app.plugins.disablePlugin(id)
@@ -80,6 +81,7 @@ describe.skipIf(!available)('diagram startup cost', () => {
               const start = performance.now()
               await app.plugins.enablePlugin(id)
               const enableMs = performance.now() - start
+              if (!app.plugins.plugins[id] || mark('onload-end') < start) throw Error('Plugin did not finish loading')
               await wait(500)
               await cdp.sendCommand('HeapProfiler.collectGarbage')
               const heap = await cdp.sendCommand('Runtime.getHeapUsage')
