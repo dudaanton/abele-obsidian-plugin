@@ -1,5 +1,10 @@
 import { expect, it, vi } from 'vitest'
-import { NodeConnection } from '@/node/NodeService'
+import { NodeConnection, NodeService } from '@/node/NodeService'
+import { NodePathService } from '@/node/NodePathService'
+import { NodePathModel } from '@/node/NodePathModel'
+import { useVault } from '../helpers/testEnv'
+import { ref } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { ChannelError } from '@abele/channel-protocol'
 import { FrameCodec, LIMITS } from '@abele/channel-protocol'
 import { RecordQueue } from '@abele/channel-client'
@@ -393,5 +398,41 @@ it('clears an old reconnect error when an admitted socket recovers', async () =>
     expect(connection.healthEpoch.value).toBeGreaterThan(0)
   } finally {
     connection.destroy()
+  }
+})
+
+it('retires a panel connection banner after a health probe without reloading the folder', async () => {
+  useVault([])
+  NodePathService.destroyCurrent()
+  const connection = {
+    state: ref('connected'),
+    healthEpoch: ref(0),
+    client: {},
+    connect: async () => {},
+  }
+  const service = vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: ref([{ id: 'sample-registration', expectedNodeId: 'sample-node' }]),
+    connection: () => connection,
+  } as never)
+  const start = vi.spyOn(NodePathModel.prototype, 'start').mockResolvedValue()
+  const reconnect = vi.spyOn(NodePathModel.prototype, 'reconnected').mockResolvedValue()
+  try {
+    const paths = NodePathService.getInstance()
+    const model = paths.model('sample-registration')
+    await paths.ready('sample-registration')
+    model.report(new ChannelError('outcome_unknown', 'No answer from the node. Reconnecting'))
+    ++connection.healthEpoch.value
+    await flushPromises()
+    expect(model.error.value).toBe('')
+    expect(reconnect).not.toHaveBeenCalled()
+    model.report(new Error('Sample action failed'))
+    ++connection.healthEpoch.value
+    await flushPromises()
+    expect(model.error.value).toBe('Sample action failed')
+  } finally {
+    NodePathService.destroyCurrent()
+    reconnect.mockRestore()
+    start.mockRestore()
+    service.mockRestore()
   }
 })
