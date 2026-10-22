@@ -173,6 +173,7 @@ describe('owner folder intents', () => {
         git_common_dir: null,
         trust: 'untrusted',
         use_repository_claude_permissions: false,
+        codex_network_enabled: false,
         created_at: '2025-01-01T00:00:00Z',
       }
       vi.spyOn(client, 'flush').mockImplementation(async () => {
