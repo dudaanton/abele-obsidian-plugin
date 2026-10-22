@@ -14,7 +14,7 @@ const probe = (device: string) =>
   ${NODE_PANEL_FIXTURE}
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const until=async(fn,what)=>{for(let i=0;i<160;i++){if(fn())return;await wait(50)}throw Error(what)};
-  let leaf, original, count=0;
+  let leaf, original, originalBranch, count=0;
   const capture=async(name)=>{
     await wait(400);
     require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-'+name+'.png',
@@ -128,10 +128,43 @@ const probe = (device: string) =>
       else await until(()=>document.querySelector('.abele-node-log')?.textContent.includes(mode==='missing'?'No log files':'No log entries'),'Empty log state missing');
       await capture('log-'+mode);await closeLog();
     }
+    await showFile('git_timeout');
+    app.workspace.leftSplit.expand();
+    const key=JSON.stringify([state.model.current.value.nodeId,state.model.current.value.kind,state.model.current.value.id]);
+    const inspection=state.model.inspections.value[key];
+    originalBranch=state.model.port.branch;
+    state.model.port.branch=async()=>({state:{base:'main',ahead:0,behind:0,unpushed:0},committed:[]});
+    state.model.panelMode.value='changes';state.model.panelBranch.value=undefined;
+    state.model.progress.value={[key]:{state:'reading',count:1240}};
+    state.model.inspections.value={};touch();
+    await until(()=>nodePanel.root().textContent.includes('Loading changes…'),'Initial loading missing');
+    await capture('17-first-load');
+    state.model.inspections.value={[key]:inspection};touch();
+    await until(()=>nodePanel.root().textContent.includes('Updating changes…'),'Updating footer missing');
+    await capture('18-updating');
+    await until(()=>nodePanel.root().textContent.includes('Still reading the files…'),'Slow loading footer missing');
+    await capture('19-slow-loading');
+    const foot=nodePanel.root().querySelector('[data-connection-footer]');
+    [...foot.querySelectorAll('a')].find(link=>link.textContent==='Node log').click();
+    await until(()=>document.querySelector('.abele-node-log'),'Loading log link did not open');await closeLog();
+    state.model.progress.value={};state.model.inspections.value={[key]:{...inspection,changes:[]}};touch();
+    await until(()=>nodePanel.root().querySelector('.abele-file-tree .search-empty-state')?.textContent.trim()==='Nothing changed.','Empty changes missing');
+    const root=nodePanel.root(), place=root.querySelector('.abele-node-place'), bar=root.querySelector('.abele-file-tree__bar');
+    if(parseFloat(getComputedStyle(bar).paddingTop)<12||parseFloat(getComputedStyle(bar).borderTopWidth)!==0)throw Error('Missing spacing after place row or unexpected hairline');
+    const tab=root.querySelector('[role="tab"][aria-label="Changes: none"]');
+    if(!tab||tab.textContent.trim())throw Error('Empty changes tab has a count');
+    const picker=place.querySelector('.abele-node-place__row');picker.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));picker.focus();
+    if(!picker.matches(':focus-visible') && getComputedStyle(picker).boxShadow!=='none')throw Error('Mouse focus left a place ring');
+    picker.blur();
+    await capture('20-no-changes');
+    state.model.panelMode.value='files';touch();
+    await until(()=>root.querySelector('.abele-file-tree [role="tree"] .tree-item-self'),'Files tree missing');
+    if(root.querySelector('.abele-file-tree')?.textContent.includes('Nothing changed.'))throw Error('Changes empty message leaked into files');
+    await capture('20-files');
     return count;
   } finally {
     leaf?.detach();
-    const state=window.__abeleNodePanelFixture;if(state&&original)state.model.openFile=original;
+    const state=window.__abeleNodePanelFixture;if(state&&original)state.model.openFile=original;if(state&&originalBranch)state.model.port.branch=originalBranch;
     await nodePanel.close();
   }
 })()`,
@@ -139,6 +172,6 @@ const probe = (device: string) =>
   )
 
 it('shows the approved node error and log states on desktop and phone', async () => {
-  expect(await probe('desktop')).toBe(23)
-  expect(await withEmulatedPhone(() => probe('phone'))).toBe(23)
+  expect(await probe('desktop')).toBe(28)
+  expect(await withEmulatedPhone(() => probe('phone'))).toBe(28)
 }, 240000)
