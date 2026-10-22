@@ -6,12 +6,13 @@
 </template>
 <script setup lang="ts">
 import type { ActivityChunk, ConnectionEvent } from '@/sync/activityHistory'
+import { activityTime } from '@/sync/activityTime'
 defineProps<{ chunk: ActivityChunk }>()
 const times = new WeakMap<ConnectionEvent, string>()
 function when(event: ConnectionEvent): string {
   let time = times.get(event)
   if (time === undefined) {
-    time = new Date(event.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    time = activityTime(event.at)
     times.set(event, time)
   }
   return time

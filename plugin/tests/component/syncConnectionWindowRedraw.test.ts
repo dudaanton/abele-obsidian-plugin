@@ -5,6 +5,7 @@ import ConnectionWindow from '@/components/sync/ConnectionWindow.vue'
 import ConnectionEvents from '@/components/sync/ConnectionEvents.vue'
 import { historyConnection } from '@/sync/tokenHistory'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import * as activityClock from '@/sync/activityTime'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -44,7 +45,7 @@ it('leaves the recent list alone when only progress moves', async () => {
   vi.useFakeTimers()
   const { ui, id, view, renders } = mountWindow()
   try {
-    const formatted = vi.spyOn(Date.prototype, 'toLocaleTimeString')
+    const formatted = vi.spyOn(activityClock, 'activityTime')
     for (let i = 1; i <= 5; i++) {
       ui.publish(id, pull(i))
       await vi.advanceTimersByTimeAsync(300)
@@ -103,7 +104,7 @@ it('updates only boundary chunks during sustained appends with a full log open',
     for (let i = 0; i < 5000; i++) ui.recordEvent(id, `Uploaded Notes/seed-${i}.md`)
     await vi.advanceTimersByTimeAsync(300)
     const first = view.findAll('.abele-sync-window__events li')[1000].element
-    const formatted = vi.spyOn(Date.prototype, 'toLocaleTimeString')
+    const formatted = vi.spyOn(activityClock, 'activityTime')
     expect(view.findAllComponents({ name: 'ConnectionEventChunk' }).length).toBeGreaterThan(0)
     expect(view.findAllComponents({ name: 'ConnectionEventChunk' }).length).toBeLessThanOrEqual(80)
     const before = renders.chunks
