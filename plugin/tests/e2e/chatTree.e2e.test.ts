@@ -88,7 +88,8 @@ const probe = (label: string) => `(async () => {
     files.push(session.currentChatFile.value)
     service.closedNodeChats.value = [...priorNodes, {reference:{kind:'node-session',nodeId:'sample-tree-node',registrationId:'sample-tree-registration',sessionId:'sample-tree-session',title:'Sample node conversation'},at:1000}]
     await wait(100)
-    document.querySelector('.abele-chat-tree__closed > .tree-item-self').click()
+    const closedBranch = document.querySelector('.abele-chat-tree__closed > .tree-item-self')
+    if (closedBranch.getAttribute('aria-expanded') !== 'true') closedBranch.click()
     const nodeMenu=async()=>{
       const nodeRow = await until(()=>document.querySelector('[data-chat="'+sampleNodeId+'"]'))
       const nodeMore = nodeRow.querySelector('[aria-label="Sample node conversation: more"]')

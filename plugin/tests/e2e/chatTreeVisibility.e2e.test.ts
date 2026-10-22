@@ -129,7 +129,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         action('Rename…')
         await until(() => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]'))
         const editor = () => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]')
-        if (document.getSelection().toString() !== 'Sample filed chat') throw Error('Rename did not select the whole name')
+        if (document.getSelection().toString() !== reopened.chatTitle.value) throw Error('Rename did not select the whole name')
         if (chatRow().querySelector('time, .tree-item-flair-outer')) throw Error('Rename kept row codes or actions')
         await shot('row-rename')
         editor().textContent = 'Manually chosen sample'

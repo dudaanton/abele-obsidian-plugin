@@ -156,6 +156,9 @@ it('opens the closed node chat menu from its phone action without opening the ch
   try {
     await view.get('.abele-chat-tree__closed > .tree-item-self').trigger('click')
     await view.get('[aria-label="Sample node: more"]').trigger('click')
+    expect(
+      view.get('.abele-chat-tree__closed > .tree-item-self').attributes('aria-expanded')
+    ).toBe('true')
     expect(shown).toHaveBeenCalledTimes(1)
     const menu = shown.mock.contexts.at(-1) as Menu
     expect(menu.items.map((item) => item.title).filter(Boolean)).toEqual([
