@@ -12,6 +12,7 @@ import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { TFile } from 'obsidian'
 import { NodeService } from '@/node/NodeService'
 import * as dialogs from '@/components/obsidian/dialogs'
+import { RunStorage } from '@/ai/RunStorage'
 
 it('records explicitly reopening the selected chat as a new reveal request', () => {
   useVault([])
@@ -32,6 +33,33 @@ it('does not request a reveal for restored or fallback selections', () => {
   const selected = tree.selectionVersion.value
   service.activeTabId.value = first
   expect(tree.selectionVersion.value).toBe(selected)
+})
+
+it('does not replay a helper reveal when a fallback tab becomes active', async () => {
+  const parent = service.createTab()
+  const tree = service.tree
+  const load = vi.spyOn(RunStorage.getInstance(), 'load').mockResolvedValue({
+    type: 'abele-run',
+    runId: 'sample-fold-run',
+    agentId: 'sample-agent',
+    agentName: 'Sample helper',
+    parentChat: parent,
+    parentToolCallId: 'sample-call',
+    task: 'Sample task',
+    created: '2099-01-01T00:00:00Z',
+    status: 'done',
+    depth: 1,
+    branches: [],
+  })
+  try {
+    await service.openRun('sample-fold-run')
+    service.switchTab('run:sample-fold-run')
+    const selected = tree.selectionVersion.value
+    service.activeTabId.value = parent
+    expect(tree.selectionVersion.value).toBe(selected)
+  } finally {
+    load.mockRestore()
+  }
 })
 
 it('shows times for loaded, unloaded and closed chats without loading their sessions', () => {

@@ -1099,6 +1099,7 @@ export class ChatService {
   }
 
   private switchTabNow(tabId: string): void {
+    if (this.runTabs.has(tabId)) this.tabSelectionRevision++
     if (
       this.activeTabId.value === tabId &&
       (this.runTabs.has(tabId) || this.sessions.has(tabId) || this.nodeSessions.has(tabId)) &&
@@ -1106,7 +1107,6 @@ export class ChatService {
     )
       this.chatTree.requestReveal()
     if (this.runTabs.has(tabId)) {
-      this.tabSelectionRevision++
       this.activeTabId.value = tabId
       return
     }
