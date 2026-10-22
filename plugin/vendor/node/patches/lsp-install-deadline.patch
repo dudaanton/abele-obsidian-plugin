@@ -1,5 +1,10 @@
 --- a/packages/channel-client/src/index.ts
 +++ b/packages/channel-client/src/index.ts
-@@ -276 +276 @@
--      const ms = /^(project|workspace|review)\./.test(method) ? 30000 : 5000
-+      const ms = method === 'lsp.v1.install' ? 600000 : /^(project|workspace|review)\./.test(method) ? 30000 : 5000
+@@ -277,6 +277,7 @@
+         ? Number((params as { timeout_ms?: number } | null)?.timeout_ms ?? 60000)
+         : 0
+       const ms =
++        method === 'lsp.v1.install' ? 600000 :
+         longPoll > 0 && Number.isFinite(longPoll)
+           ? Math.max(5000, Math.min(60000, longPoll) + 5000)
+           : /^(project|workspace|review)\./.test(method)

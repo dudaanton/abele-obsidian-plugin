@@ -1,0 +1,24 @@
+--- a/packages/node-client/src/index.ts
++++ b/packages/node-client/src/index.ts
+@@ -203,7 +203,7 @@
+   get connected() {
+     return !!this.channel
+   }
+-  async connect() {
++  async connect(afterAdmission?: () => Promise<void>) {
+     await this.disconnect()
+     const stored = await this.store.transaction((s) => s.node_id)
+     if (stored && this.target.expected_node_id && stored !== this.target.expected_node_id)
+@@ -227,6 +227,12 @@
+     }
+     this.attach(channel)
+     this.channel!.start()
++    try {
++      await afterAdmission?.()
++    } catch (error) {
++      await this.disconnect()
++      throw error
++    }
+     this.debugger.reconnected()
+     const streams = await this.store.transaction((s) => Object.keys(s.cursors))
+     for (const stream of streams) await this.subscribe(stream)
