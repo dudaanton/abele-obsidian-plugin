@@ -882,15 +882,24 @@ export class ConditionalFiles {
         console.debug('[abele-sync] checked operation refused after lease expiry', op.path)
         return false
       }
-      if (recorded) await operation.restore(victim, op.path)
-      if (
-        (error as { code?: string })?.code === 'EEXIST' ||
-        /^(EEXIST\b|File already exists|Destination file already exists)/.test(
-          (error as Error)?.message ?? ''
+      try {
+        if (recorded) await operation.restore(victim, op.path)
+        if (
+          (error as { code?: string })?.code === 'EEXIST' ||
+          /^(EEXIST\b|File already exists|Destination file already exists)/.test(
+            (error as Error)?.message ?? ''
+          )
+        ) {
+          if (recorded) await operation.archive(folder, id, false)
+          return false
+        }
+      } catch (cleanupError) {
+        if (
+          cleanupError instanceof EngineError &&
+          Reflect.get(cleanupError, 'leaseExpired') === true
         )
-      ) {
-        if (recorded) await operation.archive(folder, id, false)
-        return false
+          return false
+        throw cleanupError
       }
       throw error
     } finally {

@@ -9,6 +9,38 @@ import { deferred } from '../helpers/deferred'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
 
+it('refuses quietly when a failed capture reaches the deadline during restoration', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+    const previous = app.vault.adapter.rename
+    app.vault.adapter.rename = async function (...args) {
+      await previous.apply(this, args)
+      if (args[1].endsWith('/victim')) throw new Error('capture acknowledgement failed')
+      if (args[1] === 'sample.bin')
+        await app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer)
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    const operation = disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+      effect: { kind: 'remove' },
+    })
+    const result = operation.then(
+      (value) => value,
+      (error: unknown) => error
+    )
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await result).toBe(false)
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+    expect(loud).toHaveBeenCalledOnce()
+  } finally {
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it('refuses a stalled publication at the lease deadline and preserves a later acknowledgement', async () => {
   vi.useFakeTimers()
   const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
