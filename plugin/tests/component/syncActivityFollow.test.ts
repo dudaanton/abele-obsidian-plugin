@@ -121,3 +121,44 @@ it.each([1200, 390])(
     }
   }
 )
+
+it('aligns the oldest surviving phone row to the top when a tall anchor expires', async () => {
+  const host = document.createElement('div')
+  host.className = 'abele-modal__body'
+  document.body.append(host)
+  const history = new ActivityHistory(
+    Array.from({ length: 5000 }, (_, i) => ({ at: i, text: `Uploaded sample-${i}.md` }))
+  )
+  Object.defineProperties(host, {
+    clientHeight: { get: () => 100 },
+    scrollHeight: { get: () => (history.revision === 5000 ? 200 + 4999 * 30 : 5000 * 30) },
+  })
+  const rect = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      if (this.tagName !== 'LI') return new DOMRect(0, 0, 390, 100)
+      const id = Number(this.dataset.activityId)
+      const first = history.revision - history.length
+      const top = first === 0 ? (id === 0 ? 0 : 200 + (id - 1) * 30) : (id - first) * 30
+      return new DOMRect(0, top - host.scrollTop, 390, id === 0 ? 200 : 30)
+    })
+  const view = mount(ConnectionEvents, {
+    props: { events: history, revision: history.revision },
+    attachTo: host,
+  })
+  try {
+    host.scrollTop = 150
+    host.dispatchEvent(new Event('scroll'))
+    expect(host.querySelector('li')!.getBoundingClientRect().top).toBe(-150)
+    history.append({ at: 5000, text: 'Uploaded sample-5000.md' })
+    await view.setProps({ revision: history.revision })
+    const oldest = host.querySelector('li')!
+    expect(oldest.dataset.activityId).toBe('1')
+    expect(oldest.getBoundingClientRect().height).toBe(30)
+    expect(oldest.getBoundingClientRect().top).toBe(0)
+  } finally {
+    view.unmount()
+    rect.mockRestore()
+    host.remove()
+  }
+})

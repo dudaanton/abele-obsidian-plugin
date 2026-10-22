@@ -77,18 +77,20 @@ watch(
       if (following) parent.scrollTop = parent.scrollHeight
       else if (anchor) {
         // Stable row ids survive chunk-boundary changes. If the reader's entry itself
-        // expired, keep the oldest remaining entry at the same viewport offset.
-        const row = anchor.row.isConnected
+        // expired, show the oldest remaining entry from its start: the old negative
+        // offset may be taller than the entire replacement row.
+        const retained = anchor.row.isConnected
           ? anchor.row
-          : (list.value?.querySelector<HTMLElement>(`[data-activity-id="${anchor.id}"]`) ??
-            (list.value?.firstElementChild as HTMLElement | undefined))
+          : list.value?.querySelector<HTMLElement>(`[data-activity-id="${anchor.id}"]`)
+        const row = retained ?? (list.value?.firstElementChild as HTMLElement | undefined)
+        const offset = retained ? anchor.offset : 0
         if (row) {
           parent.scrollTop +=
             row.getBoundingClientRect().top -
             parent.getBoundingClientRect().top -
             parent.clientTop -
-            anchor.offset
-          anchor = { row, id: row.dataset.activityId, offset: anchor.offset }
+            offset
+          anchor = { row, id: row.dataset.activityId, offset }
         }
       } else parent.scrollTop = position
       position = parent.scrollTop
