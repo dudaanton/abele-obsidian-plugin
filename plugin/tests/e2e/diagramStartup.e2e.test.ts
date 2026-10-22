@@ -65,6 +65,18 @@ describe.skipIf(!available)('diagram startup cost', () => {
         const attached = cdp.isAttached()
         if (!attached) cdp.attach('1.3')
         const wait = ms => new Promise(r => setTimeout(r, ms))
+        const settle = () => new Promise(resolve => {
+          const start = performance.now()
+          let previous = start, lastBusy = start
+          const tick = () => {
+            const now = performance.now()
+            if (now - previous > 50) lastBusy = now
+            previous = now
+            if (now - lastBusy >= 500 || now - start >= 10000) resolve()
+            else setTimeout(tick, 20)
+          }
+          tick()
+        })
         const mark = name => performance.getEntriesByName('abele:' + name).at(-1)?.startTime
         try {
           const side = (id,type) => ({id,type:'split',direction:'horizontal',width:300,children:[{id:id+'-tabs',type:'tabs',children:[{id:id+'-leaf',type:'leaf',state:{type,state:{}}}]}]})
@@ -82,10 +94,10 @@ describe.skipIf(!available)('diagram startup cost', () => {
               await app.plugins.enablePlugin(id)
               const enableMs = performance.now() - start
               if (!app.plugins.plugins[id] || mark('onload-end') < start) throw Error('Plugin did not finish loading')
-              await wait(500)
+              await settle()
               await cdp.sendCommand('HeapProfiler.collectGarbage')
               const heap = await cdp.sendCommand('Runtime.getHeapUsage')
-              samples.push({variant, round, modulesMs:mark('eval-end')-mark('eval-start'),onloadMs:mark('onload-end')-mark('onload-start'),enableMs,heapBytes:heap.usedSize,heapBeforeBytes:before.usedSize,heapDeltaBytes:heap.usedSize-before.usedSize})
+              samples.push({variant, round, modulesMs:mark('eval-end')-mark('eval-start'),preOnloadMs:mark('onload-start')-mark('eval-start'),readCompileMs:mark('eval-start')-start,onloadMs:mark('onload-end')-mark('onload-start'),enableMs,heapBytes:heap.usedSize,heapBeforeBytes:before.usedSize,heapDeltaBytes:heap.usedSize-before.usedSize})
             }
           }
           return {samples,bytes}

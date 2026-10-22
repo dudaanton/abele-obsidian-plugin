@@ -100,6 +100,79 @@ const reload = async (how: string): Promise<void> => {
   if (!onPhone()) await reloadApp(how)
 }
 
+function diagramStateCases(phoneLayout: boolean): void {
+  it.each([
+    ['flowchart', 'flowchart LR\n A[Draft] --> B[Done]'],
+    ['sequence', 'sequenceDiagram\n Alice->>Bob: Hello'],
+    ['gantt', 'gantt\n dateFormat YYYY-MM-DD\n section Work\n Draft :2026-01-01, 3d'],
+    ['xy', 'xychart-beta\n x-axis [Jan, Feb]\n bar [3, 6]'],
+    ['error', 'flowchart LR\n A[broken'],
+  ])(
+    'renders pele alias and captures %s in both themes',
+    async (name, source) => {
+      const savedSize = windowSize()
+      const r = evalAsync<{
+        error?: string
+        shots: string[]
+        colours: string[]
+        sourceVisible: boolean
+      }>(
+        `(async () => {
+        ${PRELUDE}
+        const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+        const original = await app.vault.read(file)
+        const config = window.__abeleTest.AbeleConfig.getInstance()
+        const enabled = config.mermaidViewer
+        const theme = { light: document.body.classList.contains('theme-light'), dark: document.body.classList.contains('theme-dark') }
+        const shots = [], colours = []
+        try {
+          config.mermaidViewer = true
+          await app.vault.modify(file, '# Sample diagram\\n\\n' + '\`\`\`pele\\n' + ${JSON.stringify(source)} + '\\n\`\`\`\\n')
+          const leaf = await openNote('preview')
+          for (const width of (${JSON.stringify(phoneLayout)} ? [window.innerWidth] : [1280])) {
+            if (!window.__e2eHost && !${JSON.stringify(phoneLayout)}) require('@electron/remote').getCurrentWindow().setContentSize(width, width === 390 ? 844 : 800)
+            for (const mode of ['light', 'dark']) {
+              document.body.classList.toggle('theme-light', mode === 'light')
+              document.body.classList.toggle('theme-dark', mode === 'dark')
+              await leaf.view.previewMode.rerender(true)
+              const root = leaf.view.containerEl
+              const found = await until(() => root.querySelector(${JSON.stringify(name === 'error' ? '.abele-mermaid__error-text' : `.abele-mermaid__canvas svg.pele-${({ flowchart: 'flowchart', sequence: 'sequence', gantt: 'gantt', xy: 'xychart' } as Record<string, string>)[name]}`)}))
+              if (!found) return { error: 'missing pele state', shots, colours }
+              if (${JSON.stringify(name)} === 'error' && !/Line \\d+, column \\d+/.test(found.textContent)) return { error: 'missing error location', shots, colours }
+              found.scrollIntoView({ block: 'center' })
+              await wait(400)
+              if (${JSON.stringify(name)} !== 'error') colours.push(getComputedStyle(found).color)
+              shots.push(await shoot('pele-' + ${JSON.stringify(name)} + '-' + mode + '-' + ${JSON.stringify(phoneLayout ? 'phone' : 'desktop')} + '-' + width))
+            }
+          }
+          config.mermaidViewer = false
+          await leaf.view.previewMode.rerender(true)
+          const code = await until(() => leaf.view.containerEl.querySelector('pre > code.language-text'))
+          return { shots, colours, sourceVisible: !!code && code.textContent.includes(${JSON.stringify(source)}) && !leaf.view.containerEl.querySelector('svg.pele, .mermaid') }
+        } finally {
+          config.mermaidViewer = enabled
+          document.body.classList.toggle('theme-light', theme.light)
+          document.body.classList.toggle('theme-dark', theme.dark)
+          await app.vault.modify(file, original)
+          const leaf = leafOf()
+          if (leaf) await leaf.view.previewMode.rerender(true)
+        }
+      })()`,
+        120_000
+      )
+      await setWindowSize(...savedSize)
+      expect(r.error).toBeUndefined()
+      expect(r.shots).toHaveLength(2)
+      expect(r.shots.every((shot) => shot.endsWith('.png'))).toBe(true)
+      expect(r.sourceVisible).toBe(true)
+      if (name !== 'error') {
+        expect(r.colours[0]).not.toBe(r.colours[1])
+      }
+    },
+    180_000
+  )
+}
+
 describe.skipIf(!available)('the mermaid viewer', () => {
   let desktop: {
     size: [number, number]
@@ -330,77 +403,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
     expect(result.cursorLine).toBe(result.fenceLine)
   })
 
-  it.each([
-    ['flowchart', 'flowchart LR\n A[Draft] --> B[Done]'],
-    ['sequence', 'sequenceDiagram\n Alice->>Bob: Hello'],
-    ['gantt', 'gantt\n dateFormat YYYY-MM-DD\n section Work\n Draft :2026-01-01, 3d'],
-    ['xy', 'xychart-beta\n x-axis [Jan, Feb]\n bar [3, 6]'],
-    ['error', 'flowchart LR\n A[broken'],
-  ])(
-    'renders pele alias and captures %s in both themes and sizes',
-    async (name, source) => {
-      const savedSize = windowSize()
-      const r = evalAsync<{
-        error?: string
-        shots: string[]
-        colours: string[]
-        sourceVisible: boolean
-      }>(
-        `(async () => {
-        ${PRELUDE}
-        const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
-        const original = await app.vault.read(file)
-        const config = window.__abeleTest.AbeleConfig.getInstance()
-        const enabled = config.mermaidViewer
-        const theme = { light: document.body.classList.contains('theme-light'), dark: document.body.classList.contains('theme-dark') }
-        const shots = [], colours = []
-        try {
-          config.mermaidViewer = true
-          await app.vault.modify(file, '# Sample diagram\\n\\n' + '\`\`\`pele\\n' + ${JSON.stringify(source)} + '\\n\`\`\`\\n')
-          const leaf = await openNote('preview')
-          for (const width of (window.__e2eHost ? [window.innerWidth] : [1280, 390])) {
-            if (!window.__e2eHost) require('@electron/remote').getCurrentWindow().setContentSize(width, width === 390 ? 844 : 800)
-            for (const mode of ['light', 'dark']) {
-              document.body.classList.toggle('theme-light', mode === 'light')
-              document.body.classList.toggle('theme-dark', mode === 'dark')
-              await leaf.view.previewMode.rerender(true)
-              const root = leaf.view.containerEl
-              const found = await until(() => root.querySelector(${JSON.stringify(name === 'error' ? '.abele-mermaid__error-text' : '.abele-mermaid__canvas svg.pele')}))
-              if (!found) return { error: 'missing pele state', shots, colours }
-              if (${JSON.stringify(name)} === 'error' && !/Line \\d+, column \\d+/.test(found.textContent)) return { error: 'missing error location', shots, colours }
-              found.scrollIntoView({ block: 'center' })
-              await wait(400)
-              if (${JSON.stringify(name)} !== 'error') colours.push(getComputedStyle(found).color)
-              shots.push(await shoot('pele-' + ${JSON.stringify(name)} + '-' + mode + '-' + width))
-            }
-          }
-          config.mermaidViewer = false
-          await leaf.view.previewMode.rerender(true)
-          const code = await until(() => leaf.view.containerEl.querySelector('pre > code.language-text'))
-          return { shots, colours, sourceVisible: !!code && code.textContent.includes(${JSON.stringify(source)}) && !leaf.view.containerEl.querySelector('svg.pele, .mermaid') }
-        } finally {
-          config.mermaidViewer = enabled
-          document.body.classList.toggle('theme-light', theme.light)
-          document.body.classList.toggle('theme-dark', theme.dark)
-          await app.vault.modify(file, original)
-          const leaf = leafOf()
-          if (leaf) await leaf.view.previewMode.rerender(true)
-        }
-      })()`,
-        120_000
-      )
-      await setWindowSize(...savedSize)
-      expect(r.error).toBeUndefined()
-      expect(r.shots).toHaveLength(onPhone() ? 2 : 4)
-      expect(r.shots.every((shot) => shot.endsWith('.png'))).toBe(true)
-      expect(r.sourceVisible).toBe(true)
-      if (name !== 'error') {
-        expect(r.colours[0]).not.toBe(r.colours[1])
-        if (!onPhone()) expect(r.colours[2]).not.toBe(r.colours[3])
-      }
-    },
-    180_000
-  )
+  describe.skipIf(onPhone())('desktop diagram states', () => diagramStateCases(false))
 
   describe('on a phone', () => {
     let size: [number, number] = [0, 0]
@@ -471,6 +474,8 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       if (size[0]) await setWindowSize(size[0], size[1])
       await reload('app.emulateMobile(false)')
     }, 180_000)
+
+    diagramStateCases(true)
 
     it('fits the screen and nothing scrolls sideways', () => {
       expect(phone.error).toBeUndefined()
