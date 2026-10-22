@@ -29,7 +29,7 @@ import Button from '@/components/obsidian/Button.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 
-it.each(['network', 'staging', 'trusted'])(
+it.each(['network', 'network shutdown', 'staging', 'trusted'])(
   'installs an approved candidate during a blocked first pull without completing the pull (%s)',
   async (blockedAt) => {
     const fixture = tokenUiFixture(),
@@ -38,12 +38,17 @@ it.each(['network', 'staging', 'trusted'])(
     const send = wire.fetch.getMockImplementation()!
     let downloading = false
     let release!: () => void
+    // Restoring connectivity releases restarted requests too, even if they begin
+    // after a host-task yield. A per-request resolver can release an aborted read.
+    const network = new Promise<void>((resolve) => {
+      release = resolve
+    })
     wire.fetch.mockImplementation(async (input, init) => {
       const url = new URL(String(input))
       if (url.pathname === '/v2/manifest' && url.searchParams.has('next')) {
         downloading = true
         await new Promise<void>((resolve, reject) => {
-          release = resolve
+          void network.then(resolve)
           init?.signal?.addEventListener(
             'abort',
             () => reject(new DOMException('Cancelled', 'AbortError')),
@@ -127,6 +132,19 @@ it.each(['network', 'staging', 'trusted'])(
         expect(view!.get('[role=status]').text()).toBe('Approved and installed.')
       )
       expect(installCall).toHaveBeenCalledTimes(1)
+      if (blockedAt === 'network shutdown') {
+        await vi.waitFor(() =>
+          expect(
+            wire.fetch.mock.calls.filter(([input]) => {
+              const url = new URL(String(input))
+              return url.pathname === '/v2/manifest' && url.searchParams.has('next')
+            })
+          ).toHaveLength(2)
+        )
+        // The second read is still blocked: shutdown must abort it without a reply.
+        await one.runtime.close()
+        await pull
+      }
     } finally {
       install()
       finishStaging()
