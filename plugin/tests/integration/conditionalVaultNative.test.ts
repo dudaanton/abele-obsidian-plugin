@@ -9,6 +9,24 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+it('retains changed victims in legacy completed records during recovery', async () => {
+  const { root, disk } = await setup()
+  const privateRoot = join(root, '.obsidian/plugins/abele/sync-conditional')
+  const folder = join(privateRoot, 'objects/legacy-completed')
+  await fs.mkdir(folder, { recursive: true })
+  await fs.mkdir(join(privateRoot, 'active'))
+  await fs.writeFile(
+    join(folder, 'intent.json'),
+    JSON.stringify({ path: 'sample.bin', kind: 'remove' })
+  )
+  await fs.writeFile(join(folder, 'victim'), 'late descriptor edit')
+  await fs.writeFile(join(folder, 'complete'), 'true')
+  await fs.writeFile(join(privateRoot, 'active/legacy-completed.json'), '{}')
+  await disk().recoverConditionalFiles()
+  expect(await fs.readFile(join(folder, 'victim'), 'utf8')).toBe('late descriptor edit')
+  expect(await fs.readdir(join(privateRoot, 'active'))).toEqual([])
+  await expect(fs.stat(join(root, 'sample.bin'))).rejects.toMatchObject({ code: 'ENOENT' })
+})
 it('refuses a directory replacing a tracked file before capturing it', async () => {
   const { root, disk } = await setup()
   await fs.mkdir(join(root, 'sample.bin'))
