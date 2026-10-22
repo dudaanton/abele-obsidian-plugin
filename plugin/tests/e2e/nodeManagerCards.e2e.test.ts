@@ -111,7 +111,19 @@ async function inspectCards(label: string) {
         expect(report.text).toContain('Time limit reached while waiting for your answer')
         expect(report.text).toContain('Allow')
       }
-      if (state === 'warning') expect(report.text).toContain('Sample cleanup warning')
+      if (state === 'warning') {
+        const revealed = await evalLong(`(async()=>{
+          const card=document.querySelector('.abele-node-delegation');
+          card.querySelector('.abele-node-delegation__details > .abele-disclosure__control').click();
+          for(let i=0;i<100;i++){
+            const content=card.querySelector('.abele-node-delegation__details > .abele-disclosure__content');
+            if(content)return content.textContent;
+            await new Promise(r=>setTimeout(r,50));
+          }
+          throw Error('The activity disclosure did not reveal its content');
+        })()`)
+        expect(revealed).toContain('Sample cleanup warning')
+      }
       if (state === 'prompt')
         expect(report.text).toContain('npm test -- tests/sample-parser.test.ts')
       expect(report.text).toContain('work/sample-parser-boundaries')
