@@ -6,7 +6,7 @@ export const es = {
   'node.manager.running': 'En ejecución',
   'node.commit.refresh': 'Actualizar',
   'node.manager.contextUpdate':
-    'Actualiza el nodo a 0.4.47 o posterior para ejecutar comandos desde este chat (se requiere command_context_v1).',
+    'Actualiza el nodo a 0.4.47 o posterior para ejecutar comandos desde este chat.',
   'node.manager.notSubmitted': 'El comando no se envió para su ejecución: {reason}',
   'node.manager.permissionChanged':
     'Los permisos de comandos cambiaron. Solicita el comando de nuevo.',
@@ -3763,8 +3763,7 @@ export const es = {
   'node.manager.denied': 'Denegado',
   'node.error.backpressure':
     'La conexión no pudo seguir la salida del nodo. Vuelva a conectarse para recibir los eventos pendientes.',
-  'node.manager.folderMissing':
-    'La carpeta {folder} no se puede usar para este comando en el nodo.',
+  'node.manager.folderMissing': 'Esta carpeta no se puede usar para comandos en el nodo.',
   'node.manager.bypassDisabled':
     'El nodo requiere aprobación porque su modo sin preguntar está desactivado.',
   'node.manager.integrateBypassUpdate':

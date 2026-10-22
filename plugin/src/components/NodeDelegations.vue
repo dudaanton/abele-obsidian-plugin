@@ -141,3 +141,11 @@ const open = (item: (typeof cards.value)[number]) => {
   })
 }
 </script>
+
+<style scoped>
+.abele-node-delegations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+</style>

@@ -72,7 +72,17 @@ async function inspect(label: string) {
         managerCommand: 'node --version',
       },
     ],
-    ['disagreement', { managerJustification: 'Run the tests', managerCommand: 'rm -rf build' }],
+    [
+      'disagreement',
+      { managerJustification: 'Remove generated build output.', managerCommand: 'rm -rf build' },
+    ],
+    [
+      'bypass-integration-fallback',
+      {
+        managerLegacyIntegration: true,
+        managerJustification: 'Integrate the reviewed parser changes.',
+      },
+    ],
   ] as const
   for (const [name, options] of cases) {
     try {
@@ -83,8 +93,9 @@ async function inspect(label: string) {
         await evalLong(`(async()=>{
         for(let i=0;i<100&&!document.querySelector('[data-manager-command]');i++)await new Promise(r=>setTimeout(r,50));
         const card=document.querySelector('.abele-node-manager-run');
-        const command=card.querySelector('[data-manager-command]');
-        return JSON.stringify({command:command.textContent,overflow:card.scrollWidth>card.clientWidth+1,text:card.textContent,justification:card.querySelector('[data-command-justification]')?.textContent,commandWrap:getComputedStyle(command).whiteSpace});
+        const command=card.querySelector('[data-manager-command]'),log=card.querySelector('[role=log]'),stop=card.querySelector('[data-manager-stop] button');
+        await new Promise(r=>setTimeout(r,50));
+        return JSON.stringify({command:command.textContent,overflow:card.scrollWidth>card.clientWidth+1,text:card.textContent,justification:card.querySelector('[data-command-justification]')?.textContent,commandWrap:getComputedStyle(command).whiteSpace,codeBackground:getComputedStyle(command).backgroundColor,logHeight:log?.clientHeight,logFont:log?parseFloat(getComputedStyle(log.querySelector('pre')??log).lineHeight):0,atBottom:log?Math.abs(log.scrollHeight-log.clientHeight-log.scrollTop)<2:true,stopLeft:stop?stop.getBoundingClientRect().left-card.getBoundingClientRect().left:0});
       })()`)
       ) as {
         command: string
@@ -92,11 +103,41 @@ async function inspect(label: string) {
         text: string
         justification?: string
         commandWrap: string
+        codeBackground: string
+        logHeight?: number
+        logFont: number
+        atBottom: boolean
+        stopLeft: number
       }
-      expect(report.command).toBe(options.managerCommand)
+      expect(report.command).toBe(
+        'managerCommand' in options ? options.managerCommand : 'work/sample-parser → main'
+      )
       expect(report.overflow).toBe(false)
+      if (name === 'without')
+        expect(report.codeBackground).not.toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/)
+      if (name === 'running') {
+        expect(report.text).toContain('Running')
+        expect(report.logHeight).toBeLessThanOrEqual(report.logFont * 12 + 2)
+        expect(report.atBottom).toBe(true)
+        expect(report.stopLeft).toBeLessThan(25)
+      }
+      if (name === 'long-justification') {
+        const expanded = JSON.parse(
+          await evalLong(
+            `(async()=>{const b=document.querySelector('[data-command-justification]');b.click();await new Promise(r=>setTimeout(r,50));return JSON.stringify({open:b.getAttribute('aria-expanded'),text:b.textContent})})()`
+          )
+        ) as { open: string; text: string }
+        expect(expanded.open).toBe('true')
+        expect(expanded.text.trim()).toBe(
+          'managerJustification' in options ? options.managerJustification : ''
+        )
+        columnShot(`${shots}/${label}-long-justification-expanded.png`)
+        await evalLong(`document.querySelector('[data-command-justification]').click()`)
+      }
       if (name === 'old-node') expect(report.text).toContain('0.4.47')
       if (name === 'without') expect(report.justification).toBeUndefined()
+      if (name === 'bypass-integration-fallback')
+        expect(report.text).toContain('This node version still asks for integration.')
       columnShot(`${shots}/${label}-${name}.png`)
     } finally {
       await closeCard()
@@ -177,13 +218,13 @@ async function runLive(label: string) {
     const other = JSON.parse(
       await evalLong(
         `(async()=>{${setup}
-      const session=chats.getSession(window.__sampleCommandChat),args={...window.__sampleCommandArgs,argv:['node','-e','process.stdout.write(process.cwd())'],operation_id:crypto.randomUUID()};
+      const session=chats.getSession(window.__sampleCommandChat),args={...window.__sampleCommandArgs,argv:['node','-e','process.stdout.write(process.cwd())'],justification:'Check the command working folder.',operation_id:crypto.randomUUID()};
       session.permissionMode.value='allow-all';const tool=session.getTools().find(t=>t.name==='node_command_run');
       const bypass=JSON.parse((await tool.execute('sample-bypass',args,undefined,{session})).content[0].text);
       let final;for(let i=0;i<200;i++){final=await connection.manager.status(await session.ensureDelegationParentId(),bypass.session_id,bypass.run_id);if(final.state==='exited')break;await new Promise(r=>setTimeout(r,50))}
       session.toolModes.value={...session.toolModes.value,node_command_run:'off'};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
-      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id});
+      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-session-mark')].filter(e=>e.textContent.trim()==='Node activity update').length});
     })()`,
         60000
       )
@@ -195,8 +236,12 @@ async function runLive(label: string) {
       cwd: string
       expectedCwd: string
       reused: boolean
+      gap: number
+      emptyNotices: number
     }
     expect(other.cards).toBe(0)
+    expect(other.gap).toBeGreaterThanOrEqual(12)
+    expect(other.emptyNotices).toBe(0)
     columnShot(`${shots}/${label}-bypass-manager.png`)
     expect(other.mode).toBe('bypass')
     expect(other.approval).toBeNull()
@@ -209,7 +254,7 @@ async function runLive(label: string) {
       const session=chats.getSession(window.__sampleCommandChat);
       session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
       const tool=session.getTools().find(t=>t.name==='node_command_run');
-      let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder'},undefined,{session})}catch(error){reason=error.message}
+      let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder',justification:'Check access to the selected subfolder.'},undefined,{session})}catch(error){reason=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
       const cards=[...document.querySelectorAll('.abele-tool-approval')],runs=[...document.querySelectorAll('.abele-node-manager-run')];
       return JSON.stringify({reason,cards:cards.length,text:runs.at(-1)?.textContent});
@@ -219,9 +264,7 @@ async function runLive(label: string) {
     ) as { reason: string; cards: number; text: string }
     expect(refused.reason).toContain('cwd')
     expect(refused.cards).toBe(0)
-    expect(refused.text).toContain(
-      'The folder sample-missing-folder cannot be used for this command on the node.'
-    )
+    expect(refused.text).toContain("This folder can't be used for commands on the node.")
     expect(refused.text).not.toContain('Waiting for approval')
     columnShot(`${shots}/${label}-live-error.png`)
   } finally {

@@ -6,7 +6,7 @@ export const de = {
   'node.manager.running': 'Wird ausgeführt',
   'node.commit.refresh': 'Aktualisieren',
   'node.manager.contextUpdate':
-    'Aktualisiere den Knoten auf 0.4.47 oder neuer, um Befehle aus diesem Chat auszuführen (command_context_v1 erforderlich).',
+    'Aktualisiere den Knoten auf 0.4.47 oder neuer, um Befehle aus diesem Chat auszuführen.',
   'node.manager.notSubmitted': 'Der Befehl wurde nicht zur Ausführung übermittelt: {reason}',
   'node.manager.permissionChanged':
     'Die Befehlsberechtigungen haben sich geändert. Fordere den Befehl erneut an.',
@@ -3735,7 +3735,7 @@ export const de = {
   'node.error.backpressure':
     'Die Verbindung konnte der Knotenausgabe nicht folgen. Verbinden Sie sich erneut, um aufzuholen.',
   'node.manager.folderMissing':
-    'Der Ordner {folder} kann für diesen Befehl auf dem Knoten nicht verwendet werden.',
+    'Dieser Ordner kann auf dem Knoten nicht für Befehle verwendet werden.',
   'node.manager.bypassDisabled':
     'Der Knoten benötigt eine Bestätigung, da sein Modus ohne Rückfrage deaktiviert ist.',
   'node.manager.integrateBypassUpdate':

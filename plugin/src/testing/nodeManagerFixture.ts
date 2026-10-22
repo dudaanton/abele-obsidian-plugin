@@ -8,6 +8,7 @@ export function nodeManagerFixture(
   presentation?: {
     managerJustification?: string
     managerCommand?: string
+    managerLegacyIntegration?: boolean
     managerOldNode?: boolean
   }
 ): Awaited<ReturnType<NodeManagerController['cards']>>[number] {
@@ -45,9 +46,25 @@ export function nodeManagerFixture(
     }
   }
   if (presentation?.managerCommand !== undefined) {
+    prompt.title = t('node.manager.command')
     prompt.input.context_id = 'sample-context'
     prompt.input.command = presentation.managerCommand
     prompt.input.params = { command: presentation.managerCommand }
+  }
+  if (presentation?.managerLegacyIntegration) {
+    prompt.tool_name = 'git.v1.integrate'
+    prompt.input = {
+      method: 'git.v1.integrate',
+      cwd: '/workspace/sample-project',
+      params: {
+        source_branch: 'work/sample-parser',
+        target_branch: 'main',
+        expected_source_head: 'a'.repeat(40),
+        expected_target_head: 'b'.repeat(40),
+        worktree_id: 'sample-target',
+        source_worktree_id: 'sample-source',
+      },
+    }
   }
   if (presentation?.managerOldNode) {
     state = 'failed'
@@ -70,16 +87,17 @@ export function nodeManagerFixture(
       run_id: 'sample-command',
       prompt_id: prompt.prompt_id,
       session_id: prompt.session_id,
-      method:
-        presentation?.managerCommand === undefined &&
-        ['failed', 'applied', 'outcome_unknown'].includes(state)
+      method: presentation?.managerLegacyIntegration
+        ? 'git.v1.integrate'
+        : presentation?.managerCommand === undefined &&
+            ['failed', 'applied', 'outcome_unknown'].includes(state)
           ? 'git.v1.integrate'
           : 'command.v1.run',
       state,
       stdout:
         presentation?.managerOldNode || ['pending_approval', 'denied'].includes(state)
           ? ''
-          : 'Sample check output\n'.repeat(20),
+          : Array.from({ length: 20 }, (_, index) => `Sample check output ${index + 1}\n`).join(''),
       stderr:
         state === 'failed' && !presentation?.managerOldNode
           ? presentation?.managerCommand === undefined

@@ -6,6 +6,38 @@ import { nodeManagerFixture } from '@/testing/nodeManagerFixture'
 import NodeManagerRunCard from '@/components/NodeManagerRunCard.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { commandLine } from '@/node/commandPresentation'
+import SessionMarkLine from '@/components/nodeSession/SessionMarkLine.vue'
+
+it('hides empty activity markers while retaining meaningful notices', async () => {
+  useVault([])
+  const view = mount(SessionMarkLine, {
+    props: { mark: { kind: 'notice', text: 'Node activity update' } },
+  })
+  expect(view.find('.abele-session-mark').exists()).toBe(false)
+  await view.setProps({ mark: { kind: 'notice', text: 'Sample checks completed.' } })
+  expect(view.text()).toContain('Sample checks completed.')
+  view.unmount()
+})
+
+it('shows running state with an accent dot and readable expandable justification', async () => {
+  useVault([])
+  const card = nodeManagerFixture('running', false, false, {
+    managerCommand: 'npm test',
+    managerJustification: 'Run the selected checks. '.repeat(7),
+  })
+  const view = mount(NodeManagerRunCard, { props: { card } })
+  try {
+    expect(view.text()).toContain('Running')
+    expect(view.find('.abele-status-dot_accent').exists()).toBe(true)
+    await view.get('[data-command-justification]').trigger('click')
+    expect(view.get('[data-command-justification]').attributes('aria-expanded')).toBe('true')
+    await view.get('[data-manager-stop] button').trigger('click')
+    expect(view.emitted('cancel')).toHaveLength(1)
+    expect(view.find('[role="log"]').exists()).toBe(true)
+  } finally {
+    view.unmount()
+  }
+})
 
 it('preserves shell argument boundaries with only necessary quoting', () => {
   expect(commandLine(['node', '-e', 'process.stdout.write(process.cwd())'])).toBe(
@@ -64,7 +96,7 @@ it.each(['pending', 'resolved'] as const)(
   }
 )
 
-it('keeps a local refusal reason readable without a second generic error wrapper', () => {
+it('keeps a local refusal reason readable without a second generic error wrapper', async () => {
   useVault([])
   const view = mount(NodeManagerRunCard, {
     props: {
@@ -77,7 +109,10 @@ it('keeps a local refusal reason readable without a second generic error wrapper
   })
   try {
     expect(view.text()).toContain('Update the node to 0.4.47')
+    expect(view.text()).not.toContain('command_context_v1')
     expect(view.text()).not.toContain('The node could not complete the request.')
+    await view.get('.abele-disclosure__control').trigger('click')
+    expect(view.text()).toContain('command_context_v1')
   } finally {
     view.unmount()
   }
@@ -134,6 +169,7 @@ it('shows finished and failed exit codes in one metadata line', async () => {
   const view = mount(NodeManagerRunCard, { props: { card } })
   try {
     expect(view.text()).toContain('Finished · exit 0')
+    expect(view.find('.abele-status-dot_green').exists()).toBe(true)
     expect(view.find('[data-manager-output]').exists()).toBe(false)
     await view.setProps({ card: { ...card, run: { ...card.run, exit_code: 2 } } })
     expect(view.text()).toContain('Failed · exit 2')

@@ -3,6 +3,7 @@
        (how much it held before and after; what it kept is in the tooltip, the retelling opens on
        a press), it is compacting now, or something it left running woke it. -->
   <div
+    v-if="said && !(mark.kind === 'notice' && said === t('chat.nodeActivityNotice'))"
     class="abele-session-mark"
     :class="[`abele-session-mark_${mark.kind}`, mark.level && `abele-session-mark_${mark.level}`]"
     :role="mark.kind === 'failed' || mark.level === 'error' ? 'alert' : 'note'"

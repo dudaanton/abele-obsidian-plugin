@@ -25,6 +25,7 @@ import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
   delegationCommand?: string | string[]
+  managerLegacyIntegration?: boolean
   managerCodexApproval?: boolean
   managerEscapedCommand?: boolean
   managerRunState?: import('@abele/node-protocol').ManagerRun['state']

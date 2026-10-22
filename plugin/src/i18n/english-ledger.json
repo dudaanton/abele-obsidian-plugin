@@ -27500,7 +27500,7 @@
     ]
   },
   "node.manager.contextUpdate": {
-    "englishHash": "61aeb3d860473fcae15710885a8e8aa47238867f7922c2e4666515c01ae9882a",
+    "englishHash": "a40c23b9bc93ad6249839ae6659bc4120a360049e864ed9435c8c05c660f8258",
     "context": "Node command context capability and pre-execution refusal",
     "reviewedLocales": [
       "ru",
@@ -27530,7 +27530,7 @@
     ]
   },
   "node.manager.folderMissing": {
-    "englishHash": "a4a96aec53534dce0a509535e60c2e9ff2e023558064ccf7ce2183ebfb5ad512",
+    "englishHash": "af70c3c9ce691bb34983dbb8cf0a692302ae2e9c78e1a9ce4c0b51a347a0b624",
     "context": "Node command approval and result metadata",
     "reviewedLocales": [
       "ru",

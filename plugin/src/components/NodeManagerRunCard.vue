@@ -6,12 +6,18 @@
     <template v-if="card.run.state !== 'pending_approval'">
       <div v-if="justification" class="abele-node-manager-run__request">
         <Icon icon="square-terminal" size="xs" :interactive="false" />
-        <span
-          v-if="justification"
-          class="abele-node-manager-run__justification"
+        <Button
+          quiet
+          wrap
+          :text="justification"
+          :tooltip="justification"
           :title="justification"
-          >{{ justification }}</span
-        >
+          class="abele-command-justification"
+          :class="{ 'is-expanded': justificationOpen }"
+          data-command-justification
+          :aria-expanded="justificationOpen"
+          @click="justificationOpen = !justificationOpen"
+        />
       </div>
       <code data-manager-command>{{
         card.argv ? commandLine(card.argv) : card.command || card.title
@@ -27,13 +33,30 @@
       v-if="card.run.state !== 'pending_approval' || card.run.reason"
       class="abele-node-manager-run__status"
     >
-      <StatusDot :tone="failed ? 'red' : 'faint'" :label="resultLabel" />
+      <StatusDot
+        :tone="
+          failed
+            ? 'red'
+            : card.run.state === 'running'
+              ? 'accent'
+              : ['exited', 'applied'].includes(card.run.state)
+                ? 'green'
+                : 'faint'
+        "
+        :label="resultLabel"
+      />
       <MetaLine :facts="[{ key: '0', value: resultLabel }]" />
     </div>
     <Disclosure v-if="failed" v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
       <pre>{{
         JSON.stringify(
-          { command: card.command, argv: card.argv, folder: card.folder, reason: card.run.reason },
+          {
+            command: card.command,
+            argv: card.argv,
+            folder: card.folder,
+            reason: card.run.reason,
+            required_capability: oldNode ? 'command_context_v1' : undefined,
+          },
           null,
           2
         )
@@ -50,13 +73,13 @@
       @answer="(choice, value) => emit('answer', prompt, choice, value)"
       @stop="emit('cancel')"
     />
-    <Button
+    <div
       v-if="['pending_approval', 'running'].includes(card.run.state) && !card.prompts.length"
-      plain
-      :text="t('streamB.stop.cae7d5')"
-      :disabled="disabled"
-      @click="emit('cancel')"
-    />
+      class="abele-node-manager-run__actions"
+      data-manager-stop
+    >
+      <Button :text="t('streamB.stop.cae7d5')" :disabled="disabled" @click="emit('cancel')" />
+    </div>
     <p v-if="card.run.state === 'outcome_unknown'">{{ t('node.error.unknownOutcome') }}</p>
     <ul v-if="card.run.conflicting_files?.length">
       <li v-for="path in card.run.conflicting_files" :key="path">
@@ -74,8 +97,14 @@
       <p v-if="card.run.stdout_truncated || card.run.stderr_truncated">
         {{ t('node.manager.truncated') }}
       </p>
-      <pre>{{ card.run.stdout }}</pre>
-      <pre>{{ card.run.stderr }}</pre>
+      <pre
+        ref="output"
+        class="abele-node-manager-run__output"
+        role="log"
+        aria-live="off"
+        :aria-label="t('node.manager.output')"
+        >{{ [card.run.stdout, card.run.stderr].filter(Boolean).join('\n') }}</pre
+      >
     </Disclosure>
   </component>
 </template>
@@ -83,7 +112,7 @@
 import type { Prompt } from '@abele/node-client'
 import type { NodeManagerController } from '@/node/NodeManagerController'
 import type { ChatMessage } from '@/ai/types'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { nodeErrorWords } from '@/node/errorWords'
 import { t } from '@/i18n'
@@ -104,17 +133,24 @@ const justification = computed(() => {
   const parsed = commandJustification.safeParse(props.card.justification?.slice(0, 200))
   return parsed.success ? parsed.data : ''
 })
+const justificationOpen = ref(false)
 const originalOpen = ref(false)
+const oldNode = computed(
+  () =>
+    props.card.run.reason === t('node.manager.contextUpdate') ||
+    props.card.run.reason?.includes('command_context_v1')
+)
 const failed = computed(
   () =>
     ['failed', 'timed_out'].includes(props.card.run.state) || (props.card.run.exit_code ?? 0) !== 0
 )
 const resultLabel = computed(() => {
   const run = props.card.run
+  if (oldNode.value) return t('node.manager.contextUpdate')
   if (run.reason?.includes('node_bypass_disabled')) return t('node.manager.bypassDisabled')
   if (run.reason && failed.value) {
     if (/unsafe_path|not_found/.test(run.reason) && /cwd/.test(run.reason))
-      return t('node.manager.folderMissing', { folder: commandFolder(props.card.folder ?? '') })
+      return t('node.manager.folderMissing')
     if (run.session_id === 'unsubmitted-command' && !/^[a-z_]+:/.test(run.reason)) return run.reason
     return run.reason.match(/^[a-z_]+:\s*(.+)$/)?.[1] ?? nodeErrorWords(run.reason).split(' (')[0]
   }
@@ -123,6 +159,7 @@ const resultLabel = computed(() => {
     ? t('node.manager.resultExit', { state: label, code: String(run.exit_code) })
     : label
 })
+const output = ref<HTMLElement>()
 const outputOpen = ref(props.card.run.state === 'running')
 watch(
   () => props.card.run.state,
@@ -130,10 +167,20 @@ watch(
     outputOpen.value = state === 'running'
   }
 )
+watch(
+  [() => props.card.run.stdout, () => props.card.run.stderr, outputOpen],
+  async () => {
+    await nextTick()
+    if (output.value) output.value.scrollTop = output.value.scrollHeight
+  },
+  { immediate: true }
+)
 const stateLabel = computed(() => {
   switch (props.card.run.state) {
     case 'pending_approval':
       return t('node.manager.pending')
+    case 'running':
+      return t('streamB.running.f4ccae')
     case 'exited':
       return t('node.manager.exited')
     case 'timed_out':
@@ -200,5 +247,19 @@ pre {
   display: flex;
   align-items: baseline;
   gap: var(--size-4-2);
+}
+</style>
+
+<style scoped>
+.abele-node-manager-run__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+.abele-node-manager-run__output {
+  line-height: var(--line-height-normal);
+  max-height: 12lh;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 </style>

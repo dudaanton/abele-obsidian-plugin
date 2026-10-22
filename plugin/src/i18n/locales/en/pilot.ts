@@ -5,7 +5,7 @@ export const en = {
   'node.manager.running': 'Running',
   'node.commit.refresh': 'Refresh',
   'node.manager.contextUpdate':
-    'Update the node to 0.4.47 or later to run commands from this chat (command_context_v1 is required).',
+    'Update the node to 0.4.47 or later to run commands from this chat.',
   'node.manager.notSubmitted': 'Command was not submitted for execution: {reason}',
   'node.manager.permissionChanged': 'Command permissions changed. Request the command again.',
 
@@ -3589,7 +3589,7 @@ export const en = {
   'node.manager.timedOut': 'Time limit reached',
   'node.manager.denied': 'Denied',
   'node.error.backpressure': "The connection fell behind the node's output. Reconnect to catch up.",
-  'node.manager.folderMissing': 'The folder {folder} cannot be used for this command on the node.',
+  'node.manager.folderMissing': "This folder can't be used for commands on the node.",
   'node.manager.bypassDisabled':
     'The node requires approval because its Without asking mode is disabled.',
   'node.manager.integrateBypassUpdate':

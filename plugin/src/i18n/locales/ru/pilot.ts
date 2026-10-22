@@ -6,7 +6,7 @@ export const ru = {
   'node.manager.running': 'Выполняется',
   'node.commit.refresh': 'Обновить',
   'node.manager.contextUpdate':
-    'Обновите ноду до 0.4.47 или новее, чтобы запускать команды из этого чата (нужен command_context_v1).',
+    'Обновите ноду до 0.4.47 или новее, чтобы запускать команды из этого чата.',
   'node.manager.notSubmitted': 'Команда не передана на выполнение: {reason}',
   'node.manager.permissionChanged': 'Права на команды изменились. Запросите команду заново.',
 
@@ -3762,7 +3762,7 @@ export const ru = {
   'node.manager.denied': 'Отклонено',
   'node.error.backpressure':
     'Соединение не успело получить вывод узла. Переподключитесь, чтобы получить оставшиеся события.',
-  'node.manager.folderMissing': 'Папку {folder} нельзя использовать для этой команды на ноде.',
+  'node.manager.folderMissing': 'Эта папка недоступна для команд на ноде.',
   'node.manager.bypassDisabled': 'Нода требует подтверждение: режим без запросов на ней выключен.',
   'node.manager.integrateBypassUpdate':
     'Эта нода не умеет интегрировать без запросов. Нужно обновление ноды с поддержкой режима владельца; запрос не отправлен.',

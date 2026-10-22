@@ -6,7 +6,7 @@ export const lv = {
   'node.manager.running': 'Darbojas',
   'node.commit.refresh': 'Atjaunot',
   'node.manager.contextUpdate':
-    'Atjauniniet mezglu uz 0.4.47 vai jaunāku versiju, lai palaistu komandas no šīs sarunas (nepieciešams command_context_v1).',
+    'Atjauniniet mezglu uz 0.4.47 vai jaunāku versiju, lai palaistu komandas no šīs sarunas.',
   'node.manager.notSubmitted': 'Komanda netika iesniegta izpildei: {reason}',
   'node.manager.permissionChanged': 'Komandu atļaujas ir mainījušās. Pieprasiet komandu vēlreiz.',
 
@@ -3692,7 +3692,7 @@ export const lv = {
   'node.manager.denied': 'Noraidīts',
   'node.error.backpressure':
     'Savienojums atpalika no mezgla izvades. Izveidojiet savienojumu vēlreiz, lai saņemtu atlikušos notikumus.',
-  'node.manager.folderMissing': 'Mapi {folder} nevar izmantot šai komandai mezglā.',
+  'node.manager.folderMissing': 'Šo mapi nevar izmantot komandām mezglā.',
   'node.manager.bypassDisabled':
     'Mezgls pieprasa apstiprinājumu, jo tā režīms bez jautāšanas ir izslēgts.',
   'node.manager.integrateBypassUpdate':

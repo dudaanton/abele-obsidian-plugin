@@ -13,13 +13,20 @@
         size="xs"
         :interactive="false"
       />
-      <span
-        class="abele-tool-approval__what"
-        :class="{ 'abele-tool-approval__justification': justification }"
-        :title="justification || undefined"
-        :data-command-justification="justification ? '' : undefined"
-        >{{ justification || headerText }}</span
-      >
+      <Button
+        v-if="justification"
+        quiet
+        wrap
+        :text="justification"
+        :tooltip="justification"
+        :title="justification"
+        class="abele-command-justification"
+        :class="{ 'is-expanded': justificationOpen }"
+        data-command-justification
+        :aria-expanded="justificationOpen"
+        @click="justificationOpen = !justificationOpen"
+      />
+      <span v-else class="abele-tool-approval__what">{{ headerText }}</span>
       <Icon
         v-if="!nodePrompt"
         class="abele-tool-approval__more"
@@ -690,6 +697,7 @@ watch(
 )
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const justificationOpen = ref(false)
 const justification = computed(() => {
   if (
     !managerApproval.value &&
@@ -1261,7 +1269,7 @@ const toggleEdit = () => {
   gap: var(--size-4-1);
   min-width: 0;
 }
-.abele-tool-approval_command [data-manager-command],
+.abele-tool-approval [data-manager-command],
 .abele-node-manager-run > [data-manager-command] {
   background: var(--code-background);
   padding: var(--size-4-2);
@@ -1434,5 +1442,26 @@ code[data-manager-command] {
   white-space: nowrap;
   direction: rtl;
   text-align: left;
+}
+</style>
+
+<style>
+.abele-command-justification.abele-obsidian-button {
+  padding: 0;
+  height: auto;
+  min-width: 0;
+  text-align: left;
+  color: var(--text-normal);
+  font: inherit;
+  justify-content: flex-start;
+}
+.abele-command-justification .abele-obsidian-button__label {
+  font-weight: var(--font-normal);
+}
+.abele-command-justification:not(.is-expanded) .abele-obsidian-button__label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>
