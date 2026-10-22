@@ -9,6 +9,40 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+async function captured(root: string, id: string, path: string, directory = false) {
+  const privateRoot = join(root, '.obsidian/plugins/abele/sync-conditional')
+  const folder = join(privateRoot, 'objects', id)
+  await fs.mkdir(folder, { recursive: true })
+  await fs.mkdir(join(privateRoot, 'active'), { recursive: true })
+  await fs.writeFile(join(folder, 'intent.json'), JSON.stringify({ path, kind: 'remove' }))
+  await fs.writeFile(join(privateRoot, 'active', id + '.json'), '{}')
+  if (directory) {
+    await fs.mkdir(join(folder, 'victim'))
+    await fs.writeFile(join(folder, 'victim/note.md'), 'recovered notes')
+  } else await fs.writeFile(join(folder, 'victim'), 'recovered bytes')
+}
+
+it('does not strand directory contents after a crash at reservation creation', async () => {
+  let stopped = false
+  const { root, disk } = await setup({
+    mkdir: async (path, options) => {
+      const result = await fs.mkdir(path, options)
+      if (!stopped && String(path).endsWith('/directory')) {
+        stopped = true
+        throw new Error('crash after reservation mkdir')
+      }
+      return result
+    },
+  })
+  await captured(root, 'directory-record', 'directory', true)
+  await disk()
+    .recoverConditionalFiles()
+    .catch((error) => {
+      expect(String(error)).toContain('crash after reservation mkdir')
+    })
+  await disk().recoverConditionalFiles()
+  expect(await fs.readFile(join(root, 'directory/note.md'), 'utf8')).toBe('recovered notes')
+})
 it('makes a directory swapped at capture visible even when its public name is reused', async () => {
   let injected = false
   const { root, disk } = await setup({

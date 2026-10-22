@@ -735,21 +735,15 @@ export function nativeOf(
       }
     }
   }
-  if (typeof fsp.mkdir === 'function') {
-    const mkdir = fsp.mkdir.bind(fsp)
-    native.restoreDirectoryExclusive = async (from, to) => {
-      await assertVaultPath(adapter, from)
-      await assertVaultPath(adapter, to)
-      assertEffect([from, to])
-      // Reserve only an absent name. Rename may replace our empty reservation,
-      // but refuses it if a local save has populated the directory meanwhile.
-      await mkdir(at(to), { recursive: false })
-      await assertVaultPath(adapter, from)
-      await assertVaultPath(adapter, to)
-      assertEffect([from, to])
-      await rename(at(from), at(to))
-      await reconcile(from, to)
-    }
+  native.restoreDirectoryExclusive = async (from, to) => {
+    await assertVaultPath(adapter, from)
+    await assertVaultPath(adapter, to)
+    assertEffect([from, to])
+    // No mkdir reservation: a crash must not leave an indistinguishable empty
+    // occupant. Native directory rename refuses files and populated directories.
+    // A concurrently created empty directory may be replaced, but no notes are lost.
+    await rename(at(from), at(to))
+    await reconcile(from, to)
   }
   if (typeof fsp.link === 'function') {
     const link = fsp.link.bind(fsp)
