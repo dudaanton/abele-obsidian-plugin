@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { t } from '@/i18n'
 
 /**
@@ -238,6 +239,7 @@ async function restore(): Promise<void> {
       results.push(...(await client.restoreDeletedMany(ids, keyOf(ids))))
     }
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.0c4f6ab39ffe220c', {
       v1: results.length,
       v2: items.length,

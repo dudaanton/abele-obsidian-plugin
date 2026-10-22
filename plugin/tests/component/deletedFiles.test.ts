@@ -19,6 +19,7 @@ import RestoreSince from '@/components/sync/RestoreSince.vue'
 import * as TokenHistory from '@/sync/tokenHistory'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
+import { SyncCancelled } from '@abele/sync-sdk/core'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
 const STUBS = { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true }
@@ -81,6 +82,16 @@ const service = {
 }
 
 const open = () => mount(DeletedFilesModal, { global: { stubs: STUBS } })
+it('keeps an interrupted restore quiet and retains its row', async () => {
+  client.restoreDeleted.mockRejectedValueOnce(new SyncCancelled())
+  const screen = open()
+  await flushPromises()
+  await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+  await flushPromises()
+  expect(errorLine(screen)).toBe('')
+  expect(Notice.shown).toEqual([])
+  expect(titles(screen)).toContain('Notes/older.md')
+})
 type Screen = ReturnType<typeof open>
 
 const rows = (screen: Screen) => screen.findAll('.abele-deleted-files__row')

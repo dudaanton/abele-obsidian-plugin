@@ -1,4 +1,5 @@
 import ScrollMore from '@/components/obsidian/ScrollMore.vue'
+import { SyncCancelled } from '@abele/sync-sdk/core'
 /**
  * One file's history, as the dialog behind "Open version history" shows it.
  *
@@ -571,6 +572,16 @@ it('releases retained preview text when the preview collapses', async () => {
   await cardFor(screen, 4)?.trigger('click')
   await flushPromises()
   expect(state.diff).toEqual([])
+})
+
+it('does not turn an interrupted preview into a history error', async () => {
+  client.versionBytes.mockRejectedValueOnce(new SyncCancelled())
+  const screen = open()
+  await flushPromises()
+  await cardFor(screen, 4)?.trigger('click')
+  await flushPromises()
+  expect(screen.text()).not.toContain('sync stopped')
+  expect(screen.vm.$.setupState.previewNote).toBeNull()
 })
 
 it('does not rebuild preview text after the dialog unmounts during a download', async () => {

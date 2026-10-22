@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { t } from '@/i18n'
 
 /**
@@ -139,6 +140,7 @@ async function decide(kind: 'confirm' | 'restore', fileIds: string[]): Promise<v
     new Notice(decidedNotice(kind, result, sync.status.value.state))
     emit('decided')
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.569af3e1a0bf7018', { v1: String(reasonOf(failure)) })
   } finally {
     busy.value = false

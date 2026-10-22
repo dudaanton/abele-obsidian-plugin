@@ -1885,7 +1885,10 @@ it.each([false, true])(
       expect(events).toContainEqual(expect.stringContaining('Comparing files: started'))
       expect(transfer).toBeUndefined()
       await vi.advanceTimersByTimeAsync(31000)
-      expect(events.at(-1)).toBe(`Comparing files · 0 of ${downloadFirst ? '2 files' : '1 file'}`)
+      // The SDK now verifies the freshly installed remote file before comparing local bytes.
+      expect(events.at(-1)).toBe(
+        `Comparing files · ${downloadFirst ? 1 : 0} of ${downloadFirst ? '2 files' : '1 file'}`
+      )
       release()
       await sync
       expect(events).toContainEqual(expect.stringContaining('Comparing files: ended'))
@@ -2737,8 +2740,8 @@ it('stops and reports the pinned-root reason even when filesystem wrappers add c
   try {
     await one.runtime.start()
     await one.runtime.sync().catch(() => {})
-    // Core retains an error status after the host pauses inside its failure hook.
-    expect(one.runtime.engine.status.state).toBe('error')
+    // Host suspension stays paused; the diagnostic still carries the root failure.
+    expect(one.runtime.engine.status.state).toBe('paused')
     expect(failed).toHaveBeenCalledWith(reason)
     const before = scans
     fs.emitChange(['sample.md'])

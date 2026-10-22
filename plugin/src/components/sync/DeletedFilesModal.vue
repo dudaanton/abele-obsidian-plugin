@@ -64,6 +64,7 @@
 </template>
 
 <script setup lang="ts">
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { t } from '@/i18n'
 
 /**
@@ -208,6 +209,7 @@ async function restoreOne(item: TrashItem): Promise<void> {
     items.value = items.value.filter((held) => held.file_id !== item.file_id)
     if (items.value.length === 0) notice.value = EMPTY
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.237e7ed9588681a4', {
       v1: String(item.path),
       v2: String(reasonOf(failure)),
@@ -237,6 +239,7 @@ onMounted(async () => {
     items.value = [...listed].sort((a, b) => b.deleted_at.localeCompare(a.deleted_at))
     notice.value = items.value.length === 0 ? EMPTY : null
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     notice.value = null
     error.value = t('streamC.fe2c18869159b80f', { v1: String(reasonOf(failure)) })
   }

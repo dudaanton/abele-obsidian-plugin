@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { t } from '@/i18n'
 
 /**
@@ -118,6 +119,7 @@ async function run(work: () => Promise<string>): Promise<void> {
     new Notice(await work())
     emit('decided')
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.b3f2d4a032e619ee', { v1: String(reasonOf(failure)) })
   } finally {
     busy.value = false

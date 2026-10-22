@@ -108,6 +108,7 @@
 </template>
 
 <script setup lang="ts">
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { t, currentLocale, dateFormatter } from '@/i18n'
 
 /**
@@ -384,6 +385,10 @@ async function select(version: VersionInfo): Promise<void> {
     diff.value = lines
     previewNote.value = null
   } catch (failure) {
+    if (failure instanceof SyncCancelled) {
+      previewNote.value = null
+      return
+    }
     previewNote.value = t('streamC.1eadc37538a0e713', { v1: String(reasonOf(failure)) })
   }
 }
@@ -427,6 +432,7 @@ async function restore(): Promise<void> {
     )
     emit('close')
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.f1b0e977fda31813', {
       v1: String(version.no),
       v2: String(reasonOf(failure)),
@@ -448,6 +454,7 @@ async function loadOlder(): Promise<void> {
     versions.value.push(...page.filter((version) => !known.has(version.version_id)))
     hasOlder.value = page.length === PAGE
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     error.value = t('streamC.1f8edbd020b422bb', { v1: String(reasonOf(failure)) })
   } finally {
     loadingOlder.value = false
@@ -475,6 +482,7 @@ onMounted(async () => {
     hasOlder.value = versions.value.length === PAGE
     notice.value = versions.value.length === 0 ? t('streamC.5f44bebed48101a8') : null
   } catch (failure) {
+    if (failure instanceof SyncCancelled) return
     notice.value = null
     error.value = t('streamC.2cb6f24d9193bc1f', { v1: String(reasonOf(failure)) })
   }

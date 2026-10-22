@@ -1,3 +1,4 @@
+import { SyncCancelled } from '@abele/sync-sdk/core'
 import { settingsSyncText } from '@/i18n/settingsSync'
 import { STARTUP_STOP } from './startupSafety'
 import { ActivityHistory, type ConnectionEvents } from './activityHistory'
@@ -259,6 +260,7 @@ export function connectionStatusText(
     return text('Server folder or group unavailable; local files kept')
   if (row.status === 'needs-token' && activity?.error)
     return text('Access closed; local files kept')
+  if (row.paused || row.status === 'paused') return statusName('paused', text)
   if (activity?.startup) {
     const one = activity.startup
     return text('{stage}… {completed}/{total}{attention}', {
@@ -531,6 +533,7 @@ export class TokenUi {
         if (this.approvalStatus.value[candidate.id])
           this.setApprovalStatus(candidate.id, 'Approved and installed.')
       } catch (error) {
+        if (error instanceof SyncCancelled) continue
         if (this.approvalStatus.value[candidate.id])
           this.setApprovalStatus(
             candidate.id,
@@ -561,6 +564,7 @@ export class TokenUi {
     await publish()
   }
   private reviewFailure(id: string, path: string, error: unknown): void {
+    if (error instanceof SyncCancelled) return
     const reason =
       error instanceof Error &&
       error.message === 'The local file changed; this version remains pending'
@@ -1201,7 +1205,7 @@ export class TokenUi {
       if (await this.itemSets.refresh(id)) await this.connectionsChanged()
       const failures: unknown[] = []
       for (const item of this.itemSets.store.get(id).items) {
-        if (!item.recordId || item.detached || item.paused) continue
+        if (!item.recordId || item.detached) continue
         try {
           await this.syncRecord(item.recordId)
         } catch (error) {
@@ -1218,7 +1222,7 @@ export class TokenUi {
     if (record?.state['abele-sync-token-state:scope-deleted']) throw new Error(SCOPE_DELETED)
     if (record?.state['abele-sync-token-state:server-delete'])
       throw new Error('Server deletion is awaiting confirmation')
-    if (!record || record.paused) throw new Error('Sync is paused')
+    if (!record) throw new Error('Sync connection is unavailable')
     let runtime = this.runtimes.get(id)
     if (!runtime) {
       await this.retryConnection(id, () => {

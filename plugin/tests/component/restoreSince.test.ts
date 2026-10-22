@@ -20,6 +20,7 @@ import Setting from '@/components/obsidian/Setting.vue'
 import * as TokenHistory from '@/sync/tokenHistory'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
+import { SyncCancelled } from '@abele/sync-sdk/core'
 
 const STUBS = { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true }
 
@@ -77,6 +78,15 @@ const service = {
 const open = (items: TrashItem[] = ITEMS) =>
   mount(RestoreSince, { props: { items }, global: { stubs: STUBS } })
 type View = ReturnType<typeof open>
+it('does not report a cancelled restore batch as a server failure', async () => {
+  client.restoreDeletedMany.mockRejectedValueOnce(new SyncCancelled())
+  const view = open()
+  await button(view, 'Restore')!.trigger('click')
+  view.findComponent(ConfirmModal).vm.$emit('confirm')
+  await flushPromises()
+  expect(view.text()).not.toContain('sync stopped')
+  expect(Notice.shown).toEqual([])
+})
 
 const button = (view: View, prefix: string) =>
   view.findAllComponents(Button).find((b) => (b.props('text') as string).startsWith(prefix))

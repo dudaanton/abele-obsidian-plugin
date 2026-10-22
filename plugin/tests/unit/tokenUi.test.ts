@@ -9,6 +9,21 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 
+it('runs an explicit sync on a paused connection without changing automatic sync', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  registry.setPaused(id, true)
+  const sync = vi.fn(async () => {})
+  ui.retryConnection = async () => {
+    expect(registry.records()[0].paused).toBe(true)
+    ui.runtimes.set(id, { sync } as never)
+  }
+  await ui.sync(id)
+  expect(sync).toHaveBeenCalledOnce()
+  expect(registry.records()[0].paused).toBe(true)
+})
+
 it('does not resurrect departed activity when an older review refresh fails', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)
@@ -44,6 +59,17 @@ it('uses the connection status line for restored server and local files', () => 
   expect(connectionError({ code: 'scope_deleted' })).toBe(
     'Deleted on the server. Every file stays on this device.'
   )
+})
+
+it('keeps paused status ahead of stale comparison counters', () => {
+  expect(
+    connectionStatusText(
+      { status: 'paused', paused: true },
+      {
+        comparison: { completed: 1, total: 20 },
+      }
+    )
+  ).toBe('Paused')
 })
 
 it('names a granted folder or group the server no longer shows to its issuer', () => {

@@ -19,6 +19,7 @@ import TreeItem from '@/components/obsidian/TreeItem.vue'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
+import { SyncCancelled } from '@abele/sync-sdk/core'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
 const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
@@ -58,6 +59,14 @@ afterEach(() => {
 })
 
 describe('the held deletes dialog', () => {
+  it('does not report an interrupted decision as a failure', async () => {
+    service.decideDeletes.mockRejectedValueOnce(new SyncCancelled())
+    const view = open(heldOf(1))
+    await button(view, 'Put them back')!.trigger('click')
+    await flushPromises()
+    expect(view.text()).not.toContain('sync stopped')
+    expect(Notice.shown).toEqual([])
+  })
   it('says how many, and shows the first twenty with how many more', () => {
     const view = open(heldOf(312))
 
