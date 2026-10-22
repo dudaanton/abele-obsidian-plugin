@@ -3,8 +3,6 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Рабочая копия удаляется. Обновите папку, чтобы проверить результат.',
   'streamB.providerUnavailable': 'Сервис модели временно недоступен.',
-  'streamB.permissionInherit':
-    'Наследовать режим родителя при делегировании (новые чаты — с вопросами)',
   'streamB.permissionBypassDisabled': 'На этой ноде работа без вопросов отключена.',
   'streamB.permissionCopyCommand': 'Скопировать команду',
   'streamB.permissionAskNow': 'Сейчас — спрашивать',

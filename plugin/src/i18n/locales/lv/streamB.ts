@@ -3,7 +3,6 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
   'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
-  'streamB.permissionInherit': 'Deleģēšanā mantot vecāka režīmu (jaunos čatos jautāt)',
   'streamB.permissionBypassDisabled': 'Darbība bez jautāšanas šajā mezglā ir izslēgta.',
   'streamB.permissionCopyCommand': 'Kopēt komandu',
   'streamB.permissionAskNow': 'Tagad jautāt',
