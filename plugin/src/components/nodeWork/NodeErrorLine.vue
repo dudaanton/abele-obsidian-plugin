@@ -44,6 +44,7 @@ const props = defineProps<{
   retry?: () => Promise<unknown> | void
   original?: boolean
   at?: number
+  lastSeen?: string
 }>()
 const context = inject(NODE_ERROR_CONTEXT, undefined)
 const registrationId = computed(() => props.registrationId ?? context?.registrationId)
@@ -101,6 +102,8 @@ const actionLabel = computed(() => {
 })
 const facts = computed(() => {
   const values: { label: string; value: string; code?: boolean }[] = []
+  if (props.offline && props.lastSeen)
+    values.push({ label: t('streamB.asOf.431575'), value: props.lastSeen })
   if (props.operation) values.push({ label: t('node.error.what'), value: props.operation })
   if (props.location) values.push({ label: t('node.error.where'), value: props.location })
   if (raw.value) {

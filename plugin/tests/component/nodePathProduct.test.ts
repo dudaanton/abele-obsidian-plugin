@@ -74,7 +74,9 @@ describe('product node sidebar', () => {
         node: { name: 'Sample node', status: 'offline', seen: 'Today, 12:00' },
       },
     })
-    expect(view.text()).toContain('Loading the file changes…')
+    expect(view.get('.abele-node-sidebar__first .abele-state-line__text').text()).toBe(
+      'Loading changes…'
+    )
     expect(view.findComponent(FileTree).exists()).toBe(false)
     model.inspection.value = { entries: [], changes: model.changes.value } as never
     await flushPromises()
@@ -91,7 +93,11 @@ describe('product node sidebar', () => {
     view.getComponent(FileTree).vm.$emit('open', 'sample.ts', 'staged')
     expect(view.emitted('open-file')?.at(-1)).toEqual(['sample.ts', 'staged'])
     model.panelBase.value = ''
-    expect(view.text()).toContain('As of Today, 12:00')
+    await view.get('[data-connection-status] .abele-fold-heading').trigger('click')
+    expect(view.get('[data-connection-status] .abele-state-line__facts').text()).toContain('As of')
+    expect(view.get('[data-connection-status] .abele-state-line__facts').text()).toContain(
+      'Today, 12:00'
+    )
     // A copy whose last commit and distance are unknown says nothing of them.
     expect(view.text()).not.toContain('Unknown')
     expect(view.find('.abele-node-sidebar__facts').exists()).toBe(false)
@@ -306,7 +312,9 @@ describe('the branch in the panel', () => {
     expect(view.text()).not.toContain('choose it again')
     expect(view.get('.abele-node-place__name').text()).toBe('sample-app')
     expect(view.find('.abele-file-tree').exists()).toBe(false)
-    expect(view.get('[role="alert"] button').text()).toBe('Remove the folder from the node…')
+    expect(
+      view.findAll('button').some((button) => button.text() === 'Remove the folder from the node…')
+    ).toBe(true)
     view.unmount()
   })
   it('names the chosen base over the files and goes back to the default with its cross', async () => {

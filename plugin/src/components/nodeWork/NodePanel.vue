@@ -85,6 +85,7 @@
           :target="target"
           :reconnecting="reconnecting || node.status === 'connecting'"
           :offline="node.status === 'offline'"
+          :last-seen="node.seen"
           :slow-since="node.status === 'connected' ? slowSince : undefined"
           :location="here"
           :refresh="refresh || (() => emit('refresh'))"
