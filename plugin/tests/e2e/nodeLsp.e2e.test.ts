@@ -29,18 +29,41 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         const close = async () => { phase += '-close'; const button = document.querySelector('[data-lsp-close]'); if(!button) throw Error('Fixture dismiss action is missing'); button.click(); await until(() => !document.querySelector('.modal.abele-modal')); };
         const shot = async name => { await wait(350); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); if (['diagnostic-tap','diagnostic-list','long-press'].includes(name)) { const label = document.querySelector('.abele-lsp-menu-message') ?? [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent.includes('Go to definition')); const box = label.getBoundingClientRect(); if (!document.elementFromPoint(box.left+box.width/2,box.top+Math.min(box.height/2,12))?.closest('.menu')) throw Error('Menu content is clipped or covered: ' + name); } require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); };
         const results = [];
-        try { for (const state of ['missing','untrusted','loading','errors','eslint']) {
+        try { for (const state of ['missing','untrusted','loading','errors','eslint','failed','off','ready']) {
           phase = state + '-viewer';
           await window.__abeleTest.openDialog('node-lsp-' + state);
           await until(() => document.querySelector('.abele-lsp-root .cm-content'));
           phase = state + '-status';
-          await until(() => document.body.textContent.includes(({loading: 'Analyzing code', missing: 'Language server missing', untrusted: 'Trust folder', eslint: 'TypeScript analysis remains available', errors: 'sample'})[state]));
+          const expected = ({loading:'starting',missing:'degraded',untrusted:'degraded',eslint:'degraded',errors:'ready',failed:'failed',off:'off',ready:'ready'})[state];
+          await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === expected);
+          if (document.querySelector('.abele-lsp-status')) throw Error('Analysis banner rendered inside file');
           if (state === 'errors') await until(() => document.querySelector('.abele-lsp-error') && document.querySelector('[data-lsp-diagnostics]')?.getAttribute('aria-label') === 'Diagnostics: 2');
           await wait(150);
           const modal = document.querySelector('.modal.abele-modal');
           const rect = modal.getBoundingClientRect();
           results.push({state, text: modal.textContent, fits: rect.left >= -1 && rect.right <= innerWidth + 1});
           await shot(state);
+          const contentTop = () => document.querySelector('.abele-file-view__code').getBoundingClientRect().top;
+          const top = contentTop();
+          document.querySelector(${mobile} ? '[data-lsp-overflow]' : '[data-lsp-analysis] button').click();
+          if (${mobile}) {
+            await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent === 'Code analysis'));
+            await shot(state + '-overflow');
+            [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent === 'Code analysis').closest('.menu-item').click();
+          }
+          await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => /TypeScript —|Code analysis/.test(el.textContent)));
+          await shot(state + '-analysis-menu');
+          document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          await until(() => !document.querySelector('.menu'));
+          if (Math.abs(contentTop() - top) > 0.5) throw Error('Analysis menu shifted file');
+          if (state === 'loading') {
+            document.querySelector('[data-lsp-settle]').click();
+            await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === 'ready');
+            if (Math.abs(contentTop() - top) > 0.5) throw Error('Analysis state shifted file');
+            if (document.querySelector('[data-lsp-analysis] .abele-status-dot_pulse')) throw Error('Ready analysis still pulses');
+            await shot('settled');
+          }
+
           if (state === 'errors') {
             phase = 'diagnostic-tap';
             const dot = document.querySelector('.modal.abele-modal .abele-lsp-gutter span[title]');
@@ -120,13 +143,11 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         )
       ) as { state: string; text: string; fits: boolean }[]
       expect(results.every((result) => result.fits)).toBe(true)
-      expect(results.find((result) => result.state === 'missing')?.text).toContain(
-        'abele-node lsp install --popular'
-      )
-      expect(results.find((result) => result.state === 'untrusted')?.text).toContain('Trust folder')
-      expect(results.find((result) => result.state === 'eslint')?.text).toContain(
-        'TypeScript analysis remains available'
-      )
+      expect(
+        results
+          .filter((result) => result.state !== 'navigation')
+          .every((result) => !result.text.includes('TypeScript analysis remains available'))
+      ).toBe(true)
       expect(results.some((result) => result.state === 'navigation')).toBe(true)
     }
   } finally {

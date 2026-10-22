@@ -10,7 +10,7 @@ import NodeLspTools from '@/components/nodeWork/NodeLspTools.vue'
 import { NodeService } from '@/node/NodeService'
 import { REPOSITORY_SOURCE } from '@/repository/context'
 import { computed, ref, nextTick } from 'vue'
-import { Menu } from 'obsidian'
+import { Menu, Platform } from 'obsidian'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import GithubCode from '@/components/github/GithubCode.vue'
 import NodeFileTools from '@/components/nodeWork/NodeFileTools.vue'
@@ -18,7 +18,19 @@ import { LSP_CONNECTION } from '@/node/lspConnection'
 import { FILE_DESTINATION } from '@/node/fileNavigation'
 vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: () => true }))
 enableAutoUnmount(afterEach)
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  Object.assign(Platform, { isMobile: false, isPhone: false })
+})
+
+function openAnalysisAction(title: string) {
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  document.querySelector<HTMLButtonElement>('[data-lsp-analysis] button')!.click()
+  const menu = show.mock.contexts.at(-1)!
+  const item = menu.items.find((item) => item.title === title)!
+  expect(item).toBeDefined()
+  item.handler?.()
+}
 
 describe('node language diagnostics in the shared file viewer', () => {
   it('consumes the macOS contextmenu event after Ctrl-click navigation', async () => {
@@ -308,6 +320,22 @@ describe('node language diagnostics in the shared file viewer', () => {
     await flushPromises()
     expect(close).toHaveBeenCalledOnce()
   })
+  it.each([
+    'missing',
+    'untrusted',
+    'loading',
+    'errors',
+    'eslint',
+    'failed',
+    'off',
+    'ready',
+  ] as const)('keeps %s analysis status out of the file body', async (state) => {
+    const view = mount(NodeLspFixture, { props: { state }, attachTo: document.body })
+    await flushPromises()
+    expect(document.querySelector('.abele-file-view .abele-lsp-status')).toBeNull()
+    expect(document.querySelector('[data-lsp-analysis]')).not.toBeNull()
+    view.unmount()
+  })
   it('analyzes and searches the displayed text when a locked editor retains a different draft', async () => {
     const model = {
       filePath: ref('sample.ts'),
@@ -364,11 +392,10 @@ describe('node language diagnostics in the shared file viewer', () => {
   it('rechecks availability after an explicit install without reopening the view', async () => {
     const view = mount(NodeLspFixture, { props: { state: 'missing' }, attachTo: document.body })
     await flushPromises()
-    expect(document.body.textContent).toContain('Language server missing')
-    const button = [...document.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Install popular servers')
-    )!
-    button.click()
+    expect(document.querySelector('[data-lsp-analysis]')?.getAttribute('data-state')).toBe(
+      'degraded'
+    )
+    openAnalysisAction('Install popular servers')
     await flushPromises()
     expect(document.body.textContent).not.toContain('Language server missing')
     expect(
@@ -411,10 +438,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     const context = lspFor(document.querySelector('.cm-editor')!)!
     const install = vi.spyOn(context.document.client.lsp, 'install').mockResolvedValue([])
     expect(install).not.toHaveBeenCalled()
-    const button = [...document.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Install popular servers')
-    )!
-    button.click()
+    openAnalysisAction('Install popular servers')
     await flushPromises()
     expect(install).toHaveBeenCalledWith([
       'typescript',
@@ -494,15 +518,68 @@ describe('node language diagnostics in the shared file viewer', () => {
     }
   )
   it.each([
-    ['missing', 'abele-node lsp install --popular'],
-    ['untrusted', 'Trust folder'],
-    ['eslint', 'TypeScript analysis remains available.'],
-  ] as const)('explains %s without hiding the code', async (state, message) => {
+    ['missing', 'degraded', 'orange', 'Code analysis: '],
+    ['untrusted', 'degraded', 'orange', 'Code analysis: folder not trusted'],
+    ['loading', 'starting', 'faint', 'Code analysis is starting…'],
+    ['eslint', 'degraded', 'orange', 'Code analysis: TypeScript only. ESLint isn’t set up.'],
+    ['errors', 'ready', undefined, 'Code analysis: TypeScript, ESLint'],
+    ['failed', 'failed', 'red', 'Code analysis failed'],
+    ['off', 'off', undefined, 'Code analysis is off for this file'],
+    ['ready', 'ready', undefined, 'Code analysis: TypeScript, ESLint'],
+  ] as const)('shows %s in a stable header action', async (state, expected, tone, tooltip) => {
     const view = mount(NodeLspFixture, { props: { state }, attachTo: document.body })
     await flushPromises()
-    expect(document.body.textContent).toContain(message)
-    if (state !== 'eslint') expect(document.querySelector('[data-lsp-diagnostics]')).toBeNull()
+    const glyph = document.querySelector('[data-lsp-analysis]')!
+    expect(glyph.getAttribute('data-state')).toBe(expected)
+    expect(glyph.querySelector('button')?.getAttribute('aria-label')).toContain(tooltip)
+    expect(
+      glyph.querySelector('.abele-status-dot')?.classList.contains('abele-status-dot_' + tone)
+    ).toBe(tone ? true : undefined)
+    expect(!!glyph.querySelector('.abele-status-dot_pulse')).toBe(state === 'loading')
     expect(document.querySelector('.cm-content')?.textContent).toContain('export const sample')
+    view.unmount()
+  })
+  it('opens the same analyser menu from the phone overflow row', async () => {
+    Object.assign(Platform, { isMobile: true, isPhone: true })
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const view = mount(NodeLspFixture, { props: { state: 'eslint' }, attachTo: document.body })
+    await flushPromises()
+    const showOverflow = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    document.querySelector<HTMLButtonElement>('[data-lsp-overflow]')!.click()
+    const overflow = showOverflow.mock.contexts.at(-1)!
+    const analysis = overflow.items.find((item) => item.title === 'Code analysis')!
+    expect(analysis.icon).toBe('scan-search')
+    analysis.handler?.()
+    const menu = show.mock.contexts.at(-1)!
+    expect(menu.items.map((item) => item.title)).toContain('ESLint — not set up in this project')
+    expect(menu.items.find((item) => item.title === 'TypeScript — running')?.checked).toBe(true)
+    expect(
+      menu.items.find((item) => item.title === 'ESLint — not set up in this project')?.checked
+    ).toBe(false)
+    view.unmount()
+  })
+  it('keeps failures and recovery in the header and exposes analyser states in its menu', async () => {
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const view = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+    await flushPromises()
+    const doc = lspFor(document.querySelector('.cm-editor')!)!.document
+    doc.error = 'Sample server stopped'
+    for (const listener of doc.listeners) listener()
+    await nextTick()
+    expect(document.querySelector('[data-lsp-analysis]')?.getAttribute('data-state')).toBe('failed')
+    expect(document.querySelector('.abele-status-dot_red')).not.toBeNull()
+    document.querySelector<HTMLButtonElement>('[data-lsp-analysis] button')!.click()
+    const menu = show.mock.contexts.at(-1)!
+    expect(menu.items.filter((item) => item.disabled).map((item) => item.title)).toContain(
+      'TypeScript — failed'
+    )
+    expect(document.querySelector('.abele-file-view')?.textContent).not.toContain(
+      'Sample server stopped'
+    )
+    doc.error = ''
+    for (const listener of doc.listeners) listener()
+    await nextTick()
+    expect(document.querySelector('[data-lsp-analysis]')?.getAttribute('data-state')).toBe('ready')
     view.unmount()
   })
 })

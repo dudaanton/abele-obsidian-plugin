@@ -1,6 +1,24 @@
 <template>
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
-    <FileView :path="'sample.ts'" :text="text" mode="file" :code-target="target" :line="line" />
+    <div class="view-header">
+      <span class="view-header-title">sample.ts</span>
+      <span ref="headerHost" class="view-actions">
+        <Icon
+          v-if="Platform.isPhone"
+          data-lsp-overflow
+          icon="more-horizontal"
+          :tooltip="t('node.analysis.title')"
+          @click="overflow"
+        />
+      </span>
+    </div>
+    <FileView
+      :path="state === 'off' ? 'sample.txt' : 'sample.ts'"
+      :text="text"
+      mode="file"
+      :code-target="target"
+      :line="line"
+    />
     <span v-if="destination" data-lsp-destination hidden>{{ destination }}</span>
     <FileView
       v-if="destination.startsWith('node_modules/')"
@@ -11,7 +29,12 @@
       :line="3"
     />
     <template #footer
-      ><Button data-lsp-close :text="t('streamB.close.7d9eb7')" @click="emit('close')"
+      ><Button
+        v-if="state === 'loading'"
+        data-lsp-settle
+        :text="t('node.lsp.retry')"
+        @click="settle?.()" />
+      <Button data-lsp-close :text="t('streamB.close.7d9eb7')" @click="emit('close')"
     /></template>
   </Modal>
 </template>
@@ -23,7 +46,31 @@ import Button from '@/components/obsidian/Button.vue'
 import { t } from '@/i18n'
 import FileView from '@/components/nodeWork/FileView.vue'
 import { LSP_CONNECTION } from '@/node/lspConnection'
-const props = defineProps<{ state: 'missing' | 'untrusted' | 'loading' | 'errors' | 'eslint' }>()
+import { ANALYSIS_HEADER } from '@/node/analysisHeader'
+import Icon from '@/components/obsidian/Icon.vue'
+import { Menu, Platform } from 'obsidian'
+const headerHost = ref<HTMLElement>()
+let analysisMenu: ((menu: Menu) => void) | undefined
+provide(ANALYSIS_HEADER, {
+  get host() {
+    return headerHost.value
+  },
+  register(populate) {
+    analysisMenu = populate
+    return () => {
+      if (analysisMenu === populate) analysisMenu = undefined
+    }
+  },
+})
+function overflow(event: MouseEvent) {
+  const menu = new Menu().setUseNativeMenu(false)
+  analysisMenu?.(menu)
+  menu.showAtMouseEvent(event)
+}
+const props = defineProps<{
+  state: 'missing' | 'untrusted' | 'loading' | 'errors' | 'eslint' | 'failed' | 'off' | 'ready'
+}>()
+let settle: (() => void) | undefined
 const emit = defineEmits<{ close: [] }>()
 const target = {
   nodeId: 'sample-node',
@@ -62,12 +109,15 @@ client.lsp.status = async () =>
         }
       : {}),
   }))
-client.lsp.open = async () => ({
-  servers:
-    props.state === 'untrusted' || (props.state === 'missing' && !installed.value)
-      ? []
-      : ['typescript', 'eslint'],
-})
+client.lsp.open = async () => {
+  if (props.state === 'failed') throw new Error('Sample analysis server stopped')
+  return {
+    servers:
+      props.state === 'untrusted' || (props.state === 'missing' && !installed.value)
+        ? []
+        : ['typescript', 'eslint'],
+  }
+}
 client.lsp.close = async () => ({})
 client.lsp.install = async (languages) => {
   installed.value = true
@@ -75,9 +125,10 @@ client.lsp.install = async (languages) => {
 }
 client.lsp.diagnostics = async (_root, _path, signal) => {
   if (props.state === 'loading')
-    await new Promise<void>((resolve) =>
+    await new Promise<void>((resolve) => {
+      settle = resolve
       signal?.addEventListener('abort', () => resolve(), { once: true })
-    )
+    })
   return props.state === 'errors'
     ? ['typescript', 'eslint'].map((source) => ({
         source,

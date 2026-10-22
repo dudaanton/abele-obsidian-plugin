@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
-import { Platform, type WorkspaceLeaf } from 'obsidian'
+import { Menu, Platform, type WorkspaceLeaf } from 'obsidian'
+import { ANALYSIS_HEADER, type AnalysisHeader } from '@/node/analysisHeader'
 import { NodePathMainView } from '@/views/NodePathMainView'
 import { FILE_NAVIGATION } from '@/node/fileNavigation'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
@@ -83,7 +84,12 @@ vi.mock('obsidian', async (original) => {
       get contentEl() {
         return this.containerEl.children[1] as HTMLElement
       }
-      addAction() {}
+      addAction(_icon: string, title: string, run: () => void) {
+        const button = this.containerEl.children[0].appendChild(document.createElement('button'))
+        button.setAttribute('aria-label', title)
+        button.addEventListener('click', run)
+        return button
+      }
       onPaneMenu() {}
     },
   }
@@ -186,6 +192,23 @@ it('provides target-bound navigation and the destination line to the edited-file
   )
   fixture.openFile.mockClear()
   const navigate = fixture.root.provide?.[FILE_NAVIGATION as symbol]
+  const analysis = fixture.root.provide?.[ANALYSIS_HEADER as symbol] as AnalysisHeader
+  expect(analysis.host.closest('.abele-node-content__pane')).toBeNull()
+  expect(view.containerEl.children[0].firstElementChild).toBe(analysis.host)
+  const fillMenu = vi.fn()
+  const remove = analysis.register(fillMenu)
+  const wasPhone = Platform.isPhone
+  Platform.isPhone = true
+  try {
+    const menu = new Menu()
+    view.onPaneMenu(menu, 'more-options')
+    expect(fillMenu).toHaveBeenCalledWith(menu)
+    remove()
+    view.onPaneMenu(new Menu(), 'more-options')
+    expect(fillMenu).toHaveBeenCalledOnce()
+  } finally {
+    Platform.isPhone = wasPhone
+  }
   expect(navigate).toBeTypeOf('function')
   const comparisonLink = nodeRepositoryLink(
     {

@@ -522,6 +522,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-lsp-loading': () => mountAlone(NodeLspFixture, { state: 'loading' }, 'node-lsp-loading'),
   'node-lsp-errors': () => mountAlone(NodeLspFixture, { state: 'errors' }, 'node-lsp-errors'),
   'node-lsp-eslint': () => mountAlone(NodeLspFixture, { state: 'eslint' }, 'node-lsp-eslint'),
+  'node-lsp-failed': () => mountAlone(NodeLspFixture, { state: 'failed' }, 'node-lsp-failed'),
+  'node-lsp-off': () => mountAlone(NodeLspFixture, { state: 'off' }, 'node-lsp-off'),
+  'node-lsp-ready': () => mountAlone(NodeLspFixture, { state: 'ready' }, 'node-lsp-ready'),
   'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),
   'node-edit-conflict': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),

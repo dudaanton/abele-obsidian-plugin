@@ -28058,5 +28058,145 @@
       "es",
       "de"
     ]
+  },
+  "node.analysis.title": {
+    "englishHash": "bfa704489df1bbd7b4a4bc439f353122780bdac6197cfae1381ad3da92dd66fc",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.untrusted": {
+    "englishHash": "a1afab978ce814faaca319c0214f30f052ce8b238b23dbce88313fce408b5a0d",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.notSetUp": {
+    "englishHash": "11a085052b68863b4b6f29f30e4b311b3074d61a9a90bfde85f82e60f5a07e1d",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.failed": {
+    "englishHash": "8ee407cbf1f8e013868d56102f00a17ea98c164c3b34afb130b22c8713ddbc90",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.starting": {
+    "englishHash": "1c33be4cbb11829515b3a67fe97b77b3f4d0196898f5f64a3ecf70b528584ede",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.running": {
+    "englishHash": "86a8e0ed37d03cfbd86c8d10031f3b4ad0363862188b69d6bbd2a0581f9c36e2",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.loading": {
+    "englishHash": "08267517c5423b86a882dab746766f109d08f30bc7a007093302bd7f2fcb0c95",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.off": {
+    "englishHash": "348a216b70b3d3e81b54a9d0dbfb91fbf95bc32db5edba4d874970ea691336c3",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.error": {
+    "englishHash": "5a4b959312bccfb264ebe23870f59c4dd677087927eb6c59e1a2de2ace368f26",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.trustNeeded": {
+    "englishHash": "e59f3dba226b196c41854c05c607390a7551d2d4efc37f180be1205a81276113",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.typescriptOnly": {
+    "englishHash": "85fa52157f31d71b0b20b14aae2d75e26b3d651fcb749f569262c10d3c47c259",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.summary": {
+    "englishHash": "9872228c22a224657095ef308fd3498f7bb2683e3d7ffd1767730ad49f4703d4",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.trust": {
+    "englishHash": "8ddb0e842c61f39f4c046122d87593066f1bf755b5fc578a0ecfe43725a2c709",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.eslintHelp": {
+    "englishHash": "afc5a98b3bee461b160f7f352bbd2fa54aeb98888870032efbf6af14e97dccd9",
+    "context": "Node file analysis header status and menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

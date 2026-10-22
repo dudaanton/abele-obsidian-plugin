@@ -1,4 +1,5 @@
 import { canEditNodeFile } from '@/node/fileEditContext'
+import { ANALYSIS_HEADER, type AnalysisHeader } from '@/node/analysisHeader'
 import { presentUiError, UiError, uiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import {
@@ -58,6 +59,8 @@ export class NodePathMainView extends ItemView {
   private presenter?: NodeChatPresenter
   private chatLoad?: Promise<void>
   private editing?: NodePathFileEditing
+  private analysisHeader?: AnalysisHeader
+  private analysisMenu?: (menu: Menu) => void
   /** Keep local edits reachable when a tree action changes their remote path. */
   hasUnsentNodeFileEdit(): boolean {
     return !!this.editing?.dirty.value
@@ -90,6 +93,22 @@ export class NodePathMainView extends ItemView {
     if (Platform.isMobile && !Platform.isPhone)
       this.addAction('arrow-left', t('streamBMeta.22cfd62325'), () => this.backToNode())
     if (viewType === 'abele-node-file') this.fileTab.render()
+    if (viewType === 'abele-node-file') {
+      const anchor = this.addAction('scan-search', t('node.analysis.title'), () => {})
+      const host = this.containerEl.ownerDocument.win.createSpan()
+      host.className = 'abele-analysis-header'
+      anchor.parentElement?.prepend(host)
+      anchor.remove()
+      this.analysisHeader = {
+        host,
+        register: (populate) => {
+          this.analysisMenu = populate
+          return () => {
+            if (this.analysisMenu === populate) this.analysisMenu = undefined
+          }
+        },
+      }
+    }
     if (viewType === 'abele-node-history')
       this.addAction('arrow-left', t('streamBMeta.e2bb136400'), () => this.history?.back())
   }
@@ -101,6 +120,7 @@ export class NodePathMainView extends ItemView {
   }
   onPaneMenu(menu: Menu, source: string): void {
     if (Platform.isPhone && source === 'more-options') {
+      this.analysisMenu?.(menu)
       if (this.viewType === 'abele-node-file') {
         this.fileTab.paneMenu(menu)
       }
@@ -483,6 +503,7 @@ export class NodePathMainView extends ItemView {
       )
       const root = {
         provide: {
+          [ANALYSIS_HEADER as symbol]: this.analysisHeader,
           [FILE_DESTINATION as symbol]: (
             destination: Extract<NodePathTabState, { kind: 'file' }>,
             originLine?: number
