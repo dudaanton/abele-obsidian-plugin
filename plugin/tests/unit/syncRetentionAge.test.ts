@@ -5,9 +5,32 @@ import { buildFakeVault } from '../helpers/fakeVault'
 
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { MemoryRetention } from '@/sync/retentionIndex'
 
 const root = '.obsidian/plugins/abele/sync-conditional'
 const bytes = (s: string) => new TextEncoder().encode(s)
+it('starts a fresh minimum age when importing legacy metadata without a durable capture time', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
+  try {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+    const disk = new ObsidianFileSystem(app as never)
+    await disk.conditionalFile({
+      path: 'sample.bin',
+      expected: { sha: await sha256(bytes('before')), size: 6, mtime: 1000 },
+      effect: { kind: 'write', bytes: bytes('after'), mtime: 2000, receipt: 'legacy' },
+    })
+    const conditional = Reflect.get(disk, 'conditional')
+    Reflect.get(conditional, 'host').retention = new MemoryRetention()
+    Reflect.set(conditional, 'retentionBytes', 1)
+    clock.mockReturnValue(100000 + 8 * 86400000)
+    await conditional.maintenanceStep()
+    await conditional.maintenanceStep()
+    expect(await app.vault.adapter.read(root + '/trash/legacy/victim')).toBe('before')
+  } finally {
+    clock.mockRestore()
+  }
+})
+
 it('does not evict two recently displaced large attachments to meet the soft target', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
   try {

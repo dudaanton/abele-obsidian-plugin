@@ -213,7 +213,9 @@ export class ConditionalFiles {
         if (!(await this.index.find(id)))
           await this.index.put({
             id,
-            at: Math.max(value.at, info?.ctime ?? value.at),
+            // Legacy pointers precede capture and adapter ctime may be creation time.
+            // Without a durable capture acknowledgement, start a fresh retention age.
+            at: Math.max(Date.now(), value.at, info?.ctime ?? value.at),
             size: (info?.size ?? 0) + RETAINED_RECORD_OVERHEAD,
             intent: value.intent,
           })

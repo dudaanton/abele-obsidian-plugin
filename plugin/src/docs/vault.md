@@ -228,7 +228,7 @@ Obsidian index agrees, so a stale row cannot become an apparent local edit or de
 Conditional publication records intent before capture. Verified displaced bases move into
 device-local `trash/<id>/victim` retention without unlinking the captured inode at settlement.
 The `retained/<id>.json` pointer carries the original intent and retention timestamp.
-Maintenance during conditional operations and recovery keeps these copies for seven days,
+Idle maintenance keeps these copies for seven days,
 with a 512 MiB target per connection (payload plus 16 KiB charged metadata per record).
 Above the target it retires the oldest unchanged copies first; a new capture remains until
 a later maintenance pass. No quota eviction happens before a minimum age of 24 hours;
@@ -239,6 +239,8 @@ A vault-local IndexedDB index atomically updates ordered retention rows and one 
 the retained ledger. Idle maintenance processes at most one victim per tick, and only when
 expiry or the byte target requires it. Legacy filesystem pointers are imported lazily,
 eight records per tick after a directory listing; new indexed records need no such walk.
+Imported records start a fresh retention age because old pointers do not prove the time
+capture completed. This may preserve legacy copies longer than seven days.
 Pause, a new exchange, offline state and shutdown cancel scheduled work; shutdown drains
 the current tick. A retained victim first moves to a private `dying` name, then receives
 a fresh content/size/mtime/ctime check. Native retirement uses change time, not the vault
@@ -252,7 +254,9 @@ copy when necessary. Retained reviews survive restart and prevent disconnect unt
 Absence-only buffered writes use an owned installation-journal record with `conditionalReceipt`,
 `target`, `temp` and `replacementSha`; native receipt proof retains the installed inode reference
 until ledger completion. The record and private data are discarded only on explicit receipt
-retirement. Mobile publication uses a checked tier: fresh content must match the expected
+retirement. Legacy buffered writes without an SDK receipt retain their intent until the
+committed ledger acknowledges them, using the existing publication evidence without an
+extra installed marker. Mobile publication uses a checked tier: fresh content must match the expected
 hash and size, pending host saves drain, and the file's size/mtime must remain unchanged
 across that decision. An adapter path gate serializes in-process saves, directory mutations
 and both paths of a move from the final check through capture, publication or restoration.
