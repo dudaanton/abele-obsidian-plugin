@@ -163,7 +163,11 @@ export class NodeConnection {
   private executionPolicyReady = false
 
   private async enableExecutionPolicy(): Promise<void> {
-    if (this.executionPolicyReady || !this.client.describe) return
+    if (this.executionPolicyReady) return
+    if (!this.client.describe) {
+      this.executionPolicyReady = true
+      return
+    }
     const description = (await this.client.describe()) as {
       capabilities?: { capabilities?: Record<string, { status?: string }> }
     }
@@ -313,7 +317,7 @@ export class NodeConnection {
         generation !== this.generation
       )
         return
-      if (!this.client.connected) {
+      if (!this.client.connected || !this.executionPolicyReady) {
         this.obsidian?.disconnected()
         this.state.value = 'offline'
         await this.connect('retry_tick').catch(() => {})

@@ -9,6 +9,40 @@ import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
 
 vi.mock('@/debugger/register', () => ({}))
+it('negotiates policy for an already authenticated connection before background reads', async () => {
+  const memory = new MemoryClientStore()
+  const events: string[] = []
+  const client = {
+    connected: true,
+    target: {},
+    describe: vi.fn(async () => ({
+      capabilities: { capabilities: { 'execution.policy.v1': { status: 'supported' } } },
+    })),
+    request: async () => {
+      events.push('enable')
+      return { enabled: true }
+    },
+    check: async () => {
+      events.push('health')
+    },
+    disconnect: async () => {},
+  }
+  const connection = new NodeConnection(
+    client as never,
+    { transaction: memory.transaction.bind(memory), close() {} } as never
+  )
+  const refresh = vi.spyOn(connection, 'refreshDelegations').mockImplementation(async () => {
+    events.push('read')
+  })
+  try {
+    connection.start()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled())
+    expect(events[0]).toBe('enable')
+    expect(events.indexOf('read')).toBeGreaterThan(events.indexOf('enable'))
+  } finally {
+    connection.destroy()
+  }
+})
 it.each([false, true])(
   'runs the SDK admission hook before replay and closes failed admission (%s)',
   async (refuse) => {
