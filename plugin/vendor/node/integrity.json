@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 138729,
-    "unpackedSize": 1515495,
-    "shasum": "75621e0b631aff4b793bb8a5bd75c2e5432d1537",
-    "integrity": "sha512-JrMpWuaDKGZ7dWxpMuC7ufQ4m+0d2MNqly6XoUtznegUJb0mriPZ6W8YghihJOIKoAaaI2Fh29nEgzLING5aww==",
+    "size": 141066,
+    "unpackedSize": 1542150,
+    "shasum": "8892822442b19301f5ea3bb244ae6c5b344a75b5",
+    "integrity": "sha512-eKICmoc3ms3sVzWyd2OHEjb8xPBIv4LegZ5n0BtxvfuBOjqbWSjziopZRHUmSYQKobIRW/oH17O/8ijjFdtJhQ==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -125,7 +125,7 @@
       },
       {
         "path": "dist/codex-updates.js",
-        "size": 6377,
+        "size": 6424,
         "mode": 420
       },
       {
@@ -165,17 +165,17 @@
       },
       {
         "path": "dist/delegation.d.ts",
-        "size": 24865,
+        "size": 26692,
         "mode": 420
       },
       {
         "path": "dist/delegation.js",
-        "size": 5181,
+        "size": 5280,
         "mode": 420
       },
       {
         "path": "dist/delegation.js.map",
-        "size": 5437,
+        "size": 5586,
         "mode": 420
       },
       {
@@ -225,17 +225,17 @@
       },
       {
         "path": "dist/live.d.ts",
-        "size": 25601,
+        "size": 26851,
         "mode": 420
       },
       {
         "path": "dist/live.js",
-        "size": 7071,
+        "size": 7607,
         "mode": 420
       },
       {
         "path": "dist/live.js.map",
-        "size": 7365,
+        "size": 7954,
         "mode": 420
       },
       {
@@ -255,17 +255,17 @@
       },
       {
         "path": "dist/manager.d.ts",
-        "size": 6659,
+        "size": 14423,
         "mode": 420
       },
       {
         "path": "dist/manager.js",
-        "size": 2785,
+        "size": 4457,
         "mode": 420
       },
       {
         "path": "dist/manager.js.map",
-        "size": 3289,
+        "size": 5078,
         "mode": 420
       },
       {
@@ -420,17 +420,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 143234,
+        "size": 151530,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 14170,
+        "size": 14882,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 13861,
+        "size": 14335,
         "mode": 420
       },
       {
@@ -480,17 +480,17 @@
       },
       {
         "path": "dist/turn.d.ts",
-        "size": 6151,
+        "size": 7106,
         "mode": 420
       },
       {
         "path": "dist/turn.js",
-        "size": 995,
+        "size": 1255,
         "mode": 420
       },
       {
         "path": "dist/turn.js.map",
-        "size": 1040,
+        "size": 1276,
         "mode": 420
       },
       {
@@ -540,10 +540,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 51527,
-    "unpackedSize": 294128,
-    "shasum": "488011f01e4df4ed09d717fbc1dcba323825e8ac",
-    "integrity": "sha512-axk1IxU8pk7GNN7+2g0jHAZsNc73iAILqAGK2FnOe5enXzzS1LdmLc5Flb24auTJN85C3PJLddmWN3qsRyPHvg==",
+    "size": 51882,
+    "unpackedSize": 297216,
+    "shasum": "800e350ecf6019d7b9f97d560f0e597f8299016b",
+    "integrity": "sha512-suuIKwx90/v/XslPOGmUrG6dy6fJqCpDFsUaxGd9HJcTvMwD+NbglNwhbTVA8kZyGxIUU470sLzumjor6PaNlw==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -578,17 +578,17 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 32160,
+        "size": 34440,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 31800,
+        "size": 32180,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 29960,
+        "size": 30236,
         "mode": 420
       },
       {
@@ -623,7 +623,7 @@
       },
       {
         "path": "dist/node-path.d.ts",
-        "size": 7654,
+        "size": 7806,
         "mode": 420
       },
       {

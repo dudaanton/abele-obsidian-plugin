@@ -1,0 +1,10 @@
+--- a/packages/node-client/src/index.ts
++++ b/packages/node-client/src/index.ts
+@@ -882,4 +882,6 @@
+           )
+             throw e
+-          error = e.code
++          error = entry.method.startsWith('command.context.v1.')
++            ? `${e.code}: ${e.message}`
++            : e.code
+         }

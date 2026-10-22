@@ -1,23 +1,22 @@
 ## Delegation reason compatibility
 
-Apply `patches/delegation-reasons.patch` to the v0.4.44 protocol source before
-packaging. Delegation records, status replies and terminal events accept string
-reasons, including provider refusals, lost workers and future reasons. State and
-all other fields retain their existing validation. Only delegation.js, its source
-map and declarations change; the other three browser payloads keep their patches.
-The regression tests exercise both status parsing and SDK mailbox ingestion.
+The node protocol accepts any non-empty delegation reason (up to 1024 characters) upstream
+since v0.4.47, so the earlier local delegation-reasons patch is no longer applied.
 
 ## Current browser payloads
 
-All four packages are built from released AbeleNode v0.4.44
-(`b642319a281a3302589c2fc143d15e8fbc237ed0`), replacing the earlier additive protocol edit.
+All four packages are built from the clean released AbeleNode v0.4.47 archive,
+including the provider-independent `command_context_v1` contracts.
 The clean release archive is built for the four browser packages only.
 Apply paired-welcome.patch, lsp-install-deadline.patch (updated for HTTP long polling),
-execution-policy-admission.patch, and repository-deadline.patch before compiling and packaging. The admission patch adds
+execution-policy-admission.patch, repository-deadline.patch and command-context-errors.patch before compiling and packaging. The admission patch adds
 an optional generic admission callback to connect(), before saved subscriptions/outbox
 replay, and disconnects if admission fails. It never opts into execution policy by itself.
+The command-context error patch preserves the node's resource-specific error message
+in durable receipts; unrelated methods retain their existing error representation.
 The plugin explicitly negotiates execution.policy.v1 on every transport admission and
-refreshes discovery after enabling it; older nodes retain unknown policy snapshots.
+also opts into command.context.v1 before replaying saved context operations and streams.
+Discovery is refreshed after enabling execution policy; older nodes retain unknown policy snapshots.
 The lockfile and integrity.json record these exact packaged bytes.
 The fourth patch gives all `repository.*` requests a thirty-second deadline instead
 of five seconds. Version 0.4.44 exposes no per-request deadline option on either
