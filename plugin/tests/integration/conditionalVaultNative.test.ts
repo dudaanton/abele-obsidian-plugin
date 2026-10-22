@@ -9,6 +9,35 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const roots: string[] = []
+const recoveryCases = [
+  { parent: 'blocked', name: 'sample.md', occupied: false },
+  { parent: 'blocked', name: 'sample.md', occupied: true },
+]
+it.each(recoveryCases)('exposes captured bytes as a recognised file: %j', async ({ parent, name, occupied }) => {
+  const { root, disk } = await setup()
+  const path = 'folder/nested/' + name
+  await captured(root, 'matrix-record', path)
+  if (parent === 'blocked') await fs.writeFile(join(root, 'folder'), 'parent occupant')
+  else if (parent !== 'missing') await fs.mkdir(join(root, 'folder/nested'), { recursive: true })
+  if (occupied && parent !== 'blocked') await fs.writeFile(join(root, path), 'public occupant')
+  await disk().recoverConditionalFiles()
+  const visible: string[] = []
+  const walk = async (folder: string) => {
+    for (const entry of await fs.readdir(join(root, folder), { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue
+      const candidate = folder ? folder + '/' + entry.name : entry.name
+      if (entry.isDirectory()) await walk(candidate)
+      else if (await fs.readFile(join(root, candidate), 'utf8') === 'recovered bytes') visible.push(candidate)
+    }
+  }
+  await walk('')
+  expect(visible).toHaveLength(1)
+  expect(visible[0].endsWith('.md')).toBe(true)
+  expect(visible[0]).not.toContain('\uFFFD')
+  for (const part of visible[0].split('/')) expect(Buffer.byteLength(part)).toBeLessThanOrEqual(255)
+  if (parent === 'blocked') expect(await fs.readFile(join(root, 'folder'), 'utf8')).toBe('parent occupant')
+  else if (occupied) expect(await fs.readFile(join(root, path), 'utf8')).toBe('public occupant')
+})
 it('recreates a parent removed after capture and recovers following records', async () => {
   let injected = false
   const { root, disk } = await setup({

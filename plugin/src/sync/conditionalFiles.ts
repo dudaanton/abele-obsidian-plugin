@@ -1,4 +1,5 @@
 import { EngineError } from '@abele/sync-sdk/core'
+import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
 /** Structurally matches the next SDK's host port while the current SDK remains pinned. */
 export interface FileVersion {
@@ -26,7 +27,7 @@ export interface ConditionalFileHost {
   root: string
   active: Set<string>
   check(): void
-  validate(path: string): void
+  validate(path: string, recovery?: boolean): void
   stat(path: string): Promise<{ type: string; size: number; mtime: number } | null>
   fingerprint(path: string): Promise<FileVersion>
   create(path: string, bytes: Uint8Array, mtime: number): Promise<void>
@@ -74,10 +75,22 @@ export class ConditionalFiles {
     if (!info) return
     this.host.check()
     const id = from.split('/').at(-2)
+    let rootFallback = false
+    const parents = to.split('/').slice(0, -1)
+    for (let end = 1; end <= parents.length; end++) {
+      const parent = await this.host.stat(parents.slice(0, end).join('/'))
+      if (parent === null) break
+      if (parent.type !== 'folder') { rootFallback = true; break }
+    }
     for (let attempt = 0; attempt < 16; attempt++) {
-      const destination =
+      let destination =
         attempt === 0 ? to : to + '.recovered-' + (attempt === 1 ? id : crypto.randomUUID())
-      this.host.validate(destination)
+      if (rootFallback) {
+        const file = to.slice(to.lastIndexOf('/') + 1), dot = file.lastIndexOf('.')
+        destination = fitGeneratedName('', dot > 0 ? file.slice(0, dot) : file,
+          dot > 0 ? file.slice(dot) : '', ' (Conflicted copy restored ' + (attempt === 0 ? id : crypto.randomUUID()) + ')')
+      }
+      this.host.validate(destination, rootFallback)
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await this.host.mkdir(parent)
       if ((await this.host.stat(destination)) !== null) {

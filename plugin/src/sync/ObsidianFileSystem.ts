@@ -684,10 +684,10 @@ export class ObsidianFileSystem implements FileSystem {
         : this.configDir + '/plugins/abele/sync-conditional',
       active,
       check: () => this.runtimeFence?.assertReady(),
-      validate: (path) => {
+      validate: (path, recovery = false) => {
         assertPhysicalPath(path)
         if (
-          !this.withinFileScope(path) &&
+          !recovery && !this.withinFileScope(path) &&
           !(this.privateRoot && withinRoot(path, this.privateRoot))
         )
           throw new EngineError('conflict', 'conditional operation is outside this connection')
