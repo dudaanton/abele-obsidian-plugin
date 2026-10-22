@@ -99,9 +99,11 @@ const answer = (node: string, prompt: Prompt, choice: 'allow' | 'deny', value?: 
     )
   })
 const stop = (node: string, prompt: Prompt) =>
-  ownerAction(node, () =>
-    service.connection(node).client.interrupt(prompt.session_id, prompt.run_id)
-  )
+  ownerAction(node, async () => {
+    const connection = service.connection(node)
+    await connection.delegation.stopByOwner(prompt.session_id)
+    await connection.client.interrupt(prompt.session_id, prompt.run_id)
+  })
 const cancel = (item: (typeof runs.value)[number]) =>
   ownerAction(item.node.id, () =>
     service

@@ -123,7 +123,7 @@ import type { ChatMessage } from '@/ai/types'
 import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import type { DelegationCard } from '@/node/delegation'
-import { delegationBranchLabel, delegationReportText } from '@/node/delegation'
+import { OWNER_STOP_REASON, delegationBranchLabel, delegationReportText } from '@/node/delegation'
 import { providerLabel } from '@/node/providers'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
@@ -161,6 +161,7 @@ watch(
 const expandedReports = ref<Record<number, boolean>>({})
 const stateLabel = computed(() => {
   const state = props.card.state
+  if (props.card.reason === OWNER_STOP_REASON) return t('node.delegation.ownerStopped')
   if (state === 'stopped') return t('node.delegation.paused')
   if (state === 'completed') return t('node.delegation.done')
   if (state === 'failed' || state === 'unsupported') return t('streamB.failed.031a8f')

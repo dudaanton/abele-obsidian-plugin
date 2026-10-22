@@ -27438,5 +27438,15 @@
       "es",
       "de"
     ]
+  },
+  "node.delegation.ownerStopped": {
+    "englishHash": "25b86c5cf94766f830b7ab1077e25946cd95d172807512f5e64af793b7727ae0",
+    "context": "Owner stop is final until a direct restart in the child chat",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

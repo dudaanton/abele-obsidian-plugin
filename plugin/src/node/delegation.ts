@@ -57,6 +57,7 @@ export const DelegationStorageSchema = z
           request,
           child: z.custom<Delegation>((v) => DelegationSchema.safeParse(v).success).optional(),
           cancelled: z.boolean().optional(),
+          ownerStopped: z.boolean().optional(),
           cancelSettled: z.boolean().optional(),
           awaitingResult: z.boolean().optional(),
           notifiedAttention: z.string().optional(),
@@ -74,6 +75,21 @@ export const DelegationStorageSchema = z
   .strict()
   .transform(({ tasks }) => ({ tasks }))
 export type DelegationStorage = z.infer<typeof DelegationStorageSchema>
+export const OWNER_STOP_REASON = 'Stopped by the owner. Only the owner may restart this developer.'
+
+export function setOwnerStopped(
+  local: DelegationStorage | undefined,
+  sessionId: string,
+  stopped: boolean
+): void {
+  for (const task of Object.values(local?.tasks ?? {})) {
+    if (task.child?.session_id !== sessionId) continue
+    if (stopped) {
+      task.ownerStopped = true
+      delete task.notifiedAttention
+    } else delete task.ownerStopped
+  }
+}
 export function delegationReportText(text: string): string {
   return /^Waiting for owner approval\. Open child session \S+ to answer prompt \S+\. The controller cannot approve it\.$/.test(
     text

@@ -3689,6 +3689,7 @@ export const de = {
     'Das Programm hat noch keinen Code für diese Zeile geladen. Prüfen Sie die Quellzuordnung oder warten Sie, bis dieser Code geladen wird.',
   'debug.watchLastValue': 'Letzter Wert: {value}',
   'debug.logPoint': 'Protokollpunkt: {message}',
+  'node.delegation.ownerStopped': 'Von dir gestoppt; im Entwicklerchat fortsetzen',
   'node.delegation.paused': 'Pausiert; kann fortgesetzt werden',
   'node.delegation.ownerAnswer':
     'Ihre Genehmigung wird erwartet. Antworten Sie auf dieser Karte oder öffnen Sie den untergeordneten Chat. Der Manager kann nicht für Sie antworten.',

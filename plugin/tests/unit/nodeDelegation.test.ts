@@ -43,6 +43,52 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it('keeps an owner stop durable across restore and refuses autonomous follow-ups', async () => {
+  const f = fixture()
+  try {
+    await f.controller.create('parent', task)
+    await f.controller.stopByOwner('child')
+    await f.controller.restore()
+    const restored = new NodeDelegationController(f.client as unknown as NodeClient, f.store)
+    await expect(restored.send('parent', 'delegation', 'Continue')).rejects.toThrow(
+      /stopped by the owner/i
+    )
+    expect(f.client.sendDelegation).not.toHaveBeenCalled()
+    expect((await restored.cards('parent'))[0]).toMatchObject({
+      state: 'stopped',
+      reason: 'Stopped by the owner. Only the owner may restart this developer.',
+    })
+    expect(await restored.status('parent', 'delegation')).toMatchObject({
+      state: 'stopped',
+      reason: 'Stopped by the owner. Only the owner may restart this developer.',
+    })
+    await restored.restartByOwner('child')
+    await restored.send('parent', 'delegation', 'Continue')
+    expect(f.client.sendDelegation).toHaveBeenCalledOnce()
+  } finally {
+    f.store.close()
+  }
+})
+it('honors an owner stop while a manager follow-up is waiting for status', async () => {
+  const f = fixture()
+  try {
+    await f.controller.create('parent', task)
+    const original = f.client.delegationStatus.getMockImplementation()!
+    f.client.delegationStatus.mockImplementationOnce(async () => {
+      await f.controller.stopByOwner('child')
+      return original()
+    })
+    await expect(f.controller.send('parent', 'delegation', 'Continue')).rejects.toThrow(
+      /stopped by the owner/i
+    )
+    expect(f.client.sendDelegation).not.toHaveBeenCalled()
+    const wake = vi.fn(() => true)
+    await f.controller.wakeDelivered(await f.controller.snapshot(), wake)
+    expect((wake.mock.calls as unknown as string[][])[0][2]).toContain('Only the owner may restart')
+  } finally {
+    f.store.close()
+  }
+})
 it('quotes and bounds developer data in parent wake notices', async () => {
   const f = fixture()
   try {

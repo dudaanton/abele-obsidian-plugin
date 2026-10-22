@@ -37,6 +37,7 @@ import { nodeAdvertisesMethod } from './advertisedMethods'
 import { NodeChatHistory, type NodeHistoryAction, type NodeChatPreview } from './NodeChatHistory'
 import { restoredTranscript } from './restoredTranscript'
 import { activeNodeLetters } from './nodeChatLetters'
+import { setOwnerStopped } from './delegation'
 import type { LetterChat } from '@/chats/chatLetters'
 
 import {
@@ -221,6 +222,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
       rememberMode: (mode) => rememberSessionOwnerMode(reference.nodeId, reference.sessionId, mode),
       report: (error) => this.report(error),
       open: (sessionId) => this.openSession?.(sessionId),
+      beforeStop: () =>
+        connection.client.store.transaction((s) =>
+          setOwnerStopped((s as NodeClientState).delegation, reference.sessionId, true)
+        ),
     })
     this.history = new NodeChatHistory(
       () => connection.client,
@@ -1013,6 +1018,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         s.outbox.push({ operation_id, method: 'session.send', params })
         // Clear only this submission, atomically with admission, even if the view closes.
         const state = s as NodeClientState
+        setOwnerStopped(state.delegation, this.reference.sessionId, false)
         if (guarded && expected) {
           state.turnDrafts ??= {}
           state.turnDrafts[operation_id] = {
@@ -1275,6 +1281,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.error.value = ''
     try {
       try {
+        await this.connection.client.store.transaction((s) =>
+          setOwnerStopped((s as NodeClientState).delegation, this.reference.sessionId, true)
+        )
         await this.connection.client.interrupt(this.reference.sessionId, runId)
       } catch (error) {
         this.report(error)

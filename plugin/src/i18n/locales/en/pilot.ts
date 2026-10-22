@@ -3546,6 +3546,7 @@ export const en = {
     'The program has not loaded code for this line yet. Check its source map or wait for this code to load.',
   'debug.watchLastValue': 'Last value: {value}',
   'debug.logPoint': 'Log point: {message}',
+  'node.delegation.ownerStopped': 'Stopped by you; restart from the child chat',
   'node.delegation.paused': 'Paused; can continue',
   'node.delegation.ownerAnswer':
     'Waiting for your approval. Answer the pending action on this card or open the child chat. The manager cannot answer for you.',

@@ -109,6 +109,7 @@ export interface SessionActions {
   open: (sessionId: string) => void
   report: (error: unknown) => void
   rememberMode?: (mode: OwnerPermissionMode) => Promise<void> | void
+  beforeStop?: () => Promise<void>
 }
 
 /**
@@ -191,7 +192,10 @@ export class NodeSessionControl {
   }
 
   stop(): Promise<void> {
-    return this.act(() => this.client().stopSession(this.sessionId))
+    return this.act(async () => {
+      await this.actions.beforeStop?.()
+      await this.client().stopSession(this.sessionId)
+    })
   }
 
   rename(title: string): Promise<void> {

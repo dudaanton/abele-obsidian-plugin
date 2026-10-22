@@ -3648,6 +3648,7 @@ export const lv = {
     'Programma vēl nav ielādējusi šīs rindas kodu. Pārbaudiet avota karti vai gaidiet koda ielādi.',
   'debug.watchLastValue': 'Pēdējā vērtība: {value}',
   'debug.logPoint': 'Žurnāla punkts: {message}',
+  'node.delegation.ownerStopped': 'Jūs apturējāt; atsāciet izstrādātāja sarunā',
   'node.delegation.paused': 'Apturēts; var turpināt',
   'node.delegation.ownerAnswer':
     'Gaida jūsu atļauju. Atbildiet šajā kartītē vai atveriet deleģēto tērzēšanu. Pārvaldnieks nevar atbildēt jūsu vietā.',

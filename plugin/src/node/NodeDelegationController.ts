@@ -16,6 +16,8 @@ import { readStore } from './NodeClientStore'
 import { requireGrantFreeDelegation } from './delegationCapability'
 import {
   DelegationTaskInputSchema,
+  OWNER_STOP_REASON,
+  setOwnerStopped,
   type DelegationTaskInput,
   type DelegationCard,
   type DelegationRequest,
@@ -404,9 +406,14 @@ export class NodeDelegationController {
       title: card?.title,
       branch: card?.branch,
       activity: card?.activity,
-      state: status.state === 'completed' && !delivered ? 'receiving mailbox' : status.state,
+      state:
+        card?.reason === OWNER_STOP_REASON
+          ? 'stopped'
+          : status.state === 'completed' && !delivered
+            ? 'receiving mailbox'
+            : status.state,
       session_head_seq: status.session_head_seq,
-      reason: status.reason,
+      reason: card?.reason ?? status.reason,
       pending_human_prompts: status.pending_human_prompts,
       reports: card?.reports ?? [],
     }
@@ -416,6 +423,8 @@ export class NodeDelegationController {
     const displayed = this.targets.get(id)
     const expected = displayed && structuredClone(displayed)
     const child = await this.owned(parent, id, 'send')
+    if (await readStore(this.store, (s) => storage(s).tasks[child.delegation_key].ownerStopped))
+      throw new Error(OWNER_STOP_REASON)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
     const description = await this.client.describe()
     const guarded = supportsExpectedTarget(description)
@@ -427,6 +436,8 @@ export class NodeDelegationController {
     }
     const status = await this.client.delegationStatus(id)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
+    if (await readStore(this.store, (s) => storage(s).tasks[child.delegation_key].ownerStopped))
+      throw new Error(OWNER_STOP_REASON)
     const result =
       guarded && expected
         ? await this.client.sendDelegation(id, text, status.session_head_seq, expected)
@@ -463,6 +474,20 @@ export class NodeDelegationController {
     })
     return this.publicChild(await this.commitCancellation(child.delegation_key, id))
   }
+  /** Record the owner's choice before interrupting, even when the node is unreachable. */
+  stopByOwner(sessionId: string): Promise<void> {
+    return this.store.transaction((s) => {
+      setOwnerStopped(s.delegation, sessionId, true)
+    })
+  }
+
+  /** Only a direct owner submission in the child chat releases this fence. */
+  restartByOwner(sessionId: string): Promise<void> {
+    return this.store.transaction((s) => {
+      setOwnerStopped(s.delegation, sessionId, false)
+    })
+  }
+
   /** Recover receipts before subscribing. Does not depend on an open parent/child tab. */
   async restore() {
     const { children, cancellations } = await this.store.transaction((s) => {
@@ -746,6 +771,10 @@ export class NodeDelegationController {
             !reports.some((r) => r.seq === event.seq)
           )
             reports.push({ seq: event.seq, kind: event.type.slice(11), text: data.text })
+        }
+        if (t.ownerStopped) {
+          state = 'stopped'
+          reason = OWNER_STOP_REASON
         }
         const canRead = !!child
         const transcript = canRead
