@@ -83,6 +83,7 @@ export const CATALOGUE_COMPONENTS = [
   'ShortList',
   'SidebarPanel',
   'Slider',
+  'StateLine',
   'StatusDot',
   'SuggestionRow',
   'SwatchPicker',

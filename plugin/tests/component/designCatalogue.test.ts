@@ -13,6 +13,9 @@ describe('test-only design catalogue', () => {
     expect(states.find('.abele-run-report').exists()).toBe(true)
     expect(states.find('.abele-short-list').exists()).toBe(true)
     expect(states.find('.abele-call-note').text()).toBe('The sample action was not sent.')
+    expect(states.get('.abele-state-line__text').text()).toBe(
+      'The sample operation did not finish.'
+    )
     states.unmount()
     const controls = mount(DesignCatalogue, { ...options, props: { page: 'controls' } })
     expect(controls.find('[data-selection-sample]').exists()).toBe(true)
@@ -66,6 +69,7 @@ describe('test-only design catalogue', () => {
       global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
     })
     expect(view.findAll('.abele-status-dot').map((dot) => dot.attributes('aria-label'))).toEqual([
+      'The sample operation did not finish.',
       'Running',
       'Paused',
       'Exited',

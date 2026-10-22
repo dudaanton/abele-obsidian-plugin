@@ -243,6 +243,16 @@
       </template>
       <template v-else-if="page === 'states'">
         <CallNote text="The sample action was not sent." />
+        <StateLine
+          tone="orange"
+          text="The sample operation did not finish."
+          action="Retry"
+          :details="[{ label: 'Code', value: 'sample_deadline', code: true }]"
+          log
+          @action="announce('Retry requested')"
+          @log="announce('Log requested')"
+          @copy="announce('Details copied')"
+        />
         <Section title="Run report">
           <RunReport finished status="Import complete" :facts="[{ label: 'Notes', value: 3 }]" />
           <ShortList
@@ -760,6 +770,7 @@ import FloatingButton from '@/components/obsidian/FloatingButton.vue'
 import AnchoredCard, { type CardAnchor } from '@/components/obsidian/AnchoredCard.vue'
 import RunReport from '@/components/obsidian/RunReport.vue'
 import ShortList from '@/components/obsidian/ShortList.vue'
+import StateLine from '@/components/obsidian/StateLine.vue'
 import SelectionBar from '@/components/obsidian/SelectionBar.vue'
 import { ASK, ADD, NOTE } from '@/components/obsidian/selectionActions'
 import IconPicker from '@/components/obsidian/IconPicker.vue'

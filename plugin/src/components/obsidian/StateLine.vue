@@ -10,7 +10,7 @@
       <span class="abele-state-line__text">{{ text }}</span>
     </div>
     <div v-if="action" class="abele-state-line__body">
-      <Button :text="action" :disabled="disabled" @click="emit('action')" />
+      <Button :text="action" :tooltip="action" :disabled="disabled" @click="emit('action')" />
     </div>
     <div v-if="details.length || log" class="abele-state-line__body">
       <FoldHeading
@@ -82,7 +82,7 @@ watch(
 
 <style>
 .abele-state-line {
-  --abele-state-gutter: calc(8px + var(--size-4-2));
+  --abele-state-gutter: calc(var(--size-4-2) + var(--size-4-2));
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
