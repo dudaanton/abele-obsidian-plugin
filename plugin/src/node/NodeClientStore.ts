@@ -285,7 +285,6 @@ export class NodeClientStore implements ClientStore {
       }
       const request = store.get('state')
       request.onsuccess = () => {
-        keepAlive()
         void (async () => {
           try {
             const state = readState(request.result)
@@ -294,6 +293,9 @@ export class NodeClientStore implements ClientStore {
               this.journal.load(tx, state),
               this.artifacts.load(tx, state),
             ])
+            // Journal/cache reads already keep this transaction alive. Only the user's
+            // callback may wait without an IndexedDB request outstanding.
+            keepAlive()
             const before = intentOf(state)
             const executionsBefore = JSON.stringify(state.obsidianExecutions)
             const submitted = state.outbox.slice()
