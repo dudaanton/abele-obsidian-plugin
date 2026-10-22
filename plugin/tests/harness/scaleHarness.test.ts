@@ -1,0 +1,246 @@
+// @vitest-environment node
+import { describe, it, expect } from 'vitest'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
+import { gzipSync } from 'node:zlib'
+import { runInNewContext } from 'node:vm'
+import { planVault, contentChunk, shapes } from '../scale/generate.mjs'
+import { compareInventory, budgets, pauseMetrics } from '../scale/oracles.mjs'
+import { WireProxy } from '../scale/proxy.mjs'
+import { RealVault } from '../scale/run.mjs'
+
+describe('scale harness independent guarantees', () => {
+  it('cuts a content batch after the server applied it and before its acknowledgement reaches the client', async () => {
+    let applied = false
+    const upstream = createServer(async (req, res) => {
+      for await (const _ of req) {
+        /* drain metadata */
+      }
+      applied = true
+      res.setHeader('content-type', 'application/json')
+      res.end(
+        JSON.stringify({
+          results: [{ status: 'applied', version_id: 'sample-version', sha: 'c'.repeat(64) }],
+        })
+      )
+    })
+    upstream.listen(0, '127.0.0.1')
+    await once(upstream, 'listening')
+    const address = upstream.address()
+    if (!address || typeof address === 'string') throw new Error('Expected TCP fixture')
+    const proxy = new WireProxy(`http://127.0.0.1:${address.port}`, 'sample-device')
+    const url = await proxy.start()
+    proxy.breakpoint = 'batch'
+    const hit = new Promise((resolve) =>
+      proxy.on('wire', (event) => {
+        if (event.event === 'trigger') resolve(true)
+      })
+    )
+    const transfer = globalThis
+      .fetch(url + '/v2/commit', {
+        method: 'POST',
+        body: JSON.stringify({ ops: [{ sha: 'c'.repeat(64) }] }),
+      })
+      .then((r) => r.text())
+      .catch(() => null)
+    try {
+      await hit
+      expect(applied).toBe(true)
+    } finally {
+      proxy.release()
+      await proxy.close()
+      await transfer
+      upstream.closeAllConnections()
+      await new Promise<void>((resolve) => upstream.close(() => resolve()))
+    }
+  })
+  it('fences a late failure from the job that a plugin reload retired', async () => {
+    let reject!: (reason: Error) => void
+    const pending = new Promise<void>((_resolve, fail) => {
+      reject = fail
+    })
+    const window = {}
+    const app = {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: { ui: { rows: { value: [{ id: 'sample' }] }, sync: () => pending } },
+          },
+        },
+      },
+    }
+    const vault = new RealVault({}, '/sample-vault')
+    vault.evaluate = async (body) => runInNewContext(`(async()=>{${body}})()`, { app, window })
+    await vault.sync()
+    await vault.invalidateJob()
+    reject(new Error('sample interrupted action'))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(window.__scaleJob).toBe(null)
+  })
+  it('does not report an unfinished paused request as zero stop latency', () => {
+    const measured = pauseMetrics(
+      [{ event: 'start', id: 1, at: 900 }],
+      1000,
+      new Set([1]),
+      new Set([1]),
+      3500
+    )
+    expect(measured.pauseLatencyMs).toBe(2500)
+    expect(measured.pauseNewRequests).toBe(0)
+    expect(measured.pauseInFlight).toBe(1)
+    expect(budgets(measured).find((row) => row.name === 'pause latency').status).toBe('FAIL')
+  })
+  it('keeps only a few very large attachments in the full shape without generating its data', () => {
+    const plan = planVault({ ...shapes.scale, seed: 42 })
+    expect(plan.filter((file) => file.size > 100 * 1024 ** 2)).toHaveLength(3)
+    expect(Math.max(...plan.map((file) => file.size))).toBeLessThanOrEqual(256 * 1024 ** 2)
+    expect(plan.reduce((sum, file) => sum + file.size, 0)).toBe(shapes.scale.bytes)
+  })
+  it('reproduces exact count and bytes with a large attachment tail', () => {
+    const a = planVault({ seed: 42, files: 1000, bytes: 200 * 1024 ** 2 })
+    expect(a).toEqual(planVault({ seed: 42, files: 1000, bytes: 200 * 1024 ** 2 }))
+    expect(a).toHaveLength(1000)
+    expect(a.reduce((sum, file) => sum + file.size, 0)).toBe(200 * 1024 ** 2)
+    expect(a.filter((file) => file.path.endsWith('.md')).length).toBeGreaterThan(850)
+    expect(Math.max(...a.map((file) => file.size))).toBeGreaterThan(100 * 1024 ** 2)
+    expect(new Set(a.map((file) => file.path)).size).toBe(a.length)
+    expect(
+      new Set(a.map((file) => file.path.slice(0, file.path.lastIndexOf('/')))).size
+    ).toBeLessThan(150)
+    expect(
+      a.some((file) =>
+        a.some(
+          (other) =>
+            file.path !== other.path && file.path.toLowerCase() === other.path.toLowerCase()
+        )
+      )
+    ).toBe(true)
+    expect(contentChunk(42, 1, 0)).toEqual(contentChunk(42, 1, 0))
+    expect(contentChunk(42, 1, 0)).not.toEqual(contentChunk(43, 1, 0))
+  })
+  it('detects missing, extra and corrupt bytes independently of matching sizes', () => {
+    const expected = [
+      { path: 'a.md', size: 2, sha: 'aa' },
+      { path: 'b.md', size: 2, sha: 'bb' },
+    ]
+    expect(
+      compareInventory(expected, [
+        { path: 'a.md', size: 2, sha: 'cc' },
+        { path: 'c.md', size: 2, sha: 'bb' },
+      ])
+        .map((x) => x.kind)
+        .sort()
+    ).toEqual(['extra', 'missing', 'sha'])
+  })
+  it('never passes a missing observation or an untriggered interruption', () => {
+    const result = budgets({ interruptions: [], mismatches: [], ownDownloads: 0 })
+    expect(result.find((row) => row.name === 'restart first request').status).toBe('FAIL')
+    expect(result.find((row) => row.name === 'interruptions').status).toBe('FAIL')
+    expect(result.find((row) => row.name === 'byte equality').status).toBe('FAIL')
+  })
+  it('uses strict timing boundaries', () => {
+    const result = budgets({
+      verifiedFiles: 1000,
+      mismatches: [],
+      ownDownloads: 0,
+      notices: 0,
+      restartRequestMs: 5000,
+      restartIdleMs: 60000,
+      resumeUploadMs: 30000,
+      pauseLatencyMs: 2000,
+      pauseNewRequests: 0,
+      interruptions: Array.from({ length: 6 }, (_, i) => ({ kind: String(i), triggered: true })),
+    })
+    expect(
+      result
+        .filter(
+          (row) =>
+            row.name.includes('restart') ||
+            row.name === 'resume upload' ||
+            row.name === 'pause latency'
+        )
+        .every((row) => row.status === 'FAIL')
+    ).toBe(true)
+  })
+  it('observes owned content outside the plugin and omits secrets from its trace', async () => {
+    const digest = 'a'.repeat(64)
+    const upstream = createServer(async (req, res) => {
+      for await (const _ of req) {
+        /* drain upload metadata */
+      }
+      res.setHeader('content-type', 'application/json')
+      if (req.url === '/v2/commit') {
+        res.setHeader('content-encoding', 'gzip')
+        res.end(gzipSync(JSON.stringify({ results: [{ version_id: 'v1', sha: digest }] })))
+      } else res.end('content')
+    })
+    upstream.listen(0, '127.0.0.1')
+    await once(upstream, 'listening')
+    const address = upstream.address()
+    if (!address || typeof address === 'string') throw new Error('Expected TCP fixture')
+    const proxy = new WireProxy(`http://127.0.0.1:${address.port}`, 'sample-device')
+    const url = await proxy.start()
+    try {
+      await (
+        await globalThis.fetch(url + '/v2/commit', {
+          method: 'POST',
+          headers: { authorization: 'Bearer sample-secret' },
+          body: JSON.stringify({ ops: [{ sha: digest }] }),
+        })
+      ).text()
+      await (
+        await globalThis.fetch(url + '/v2/files/f1/content?version_id=v1&key=sample-secret')
+      ).text()
+      expect(proxy.ownDownloads()).toBe(1)
+      expect(proxy.unresolvedDownloads()).toBe(0)
+      expect(JSON.stringify(proxy.events)).not.toContain('sample-secret')
+      await (await globalThis.fetch(url + '/v2/files/f1/content?version_id=unknown')).text()
+      expect(proxy.unresolvedDownloads()).toBe(1)
+      proxy.drop()
+      await expect(globalThis.fetch(url + '/v2/manifest')).rejects.toThrow()
+    } finally {
+      await proxy.close()
+      upstream.closeAllConnections()
+      await new Promise<void>((resolve) => upstream.close(() => resolve()))
+    }
+  })
+  it('interrupts a large file inside a bounded multipart chunk', async () => {
+    const upstream = createServer(async (req, res) => {
+      for await (const _ of req) {
+        /* drain synthetic bytes */
+      }
+      res.end('ok')
+    })
+    upstream.listen(0, '127.0.0.1')
+    await once(upstream, 'listening')
+    const address = upstream.address()
+    if (!address || typeof address === 'string') throw new Error('Expected TCP fixture')
+    const proxy = new WireProxy(`http://127.0.0.1:${address.port}`, 'sample-device')
+    const url = await proxy.start()
+    proxy.breakpoint = 'large-upload'
+    proxy.breakpointSha = 'b'.repeat(64)
+    let timer
+    const hit = new Promise((resolve) => {
+      proxy.on('wire', (event) => {
+        if (event.event === 'trigger') resolve(true)
+      })
+      timer = setTimeout(() => resolve(false), 1000)
+    })
+    const transfer = globalThis
+      .fetch(`${url}/v2/uploads/${proxy.breakpointSha}/sample-upload/0`, {
+        method: 'PUT',
+        body: Buffer.alloc(256 * 1024),
+      })
+      .then((r) => r.text())
+      .catch(() => null)
+    try {
+      expect(await hit).toBe(true)
+    } finally {
+      clearTimeout(timer)
+      await proxy.close()
+      await transfer
+      upstream.closeAllConnections()
+      await new Promise<void>((resolve) => upstream.close(() => resolve()))
+    }
+  })
+})
