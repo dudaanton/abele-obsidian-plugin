@@ -1,10 +1,18 @@
 <template>
   <Modal :title="t('debuggerAccess.title')" size="tall" @close="emit('close')">
-    <p class="setting-item-description">{{ label }} · {{ t('debuggerAccess.issued') }}</p>
-    <p class="setting-item-description">
-      {{ t('debuggerAccess.issuerOnly') }}
-    </p>
-    <Button :text="t('debuggerAccess.refresh')" :disabled="busy" @click="load" />
+    <Section :desc="t('debuggerAccess.issuerOnly')">
+      <template #lead>
+        <span class="setting-item-description">{{ label }} · {{ t('debuggerAccess.issued') }}</span>
+      </template>
+      <template #actions>
+        <Icon
+          icon="rotate-cw"
+          :tooltip="t('debuggerAccess.refresh')"
+          :disabled="busy"
+          @click="load"
+        />
+      </template>
+    </Section>
     <p v-if="!model.supported && loaded" role="status">{{ t('debuggerAccess.updateNode') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loaded && model.supported && !model.grants.length">
@@ -37,7 +45,7 @@ import { reactive, ref, onMounted } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
 import Modal from '@/components/obsidian/Modal.vue'
 import Setting from '@/components/obsidian/Setting.vue'
-import Button from '@/components/obsidian/Button.vue'
+import Section from '@/components/obsidian/Section.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import { DebuggerAccess, debuggerAccessLabel, type DebuggerGrant } from './access'
 import { useI18n } from '@/i18n/useI18n'

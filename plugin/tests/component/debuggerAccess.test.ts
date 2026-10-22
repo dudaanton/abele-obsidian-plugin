@@ -96,12 +96,47 @@ it('uses a tall grant dialog and exposes revoke/delete for the node’s issuer-f
   await flushPromises()
   expect(w.text()).toContain('sample-debug')
   expect(w.findComponent(Modal).props('size')).toBe('tall')
+  const refresh = w.get('.abele-section__actions [aria-label="Refresh"]')
+  expect(refresh.text()).toBe('')
+  await refresh.trigger('click')
+  await flushPromises()
+  expect(request.mock.calls.filter(([method]) => method === 'debugger.v1.grant.list')).toHaveLength(
+    2
+  )
   await w.get('[aria-label="Revoke debugger access"]').trigger('click')
   await flushPromises()
   expect(request).toHaveBeenCalledWith('debugger.v1.grant.revoke', { grant_id: 'sample-grant' })
   await w.get('[aria-label^="Delete this grant"]').trigger('click')
   await flushPromises()
   expect(request).toHaveBeenCalledWith('debugger.v1.grant.delete', { grant_id: 'sample-grant' })
+  w.unmount()
+})
+it('refreshes an uncertain decision from a header glyph without repeating the decision', async () => {
+  const request = vi.fn(async (method: string) => {
+    if (method === 'debugger.v1.access.decide') throw new Error('Sample connection interrupted')
+    return [accessRequest]
+  })
+  const presenter = {
+    reference: { sessionId: 'sample-chat' },
+    debuggerAvailable: ref(true),
+    nodeDescription: ref(accessDescription),
+    connection: { state: ref('connected'), client: { request, onEvent: () => () => {} } },
+  }
+  const w = mount(NodeDebuggerAccess, { props: { presenter: presenter as never } })
+  await flushPromises()
+  await w
+    .findAll('button')
+    .find((button) => button.text() === 'Allow')!
+    .trigger('click')
+  await flushPromises()
+  await w.get('.abele-section__actions [aria-label="Refresh debugger requests"]').trigger('click')
+  await flushPromises()
+  expect(
+    request.mock.calls.filter(([method]) => method === 'debugger.v1.access.decide')
+  ).toHaveLength(1)
+  expect(
+    request.mock.calls.filter(([method]) => method === 'debugger.v1.access.requests')
+  ).toHaveLength(2)
   w.unmount()
 })
 it('disables offline and expired request actions', async () => {

@@ -1,15 +1,15 @@
 <template>
   <div class="abele-node-debugger-access">
-    <div v-if="model.error" class="nav-header">
-      <div class="nav-buttons-container">
+    <Section v-if="model.error">
+      <template #actions>
         <Icon
           icon="rotate-cw"
           :tooltip="t('debuggerAccess.refreshRequests')"
           :disabled="offline || model.busy"
           @click="refresh"
         />
-      </div>
-    </div>
+      </template>
+    </Section>
     <p
       v-if="presenter.debuggerAvailable.value && !model.supported"
       class="setting-item-description"
@@ -35,6 +35,7 @@ import { useI18n } from '@/i18n/useI18n'
 const { t } = useI18n()
 import DebuggerAccessCard from './DebuggerAccessCard.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import Section from '@/components/obsidian/Section.vue'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const model = reactive(
   new DebuggerAccess((method, params) => props.presenter.connection.client.request(method, params))
