@@ -131,17 +131,19 @@ afterEach(() => {
   chatTreeSource.value = null
 })
 
-it('reserves an inaccessible close slot on closed phone rows', () => {
-  Platform.isPhone = true
+it.each([true, false])('keeps row actions and search focus appropriate for phone=%s', (phone) => {
+  Platform.isPhone = phone
   source.root.value[0].children = [
     { kind: 'chat', id: 'child', title: 'Sample child', open: false, at: 1, nested: 'discussion' },
   ]
+  source.root.value.push({ kind: 'folder', path: 'Collection', name: 'Collection', children: [] })
   const view = show()
   const row = view.get('[data-chat="child"] > .tree-item-self')
-  const slot = row.get('.abele-chat-tree__close-slot')
-  expect(slot.attributes('aria-hidden')).toBe('true')
-  expect(slot.attributes('tabindex')).toBeUndefined()
+  expect(row.find('.abele-chat-tree__close-slot').exists()).toBe(false)
   expect(row.find('[aria-label="Close"]').exists()).toBe(false)
+  expect(view.find('[data-chat="sample"] [aria-label="Close"]').exists()).toBe(!phone)
+  expect(document.activeElement === view.get('input').element).toBe(!phone)
+  expect(view.find('[aria-label="New chat in Collection"]').exists()).toBe(!phone)
 })
 
 it('keeps the nested folder in the tooltip while giving the header to the chat name', async () => {

@@ -175,12 +175,29 @@ const probe = (label: string) => `(async () => {
     if (app.isMobile) {
       const openRow = document.querySelector('[data-chat="' + second + '"] > .tree-item-self')
       const closedRow = document.querySelector('[data-chat="' + archivedPath + '"] > .tree-item-self')
-      const slot = closedRow.querySelector('.abele-chat-tree__close-slot')
-      const close = openRow.querySelector('[aria-label="Close"]')
-      if (!slot || Math.abs(slot.getBoundingClientRect().width - close.getBoundingClientRect().width) > 1) throw Error('Closed row does not reserve the close box')
+      for (const row of [openRow, closedRow]) {
+        if (row.querySelector('.abele-chat-tree__close-slot, [aria-label="Close"]')) throw Error('Phone row reserves a close action')
+        if (row.querySelectorAll('.abele-tree-item__actions .clickable-icon').length !== 1) throw Error('Phone row needs only its menu')
+        const text = row.querySelector('.abele-tree-item__text')
+        const css = getComputedStyle(text)
+        if (css.whiteSpace !== 'nowrap' || css.textOverflow !== 'ellipsis' || css.overflow !== 'hidden') throw Error('Phone name is not single-line with ellipsis')
+      }
+      if (document.querySelector('.abele-chat-tree [aria-label^="New chat in "]')) throw Error('Phone folder retains its creation glyph')
+      if (document.querySelector('.abele-chat-tree').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') throw Error('Phone search took focus')
       if (Math.abs(openRow.querySelector('time').getBoundingClientRect().right - closedRow.querySelector('time').getBoundingClientRect().right) > 1) throw Error('Nested timestamps are not aligned')
     }
     await shot('open-and-closed-children')
+    const originalThemes = ['theme-light', 'theme-dark'].filter(name => document.body.classList.contains(name))
+    try {
+      for (const theme of ['theme-light', 'theme-dark']) {
+        document.body.classList.remove('theme-light', 'theme-dark')
+        document.body.classList.add(theme)
+        await shot('open-and-closed-children-' + theme)
+      }
+    } finally {
+      document.body.classList.remove('theme-light', 'theme-dark')
+      document.body.classList.add(...originalThemes)
+    }
     document.querySelector('[data-chat="' + first + '"] > .tree-item-self .collapse-icon').click()
     current().click()
     service.switchTab(second)
@@ -411,7 +428,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 32 : 33)
+    expect(result.pictures).toBe(onPhone() ? 34 : 35)
     console.log('Sample composer geometry', JSON.stringify(result.composer))
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
