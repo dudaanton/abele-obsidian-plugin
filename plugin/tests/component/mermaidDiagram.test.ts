@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { mermaidStub, Notice, Platform } from 'obsidian'
+import { Notice, Platform } from 'obsidian'
 import MermaidDiagram from '@/components/mermaid/MermaidDiagram.vue'
 import { clearDiagramCache } from '@/mermaid/renderMermaid'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -18,7 +18,31 @@ import {
   scrollIntoView,
 } from '../helpers/fakeIntersectionObserver'
 
-const defaultRender = mermaidStub.render
+// Viewer geometry is tested independently from pele's real layouts (covered by peleRender).
+const peleStub = vi.hoisted(() => ({
+  calls: [] as string[],
+  render: async (id: string, source: string) => {
+    const size = /size (\d+)x(\d+)/.exec(source)
+    const width = Number(size?.[1] ?? 200)
+    const height = Number(size?.[2] ?? 100)
+    return { svg: `<svg id="${id}" viewBox="0 0 ${width} ${height}"></svg>` }
+  },
+}))
+vi.mock('pele/lazy', () => ({
+  renderAsync: async (source: string, options: { idPrefix: string }) => {
+    peleStub.calls.push(source)
+    const { svg } = await peleStub.render(options.idPrefix, source)
+    const size = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
+    return {
+      svg,
+      width: Number(size?.[1]),
+      height: Number(size?.[2]),
+      type: 'flowchart',
+      links: [],
+    }
+  },
+}))
+const defaultRender = peleStub.render
 /** The width the note gives the diagram. */
 let noteWidth = 400
 const openLinkText = vi.fn()
@@ -34,8 +58,8 @@ beforeEach(() => {
   app.workspace = { openLinkText }
   openLinkText.mockReset()
   clearDiagramCache()
-  mermaidStub.calls.length = 0
-  mermaidStub.render = defaultRender
+  peleStub.calls.length = 0
+  peleStub.render = defaultRender
   installFakeIntersectionObserver()
   resetFakeIntersectionObservers()
   vi.stubGlobal('ResizeObserver', FakeResizeObserver)
@@ -81,18 +105,18 @@ describe('drawing', () => {
       props: { source: chart(300, 100), sourcePath: 'a.md' },
     })
     await flushPromises()
-    expect(mermaidStub.calls).toHaveLength(0)
+    expect(peleStub.calls).toHaveLength(0)
     expect(wrapper.find('svg').exists()).toBe(false)
 
     scrollIntoView(wrapper.element)
     await flushPromises()
-    expect(mermaidStub.calls).toHaveLength(1)
+    expect(peleStub.calls).toHaveLength(1)
     expect(wrapper.find('svg').exists()).toBe(true)
   })
 
   it('shows what Mermaid said was wrong instead of a diagram', async () => {
-    mermaidStub.render = async () => {
-      throw Object.assign(new Error('x'), { str: 'Parse error on line 2: unexpected A' })
+    peleStub.render = async () => {
+      throw Object.assign(new Error('x'), { message: 'Parse error on line 2: unexpected A' })
     }
     const wrapper = await open('graph TD\nA-->')
     expect(wrapper.find('.abele-mermaid__error-text').text()).toBe(
@@ -101,15 +125,15 @@ describe('drawing', () => {
     expect(wrapper.find('.abele-mermaid__frame').exists()).toBe(false)
   })
 
-  it('draws again in the dark theme when the theme switches', async () => {
+  it('keeps the themed drawing when the theme switches', async () => {
     const wrapper = await open(chart(300, 100))
-    expect(mermaidStub.calls.at(-1)).toContain('"theme": "default"')
+    expect(wrapper.find('svg').exists()).toBe(true)
 
     document.body.classList.add('theme-dark')
     GlobalStore.getInstance().themeVersion.value++
     await flushPromises()
 
-    expect(mermaidStub.calls.at(-1)).toContain('"theme": "dark"')
+    expect(peleStub.calls.at(-1)).toBe(chart(300, 100))
     expect(wrapper.findAll('svg')).toHaveLength(1)
   })
 })
@@ -218,8 +242,8 @@ describe('the controls', () => {
   })
 
   it('opens a note a node links to, but not at the end of a drag', async () => {
-    mermaidStub.render = async (id: string) => ({
-      svg: `<svg id="${id}" viewBox="0 0 10 10"><g class="node internal-link"><g class="label"><foreignObject><div>Target</div></foreignObject></g></g></svg>`,
+    peleStub.render = async (id: string) => ({
+      svg: `<svg id="${id}" viewBox="0 0 10 10"><g class="pele-node" data-id="A"><a class="internal-link" href="Target"><text>Target</text></a></g></svg>`,
     })
     const wrapper = await open('graph TD\nA\nclass A internal-link')
     const link = wrapper.find('a.internal-link')
@@ -278,7 +302,7 @@ describe('full screen', () => {
     expect(dialog).not.toBeNull()
     expect(dialog?.querySelector('.abele-mermaid_full svg')).not.toBeNull()
     // Drawn once for both: the dialog took the note's drawing.
-    expect(mermaidStub.calls).toHaveLength(1)
+    expect(peleStub.calls).toHaveLength(1)
 
     wrapper.unmount()
     expect(document.querySelector('.modal.abele-modal_full')).toBeNull()

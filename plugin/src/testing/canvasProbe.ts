@@ -1,12 +1,6 @@
+import { bundledMermaid } from '@/canvas/mermaidAdapter'
 /** Development-only host probes. No canvas engine or production registration lives here. */
-import {
-  MarkdownRenderChild,
-  Plugin,
-  TextFileView,
-  TFile,
-  loadMermaid,
-  type WorkspaceLeaf,
-} from 'obsidian'
+import { MarkdownRenderChild, Plugin, TextFileView, TFile, type WorkspaceLeaf } from 'obsidian'
 
 const DIR = 'Sample canvas probe'
 const TYPE = 'abele-canvas-probe'
@@ -533,23 +527,13 @@ export function createCanvasProbe(owner: Plugin) {
       return { reading, live, readingNativeHidden, liveNativeHidden: nativeHidden() }
     },
     async mermaid() {
-      const mermaid = await loadMermaid()
-      const graph = await mermaid.mermaidAPI.getDiagramFromText(
+      const graph = await bundledMermaid.read(
         'flowchart LR\nsubgraph level[Sample level]\nalpha[Alpha] -->|next| beta{Beta}\nend\nbeta --> gamma[Gamma]'
       )
-      const db = graph.db
-      const vertices = db.getVertices()
       return {
-        nodes: (vertices instanceof Map
-          ? Array.from(vertices.keys())
-          : Object.keys(vertices)
-        ).sort(),
-        edges: db
-          .getEdges()
-          .map(
-            (e: { start: string; end: string; text: string }) => `${e.start}->${e.end}:${e.text}`
-          ),
-        groups: db.getSubGraphs().map((g: { id: string }) => g.id),
+        nodes: graph.nodes.map((node) => node.id).sort(),
+        edges: graph.edges.map((edge) => `${edge.fromNode}->${edge.toNode}:${edge.label}`),
+        groups: graph.groups.map((group) => group.id),
       }
     },
     async cleanup() {

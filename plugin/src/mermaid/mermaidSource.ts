@@ -38,7 +38,7 @@ export function findMermaidFences(lines: string[]): MermaidFence[] {
       // Unclosed: Markdown runs it to the end of the note, so nothing after it is a block.
       break
     }
-    if (language.toLowerCase() === 'mermaid') {
+    if (['mermaid', 'pele'].includes(language.toLowerCase())) {
       const body = lines
         .slice(i + 1, end)
         .map((line) => (line.startsWith(indent) ? line.slice(indent.length) : line.trimStart()))

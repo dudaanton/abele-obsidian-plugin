@@ -23,7 +23,7 @@ const registry = () =>
   (MarkdownPreviewRenderer as unknown as { codeBlockPostProcessors?: object })
     .codeBlockPostProcessors ?? {}
 const special = (language: string, processors: object) =>
-  ['mermaid', 'chart', 'map', 'columns'].includes(language) ||
+  ['mermaid', 'pele', 'chart', 'map', 'columns'].includes(language) ||
   Object.prototype.hasOwnProperty.call(processors, language)
 
 export function blockGuides(lines: string[], settings: GuideSettings) {

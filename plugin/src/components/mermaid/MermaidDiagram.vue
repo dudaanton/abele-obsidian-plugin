@@ -233,7 +233,12 @@ const layout = () => {
 
 async function draw(): Promise<void> {
   const mine = ++generation
-  const result = await renderDiagram(props.source, currentTheme())
+  const style = root.value ? win().getComputedStyle(root.value) : null
+  const result = await renderDiagram(props.source, currentTheme(), {
+    fontFamily: style?.getPropertyValue('--font-text').trim() || style?.fontFamily || undefined,
+    fontFamilyMono: style?.getPropertyValue('--font-monospace').trim() || undefined,
+    fontSize: parseFloat(style?.fontSize ?? '') || undefined,
+  })
   if (mine !== generation || gone) return
   if ('error' in result) {
     error.value = result.error
@@ -457,7 +462,7 @@ const copySource = () => copyText(props.source, t('streamC.7620eda5e4d0df49'))
 
 const markup = (): string => {
   if (!svgEl.value || !root.value) return ''
-  const font = win().getComputedStyle(root.value).getPropertyValue('--font-mermaid').trim()
+  const font = win().getComputedStyle(root.value).getPropertyValue('--font-text').trim()
   return svgMarkup(svgEl.value, font)
 }
 
@@ -508,6 +513,25 @@ defineExpose({ openCopyMenu })
 
 <style lang="scss">
 .abele-mermaid {
+  --pele-bg: var(--background-primary);
+  --pele-fg: var(--text-normal);
+  --pele-muted: var(--text-muted);
+  --pele-line: var(--text-normal);
+  --pele-surface-alt: var(--background-secondary-alt);
+  --pele-radius: var(--radius-s);
+  --pele-surface: var(--background-secondary);
+  --pele-border: var(--background-modifier-border);
+  --pele-font: var(--font-text);
+  --pele-font-mono: var(--font-monospace);
+  --pele-accent: var(--interactive-accent);
+  --pele-series-1: var(--color-red);
+  --pele-series-2: var(--color-orange);
+  --pele-series-3: var(--color-yellow);
+  --pele-series-4: var(--color-green);
+  --pele-series-5: var(--color-cyan);
+  --pele-series-6: var(--color-blue);
+  --pele-series-7: var(--color-purple);
+  --pele-series-8: var(--color-pink);
   position: relative;
   margin: var(--size-4-2) 0;
 }

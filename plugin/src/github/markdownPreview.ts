@@ -118,7 +118,7 @@ export const PLAIN_LANGUAGES = new Set(
     'gradle swift objc objectivec c h cpp cc cxx hpp cs csharp fs fsharp php pl perl lua r ' +
     'dart elixir ex exs erlang erl haskell hs clojure clj elm ocaml ml nim zig julia sql graphql ' +
     'gql proto protobuf dockerfile docker makefile make cmake nginx apache http hcl terraform tf ' +
-    'nix vim tex latex bibtex matlab regex csv tsv log mermaid math asciidoc rst'
+    'nix vim tex latex bibtex matlab regex csv tsv log mermaid pele math asciidoc rst'
   ).split(' ')
 )
 

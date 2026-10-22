@@ -54,6 +54,7 @@ interface Block {
 
 const specialLanguages = new Set([
   'mermaid',
+  'pele',
   'dataview',
   'dataviewjs',
   'query',
@@ -194,7 +195,7 @@ function blockAt(state: EditorState, position: number): Block | null {
     // HyperMD can retain lazy quote/list code scope after Markdown has left the container.
     // Fenced code cannot continue lazily: quote markers/list indentation must still exist.
     const outdented =
-      listIndent > 0 && !!line.text.trim() && columns(/^[ \t]*/.exec(line.text)![0]) < listIndent
+      listIndent > 0 && !!line.text.trim() && columns(/^[ \t]*/.exec(line.text)[0]) < listIndent
     if (
       sibling ||
       (!kind.code && !blank) ||

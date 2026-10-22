@@ -51,6 +51,7 @@ export const graphInputSchema = z
   })
   .strict()
 export interface MermaidGraph {
+  direction?: 'LR' | 'RL' | 'TB' | 'BT'
   nodes: { id: string; label: string; shape?: string }[]
   edges: {
     id: string
@@ -78,9 +79,11 @@ export async function createCanvasGraph(
     ])
     .parse(from)
   let graph: CanvasGraph
+  let direction: MermaidGraph['direction']
   if ('mermaid' in source) {
     if (!mermaid) throw new Error('Mermaid import is not available in this host')
     const parsed = await mermaid.read(source.mermaid)
+    direction = parsed.direction
     graph = editCanvas(
       emptyCanvas(),
       parsed.nodes.map((n) => ({
@@ -128,7 +131,7 @@ export async function createCanvasGraph(
     if (input.abele) graph.abele = input.abele
   }
   graph.metadata = { frontmatter: { title } }
-  return layoutCanvas(fitForLayout(graph, metrics), {})
+  return layoutCanvas(fitForLayout(graph, metrics), { direction })
 }
 export function planCanvasEdit(
   graph: CanvasGraph,

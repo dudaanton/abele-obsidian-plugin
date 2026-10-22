@@ -65,7 +65,7 @@ const REPLY = [
   'Here is the sample garden plan, bed by bed.',
   paragraph(1),
   paragraph(2),
-  '```mermaid\ngraph TD\n  Seed --> Sprout\n  Sprout --> Leaf\n  Leaf --> Flower\n  Flower --> Seed\n```',
+  '```pele\ngraph TD\n  Seed --> Sprout\n  Sprout --> Leaf\n  Leaf --> Flower\n  Flower --> Seed\n```',
   paragraph(3),
   '```abele-chart\ntype: bar\nheight: 220\ntitle: Rows per bed\nxLabels: [North, East, South, West]\nseries:\n  - name: Rows\n    data: [3, 5, 2, 6]\n```',
   'The reading point sits here, under the diagram and the chart, and the reader stays on it.',

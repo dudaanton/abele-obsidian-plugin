@@ -164,7 +164,7 @@ describe.skipIf(!available)('native Canvas compatibility', () => {
     shoot('live-embed')
   }, 120_000)
 
-  it('extracts vertices, groups and labelled edges from bundled Mermaid', () => {
+  it('extracts vertices, groups and labelled edges from pele', () => {
     const r = probe<{ nodes: string[]; edges: string[]; groups: string[] }>('mermaid')
     expect(r.nodes).toEqual(['alpha', 'beta', 'gamma'])
     expect(r.edges).toContain('alpha->beta:next')

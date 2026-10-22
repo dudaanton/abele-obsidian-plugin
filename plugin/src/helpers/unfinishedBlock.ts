@@ -19,6 +19,7 @@ const DRAWN: Record<string, UnfinishedKind> = {
   'abele-map': 'map',
   'abele-view': 'view',
   mermaid: 'diagram',
+  pele: 'diagram',
 }
 
 export interface HeldBack {

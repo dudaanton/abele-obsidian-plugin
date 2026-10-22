@@ -1081,9 +1081,9 @@ export const de = {
   'settings.OtherSettings.comma_separated_property_names_drawn.054f1654':
     'Durch Kommas getrennte Eigenschaftsnamen, die als Zahl mit den Schaltflächen „–“ und „+“ dargestellt werden. Ein leerer Wert zählt als 0. Erfordert eine eigene Zeichnung der Eigenschaften.',
   'settings.OtherSettings.e_g_reps_glasses.bcb26756': 'z.B. {literal0}',
-  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Meerjungfrau-Betrachter',
+  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Diagramme zeichnen',
   'settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa':
-    'Zeichnen Sie Meerjungfrauendiagramme in der Breite der Notiz mit Zoom, Ziehen und einer Vollbildansicht anstelle von Obsidians eigener Zeichnung.',
+    'Mermaid- und pele-Blöcke mit Zoom, Verschieben und Vollbild anzeigen. Ausschalten, um den Quelltext als Code anzuzeigen.',
   'settings.OtherSettings.open_canvases_in_abele.0104f91b': 'Offene Leinwände in Abele',
   'settings.OtherSettings.open_diagrams_in_the_read.b48fc66f':
     'Öffnen Sie Diagramme im schreibgeschützten Viewer mit exemplarischen Schritten. Verwenden Sie „In Obsidian Canvas öffnen“ in der Kopfzeile, um ein Diagramm im nativen Canvas zu bearbeiten.',
@@ -3745,4 +3745,5 @@ export const de = {
     'Diese Knotenversion fragt noch vor dem Integrieren. Aktualisiere den Knoten, um ohne Nachfrage zu integrieren.',
   'node.manager.integrationContextUpdate':
     'Aktualisiere den Knoten auf Version 0.4.49 oder neuer, um aus diesem Chat ohne Managersitzung zu integrieren.',
+  'settings.metadata.checkDiagram': 'Diagramm prüfen',
 } satisfies TranslationCatalog

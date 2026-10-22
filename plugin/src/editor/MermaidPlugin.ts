@@ -19,7 +19,7 @@ import { mermaidViewerActive } from '@/mermaid/mermaidGate'
 import { mountMermaid } from '@/mermaid/mermaidBlocks'
 import { GlobalStore } from '@/stores/GlobalStore'
 
-/** Makes every editor ask again whether the viewer is on — after the setting or trust changes. */
+/** Makes every editor ask again whether the viewer is on — after the setting changes. */
 export const refreshMermaid = StateEffect.define<null>()
 
 const disposers = new WeakMap<HTMLElement, () => void>()
@@ -27,17 +27,29 @@ const disposers = new WeakMap<HTMLElement, () => void>()
 export class MermaidWidget extends WidgetType {
   constructor(
     readonly source: string,
-    readonly sourcePath: string
+    readonly sourcePath: string,
+    readonly draw = true
   ) {
     super()
   }
 
   eq(other: MermaidWidget): boolean {
-    return other.source === this.source && other.sourcePath === this.sourcePath
+    return (
+      other.source === this.source &&
+      other.sourcePath === this.sourcePath &&
+      other.draw === this.draw
+    )
   }
 
   toDOM(view: EditorView): HTMLElement {
     const host = view.dom.doc.win.createDiv({ cls: 'abele-mermaid-host abele-mermaid-host_editor' })
+    if (!this.draw) {
+      const pre = host.createEl('pre')
+      const code = pre.createEl('code')
+      code.className = 'language-text'
+      code.textContent = this.source
+      return host
+    }
     const dispose = mountMermaid(host, {
       source: this.source,
       sourcePath: this.sourcePath,
@@ -91,7 +103,7 @@ function findBlocks(state: EditorState): Block[] {
   }))
 }
 
-function decorate(state: EditorState, blocks: Block[]): DecorationSet {
+function decorate(state: EditorState, blocks: Block[], draw: boolean): DecorationSet {
   const sourcePath = state.field(editorInfoField, false)?.file?.path ?? ''
   const touched = (block: Block) =>
     state.selection.ranges.some((range) => range.from <= block.to && range.to >= block.from)
@@ -100,7 +112,7 @@ function decorate(state: EditorState, blocks: Block[]): DecorationSet {
       .filter((block) => !touched(block))
       .map((block) =>
         Decoration.replace({
-          widget: new MermaidWidget(block.source, sourcePath),
+          widget: new MermaidWidget(block.source, sourcePath, draw),
           block: true,
         }).range(block.from, block.to)
       )
@@ -112,15 +124,14 @@ function compute(
   isActive: () => boolean,
   previous?: MermaidState
 ): MermaidState {
-  const active = !!state.field(editorLivePreviewField, false) && isActive()
+  const active = !!state.field(editorLivePreviewField, false)
   if (!active) return { active, blocks: [], decorations: Decoration.none }
   const blocks = previous?.active ? previous.blocks : findBlocks(state)
-  return { active, blocks, decorations: decorate(state, blocks) }
+  return { active, blocks, decorations: decorate(state, blocks, isActive()) }
 }
 
 /**
- * @param isActive whether the viewer should draw at all; the plugin passes the setting and
- *   Obsidian's trust in the vault, tests pass what they are testing.
+ * @param isActive whether the viewer should draw at all; the plugin passes the drawing setting, tests pass what they are testing.
  */
 export function mermaidEditorExtension(isActive: () => boolean): Extension {
   const field = StateField.define<MermaidState>({

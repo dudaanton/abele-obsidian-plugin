@@ -32,12 +32,13 @@ const state = (anchor = 0, livePreview = true) =>
 
 /** The widgets the editor would draw, with the range each replaces. */
 const widgets = (s: EditorState) => {
-  const found: { from: number; to: number; source: string }[] = []
+  const found: { from: number; to: number; source: string; draw: boolean }[] = []
   for (const source of s.facet(EditorView.decorations)) {
     const set = typeof source === 'function' ? null : source
     set?.between(0, s.doc.length, (from, to, deco) => {
       const widget = deco.spec.widget
-      if (widget instanceof MermaidWidget) found.push({ from, to, source: widget.source })
+      if (widget instanceof MermaidWidget)
+        found.push({ from, to, source: widget.source, draw: widget.draw })
     })
   }
   return found
@@ -48,7 +49,7 @@ describe('the mermaid field', () => {
     active = true
     const s = state(0)
     expect(widgets(s)).toEqual([
-      { from: s.doc.line(2).from, to: s.doc.line(5).to, source: 'graph TD\nA-->B' },
+      { from: s.doc.line(2).from, to: s.doc.line(5).to, source: 'graph TD\nA-->B', draw: true },
     ])
   })
 
@@ -74,11 +75,12 @@ describe('the mermaid field', () => {
     expect(widgets(state(0, false))).toEqual([])
   })
 
-  it('draws nothing while off, and picks the change up when told to look again', () => {
+  it('replaces the native diagram with ordinary code while off, and refreshes when enabled', () => {
     active = false
     const s = state(0)
-    expect(widgets(s)).toEqual([])
+    expect(widgets(s)).toHaveLength(1)
+    expect(widgets(s)[0].draw).toBe(false)
     active = true
-    expect(widgets(s.update({ effects: refreshMermaid.of(null) }).state)).toHaveLength(1)
+    expect(widgets(s.update({ effects: refreshMermaid.of(null) }).state)[0].draw).toBe(true)
   })
 })

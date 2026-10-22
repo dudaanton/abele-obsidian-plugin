@@ -49,7 +49,7 @@ const REPLY = [
   '![[ace-blue.png|Blue]]',
   '![[ace-green.png]]',
   '',
-  '```mermaid',
+  '```pele',
   'graph LR',
   '  Idea --> Draft --> Done',
   '```',
@@ -144,7 +144,6 @@ const probe = (label: string) => `(async () => {
   const report = { error: '', chat: null, opened: '', leftAfterChat: -1, view: null, leftAfterView: -1, shots: [] }
   const createdDirs = []
   const realFetch = window.fetch
-  const trust = app.loadLocalStorage('mermaid-vault-trust')
   const scriptSnapshot = await saveScriptFixture()
   const win = require('@electron/remote').getCurrentWindow()
   const sidebarSize = app.workspace.rightSplit.size
@@ -176,7 +175,7 @@ const probe = (label: string) => `(async () => {
     return {
       gallery: q('.abele-gallery-widget-container'),
       galleryPictures: [...el.querySelectorAll('.abele-gallery-widget-container img')].filter((i) => i.naturalWidth > 0).length,
-      diagram: q('.abele-mermaid__canvas svg'),
+      diagram: q('.abele-mermaid__canvas svg.pele'),
       chart: q('.abele-chart-container canvas'),
       map: q('.abele-map canvas'),
       callout: q('.callout'),
@@ -238,7 +237,6 @@ const probe = (label: string) => `(async () => {
   let session = null
   const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
-    app.saveLocalStorage('mermaid-vault-trust', true)
     if (get(DIR)) await app.vault.delete(get(DIR), true)
     await app.vault.createFolder(DIR)
     for (const [name, colour] of [['ace-red', '#d9534f'], ['ace-blue', '#3b7dd8'], ['ace-green', '#3fa66b']])
@@ -341,7 +339,6 @@ const probe = (label: string) => `(async () => {
     }
     try { await restoreScriptFixture(scriptSnapshot) }
     catch (error) { report.error = report.error || 'script fixture restoration: ' + String(error) }
-    app.saveLocalStorage('mermaid-vault-trust', trust ?? null)
     if (!app.isMobile && typeof sidebarSize === 'number') app.workspace.rightSplit.setSize(sidebarSize)
   }
   return JSON.stringify(report)

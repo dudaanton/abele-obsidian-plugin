@@ -1,13 +1,6 @@
 /**
- * Where the viewer takes a ```mermaid block over from Obsidian: rendered markdown — reading
- * view, embeds, callouts, and every surface of the plugin's own that renders markdown, the chat
- * and GitHub tabs among them — and Live Preview, in `src/editor/MermaidPlugin.ts`.
- *
- * Reading view is a post-processor that runs before Obsidian's own. Obsidian finds its mermaid
- * blocks as `code.language-mermaid` and draws them; this one finds them first and puts the
- * viewer where the block was, so Obsidian finds nothing and draws nothing. When the viewer is
- * switched off, or the vault has not yet been allowed to show diagrams, it leaves the block
- * where it is and Obsidian carries on as if the plugin were not there.
+ * Takes Mermaid-source and pele alias fences before the host's diagram processor.
+ * Disabled drawing removes the special language so the host keeps ordinary code.
  */
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian'
 import { h } from 'vue'
@@ -47,9 +40,15 @@ class MermaidChild extends MarkdownRenderChild {
 const codeText = (code: Element): string => (code.textContent ?? '').replace(/\n$/, '')
 
 export function mermaidPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-  const blocks = el.querySelectorAll('pre > code.language-mermaid')
+  const blocks = el.querySelectorAll('pre > code.language-mermaid, pre > code.language-pele')
   if (blocks.length === 0) return
-  if (!mermaidViewerActive(GlobalStore.getInstance().app)) return
+  if (!mermaidViewerActive(GlobalStore.getInstance().app)) {
+    for (const code of Array.from(blocks)) {
+      code.classList.remove('language-mermaid', 'language-pele')
+      code.classList.add('language-text')
+    }
+    return
+  }
 
   for (const code of Array.from(blocks)) {
     const pre = code.parentElement

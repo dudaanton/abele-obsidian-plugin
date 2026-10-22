@@ -17,6 +17,49 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 export function svgMarkup(svg: SVGSVGElement, fontFamily = ''): string {
   const copy = svg.cloneNode(true) as SVGSVGElement
   copy.setAttribute('xmlns', SVG_NS)
+  const win = svg.ownerDocument.defaultView
+  if (win) {
+    const originals = [svg, ...Array.from(svg.querySelectorAll('*'))]
+    const copies = [copy, ...Array.from(copy.querySelectorAll('*'))]
+    for (let i = 0; i < originals.length; i++) {
+      const computed = win.getComputedStyle(originals[i])
+      const target = copies[i] as SVGElement
+      for (const property of [
+        'fill',
+        'stroke',
+        'stroke-width',
+        'stroke-dasharray',
+        'fill-opacity',
+        'stroke-opacity',
+        'color',
+        'font-family',
+        'font-size',
+        'font-weight',
+        'font-style',
+        'letter-spacing',
+        'text-anchor',
+        'dominant-baseline',
+        'opacity',
+        'rx',
+        'ry',
+        '--pele-bg',
+        '--pele-fg',
+        '--pele-muted',
+        '--pele-line',
+        '--pele-surface',
+        '--pele-surface-alt',
+        '--pele-border',
+        '--pele-accent',
+        '--pele-font',
+        '--pele-font-mono',
+        '--pele-radius',
+        ...Array.from({ length: 8 }, (_, n) => `--pele-series-${n + 1}`),
+      ]) {
+        const value = computed.getPropertyValue(property)
+        if (value) target.style.setProperty(property, value)
+      }
+    }
+  }
   let markup = new XMLSerializer().serializeToString(copy)
   // Single quotes only: the value may land inside a double-quoted attribute.
   if (fontFamily) markup = markup.split('var(--font-mermaid)').join(fontFamily.replace(/"/g, "'"))
@@ -27,7 +70,7 @@ export function svgMarkup(svg: SVGSVGElement, fontFamily = ''): string {
  * The drawing as a PNG, `scale` times its natural size, on `background`.
  *
  * The SVG is drawn through an image and a canvas, which is the one way a browser turns SVG into
- * pixels. A picture whose labels are HTML — most of Mermaid's — can make the canvas refuse to
+ * pixels. A picture whose labels are HTML — renderers that use HTML — can make the canvas refuse to
  * give its pixels back; the caller is told by the rejected promise.
  */
 export async function svgToPng(

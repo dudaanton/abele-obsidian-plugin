@@ -1041,9 +1041,9 @@ export const en = {
   'settings.OtherSettings.comma_separated_property_names_drawn.054f1654':
     'Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on.',
   'settings.OtherSettings.e_g_reps_glasses.bcb26756': 'e.g. {literal0}',
-  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Mermaid viewer',
+  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Draw diagrams',
   'settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa':
-    "Draw mermaid diagrams at the width of the note, with zoom, drag and a full-screen view, instead of Obsidian's own drawing.",
+    'Draw mermaid and pele blocks with zoom, drag and full screen. Turn off to show their source as ordinary code.',
   'settings.OtherSettings.open_canvases_in_abele.0104f91b': 'Open canvases in Abele',
   'settings.OtherSettings.open_diagrams_in_the_read.b48fc66f':
     'Open diagrams in the read-only viewer with walkthrough steps. Use Open in Obsidian Canvas in its header to edit a diagram in the native canvas.',
@@ -3599,4 +3599,5 @@ export const en = {
     'This node version still asks before integrating. Update the node to integrate without asking.',
   'node.manager.integrationContextUpdate':
     'Update the node to 0.4.49 or later to integrate from this chat without a manager session.',
+  'settings.metadata.checkDiagram': 'Check diagram',
 } as const

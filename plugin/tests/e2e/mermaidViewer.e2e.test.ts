@@ -3,8 +3,7 @@
  * shown in reading view, in Live Preview and on a phone.
  *
  * The note is written at the vault's root for the length of this file and deleted after it, so
- * the fixture vault ends with nothing but `ScaleTest/` in it. Obsidian asks each vault whether
- * diagrams may be shown at all; the answer is set to yes here and put back as it was.
+ * the fixture vault ends with nothing but `ScaleTest/` in it. Pele needs no vault trust state.
  *
  * Pictures go to `/tmp/abele-mermaid/` — look at them.
  */
@@ -19,6 +18,9 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
+import { onPhone, targets } from './helpers/target'
+
+targets('desktop', 'phone')
 
 const available = isObsidianRunning() && hasTestApi()
 const NOTE = 'Mermaid viewer e2e.md'
@@ -57,8 +59,9 @@ const PRELUDE = `
   }
   const scaleOf = (canvas) => Number(/scale\\(([\\d.]+)\\)/.exec(canvas.style.transform)?.[1])
   const shoot = async (name) => {
-    require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
     const path = ${JSON.stringify(SHOTS)} + '/' + name + '.png'
+    if (window.__e2eHost) return window.__e2eHost.shot(path)
+    require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
@@ -78,9 +81,14 @@ const PRELUDE = `
 `
 
 const windowSize = (): [number, number] =>
-  evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+  evalJson<[number, number]>(
+    onPhone()
+      ? '[window.innerWidth, window.innerHeight]'
+      : `require('@electron/remote').getCurrentWindow().getContentSize()`
+  )
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
@@ -89,11 +97,10 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 }
 
 const reload = async (how: string): Promise<void> => {
-  await reloadApp(how)
+  if (!onPhone()) await reloadApp(how)
 }
 
 describe.skipIf(!available)('the mermaid viewer', () => {
-  let trust = 'null'
   let desktop: {
     size: [number, number]
     readable: boolean
@@ -102,16 +109,12 @@ describe.skipIf(!available)('the mermaid viewer', () => {
 
   beforeAll(async () => {
     desktop = evalJson(`({
-      size: require('@electron/remote').getCurrentWindow().getContentSize(),
+      size: window.__e2eHost ? [window.innerWidth, window.innerHeight] : require('@electron/remote').getCurrentWindow().getContentSize(),
       readable: app.vault.getConfig('readableLineLength'),
       panels: [app.workspace.leftSplit.collapsed, app.workspace.rightSplit.collapsed],
     })`)
     await setWindowSize(1280, 800)
-    trust = evalRaw(`JSON.stringify(app.loadLocalStorage('mermaid-vault-trust'))`)
-      .replace(/^=>\s*/, '')
-      .trim()
     evalAsync(`(async () => {
-      app.saveLocalStorage('mermaid-vault-trust', true)
       // Full screen must enlarge even an unrestricted note, not just a reading-width column.
       app.vault.setConfig('readableLineLength', false)
       app.workspace.leftSplit.collapse()
@@ -129,7 +132,6 @@ describe.skipIf(!available)('the mermaid viewer', () => {
         if (l.view.file?.path === ${JSON.stringify(NOTE)}) l.detach()
       const f = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
       if (f) await app.vault.delete(f)
-      app.saveLocalStorage('mermaid-vault-trust', ${trust === 'true' ? 'true' : 'null'})
       const saved = ${JSON.stringify(desktop)}
       app.vault.setConfig('readableLineLength', saved.readable)
       if (!saved.panels[0]) app.workspace.leftSplit.expand()
@@ -142,6 +144,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
   it('draws the diagram in reading view at the width of the note, instead of Obsidian', () => {
     const r = evalAsync<{
       error?: string
+      pele?: boolean
       obsidians?: number
       frame?: { width: number; height: number }
       sizer?: number
@@ -163,6 +166,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       const s = svg.getBoundingClientRect()
       return {
         obsidians: root.querySelectorAll('.mermaid, code.language-mermaid').length,
+        pele: svg.classList.contains('pele'),
         frame: { width: Math.round(f.width), height: Math.round(f.height) },
         sizer: Math.round(root.querySelector('.markdown-preview-sizer').getBoundingClientRect().width),
         drawn: { left: Math.round(s.left), right: Math.round(s.right) },
@@ -174,6 +178,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       90_000
     )
     expect(r.error).toBeUndefined()
+    expect(r.pele).toBe(true)
     expect(r.obsidians).toBe(0)
     expect(r.frame!.width).toBeLessThanOrEqual(r.sizer!)
     // Fitted: the whole drawing is inside the frame.
@@ -294,6 +299,78 @@ describe.skipIf(!available)('the mermaid viewer', () => {
     expect(r.ours).toBe(1)
     expect(r.editing).toBe(0)
   })
+
+  it.each([
+    ['flowchart', 'flowchart LR\n A[Draft] --> B[Done]'],
+    ['sequence', 'sequenceDiagram\n Alice->>Bob: Hello'],
+    ['gantt', 'gantt\n dateFormat YYYY-MM-DD\n section Work\n Draft :2026-01-01, 3d'],
+    ['xy', 'xychart-beta\n x-axis [Jan, Feb]\n bar [3, 6]'],
+    ['error', 'flowchart LR\n A[broken'],
+  ])(
+    'renders pele alias and captures %s in both themes and sizes',
+    async (name, source) => {
+      const savedSize = windowSize()
+      const r = evalAsync<{
+        error?: string
+        shots: string[]
+        colours: string[]
+        sourceVisible: boolean
+      }>(
+        `(async () => {
+        ${PRELUDE}
+        const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+        const original = await app.vault.read(file)
+        const config = window.__abeleTest.AbeleConfig.getInstance()
+        const enabled = config.mermaidViewer
+        const theme = { light: document.body.classList.contains('theme-light'), dark: document.body.classList.contains('theme-dark') }
+        const shots = [], colours = []
+        try {
+          config.mermaidViewer = true
+          await app.vault.modify(file, '# Sample diagram\\n\\n' + '\`\`\`pele\\n' + ${JSON.stringify(source)} + '\\n\`\`\`\\n')
+          const leaf = await openNote('preview')
+          for (const width of (window.__e2eHost ? [window.innerWidth] : [1280, 390])) {
+            if (!window.__e2eHost) require('@electron/remote').getCurrentWindow().setContentSize(width, width === 390 ? 844 : 800)
+            for (const mode of ['light', 'dark']) {
+              document.body.classList.toggle('theme-light', mode === 'light')
+              document.body.classList.toggle('theme-dark', mode === 'dark')
+              await leaf.view.previewMode.rerender(true)
+              const root = leaf.view.containerEl
+              const found = await until(() => root.querySelector(${JSON.stringify(name === 'error' ? '.abele-mermaid__error-text' : '.abele-mermaid__canvas svg.pele')}))
+              if (!found) return { error: 'missing pele state', shots, colours }
+              if (${JSON.stringify(name)} === 'error' && !/Line \\d+, column \\d+/.test(found.textContent)) return { error: 'missing error location', shots, colours }
+              found.scrollIntoView({ block: 'center' })
+              await wait(400)
+              if (${JSON.stringify(name)} !== 'error') colours.push(getComputedStyle(found).color)
+              shots.push(await shoot('pele-' + ${JSON.stringify(name)} + '-' + mode + '-' + width))
+            }
+          }
+          config.mermaidViewer = false
+          await leaf.view.previewMode.rerender(true)
+          const code = await until(() => leaf.view.containerEl.querySelector('pre > code.language-text'))
+          return { shots, colours, sourceVisible: !!code && code.textContent.includes(${JSON.stringify(source)}) && !leaf.view.containerEl.querySelector('svg.pele, .mermaid') }
+        } finally {
+          config.mermaidViewer = enabled
+          document.body.classList.toggle('theme-light', theme.light)
+          document.body.classList.toggle('theme-dark', theme.dark)
+          await app.vault.modify(file, original)
+          const leaf = leafOf()
+          if (leaf) await leaf.view.previewMode.rerender(true)
+        }
+      })()`,
+        120_000
+      )
+      await setWindowSize(...savedSize)
+      expect(r.error).toBeUndefined()
+      expect(r.shots).toHaveLength(onPhone() ? 2 : 4)
+      expect(r.shots.every((shot) => shot.endsWith('.png'))).toBe(true)
+      expect(r.sourceVisible).toBe(true)
+      if (name !== 'error') {
+        expect(r.colours[0]).not.toBe(r.colours[1])
+        if (!onPhone()) expect(r.colours[2]).not.toBe(r.colours[3])
+      }
+    },
+    180_000
+  )
 
   describe('on a phone', () => {
     let size: [number, number] = [0, 0]

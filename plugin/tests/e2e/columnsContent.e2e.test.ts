@@ -74,12 +74,10 @@ function capture(name: string) {
 
 describe.skipIf(!available)('column content compatibility', () => {
   let size: number[]
-  let trust: boolean | null
   let mapStyle: string
   beforeAll(() => {
     if (!onPhone())
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
-    trust = evalJson<boolean | null>(`app.loadLocalStorage('mermaid-vault-trust')??null`)
     mapStyle = evalJson<{ style: string }>(
       `({style:window.__abeleTest.AbeleConfig.getInstance().mapStyleUrl??''})`
     ).style
@@ -90,14 +88,13 @@ describe.skipIf(!available)('column content compatibility', () => {
       await app.vault.create(${JSON.stringify(FOLDER + '/sample-embed.md')},'Sample embedded paragraph.');
       for(const sample of ${JSON.stringify(COLUMN_CONTENT)}) await app.vault.create(${JSON.stringify(FOLDER)}+'/'+sample.name+'.md',
         ${JSON.stringify(COLUMN_CONTENT.map((sample) => columnContentNote(sample.body)))}[${JSON.stringify(COLUMN_CONTENT.map((s) => s.name))}.indexOf(sample.name)]);
-      app.saveLocalStorage('mermaid-vault-trust',true);
       app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();return true;
     `)
   })
   afterAll(async () => {
     // Close the fixture notes before the layout changes back: a desktop layout rebuilt around
     // a note of the emulated phone is what is left to the next file otherwise.
-    probe(`app.saveLocalStorage('mermaid-vault-trust',${JSON.stringify(trust)});
+    probe(`
       window.__abeleTest.AbeleConfig.getInstance().mapStyleUrl=${JSON.stringify(mapStyle)};
       for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();
       const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`)

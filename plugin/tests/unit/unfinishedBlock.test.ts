@@ -24,6 +24,9 @@ describe('a fenced block that draws something', () => {
 
   it('knows a diagram and a map as well', () => {
     expect(holdBackUnfinished('A.\n\n```mermaid\ngraph TD\n  A -->').pending).toBe('diagram')
+    expect(holdBackUnfinished('A.\n\n```pele\nsequenceDiagram\n A->>').pending).toBe('diagram')
+    const complete = '```pele\nflowchart LR\n A --> B\n```'
+    expect(holdBackUnfinished(complete)).toEqual({ text: complete, pending: null })
     expect(holdBackUnfinished('A.\n\n```abele-map\ncenter: [1, 2]').pending).toBe('map')
   })
 

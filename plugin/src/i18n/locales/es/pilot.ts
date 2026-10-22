@@ -1089,9 +1089,9 @@ export const es = {
   'settings.OtherSettings.comma_separated_property_names_drawn.054f1654':
     'Nombres de propiedades separados por comas dibujados como un número con los botones − y +. Un valor vacío cuenta como 0. Necesita su propio dibujo de propiedades.',
   'settings.OtherSettings.e_g_reps_glasses.bcb26756': 'p.ej. {literal0}',
-  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Visor de sirenas',
+  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Dibujar diagramas',
   'settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa':
-    'Dibuja diagramas de sirenas al ancho de la nota, con zoom, arrastre y vista a pantalla completa, en lugar del propio dibujo de Obsidian.',
+    'Mostrar bloques mermaid y pele con zoom, desplazamiento y pantalla completa. Desactívalo para mostrar el código fuente.',
   'settings.OtherSettings.open_canvases_in_abele.0104f91b': 'Lienzos abiertos en Abele',
   'settings.OtherSettings.open_diagrams_in_the_read.b48fc66f':
     'Abra diagramas en el visor de solo lectura con pasos paso a paso. Utilice Abrir en Obsidian Canvas en su encabezado para editar un diagrama en el lienzo nativo.',
@@ -3773,4 +3773,5 @@ export const es = {
     'Esta versión del nodo aún pide permiso antes de integrar. Actualiza el nodo para integrar sin preguntar.',
   'node.manager.integrationContextUpdate':
     'Actualiza el nodo a la versión 0.4.49 o posterior para integrar desde este chat sin una sesión de gestor.',
+  'settings.metadata.checkDiagram': 'Comprobar diagrama',
 } satisfies TranslationCatalog

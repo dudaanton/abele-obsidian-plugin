@@ -146,7 +146,7 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
     expect(r).toEqual({ refused: true, owner: 'Owner revised sample' })
   }, 120_000)
 
-  it('imports a nested Mermaid flowchart using the bundled parser', () => {
+  it('imports a nested Mermaid flowchart using the pele parser', () => {
     const r = run<{
       ids: string[]
       edges: number
@@ -179,6 +179,45 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
       gamma: null,
       overview: null,
     })
+  }, 120_000)
+
+  it('renders pele diagrams inside a canvas note card', () => {
+    const result = run<{ drawn: boolean; shots: string[] }>(`
+      const notePath = ${JSON.stringify(DIR + '/diagram-note.md')}
+      await app.vault.create(notePath, '# Sample diagram\\n\\n' + '\`\`\`pele\\nflowchart LR\\n A[Draft] --> B[Done]\\n\`\`\`')
+      const target = ${JSON.stringify(DIR + '/diagram-card.canvas')}
+      await call('canvas_create', { path: target, from: { graph: { nodes: [
+        { id: 'diagram-note', kind: 'note', file: notePath, width: 520, height: 380 }
+      ] } } })
+      const leaf = app.workspace.getLeaf(true)
+      await leaf.openFile(app.vault.getAbstractFileByPath(target))
+      const deadline = Date.now() + 20000
+      while (!leaf.view.containerEl.querySelector('svg.pele') && Date.now() < deadline) await wait(100)
+      const drawn = !!leaf.view.containerEl.querySelector('svg.pele')
+      const shots = []
+      if (drawn && window.__e2eHost) {
+        const path = ${JSON.stringify(SHOTS)} + '/pele-canvas-card-phone.png'
+        await window.__e2eHost.shot(path)
+        shots.push(path)
+      } else if (drawn && typeof require === 'function') {
+        const win = require('@electron/remote').getCurrentWindow()
+        const original = win.getContentSize()
+        try {
+          require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+          for (const width of [1280, 390]) {
+            win.setContentSize(width, width === 390 ? 844 : 800)
+            await wait(500)
+            const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+            const path = ${JSON.stringify(SHOTS)} + '/pele-canvas-card-' + width + '.png'
+            require('fs').writeFileSync(path, image.toPNG())
+            shots.push(path)
+          }
+        } finally { win.setContentSize(...original) }
+      }
+      return { drawn, shots }
+    `)
+    expect(result.drawn).toBe(true)
+    if (!onPhone()) expect(result.shots).toHaveLength(2)
   }, 120_000)
 
   it('measures, fits, aligns and distributes cards and checks multiple regions without an open tab', () => {

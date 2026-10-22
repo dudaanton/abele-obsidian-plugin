@@ -1064,9 +1064,9 @@ export const lv = {
   'settings.OtherSettings.comma_separated_property_names_drawn.054f1654':
     'Ar komatu atdalīti rekvizītu nosaukumi, kas zīmēti kā skaitlis ar pogām – un +. Tukša vērtība tiek skaitīta kā 0. Nepieciešams savs rekvizītu zīmējums.',
   'settings.OtherSettings.e_g_reps_glasses.bcb26756': 'piem. {literal0}',
-  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Mermaid skatītājs',
+  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Zīmēt diagrammas',
   'settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa':
-    'Uzzīmējiet nāru diagrammas piezīmes platumā, izmantojot tālummaiņu, velciet un pilnekrāna skatu, nevis paša Obsidiāna zīmējumu.',
+    'Zīmēt mermaid un pele blokus ar tālummaiņu, pārvietošanu un pilnekrāna skatu. Izslēdziet, lai rādītu pirmkodu.',
   'settings.OtherSettings.open_canvases_in_abele.0104f91b': 'Atvērtie audekli Ābelē',
   'settings.OtherSettings.open_diagrams_in_the_read.b48fc66f':
     'Atveriet diagrammas tikai lasāmā skatītājā, izmantojot detalizētas darbības. Izmantojiet Open in Obsidian Canvas tās galvenē, lai rediģētu diagrammu vietējā audeklā.',
@@ -3702,4 +3702,5 @@ export const lv = {
     'Šī mezgla versija vēl jautā pirms integrēšanas. Atjauniniet mezglu, lai integrētu bez jautāšanas.',
   'node.manager.integrationContextUpdate':
     'Atjauniniet mezglu līdz versijai 0.4.49 vai jaunākai, lai integrētu no šīs sarunas bez pārvaldnieka sesijas.',
+  'settings.metadata.checkDiagram': 'Pārbaudīt diagrammu',
 } satisfies TranslationCatalog

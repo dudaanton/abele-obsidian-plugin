@@ -1,15 +1,13 @@
-import { loadMermaid } from 'obsidian'
 import type { MermaidPort } from './core/service'
-/** Only the flowchart database is supported; no DOM scraping and no second Mermaid bundle. */
+/** Canvas creation imports the typed flowchart model from the lazy pele parser. */
 export const bundledMermaid: MermaidPort = {
   async read(source) {
-    const mermaid = await loadMermaid()
-    const diagram = await mermaid.mermaidAPI.getDiagramFromText(source)
-    if (!diagram.db?.getVertices || !diagram.db?.getEdges || !diagram.db?.getSubGraphs)
+    const { load, parse } = await import('pele/lazy')
+    await load('flowchart')
+    const diagram = parse(source)
+    if (diagram.type !== 'flowchart')
       throw new Error('Canvas import currently supports Mermaid flowcharts only')
-    const raw = diagram.db.getVertices()
-    const vertices: { id: string; text?: string; type?: string }[] =
-      raw instanceof Map ? Array.from(raw.values()) : Object.values(raw)
+    const vertices = Array.from(diagram.nodes.values())
     const shape: Record<string, string> = {
       square: 'rectangle',
       rect: 'rectangle',
@@ -23,11 +21,16 @@ export const bundledMermaid: MermaidPort = {
       lean_right: 'parallelogram',
       lean_left: 'parallelogram',
     }
-    const edges: { start: string; end: string; text?: string; type: string }[] =
-      diagram.db.getEdges()
-    const groups: { id: string; title?: string; nodes: string[] }[] = diagram.db.getSubGraphs()
+    const edges = diagram.edges
+    const groups: { id: string; title?: string; nodes: string[] }[] = diagram.subgraphs
     const groupIds = new Set(groups.map((g) => g.id))
     return {
+      direction:
+        diagram.direction === 'TD'
+          ? 'TB'
+          : ['LR', 'RL', 'TB', 'BT'].includes(diagram.direction ?? '')
+            ? (diagram.direction as 'LR' | 'RL' | 'TB' | 'BT')
+            : undefined,
       nodes: vertices
         .filter((v) => !groupIds.has(v.id))
         .map((v) => ({
@@ -41,7 +44,7 @@ export const bundledMermaid: MermaidPort = {
           arrow_point: ['none', 'arrow'],
           double_arrow_point: ['arrow', 'arrow'],
         }
-        const pair = ends[edge.type]
+        const pair = ends[edge.type ?? '']
         if (!pair)
           throw new Error(
             `Unsupported Mermaid edge marker ${edge.type}; use explicit graph endpoints instead of a lossy import`

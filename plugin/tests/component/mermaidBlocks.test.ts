@@ -1,21 +1,12 @@
-/**
- * Where the viewer takes a mermaid block over from Obsidian, and where it leaves it alone.
- *
- * Obsidian 1.13 asks each vault whether diagrams may be shown at all. The viewer only ever
- * draws after that answer is yes, and only while its own setting is on; otherwise the block is
- * left exactly as it arrived, for Obsidian's own processor to draw or to guard.
- */
+/** Both source-language fences use pele; disabled drawing leaves ordinary code. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
-import { mermaidStub, type MarkdownPostProcessorContext } from 'obsidian'
+import { type MarkdownPostProcessorContext } from 'obsidian'
 import { mermaidPostProcessor } from '@/mermaid/mermaidBlocks'
-import { MERMAID_TRUST_KEY } from '@/mermaid/mermaidGate'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { clearDiagramCache } from '@/mermaid/renderMermaid'
 import { useVault } from '../helpers/testEnv'
-import type { FakeApp } from '../helpers/fakeVault'
 
-let app: FakeApp
 const children: { onunload(): void }[] = []
 
 const ctx = {
@@ -35,8 +26,7 @@ const section = (source: string) => {
 }
 
 beforeEach(() => {
-  app = useVault([])
-  app.saveLocalStorage(MERMAID_TRUST_KEY, true)
+  useVault([])
   AbeleConfig.getInstance().mermaidViewer = true
   children.length = 0
   clearDiagramCache()
@@ -45,21 +35,25 @@ beforeEach(() => {
 })
 
 describe('mermaidPostProcessor', () => {
-  it('puts the viewer where the block was, so Obsidian finds nothing to draw', async () => {
+  it.each(['mermaid', 'pele'])('replaces a %s block before the host draws it', async (language) => {
     const el = section('graph TD\nA-->B')
+    el.querySelector('code')!.className = `language-${language}`
     mermaidPostProcessor(el, ctx)
     await flushPromises()
 
     expect(el.querySelector('code.language-mermaid')).toBeNull()
-    expect(el.querySelector('.abele-mermaid-host .abele-mermaid svg')).not.toBeNull()
+    await vi.waitFor(() =>
+      expect(el.querySelector('.abele-mermaid-host .abele-mermaid svg')).not.toBeNull()
+    )
     expect(children).toHaveLength(1)
   })
 
   it('takes the source without the newline the fence adds', async () => {
-    mermaidStub.calls.length = 0
-    mermaidPostProcessor(section('pie'), ctx)
+    const el = section('flowchart LR\n A --> B')
+    mermaidPostProcessor(el, ctx)
     await flushPromises()
-    expect(mermaidStub.calls.at(-1)?.endsWith('\npie')).toBe(true)
+    expect(el.textContent).not.toContain('flowchart')
+    expect(el.querySelector('svg')).not.toBeNull()
   })
 
   it('unmounts the viewer when the section is unloaded', async () => {
@@ -70,19 +64,23 @@ describe('mermaidPostProcessor', () => {
     expect(el.querySelector('.abele-mermaid')).toBeNull()
   })
 
-  it('leaves the block to Obsidian when the viewer is switched off', () => {
-    AbeleConfig.getInstance().mermaidViewer = false
-    const el = section('graph TD\nA-->B')
-    mermaidPostProcessor(el, ctx)
-    expect(el.querySelector('code.language-mermaid')).not.toBeNull()
-    expect(el.querySelector('.abele-mermaid')).toBeNull()
-  })
+  it.each(['mermaid', 'pele'])(
+    'shows ordinary %s source when drawing is switched off',
+    (language) => {
+      AbeleConfig.getInstance().mermaidViewer = false
+      const el = section('graph TD\nA-->B')
+      el.querySelector('code')!.className = `language-${language}`
+      mermaidPostProcessor(el, ctx)
+      expect(el.querySelector('code.language-text')).not.toBeNull()
+      expect(el.querySelector('.abele-mermaid')).toBeNull()
+    }
+  )
 
-  it('leaves the block to Obsidian guard until the vault is allowed to show diagrams', () => {
-    app.saveLocalStorage(MERMAID_TRUST_KEY, null)
+  it('draws without consulting vault trust', async () => {
     const el = section('graph TD\nA-->B')
     mermaidPostProcessor(el, ctx)
-    expect(el.querySelector('code.language-mermaid')).not.toBeNull()
+    await flushPromises()
+    expect(el.querySelector('svg')).not.toBeNull()
   })
 
   it('does not touch code in other languages', () => {

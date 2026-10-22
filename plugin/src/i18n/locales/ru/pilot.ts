@@ -1080,9 +1080,9 @@ export const ru = {
   'settings.OtherSettings.comma_separated_property_names_drawn.054f1654':
     'Имена свойств, разделенные запятыми, отображаются в виде числа с помощью кнопок – и +. Пустое значение считается 0. Требуется собственное отображение свойств.',
   'settings.OtherSettings.e_g_reps_glasses.bcb26756': 'например {literal0}',
-  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Зритель русалок',
+  'settings.OtherSettings.mermaid_viewer.0fee57c7': 'Рисовать диаграммы',
   'settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa':
-    'Рисуйте диаграммы русалок по ширине заметки, с масштабированием, перетаскиванием и полноэкранным просмотром вместо собственного рисунка Obsidian.',
+    'Отображать блоки mermaid и pele с масштабированием, перемещением и полноэкранным просмотром. Выключите, чтобы видеть исходный код.',
   'settings.OtherSettings.open_canvases_in_abele.0104f91b': 'Открытые холсты в Абеле',
   'settings.OtherSettings.open_diagrams_in_the_read.b48fc66f':
     'Открывайте диаграммы в средстве просмотра только для чтения с пошаговыми инструкциями. Используйте «Открыть в Obsidian Canvas» в заголовке, чтобы редактировать диаграмму на собственном холсте.',
@@ -3771,4 +3771,5 @@ export const ru = {
     'Эта версия ноды пока спрашивает перед интеграцией. Обновите ноду, чтобы интегрировать без подтверждения.',
   'node.manager.integrationContextUpdate':
     'Обновите ноду до версии 0.4.49 или новее, чтобы интегрировать из этого чата без сессии менеджера.',
+  'settings.metadata.checkDiagram': 'Проверить диаграмму',
 } satisfies TranslationCatalog

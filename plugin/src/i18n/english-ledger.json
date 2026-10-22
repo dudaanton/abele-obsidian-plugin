@@ -7150,7 +7150,7 @@
     ]
   },
   "settings.OtherSettings.mermaid_viewer.0fee57c7": {
-    "englishHash": "39949f5b3388dfaa788bb79fbeae3cbe92cc2080d22a68840a0025486169752c",
+    "englishHash": "2f0a8333762b924885a67b5da10a30e2c56919121861170134a95d16f2534cf6",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -7160,7 +7160,7 @@
     ]
   },
   "settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa": {
-    "englishHash": "e6acbf62e5f38e5d90e66671a20b77e24cf6d6b436e6a36199354e155eb38c9b",
+    "englishHash": "c9eb52e58a15f0aade494a370ef59a04c83d269a550105d9e79aaf6665d51e67",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -27588,5 +27588,15 @@
       "de"
     ],
     "englishHash": "622b3d7f698781ca20f78325ee553a17159396c889253cafcddb3c4f660c7326"
+  },
+  "settings.metadata.checkDiagram": {
+    "englishHash": "144bf5839573c2dbc10058699e5c81f50a5f4e5fc800a1caf3a19963f1bb11d5",
+    "context": "Read-only diagram validation tool label in agent permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

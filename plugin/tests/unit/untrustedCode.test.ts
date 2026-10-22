@@ -5,7 +5,7 @@ import {
   uninstallUntrustedGuard,
   untrustedGuard,
 } from '@/markdown/renderUntrusted'
-import { ZWSP } from '@/markdown/untrustedCode'
+import { ZWSP, guardCode, prepareMarkdown } from '@/markdown/untrustedCode'
 import { useVault } from '../helpers/testEnv'
 
 afterEach(() => {
@@ -14,6 +14,22 @@ afterEach(() => {
   MarkdownPreviewRenderer.codeBlockPostProcessors = {}
   vi.restoreAllMocks()
 })
+
+it.each(['mermaid', 'pele'])(
+  'allows %s diagram source on untrusted markdown surfaces',
+  (language) => {
+    useVault([])
+    const source = `\`\`\`${language}\nflowchart LR\n A --> B\n\`\`\``
+    expect(prepareMarkdown(source, true)).toBe(source)
+    const host = document.createElement('div')
+    const pre = host.appendChild(document.createElement('pre'))
+    const code = pre.appendChild(document.createElement('code'))
+    code.className = `language-${language}`
+    code.textContent = 'flowchart LR\n A --> B'
+    guardCode(host, true)
+    expect(host.querySelector(`code.language-${language}`)).not.toBeNull()
+  }
+)
 
 it('guards raw HTML and claimed plain languages before another processor sees them', async () => {
   useVault([])

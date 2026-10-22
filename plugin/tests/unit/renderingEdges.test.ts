@@ -5,10 +5,12 @@ import { figureAt, tablePage } from '@/reader/figures'
 import { cleanDocument } from '@/reader/bookSafety'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 
-it('cleans a Mermaid SVG before attaching it, keeping labels and local markers', () => {
+it('cleans a diagram SVG before attaching it, keeping labels and local markers', () => {
   const el = document.createElement('div')
   const svg = placeDiagram(el, {
     ok: true,
+    type: 'flowchart',
+    links: [],
     renderId: 'abele-mermaid-fixture-d',
     width: 100,
     height: 100,

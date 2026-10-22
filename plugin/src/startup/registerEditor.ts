@@ -56,13 +56,11 @@ export function registerEditor(plugin: Plugin) {
   plugin.registerMarkdownPostProcessor(galleryPostProcessor)
   // Coloured highlights outside the editor, for the same places.
   plugin.registerMarkdownPostProcessor(coloredHighlightPostProcessor)
-  // Mermaid diagrams drawn by the plugin's viewer rather than Obsidian's: in rendered
+  // Pele diagrams drawn by the plugin's viewer: in rendered
   // markdown ahead of Obsidian's own processor, and in Live Preview as the block's widget.
   plugin.registerMarkdownPostProcessor(mermaidPostProcessor, MERMAID_PROCESSOR_ORDER)
   plugin.registerEditorExtension(mermaidExtensions())
-  // Obsidian fires plugin when the vault is allowed to show diagrams (and when the viewer's
-  // setting changes, which fires it too): rendered markdown is redrawn by Obsidian, the
-  // editors are told here.
+  // Changing the drawing setting refreshes rendered markdown and open editors.
   plugin.registerEvent(
     (
       plugin.app.workspace as unknown as {

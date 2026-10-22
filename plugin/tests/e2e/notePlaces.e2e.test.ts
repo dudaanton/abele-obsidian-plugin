@@ -52,7 +52,7 @@ const GROWING_TEXT = Array.from({ length: 120 }, (_, i) =>
     `The text of part ${i + 1}, long enough to wrap once or twice in a narrow pane.`,
     '',
     ...(i % 10 === 5
-      ? ['![[embedded-sample]]', '', '```mermaid', 'graph TD; A-->B; B-->C; C-->D', '```', '']
+      ? ['![[embedded-sample]]', '', '```pele', 'graph TD; A-->B; B-->C; C-->D', '```', '']
       : []),
   ].join('\n')
 ).join('\n')

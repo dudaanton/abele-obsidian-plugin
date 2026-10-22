@@ -76,7 +76,7 @@ function keepsLanguage(lang: string, ownBlocks: boolean, messageCards: boolean):
   if (!messageCards && lang === 'abele-message') return false
   if (ownBlocks && ABELE_LANGUAGES.has(lang)) return true
   if (!PLAIN_LANGUAGES.has(lang)) return false
-  if (lang === 'mermaid' || lang === 'math') return true
+  if (lang === 'mermaid' || lang === 'pele' || lang === 'math') return true
   const registry = (MarkdownPreviewRenderer as unknown as { codeBlockPostProcessors?: object })
     .codeBlockPostProcessors
   return !registry || !Object.prototype.hasOwnProperty.call(registry, lang)

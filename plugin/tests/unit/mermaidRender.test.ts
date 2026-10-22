@@ -1,77 +1,69 @@
 /**
- * Drawing a diagram with Obsidian's own Mermaid, once per source and theme.
+ * Drawing a diagram with pele, once per source and theme.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mermaidStub } from 'obsidian'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderDiagram, placeDiagram, clearDiagramCache } from '@/mermaid/renderMermaid'
 
-const defaultRender = mermaidStub.render
-
-beforeEach(() => {
-  clearDiagramCache()
-  mermaidStub.calls.length = 0
-  mermaidStub.render = defaultRender
-})
+beforeEach(() => clearDiagramCache())
 
 describe('renderDiagram', () => {
   it('draws the source with the theme asked for and measures it', async () => {
-    const result = await renderDiagram('graph TD\n%% size 640x480', 'dark')
+    const result = await renderDiagram('flowchart LR\n A --> B', 'dark')
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.width).toBe(640)
-    expect(result.height).toBe(480)
-    expect(mermaidStub.calls[0]).toContain('"theme": "dark"')
+    expect(result.width).toBeGreaterThan(0)
+    expect(result.height).toBeGreaterThan(0)
+    expect(result.svg).toContain('--pele-bg')
   })
 
   it('draws a source once per theme, however often it is asked for', async () => {
-    await Promise.all([renderDiagram('pie', 'light'), renderDiagram('pie', 'light')])
-    await renderDiagram('pie', 'light')
-    expect(mermaidStub.calls).toHaveLength(1)
-    await renderDiagram('pie', 'dark')
-    expect(mermaidStub.calls).toHaveLength(2)
+    const first = renderDiagram('pie', 'light')
+    expect(renderDiagram('pie', 'light')).toBe(first)
+    await first
+    expect(renderDiagram('pie', 'light')).toBe(first)
+    expect(renderDiagram('pie', 'dark')).not.toBe(first)
   })
 
-  it('returns what Mermaid says is wrong with the source', async () => {
-    mermaidStub.render = async () => {
-      throw Object.assign(new Error('Parse error'), { str: 'Parse error on line 2:\nA-->\n---^' })
-    }
-    const result = await renderDiagram('graph TD\nA-->', 'light')
-    expect(result).toEqual({ ok: false, error: 'Parse error on line 2:\nA-->\n---^' })
+  it('returns what pele says is wrong with the source', async () => {
+    const result = await renderDiagram('flowchart LR\n A[broken', 'light')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.line).toBeGreaterThan(0)
+    expect(result.column).toBeGreaterThan(0)
+    expect(result.error).toContain(result.snippet)
+    expect(result.error).toContain('^')
   })
 
-  it('removes what Mermaid leaves in the page when it fails', async () => {
-    mermaidStub.render = async (id: string) => {
-      const stray = document.body.appendChild(document.createElement('div'))
-      stray.id = `d${id}`
-      throw new Error('boom')
-    }
+  it('leaves no scratch DOM when parsing fails', async () => {
     await renderDiagram('bad', 'light')
-    expect(document.body.querySelector('[id^="dabele-mermaid"]')).toBeNull()
+    expect(document.body.querySelector('[id^="abele-pele"]')).toBeNull()
   })
 })
 
 describe('placeDiagram', () => {
   it('puts a copy of the drawing in the element at its natural size, ids of its own', async () => {
-    const result = await renderDiagram('graph TD\n%% size 300x120', 'light')
+    const result = await renderDiagram('flowchart LR\n A --> B', 'light')
     if (!result.ok) throw new Error('expected a drawing')
+    // Pele uses paths for simple arrows; exercise references too for diagrams with SVG defs.
+    result.svg = `<svg style="fill:var(--pele-fg)"><defs><marker id="${result.renderId}-arrow"/></defs><path marker-end="url(#${result.renderId}-arrow)"/></svg>`
     const a = document.createElement('div')
     const b = document.createElement('div')
     const first = placeDiagram(a, result)
     const second = placeDiagram(b, result)
 
-    expect(first.getAttribute('width')).toBe('300')
-    expect(first.getAttribute('height')).toBe('120')
-    expect(first.getAttribute('style')).toBeNull()
+    expect(first.getAttribute('width')).toBe(String(result.width))
+    expect(first.getAttribute('height')).toBe(String(result.height))
+    expect(first.getAttribute('style')).toContain('--pele-fg')
     // Two copies on one page must not share ids, or one's arrowheads vanish with the other.
     expect(first.id).not.toBe(second.id)
-    expect(first.querySelector('path')?.getAttribute('marker-end')).toBe(`url(#${first.id}_arrow)`)
+    const ids = new Set(Array.from(first.querySelectorAll('[id]'), (node) => node.id))
+    expect(Array.from(second.querySelectorAll('[id]')).some((node) => ids.has(node.id))).toBe(false)
+    const marker = first.querySelector('[marker-end]')?.getAttribute('marker-end')
+    expect(marker).toContain(first.id)
   })
 
   it('turns a node marked as an internal link into a link to that note', async () => {
-    mermaidStub.render = async (id: string) => ({
-      svg: `<svg id="${id}" viewBox="0 0 10 10"><g class="node internal-link"><g class="label"><foreignObject><div>Some note</div></foreignObject></g></g></svg>`,
-    })
-    const result = await renderDiagram('graph TD\nA\nclass A internal-link', 'light')
+    const result = await renderDiagram('flowchart LR\nA[Some note]\nclass A internal-link', 'light')
     if (!result.ok) throw new Error('expected a drawing')
     const svg = placeDiagram(document.createElement('div'), result)
     const link = svg.querySelector('a.internal-link')
@@ -81,6 +73,22 @@ describe('placeDiagram', () => {
 })
 
 describe('svgMarkup', () => {
+  it('freezes the current theme variables for a standalone export', async () => {
+    const { svgMarkup } = await import('@/mermaid/diagramExport')
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    const host = document.createElement('div')
+    host.style.setProperty('--pele-fg', 'rgb(12, 34, 56)')
+    host.appendChild(svg)
+    document.body.appendChild(host)
+    // happy-dom does not inherit custom properties on SVG as browsers do.
+    const style = vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: (name: string) => host.style.getPropertyValue(name),
+    } as CSSStyleDeclaration)
+    const markup = svgMarkup(svg)
+    style.mockRestore()
+    expect(markup).toContain('--pele-fg: rgb(12, 34, 56)')
+    host.remove()
+  })
   it('is a standalone file with the font written in, safe inside an attribute', async () => {
     const { svgMarkup } = await import('@/mermaid/diagramExport')
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')

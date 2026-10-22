@@ -1,6 +1,6 @@
-/** Defence in depth after Mermaid's strict mode, while the drawing is still detached. */
+/** Defence in depth for pele's SVG, while the drawing is still detached. */
 export function cleanDiagram(svg: Element): void {
-  // Obsidian exposes its DOMPurify instance. Keep Mermaid's HTML labels inside foreignObject.
+  // Obsidian exposes its DOMPurify instance.
   const purifier = (
     window as unknown as {
       DOMPurify?: { sanitize(node: Element, options: Record<string, unknown>): unknown }
