@@ -281,7 +281,8 @@ describe('a saved request in its tab', () => {
       },
     })
     expect(view.get('.abele-http-request__notice').text()).toContain('result')
-    expect(view.get('.abele-http-request__notice').text()).toContain('outcome_unknown')
+    expect(view.get('.abele-http-request__notice').text()).not.toContain('outcome_unknown')
+    expect(view.get('.abele-http-request__notice [title="outcome_unknown"]').exists()).toBe(true)
     view.unmount()
   })
 })

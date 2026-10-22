@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest'
-import { nodeErrorWords } from '@/node/errorWords'
+import { nodeErrorWords, nodeErrorDetails } from '@/node/errorWords'
 it('preserves a node refusal code and message rather than guessing a limit from its prose', () => {
   const message =
     'resource_busy: request could not acquire the worktree; rate_limit is not configured'
-  expect(nodeErrorWords(message)).toContain(message)
+  expect(nodeErrorWords(message)).toBe(nodeErrorWords('resource_busy'))
+  expect(nodeErrorWords(message)).not.toContain('resource_busy')
+  expect(nodeErrorDetails(message)).toContain(message)
   expect(nodeErrorWords(message)).not.toContain('Node reached a limit')
 })
 it('does not describe stream backpressure as a node rate limit', () => {

@@ -43,7 +43,15 @@ it('keeps an active local draft and reports external changes instead of replacin
   const props = await nodeFilesFixture('edit')
   let changed: (() => void) | undefined
   const wrapper = mount(NodeFilesDialog, {
-    props: { ...props, subscribeChanges: (listener: () => void) => { changed = listener; return () => { changed = undefined } } },
+    props: {
+      ...props,
+      subscribeChanges: (listener: () => void) => {
+        changed = listener
+        return () => {
+          changed = undefined
+        }
+      },
+    },
     global: { stubs },
   })
   await flushPromises()
@@ -179,7 +187,7 @@ it('opens a linked resource even if the previously browsed folder no longer exis
     expect(wrapper.find('.sample-code').exists()).toBe(true)
     const alert = wrapper.find('[role="alert"]')
     expect(alert.text()).toBe(
-      'The node could not complete the request. Check the details before trying again. (not_found)'
+      'The node could not complete the request. Check the details before trying again.'
     )
     expect(alert.find('[title="not_found"]').exists()).toBe(true)
   } finally {
@@ -356,9 +364,7 @@ it('allows Keep mine after re-reading disk even when its content has returned to
   const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
   try {
     await flushPromises()
-    const rebase = wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Keep mine')
+    const rebase = wrapper.findAll('button').find((b) => b.text() === 'Keep mine')
     expect(rebase).toBeDefined()
     await rebase!.trigger('click')
     await flushPromises()

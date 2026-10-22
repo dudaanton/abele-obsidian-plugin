@@ -59,8 +59,10 @@ describe('NodePanel', () => {
     const view = mount(NodePanel, {
       props: { phase: 'ready', node: { ...node, status: 'offline', seen: '5 min ago' } },
     })
-    expect(view.get('.abele-status-dot').classes()).toContain('abele-status-dot_red')
-    expect(view.get('.abele-status-dot').attributes('aria-label')).toBe(
+    expect(view.get('.abele-node-panel__node .abele-status-dot').classes()).toContain(
+      'abele-status-dot_red'
+    )
+    expect(view.get('.abele-node-panel__node .abele-status-dot').attributes('aria-label')).toBe(
       'Offline · last heard 5 min ago'
     )
   })
