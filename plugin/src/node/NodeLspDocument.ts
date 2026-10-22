@@ -175,7 +175,7 @@ export class NodeLspDocument {
     // on the same request instead of repeatedly reopening the language-server buffer.
     const key = JSON.stringify([this.text, position.line, position.character])
     const existing = this.hoverRequests.get(key)
-    if (existing) return existing
+    if (existing !== undefined) return existing
     const request = this.requestHover(position).finally(() => this.hoverRequests.delete(key))
     this.hoverRequests.set(key, request)
     return request
