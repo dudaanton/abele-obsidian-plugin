@@ -219,6 +219,13 @@ it('a normal plugin agent delegates through node chips to both fake providers, s
       await until(()=>nodes.connection(${JSON.stringify(registration)}).delegationCards.value[${JSON.stringify(parentId)}]?.every(c=>c.state==='completed'));
       chats.switchTab(parent.id);await chats.revealSidebar({focus:false});
       await until(()=>document.querySelectorAll('.abele-node-delegation').length===2);
+      // Completed cards keep their activity collapsed. Read the visible reports through
+      // the same disclosure the owner opens, rather than counting unmounted content.
+      for(const card of document.querySelectorAll('.abele-node-delegation')) {
+        const disclosure=card.querySelector('.abele-node-delegation__details .abele-disclosure__control');
+        if(disclosure?.getAttribute('aria-expanded')==='false')disclosure.click();
+      }
+      await until(()=>[...document.querySelectorAll('.abele-node-delegation')].every(card=>card.querySelectorAll('[data-mailbox-seq]').length===1));
       const cards=await nodes.connection(${JSON.stringify(registration)}).delegation.cards(parent.delegationParentId);
       return JSON.stringify({states:cards.map(c=>c.state),results:cards.flatMap(c=>c.reports.filter(r=>r.kind==='result').map(r=>r.text)),counts:[...document.querySelectorAll('.abele-node-delegation')].map(c=>c.querySelectorAll('[data-mailbox-seq]').length)})
     })()`)
@@ -227,7 +234,7 @@ it('a normal plugin agent delegates through node chips to both fake providers, s
     expect(result.counts).toEqual([1, 1])
     const opened = evalAsync<string>(`(async () => {
       ${PRELUDE}
-      document.querySelector('.abele-node-delegation button').click();
+      document.querySelector('.abele-node-delegation [aria-label="Open child chat"]').click();
       await until(()=>document.querySelector('.abele-node-chat'));
       const child=chats.getNodeSession(chats.activeTabId.value);
       await until(()=>child.messages.value.some(m=>m.role==='assistant'));

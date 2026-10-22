@@ -12,9 +12,16 @@ const probe = (device: string) =>
   evalAsync<Record<string, boolean>>(`(async () => {
   const api = window.__abeleTest;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const until = async fn => { for(let i=0;i<100;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Sample state did not appear') };
+  const until = async fn => { for(let i=0;i<100;i++){const value=fn();if(value)return value;await wait(50)}throw Error('Sample state did not appear: ' + fn.toString()) };
   const seen = {};
-  const close = async () => { document.querySelector('.modal-close-button')?.click(); await until(() => !document.querySelector('.modal.abele-modal')); };
+  const close = async () => {
+    const modal = document.querySelector('.modal.abele-modal');
+    if (!modal) return;
+    const button = [...(modal.closest('.modal-container')?.querySelectorAll('.modal-header-button, .modal-close-button') ?? [])].find(el => el.getBoundingClientRect().width);
+    if (button) button.click();
+    else document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+    await until(() => !modal.isConnected);
+  };
   const shot = async name => {
     await wait(250);
     const path = ${JSON.stringify(shots)} + '/' + ${JSON.stringify(device)} + '-' + name + '.png';
@@ -59,7 +66,7 @@ const probe = (device: string) =>
     seen.recovered = !nodePanel.root().textContent.includes('No answer from the node');
     await shot('recovered');
   } finally { await nodePanel.close(); }
-  return seen;
+  return JSON.stringify(seen);
 })()`)
 
 it('shows refusal, lost-worker recovery and the selected provider mode on desktop', () => {
