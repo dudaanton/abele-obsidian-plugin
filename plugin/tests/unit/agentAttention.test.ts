@@ -7,6 +7,11 @@ import {
 } from '@/agents/attention'
 
 const state = { run: { id: 'run-1', at: 10, status: 'running' as const } }
+it('shows node action names as words in the overview', () => {
+  expect(
+    attentionReasons({}, [{ id: 'sample-commit', name: 'node_git_commit' }], true)[0].text
+  ).toBe('Node git commit')
+})
 const row = (key: string, reasons: AttentionRow['reasons']): AttentionRow => ({
   key,
   reference: { kind: 'local', path: `${key}.abchat` },

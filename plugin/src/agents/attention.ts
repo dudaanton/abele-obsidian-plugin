@@ -1,6 +1,7 @@
 import { presentUiError } from '@/i18n/streamBErrors'
 import { agentText } from '@/i18n/streamBText'
 import { t } from '@/i18n'
+import { readableToolName } from '@/ai/toolLine'
 /** Execution state, not conversation content. No host or model dependencies. */
 export interface LocalAttention {
   run?: { id: string; at: number; status: 'running' | 'interrupted' | 'done'; target?: string }
@@ -55,6 +56,7 @@ export const canDismissAttention = (reason: AttentionReason): boolean =>
   reason.kind === 'error' ||
   reason.kind === 'interrupted' ||
   (['approval', 'question'].includes(reason.kind) && !!(reason.uncertain || reason.interrupted))
+const approvalLabel = (name: string) => (name.startsWith('node_') ? readableToolName(name) : name)
 export function attentionReasons(
   state: LocalAttention,
   approvals: { id: string; name: string }[],
@@ -67,7 +69,7 @@ export function attentionReasons(
       kind: 'approval',
       id: p.id,
       at: state.approvals?.[p.id] ?? 0,
-      text: p.name,
+      text: approvalLabel(p.name),
     }))
   for (const [id, status] of Object.entries(state.tools ?? {}))
     if (status !== 'done' && !settled.has(id))

@@ -314,12 +314,15 @@ export async function openNodeWorktreeDialog(
         onCreate: (branch: string, from: string) => {
           if (busy.value) return
           busy.value = true
+          let created = false
           void mutations
             .create(target.projectId, branch, from)
             .then(async (reservation) => {
               const job = await waitForWorktreeJob(() =>
                 connection.client.getJob(reservation.job_id)
               )
+              created = job.state === 'succeeded'
+              if (created) close()
               await model.refresh()
               if (job.state !== 'succeeded')
                 nodeErrorNotice(
@@ -342,6 +345,7 @@ export async function openNodeWorktreeDialog(
                 failure instanceof Error
                   ? failure.message
                   : t('streamB.couldNotCreateWorktree.d782d3')
+              if (created) nodeErrorNotice(error.value)
             })
             .finally(() => {
               busy.value = false
