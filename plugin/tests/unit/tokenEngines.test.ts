@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { Notice, type App } from 'obsidian'
+import { Notice, TFile, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
@@ -28,6 +28,85 @@ import {
 import { showPrivateRecoveryNotice } from '@/sync/privateRecovery'
 import { makeParents } from '@/sync/vaultFolders'
 import { connectionTone } from '@/sync/connectionLine'
+
+it.each(['vault', 'folder', 'group'] as const)(
+  'waits for the complete index and ignores unrelated disk folders (%s)',
+  async (kind) => {
+    const f = inspectionFixture(
+      false,
+      kind === 'group' ? 'Notes/group.md' : kind === 'vault' ? '/' : 'Notes',
+      kind === 'group' ? 'group' : 'folder'
+    )
+    let restarted: TokenEngines | undefined
+    let list: ReturnType<typeof vi.spyOn> | undefined
+    let layout: ReturnType<typeof vi.spyOn> | undefined
+    let recover: ReturnType<typeof vi.spyOn> | undefined
+    let index: ReturnType<typeof vi.spyOn> | undefined
+    try {
+      f.release()
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+      await f.host.close()
+      const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+      for (let i = 0; i < 100; i++) {
+        const path = `Notes/member-${i}.md`
+        await state.put({
+          path,
+          wirePath: path,
+          fileId: `member-${i}`,
+          versionId: 'v1',
+          sha: 'b'.repeat(64),
+          size: 1,
+          mtime: 1,
+        })
+        await f.app.vault.adapter.write(path, 'x')
+      }
+      state.close()
+      let ready!: () => unknown
+      layout = vi.spyOn(f.app.workspace, 'onLayoutReady').mockImplementation((callback) => {
+        ready = callback
+      })
+      const files = f.app.vault.getFiles.bind(f.app.vault)
+      index = vi.spyOn(f.app.vault, 'getFiles').mockReturnValue([])
+      list = vi
+        .spyOn(f.app.vault.adapter, 'list')
+        .mockRejectedValue(new Error('Unrelated archive is unreadable'))
+      // Stop at the first recovery boundary; later exchange is outside this preflight test.
+      recover = vi
+        .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
+        .mockRejectedValue(new Error('preflight complete'))
+      f.transport.mockClear()
+      f.probe.mockClear()
+      restarted = f.makeHost()
+      restarted.start()
+      await vi.waitFor(() => expect(layout).toHaveBeenCalled())
+      expect(f.registry.records()[0].paused).toBe(false)
+      expect(index).not.toHaveBeenCalled()
+      expect(list).not.toHaveBeenCalled()
+      expect(f.transport).not.toHaveBeenCalled()
+      const unrelated = Array.from({ length: 10000 }, (_, i) =>
+        Object.assign(new TFile(), { path: `Archive/sample-${i}.md` })
+      )
+      index.mockImplementation(() => [...files(), ...unrelated])
+      ready()
+      await vi.waitFor(() => expect(recover).toHaveBeenCalled())
+      expect(f.registry.records()[0].paused).toBe(false)
+      expect(f.registry.records()[0].state[STARTUP_STOP]).toBeFalsy()
+      expect(list).not.toHaveBeenCalled()
+      expect(f.probe).not.toHaveBeenCalled()
+    } finally {
+      f.release()
+      await restarted?.close()
+      await f.host.close()
+      recover?.mockRestore()
+      layout?.mockRestore()
+      list?.mockRestore()
+      index?.mockRestore()
+      f.probe.mockRestore()
+    }
+  }
+)
 
 it('routes folder recovery through its proxy vault to the connection badge and log', async () => {
   const f = inspectionFixture(false, 'Notes')

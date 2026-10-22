@@ -1,6 +1,6 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
 import { observeBackgroundActivity, safetyNotice } from './backgroundActivity'
-import { STARTUP_STOP, startupSafetyReason } from './startupSafety'
+import { STARTUP_STOP, startupSafetyReason, waitForStartupIndex } from './startupSafety'
 import { stagingDirectory } from './stagingDirectory'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { quarantineLocalOnlyJournal, retireLocalOnlyLedger } from './localOnlyJournal'
@@ -620,6 +620,10 @@ export class TokenEngines {
     const start = async () => {
       await this.ui.registry.flush()
       await stage('Waiting for previous sync', () => beforeOpening.teardown)
+      this.ui.startupStage(record.id, 'Waiting for vault index')
+      await waitForStartupIndex(this.app.workspace, startup.signal)
+      assertActive()
+      this.ui.finishStartup(record.id, 'complete')
       await stage('Reading offloaded file records', async () => {
         await beforeOpening.documents
         await beforeOpening.ready
@@ -707,7 +711,7 @@ export class TokenEngines {
         try {
           reason = await startupSafetyReason(
             state,
-            (path) => vaultDisk(this.app.vault).list(path),
+            async () => ({ files: this.app.vault.getFiles().map((file) => file.path) }),
             scopedRoot ?? '',
             assertActive,
             [
@@ -718,7 +722,7 @@ export class TokenEngines {
           )
         } catch (error) {
           assertActive()
-          reason = `Sync paused: the vault or folder could not be listed. Check that it is accessible, then choose Resume. ${error instanceof Error ? error.message : String(error)}`
+          reason = `Sync paused: the vault index could not be read. Check that it is accessible, then choose Resume. ${error instanceof Error ? error.message : String(error)}`
         }
         assertActive()
         if (reason) {

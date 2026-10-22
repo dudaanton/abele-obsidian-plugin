@@ -99,6 +99,8 @@ opens a Notice. Retention never deletes these bytes.
 The per-connection `abele-sync-token-state:startup-stop` field retains the reason a startup was
 paused because its local files were mostly missing or unreadable. With at least 100 ledger
 entries, fewer than 10% as many visible files stops exchange before recovery and engine start.
+This count uses the host's in-memory file index after layout readiness; it never walks the
+filesystem or reads file contents. Startup waits for readiness instead of inspecting a partial index.
 For group connections, only distinct ledger member paths count, including their offload
 placeholders; unrelated files elsewhere in the vault cannot satisfy this check.
 An explicit Resume clears the stop and authorizes one start in the current session. That
