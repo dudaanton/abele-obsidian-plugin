@@ -97,7 +97,7 @@ export class VaultWriter {
           previous.replacementSha !== entry.replacementSha
         )
           throw new EngineError('conflict', 'Installation receipt belongs to another operation')
-        return (await this.installedReceipt(id, path, entry.replacementSha!)) ?? false
+        return (await this.installedReceipt(id, path, entry.replacementSha)) ?? false
       }
       if (await this.there(temp))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
@@ -317,8 +317,10 @@ export class VaultWriter {
       if (!(await this.deps.journal.isCurrent(entry))) continue
       if (entry.retiredGeneration) continue
       if (
-        (entry.temp && (!isAdapterTemp(entry.temp) || !entry.temp.endsWith('.tmp'))) ||
-        (entry.backup && (!isAdapterTemp(entry.backup) || !entry.backup.endsWith('.old')))
+        (entry.temp !== undefined &&
+          (!isAdapterTemp(entry.temp) || !entry.temp.endsWith('.tmp'))) ||
+        (entry.backup !== undefined &&
+          (!isAdapterTemp(entry.backup) || !entry.backup.endsWith('.old')))
       )
         throw new EngineError('io', 'Legacy recovery locator is not an owned private artifact')
       if (entry.conditionalReceipt) continue // Owned by SDK receipt recovery, not legacy replay.

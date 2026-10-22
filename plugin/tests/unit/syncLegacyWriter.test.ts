@@ -177,14 +177,19 @@ it('does not restore a legacy backup through an unconditional rename', async () 
   expect(await journal.currentEntries()).toEqual([entry])
 })
 
-it.each(['temp', 'backup'] as const)(
-  'refuses an unproven public %s locator in legacy recovery',
-  async (field) => {
+it.each([
+  ['temp', 'sample.md'],
+  ['backup', 'sample.md'],
+  ['temp', ''],
+  ['backup', ''],
+] as const)(
+  'refuses an unproven public %s locator (%j) in legacy recovery',
+  async (field, locator) => {
     const app = buildFakeVault([]),
       disk = app.vault.adapter
     await disk.write('sample.md', 'independent local bytes')
     const journal = new WriteJournal(app)
-    const entry = { target: 'other.md', [field]: 'sample.md' }
+    const entry = { target: 'other.md', [field]: locator }
     await journal.persist(() => journal.add(entry))
     const conditionalFile = vi.fn(async () => false)
     const writer = new VaultWriter({

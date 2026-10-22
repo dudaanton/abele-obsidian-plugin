@@ -725,9 +725,12 @@ it('recovers interrupted installations before inspecting their bytes', async () 
     // Finish the initial automatic exchange before staging an interrupted installation.
     await ui.sync(id)
     await host.close()
-    await app.vault.adapter.write('Notes/inflight.tmp', '{"format":"abele.external", broken')
+    await app.vault.adapter.write(
+      'Notes/.abele-sync-abcd1234.tmp',
+      '{"format":"abele.external", broken'
+    )
     app.saveLocalStorage(JOURNAL_KEY, [
-      { owner: id, target: 'Notes/slow.txt', temp: 'Notes/inflight.tmp' },
+      { owner: id, target: 'Notes/slow.txt', temp: 'Notes/.abele-sync-abcd1234.tmp' },
     ])
     const next = fixture.makeHost()
     recover.mockClear()
@@ -736,10 +739,14 @@ it('recovers interrupted installations before inspecting their bytes', async () 
       await ui.sync(id)
       // Recovery must retire the old entry before inspection can accept this vault.
       expect(
-        new WriteJournal(app).entries().filter((entry) => entry.temp === 'Notes/inflight.tmp')
+        new WriteJournal(app)
+          .entries()
+          .filter((entry) => entry.temp === 'Notes/.abele-sync-abcd1234.tmp')
       ).toEqual([])
       expect(recover).toHaveBeenCalled()
-      expect(probe.mock.calls.some(([path]) => path === 'Notes/inflight.tmp')).toBe(false)
+      expect(probe.mock.calls.some(([path]) => path === 'Notes/.abele-sync-abcd1234.tmp')).toBe(
+        false
+      )
       expect(ui.runtimes.has(id)).toBe(true)
     } finally {
       await next.close()
