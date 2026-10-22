@@ -32,7 +32,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         try { for (const state of ['missing','untrusted','loading','errors','eslint','failed','off','ready']) {
           phase = state + '-viewer';
           await window.__abeleTest.openDialog('node-lsp-' + state);
-          await until(() => document.querySelector('.abele-lsp-root .cm-content'));
+          await until(() => document.querySelector('.abele-file-view .cm-content'));
           phase = state + '-status';
           const expected = ({loading:'starting',missing:'degraded',untrusted:'degraded',eslint:'degraded',errors:'ready',failed:'failed',off:'off',ready:'ready'})[state];
           await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === expected);
