@@ -147,6 +147,14 @@ liveCase(
             `const body=inWindows('.abele-sync-window__events').closest('.abele-modal__body');body.scrollTop=100;window.__sampleActivity.scrollTop=body.scrollTop;window.__sampleActivity.releaseUpload();return true`
           )
           await a.waitIdle()
+          const completedComparisons = a.run<[number, number][]>(
+            `return [...svc.activity.value[${JSON.stringify(id)}].events].filter(one=>one.text.startsWith('Comparing files: ended')).map(one=>{const counts=one.text.match(/(\\d+) of (\\d+) files?/);if(!counts)throw new Error('Ended comparison has no counts: '+one.text);return [Number(counts[1]),Number(counts[2])]})`
+          )
+          expect(completedComparisons.length).toBeGreaterThan(0)
+          for (const [completed, total] of completedComparisons) {
+            expect(total).toBeGreaterThan(0)
+            expect(completed).toBe(total)
+          }
           const kept = a.run<boolean>(
             `const list=inWindows('.abele-sync-window__events'),body=list.closest('.abele-modal__body');await poll(()=>list.querySelectorAll('li').length>${before});return Math.abs(body.scrollTop-window.__sampleActivity.scrollTop)<5`
           )

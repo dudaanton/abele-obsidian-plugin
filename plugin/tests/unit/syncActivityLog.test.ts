@@ -30,6 +30,25 @@ it('does not displace file activity with phases from empty checking rounds', () 
   expect(lines).toEqual([])
 })
 
+it('retains interrupted comparison work and only ends at the confirmed scan boundary', () => {
+  const lines: string[] = []
+  const log = new SyncActivityLog((line) => lines.push(line))
+  log.update({ stage: 'Comparing files', completed: 1, total: 120, totalKnown: true })
+  log.update({ stage: 'Downloading', completed: 0 })
+  log.update({ stage: 'Downloading', completed: 0, total: 0, totalKnown: true })
+  log.update()
+  log.update({ stage: 'Comparing files', completed: 0, total: 120, totalKnown: true })
+  expect(lines.filter((line) => line.startsWith('Downloading'))).toEqual([])
+  expect(lines.filter((line) => line.includes('Comparing files: ended'))).toEqual([])
+  expect(lines).toContainEqual(expect.stringContaining('stopped at'))
+  expect(lines.at(-1)).toContain('1 of 120 files')
+  log.finishComparison()
+  expect(lines.at(-1)).toBe('Comparing files: ended · Comparing files · 120 of 120 files')
+  log.update()
+  log.update({ stage: 'Comparing files', completed: 0, total: 120, totalKnown: true })
+  expect(lines.at(-1)).toContain('0 of 120 files')
+})
+
 it('still reports an indeterminate phase if checking takes thirty seconds', async () => {
   vi.useFakeTimers()
   const lines: string[] = []
@@ -47,6 +66,31 @@ it('still reports an indeterminate phase if checking takes thirty seconds', asyn
     await vi.advanceTimersByTimeAsync(30000)
     expect(lines).toEqual(['Checking the vault: started · Checking the vault'])
     log.update()
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    log.update()
+    vi.useRealTimers()
+  }
+})
+
+it('does not announce empty downloads or schedule empty heartbeats after useful work', async () => {
+  vi.useFakeTimers()
+  const lines: string[] = []
+  const log = new SyncActivityLog(
+    (line) => lines.push(line),
+    Date.now,
+    (work, delay) => {
+      const timer = setTimeout(work, delay)
+      return () => clearTimeout(timer)
+    }
+  )
+  try {
+    log.update({ stage: 'Uploading', completed: 1, bytes: 20 })
+    log.update({ stage: 'Downloading', completed: 0 })
+    await vi.advanceTimersByTimeAsync(60000)
+    log.update({ stage: 'Downloading', completed: 0, total: 0, totalKnown: true })
+    log.update()
+    expect(lines.filter((line) => line.startsWith('Downloading'))).toEqual([])
     expect(vi.getTimerCount()).toBe(0)
   } finally {
     log.update()
@@ -78,10 +122,11 @@ it('logs phase boundaries and bounded aggregate updates with real byte counts', 
   log.update({ ...snapshot, completed: 6, bytes: 60 })
   expect(lines.at(-1)).toContain('60 of 1000 B')
   log.update({ stage: 'Downloading', completed: 0 })
-  expect(lines.at(-2)).toContain('Uploading: ended')
-  expect(lines.at(-1)).toBe('Downloading: started · Downloading')
+  expect(lines.at(-1)).toContain('Uploading: stopped at')
+  expect(lines.at(-1)).toContain('6 of 100 files')
+  const finished = [...lines]
   log.update()
-  expect(lines.at(-1)).toContain('Downloading: ended')
+  expect(lines).toEqual(finished)
 })
 
 it('uses confirmed applied changes to distinguish file actions', () => {

@@ -21,7 +21,7 @@ export class SyncActivityLog {
   private at = 0
   private fraction = 0
   private announced = false
-  private roundHasWork = false
+  private comparison?: TransferSnapshot
   private cancel?: () => void
   constructor(
     private readonly write: (line: string) => void,
@@ -29,17 +29,45 @@ export class SyncActivityLog {
     private readonly schedule?: (work: () => void, delay: number) => () => void
   ) {}
 
+  /** The SDK finished the local scan, including metadata/cache checks without content reads. */
+  finishComparison(total = this.comparison?.total): void {
+    const one = this.comparison
+    if (!one) return
+    if (total)
+      this.write(
+        `Comparing files: ended · ${transferText({ ...one, total, totalKnown: true, completed: total })}`
+      )
+    this.comparison = undefined
+    if (this.last?.stage === 'Comparing files') {
+      this.cancel?.()
+      this.cancel = undefined
+      this.last = undefined
+      this.announced = false
+    }
+  }
+
   update(value?: TransferSnapshot): void {
     this.cancel?.()
     this.cancel = undefined
+    if (value?.stage === 'Comparing files') {
+      value = {
+        ...value,
+        completed: Math.max(value.completed, this.comparison?.completed ?? 0),
+      }
+      this.comparison = { ...value }
+    }
     const now = this.now()
     const changed = value?.stage !== this.last?.stage
     if (changed && this.last && this.announced)
-      this.write(`${this.last.stage}: ended · ${transferText(this.last)}`)
+      this.write(
+        this.last.stage === 'Comparing files' ||
+          (this.last.totalKnown && (this.last.total ?? 0) > this.last.completed)
+          ? `${this.last.stage}: stopped at ${transferText(this.last).replace(this.last.stage + ' · ', '')} — continues`
+          : `${this.last.stage}: ended · ${transferText(this.last)}`
+      )
     if (!value) {
       this.last = undefined
       this.announced = false
-      this.roundHasWork = false
       return
     }
     if (changed) {
@@ -47,13 +75,14 @@ export class SyncActivityLog {
       this.at = now
       this.fraction = 0
     }
-    this.roundHasWork ||= !!(value.completed || value.total || value.bytes)
+    const hasWork =
+      !!(value.completed || value.total || value.bytes) || value.stage === 'Committing changes'
     const fraction = value.totalKnown && value.total ? value.completed / value.total : 0
     const byteFraction = value.totalBytes ? (value.bytes ?? 0) / value.totalBytes : 0
     const advance = Math.max(fraction, byteFraction)
     const elapsed = now - this.at >= 30000
     if (
-      (!this.announced && (this.roundHasWork || elapsed)) ||
+      (!this.announced && (hasWork || (elapsed && value.stage !== 'Downloading'))) ||
       (this.announced && (advance - this.fraction >= 0.05 - Number.EPSILON || elapsed))
     ) {
       this.write(
@@ -64,6 +93,7 @@ export class SyncActivityLog {
       this.fraction = advance
     }
     this.last = { ...value }
-    this.cancel = this.schedule?.(() => this.update(this.last), 30000 - (now - this.at))
+    if (value.stage !== 'Downloading' || hasWork)
+      this.cancel = this.schedule?.(() => this.update(this.last), 30000 - (now - this.at))
   }
 }

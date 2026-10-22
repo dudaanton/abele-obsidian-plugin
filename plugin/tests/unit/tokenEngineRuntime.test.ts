@@ -1751,6 +1751,13 @@ it.each([false, true])(
       release()
       await sync
       expect(events).toContainEqual(expect.stringContaining('Comparing files: ended'))
+      const ended = events.filter((line) => line.startsWith('Comparing files: ended'))
+      for (const line of ended) {
+        const counts = line.match(/(\d+) of (\d+) files?/)
+        expect(counts, line).not.toBeNull()
+        expect(Number(counts![1]), line).toBe(Number(counts![2]))
+      }
+      expect(ended.at(-1)).toContain(downloadFirst ? '2 of 2 files' : '1 of 1 file')
     } finally {
       release()
       await sync.catch(() => {})

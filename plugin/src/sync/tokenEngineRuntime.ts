@@ -938,6 +938,8 @@ export class TokenEngineRuntime
         if (name === 'setJournal')
           return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
             await target.setJournal(journal)
+            // A new push journal is published only after the SDK's local scan completes.
+            if (journal) activityLog.finishComparison(this.inventoryTotal)
             this.journalActive = journal !== null
             if (!journal) return
             this.progress.clear()
@@ -1145,6 +1147,8 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        // An empty scan has no push journal, but still completed its metadata checks.
+        activityLog.finishComparison(this.inventoryTotal)
         this.serverAvailable = true
         this.trace.finishPull(true)
         this.pendingFolders.clear()
