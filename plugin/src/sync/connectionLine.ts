@@ -1,6 +1,11 @@
 import { englishSyncText, type SyncText } from './presentation'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
-import { connectionStatusText, SCOPE_DELETED, type ConnectionActivity } from './tokenUi'
+import {
+  connectionStatusText,
+  safetyStopReason,
+  SCOPE_DELETED,
+  type ConnectionActivity,
+} from './tokenUi'
 import { formatWhen } from './format'
 import { transferText } from './transferProgress'
 
@@ -17,6 +22,7 @@ const ATTENTION = ['error', 'needs-token', 'scope_unavailable', 'disconnected']
 
 /** Something is moving: a first scan, a comparison, a push or a pull. */
 export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean {
+  if (safetyStopReason(activity)) return false
   if (activity?.error === SCOPE_DELETED || row.paused || row.rootIssue) return false
   return (
     row.status === 'syncing' ||
@@ -36,7 +42,7 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
  * outside (paused, no server, a copy to look at), red when the person has to act.
  */
 export function connectionTone(row: Row, activity?: ConnectionActivity): ConnectionTone {
-  if (activity?.safetyStop) return 'red'
+  if (safetyStopReason(activity)) return 'red'
   if (row.rootIssue) return 'red'
   if (ATTENTION.includes(row.status) || activity?.startup?.outcome === 'failed') return 'red'
   if (row.paused || row.status === 'offline') return 'orange'
@@ -58,7 +64,8 @@ export function connectionLine(
   text: SyncText = englishSyncText,
   when: (iso: string) => string = formatWhen
 ): string {
-  if (activity?.safetyStop) return activity.safetyStop
+  const stopped = safetyStopReason(activity)
+  if (stopped) return stopped
   if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity, text)
   if (row.rootIssue) return connectionStatusText(row, activity, text)
   if (row.paused) return text('Paused')

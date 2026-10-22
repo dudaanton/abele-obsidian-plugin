@@ -98,18 +98,23 @@ remain visible in the connection activity log and attention badge; background re
 opens a Notice. Retention never deletes these bytes.
 Shared connections include child-item activity in the visible parent log and attention badge.
 The per-connection `abele-sync-token-state:startup-stop` field retains the reason a startup was
-paused because its local files were mostly missing or unreadable. Only index-visible ledger
+paused because the complete index showed most comparable local files missing. Only index-visible ledger
 paths count: the config directory, hidden paths, private storage and excluded folders are omitted
 from both populations. With at least 100 comparable ledger entries, fewer than 10% as many visible
 files stops exchange before recovery and engine start. Smaller comparable populations are not judged.
 Folder ledger paths and server exclusions are mapped to their local placement before comparison
 with the host index and configuration directory; unrelated server exclusions do not affect local names.
+Exclusions use NFC with trailing slashes removed, matching the SDK's folder selectors; empty
+selectors are ignored. If the safety comparison cannot judge, it logs the failure and continues
+without imposing a safety stop. Explicit Resume approval is consumed before attempting comparison.
 This count uses the host's in-memory file index after layout readiness; it never walks the
 filesystem or reads file contents. Startup waits for readiness instead of inspecting a partial index.
 For group connections, only distinct ledger member paths count, including their offload
 placeholders; unrelated files elsewhere in the vault cannot satisfy this check.
 An explicit Resume clears the stop and authorizes one start in the current session. That
 authorization is not persisted; another restart checks the local files again.
+An owned or shared-item safety stop has its own reason and Resume instruction, shown ahead of
+ordinary pause and stale progress with the action-required indicator, even when every item is paused.
 Reader, gallery, canvas and agent
 content reads can hydrate absent originals; listings show original paths, size and offloaded
 state. Offloaded paths open an information card, and reading/live-preview embeds show a

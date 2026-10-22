@@ -1,5 +1,5 @@
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
-import type { TokenUi } from './tokenUi'
+import { safetyStopReason, type TokenUi } from './tokenUi'
 import { connectionLine } from './connectionLine'
 import { transferText } from './transferProgress'
 
@@ -15,6 +15,7 @@ export function tokenStatus(
   if (!rows.length || !ui) return status
   const activity = ui.activity.value
   const isBusy = (one: (typeof rows)[number]) =>
+    !safetyStopReason(activity[one.id]) &&
     !one.paused &&
     ['idle', 'syncing', 'joining'].includes(one.status) &&
     (one.status === 'syncing' ||
@@ -24,8 +25,10 @@ export function tokenStatus(
       !!activity[one.id]?.inspection)
   status.state = rows.some(isBusy)
     ? 'syncing'
-    : rows.some((one) =>
-          ['error', 'scope_updating', 'scope_unavailable', 'needs-token'].includes(one.status)
+    : rows.some(
+          (one) =>
+            !!safetyStopReason(activity[one.id]) ||
+            ['error', 'scope_updating', 'scope_unavailable', 'needs-token'].includes(one.status)
         )
       ? 'error'
       : rows.some((one) => one.status === 'offline')
@@ -38,7 +41,10 @@ export function tokenStatus(
   status.deferred = rows.reduce((sum, one) => sum + (activity[one.id]?.deferred ?? 0), 0)
   status.conflicts = rows.reduce((sum, one) => sum + (activity[one.id]?.conflicts?.length ?? 0), 0)
   status.review = ui.candidates.value.length + ui.questions.value.length
-  status.lastError = rows.map((one) => activity[one.id]?.error).find(Boolean) ?? null
+  status.lastError =
+    rows
+      .map((one) => safetyStopReason(activity[one.id]) ?? activity[one.id]?.error)
+      .find(Boolean) ?? null
   const busy = rows.find(isBusy)
   if (busy) {
     const transfer = activity[busy.id]?.transfer

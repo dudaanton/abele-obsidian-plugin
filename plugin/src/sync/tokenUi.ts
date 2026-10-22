@@ -195,6 +195,7 @@ export interface ConnectionActivity {
   backgroundAttention?: string
   /** Derived from child records; never replaces the parent's own recovery evidence. */
   sharedAttention?: string
+  sharedSafetyStop?: string
   missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
@@ -230,12 +231,16 @@ export interface ConnectionActivity {
   events?: ConnectionEvents
   eventsRevision?: number
 }
+export function safetyStopReason(activity?: ConnectionActivity): string | undefined {
+  return activity?.safetyStop ?? activity?.sharedSafetyStop
+}
 export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>,
   activity?: ConnectionActivity,
   text: SyncText = englishSyncText
 ): string {
-  if (activity?.safetyStop) return activity.safetyStop
+  const stopped = safetyStopReason(activity)
+  if (stopped) return stopped
   if (activity?.error === SCOPE_DELETED) return text('Deleted on the server')
   if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
     return activity.reconciliation.reason.startsWith('server generation changed')
@@ -434,18 +439,21 @@ export class TokenUi {
         return { ...row, status, paused: active.length > 0 && active.every((item) => item.paused) }
       })
     for (const connection of this.itemSets.store.all()) {
-      const sharedAttention = connection.items
+      const children = connection.items
         .filter((item) => item.recordId && item.recordId !== connection.id)
-        .map((item) => {
-          const activity = item.recordId ? this.activity.value[item.recordId] : undefined
-          return activity?.safetyStop ?? activity?.backgroundAttention
-        })
+        .map((item) => (item.recordId ? this.activity.value[item.recordId] : undefined))
+      const sharedAttention = children
+        .map((activity) => activity?.backgroundAttention)
         .find(Boolean)
+      const sharedSafetyStop = children.map((activity) => activity?.safetyStop).find(Boolean)
       const previous = this.activity.value[connection.id]
-      if (previous?.sharedAttention !== sharedAttention)
+      if (
+        previous?.sharedAttention !== sharedAttention ||
+        previous?.sharedSafetyStop !== sharedSafetyStop
+      )
         this.activity.value = {
           ...this.activity.value,
-          [connection.id]: { ...previous, sharedAttention },
+          [connection.id]: { ...previous, sharedAttention, sharedSafetyStop },
         }
     }
   }

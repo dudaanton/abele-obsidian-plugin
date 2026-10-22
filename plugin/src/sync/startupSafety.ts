@@ -1,4 +1,5 @@
 import type { StateStore } from '@abele/sync-sdk/core'
+import { excludedFolderPrefix } from './excludedFolder'
 
 export const STARTUP_STOP = 'abele-sync-token-state:startup-stop'
 export function waitForStartupIndex(
@@ -28,11 +29,16 @@ export async function startupSafetyReason(
 ): Promise<string | null> {
   let known = 0
   const members = new Set<string>()
+  const exclusions = excludedRoots.map(excludedFolderPrefix).filter(Boolean)
   // The host index never contains hidden paths or its configuration directory.
   // Compare the same eligible population on both sides, not the entire sync ledger.
-  const comparable = (path: string) =>
-    !path.split('/').some((part) => part.startsWith('.')) &&
-    !excludedRoots.some((root) => path === root || path.startsWith(root + '/'))
+  const comparable = (path: string) => {
+    const local = path.normalize('NFC')
+    return (
+      !local.split('/').some((part) => part.startsWith('.')) &&
+      !exclusions.some((root) => local === root || local.startsWith(root + '/'))
+    )
+  }
   for await (const entry of state.all()) {
     assertCurrent()
     const path = localPath(entry.path)

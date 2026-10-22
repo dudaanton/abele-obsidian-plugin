@@ -29,10 +29,85 @@ import { showPrivateRecoveryNotice } from '@/sync/privateRecovery'
 import { makeParents } from '@/sync/vaultFolders'
 import { connectionLine, connectionTone } from '@/sync/connectionLine'
 import { backgroundActivity } from '@/sync/backgroundActivity'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+
+it('shows the missing-folder safety stop when both shared items become paused at startup', async () => {
+  const f = inspectionFixture()
+  try {
+    f.release()
+    const parent = f.registry.add(),
+      child = f.registry.add()
+    for (const [id, path] of [
+      [parent, 'First'],
+      [child, 'Second'],
+    ]) {
+      const scope = { kind: 'folder' as const, id: path, path }
+      f.registry.attach(
+        id,
+        { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
+        { protocol: 2, token_id: path, space_id: 'sample-space', scope, status: 'active' },
+        f.secrets
+      )
+    }
+    f.ui.itemSets.store.create(
+      parent,
+      'Sample share',
+      [
+        { id: 'first', scopeId: 'first', kind: 'folder', path: 'First' },
+        { id: 'second', scopeId: 'second', kind: 'folder', path: 'Second' },
+      ],
+      { first: parent, second: child }
+    )
+    await makeParents(f.app.vault.adapter, 'First/sample.md')
+    await f.app.vault.adapter.write('First/sample.md', 'kept local bytes')
+    f.ui.itemSets.store.pause(parent, 'first', true)
+    f.registry.setPaused(parent, true)
+    const state = await openTokenLedger(
+      f.factory,
+      f.registry,
+      f.registry.records().find((record) => record.id === child)!,
+      () => {}
+    )
+    for (let i = 0; i < 100; i++) {
+      const path = `Second/sample-${i}.md`
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: path,
+        versionId: 'v1',
+        sha: 'b'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    }
+    state.close()
+    f.host.start()
+    await vi.waitFor(() =>
+      expect(f.registry.records().find((record) => record.id === child)?.paused).toBe(true)
+    )
+    const row = f.ui.rows.value.find((record) => record.id === parent)!
+    expect(row.paused).toBe(true)
+    const activity = f.ui.activity.value[parent]
+    expect(connectionLine(row, activity)).toContain('Resume')
+    expect(connectionTone(row, activity)).toBe('red')
+    expect(connectionLine(row, activity)).toBe(f.ui.activity.value[child].safetyStop)
+  } finally {
+    f.release()
+    await f.host.close()
+    f.probe.mockRestore()
+  }
+})
 
 it.each([
   { server: 'Settings', local: 'Shared', config: 'Settings', excluded: '', present: false },
   { server: 'Notes', local: 'Cache', config: '.obsidian', excluded: 'Cache', present: true },
+  {
+    server: 'Notes',
+    local: 'Shared',
+    config: '.obsidian',
+    excluded: 'Notes/Archive/',
+    present: true,
+  },
 ])(
   'compares placed paths in the local namespace ($server to $local)',
   async ({ server, local, config, excluded, present }) => {
@@ -92,92 +167,160 @@ it.each([
   }
 )
 
-it('shows second-folder recovery on the visible shared connection badge and log', async () => {
-  const f = inspectionFixture()
-  try {
-    const parent = f.registry.add(),
-      child = f.registry.add()
-    for (const [id, path] of [
-      [parent, 'First'],
-      [child, 'Second'],
-    ]) {
-      const scope = { kind: 'folder' as const, id: path, path }
-      f.registry.attach(
-        id,
-        { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
-        { protocol: 2, token_id: path, space_id: 'sample-space', scope, status: 'active' },
-        f.secrets
+it.each([false, true])(
+  'shows second-folder recovery and safety stops on the shared connection (first paused=%s)',
+  async (firstPaused) => {
+    const f = inspectionFixture()
+    try {
+      const parent = f.registry.add(),
+        child = f.registry.add()
+      for (const [id, path] of [
+        [parent, 'First'],
+        [child, 'Second'],
+      ]) {
+        const scope = { kind: 'folder' as const, id: path, path }
+        f.registry.attach(
+          id,
+          { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
+          { protocol: 2, token_id: path, space_id: 'sample-space', scope, status: 'active' },
+          f.secrets
+        )
+      }
+      f.ui.itemSets.store.create(
+        parent,
+        'Sample share',
+        [
+          { id: 'first', scopeId: 'first', kind: 'folder', path: 'First' },
+          { id: 'second', scopeId: 'second', kind: 'folder', path: 'Second' },
+        ],
+        { first: parent, second: child }
       )
+      f.registry.setStatus(parent, 'idle')
+      f.registry.setStatus(child, 'idle')
+      f.ui.refresh()
+      expect(f.ui.rows.value.map((row) => row.id)).toEqual([parent])
+      const root = connectionPrivateRoot(child),
+        path = root + '/recovery/sample.bin'
+      await makeParents(f.app.vault.adapter, path)
+      await f.app.vault.adapter.write(path, 'unique retained bytes')
+      const app = f.app as unknown as App
+      const scoped = connectionInspectionApp(
+        connectionJournalApp(app, child),
+        connectionAdapter(app.vault.adapter, 'Second', root),
+        'Second',
+        root
+      )
+      const before = Notice.shown.length
+      await showPrivateRecoveryNotice(scoped)
+      const activity = f.ui.activity.value[parent]
+      const message = f.ui.activity.value[child].backgroundAttention
+      expect(message).toContain('recoverable copies')
+      expect(connectionLine(f.ui.rows.value[0], activity)).toBe(message)
+      expect([...activity.events].map((event) => event.text)).toContain(message)
+      expect(connectionTone(f.ui.rows.value[0], activity)).toBe('orange')
+      expect(Notice.shown).toHaveLength(before)
+      const count = activity.events.length
+      const reopened = connectionInspectionApp(
+        connectionJournalApp(app, child),
+        connectionAdapter(app.vault.adapter, 'Second', root),
+        'Second',
+        root
+      )
+      await showPrivateRecoveryNotice(reopened)
+      expect(f.ui.activity.value[parent].events.length).toBe(count)
+      f.ui.publish(child, {
+        backgroundAttention: undefined,
+        safetyStop: 'Missing second folder; Resume required',
+      })
+      f.ui.recordEvent(child, 'Missing second folder; Resume required')
+      expect(connectionLine(f.ui.rows.value[0], f.ui.activity.value[parent])).toContain(
+        'Resume required'
+      )
+      expect([...f.ui.activity.value[parent].events].at(-1).text).toContain('Resume required')
+      f.ui.publish(child, { safetyStop: undefined })
+      expect(connectionTone(f.ui.rows.value[0], f.ui.activity.value[parent])).toBe('green')
+      const prior = f.ui.activity.value[parent].events.length
+      backgroundActivity(app, 'Background check completed')
+      expect(f.ui.activity.value[parent].events.length).toBe(prior + 1)
+      const reason = 'Second folder unavailable; Resume required'
+      if (firstPaused) f.ui.itemSets.store.pause(parent, 'first', true)
+      f.ui.itemSets.store.pause(parent, 'second', true)
+      f.registry.setPaused(child, true)
+      f.registry.storage(child).saveLocalStorage(STARTUP_STOP, reason)
+      const restored = new TokenUi(f.registry, f.secrets, f.transport, f.ui.reviews)
+      expect(connectionLine(restored.rows.value[0], restored.activity.value[parent])).toBe(reason)
+      expect(restored.rows.value[0].paused).toBe(firstPaused)
+      expect(connectionTone(restored.rows.value[0], restored.activity.value[parent])).toBe('red')
+      expect([...restored.activity.value[parent].events].map((event) => event.text)).toContain(
+        reason
+      )
+    } finally {
+      f.release()
+      await f.host.close()
+      f.probe.mockRestore()
     }
-    f.ui.itemSets.store.create(
-      parent,
-      'Sample share',
-      [
-        { id: 'first', scopeId: 'first', kind: 'folder', path: 'First' },
-        { id: 'second', scopeId: 'second', kind: 'folder', path: 'Second' },
-      ],
-      { first: parent, second: child }
-    )
-    f.registry.setStatus(parent, 'idle')
-    f.registry.setStatus(child, 'idle')
-    f.ui.refresh()
-    expect(f.ui.rows.value.map((row) => row.id)).toEqual([parent])
-    const root = connectionPrivateRoot(child),
-      path = root + '/recovery/sample.bin'
-    await makeParents(f.app.vault.adapter, path)
-    await f.app.vault.adapter.write(path, 'unique retained bytes')
-    const app = f.app as unknown as App
-    const scoped = connectionInspectionApp(
-      connectionJournalApp(app, child),
-      connectionAdapter(app.vault.adapter, 'Second', root),
-      'Second',
-      root
-    )
-    const before = Notice.shown.length
-    await showPrivateRecoveryNotice(scoped)
-    const activity = f.ui.activity.value[parent]
-    const message = f.ui.activity.value[child].backgroundAttention
-    expect(message).toContain('recoverable copies')
-    expect(connectionLine(f.ui.rows.value[0], activity)).toBe(message)
-    expect([...activity.events].map((event) => event.text)).toContain(message)
-    expect(connectionTone(f.ui.rows.value[0], activity)).toBe('orange')
-    expect(Notice.shown).toHaveLength(before)
-    const count = activity.events.length
-    const reopened = connectionInspectionApp(
-      connectionJournalApp(app, child),
-      connectionAdapter(app.vault.adapter, 'Second', root),
-      'Second',
-      root
-    )
-    await showPrivateRecoveryNotice(reopened)
-    expect(f.ui.activity.value[parent].events.length).toBe(count)
-    f.ui.publish(child, {
-      backgroundAttention: undefined,
-      safetyStop: 'Missing second folder; Resume required',
-    })
-    f.ui.recordEvent(child, 'Missing second folder; Resume required')
-    expect(connectionLine(f.ui.rows.value[0], f.ui.activity.value[parent])).toContain(
-      'Resume required'
-    )
-    expect([...f.ui.activity.value[parent].events].at(-1).text).toContain('Resume required')
-    f.ui.publish(child, { safetyStop: undefined })
-    expect(connectionTone(f.ui.rows.value[0], f.ui.activity.value[parent])).toBe('green')
-    const prior = f.ui.activity.value[parent].events.length
-    backgroundActivity(app, 'Background check completed')
-    expect(f.ui.activity.value[parent].events.length).toBe(prior + 1)
-    const reason = 'Second folder unavailable; Resume required'
-    f.ui.itemSets.store.pause(parent, 'second', true)
-    f.registry.setPaused(child, true)
-    f.registry.storage(child).saveLocalStorage(STARTUP_STOP, reason)
-    const restored = new TokenUi(f.registry, f.secrets, f.transport, f.ui.reviews)
-    expect(connectionLine(restored.rows.value[0], restored.activity.value[parent])).toBe(reason)
-    expect([...restored.activity.value[parent].events].map((event) => event.text)).toContain(reason)
-  } finally {
-    f.release()
-    await f.host.close()
-    f.probe.mockRestore()
   }
-})
+)
+
+it.each(['ledger', 'exclusions', 'resume'] as const)(
+  'continues startup when safety path mapping cannot judge (%s)',
+  async (where) => {
+    const f = inspectionFixture(false, 'Notes')
+    let restarted: TokenEngines | undefined
+    let mapping: ReturnType<typeof vi.spyOn> | undefined
+    let recover: ReturnType<typeof vi.spyOn> | undefined
+    try {
+      f.release()
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+      await f.host.close()
+      f.registry.setLocalRoot(id, 'Shared')
+      f.registry.setSelective(id, {
+        ...f.registry.records()[0].selective,
+        excludedFolders: where === 'ledger' ? [] : ['Notes/Archive'],
+      })
+      const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+      for (let i = 0; i < 100; i++) {
+        const path = `Notes/sample-${i}.md`
+        await state.put({
+          path,
+          wirePath: path,
+          fileId: path,
+          versionId: 'v1',
+          sha: 'b'.repeat(64),
+          size: 1,
+          mtime: 1,
+        })
+      }
+      state.close()
+      if (where === 'resume') f.ui.startupApprovals.add(id)
+      mapping = vi.spyOn(LocalFolderPlacement.prototype, 'toLocal').mockImplementation(() => {
+        throw new Error('sample mapping failure')
+      })
+      recover = vi
+        .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
+        .mockRejectedValue(new Error('preflight complete'))
+      restarted = f.makeHost()
+      restarted.start()
+      await vi.waitFor(() => expect(recover).toHaveBeenCalled())
+      expect(f.registry.records()[0].paused).toBe(false)
+      expect(f.registry.records()[0].state[STARTUP_STOP]).toBeFalsy()
+      expect(f.ui.startupApprovals.has(id)).toBe(false)
+      const cannotJudge = [...(f.ui.activity.value[id]?.events ?? [])].some((event) =>
+        event.text.includes('cannot judge')
+      )
+      expect(cannotJudge).toBe(where !== 'resume')
+    } finally {
+      f.release()
+      await restarted?.close()
+      await f.host.close()
+      mapping?.mockRestore()
+      recover?.mockRestore()
+      f.probe.mockRestore()
+    }
+  }
+)
 
 it.each([
   { notes: 5, present: 5 },

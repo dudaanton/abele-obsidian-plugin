@@ -9,11 +9,33 @@ import { DISCONNECTED_STATUS, statusText, statusTooltip, statusWarns } from '@/s
 import { phoneSyncIcon } from '@/sync/phoneSyncAction'
 import { tokenStatus } from '@/sync/tokenStatus'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
-import { SCOPE_DELETED } from '@/sync/tokenUi'
+import { connectionStatusText, SCOPE_DELETED } from '@/sync/tokenUi'
 
 const idle = { status: 'idle' as const, paused: false }
 
 describe('a connection row', () => {
+  it.each(['own', 'shared'] as const)(
+    'shows a %s safety stop above ordinary pause and stale progress',
+    (source) => {
+      const row = { status: 'paused' as const, paused: true }
+      const reason = 'Folder unavailable; choose Resume'
+      const activity = {
+        ...(source === 'own' ? { safetyStop: reason } : { sharedSafetyStop: reason }),
+        comparison: { completed: 1, total: 100 },
+      }
+      expect(connectionLine(row, activity)).toBe(reason)
+      expect(connectionStatusText(row, activity)).toBe(reason)
+      expect(connectionTone(row, activity)).toBe('red')
+      expect(connectionBusy(row, activity)).toBe(false)
+      const ui = tokenUiFixture()
+      ui.rows.value = [{ ...ui.rows.value[0], ...row }]
+      ui.activity.value = { [ui.rows.value[0].id]: activity }
+      const status = tokenStatus(ui)
+      expect(status.state).toBe('error')
+      expect(status.lastError).toBe(reason)
+      expect(statusTooltip(status)).toContain(reason)
+    }
+  )
   it('keeps a missing root decision visible over stale startup activity', () => {
     const row = { ...idle, rootIssue: { kind: 'deleted' as const } }
     expect(connectionBusy(row, { comparison: { completed: 1, total: 1000 } })).toBe(false)

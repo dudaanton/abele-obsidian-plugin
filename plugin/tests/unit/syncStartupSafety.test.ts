@@ -1,6 +1,26 @@
 import { expect, it } from 'vitest'
-import { MemoryStateStore } from '@abele/sync-sdk/core'
+import { isExcluded, MemoryStateStore, selectiveDefaults } from '@abele/sync-sdk/core'
 import { startupSafetyReason, waitForStartupIndex } from '@/sync/startupSafety'
+import { excludedFolderPrefix } from '@/sync/excludedFolder'
+
+it.each([
+  ['Notes/Archive/', 'Notes/Archive'],
+  ['Notes/Archive///', 'Notes/Archive'],
+  ['Notes/Cafe\u0301///', 'Notes/Café'],
+  ['/', ''],
+  ['///', ''],
+  ['', ''],
+  [' Notes/Archive/ ', ' Notes/Archive/ '],
+  ['/Notes/Archive/', '/Notes/Archive'],
+])('normalizes folder selectors with SDK matching semantics: %j', (input, expected) => {
+  const prefix = excludedFolderPrefix(input)
+  expect(prefix).toBe(expected)
+  const selective = { ...selectiveDefaults(), excludedFolders: [input] }
+  for (const path of ['Notes/Archive/sample.md', 'Notes/Café/sample.md', 'Other/sample.md'])
+    expect(prefix !== '' && path.normalize('NFC').startsWith(prefix + '/')).toBe(
+      isExcluded(path, 0, selective, 'Scripts')
+    )
+})
 
 it.each([
   { notes: 5, present: 5, stopped: false },

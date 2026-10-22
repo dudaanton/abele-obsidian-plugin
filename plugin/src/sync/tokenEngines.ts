@@ -1,4 +1,5 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
+import { excludedFolderPrefix } from './excludedFolder'
 import { observeBackgroundActivity, safetyNotice } from './backgroundActivity'
 import { STARTUP_STOP, startupSafetyReason, waitForStartupIndex } from './startupSafety'
 import { stagingDirectory } from './stagingDirectory'
@@ -709,18 +710,21 @@ export class TokenEngines {
         record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, localRoot)
           : undefined
-      const excludedLocalFolders = record.selective.excludedFolders.flatMap((path) => {
-        if (!externalPlacement) return [path]
-        // Compare server scope boundaries before translating exclusions to the host namespace.
-        if (withinRoot(path, externalPlacement.server)) return [externalPlacement.toLocal(path)]
-        if (path === '/' || withinRoot(externalPlacement.server, path))
-          return [externalPlacement.local]
-        return []
-      })
       const approved = this.ui.startupApprovals.delete(record.id)
       if (!approved) {
-        let reason: string | null
+        let reason: string | null = null
         try {
+          const excludedLocalFolders = record.selective.excludedFolders
+            .map(excludedFolderPrefix)
+            .filter(Boolean)
+            .flatMap((path) => {
+              if (!externalPlacement) return [path]
+              // Compare server boundaries before translating to physical host paths.
+              if (withinRoot(path, externalPlacement.server))
+                return [externalPlacement.toLocal(path)]
+              if (withinRoot(externalPlacement.server, path)) return [externalPlacement.local]
+              return []
+            })
           reason = await startupSafetyReason(
             state,
             async () => ({ files: this.app.vault.getFiles().map((file) => file.path) }),
@@ -737,7 +741,9 @@ export class TokenEngines {
           )
         } catch (error) {
           assertActive()
-          reason = `Sync paused: the vault index could not be read. Check that it is accessible, then choose Resume. ${error instanceof Error ? error.message : String(error)}`
+          const message = `Sync startup safety check cannot judge local files; continuing without a safety stop: ${error instanceof Error ? error.message : String(error)}`
+          console.debug('[abele-sync]', message)
+          this.ui.recordEvent(record.id, message)
         }
         assertActive()
         if (reason) {
