@@ -191,7 +191,12 @@ export function syncPlacementPlugin() {
           'if (!(await this.clearPath(from)))',
           `// Destination equality cannot authorize deleting a source recreated during that check.
           if (entry !== null && await this.edited(entry)) return false;
-          if (!(await this.clearPath(from)))`
+          if (entry === null || !this.fs.conditionalFile) return false;
+          if (!(await this.fs.conditionalFile({
+            path: from,
+            expected: { size: entry.size, mtime: entry.mtime, sha: entry.sha },
+            effect: { kind: 'remove' }
+          })))`
         )
         code = replaceOnce(
           code,
