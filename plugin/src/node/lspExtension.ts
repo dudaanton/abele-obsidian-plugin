@@ -85,18 +85,22 @@ const hoverModifiers = ViewPlugin.fromClass(
     }
     private key = (event: KeyboardEvent) => {
       if (!this.setActive(event.ctrlKey || event.metaKey) || !this.pointer) return
-      const target = this.pointer.target
-      if (target instanceof Element && this.view.dom.contains(target)) {
-        target.dispatchEvent(
-          new MouseEvent('mousemove', {
-            bubbles: true,
-            clientX: this.pointer.clientX,
-            clientY: this.pointer.clientY,
-            ctrlKey: event.ctrlKey,
-            metaKey: event.metaKey,
-          })
-        )
-      }
+      // Decorations may replace the token DOM while the pointer stays still.
+      const previous = this.pointer.target
+      const target =
+        previous instanceof this.view.dom.ownerDocument.win.Element &&
+        this.view.dom.contains(previous)
+          ? previous
+          : this.view.contentDOM
+      target.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: this.pointer.clientX,
+          clientY: this.pointer.clientY,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+        })
+      )
     }
     private blur = () => {
       this.setActive(false)

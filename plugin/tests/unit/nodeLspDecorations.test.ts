@@ -232,7 +232,13 @@ it('requires Ctrl or Cmd for types, including a key pressed over a stationary sy
       view.contentDOM
         .querySelector('.cm-line')!
         .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
-    move()
+    // Syntax and diagnostic redraws can replace the token under a stationary pointer.
+    const token = view.contentDOM
+      .querySelector('.cm-line')!
+      .appendChild(document.createElement('span'))
+    token.textContent = 'sample'
+    token.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
+    token.remove()
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(hover).not.toHaveBeenCalled()
     expect(document.querySelector('.abele-lsp-message')).toBeNull()
