@@ -3,6 +3,14 @@ import { expect, it } from 'vitest'
 import StateLine from '@/components/obsidian/StateLine.vue'
 import FoldHeading from '@/components/obsidian/FoldHeading.vue'
 
+it('keeps the log inside Details even before operation facts are available', async () => {
+  const view = mount(StateLine, { props: { text: 'Waiting…', tone: 'faint', log: true } })
+  expect(view.find('a').exists()).toBe(false)
+  await view.getComponent(FoldHeading).trigger('keydown', { key: 'Enter' })
+  expect(view.get('a').text()).toBe('Node log')
+  view.unmount()
+})
+
 it('keeps evidence and log links folded, with the action below the sentence', async () => {
   const view = mount(StateLine, {
     props: {

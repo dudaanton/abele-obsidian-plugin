@@ -14,14 +14,13 @@
     </div>
     <div v-if="details.length || log" class="abele-state-line__body">
       <FoldHeading
-        v-if="details.length"
         class="abele-state-line__fold"
         :text="detailsLabel || t('node.error.details')"
         collapsible
         :collapsed="!open"
         @toggle="open = !open"
       />
-      <div v-if="open || !details.length" class="abele-state-line__more">
+      <div v-if="open" class="abele-state-line__more">
         <div v-if="details.length" class="abele-state-line__facts">
           <template v-for="fact in details" :key="fact.label">
             <span class="abele-state-line__label">{{ fact.label }}</span>
