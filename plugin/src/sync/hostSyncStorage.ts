@@ -96,6 +96,8 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
  */
 export class HostSyncStorage implements LocalStorage {
   private readonly values = new Map<string, unknown>()
+  private readonly journalHints = new Map<string, Map<string, unknown>>()
+  private readonly dirtyHints = new Set<string>()
   private draftVersion = 0
   private channel: BroadcastChannel | undefined
   private pending: HostChange[] = []
@@ -196,7 +198,7 @@ export class HostSyncStorage implements LocalStorage {
               }
               await wait(records.put(row))
             }
-          result.values.set(key, joinHostValue(loaded))
+          result.setView(key, joinHostValue(loaded))
         } else {
           let order = 0
           for (const [id, item] of splitHostValue(key, value)) {
@@ -214,7 +216,7 @@ export class HostSyncStorage implements LocalStorage {
               })
             )
           }
-          result.values.set(key, value)
+          result.setView(key, value)
         }
         if (!marker) await wait(rows.put({ namespace, key, value }))
       }
@@ -242,6 +244,7 @@ export class HostSyncStorage implements LocalStorage {
     }
   }
   loadLocalStorage(key: string): unknown {
+    this.materializeHint(key)
     return this.values.has(key)
       ? structuredClone(this.values.get(key))
       : this.local.loadLocalStorage(key)
@@ -249,10 +252,11 @@ export class HostSyncStorage implements LocalStorage {
   saveLocalStorage(key: string, value: unknown): void {
     if (this.closed) throw new Error('Sync host storage is closed')
     if (this.values.has(key)) {
+      this.materializeHint(key)
       this.draftVersion++
       const copy = structuredClone(value)
       this.pending = this.pending.concat(hostChanges(key, this.values.get(key), copy))
-      this.values.set(key, copy)
+      this.setView(key, copy)
     } else this.local.saveLocalStorage(key, value)
     // Ordinary settings/status saves also drain without waiting for another file exchange.
     // Dependent effects still await flush explicitly and receive any commit failure.
@@ -264,10 +268,33 @@ export class HostSyncStorage implements LocalStorage {
       })
     }
   }
-  private invalidate(): void {
+  private invalidate(clearHints = true): void {
     // Invalidate any outstanding inventory refresh. Submitted drafts remain only
     // for synchronous forms; no record cache survives to authorize a decision.
     this.draftVersion++
+    if (clearHints) {
+      this.journalHints.clear()
+      this.dirtyHints.clear()
+    }
+  }
+
+  private setView(key: string, value: unknown): void {
+    this.values.set(key, value)
+    this.dirtyHints.delete(key)
+    if (key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes')
+      this.journalHints.set(
+        key,
+        new Map(
+          (Array.isArray(value) ? value : []).map((entry) => [
+            hostJournalId(entry as { target: string }),
+            entry,
+          ])
+        )
+      )
+  }
+  private materializeHint(key: string): void {
+    if (!this.dirtyHints.delete(key)) return
+    this.values.set(key, [...this.journalHints.get(key).values()])
   }
 
   /** Inventory reads are explicit; individual decisions use readRecord below. */
@@ -278,7 +305,7 @@ export class HostSyncStorage implements LocalStorage {
     const rows = await readGroup(tx.objectStore(RECORDS), this.namespace, key)
     const value = joinHostValue(rows)
     if (this.draftVersion === version) {
-      this.values.set(key, value)
+      this.setView(key, value)
     }
     return structuredClone(value)
   }
@@ -322,14 +349,11 @@ export class HostSyncStorage implements LocalStorage {
     if (this.closed) throw new Error('Sync host storage is closed')
     this.draftVersion++
     for (const change of changes) {
-      const value = this.values.get(change.key)
-      const hint: unknown[] = Array.isArray(value) ? value : []
-      const at = hint.findIndex((entry) => hostJournalId(entry as { target: string }) === change.id)
-      if (change.after === undefined) {
-        if (at !== -1) hint.splice(at, 1)
-      } else if (at === -1) hint.push(structuredClone(change.after))
-      else hint[at] = structuredClone(change.after)
-      this.values.set(change.key, hint)
+      let hint = this.journalHints.get(change.key)
+      if (!hint) this.journalHints.set(change.key, (hint = new Map()))
+      if (change.after === undefined) hint.delete(change.id)
+      else hint.set(change.id, structuredClone(change.after))
+      this.dirtyHints.add(change.key)
     }
     this.pending.push(...structuredClone(changes))
   }
@@ -432,7 +456,7 @@ export class HostSyncStorage implements LocalStorage {
           throw new Error('Unfinished registry update requires retry before host commit')
       }
       await done
-      this.invalidate()
+      this.invalidate(false)
       this.channel?.postMessage(null)
     } catch (error) {
       try {

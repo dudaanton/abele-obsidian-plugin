@@ -195,23 +195,25 @@ export class WriteJournal {
     archive: (value: unknown) => Promise<void>
   ): Promise<void> {
     const entries = await this.currentEntries()
+    const archived = new Set(entries.map((entry) => JSON.stringify(entry)))
     await archive(entries)
     if (this.storage && durableHostOf(this.storage)) {
-      for (const entry of entries)
-        if (await this.isCurrent(entry))
-          await this.persist(() =>
+      const current = await this.currentEntries()
+      await this.persist(() => {
+        for (const entry of current)
+          if (entry.retiredGeneration === undefined && archived.has(JSON.stringify(entry)))
             this.replace(entry, {
               ...entry,
-              retiredGeneration: entry.retiredGeneration ?? generation,
+              retiredGeneration: generation,
             })
-          )
+      })
       return
     }
     // Re-read after the asynchronous durable archive; another connection may have appended.
     this.save(
       JOURNAL_KEY,
       this.read(JOURNAL_KEY).map((value) =>
-        this.owns(value) && entries.some((saved) => JSON.stringify(saved) === JSON.stringify(value))
+        this.owns(value) && archived.has(JSON.stringify(value))
           ? {
               ...(value as JournalEntry),
               retiredGeneration: (value as JournalEntry).retiredGeneration ?? generation,

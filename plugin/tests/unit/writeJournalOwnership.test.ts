@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'
 
@@ -17,6 +17,41 @@ it('retires only its owner while preserving foreign work appended during archiva
     { owner: 'other', target: 'Other/second.md' },
   ])
   expect(owned.entries()[0].retiredGeneration).toBe('next')
+})
+
+it('matches 5000 archived records in one linear fallback pass', async () => {
+  const app = buildFakeVault([])
+  const entries = Array.from({ length: 5000 }, (_, i) => ({
+    owner: 'sample',
+    target: `sample-${i}.md`,
+    temp: `sample-${i}.tmp`,
+  }))
+  app.saveLocalStorage(JOURNAL_KEY, entries)
+  const journal = new WriteJournal(app, undefined, 'sample')
+  const stringify = JSON.stringify
+  let fingerprints = 0
+  const measured = vi.spyOn(JSON, 'stringify').mockImplementation((value, replacer, space) => {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      typeof Reflect.get(value, 'target') === 'string'
+    ) {
+      fingerprints++
+      if (fingerprints > entries.length * 3) throw new Error('Nonlinear archive matching')
+    }
+    return stringify(value, replacer, space)
+  })
+  try {
+    await journal.retireGeneration('sample-generation', async (archived) => {
+      expect(archived).toEqual(entries)
+    })
+    expect(journal.entries()).toEqual(
+      entries.map((entry) => ({ ...entry, retiredGeneration: 'sample-generation' }))
+    )
+    expect(fingerprints).toBeLessThanOrEqual(entries.length * 3)
+  } finally {
+    measured.mockRestore()
+  }
 })
 
 it('preserves other owners and legacy work across journal updates and retention decisions', () => {

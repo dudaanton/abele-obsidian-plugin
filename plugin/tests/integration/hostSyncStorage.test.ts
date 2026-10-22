@@ -5,6 +5,7 @@ import {
   IDBIndex as FakeIndex,
 } from 'fake-indexeddb'
 import { HostSyncStorage, prepareHostSyncStorage } from '@/sync/hostSyncStorage'
+import * as hostRecords from '@/sync/hostSyncRecords'
 import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
@@ -241,6 +242,92 @@ it('acknowledges one target without enumerating unrelated journal records', asyn
   }
 })
 
+it('retires only unchanged archived entries after another host writes during the archive', async () => {
+  const factory = new IDBFactory()
+  const a = await HostSyncStorage.open(factory, 'sample-retirement', local())
+  const b = await HostSyncStorage.open(factory, 'sample-retirement', local())
+  const first = new WriteJournal(a),
+    second = new WriteJournal(b)
+  const x = { target: 'first.md', temp: 'first.tmp' },
+    y = { target: 'second.md', temp: 'second.tmp' },
+    z = { target: 'new.md', temp: 'new.tmp' }
+  try {
+    await first.persist(() => {
+      first.add(x)
+      first.add(y)
+    })
+    await first.retireGeneration('sample-generation', async (archived) => {
+      expect(archived).toEqual([x, y])
+      await second.persist(() => {
+        second.replace(x, { ...x, installed: true })
+        second.add(z)
+      })
+    })
+    expect(await first.currentEntries()).toEqual([
+      { ...x, installed: true },
+      { ...y, retiredGeneration: 'sample-generation' },
+      z,
+    ])
+  } finally {
+    a.close()
+    b.close()
+  }
+})
+
+it('adds retires and drops 5000 entries with linear synchronous identity work', async () => {
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-mutation-cost', local())
+  const journal = new WriteJournal(host)
+  const entries = Array.from({ length: 5000 }, (_, i) => ({
+    target: `sample-${i}.md`,
+    temp: `sample-${i}.tmp`,
+  }))
+  let computations = 0
+  let serializations = 0
+  const stringify = JSON.stringify
+  const serialized = vi.spyOn(JSON, 'stringify').mockImplementation((value, replacer, space) => {
+    const identity = Array.isArray(value) && value.length === 2 && typeof value[1] === 'string'
+    const entry =
+      value !== null &&
+      typeof value === 'object' &&
+      typeof Reflect.get(value, 'target') === 'string' &&
+      typeof Reflect.get(value, 'temp') === 'string'
+    if (identity || entry) {
+      serializations++
+      if (serializations > entries.length * 12)
+        throw new Error('Nonlinear journal serialization work')
+    }
+    return stringify(value, replacer, space)
+  })
+  const identity = hostRecords.hostJournalId
+  const measured = vi.spyOn(hostRecords, 'hostJournalId').mockImplementation((entry) => {
+    computations++
+    if (computations > entries.length * 12) throw new Error('Nonlinear journal identity work')
+    return identity(entry)
+  })
+  try {
+    await journal.persist(() => {
+      for (const entry of entries) journal.add(entry)
+    })
+    await journal.retireGeneration('sample-generation', async (archived) => {
+      expect(archived).toEqual(entries)
+    })
+    const retired = await journal.currentEntries()
+    expect(retired).toEqual(
+      entries.map((entry) => ({ ...entry, retiredGeneration: 'sample-generation' }))
+    )
+    await journal.persist(() => {
+      for (const entry of retired.toReversed()) journal.drop(entry)
+    })
+    expect(await journal.currentEntries()).toEqual([])
+    expect(computations).toBeLessThanOrEqual(entries.length * 12)
+    expect(serializations).toBeLessThanOrEqual(entries.length * 12)
+  } finally {
+    measured.mockRestore()
+    serialized.mockRestore()
+    host.close()
+  }
+}, 120000)
+
 it('retires 5000 journal entries with linear IndexedDB record reads', async () => {
   const seed = local()
   const entries = Array.from({ length: 5000 }, (_, i) => ({
@@ -299,8 +386,9 @@ it('retires 5000 journal entries with linear IndexedDB record reads', async () =
   })
   try {
     for (let i = 1; i <= entries.length; i++) {
-      host.saveLocalStorage(JOURNAL_KEY, entries.slice(i))
-      await host.flush()
+      await new WriteJournal(host).persist(() =>
+        new WriteJournal(host).drop(entries[entries.length - i])
+      )
       expect(touched).toBeLessThanOrEqual(entries.length * 4)
     }
     expect(touched).toBeLessThanOrEqual(entries.length * 4)

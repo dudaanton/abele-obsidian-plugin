@@ -2597,6 +2597,10 @@ allocates a new order in that same transaction. Journal mutations carry explicit
 and expected prior values. Synchronous storage previews are drafts only and never authorize
 file effects. Recovery inventories read committed groups, then recheck individual entries
 before effects; stage ownership and acknowledgement use direct key or indexed target reads.
+Journal draft hints index precomputed identities in a Map; commands update one hint without
+scanning or serializing retained identities. Arrays are materialized only for explicit preview
+reads. Generation retirement indexes archived fingerprints and processes the current inventory
+once, committing only unchanged archived entries in one batch.
 
 Startup discards old personal/scoped access records, ledger references and known access
 credentials. It performs no access or baseline import. Actual vault files and
