@@ -15,6 +15,7 @@ import TokenUiFixture from './TokenUiFixture.vue'
 import ShareSetsFixture from './ShareSetsFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import NodeLspFixture from './NodeLspFixture.vue'
+import NodeLspLiveFixture from './NodeLspLiveFixture.vue'
 import { NodeSettingsAccessFixture } from './nodeSettingsAccessFixture'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
@@ -24,6 +25,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
+  lspFile?: { target: import('@/node/NodePathModel').PathTarget; text: string }
   delegationCommand?: string | string[]
   managerLegacyIntegration?: boolean
   managerCodexApproval?: boolean
@@ -494,6 +496,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-syntax-diff': () => mountAlone(NodeSyntaxFixture, { kind: 'diff' }),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
+  'node-lsp-live': (options) =>
+    mountAlone(NodeLspLiveFixture, options?.lspFile ?? {}, 'node-lsp-live'),
   'node-lsp-missing': () => mountAlone(NodeLspFixture, { state: 'missing' }, 'node-lsp-missing'),
   'node-lsp-untrusted': () =>
     mountAlone(NodeLspFixture, { state: 'untrusted' }, 'node-lsp-untrusted'),

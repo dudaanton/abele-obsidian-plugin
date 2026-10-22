@@ -65,7 +65,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             };
             let p=point();
             phase = 'hover';
-            p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y}));
+            p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,ctrlKey:true,clientX:p.x,clientY:p.y}));
             await until(() => document.querySelector('.cm-tooltip-hover'));
             if (!document.querySelector('.cm-tooltip-hover').textContent.includes('Sample documentation.')) throw Error('Hover documentation missing');
             const popup = document.querySelector('.cm-tooltip-hover'), signature = popup.querySelector('pre code');

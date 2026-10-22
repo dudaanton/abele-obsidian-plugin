@@ -5,9 +5,11 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { startPairedNode, PAIRED_PRELUDE } from './helpers/pairedNode'
 import { evalLong } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 
 targets('desktop')
+const shots = shotDir('abele-node-lsp-hover')
 
 it('returns real TypeScript hover documentation and a root-local dependency declaration', async () => {
   const node = await startPairedNode()
@@ -22,9 +24,13 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
     )
     writeFileSync(
       join(project, 'node_modules/sample-types/index.d.ts'),
-      '/** Sample dependency documentation. */\nexport declare const sample: number\n'
+      '/** Sample dependency documentation. */\nexport declare const sample: number\n' +
+        '/** Registers a handler for the selected lifecycle stage.\n * @param stage The stage to observe.\n * @param handler Receives the request and response.\n * Use `register` to attach handlers.\n */\n' +
+        'export declare function register<Context extends { request: { headers: Record<string, string>; body: unknown }; response: { status: number; send(value: unknown): void } }>(stage: "beforeRequest", handler: (this: Context, request: Context["request"], response: Context["response"]) => Promise<void>): void\n' +
+        'export declare function register(stage: "afterResponse", handler: () => void): void\n'
     )
-    const source = "import { sample } from 'sample-types'\nexport const value = sample\n"
+    const source =
+      "import { sample, register } from 'sample-types'\nexport const value = sample\nregister('beforeRequest', async function (request, response) {})\nconst broken: string = 42\n"
     writeFileSync(join(project, 'sample.ts'), source)
     const git = (...args: string[]) =>
       promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
@@ -68,6 +74,50 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await wait(100);
         }
         const definitions=await client.lsp.definition(root,'sample.ts',{line:1,character:22});
+        await api.openDialog('node-lsp-live', {lspFile:{text:${JSON.stringify(source)},target:{kind:'workspace',id:workspace.workspace_id,projectId:project.project_id,registrationId:${JSON.stringify(node.registration)},nodeId:${JSON.stringify(node.node)}}}});
+        await until(()=>document.querySelector('.abele-lsp-root .cm-content'),'Live language viewer');
+        await until(()=>document.querySelector('.abele-lsp-error'),'Live diagnostic');
+        const point = (word, line) => {
+          const content=document.querySelectorAll('.abele-lsp-root .cm-line')[line];
+          const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);
+          for(let node;node=walker.nextNode();) {
+            const at=node.textContent.indexOf(word); if(at<0)continue;
+            const range=document.createRange();range.setStart(node,at+1);range.setEnd(node,at+2);
+            const b=range.getBoundingClientRect();return {x:b.left+b.width/2,y:b.top+b.height/2,target:node.parentElement};
+          }
+          throw Error('Symbol not drawn: '+word);
+        };
+        const move=(p,mod=false)=>p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y,ctrlKey:mod}));
+        const shot=async name=>{await wait(150);require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+name+'.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())};
+        const originalTheme=document.body.classList.contains('theme-dark');
+        try { for(const theme of ['light','dark']) {
+          document.body.classList.toggle('theme-dark',theme==='dark');document.body.classList.toggle('theme-light',theme==='light');
+          const long=point('register',2);move(long);
+          await wait(600);
+          if(document.querySelector('.abele-lsp-message'))throw Error('Plain hover exposed type');
+          await shot(theme+'-plain');
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true}));
+          await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover');
+          const popup=document.querySelector('.abele-lsp-message');
+          if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');
+          if(!popup.textContent.includes('overload'))throw Error('Overloaded signature missing');
+          await shot(theme+'-overloaded');
+          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));
+          await until(()=>!document.querySelector('.abele-lsp-message'),'Modifier release');
+          const short=point('sample',1);move(short,true);
+          await until(()=>document.querySelector('.abele-lsp-message pre code'),'Short hover');
+          await shot(theme+'-short');
+          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));
+          const problem=point('broken',3);move(problem);
+          await until(()=>document.querySelector('.abele-lsp-problem'),'Plain diagnostic');
+          if(document.querySelector('.abele-lsp-message pre'))throw Error('Diagnostic exposed type');
+          await shot(theme+'-diagnostic');
+          problem.target.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true}));
+          await until(()=>!document.querySelector('.abele-lsp-message'),'Leave diagnostic');
+        }} finally {
+          document.body.classList.toggle('theme-dark',originalTheme);document.body.classList.toggle('theme-light',!originalTheme);
+          document.querySelector('[data-lsp-close]')?.click();
+        }
         return JSON.stringify({opened,hover,definitions});
       } finally { await client.lsp.close(root,'sample.ts'); }
     })()`,
