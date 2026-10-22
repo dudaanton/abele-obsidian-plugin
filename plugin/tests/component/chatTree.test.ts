@@ -146,6 +146,30 @@ it.each([true, false])('keeps row actions and search focus appropriate for phone
   expect(view.find('[aria-label="New chat in Collection"]').exists()).toBe(!phone)
 })
 
+it('opens the closed node chat menu from its phone action without opening the chat', async () => {
+  Platform.isPhone = true
+  source.root.value = [
+    { kind: 'chat', id: 'node:sample', title: 'Sample node', nested: 'node', open: false, at: 1 },
+  ]
+  const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  const view = show()
+  try {
+    await view.get('.abele-chat-tree__closed > .tree-item-self').trigger('click')
+    await view.get('[aria-label="Sample node: more"]').trigger('click')
+    expect(shown).toHaveBeenCalledTimes(1)
+    const menu = shown.mock.contexts.at(-1) as Menu
+    expect(menu.items.map((item) => item.title).filter(Boolean)).toEqual([
+      'Open',
+      'Move to…',
+      'Rename…',
+      'Delete',
+    ])
+    expect(source.open).not.toHaveBeenCalled()
+  } finally {
+    shown.mockRestore()
+  }
+})
+
 it('keeps the nested folder in the tooltip while giving the header to the chat name', async () => {
   source.root.value = [
     {
