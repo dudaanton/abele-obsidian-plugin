@@ -5,6 +5,7 @@ import {
   connectionRoot,
   connectionPrivateArea,
   connectionJournalOwner,
+  connectionPrivateRoot,
   withinRoot,
 } from '../connectionPaths'
 import {
@@ -843,6 +844,29 @@ export async function requireExternalLifecycleSafety(
   const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
+  if (!recoverInstallation) {
+    const owner = connectionJournalOwner(app)
+    const roots = [
+      app.vault.configDir + '/plugins/abele/sync-conditional',
+      ...(owner
+        ? [connectionPrivateRoot(owner) + '/conditional']
+        : TokenConnectionRegistry.open(app)
+            .records()
+            .map((record) => connectionPrivateRoot(record.id) + '/conditional')),
+    ]
+    const disk = guardedVaultAdapter(vaultDisk(app.vault))
+    for (const root of roots) {
+      assertCurrent()
+      if ((await disk.stat(root)) === null) continue
+      for (const area of ['active', 'completed', 'review', 'objects']) {
+        const path = root + '/' + area
+        if ((await disk.stat(path)) === null) continue
+        const entries = await disk.list(path)
+        if (entries.files.length || entries.folders.length)
+          throw new ExternalRecoveryRequired('conditional file recovery is unfinished')
+      }
+    }
+  }
   if (
     ((await installation.currentEntries()).some(
       (entry) =>
