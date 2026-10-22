@@ -218,7 +218,7 @@ describe('the agents list', () => {
 
     const view = mountList()
 
-    const meta = view.findAll('.abele-card')[0].findAll('.abele-card__meta .abele-meta-line__fact')
+    const meta = view.findAll('.abele-card')[0].findAll('.abele-card__meta .abele-meta-line__value')
     expect(meta.map((m) => m.text())).toEqual(['Big', '1 prompt', '1 scope entry'])
   })
 
