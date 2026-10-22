@@ -16,6 +16,7 @@ function sample() {
     recursive: true,
     filter: (file) => !file.startsWith(join(source, 'node_modules')),
   })
+  cpSync(resolve('vendor'), join(root, 'vendor'), { recursive: true })
   for (const file of ['package.json', 'package-lock.json']) cpSync(resolve(file), join(root, file))
   return { root, installed }
 }
@@ -25,9 +26,9 @@ afterEach(() => {
 describe('npm sync SDK input preflight', () => {
   it('verifies the audited npm version, integrity and installed package bytes', () => {
     const input = verifySyncSdkInputs()
-    expect(input.version).toBe('0.2.0')
+    expect(input.version).toBe('0.3.0')
     expect(input.integrity).toBe(
-      'sha512-9qI4gl1wGox1HogXUCKD6JpKVfPunlLqQESNYWBH6iRn76bBjBNrLKryvS9lI53fNH+vS1ekescCErdHT7SGCg=='
+      'sha512-s5i67YUoq4BYKNZtE3fD5MBaNZfM5pva63/qS18Y3FeyARA1snME+qVxCnstUhSysMoiPEMZPtkYMCN4P7SABw=='
     )
   })
   it('refuses a manifest that omits the pinned SDK input', () => {

@@ -94,7 +94,7 @@ export function syncPlacementPlugin() {
           code,
           'seen.add(sha);',
           `if (await this.placer.destinationMatches(change.path, sha, change.size)) continue;
-            const candidate = await this.placer.localSource(sha, change.size, local);
+            const candidate = await this.placer.localCandidate(sha, change.size, local);
             if (candidate) { local.set(sha, candidate); continue; }
             seen.add(sha);`
         )
@@ -149,7 +149,7 @@ export function syncPlacementPlugin() {
                 this.placer.adoptionCandidates.set(change.file_id, exists);
                 if (exists && (entry === null || await this.placer.destinationMatches(target, change.sha, change.size))) continue;
               }
-              if (await this.placer.localSource(change.sha, change.size, local)) continue;
+              if (await this.placer.localCandidate(change.sha, change.size, local)) continue;
               wanted.push(change);
               observations.set(change, observed);
             }
@@ -200,10 +200,10 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
-          'const fingerprint = await fingerprintFile(fs, info.path, hash);',
+          'const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);',
           `const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
             const fingerprint = fresh && (revalidate.has(wirePath) || opts.verifyPaths?.has(wirePath))
-              ? await fresh.call(fs, info.path) : await fingerprintFile(fs, info.path, hash);`
+              ? await fresh.call(fs, info.path, opts.signal) : await fingerprintFile(fs, info.path, hash, opts.signal);`
         )
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
@@ -218,55 +218,6 @@ export function syncPlacementPlugin() {
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
-        code = replaceOnce(
-          code,
-          'if (!(await this.clearPath(from)))',
-          `// Destination equality cannot authorize deleting a source recreated during that check.
-          if (entry !== null && await this.edited(entry)) return false;
-          if (entry === null || !this.fs.conditionalFile) return false;
-          if (!(await this.fs.conditionalFile({
-            path: from,
-            expected: { size: entry.size, mtime: entry.mtime, sha: entry.sha },
-            effect: { kind: 'remove' }
-          })))`
-        )
-        code = replaceOnce(
-          code,
-          'const state = await this.clear(target, from, change, sha);',
-          `const state = await this.clear(target, from, change, sha,
-            entry === null && from === null && firstTarget === null ? null : undefined, entry);`
-        )
-        code = replaceOnce(
-          code,
-          'async clear(target, from, change, sha) {',
-          'async clear(target, from, change, sha, knownAbsent, baseline) {'
-        )
-        code = replaceOnce(
-          code,
-          'if (there === null)\n            return { free: null };',
-          `if (there === null) return { free: null };
-          // Equality with a new remote version cannot authorize adoption of an
-          // occupied moved destination: those bytes may be a concurrent local save.
-          if (from !== null && baseline && baseline.sha !== sha) return 'held';`
-        )
-        code = replaceOnce(
-          code,
-          'const there = await this.fs.stat(target);',
-          'const there = knownAbsent === null ? null : await this.fs.stat(target);'
-        )
-        code = replaceOnce(
-          code,
-          'if (!sameStat(beforeTarget, await this.fs.stat(target)))',
-          `// A new target is checked after durable intent below, then published exclusively.
-        const checkedTarget = entry === null && from === null && firstTarget === null && beforeTarget === null
-          ? null : await this.fs.stat(target);
-        if (!sameStat(beforeTarget, checkedTarget))`
-        )
-        code = replaceOnce(
-          code,
-          'const have = await this.fs.stat(target);',
-          `const have = entry === null && from === null ? checkedTarget : await this.fs.stat(target);`
-        )
         if (!code.includes('fingerprintFile(this.fs,'))
           throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
@@ -307,38 +258,6 @@ export function syncPlacementPlugin() {
           code,
           'if (pending?.stageId && this.fs.reopenStage && this.client.openVersion) {',
           'if (pending && this.fs.reopenStage && this.client.openVersion && change.size !== null) {'
-        )
-        code = replaceOnce(
-          code,
-          'const base = beforeTarget !== null',
-          `
-        const recoverPublished = this.fs[Symbol.for('abele.sync.recover-published-pull-v1')];
-        if (pending && from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target)) {
-          this.opts.log?.('pull: holding ' + target + ': move source may have been recreated; interrupted intent cannot relocate it');
-          return false;
-        }
-        const recovery = pending && recoverPublished
-          ? await recoverPublished.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from) : null;
-        if (recovery) {
-          await this.pending.prepare(change, entry, target, from, recovery.id);
-          try {
-            const source = await this.client.openVersion(change.file_id, change.version_id, identity);
-            await downloadToStage(source, recovery, identity, this.budget, undefined, async () => {
-              if (!sameStat(beforeTarget, await this.fs.stat(target)) ||
-                  !sameStat(beforeFrom, from === null ? null : await this.fs.stat(from)))
-                throw new Error('pull target changed during recovery transfer');
-              if (from !== null && beforeFrom !== null) await this.fs.move(from, target);
-              this.opts.expected.expect(target, sha);
-            });
-            await this.remember(change, sha, target, { size: identity.size, mtime: change.mtime ?? 0 }, from);
-            await recovery.discard();
-            return true;
-          } catch (error) {
-            this.opts.expected.clear(target);
-            throw error;
-          }
-        }
-        const base = beforeTarget !== null`
         )
         code = replaceOnce(
           code,
@@ -385,7 +304,7 @@ export function syncPlacementPlugin() {
             return result;
           } finally { finish(complete); }
         }
-        async localSource(sha, size, local) {
+        async localCandidate(sha, size, local) {
           const verify = async (path) => {
             try {
               const have = await fingerprintPlacementFile(this.fs, path, this.hash);
@@ -466,7 +385,7 @@ export function syncPlacementPlugin() {
             const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
             const canReplay = change.size <= this.budget.maxChunkBytes || !replay || await replay.call(this.fs);
             const candidate = canReplay && change.op !== 'move' && await this.pending.read(change.file_id) === null
-              ? await this.localSource(sha, change.size, local) : null;
+              ? await this.localCandidate(sha, change.size, local) : null;
             if (candidate) {
               let verified = false;
               try {
@@ -529,7 +448,7 @@ export function syncPlacementPlugin() {
           // A matching ledger hash does not prove that its local file still exists.
           // Populate even the fallback's cache before leasing either path.
           if (!fetched.has(sha)) {
-            const candidate = await this.localSource(sha, change.size, local);
+            const candidate = await this.localCandidate(sha, change.size, local);
             if (candidate) local = new Map(local).set(sha, candidate);
             const bytes = await this.bytesOf(sha, fetched, local);
             if (!bytes) return false;
@@ -544,6 +463,7 @@ export function syncPlacementPlugin() {
 `
         )
       } else if (file.endsWith('/pullRecovery.js')) {
+        code = `import { PendingPullWrites } from './pullWrite.js';\n` + code
         code = replaceOnce(
           code,
           'await placer.adopt(change, entry);',
@@ -554,17 +474,17 @@ export function syncPlacementPlugin() {
             intent.from.normalize('NFC').toLowerCase() !== intent.target.normalize('NFC').toLowerCase()) {
             const separated = await coordinatePlacement(fs, [intent.from, intent.target], async () => {
                 if (await fs.stat(intent.from) === null || await fs.stat(intent.target) !== null) return false;
-                await state.transaction(async () => {
-                    const occupant = await state.get(intent.target);
+                await tx.transaction(async (tx) => {
+                    const occupant = await tx.get(intent.target);
                     if (occupant !== null && occupant.fileId !== fileId)
                         throw new ExternalStateError('recovery-required');
-                    if (await state.getMeta(\`pull-write:\${fileId}\`) !== raw ||
-                        await placer.pending.matching(change, await state.byFileId(fileId)) === null)
+                    if (await tx.getMeta(\`pull-write:\${fileId}\`) !== raw ||
+                        await new PendingPullWrites(tx).matching(change, await tx.byFileId(fileId)) === null)
                         throw new ExternalStateError('recovery-required');
                     const detached = { ...entry, path: intent.target, wirePath: intent.wirePath };
-                    await state.delete(intent.from);
-                    await state.put(detached);
-                    await state.setMeta(\`pull-write:\${fileId}\`, JSON.stringify({ ...intent, from: null, base: detached }));
+                    await tx.delete(intent.from);
+                    await tx.put(detached);
+                    await tx.setMeta(\`pull-write:\${fileId}\`, JSON.stringify({ ...intent, from: null, base: detached }));
                 });
                 console.debug('[abele-sync] pull recovery', 'preserved independent move source; recovering into absent destination');
                 return true;
@@ -576,69 +496,17 @@ export function syncPlacementPlugin() {
         }
         await placer.adopt(change, entry);`
         )
-        code = replaceOnce(
-          code,
-          '{ expected: new ExpectedWrites(), dirty: new Set(), filter: { excluded: () => false } }',
-          `{ expected: new ExpectedWrites(), dirty: new Set(), filter: { excluded: () => false },
-             log: (line) => console.debug('[abele-sync] pull recovery', line) }`
-        )
-        code = replaceOnce(
-          code,
-          'if (intent.stageId !== undefined && (await state.getMeta?.(`pull-write:${fileId}`)) != null) {',
-          `if ((intent.stageId !== undefined || fs[Symbol.for('abele.sync.recover-published-pull-v1')]) &&
-              (await state.getMeta?.(\`pull-write:\${fileId}\`)) != null) {`
-        )
       } else if (file.endsWith('/pushSources.js')) {
         code = replaceOnce(
           code,
-          'return await fs.openRead(path);',
+          'return fs.openRead(path);',
           `const upload = fs[Symbol.for('abele.sync.open-upload-v1')];
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
         code = replaceOnce(
           code,
-          'await this.planner.fetchRun(run, verdicts);',
-          'await loadRun(run);'
-        )
-        code = replaceOnce(
-          code,
-          'const verdicts = await this.planner.plan(sending, results);',
-          `const verdicts = await this.planner.plan(sending, results);
-        const stagedDownloads = new Map();
-        const stagingFs = this.recorder.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.recorder.fs;
-        const stagingRoot = '.abele-sync/placement-outbox/' + await sha256(new TextEncoder().encode(key));
-        const stage = async (sha, bytes) => {
-          if (!bytes || await this.hash(bytes) !== sha) throw new EngineError('protocol', 'placement download integrity mismatch');
-          const path = stagingRoot + '/' + sha;
-          await stagingFs.writeAtomic(path, bytes, 0);
-          stagedDownloads.set(sha, path);
-        };
-        for (const [index, run] of verdicts.runs.entries()) {
-          if (index > 0) await this.planner.fetchRun(run, verdicts);
-          for (const [sha, bytes] of verdicts.fetched) await stage(sha, bytes);
-        }
-        const readStaged = async (sha) => {
-          const path = stagedDownloads.get(sha);
-          if (!path) return null;
-          const bytes = await stagingFs.read(path);
-          if (await this.hash(bytes) !== sha) throw new EngineError('protocol', 'staged placement integrity mismatch');
-          return bytes;
-        };
-        const loadRun = async (run) => {
-          verdicts.fetched.clear();
-          for (const at of run) {
-            const sha = verdicts.writes.get(at);
-            if (sha && stagedDownloads.has(sha) && !verdicts.fetched.has(sha))
-              verdicts.fetched.set(sha, await readStaged(sha));
-          }
-        };
-        await loadRun(verdicts.runs[0] ?? []);
-`
-        )
-        code = replaceOnce(
-          code,
-          'await this.state.transaction(async () => {',
+          'await transact(this.state, async (tx) => {',
           `const placementPaths = [], preservationPaths = [];
         for (const [at, op] of sending.entries()) {
           const paths = [];
@@ -662,12 +530,12 @@ export function syncPlacementPlugin() {
           placementPaths.push(...paths);
           if (mutates) preservationPaths.push(...paths);
         }
-        await coordinatePlacement(this.recorder.fs, placementPaths, () => this.state.transaction(async () => {`
+        await coordinatePlacement(this.recorder.fs, placementPaths, () => transact(this.state, async (tx) => {`
         )
         code = replaceOnce(
           code,
-          'await this.state.setJournal(null);\n        });',
-          'await this.state.setJournal(null);\n        }), preservationPaths);\n        for (const path of stagedDownloads.values()) await stagingFs.remove(path);'
+          'await tx.setJournal(null);\n            });',
+          'await tx.setJournal(null);\n            }), preservationPaths);'
         )
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
@@ -733,6 +601,7 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           `for (const item of page.items) {
+            signal?.throwIfAborted();
             const file = await this.fileItem(item, page.cursor);
             if (file)
                 items.push(file);
@@ -740,6 +609,7 @@ export function syncPlacementPlugin() {
           `const departures = this.manifestDepartures = { changed: false };
         try {
           for (const item of page.items) {
+            signal?.throwIfAborted();
             const file = await this.fileItem(item, page.cursor);
             if (file) items.push(file);
           }
