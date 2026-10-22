@@ -524,8 +524,9 @@ it.each(['desktop', 'phone'])(
     try {
       await binding.controller.command('continue');
       require('fs').writeFileSync(${JSON.stringify(join(repo, 'src/edited.cjs'))},'// sample edit'+String.fromCharCode(10)+${JSON.stringify(original)});
-      for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))leaf.detach();
-      const leaf=app.workspace.getLeaf('tab');
+      const leaf=app.workspace.getLeavesOfType('abele-node-file').find(leaf=>leaf.view.getState().path==='src/edited.cjs');
+      if(!leaf)throw Error('Edited source leaf is missing');
+      await leaf.setViewState({type:'empty',active:true});
       await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/edited.cjs'}});
       await until(()=>leaf.containerEl.textContent.includes('sample edit'),'edited bytes loaded');
       await until(()=>leaf.containerEl.querySelector('[role="status"]')?.textContent.includes('changed'),'changed source refused');
