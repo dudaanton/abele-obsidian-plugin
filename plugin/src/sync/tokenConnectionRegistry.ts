@@ -253,16 +253,17 @@ export class TokenConnectionRegistry {
         writes.push([ITEM_SELECTION_KEY, selection])
       }
       if (!writes.length) return
+      const before = writes.map(([key]) => [key, clone(this.local.loadLocalStorage(key))] as const)
       this.local.saveLocalStorage(REGISTRY_WRITE_KEY, clone(writes))
       if (!same(this.local.loadLocalStorage(REGISTRY_WRITE_KEY), writes)) throw recovery()
-      this.repairWrite()
+      this.repairWrite(before)
       return
     }
     this.local.saveLocalStorage(key, clone(value))
     if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
   }
   /** Finish the exact split update before exposing either document to a runtime. */
-  private repairWrite(): void {
+  private repairWrite(before?: readonly (readonly [string, unknown])[]): void {
     const raw = this.local.loadLocalStorage(REGISTRY_WRITE_KEY)
     if (raw == null) return
     if (!Array.isArray(raw)) throw recovery()
@@ -280,7 +281,15 @@ export class TokenConnectionRegistry {
     for (const [key, value] of raw) {
       if (same(this.local.loadLocalStorage(key), value)) continue
       this.local.saveLocalStorage(key, clone(value))
-      if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
+      if (!same(this.local.loadLocalStorage(key), value)) {
+        // A returned-but-refused write is known not to have changed this split
+        // document only when every target still matches the pre-attempt snapshot.
+        // Thrown acknowledgements and partial writes keep their recovery intent.
+        if (before?.every(([key, prior]) => same(this.local.loadLocalStorage(key), prior))) {
+          this.local.saveLocalStorage(REGISTRY_WRITE_KEY, null)
+        }
+        throw recovery()
+      }
     }
     this.local.saveLocalStorage(REGISTRY_WRITE_KEY, null)
     if (this.local.loadLocalStorage(REGISTRY_WRITE_KEY) != null) throw recovery()

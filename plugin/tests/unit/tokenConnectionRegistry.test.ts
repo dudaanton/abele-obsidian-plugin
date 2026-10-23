@@ -426,3 +426,18 @@ it('retains server rename acknowledgement separately from local placement across
     ledgerId: before.ledgerId,
   })
 })
+
+it('keeps the committed snapshot readable after a returned write refuses every split target', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store)
+  registry.add()
+  const before = registry.records(),
+    save = store.saveLocalStorage
+  store.saveLocalStorage = (key, value) => {
+    if (key !== TOKEN_REGISTRY_KEY) save(key, value)
+  }
+  expect(() => registry.add()).toThrow(/recovery/)
+  expect(registry.records()).toEqual(before)
+  store.saveLocalStorage = save
+  expect(TokenConnectionRegistry.open(store).records()).toEqual(before)
+})
