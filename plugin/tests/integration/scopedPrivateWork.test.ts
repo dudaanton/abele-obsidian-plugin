@@ -132,6 +132,11 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
       record(path)
       folders.add(path)
     },
+    rmdir: async (path: string) => {
+      record(path)
+      expect([...files.keys(), ...folders].filter((one) => one.startsWith(path + '/'))).toEqual([])
+      folders.delete(path)
+    },
     list: async (path: string) => {
       record(path)
       return {
@@ -152,8 +157,13 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
       record(path)
       expect(bytes.byteLength).toBeLessThanOrEqual(MiB)
       const file = files.get(path)!
+      const previous = file.bytes
       file.size += bytes.byteLength
-      file.bytes = undefined
+      if (previous && file.size <= MiB) {
+        file.bytes = new Uint8Array(file.size)
+        file.bytes.set(previous)
+        file.bytes.set(new Uint8Array(bytes), previous.length)
+      } else file.bytes = undefined
       file.mtime = options?.mtime ?? file.mtime
     },
     rename: async (from: string, to: string) => {

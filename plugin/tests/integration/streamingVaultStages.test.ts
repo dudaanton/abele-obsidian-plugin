@@ -184,16 +184,16 @@ it('releases a source reservation when creation fails after writing its temp', a
 })
 it('retires an interrupted disposable placement source and its journal on restart', async () => {
   const { app, fs, storage } = await setup()
-  await app.vault.adapter.write('source.tmp', 'incomplete network source')
+  await app.vault.adapter.write('.abele-sync-abcd1234.tmp', 'incomplete network source')
   hostStorageOf(storage).saveLocalStorage(JOURNAL_KEY, [
     {
       target: '.abele-sync/placement-inbox/sample',
-      temp: 'source.tmp',
+      temp: '.abele-sync-abcd1234.tmp',
       streaming: { mtime: 0, base: null },
     },
   ])
   await fs().recover()
-  expect(await app.vault.adapter.exists('source.tmp')).toBe(false)
+  expect(await app.vault.adapter.exists('.abele-sync-abcd1234.tmp')).toBe(false)
   expect(new WriteJournal(storage).entries()).toEqual([])
   expect(await app.vault.adapter.read('sample.bin')).toBe('original')
 })
@@ -241,7 +241,7 @@ it('pull verification never falls back to reading an entire multi-chunk local fi
 })
 it('preserves an interrupted streaming backup without hashing the installed large file after restart', async () => {
   const { app, fs, storage } = await setup()
-  await app.vault.adapter.write('saved.old', 'previous local bytes')
+  await app.vault.adapter.write('.abele-sync-abcd1236.old', 'previous local bytes')
   const stat = app.vault.adapter.stat.bind(app.vault.adapter)
   vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
     const actual = await stat(path)
@@ -253,8 +253,8 @@ it('preserves an interrupted streaming backup without hashing the installed larg
   hostStorageOf(storage).saveLocalStorage(JOURNAL_KEY, [
     {
       target: 'sample.bin',
-      temp: 'sample.tmp',
-      backup: 'saved.old',
+      temp: '.abele-sync-abcd1235.tmp',
+      backup: '.abele-sync-abcd1236.old',
       replacementSha: 'a'.repeat(64),
       streaming: {
         mtime: 123,
@@ -265,10 +265,10 @@ it('preserves an interrupted streaming backup without hashing the installed larg
   ])
   await fs().recover()
   expect(read).not.toHaveBeenCalled()
-  expect(await app.vault.adapter.exists('saved.old')).toBe(true)
+  expect(await app.vault.adapter.exists('.abele-sync-abcd1236.old')).toBe(true)
   expect(new WriteJournal(storage).entries()).toEqual([])
   expect(await new WriteJournal(storage).currentRecovered()).toMatchObject([
-    { backup: 'saved.old' },
+    { backup: '.abele-sync-abcd1236.old' },
   ])
 })
 it('retains local edits as sealed source locators and verifies retained bytes on every read', async () => {

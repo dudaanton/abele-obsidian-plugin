@@ -518,13 +518,19 @@ export class ObsidianFileSystem implements FileSystem {
           files.add(path)
       return [
         ...[...files].map((path) => ({ path, kind: 'file' as const })),
-        ...[...(inventory.publishedParents ?? [])]
-          .filter(
-            (path) =>
-              folderOf(path).replace(/^\/$/, '') === parent &&
-              !directories.some((one) => one.path === path)
-          )
-          .map((path) => ({ path, kind: 'directory' as const })),
+        ...(await Promise.all(
+          [...(inventory.publishedParents ?? [])]
+            .filter(
+              (path) =>
+                folderOf(path).replace(/^\/$/, '') === parent &&
+                !directories.some((one) => one.path === path)
+            )
+            .map(async (path) => ({
+              path,
+              kind: 'directory' as const,
+              identity: await this.directories.identity(path),
+            }))
+        )),
         ...directories
           .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
           .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
@@ -691,6 +697,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private readonly guardedAdapter: DataAdapter
   private readonly mutationAdapter: (check: () => void) => DataAdapter
+  private readonly validateConditionalPath: ConditionalFileHost['validate']
   readonly externalCoordination: ExternalFileCoordination
   readonly pathKey: (path: string) => string
 
@@ -908,7 +915,16 @@ export class ObsidianFileSystem implements FileSystem {
             createAbsent: async (path: string, bytes: Uint8Array, mtime: number, temp: string) => {
               if (bytes.length > MOBILE_WHOLE_READ_MAX)
                 throw new EngineError('io', 'mobile write exceeds the whole-file limit')
-              await this.guardedAdapter.writeBinary(temp, bytes.slice().buffer, { mtime })
+              if (
+                bytes.length > MAX_CHUNK_BYTES &&
+                typeof this.guardedAdapter.appendBinary === 'function'
+              ) {
+                for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+                  const chunk = bytes.slice(at, at + MAX_CHUNK_BYTES).buffer
+                  if (at === 0) await this.guardedAdapter.writeBinary(temp, chunk, { mtime })
+                  else await this.guardedAdapter.appendBinary(temp, chunk, { mtime })
+                }
+              } else await this.guardedAdapter.writeBinary(temp, bytes.slice().buffer, { mtime })
               await checked.wait(path)
               const release = await checked.acquire([path])
               try {
@@ -987,9 +1003,23 @@ export class ObsidianFileSystem implements FileSystem {
       active,
       check: () => this.runtimeFence?.assertReady(),
       validate: (path, recovery = false) => {
-        assertPhysicalPath(path)
+        const privatePath =
+          (this.privateRoot && withinRoot(path, this.privateRoot)) ||
+          withinRoot(path, stagingDirectory(this.configDir, this.privateRoot)) ||
+          withinRoot(path, conditionalRoot)
+        if (privatePath) {
+          const parts = path.split('/')
+          if (path.includes('\\') || parts.some((part) => !part || part === '.' || part === '..'))
+            throw new EngineError('protocol', 'Invalid private work path')
+          // Protocol names exclude leading dots; owned work names are not protocol
+          // names. Retain all other validation and physical length restrictions.
+          assertPhysicalPath(
+            parts.map((part) => (part.startsWith('.') ? 'private' + part : part)).join('/')
+          )
+        } else assertPhysicalPath(path)
         if (
           !recovery &&
+          !privatePath &&
           !this.withinFileScope(path) &&
           !(this.privateRoot && withinRoot(path, this.privateRoot))
         )
@@ -1050,6 +1080,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     conditionalHost.withMutationCheck = (check) =>
       this.leasedConditionalHost(conditionalHost, check)
+    this.validateConditionalPath = (path) => conditionalHost.validate(path)
     this.conditional = new ConditionalFiles(conditionalHost)
   }
 
@@ -1127,19 +1158,41 @@ export class ObsidianFileSystem implements FileSystem {
         return false
       if (operation.expected === null && operation.effect.kind === 'write' && storageOf(this.app)) {
         this.runtimeFence?.assertReady()
-        assertPhysicalPath(operation.path)
-        if (
-          !this.withinFileScope(operation.path) &&
-          !(this.privateRoot && withinRoot(operation.path, this.privateRoot))
-        )
-          throw new EngineError('conflict', 'conditional operation is outside this connection')
-        this.externalCoordination.assertEnginePaths([operation.path])
+        this.validateConditionalPath(operation.path)
         const { bytes, mtime, receipt } = operation.effect
         const applied = await this.writer.publishAbsent(operation.path, bytes, mtime, receipt)
         if (applied) this.writtenStat = { path: operation.path, size: bytes.length, mtime }
         return applied
       }
-      return await this.conditional.apply(operation)
+      const applied = await this.conditional.apply(operation)
+      if (
+        applied &&
+        this.native &&
+        !this.preserveEmptyDirectories &&
+        (operation.effect.kind === 'move' || operation.effect.kind === 'remove') &&
+        !operation.path.startsWith('.') &&
+        !operation.path.startsWith(this.configDir + '/')
+      ) {
+        const scope = this.scopedRoot()
+        for (
+          let parent = folderOf(operation.path).replace(/\/$/, '');
+          parent && parent !== scope;
+          parent = folderOf(parent).replace(/\/$/, '')
+        ) {
+          try {
+            await this.native.rmdirEmpty(parent)
+          } catch (error) {
+            if (
+              ['ENOENT', 'ENOTEMPTY', 'EEXIST', 'EBUSY'].includes(
+                (error as { code?: string }).code ?? ''
+              )
+            )
+              break
+            throw error
+          }
+        }
+      }
+      return applied
     } finally {
       release()
     }
@@ -1330,7 +1383,17 @@ export class ObsidianFileSystem implements FileSystem {
         .split('/')
         .slice(0, parent ? parent.split('/').length + 1 : 1)
         .join('/')
-      return [{ path, kind: 'directory' }]
+      if (path === scope && (await this.rawStat(path))?.type !== 'folder') return []
+      return [
+        {
+          path,
+          kind: 'directory',
+          identity:
+            path === scope
+              ? await this.directories.identity(path)
+              : 'scope-ancestor:' + this.pathKey(path),
+        },
+      ]
     }
     if (scope && !this.withinFileScope(parent))
       throw new EngineError('protocol', 'Inventory path is outside this connection')
@@ -1343,7 +1406,12 @@ export class ObsidianFileSystem implements FileSystem {
         const tail = file.path.slice(prefix.length)
         const cut = tail.indexOf('/')
         const path = cut < 0 ? file.path : prefix + tail.slice(0, cut)
-        children.set(path, { path, kind: cut < 0 ? 'file' : 'directory' })
+        children.set(
+          path,
+          cut < 0
+            ? { path, kind: 'file' }
+            : { path, kind: 'directory', identity: await this.directories.identity(path) }
+        )
       }
       return [...children.values()]
     }
@@ -1463,15 +1531,6 @@ export class ObsidianFileSystem implements FileSystem {
 
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
-    await this.recoverConditionalFiles()
-    this.runtimeFence?.assertOwned()
-    if (this.ledger?.readCommittedEntries) {
-      const paths = (await this.journal.currentEntries())
-        .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
-        .map((entry) => entry.target)
-      if (paths.length)
-        await this.acknowledgeWrites(await this.ledger.readCommittedEntries([...new Set(paths)]))
-    }
     if (
       this.scopedRoot() &&
       [
@@ -1493,6 +1552,15 @@ export class ObsidianFileSystem implements FileSystem {
         'io',
         'Sync recovery outside this connection is required; local files were kept'
       )
+    await this.recoverConditionalFiles()
+    this.runtimeFence?.assertOwned()
+    if (this.ledger?.readCommittedEntries) {
+      const paths = (await this.journal.currentEntries())
+        .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
+        .map((entry) => entry.target)
+      if (paths.length)
+        await this.acknowledgeWrites(await this.ledger.readCommittedEntries([...new Set(paths)]))
+    }
     if (
       !(await this.journal.currentEntries()).length &&
       !(this.native?.archiveBackup && (await this.journal.currentVaultRecovered()).length)
@@ -2153,6 +2221,30 @@ export class ObsidianFileSystem implements FileSystem {
           try {
             await this.beforeEngineMutation?.([entry.target])
             signal?.throwIfAborted()
+            if (entry.streaming.retainBase || entry.streaming.retainedBackup) {
+              let backup = entry.streaming.retainedBackup
+              if (!backup && (await this.rawStat(entry.target))) {
+                backup = await this.writer.freeName(entry.target, 'old')
+                const next = { ...entry, streaming: { ...entry.streaming, retainedBackup: backup } }
+                await this.journal.persist(() => this.journal.replace(entry, next))
+                entry = next
+                this.stages.set(id, entry)
+              }
+              if (backup) {
+                if (
+                  !(await this.rawStat(backup)) &&
+                  !(await this.conditional.retainUncertain(entry.target, backup))
+                )
+                  throw new EngineError('conflict', 'Recovery target could not be retained')
+                await this.journal.persist(() => this.journal.preserve({ ...entry, backup }))
+              }
+              const streaming = { ...entry.streaming, retainBase: false }
+              delete streaming.retainedBackup
+              const next = { ...entry, streaming }
+              await this.journal.persist(() => this.journal.replace(entry, next))
+              entry = next
+              this.stages.set(id, entry)
+            }
             const base = entry.streaming.base
             if (base && base.mtime === undefined)
               throw new EngineError('conflict', 'stage base has no modification time')
@@ -2165,6 +2257,7 @@ export class ObsidianFileSystem implements FileSystem {
             )
               throw new EngineError('conflict', 'stage target changed before publication')
             this.stages.delete(id)
+            await this.io.adoptReceipt(id, entry.target)
             this.observedBases.delete(this.pathKey(entry.target))
             finished = true
             releaseSourceStage(id)
@@ -2253,6 +2346,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
+    this.runtimeFence?.assertReady()
     this.writtenStat = null
     const release = this.externalCoordination.beginEngineMutation([path])
     try {
@@ -2260,6 +2354,13 @@ export class ObsidianFileSystem implements FileSystem {
       // Record only a successful publication. A later local edit must differ from this
       // baseline on the next scan, rather than being adopted as part of our write.
       this.writtenStat = { path, size: bytes.length, mtime }
+    } catch (error) {
+      if (
+        error instanceof EngineError ||
+        (error instanceof Error && error.name === 'SyncCancelled')
+      )
+        throw error
+      throw new EngineError('io', `cannot write ${path}`, error)
     } finally {
       release()
     }
@@ -2287,6 +2388,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async move(from: string, to: string): Promise<void> {
     this.runtimeFence?.assertReady()
+    this.externalCoordination.assertEnginePaths([from, to])
     const expected = await this.legacyBase(from)
     if (expected === null) throw new EngineError('io', 'Move source is absent')
     if (from === to) return
@@ -2297,6 +2399,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async remove(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
+    this.externalCoordination.assertEnginePaths([path])
     const expected = await this.legacyBase(path)
     if (expected === null) return
     await this.beforeEngineMutation?.([path])

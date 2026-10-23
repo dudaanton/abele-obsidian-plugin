@@ -1,4 +1,4 @@
-import { EngineError, sha256 } from '@abele/sync-sdk/core'
+import { EngineError } from '@abele/sync-sdk/core'
 import { RETENTION_MS, MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
@@ -442,11 +442,17 @@ export class ConditionalFiles {
     await this.host.flush(to)
     return true
   }
-  private async restore(from: string, to: string, retained = false) {
-    const folder = from.slice(0, from.lastIndexOf('/'))
-    const restored = folder + (from === folder + '/data' ? '/data-restored' : '/restored')
+  private async restore(from: string, to: string, retained = false, evidenceFolder?: string) {
+    const folder = evidenceFolder ?? from.slice(0, from.lastIndexOf('/'))
+    const restored =
+      folder +
+      (from === folder + '/victim'
+        ? '/restored'
+        : evidenceFolder || from === folder + '/data'
+          ? '/data-restored'
+          : '/restored')
     if (await this.host.stat(restored)) return
-    const id = from.split('/').at(-2)
+    const id = folder.split('/').at(-1)
     // The existing durable review pointer is also restoration's settlement record.
     // Keep reading the old marker for records written by earlier hosts.
     if (!retained && (await this.host.stat(this.host.root + '/review/' + id + '.json'))) return
@@ -459,7 +465,7 @@ export class ConditionalFiles {
       return
     }
     this.host.check()
-    const plans = from.slice(0, from.lastIndexOf('/')) + '/restore-plans'
+    const plans = folder + '/restore-plans'
     const finish = async (destination: string, durable = false) => {
       if (!durable) await this.host.flush(destination)
       if (retained) await this.record(restored, true)
@@ -629,11 +635,11 @@ export class ConditionalFiles {
     ) as Intent
     h.validate(intent.path)
     h.check()
-    const restoreIncoming = intent.checked && intent.data === folder + '/data'
+    const restoreIncoming = intent.checked && intent.data !== folder + '/victim'
     // Both restorations share one recovery intent. Settle the victim independently
     // without archiving that intent before the incoming copy has a public home.
     await this.restore(folder + '/victim', intent.path, restoreIncoming)
-    if (restoreIncoming) await this.restore(intent.data, intent.path, true)
+    if (restoreIncoming) await this.restore(intent.data, intent.path, true, folder)
     await this.archive(folder, id, false)
     h.changed([intent.path])
   }
@@ -680,12 +686,27 @@ export class ConditionalFiles {
       })
     this.lateRepairs.add(repair)
   }
-  async apply(op: ConditionalFileOperation): Promise<boolean> {
+  /** Host recovery may preserve any current bytes, but never overwrite or discard them. */
+  async retainUncertain(path: string, to: string): Promise<boolean> {
+    const info = await this.host.stat(path)
+    if (!info || info.type !== 'file') return false
+    return this.apply(
+      {
+        path,
+        expected: { size: info.size, mtime: Math.round(info.mtime), sha: '' },
+        effect: { kind: 'move', to },
+      },
+      true
+    )
+  }
+  async apply(op: ConditionalFileOperation, retainUnknown = false): Promise<boolean> {
     const h = this.host
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
-    if (!h.sameObject && h.checked) return this.applyChecked(op)
+    if (retainUnknown && op.effect.kind !== 'move')
+      throw new EngineError('protocol', 'Retention requires an exclusive move')
+    if (!h.sameObject && h.checked) return this.applyChecked(op, retainUnknown)
     // Object identity distinguishes allocation sentinels from captured empty files.
     if (op.expected !== null && !h.sameObject)
       throw new EngineError('io', 'conditional capture requires durable object identity')
@@ -751,18 +772,19 @@ export class ConditionalFiles {
           const removed = op.effect.kind === 'remove' && (await h.stat(op.path)) === null
           if (removed) await this.record(folder + '/complete', true)
           await this.archive(folder, id, removed)
-          if (removed) await this.discardOwned(id)
+          if (removed) await this.discardOwned(id, intent)
           return removed
         }
         await h.flush(victim)
         await h.flush(op.path, true)
         const info = await h.stat(victim)
-        const have = info?.type === 'file' ? await h.fingerprint(victim) : null
+        const have = !retainUnknown && info?.type === 'file' ? await h.fingerprint(victim) : null
         if (
-          !have ||
-          have.size !== op.expected.size ||
-          Math.max(0, Math.round(info.mtime)) !== op.expected.mtime ||
-          have.sha !== op.expected.sha
+          !retainUnknown &&
+          (!have ||
+            have.size !== op.expected.size ||
+            Math.max(0, Math.round(info.mtime)) !== op.expected.mtime ||
+            have.sha !== op.expected.sha)
         ) {
           await restore()
           await this.archive(folder, id, false)
@@ -792,11 +814,17 @@ export class ConditionalFiles {
           return false
         }
       }
+      if (
+        retainUnknown &&
+        op.effect.kind === 'move' &&
+        (await h.sameObject?.(victim, op.effect.to))
+      )
+        await h.remove(victim) // Only an alias; the acknowledged retained destination owns the inode.
       // A completed marker is durable before the operation leaves the recovery queue.
       await this.record(folder + '/complete', true)
       await this.retireVictim(folder, intent)
       await this.archive(folder, id, true)
-      if (!intent.receipt) await this.discardOwned(id)
+      if (!intent.receipt) await this.discardOwned(id, intent)
       if (op.effect.kind === 'move') {
         h.changed([op.path], null)
         h.changed([op.effect.to], 'file')
@@ -811,7 +839,10 @@ export class ConditionalFiles {
     }
   }
   /** Content decision plus a pending-save/stat fence; no object-identity claim. */
-  private async applyChecked(op: ConditionalFileOperation): Promise<boolean> {
+  private async applyChecked(
+    op: ConditionalFileOperation,
+    retainUnknown = false
+  ): Promise<boolean> {
     const pending = new Map<Promise<unknown>, string>()
     const h = leasedHost(this.host, () => release, pending),
       checked = h.checked
@@ -838,6 +869,7 @@ export class ConditionalFiles {
     try {
       if (await h.stat(folder)) return false
       let payload: Uint8Array | undefined
+      let stagePath: string | undefined
       let mtime = 0
       if (op.effect.kind === 'write') {
         payload = op.effect.bytes
@@ -846,9 +878,10 @@ export class ConditionalFiles {
         const stage = await h.stage(op.effect.stageId)
         if (stage.target !== op.path) throw new EngineError('conflict', 'stage target changed')
         if (stage.sealed.size > checked.maxBytes) return false
-        payload = await h.read(stage.path)
-        if (payload.length !== stage.sealed.size || (await sha256(payload)) !== stage.sealed.sha)
+        const have = await h.fingerprint(stage.path)
+        if (have.size !== stage.sealed.size || have.sha !== stage.sealed.sha)
           throw new EngineError('conflict', 'sealed stage changed')
+        stagePath = stage.path
         mtime = (await h.stat(stage.path))?.mtime ?? 0
       }
       if (payload && payload.length > checked.maxBytes) return false
@@ -863,7 +896,7 @@ export class ConditionalFiles {
         return (await h.stat(op.path)) === null
       }
       if (op.expected === null ? first !== null : first === null) return false
-      if (op.expected) {
+      if (op.expected && !retainUnknown) {
         const have = await observe(op.path)
         if (!have || have.sha !== op.expected.sha || have.size !== op.expected.size) return false
       }
@@ -873,7 +906,7 @@ export class ConditionalFiles {
         path: op.path,
         expected: op.expected && { ...op.expected, mtime: Math.max(0, Math.round(first.mtime)) },
         destination,
-        data: payload ? folder + '/data' : victim,
+        data: stagePath ?? (payload ? folder + '/data' : victim),
         kind: op.effect.kind,
       }
       await h.mkdir(folder)
@@ -898,7 +931,7 @@ export class ConditionalFiles {
         // No public mutation was attempted; this intent owns no retained user bytes.
         await operation.record(folder + '/complete', true)
         await operation.archive(folder, id, true)
-        await operation.discardOwned(id)
+        await operation.discardOwned(id, intent)
         return false
       }
       h.check()
@@ -907,22 +940,23 @@ export class ConditionalFiles {
         // The pre-gate hash is only a decision hint. Authenticate the captured bytes
         // before publication or retirement, including same-size, same-time edits.
         const info = await h.stat(victim)
-        const captured = info?.type === 'file' ? await observe(victim) : null
+        const captured = !retainUnknown && info?.type === 'file' ? await observe(victim) : null
         if (
-          !info ||
-          info.type !== 'file' ||
-          info.size !== op.expected.size ||
-          info.mtime !== first.mtime ||
-          !captured ||
-          captured.sha !== op.expected.sha ||
-          captured.size !== op.expected.size
+          !retainUnknown &&
+          (!info ||
+            info.type !== 'file' ||
+            info.size !== op.expected.size ||
+            info.mtime !== first.mtime ||
+            !captured ||
+            captured.sha !== op.expected.sha ||
+            captured.size !== op.expected.size)
         ) {
           await operation.restore(victim, op.path)
           await operation.archive(folder, id, false)
           return false
         }
       }
-      if (payload) {
+      if (payload || stagePath) {
         if (
           !publicationAllowed() ||
           (await h.stat(op.path)) ||
@@ -933,7 +967,7 @@ export class ConditionalFiles {
           // may remove only this operation's metadata, never either recovered copy.
           await operation.record(folder + '/complete', true)
           await operation.archive(folder, id, false)
-          if (!intent.receipt) await operation.discardOwned(id)
+          if (!intent.receipt) await operation.discardOwned(id, intent)
           console.debug('[abele-sync] publication occupied; incoming bytes recovered', op.path)
           return false
         }
@@ -947,7 +981,7 @@ export class ConditionalFiles {
       await operation.record(folder + '/complete', true)
       await operation.retireVictim(folder, intent)
       await operation.archive(folder, id, true)
-      if (!intent.receipt) await operation.discardOwned(id)
+      if (!intent.receipt) await operation.discardOwned(id, intent)
       h.changed([op.path], op.effect.kind === 'remove' || op.effect.kind === 'move' ? null : 'file')
       if (op.effect.kind === 'move') h.changed([destination], 'file')
       return true
@@ -1023,7 +1057,7 @@ export class ConditionalFiles {
       await operation.restore(intent.data, path, true)
       await operation.record(folder + '/complete', true)
       await operation.archive(folder, id, false)
-      await operation.discardOwned(id)
+      await operation.discardOwned(id, intent)
       console.debug('[abele-sync] publication occupied; incoming bytes recovered', path)
     } catch (error) {
       if (recorded && Reflect.get(Object(error), 'leaseExpired') === true) {
@@ -1071,7 +1105,7 @@ export class ConditionalFiles {
             await h.flush(intent.destination ?? intent.path, true)
             await this.retireVictim(folder, intent)
             await this.archive(folder, id, true)
-            if (!intent.receipt) await this.discardOwned(id)
+            if (!intent.receipt) await this.discardOwned(id, intent)
             continue
           }
           if ((await h.stat(folder + '/intent.json')) === null) {
@@ -1124,7 +1158,7 @@ export class ConditionalFiles {
       this.host.active.delete(key)
     }
   }
-  private async discardOwned(receipt: string): Promise<void> {
+  private async discardOwned(receipt: string, settledIntent?: Intent): Promise<void> {
     const h = this.host,
       id = idOf(receipt),
       folder = h.root + '/objects/' + id
@@ -1139,7 +1173,11 @@ export class ConditionalFiles {
     }
     if (!state) {
       let intent: Intent | undefined
-      if (await h.stat(folder + '/intent.json')) {
+      if (settledIntent) {
+        // The caller has just durably completed this active operation. Restart
+        // cleanup still reads its journal; same-process cleanup need not read it back.
+        intent = settledIntent
+      } else if (await h.stat(folder + '/intent.json')) {
         intent = JSON.parse(new TextDecoder().decode(await h.read(folder + '/intent.json')))
         if (!(await h.stat(folder + '/complete')))
           throw new EngineError('io', 'installation has not settled')

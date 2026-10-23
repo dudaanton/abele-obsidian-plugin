@@ -3257,6 +3257,12 @@ are never acknowledged from metadata or a persisted digest: publication retains 
 recoverable backup before installing the verified version. A local edit made after the previous
 publication therefore survives too. Streaming journal entries mark this retention explicitly;
 an interrupted recovery download can itself restart without reading those uncertain bytes.
+The host records the allocated backup locator in the streaming journal before capturing an
+uncertain destination. Capture only preserves bytes at that private locator; it never treats
+their content as an acknowledged base. Recovery finishes that preservation before publishing.
+Verified streaming stages are installed directly from their owned private source, without a
+whole-file copy or read-back. Their restoration plans remain in the conditional intent's own
+object directory even when the data source belongs to the streaming journal.
 The same recovery covers moves, case-only renames and older atomic-write intents without a
 stage ID. Recreated source paths still obey the pending move's occupancy guards. An existing
 private target stage can also resume by retaining an unverifiable installed destination;

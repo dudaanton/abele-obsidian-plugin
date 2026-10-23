@@ -27,6 +27,8 @@ export interface JournalEntry {
     sealed?: { size: number; sha: string }
     /** Uncertain installed bytes survive publication as a recoverable backup. */
     retainBase?: boolean
+    /** Durable ownership before an uncertain current file is moved into private evidence. */
+    retainedBackup?: string
   }
 }
 export interface RecoveredWrite {

@@ -121,10 +121,10 @@ it.each([
       const second = registry.records().find((row) => row.id !== first)!.id
       await ready(second)
       await host.close()
-      await app.vault.adapter.write('Shared/owned.tmp', 'never installed')
+      await app.vault.adapter.write('Shared/.abele-sync-abcd1234.tmp', 'never installed')
       app.saveLocalStorage(JOURNAL_KEY, [
         ...foreign,
-        { owner: second, target: 'Shared/target.md', temp: 'Shared/owned.tmp' },
+        { owner: second, target: 'Shared/target.md', temp: 'Shared/.abele-sync-abcd1234.tmp' },
       ])
       const calls: string[] = []
       const spies: Array<{ mockRestore(): void }> = []
@@ -160,8 +160,8 @@ it.each([
         expect(new WriteJournal(app).entries()).toEqual(foreign)
         expect(new WriteJournal(app).recovered()).toEqual(retained)
         expect(calls.some((path) => /^(Other|Legacy)(\/|$)/.test(path))).toBe(false)
-        expect(calls).toContain('Shared/owned.tmp')
-        expect(await app.vault.adapter.exists('Shared/owned.tmp')).toBe(false)
+        expect(calls).toContain('Shared/.abele-sync-abcd1234.tmp')
+        expect(await app.vault.adapter.exists('Shared/.abele-sync-abcd1234.tmp')).toBe(false)
         expect(await app.vault.adapter.exists('Shared/target.md')).toBe(false)
       } finally {
         for (const spy of spies) spy.mockRestore()

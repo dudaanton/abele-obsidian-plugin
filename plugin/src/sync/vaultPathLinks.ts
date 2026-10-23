@@ -166,6 +166,7 @@ function pathArgument(value: unknown): string {
 const GUARDED = Symbol('sync guarded filesystem')
 const adapterOrigins = new WeakMap<DataAdapter, DataAdapter>()
 const nativeOrigins = new WeakMap<object, object>()
+const checkedNativePort = Symbol('checked-native-port')
 const adapters = new WeakMap<DataAdapter, DataAdapter>()
 const mutationRebuilders = new WeakMap<
   DataAdapter,
@@ -278,6 +279,7 @@ export function mutationCheckedAdapter(
     native &&
     new Proxy(native, {
       get(target, key) {
+        if (key === checkedNativePort) return true
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
         if (key === 'realpath')
@@ -651,8 +653,12 @@ async function openNoFollow(
   root: string,
   expectedRoot?: RootIdentity
 ) {
-  const fs = raw as typeof import('node:fs/promises')
   const desktop = desktopNodeFs()
+  // A checked port carries the lease down to the native leaf. Ordinary adapters
+  // still obtain native opens from the desktop module, never an adapter override.
+  const fs = (
+    Reflect.get(raw, checkedNativePort) ? raw : desktop.promises
+  ) as typeof import('node:fs/promises')
   const constants = desktop.constants
   // Fail closed if the runtime cannot supply the native no-follow flag. Do not
   // substitute zero or guessed platform values: post-open identity checks remain
@@ -1920,6 +1926,8 @@ export function checkedVaultPort(
     ): void
   }
 ) {
+  // eslint-disable-next-line obsidianmd/no-global-this -- Lease clocks also run in headless hosts, independently of any UI window.
+  const timers = globalThis
   return {
     async acquire(paths: string[]) {
       let release!: () => void
@@ -1942,7 +1950,7 @@ export function checkedVaultPort(
         rejectExpired = reject
       })
       void revoked.catch(() => {})
-      const timer = window.setTimeout(() => {
+      const timer = timers.setTimeout(() => {
         abort.abort()
         rejectExpired(expired)
         console.error(
@@ -1960,13 +1968,13 @@ export function checkedVaultPort(
         if (abort.signal.aborted) throw expired
         options.ready()
       } catch (error) {
-        window.clearTimeout(timer)
+        timers.clearTimeout(timer)
         release()
         throw error
       }
       return Object.assign(
         () => {
-          window.clearTimeout(timer)
+          timers.clearTimeout(timer)
           release()
           void operation
         },
@@ -1995,7 +2003,7 @@ export function checkedVaultPort(
         const queue = raw.promise,
           saving = file?.saving
         await queue
-        if (saving === true) await new Promise<void>((resolve) => window.setTimeout(resolve, 10))
+        if (saving === true) await new Promise<void>((resolve) => timers.setTimeout(resolve, 10))
         else if (saving) await saving
         options.ready()
         if (saving !== true && raw.promise === queue && file?.saving === saving) return
