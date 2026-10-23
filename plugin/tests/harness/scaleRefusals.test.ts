@@ -168,3 +168,35 @@ it('counts the final synced restart as a generation without allowing retries ins
     pass: false,
   })
 })
+
+it('excludes proven host persistence during pause but retains sync writes to the same path', () => {
+  const ready = { event: 'write-observer-ready', generation: 'sample', device: '1', at: 900 }
+  const write = {
+    event: 'write-start',
+    generation: 'sample',
+    device: '1',
+    id: 1,
+    at: 1200,
+    path: '.obsidian/workspace.json',
+    bytes: 4,
+    stack:
+      'Error\n at wrapped (/fixture/scale-observer/writes.cjs:1:1)\n at save (app://obsidian.md/app.js:1:1)',
+  }
+  const host = pauseWriteMetrics([ready, write], '1', 1000, 3500)
+  expect(host.pauseWriteBytesAfterGrace).toBe(0)
+  expect(host.pauseHostWritesAfterGrace).toEqual([write])
+  expect(budgets(host).find((row) => row.name === 'pause vault writes').status).toBe('PASS')
+  for (const stack of [
+    write.stack + '\n at persist (plugin:abele:1:1)',
+    'Error\n at save (https://example.invalid/app.js:1:1)',
+    undefined,
+  ]) {
+    const sync = pauseWriteMetrics([ready, { ...write, stack }], '1', 1000, 3500)
+    expect(sync.pauseWriteBytesAfterGrace).toBe(4)
+    expect(budgets(sync).find((row) => row.name === 'pause vault writes').status).toBe('FAIL')
+  }
+  expect(
+    pauseWriteMetrics([ready, { ...write, path: 'sample.md' }], '1', 1000, 3500)
+      .pauseWriteBytesAfterGrace
+  ).toBe(4)
+})

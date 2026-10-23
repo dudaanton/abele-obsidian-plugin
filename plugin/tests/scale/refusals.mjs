@@ -1,3 +1,4 @@
+import writes from './writes.cjs'
 export function fileExpectations(files, limits) {
   const limit = limits?.max_file_bytes
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('Server file limit unavailable')
@@ -107,16 +108,19 @@ export function pauseWriteMetrics(entries, device, pauseAt, endAt) {
   )
     return {}
   const generation = relevant.filter((e) => e.generation === ready.generation)
-  const late = generation
+  const observedLate = generation
     .filter((e) => e.event === 'write-start' && e.at <= endAt)
     .filter((start) => {
       const finish = generation.find((e) => e.event === 'write-finish' && e.id === start.id)
       return !finish || finish.at > pauseAt + 100
     })
+  const host = observedLate.filter(writes.isHostPersistence)
+  const late = observedLate.filter((row) => !writes.isHostPersistence(row))
   const unknown = late.some((e) => !Number.isFinite(e.bytes))
   return {
     pauseWriteObserver: ready,
     pauseWritesAfterGrace: late,
+    pauseHostWritesAfterGrace: host,
     pauseWriteOperationsAfterGrace: late.length,
     pauseWriteBytesAfterGrace: unknown ? undefined : late.reduce((sum, e) => sum + e.bytes, 0),
     pauseWriteCounting:

@@ -1,7 +1,21 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Disposable host observer. */
 const path = require('node:path')
 const { constants } = require('node:fs')
+const { classifyOrigin } = require('./diagnostics.cjs')
 /* eslint-enable @typescript-eslint/no-require-imports -- Host imports end here. */
+
+exports.writeOrigin = (stack) =>
+  classifyOrigin(
+    typeof stack === 'string'
+      ? stack.replace(/^\s+at new Promise \(<anonymous>\)\s*$/gm, '')
+      : stack
+  )
+
+exports.isHostPersistence = (row) =>
+  exports.writeOrigin(row.stack) === 'host' &&
+  /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(
+    row.path ?? ''
+  )
 
 // Observe the desktop adapter/native ports before the product binds them. Never replace
 // an operation's arguments, result, error or scheduling with synthetic filesystem behavior.
@@ -23,12 +37,16 @@ exports.observeWrites = function (adapter, emit) {
     const wrapped = function (...args) {
       const file = locate(args)
       const id = ++sequence
+      const startedAt = performance.now()
+      const stack = new Error().stack
       if (file != null)
         emit({
           event: 'write-start',
           generation,
           id,
           method: layer + '.' + key,
+          stack,
+          source: exports.writeOrigin(stack),
           path: file,
           bytes: amount(args),
         })
@@ -36,16 +54,36 @@ exports.observeWrites = function (adapter, emit) {
       try {
         answer = original.apply(this, args)
       } catch (error) {
-        if (file != null) emit({ event: 'write-finish', generation, id, failed: true })
+        if (file != null)
+          emit({
+            event: 'write-finish',
+            generation,
+            id,
+            failed: true,
+            durationMs: performance.now() - startedAt,
+          })
         throw error
       }
       return Promise.resolve(answer).then(
         (value) => {
-          if (file != null) emit({ event: 'write-finish', generation, id })
+          if (file != null)
+            emit({
+              event: 'write-finish',
+              generation,
+              id,
+              durationMs: performance.now() - startedAt,
+            })
           return value
         },
         (error) => {
-          if (file != null) emit({ event: 'write-finish', generation, id, failed: true })
+          if (file != null)
+            emit({
+              event: 'write-finish',
+              generation,
+              id,
+              failed: true,
+              durationMs: performance.now() - startedAt,
+            })
           throw error
         }
       )
@@ -112,13 +150,25 @@ exports.observeWrites = function (adapter, emit) {
                 constants.O_TRUNC)
             )
       const id = ++sequence
+      const startedAt = performance.now()
+      const stack = new Error().stack
       if (file != null && mutates)
-        emit({ event: 'write-start', generation, id, method: 'native.open', path: file, bytes: 0 })
+        emit({
+          event: 'write-start',
+          generation,
+          id,
+          method: 'native.open',
+          path: file,
+          bytes: 0,
+          stack,
+          source: exports.writeOrigin(stack),
+        })
       let handle
       try {
         handle = await originalOpen.apply(this, args)
       } finally {
-        if (file != null && mutates) emit({ event: 'write-finish', generation, id })
+        if (file != null && mutates)
+          emit({ event: 'write-finish', generation, id, durationMs: performance.now() - startedAt })
       }
       if (file != null && mutates) {
         try {
@@ -143,6 +193,14 @@ exports.observeWrites = function (adapter, emit) {
               'handle',
               () => file,
               (a) => bytes(a[0])
+            )
+          for (const name of ['sync', 'datasync'])
+            wrap(
+              handle,
+              name,
+              'handle',
+              () => file,
+              () => 0
             )
           wrap(
             handle,

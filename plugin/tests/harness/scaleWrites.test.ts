@@ -68,3 +68,23 @@ it('observes native handle writes and atomic installs without altering results, 
     await fsp.rm(root, { recursive: true, force: true })
   }
 })
+
+it('captures write caller stacks and sync durations without changing results', async () => {
+  const { observeWrites } = require('../scale/writes.cjs')
+  const events = []
+  const handle = { sync: async () => 'synced', close: async () => {} }
+  const native = { open: async () => handle, rename: async () => {}, writeFile: async () => 7 }
+  const adapter = { getBasePath: () => '/sample', fsPromises: native, writeBinary: async () => {} }
+  const undo = observeWrites(adapter, (e) => events.push(e))
+  try {
+    expect(await native.writeFile('/sample/sample.md', 'text')).toBe(7)
+    expect(events.find((e) => e.event === 'write-start').stack).toContain('scaleWrites.test.ts')
+    const opened = await native.open('/sample/sample.md', 'w')
+    expect(await opened.sync()).toBe('synced')
+    const sync = events.find((e) => e.method === 'handle.sync')
+    const finished = events.find((e) => e.event === 'write-finish' && e.id === sync.id)
+    expect(finished.durationMs).toBeGreaterThanOrEqual(0)
+  } finally {
+    undo()
+  }
+})
