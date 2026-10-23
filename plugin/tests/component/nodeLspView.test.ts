@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { Text } from '@codemirror/state'
 import { lspOffset } from '@/node/lspExtension'
-import { lspFor } from '@/node/lspContext'
+import { lspFor, lspNavigation } from '@/node/lspContext'
 import NodeLspFixture from '@/testing/NodeLspFixture.vue'
 import GithubBlob from '@/components/github/GithubBlob.vue'
 import NodeLspTools from '@/components/nodeWork/NodeLspTools.vue'
@@ -19,6 +19,99 @@ enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('node language diagnostics in the shared file viewer', () => {
+  it('uses reader text for navigation alongside an unsaved editor and restores it on editor close', async () => {
+    const fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+    await flushPromises()
+    const tools = fixture.getComponent(NodeLspTools)
+    const readerRoot = document.querySelector('.abele-lsp-root')!
+    const doc = lspFor(readerRoot)!.document
+    const readerText = tools.props('text')
+    let remote = readerText
+    vi.spyOn(doc.client.lsp, 'open').mockImplementation(async (_root, _path, text) => {
+      remote = text
+      return { servers: ['typescript'] }
+    })
+    const definitionTexts: string[] = []
+    const definition = vi.spyOn(doc.client.lsp, 'definition').mockImplementation(async () => {
+      definitionTexts.push(remote)
+      expect(remote).toBe(readerText)
+      return []
+    })
+    const close = vi.spyOn(doc.client.lsp, 'close')
+    const split = mount(NodeLspTools, {
+      props: {
+        ...tools.props(),
+        root: document.createElement('div'),
+        glyphHost: null,
+        text: 'unsaved editor draft',
+      },
+      global: {
+        provide: { [LSP_CONNECTION as symbol]: { client: doc.client, connect: async () => {} } },
+      },
+    })
+    await flushPromises()
+    expect(remote).toBe('unsaved editor draft')
+    const fallback = { pathOf: () => 'sample.ts', goToDefinition: vi.fn(), findReferences: vi.fn() }
+    await lspNavigation(readerRoot, fallback)!.goToDefinition('sample', 'sample.ts', {
+      line: 0,
+      character: 13,
+    })
+    expect(definition).toHaveBeenCalledOnce()
+    expect(definitionTexts).toEqual([readerText])
+    await split.setProps({ text: 'another editor draft' })
+    // A pending debounced edit must not overwrite the reader after the editor closes.
+    split.unmount()
+    await flushPromises()
+    expect(remote).toBe(readerText)
+    expect(close).not.toHaveBeenCalled()
+    fixture.unmount()
+    await flushPromises()
+    expect(close).toHaveBeenCalledOnce()
+  })
+  it('shows the initial status error and recovers through the visible Retry action', async () => {
+    const root = document.createElement('div')
+    const client = {
+      describe: async () => ({
+        capabilities: { capabilities: { lsp_v1: { status: 'supported' } } },
+      }),
+      onEvent: () => () => {},
+      subscribe: async () => {},
+      lsp: {
+        status: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('Sample status failure'))
+          .mockResolvedValue([]),
+        open: vi.fn(async () => ({ servers: ['typescript'] })),
+        diagnostics: async () => [],
+        close: async () => {},
+      },
+    }
+    const view = mount(NodeLspTools, {
+      props: {
+        root,
+        path: 'sample.ts',
+        text: 'sample',
+        target: {
+          kind: 'workspace',
+          id: 'sample-workspace',
+          projectId: 'sample-project',
+          registrationId: 'sample-node',
+          nodeId: 'sample-node',
+        },
+      },
+      global: { provide: { [LSP_CONNECTION as symbol]: { client, connect: async () => {} } } },
+    })
+    await flushPromises()
+    expect(view.get('[role="alert"]').text()).toContain('Sample status failure')
+    const retry = view.findAll('button').find((button) => button.text() === 'Retry')!
+    expect(retry.exists()).toBe(true)
+    await retry.trigger('click')
+    await flushPromises()
+    expect(view.find('[role="alert"]').exists()).toBe(false)
+    expect(client.lsp.open).toHaveBeenCalledOnce()
+    view.unmount()
+    await flushPromises()
+  })
   it('keeps a shared document alive and detaches only the departing view listener', async () => {
     const fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
     await flushPromises()

@@ -175,18 +175,20 @@ function showNavMenu(
     return
   }
   const text = view.state.doc
-  void context.document.hover(positionAt(view, offset)).then((message) => {
-    if (!view.dom.isConnected || lspFor(view.dom) !== context || view.state.doc !== text) return
-    const menu = navMenu(nav, view, name, offset)
-    if (message) {
-      menu.setUseNativeMenu(false)
-      menu.addSeparator()
-      menu.addItem((item) =>
-        item.setTitle(lspHoverMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
-      )
-    }
-    show(menu)
-  })
+  void context.document
+    .hover(positionAt(view, offset), view.state.doc.toString())
+    .then((message) => {
+      if (!view.dom.isConnected || lspFor(view.dom) !== context || view.state.doc !== text) return
+      const menu = navMenu(nav, view, name, offset)
+      if (message) {
+        menu.setUseNativeMenu(false)
+        menu.addSeparator()
+        menu.addItem((item) =>
+          item.setTitle(lspHoverMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
+        )
+      }
+      show(menu)
+    })
 }
 
 /** What every GitHub code viewer carries; inert outside a tab that provides navigation. */

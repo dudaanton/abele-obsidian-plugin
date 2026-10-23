@@ -247,7 +247,7 @@ watch(
       props.target.kind === 'worktree'
         ? { worktree_id: props.target.id }
         : { workspace_id: props.target.id }
-    const lease = acquireLspDocument(connection.client, root, props.path)
+    const lease = acquireLspDocument(connection.client, root, props.path, () => props.text)
     const doc = lease.document
     releaseDocument = lease.release
     document.value = doc
@@ -258,7 +258,7 @@ watch(
     }
     doc.listeners.add(listener)
     removeListener = () => doc.listeners.delete(listener)
-    removeContext = provideLsp(props.root, { document: doc, navigate })
+    removeContext = provideLsp(props.root, { document: doc, text: () => props.text, navigate })
     let stopped = false
     cleanup(() => {
       stopped = true

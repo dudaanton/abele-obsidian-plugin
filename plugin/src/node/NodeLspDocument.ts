@@ -26,13 +26,14 @@ export class NodeLspDocument {
   private abort = new AbortController()
   private admission?: Promise<void>
   private pending: Promise<void> = Promise.resolve()
+  private opening: Promise<unknown> = Promise.resolve()
   private hoverRequests = new Map<string, Promise<string>>()
   readonly listeners = new Set<() => void>()
   constructor(
     readonly client: Client,
     readonly root: LspRoot,
     readonly path: string,
-    ready: Promise<void> = Promise.resolve()
+    private readonly ready: Promise<void> = Promise.resolve()
   ) {
     this.pending = ready
   }
@@ -60,11 +61,11 @@ export class NodeLspDocument {
       })
       .safeParse(description)
     if (this.stopped || !parsed.success) return
+    this.supported = true
     // Availability notices affect the code's position. Publish them before cached
     // diagnostics can make the editor interactive at a soon-to-change location.
     this.status = await this.client.lsp.status(this.root)
     if (this.stopped) return
-    this.supported = true
     this.changed()
     this.unsubscribe = this.client.onEvent((event) => {
       if (this.stopped) return
@@ -119,7 +120,8 @@ export class NodeLspDocument {
       this.error = ''
       this.changed()
       try {
-        if (this.supported && !this.opens) this.status = await this.client.lsp.status(this.root)
+        if (this.admission !== undefined && this.supported && !this.opens)
+          this.status = await this.client.lsp.status(this.root)
         await (this.admission ??= this.admit())
         if (!this.supported || this.stopped) return
         if (this.unavailable) {
@@ -130,7 +132,13 @@ export class NodeLspDocument {
         const pushes = this.pushes
         ++this.opens
         // Versions belong to the shared node buffer, including refreshes from other clients.
-        await this.client.lsp.open(this.root, this.path, text, undefined, this.abort.signal)
+        await (this.opening = this.client.lsp.open(
+          this.root,
+          this.path,
+          text,
+          undefined,
+          this.abort.signal
+        ))
         this.openedText = text
         const diagnostics = await this.client.lsp.diagnostics(
           this.root,
@@ -161,52 +169,66 @@ export class NodeLspDocument {
     this.status = await this.client.lsp.status(this.root)
     this.changed()
   }
-  private synchronize(): Promise<void> {
+  private withBuffer<T>(
+    text: string,
+    fallback: T,
+    kind: 'navigation' | 'hover',
+    run: () => Promise<T>
+  ): Promise<T> {
     const work = this.pending.then(async () => {
-      if (this.stopped) return
-      ++this.opens
-      await this.client.lsp.open(this.root, this.path, this.text, undefined, this.abort.signal)
+      if (!this.supported || this.stopped || this.unavailable) return fallback
+      try {
+        ++this.opens
+        await (this.opening = this.client.lsp.open(
+          this.root,
+          this.path,
+          text,
+          undefined,
+          this.abort.signal
+        ))
+        this.openedText = text
+        if (this.stopped) return fallback
+        const result = await run()
+        return this.stopped ? fallback : result
+      } catch (error) {
+        if (kind === 'hover') console.debug('[node] Language hover unavailable', error)
+        else console.debug('[node] Language navigation unavailable', error)
+        return fallback
+      }
     })
-    // Query failure must not poison the queue used by subsequent edits or close.
-    this.pending = work.catch(() => {})
+    // Buffer selection and the query are one operation: another view cannot replace
+    // the node's text between them. Query failures must not poison later edits.
+    this.pending = work.then(
+      () => {},
+      () => {}
+    )
     return work
   }
-  async query(kind: 'definition' | 'references', position: LspPosition): Promise<LspLocation[]> {
-    await this.pending
-    if (!this.supported || this.stopped || this.unavailable) return []
-    try {
-      await this.synchronize()
-      if (this.stopped) return []
-      const result = await this.client.lsp[kind](this.root, this.path, position, this.abort.signal)
-      return this.stopped ? [] : result
-    } catch (error) {
-      console.debug('[node] Language navigation unavailable', error)
-      return []
-    }
+  query(
+    kind: 'definition' | 'references',
+    position: LspPosition,
+    text = this.text
+  ): Promise<LspLocation[]> {
+    return this.withBuffer(text, [], 'navigation', () =>
+      this.client.lsp[kind](this.root, this.path, position, this.abort.signal)
+    )
   }
-  hover(position: LspPosition): Promise<string> {
+  hover(position: LspPosition, text = this.text): Promise<string> {
     // CodeMirror restarts asynchronous hover sources on every view update, including
     // diagnostic pushes caused by synchronizing this very query. Keep those restarts
     // on the same request instead of repeatedly reopening the language-server buffer.
-    const key = JSON.stringify([this.text, position.line, position.character])
+    const key = JSON.stringify([text, position.line, position.character])
     const existing = this.hoverRequests.get(key)
     if (existing !== undefined) return existing
-    const request = this.requestHover(position).finally(() => this.hoverRequests.delete(key))
+    const request = this.withBuffer(
+      text,
+      '',
+      'hover',
+      async () =>
+        (await this.client.lsp.hover(this.root, this.path, position, this.abort.signal)).text
+    ).finally(() => this.hoverRequests.delete(key))
     this.hoverRequests.set(key, request)
     return request
-  }
-  private async requestHover(position: LspPosition): Promise<string> {
-    await this.pending
-    if (!this.supported || this.stopped || this.unavailable) return ''
-    try {
-      await this.synchronize()
-      if (this.stopped) return ''
-      const result = await this.client.lsp.hover(this.root, this.path, position, this.abort.signal)
-      return this.stopped ? '' : result.text
-    } catch (error) {
-      console.debug('[node] Language hover unavailable', error)
-      return ''
-    }
   }
   async close(): Promise<void> {
     this.stopped = true
@@ -214,7 +236,8 @@ export class NodeLspDocument {
     this.unsubscribe?.()
     this.listeners.clear()
     // Await outstanding opens before closing: a late open must not leave a document behind.
-    await this.pending
+    await this.ready
+    await this.opening.catch(() => {})
     if (this.supported && this.opens)
       await this.client.lsp
         .close(this.root, this.path)
@@ -222,28 +245,42 @@ export class NodeLspDocument {
   }
 }
 
-type SharedDocument = { document: NodeLspDocument; references: number; closing?: Promise<void> }
+type SharedDocument = {
+  document: NodeLspDocument
+  views: Set<() => string | undefined>
+  closing?: Promise<void>
+}
 const documents = new WeakMap<Client, Map<string, SharedDocument>>()
 
 /** Each view owns a lease; only the final release closes the node's connection-owned buffer. */
-export function acquireLspDocument(client: Client, root: LspRoot, path: string) {
+export function acquireLspDocument(
+  client: Client,
+  root: LspRoot,
+  path: string,
+  text: () => string | undefined = () => undefined
+) {
   let pool = documents.get(client)
   if (!pool) documents.set(client, (pool = new Map()))
   const key = JSON.stringify([root.workspace_id, root.worktree_id, path])
   let entry = pool.get(key)
-  if (!entry || entry.references === 0) {
-    entry = { document: new NodeLspDocument(client, root, path, entry?.closing), references: 0 }
+  if (!entry || entry.views.size === 0) {
+    entry = { document: new NodeLspDocument(client, root, path, entry?.closing), views: new Set() }
     pool.set(key, entry)
   }
   const shared = entry
-  ++shared.references
+  const viewText = () => text()
+  shared.views.add(viewText)
   let released = false
   return {
     document: shared.document,
     release(this: void): Promise<void> {
       if (released) return shared.closing ?? Promise.resolve()
       released = true
-      if (--shared.references) return Promise.resolve()
+      shared.views.delete(viewText)
+      if (shared.views.size) {
+        const remaining = [...shared.views].at(-1)?.()
+        return remaining === undefined ? Promise.resolve() : shared.document.open(remaining)
+      }
       shared.closing = shared.document.close().finally(() => {
         if (pool.get(key) === shared) pool.delete(key)
       })

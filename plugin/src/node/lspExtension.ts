@@ -195,10 +195,13 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       if (!modifier?.overEditor) return null
       if (!modifier?.active && !problems.length) return null
       const text = modifier?.active
-        ? await context.document.hover({
-            line: line.number - 1,
-            character: pos - line.from,
-          })
+        ? await context.document.hover(
+            {
+              line: line.number - 1,
+              character: pos - line.from,
+            },
+            view.state.doc.toString()
+          )
         : ''
       // Releasing the key or leaving the editor invalidates an in-flight response.
       if (modifier?.revision !== revision) return null

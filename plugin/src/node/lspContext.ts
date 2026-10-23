@@ -3,6 +3,7 @@ import type { CodeNav } from '@/github/search/navAddon'
 
 export interface LspContext {
   document: NodeLspDocument
+  text?: () => string
   navigate(locations: LspLocation[]): void
 }
 const contexts = new WeakMap<Element, LspContext>()
@@ -28,7 +29,7 @@ export function lspNavigation(el: Element, fallback: CodeNav | null): CodeNav | 
     path: string,
     position?: { line: number; character: number }
   ) => {
-    const hits = position ? await context.document.query(kind, position) : []
+    const hits = position ? await context.document.query(kind, position, context.text?.()) : []
     if (lspFor(el) !== context) return
     if (hits.length) context.navigate(hits)
     else if (kind === 'definition') await fallback?.goToDefinition(name, path, position)

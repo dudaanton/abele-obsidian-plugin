@@ -43,6 +43,57 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('queries each visible text atomically and restores the surviving view on release', async () => {
+    const f = fixture()
+    const root = { workspace_id: 'sample-workspace' }
+    const reader = acquireLspDocument(f.client as any, root, 'shared.ts', () => 'reader text')
+    const editor = acquireLspDocument(f.client as any, root, 'shared.ts', () => 'unsaved draft')
+    let remote = ''
+    f.lsp.open.mockImplementation(async (_root, _path, text) => {
+      remote = text
+      return { servers: ['typescript'] }
+    })
+    f.lsp.hover.mockImplementation(async () => {
+      const before = remote
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(remote).toBe(before)
+      return { text: remote }
+    })
+    const definitionTexts: string[] = []
+    f.lsp.definition.mockImplementation(async () => {
+      definitionTexts.push(remote)
+      expect(remote).toBe('reader text')
+      return []
+    })
+    await reader.document.open('reader text')
+    await editor.document.open('unsaved draft')
+    const position = { line: 0, character: 2 }
+    expect(
+      await Promise.all([
+        reader.document.hover(position, 'reader text'),
+        editor.document.hover(position, 'unsaved draft'),
+        reader.document.query('definition', position, 'reader text'),
+      ])
+    ).toEqual(['reader text', 'unsaved draft', []])
+    expect(definitionTexts).toEqual(['reader text'])
+    await editor.document.open('new draft')
+    await editor.release()
+    expect(remote).toBe('reader text')
+    expect(f.lsp.close).not.toHaveBeenCalled()
+    await reader.release()
+    expect(f.lsp.close).toHaveBeenCalledOnce()
+  })
+  it('keeps capability support and retry available after initial status fails', async () => {
+    const f = fixture()
+    f.lsp.status.mockRejectedValueOnce(new Error('Sample status failure'))
+    await f.doc.open('sample')
+    expect(f.doc.supported).toBe(true)
+    expect(f.doc.error).toBe('Sample status failure')
+    await f.doc.open('sample')
+    expect(f.doc.error).toBe('')
+    expect(f.lsp.open).toHaveBeenCalledOnce()
+    await f.doc.close()
+  })
   it('does not insert a delayed analysis notice after diagnostics have already arrived', async () => {
     const f = fixture()
     let finish!: () => void
@@ -80,7 +131,7 @@ describe('node LSP document', () => {
     const opening = f.doc.open('sample')
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
     try {
-      expect(f.doc.supported).toBe(false)
+      expect(f.doc.supported).toBe(true)
       expect(f.client.onEvent).not.toHaveBeenCalled()
     } finally {
       finish([
