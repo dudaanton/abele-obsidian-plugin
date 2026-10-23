@@ -57,7 +57,7 @@
   "allow": {
     "large": ["assets/abele_preview.jpg"],
     "images": ["assets/**", "docs/**", "plugin/tests/fixtures/**"],
-    "junk": ["plugin/vendor/node/*.tgz"],
+    "junk": ["plugin/vendor/node/*.tgz", "plugin/vendor/sync/abele-sync-sdk-0.3.1.tgz"],
     "homePaths": []
   }
 }

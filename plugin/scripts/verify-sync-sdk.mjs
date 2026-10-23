@@ -35,15 +35,25 @@ export function verifySyncSdkInputs(root = plugin) {
   )
     throw new Error('Retired sync package input remains')
   if (
-    SDK_INPUT.source !== undefined ||
-    manifest.dependencies?.[name] !== SDK_INPUT.version ||
+    manifest.dependencies?.[name] !== (SDK_INPUT.source ?? SDK_INPUT.version) ||
     locked?.version !== SDK_INPUT.version ||
     locked?.link ||
     locked?.resolved !==
-      `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz` ||
+      (SDK_INPUT.source ??
+        `https://registry.npmjs.org/@abele/sync-sdk/-/sync-sdk-${SDK_INPUT.version}.tgz`) ||
     locked?.integrity !== SDK_INPUT.integrity
   )
     throw new Error('Unpinned sync SDK version, registry source or integrity')
+  if (SDK_INPUT.source) {
+    if (SDK_INPUT.source !== `file:vendor/sync/abele-sync-sdk-${SDK_INPUT.version}.tgz`)
+      throw new Error('Unexpected local sync SDK source')
+    const bytes = readFileSync(join(root, SDK_INPUT.source.slice(5)))
+    if (
+      createHash('sha256').update(bytes).digest('hex') !== SDK_INPUT.sha256 ||
+      'sha512-' + createHash('sha512').update(bytes).digest('base64') !== SDK_INPUT.integrity
+    )
+      throw new Error('Local sync SDK archive mismatch')
+  }
   const installed = join(root, 'node_modules', name)
   if (lstatSync(installed).isSymbolicLink() || realpathSync(installed) !== resolve(installed))
     throw new Error('Linked sync SDK package refused')
