@@ -203,12 +203,10 @@ it('waits for main-process profiling setup before finishing observer load and ke
               expect(JSON.parse(serialized).device).toBe('0')
               expect(id).toBe(7)
               await ready
-              return {
-                channel: 'sample-heartbeat',
-                close() {
-                  closed = true
-                },
-              }
+              return 'sample-heartbeat'
+            },
+            unwatch: () => {
+              closed = true
             },
           }),
         }
@@ -244,4 +242,47 @@ it('does not mistake an unrelated app.js URL or another plugin for the host or A
   expect(diagnostics.classifyOrigin('Error\n    at run (plugin:abele-extra:1:1)')).toBe(
     'other-plugin'
   )
+})
+
+it('aligns CPU samples with the calibrated debugger clock even when start acknowledgement follows the task', async () => {
+  const [task] = await profileSummary(
+    [{ event: 'long-task', device: '0', startedAt: 1000, durationMs: 500 }],
+    [
+      {
+        event: 'cpu-profile',
+        device: '0',
+        startedAt: 1100,
+        startAcknowledgedAt: 1600,
+        endedAt: 1700,
+        path: 'sample',
+        clock: { timestampMs: 9000, beforeAt: 1000, afterAt: 1002 },
+      },
+    ],
+    async () => ({
+      startTime: 9100000,
+      nodes: [{ id: 1, callFrame: { functionName: 'sync', url: 'plugin:abele' } }],
+      samples: [1],
+      timeDeltas: [100000],
+    })
+  )
+  expect(task.samplesBySource).toEqual({ abele: 1 })
+})
+
+it('recognizes host-bundled indexing libraries only at the host application origin', () => {
+  expect(
+    diagnostics.classifyOrigin(
+      'Error\n at tokenize (app://obsidian.md/lib/prism.min.js:1:2)\n at index (app://obsidian.md/app.js:2:3)'
+    )
+  ).toBe('host')
+  expect(
+    diagnostics.classifyOrigin('Error\n at tokenize (https://example.test/lib/prism.min.js:1:2)')
+  ).toBe('unknown')
+})
+
+it('recognizes the host DOM helper in a captured notice creation stack', () => {
+  expect(
+    diagnostics.classifyOrigin(
+      'Error\n at capture (/sample/diagnostics.cjs:1:1)\n at window.createEl (app://obsidian.md/enhance.js:1:9548)\n at new Notice (app://obsidian.md/app.js:1:1302954)\n at app://obsidian.md/app.js:1:1758476'
+    )
+  ).toBe('host')
 })

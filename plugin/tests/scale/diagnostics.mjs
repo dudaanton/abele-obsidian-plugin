@@ -83,10 +83,18 @@ export async function profileSummary(tasks, captures, load) {
           let elapsed = 0
           for (const [i, id] of (profile.samples ?? []).entries()) {
             elapsed += (profile.timeDeltas?.[i] ?? 0) / 1000
-            const at = capture.startedAt + elapsed
+            // CDP acknowledgements may wait behind the task being sampled. Its monotonic
+            // clock, calibrated before the watchdog starts, bounds sample wall times instead.
+            const clock = capture.clock
+            const at =
+              clock && Number.isFinite(profile.startTime)
+                ? clock.beforeAt + profile.startTime / 1000 - clock.timestampMs + elapsed
+                : capture.startedAt + elapsed
             const latestAt =
-              Math.max(capture.startedAt, capture.startAcknowledgedAt ?? capture.startedAt) +
-              elapsed
+              clock && Number.isFinite(profile.startTime)
+                ? at + clock.afterAt - clock.beforeAt
+                : Math.max(capture.startedAt, capture.startAcknowledgedAt ?? capture.startedAt) +
+                  elapsed
             if (at < task.startedAt || latestAt > task.startedAt + task.durationMs) continue
             const stack = []
             let node = nodes.get(id)

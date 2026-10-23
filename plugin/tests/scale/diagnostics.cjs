@@ -8,7 +8,9 @@ function classify(stack) {
     .filter((s) => /^\s+at /.test(s) && !/scale-observer|diagnostics\.cjs/.test(s))
   return frames.length &&
     frames.every((s) =>
-      /(?:\(|\s)(?:app:\/\/obsidian\.md\/)?(?:app|obsidian)\.js:\d+:\d+\)?$/.test(s)
+      /(?:\(|\s)(?:(?:app:\/\/obsidian\.md\/)?(?:app|obsidian|enhance)\.js|app:\/\/obsidian\.md\/lib\/[\w.-]+\.js):\d+:\d+\)?$/.test(
+        s
+      )
     )
     ? 'host'
     : 'unknown'
@@ -84,6 +86,7 @@ exports.createStallProfiler = function ({
   emit,
   stallMs = 75,
   maxCaptureMs = 10000,
+  clock,
 }) {
   let heartbeatAt,
     startedAt,
@@ -98,6 +101,7 @@ exports.createStallProfiler = function ({
     const path = await save(result.profile)
     emit({
       event: 'cpu-profile',
+      clock,
       startedAt: start,
       startAcknowledgedAt,
       endedAt: at,
@@ -146,6 +150,8 @@ exports.createStallProfiler = function ({
   }
 }
 
+const watches = new Map()
+exports.unwatch = (channel) => watches.get(channel)?.()
 exports.watch = async function (id, serializedConfig) {
   const config = JSON.parse(serializedConfig)
   // This module is loaded through the host's main-process remote bridge, never product code.
@@ -167,13 +173,28 @@ exports.watch = async function (id, serializedConfig) {
       event: 'cpu-profile-unavailable',
       reason: 'debugger already attached or renderer absent',
     })
-    return { channel, close() {} }
+    return channel
   }
   const transport = wc.debugger
   transport.attach('1.3')
   let timer,
     closed = false
+  let clock
+  try {
+    await transport.sendCommand('Performance.enable')
+    const beforeAt = Date.now()
+    const metrics = await transport.sendCommand('Performance.getMetrics')
+    const afterAt = Date.now()
+    const timestampMs = metrics.metrics.find((m) => m.name === 'Timestamp')?.value * 1000
+    if (!Number.isFinite(timestampMs)) throw new Error('Debugger clock unavailable')
+    clock = { beforeAt, afterAt, timestampMs }
+  } catch {
+    if (transport.isAttached()) transport.detach()
+    emit({ event: 'cpu-profile-unavailable', reason: 'debugger clock unavailable' })
+    return channel
+  }
   const profiler = exports.createStallProfiler({
+    clock,
     command: (name, params) => transport.sendCommand(name, params),
     emit,
     save: async (profile) => {
@@ -189,6 +210,7 @@ exports.watch = async function (id, serializedConfig) {
   const close = async () => {
     if (closed) return
     closed = true
+    watches.delete(channel)
     clearInterval(timer)
     ipcMain.removeListener(channel, heartbeat)
     await profiler.close(Date.now())
@@ -206,10 +228,11 @@ exports.watch = async function (id, serializedConfig) {
       void close().catch(() => {})
     })
     emit({ event: 'cpu-profile-ready', channel, stallMs: 75, sampleIntervalUs: 1000 })
-    return { channel, close }
+    watches.set(channel, close)
+    return channel
   } catch {
     await close()
     emit({ event: 'cpu-profile-unavailable' })
-    return { channel, close }
+    return channel
   }
 }

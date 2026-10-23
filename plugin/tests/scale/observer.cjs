@@ -147,15 +147,15 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Heartbeats carry no file content.
       const { ipcRenderer } = require('electron')
       const diagnostic = remote.require(config.diagnostics)
-      const watch = await diagnostic.watch(
+      const channel = await diagnostic.watch(
         remote.getCurrentWebContents().id,
         JSON.stringify(config)
       )
-      ipcRenderer.send(watch.channel)
-      const heartbeat = setInterval(() => ipcRenderer.send(watch.channel), 25)
+      ipcRenderer.send(channel)
+      const heartbeat = setInterval(() => ipcRenderer.send(channel), 25)
       this.register(() => {
         clearInterval(heartbeat)
-        void watch.close()
+        void diagnostic.unwatch(channel)
       })
     } catch {
       emit({ event: 'cpu-profile-unavailable' })
