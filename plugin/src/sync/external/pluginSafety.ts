@@ -1,4 +1,5 @@
 import { InspectionDirectories } from '../inspectionDirectories'
+import { SyncTaskBudget } from '../syncTaskBudget'
 import { nativeChunkPort } from '../vaultPathLinks'
 import { vaultDisk } from '../vaultPathLinks'
 import { guardedVaultAdapter, assertVaultPath, nativeOf } from '../vaultPathLinks'
@@ -219,6 +220,8 @@ export const inspectionSchema = z
 
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
+  /** Recovery journals name exact paths; ordinary candidates are checked on use. */
+  pathsOnly?: boolean
   scope?: string
   roots?: readonly string[]
   paths?: readonly string[]
@@ -374,6 +377,7 @@ export async function projectionEvidence(
   const disk = vaultDisk(app.vault)
   const scope = inspection.scope ?? connectionRoot(app)
   const included = (path: string) =>
+    (!inspection.pathsOnly || !!inspection.paths?.includes(path)) &&
     !isDeviceLocalPluginState(path, app.vault.configDir) &&
     (!scope || withinRoot(path, scope)) &&
     (inspection.roots === undefined ||
@@ -389,7 +393,7 @@ export async function projectionEvidence(
   const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
   const recoveryPrefix = privateRecoveryDirectory(app.vault.configDir) + '/'
   const indexed = new Map(
-    (inspection.roots !== undefined ? [] : app.vault.getFiles())
+    (inspection.pathsOnly || inspection.roots !== undefined ? [] : app.vault.getFiles())
       .filter((file) => included(file.path) && !file.path.startsWith(recoveryPrefix))
       .map((file) => [file.path, file])
   )
@@ -425,7 +429,9 @@ export async function projectionEvidence(
     inspection.progress?.(0, paths.size)
     for (const child of listed.folders) if (included(child)) await walk(child)
   }
-  if (scope) {
+  if (inspection.pathsOnly) {
+    // No directory enumeration for exact journal evidence.
+  } else if (scope) {
     const root = await readOnly(() => vaultDisk(app.vault).stat(scope))
     if (root?.type === 'folder') await walk(scope)
     else if (root) throw new ExternalRecoveryRequired('connection folder path is occupied')
@@ -652,6 +658,24 @@ export async function recoverExternalState(
   inspection: ProjectionInspection = {}
 ): Promise<void> {
   fence.assertOwned()
+  if (inspection.inventory) {
+    const cached = app.loadLocalStorage(EXTERNAL_INSPECTION_KEY) as {
+      schema?: unknown
+      entries?: unknown
+    } | null
+    if (cached?.schema === 1 && Array.isArray(cached.entries)) {
+      const inventory = new Map<string, { path: string; size: number; mtime: number }>()
+      const budget = new SyncTaskBudget()
+      for (const value of cached.entries) {
+        const row = inspectionSchema.shape.entries.element.safeParse(value)
+        if (row.success) inventory.set(row.data.path, row.data)
+        await budget.account(4096, inspection.signal)
+        fence.assertOwned()
+      }
+      // Metadata hints carry no directory-absence proof and never recognize bytes.
+      inspection.inventory(inventory)
+    }
+  }
   if (factory) await recoverOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
@@ -671,6 +695,7 @@ export async function recoverExternalState(
     raw = await store.getExternalState()
   }
   if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
+  const recoveryPaths = new Set<string>()
   const ownedProjectionPaths = await retiredArtifactPaths(app, factory, () => fence.assertOwned())
   if (factory && item?.phase !== 'preparing')
     for (const document of await activeExternalDocuments(app, factory)) {
@@ -707,6 +732,11 @@ export async function recoverExternalState(
     // Task-six jobs can be resumed/held per file; destructive eviction/hydration recovery
     // remains a connection hold until the explicit attachment state machine is implemented.
     for (const operation of document.operations) {
+      if (!['complete', 'remote-only', 'hydrated'].includes(operation.phase)) {
+        for (const artifact of operation.ownedArtifacts) recoveryPaths.add(artifact.path)
+        for (const path of [operation.sourcePath, operation.targetPath])
+          if (path) recoveryPaths.add(path)
+      }
       if (
         operation.expected &&
         !document.files.some((file) => file.fileId === operation.expected.fileId)
@@ -738,7 +768,14 @@ export async function recoverExternalState(
     }
   }
   if (
-    await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths, inspection)
+    recoveryPaths.size &&
+    (await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths, {
+      ...inspection,
+      pathsOnly: true,
+      paths: [...recoveryPaths],
+      // A partial recovery inventory cannot seed ordinary enumeration.
+      inventory: undefined,
+    }))
   )
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication

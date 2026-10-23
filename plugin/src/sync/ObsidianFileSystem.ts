@@ -2375,7 +2375,71 @@ export class ObsidianFileSystem implements FileSystem {
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
   }
-  async fingerprint(path: string, signal?: AbortSignal) {
+  async fingerprint(path: string, signal?: AbortSignal, fresh = false) {
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host || !this.fileIdentity) return this.fingerprintFresh(path, signal)
+    const beforeIdentity = await this.fileIdentity(path)
+    const before = await this.rawStat(path)
+    if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
+    const saved = await host.readScanFingerprint(path)
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    if (
+      !fresh &&
+      saved?.identity === beforeIdentity &&
+      saved.size === before.size &&
+      saved.mtime === before.mtime &&
+      saved.ctime === before.ctime &&
+      typeof saved.sha === 'string' &&
+      /^[a-f0-9]{64}$/.test(saved.sha)
+    ) {
+      const after = await this.rawStat(path)
+      if (
+        after?.type === 'file' &&
+        after.size === before.size &&
+        after.mtime === before.mtime &&
+        after.ctime === before.ctime &&
+        (await this.fileIdentity(path)) === beforeIdentity
+      ) {
+        signal?.throwIfAborted()
+        this.runtimeFence?.assertReady()
+        this.observedBases.set(this.pathKey(path), { sha: saved.sha })
+        return {
+          sha: saved.sha,
+          size: before.size,
+          mtime: stamp(before.mtime),
+          generation: `${before.size}:${before.mtime}:${before.ctime}`,
+        }
+      }
+    }
+    const result = await this.fingerprintFresh(path, signal)
+    const after = await this.rawStat(path)
+    const afterIdentity = await this.fileIdentity(path)
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    if (
+      after?.type === 'file' &&
+      result.size === before.size &&
+      after.size === before.size &&
+      after.mtime === before.mtime &&
+      after.ctime === before.ctime &&
+      afterIdentity === beforeIdentity
+    )
+      await host.writeScanFingerprint(path, {
+        identity: beforeIdentity,
+        size: before.size,
+        mtime: before.mtime,
+        ctime: before.ctime,
+        sha: result.sha,
+      })
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    return result
+  }
+  private async fingerprintFresh(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
@@ -2408,8 +2472,8 @@ export class ObsidianFileSystem implements FileSystem {
       return null
     }
   }
-  async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string) {
-    return this.fingerprint(path)
+  async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string, signal?: AbortSignal) {
+    return this.fingerprint(path, signal, true)
   }
   async [Symbol.for('abele.sync.fingerprint-pull-v1')](path: string) {
     let identity

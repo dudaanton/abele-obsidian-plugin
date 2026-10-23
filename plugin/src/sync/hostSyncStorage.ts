@@ -24,6 +24,13 @@ const recordKey = (namespace: string, key: string, id: string): string =>
 const PATHS_MIGRATED = '!paths-migrated'
 const RECORDS_MIGRATED = '!records-migrated'
 const MIGRATED = '!migrated'
+export interface ScanFingerprint {
+  identity: string
+  size: number
+  mtime: number
+  ctime: number
+  sha: string
+}
 const journalKey = (key: string): boolean =>
   key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes'
 
@@ -98,6 +105,25 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
  * Only explicit record deltas are persisted, with their preconditions checked in IDB.
  */
 export class HostSyncStorage implements LocalStorage {
+  async readScanFingerprint(path: string): Promise<ScanFingerprint | undefined> {
+    const tx = this.db.transaction(STORE, 'readonly')
+    const done = completion(tx, 'read scan fingerprint')
+    const row = await wait<{ value: ScanFingerprint } | undefined>(
+      tx.objectStore(STORE).get([this.namespace, '!scan-fingerprint-v1:' + path])
+    )
+    await done
+    return row?.value
+  }
+  async writeScanFingerprint(path: string, value: ScanFingerprint): Promise<void> {
+    const tx = this.db.transaction(STORE, 'readwrite')
+    const done = completion(tx, 'write scan fingerprint')
+    tx.objectStore(STORE).put({
+      namespace: this.namespace,
+      key: '!scan-fingerprint-v1:' + path,
+      value,
+    })
+    await done
+  }
   retentionIndex(root: string): IndexedRetention {
     return new IndexedRetention(this.db, this.namespace, root)
   }

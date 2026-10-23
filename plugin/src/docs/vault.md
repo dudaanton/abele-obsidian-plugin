@@ -3175,13 +3175,25 @@ reason, missing-file evidence, and the rolling content-sweep cursor. Normal swee
 to 16 tracked files and 16 MiB per cycle (one oversized file can advance alone); metadata-only
 inspection does not advance that cursor. Reconciliation performs a full selected rehash once
 and routes outgoing deletes to the existing held-deletes review, including single deletes.
-Filesystem fingerprints and content revalidation bypass process-local write receipts.
+Content revalidation bypasses scan caches and process-local write receipts. Ordinary scans on
+hosts with file identity persist completed hashes in the device-local host database, keyed by
+physical path. Each record pairs the hash with the file object identity, size, modification
+time and creation/change time. Matching current identity and stats permit reuse after an
+interrupted upload or plugin reload, including files without a committed server head. A changed
+object or stat triggers a new hash; interrupted/inconsistent reads create no record. These
+records are observations, independent of SDK transactions and publication acknowledgements.
 Generation retirement clears the adapter's live receipts, including those shared by another
 filesystem instance. Ordinary pull verification
 can still use a live incremental receipt on append-only hosts. Fresh non-upload reads retain the
 50 MiB whole-file fallback ceiling; larger files require bounded readers. Uploads alone may use
 the explicit 200 MiB whole-file ceiling. A persisted digest
-never substitutes for current bytes.
+never substitutes for current bytes during explicit verification or placement.
+
+Startup external recovery inspects exact paths named by pending recovery operations. Ordinary
+files are recognized lazily by the representation guards before scanning, upload reads or
+writes; copied projection markers remain held. Cached inspection metadata may seed startup
+inventory hints, but carries no directory-absence proof. Explicit lifecycle operations retain
+their full evidence inspection.
 
 Before startup recovery or publication, the host handshakes the server generation. A changed
 generation archives old publication authority under `retired-host-generation:` in the ledger,

@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Notice, TFile, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-sdk/core'
@@ -586,6 +586,8 @@ it.each(['folder', 'group'] as const)(
 )
 import { deferred } from '../helpers/deferred'
 
+afterEach(() => vi.restoreAllMocks())
+
 it.each(['background', 'unload'])(
   'flushes active uploads before revoking runtime ownership on %s',
   async (exit) => {
@@ -853,7 +855,7 @@ it('surfaces a server size refusal by path and reason, keeps bytes pending and a
 })
 
 it('recovers interrupted installations before inspecting their bytes', async () => {
-  const fixture = inspectionFixture()
+  const fixture = pendingInspectionFixture()
   const { app, ui, host, registry, encoded, release, probe } = fixture
   const socket = vi.spyOn(window, 'WebSocket')
   const recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
@@ -902,7 +904,7 @@ it('recovers interrupted installations before inspecting their bytes', async () 
 })
 
 it('retries a failed inspection with fresh ownership', async () => {
-  const { app, ui, host, registry, encoded, release, probe } = inspectionFixture(true)
+  const { app, ui, host, registry, encoded, release, probe } = pendingInspectionFixture(true)
   try {
     await ui.connect(encoded)
     const id = registry.records()[0].id
@@ -920,7 +922,7 @@ it('retries a failed inspection with fresh ownership', async () => {
 })
 
 it('leaves inspection running when disconnect is refused', async () => {
-  const { app, ui, host, registry, encoded, release, probe } = inspectionFixture()
+  const { app, ui, host, registry, encoded, release, probe } = pendingInspectionFixture()
   try {
     await ui.connect(encoded)
     const id = registry.records()[0].id
@@ -940,7 +942,7 @@ it('leaves inspection running when disconnect is refused', async () => {
 })
 
 it('cancels a joining inspection before manager reset drains the host', async () => {
-  const { host, ui, registry, encoded, release, probe } = inspectionFixture()
+  const { host, ui, registry, encoded, release, probe } = pendingInspectionFixture()
   try {
     await ui.connect(encoded)
     const id = registry.records()[0].id
@@ -955,6 +957,28 @@ it('cancels a joining inspection before manager reset drains the host', async ()
     await host.close()
   }
 })
+
+// Startup no longer inspects ordinary files. These controller tests inject one
+// exact pending-evidence check at the recovery boundary, retaining the real
+// inspection, cancellation and ownership checks without scanning the vault.
+function pendingInspectionFixture(marker = false) {
+  const fixture = inspectionFixture(marker)
+  const recover = safety.recoverExternalState
+  vi.spyOn(safety, 'recoverExternalState').mockImplementation(async (...args) => {
+    await recover(...args)
+    const [app, , , , , fence, , inspection] = args
+    if (
+      await safety.projectionEvidence(app, () => fence.assertOwned(), true, new Set(), {
+        ...inspection,
+        pathsOnly: true,
+        paths: ['Notes/slow.txt'],
+        inventory: undefined,
+      })
+    )
+      throw new Error('projection evidence requires recovery before ordinary sync')
+  })
+  return fixture
+}
 
 function inspectionFixture(
   marker = false,
@@ -1616,7 +1640,7 @@ it.each(['folder', 'group'] as const)(
 
 for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
   it(`keeps a slow full inspection outside Connect and handles ${action} safely`, async () => {
-    const fixture = inspectionFixture(action === 'refuse')
+    const fixture = pendingInspectionFixture(action === 'refuse')
     const { ui, host, registry, transport, release, encoded } = fixture
     let connected = false
     const connecting = ui.connect(encoded).then(() => {
@@ -1687,7 +1711,7 @@ it('names and bounds a stalled inspection and retains its startup timings', asyn
       await original.call(this)
       vi.useFakeTimers()
     })
-  const { ui, host, registry, encoded, release, probe } = inspectionFixture()
+  const { ui, host, registry, encoded, release, probe } = pendingInspectionFixture()
   try {
     await ui.connect(encoded)
     const id = registry.records()[0].id
