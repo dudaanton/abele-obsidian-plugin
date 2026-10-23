@@ -62,7 +62,9 @@ async function fixture() {
   })
   await native.ui.connect(shared.token)
   const id = native.ui.rows.value[0].id
+  console.debug('[production sharing] initial exchange starting')
   await native.ui.sync(id)
+  console.debug('[production sharing] initial exchange complete')
   return { ...native, id, owner, token, shared, server }
 }
 it('boots the unmodified production bundle with native token controls and no test API', async () => {
@@ -81,7 +83,11 @@ it('boots the unmodified production bundle with native token controls and no tes
 it('production note-open consent publishes only the selected private target, including later edits', async () => {
   const s = await fixture()
   await s.app.vault.adapter.write('Private/neighbor.bin', 'sample neighbor')
-  for (let turn = 0; turn < 2; turn++) await s.ui.sync(s.id)
+  for (let turn = 0; turn < 2; turn++) {
+    console.debug('[production sharing] background exchange starting', turn)
+    await s.ui.sync(s.id)
+    console.debug('[production sharing] background exchange complete', turn)
+  }
   expect(s.ui.questions.value).toEqual([])
   expect((await s.owner.manifest(null)).items.map((one) => one.path)).not.toContain(
     'Private/sample.bin'
@@ -89,7 +95,9 @@ it('production note-open consent publishes only the selected private target, inc
   const note = s.app.vault.getFileByPath('Notes/member.md')!
   s.app.emit('workspace', 'file-open', note)
   await expect.poll(() => s.ui.questions.value.length).toBe(1)
+  console.debug('[production sharing] consent starting')
   await s.ui.decide(s.ui.questions.value[0], true)
+  console.debug('[production sharing] consent complete')
   expect((await s.owner.manifest(null)).items.map((one) => one.path)).toContain(
     'Private/sample.bin'
   )
@@ -97,7 +105,9 @@ it('production note-open consent publishes only the selected private target, inc
     'Private/neighbor.bin'
   )
   await s.app.vault.adapter.write('Private/sample.bin', 'sample future bytes', { mtime: 3000 })
+  console.debug('[production sharing] later edit exchange starting')
   await s.ui.sync(s.id)
+  console.debug('[production sharing] later edit exchange complete')
   const file = (await s.owner.manifest(null)).items.find(
     (one) => one.path === 'Private/sample.bin'
   )!
@@ -154,7 +164,9 @@ it('a copied obsolete script marker does not block ordinary token exchange', asy
     'Notes/local.md',
     '---\ngroups: ["[[Groups/sample]]"]\n---\nlocal sample'
   )
+  console.debug('[production sharing] ordinary note exchange starting')
   await s.ui.sync(s.id)
+  console.debug('[production sharing] ordinary note exchange complete')
   expect((await s.owner.manifest(null)).items.map((one) => one.path)).toContain('Notes/local.md')
 })
 it('twenty production binary reconnect cycles drain each token runtime and preserve local files', async () => {

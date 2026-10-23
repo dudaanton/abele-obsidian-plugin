@@ -1155,22 +1155,21 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
             key === 'mkdir' || key === 'rmdir' || key === 'rename'
           )
       }
-      Object.defineProperty(adapter, key, {
-        configurable: true,
-        writable: true,
-        value: function (this: DataAdapter, ...args: unknown[]) {
+      const wrap = (method: Method) =>
+        function (this: DataAdapter, ...args: unknown[]) {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1)
           change(paths)
           try {
-            return Promise.resolve(
-              (original as (...args: unknown[]) => unknown).apply(this, args)
-            ).finally(() => change(paths))
+            return Promise.resolve(method.apply(this, args)).finally(() => change(paths))
           } catch (error) {
             change(paths)
             throw error
           }
-        },
-      })
+        }
+      const wrapped = wrap(original as Method)
+      // Preserve the receiver-scoped entry when instrumentation precedes the path gate.
+      Reflect.set(wrapped, UNGATED_ADAPTER, wrap(ungatedAdapterMethod(original as Method)))
+      setGatedAdapterMethod(adapter, key, wrapped)
     }
   }
   if (!roots.has(root)) roots.set(root, 0)
@@ -2050,11 +2049,20 @@ export function setGatedAdapterMethod(adapter: object, name: string, value: unkn
   const raw = ungatedAdapterMethod(value as Method)
   if (gates.has(adapter)) gate.methods.set(name, raw)
   const run = (...args: unknown[]) => raw.apply(adapterEngineReceiver(adapter), args)
-  const wrapped = (...args: unknown[]) =>
-    gate.locks.run(
+  const wrapped = (...args: unknown[]) => {
+    console.debug('[abele-sync] adapter mutation waiting', name, args[0])
+    return gate.locks.run(
       args.slice(0, name === 'rename' || name === 'copy' ? 2 : 1).map(String),
-      async () => run(...args)
+      async () => {
+        console.debug('[abele-sync] adapter mutation entered', name, args[0])
+        try {
+          return await run(...args)
+        } finally {
+          console.debug('[abele-sync] adapter mutation finished', name, args[0])
+        }
+      }
     )
+  }
   Reflect.set(wrapped, UNGATED_ADAPTER, run)
   const original = Reflect.get(value, TRACKER_ORIGINAL) ?? raw
   Reflect.set(wrapped, TRACKER_ORIGINAL, original)
