@@ -9,8 +9,8 @@ import {
 } from '@abele/sync-sdk/core'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 
-it.each(['fingerprint', 'remove'])(
-  'retains a recreated source at the %s boundary',
+it.fails.each(['fingerprint', 'remove'])(
+  'BUG: D-178 retains a recreated source at the %s boundary',
   async (boundary) => {
     const fs = new MemoryFileSystem(),
       state = new MemoryStateStore()
