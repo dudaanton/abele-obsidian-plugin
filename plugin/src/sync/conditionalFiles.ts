@@ -131,6 +131,19 @@ function leasedHost(
 
 /** Quarantine is retained evidence, never disposable staging or an equality receipt. */
 export class ConditionalFiles {
+  private async pairedVersion(
+    path: string,
+    expected: FileVersion | null
+  ): Promise<FileVersion | null> {
+    if (!expected?.identity || !this.host.fileIdentity) return null
+    const info = await this.host.stat(path)
+    return info?.type === 'file' &&
+      info.size === expected.size &&
+      Math.round(info.mtime) === expected.mtime &&
+      (await this.host.fileIdentity(path)) === expected.identity
+      ? expected
+      : null
+  }
   private readonly lateRepairs = new Set<Promise<void>>()
   private readonly fallback = new MemoryRetention()
   private migration?: { paths: string[]; at: number }
@@ -180,7 +193,11 @@ export class ConditionalFiles {
     if (!intent.expected) return
     const info = await h.stat(victim)
     const have =
-      !intent.unverifiedVictim && info?.type === 'file' ? await h.fingerprint(victim) : null
+      !intent.unverifiedVictim && info?.type === 'file'
+        ? intent.expected.identity
+          ? await this.pairedVersion(victim, intent.expected)
+          : await h.fingerprint(victim)
+        : null
     if (
       !info ||
       info.type !== 'file' ||
@@ -758,10 +775,7 @@ export class ConditionalFiles {
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
-    if (
-      op.expected?.identity !== undefined &&
-      (!h.fileIdentity || (await h.fileIdentity(op.path)) !== op.expected.identity)
-    )
+    if (op.expected?.identity !== undefined && !(await this.pairedVersion(op.path, op.expected)))
       return false
     if (retainUnknown && op.effect.kind !== 'move')
       throw new EngineError('protocol', 'Retention requires an exclusive move')
@@ -845,7 +859,12 @@ export class ConditionalFiles {
           await this.archive(folder, id, false)
           return false
         }
-        const have = !retainUnknown && info?.type === 'file' ? await h.fingerprint(victim) : null
+        const have =
+          !retainUnknown && info?.type === 'file'
+            ? op.expected.identity
+              ? await this.pairedVersion(victim, op.expected)
+              : await h.fingerprint(victim)
+            : null
         if (
           !retainUnknown &&
           (!have ||
@@ -966,7 +985,8 @@ export class ConditionalFiles {
       // equality decisions require reading them; a stat is never an equality receipt.
       if (
         first &&
-        (first.type !== 'file' || (!retainUnknown && !replaces && first.size > checked.maxBytes))
+        (first.type !== 'file' ||
+          (!retainUnknown && !replaces && !op.expected?.identity && first.size > checked.maxBytes))
       )
         return false
       if (op.expected && first === null && op.effect.kind === 'remove') {
@@ -976,7 +996,9 @@ export class ConditionalFiles {
       if (op.expected === null ? first !== null : first === null) return false
       let unverifiedVictim = false
       if (op.expected && !retainUnknown) {
-        const have = await observe(op.path)
+        const have = op.expected.identity
+          ? await operation.pairedVersion(op.path, op.expected)
+          : await observe(op.path)
         if (!have) {
           if (!replaces) return false
           unverifiedVictim = true
@@ -1026,7 +1048,12 @@ export class ConditionalFiles {
         // The pre-gate hash is only a decision hint. Authenticate the captured bytes
         // before publication or retirement, including same-size, same-time edits.
         const info = await h.stat(victim)
-        const captured = !retainUnknown && info?.type === 'file' ? await observe(victim) : null
+        const captured =
+          !retainUnknown && info?.type === 'file'
+            ? op.expected.identity
+              ? await operation.pairedVersion(victim, op.expected)
+              : await observe(victim)
+            : null
         if (
           op.expected.identity !== undefined &&
           (!h.fileIdentity || (await h.fileIdentity(victim)) !== op.expected.identity)
