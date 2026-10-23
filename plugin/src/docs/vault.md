@@ -221,6 +221,11 @@ On hosts with stable file identity, `paired-file:<path>` ledger metadata binds a
 hash to the file object, size and modification time. Matching pairs avoid content reads
 on an ordinary synced restart. Changed objects or metadata require verification; explicit
 content reconciliation still reads bytes. These records are local evidence, not server data.
+Ordinary scanning can also use the host's cached raw-byte SHA-256 when its size and
+modification time match a current disk stat. Missing or stale cache evidence falls back to
+content verification. Startup uses indexed file metadata and a bulk ledger snapshot; an
+unready or inconsistent index falls back to disk membership without treating index absence
+as deletion. Inventory work yields to the host between bounded groups of paths.
 Without ranged reads or identity, a streamed move installs the server version and retains
 the unverified source through the same owned, ready-marked conditional capture as replacement.
 The ledger advances only after the destination is installed; interruption preserves the intent.

@@ -1,4 +1,5 @@
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
+import { SyncTaskBudget } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
 import { vaultPathKey } from './vaultPathLinks'
@@ -293,12 +294,36 @@ export class ObsidianFileSystem implements FileSystem {
   private inventory: InventoryPass | null = null
   private inventoryDepth = 0
   private writtenStat: FileInfo | null = null
+  private indexProbe = 0
+  private indexFallback = false
+
+  private indexReady(): boolean {
+    const cache = this.app.metadataCache as typeof this.app.metadataCache & {
+      initialized?: boolean
+      isCacheClean?: () => boolean
+    }
+    if (this.app.workspace?.layoutReady !== true || cache?.initialized === false)
+      this.indexFallback = true
+    try {
+      const clean = cache?.isCacheClean?.()
+      if (clean !== true) this.indexFallback = true
+      return !this.indexFallback
+    } catch {
+      this.indexFallback = true
+      return false
+    }
+  }
 
   async [Symbol.for('abele.sync.index-absent-v1')](path: string): Promise<boolean> {
     this.runtimeFence?.assertReady()
     // This is a preflight hint, never permission to publish. The raw target check
     // under the placement lease still protects files that have not reached the index.
-    if (!this.inventory || this.awaitingIndex.has(path) || this.inventory.mutations.has(path))
+    if (
+      this.indexReady() === false ||
+      !this.inventory ||
+      this.awaitingIndex.has(path) ||
+      this.inventory.mutations.has(path)
+    )
       return false
     if (this.app.vault.getAbstractFileByPath(path)) return false
     const parent = this.app.vault.getAbstractFileByPath(folderOf(path))
@@ -417,6 +442,7 @@ export class ObsidianFileSystem implements FileSystem {
         stopConfig()
         this.inventoryDepth--
         this.inventory = null
+        if (this.inventoryDepth === 0) this.indexFallback = false
       }
     }
   }
@@ -529,7 +555,12 @@ export class ObsidianFileSystem implements FileSystem {
     filesOnly = false
   ): Promise<InventoryChild[]> {
     const inventory = this.inventory
-    if (!inventory || normalizationPossible(target) || inventory.listings.wasRead(parent))
+    if (
+      !this.indexReady() ||
+      !inventory ||
+      normalizationPossible(target) ||
+      inventory.listings.wasRead(parent)
+    )
       return this.listChildren(parent)
     const read = async () => {
       // Download preflight needs only file membership, not directory identities.
@@ -753,6 +784,7 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.indexReady()
     this.pathKey = vaultPathKey(app.vault)
     this.placementStages = privatePlacementStages(
       this,
@@ -1557,7 +1589,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (scope && !this.withinFileScope(parent))
       throw new EngineError('protocol', 'Inventory path is outside this connection')
-    if (this.discovery && this.discovery.roots.length === 0) {
+    if (this.discovery && this.discovery.roots.length === 0 && this.indexReady()) {
       const children = new Map<string, InventoryChild>()
       for (const file of this.app.vault.getFiles()) {
         if (!this.discovery.includes(file.path) || (parent && !file.path.startsWith(parent + '/')))
@@ -1882,6 +1914,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   private async *listUnlocked(): AsyncIterable<FileInfo> {
+    const budget = new SyncTaskBudget()
     const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
     await this.recover()
@@ -1892,10 +1925,11 @@ export class ObsidianFileSystem implements FileSystem {
     const indexed = new Set<string>()
     const withinScope = (path: string) => this.withinFileScope(path)
     const files =
-      this.discovery && this.discovery.roots.length === 0
+      this.discovery && this.discovery.roots.length === 0 && this.indexReady()
         ? this.app.vault.getFiles().filter((file) => this.discovery.includes(file.path))
         : this.rawVaultFiles(scope)
     for await (const file of files) {
+      await budget.account(4096)
       if (!withinScope(file.path) || (this.discovery && !this.discovery.includes(file.path)))
         continue
       if (isAdapterTemp(file.path) || isDeviceLocalPluginState(file.path, this.configDir)) continue
@@ -1915,9 +1949,13 @@ export class ObsidianFileSystem implements FileSystem {
     // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
     const candidates = new Set(this.awaitingIndex)
     if (this.ledger !== null) {
-      for await (const entry of this.ledger.all()) candidates.add(entry.path)
+      for await (const entry of this.ledger.all()) {
+        await budget.account(4096)
+        candidates.add(entry.path)
+      }
     }
     for (const path of candidates) {
+      await budget.account(4096)
       if (!withinScope(path)) continue
       if (this.discovery && !this.discovery.includes(path)) continue
       if (indexed.has(this.pathKey(path)) || path.startsWith(`${this.configDir}/`)) {
@@ -1973,6 +2011,13 @@ export class ObsidianFileSystem implements FileSystem {
   private async physicalPaths(
     scope?: string
   ): Promise<{ files: Set<string>; folders: Set<string> }> {
+    if (this.indexReady() === false) {
+      const files = new Set<string>()
+      const folders = new Set<string>()
+      for await (const file of this.diskVaultFiles(scope, folders)) files.add(file.path)
+      return { files, folders }
+    }
+    const budget = new SyncTaskBudget()
     const files = new Set(this.indexedFiles(scope).map((file) => file.path))
     const folders = new Set<string>()
     const within = (path: string) => !scope || path === scope || path.startsWith(scope + '/')
@@ -1984,20 +2029,23 @@ export class ObsidianFileSystem implements FileSystem {
       path.startsWith(this.configDir + '/')
     const root =
       scope === undefined ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(scope)
-    const index = (node: { path: string; children?: unknown[] }) => {
+    const index = async (node: { path: string; children?: unknown[] }) => {
+      await budget.account(4096)
       if (node.path && !visible(node.path)) return
       if (!node.children) return
       if (node.path) folders.add(node.path)
-      for (const child of node.children) index(child as typeof node)
+      for (const child of node.children) await index(child as typeof node)
     }
     // The vault root has path '/', not ''. It is a traversal anchor, never a sync item.
     if (scope === undefined) {
       for (const child of (root as { children?: unknown[] } | null)?.children ?? [])
-        index(child as { path: string; children?: unknown[] })
-    } else if (root) index(root)
-    for (const path of files)
+        await index(child as { path: string; children?: unknown[] })
+    } else if (root) await index(root)
+    for (const path of files) {
+      await budget.account(4096)
       for (let cut = path.indexOf('/'); cut !== -1; cut = path.indexOf('/', cut + 1))
         if (within(path.slice(0, cut))) folders.add(path.slice(0, cut))
+    }
     const indexedFiles = new Set(files)
     const indexedFolders = new Set(folders)
     // Built once per listing: a walk must not rescan every vault path for every folder it
@@ -2015,8 +2063,11 @@ export class ObsidianFileSystem implements FileSystem {
       files.delete(path)
       byParent.get(parentOf(path))?.delete(path)
     }
-    for (const path of files) addFile(path)
-    const under = (paths: Iterable<string>, self: boolean) => {
+    for (const path of files) {
+      await budget.account(4096)
+      addFile(path)
+    }
+    const under = async (paths: Iterable<string>, self: boolean) => {
       const result = new Map<string, string[]>()
       const put = (key: string, path: string) => {
         const list = result.get(key)
@@ -2024,6 +2075,7 @@ export class ObsidianFileSystem implements FileSystem {
         else result.set(key, [path])
       }
       for (const path of paths) {
+        await budget.account(4096)
         const key = this.pathKey(path)
         for (let cut = key.indexOf('/'); cut !== -1; cut = key.indexOf('/', cut + 1))
           put(key.slice(0, cut), path)
@@ -2031,10 +2083,11 @@ export class ObsidianFileSystem implements FileSystem {
       }
       return result
     }
-    const filesUnder = under(indexedFiles, false)
-    const foldersAt = under(indexedFolders, true)
+    const filesUnder = await under(indexedFiles, false)
+    const foldersAt = await under(indexedFolders, true)
     const parents = new Set<string>()
     for (const path of [...files, ...folders]) {
+      await budget.account(4096)
       const segments = path.split('/')
       const risk = segments.findIndex(normalizationPossible)
       if (risk !== -1) {
@@ -2131,13 +2184,92 @@ export class ObsidianFileSystem implements FileSystem {
     stat: { size: number; mtime: number }
   }> {
     const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
+    const readiness = this.indexReady()
+    let useDisk = readiness === false
+    // A bounded rotating metadata probe detects a clean-looking but stale index without
+    // turning every restart into a disk stat of every indexed path.
+    if (readiness === true && indexed.size) {
+      const files = [...indexed.values()]
+      for (let n = 0; n < Math.min(16, files.length); n++) {
+        const file = files[this.indexProbe++ % files.length]
+        const stat = await this.rawStat(file.path)
+        if (
+          !stat ||
+          stat.type !== 'file' ||
+          stat.size !== file.stat.size ||
+          stat.mtime !== file.stat.mtime
+        )
+          useDisk = this.indexFallback = true
+      }
+      if (this.indexReady() !== true || this.indexedFiles(scope).length !== indexed.size)
+        useDisk = this.indexFallback = true
+    }
+    if (useDisk) {
+      yield* this.diskVaultFiles(scope)
+      return
+    }
     for (const path of (await this.physicalPaths(scope)).files) {
+      if (readiness === true && this.indexReady() !== true)
+        throw new EngineError('io', 'Host index changed during inventory; retry using disk')
       if (path.split('/').some((part) => part.startsWith('.'))) continue
       const file = indexed.get(path)
       // An indexed row keeps the index's own stat: the caller compares it with the disk to
       // learn whether Obsidian has caught up with a write it is still waiting on.
       const stat = file ? file.stat : await this.rawStat(path)
       if (stat) yield { path, stat }
+    }
+  }
+
+  private async *diskVaultFiles(
+    scope?: string,
+    folders?: Set<string>
+  ): AsyncIterable<{ path: string; stat: Stat }> {
+    const budget = new SyncTaskBudget()
+    const spellings = new Map<string, Set<string>>()
+    const remember = (path: string) => {
+      if (!normalizationPossible(path)) return
+      const key = path.normalize('NFC')
+      const known = spellings.get(key) ?? new Set<string>()
+      known.add(path)
+      spellings.set(key, known)
+    }
+    for (const file of this.indexedFiles(scope)) {
+      await budget.account(4096)
+      remember(file.path)
+    }
+    if (this.ledger)
+      for await (const entry of this.ledger.all()) {
+        await budget.account(4096)
+        if (this.withinFileScope(entry.path)) remember(entry.path)
+      }
+    const pending = [scope ?? '']
+    const visited = new Set<string>()
+    while (pending.length) {
+      const parent = pending.pop()
+      if (visited.has(parent)) continue
+      visited.add(parent)
+      if (parent && (await this.isSymlink(parent))) continue
+      if (parent) folders?.add(parent)
+      const listing = await this.inventoryListing(parent)
+      const listed = new Set(listing.files)
+      for (const rawPath of listing.files) {
+        await budget.account(4096)
+        const candidates = spellings.get(rawPath.normalize('NFC'))
+        const preferred = candidates?.size === 1 ? [...candidates][0] : undefined
+        const path =
+          preferred && !listed.has(preferred) && (await this.rawStat(preferred))
+            ? preferred
+            : rawPath
+        if (path.split('/').some((part) => part.startsWith('.')) || !this.withinFileScope(path))
+          continue
+        if (await this.isSymlink(path)) continue
+        const stat = await this.rawStat(path)
+        if (stat?.type === 'file') yield { path, stat }
+      }
+      for (const path of listing.folders) {
+        await budget.account(4096)
+        if (!path.split('/').some((part) => part.startsWith('.'))) pending.push(path)
+      }
     }
   }
 
@@ -2230,6 +2362,34 @@ export class ObsidianFileSystem implements FileSystem {
     const identity = await this.io.fingerprint(path, signal, false, true)
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
+  }
+  async [Symbol.for('abele.sync.cached-scan-hash-v1')](path: string) {
+    this.runtimeFence?.assertReady()
+    const cache = this.app.metadataCache as typeof this.app.metadataCache & {
+      initialized?: boolean
+      isCacheClean?: () => boolean
+      getFileInfo?: (
+        path: string
+      ) => { hash?: unknown; size?: unknown; mtime?: unknown } | undefined
+    }
+    try {
+      if (this.indexReady() === false) return null
+      const row = cache.getFileInfo?.(path)
+      if (!row || typeof row.hash !== 'string' || !/^[a-f0-9]{64}$/.test(row.hash)) return null
+      const { hash, size, mtime } = row
+      const actual = await this.rawStat(path)
+      if (!actual || actual.type !== 'file' || actual.size !== size || actual.mtime !== mtime) {
+        this.indexFallback = true
+        return null
+      }
+      if (this.indexReady() === false) return null
+      const after = cache.getFileInfo?.(path)
+      if (after?.hash !== hash || after.size !== size || after.mtime !== mtime) return null
+      return { sha: hash, size: actual.size, mtime: stamp(actual.mtime) }
+    } catch {
+      // Optional host cache evidence is never required for a content scan.
+      return null
+    }
   }
   async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string) {
     return this.fingerprint(path)
@@ -2764,7 +2924,7 @@ export class ObsidianFileSystem implements FileSystem {
   /** The file at `path` as the disk has it, before `told`; null for none, or not a file. */
   private async fileAt(path: string): Promise<FileInfo | null> {
     const indexed = this.app.vault.getFileByPath(path)
-    if (indexed && !this.awaitingIndex.has(path))
+    if (indexed && this.indexReady() !== false && !this.awaitingIndex.has(path))
       return { path, size: indexed.stat.size, mtime: stamp(indexed.stat.mtime) }
     const operation = this.operationStats
     if (operation && operation.revision !== this.operationRevision()) {

@@ -209,6 +209,7 @@ export class LocalFolderPlacement {
         if (
           [
             Symbol.for('abele.sync.fingerprint-fresh-v1'),
+            Symbol.for('abele.sync.cached-scan-hash-v1'),
             Symbol.for('abele.sync.fingerprint-pull-v1'),
           ].includes(key as symbol)
         )

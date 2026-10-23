@@ -27,6 +27,20 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
+let inventorySteps = 0;
+let inventorySince = performance.now();
+async function yieldInventory() {
+  if (++inventorySteps < 256 && performance.now() - inventorySince < 8) return;
+  inventorySteps = 0;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  inventorySince = performance.now();
+}
+async function* inventoryEntries(state) {
+  for await (const entry of state.all()) {
+    await yieldInventory();
+    yield entry;
+  }
+}
 async function pairedBaseline(fs, state, entry) {
   if (!fs.fileIdentity || !state.getMeta) return null;
   const raw = await state.getMeta('paired-file:' + entry.path);
@@ -106,6 +120,27 @@ export function syncPlacementPlugin() {
           return pass ? pass.call(this.ctx.opts.fs, run) : run();
         }
         async cycleUnlocked() {`
+        )
+      } else if (file.endsWith('/scope.js')) {
+        code = replaceOnce(
+          code,
+          'for (const entry of await this.entries()) {',
+          'for (const entry of await this.entries()) { await yieldInventory();'
+        )
+        const boundary = 'for (const entry of entries) {'
+        const count = code.split(boundary).length - 1
+        if (count !== 3) throw boundaryError(id, boundary, count, '3')
+        code = code.replaceAll(boundary, boundary + '\n await yieldInventory();')
+        code = replaceOnce(
+          code,
+          'for await (const entry of this.state.all())\n            entries.push(entry);',
+          'for await (const entry of this.state.all()) { await yieldInventory(); entries.push(entry); }'
+        )
+      } else if (file.endsWith('/deleteGate.js')) {
+        code = replaceOnce(
+          code,
+          'for await (const entry of this.ctx.state.all())',
+          'if (ops.length) for await (const entry of inventoryEntries(this.ctx.state))'
         )
       } else if (file.endsWith('/pullRun.js')) {
         code = replaceOnce(code, 'const MANIFEST_PAGE = 1000;', 'const MANIFEST_PAGE = 5000;')
@@ -220,6 +255,18 @@ export function syncPlacementPlugin() {
           }`
         )
       } else if (file.endsWith('/reconciliation.js')) {
+        for (const boundary of [
+          'for await (const entry of basis.all()) {',
+          'for (const [path, info] of files) {',
+        ])
+          code = replaceOnce(code, boundary, boundary + '\n await yieldInventory();')
+        code = replaceOnce(
+          code,
+          'const cached = !selected.has(path) ? await readScanHint(state, info, epoch) : null;',
+          `const hostHash = changed ? await fs[Symbol.for('abele.sync.cached-scan-hash-v1')]?.(info.path) : null;
+          const cached = hostHash?.size === info.size && hostHash?.mtime === info.mtime
+            ? hostHash.sha : !selected.has(path) ? await readScanHint(state, info, epoch) : null;`
+        )
         code = replaceOnce(
           code,
           'if (!selected.has(path) && !changed)',
@@ -238,11 +285,38 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
+          `const missing = [...entries.values()].filter((entry) => !inventory.blocked(entry.wirePath) &&
+        (!recreated.has(entry.wirePath) || classified.has(entry.wirePath)) &&
+        (!opts.retries || opts.retries.ready(entry.wirePath, 'scan')) &&
+        (!present.has(entry.wirePath) || classified.has(entry.wirePath)) &&
+        !filter.excluded(entry.wirePath, entry.size));`,
+          `const missing = [];
+          for (const entry of [...entries.values()]) {
+            await yieldInventory();
+            if (!inventory.blocked(entry.wirePath) &&
+              (!recreated.has(entry.wirePath) || classified.has(entry.wirePath)) &&
+              (!opts.retries || opts.retries.ready(entry.wirePath, 'scan')) &&
+              (!present.has(entry.wirePath) || classified.has(entry.wirePath)) &&
+              !filter.excluded(entry.wirePath, entry.size)) missing.push(entry);
+          }`
+        )
+        for (const boundary of [
+          'for await (const listed of fs.list()) {',
+          'for (const [wirePath, twins] of candidates) {',
+          'for await (const entry of state.all()) {',
+          'for (const entry of entries.values()) {',
+          'for (const [wirePath, info] of files) {',
+        ])
+          code = replaceOnce(code, boundary, boundary + '\n await yieldInventory();')
+        code = replaceOnce(
+          code,
           'const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);',
           `const beforeIdentity = await fs.fileIdentity?.(info.path);
             const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
+            const cached = opts.revalidate !== 'all' && !recreatedPaths.has(wirePath) && !revalidate.has(wirePath) && !opts.verifyPaths?.has(wirePath)
+              ? await fs[Symbol.for('abele.sync.cached-scan-hash-v1')]?.(info.path) : null;
             const fingerprint = fresh && (revalidate.has(wirePath) || opts.verifyPaths?.has(wirePath))
-              ? await fresh.call(fs, info.path, opts.signal) : await fingerprintFile(fs, info.path, hash, opts.signal);
+              ? await fresh.call(fs, info.path, opts.signal) : cached ?? await fingerprintFile(fs, info.path, hash, opts.signal);
             if (!opts.readOnly) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);`
         )
       } else if (file.endsWith('/localPaths.js')) {
@@ -911,7 +985,11 @@ export function syncPlacementPlugin() {
     return row;
 }`
         )
-      } else return null
+      } else if (!code.includes('of state.all())') && !code.includes('of this.state.all())'))
+        return null
+      code = code
+        .replaceAll('of state.all())', 'of inventoryEntries(state))')
+        .replaceAll('of this.state.all())', 'of inventoryEntries(this.state))')
       const body = helper + code
       return { code: `${marker}${relative}:${digest(body)}\n${body}`, map: null }
     },
