@@ -23,6 +23,30 @@ beforeEach(() => {
 })
 
 describe('finding in a tab', () => {
+  it.each([false, true])(
+    'searches the working document when a split comparison is editable: %s',
+    (editing) => {
+      const code = root.appendChild(document.createElement('div'))
+      const viewer = mountCode(
+        code,
+        'widget\nwidget',
+        'sample.ts',
+        undefined,
+        undefined,
+        undefined,
+        editing ? () => {} : undefined,
+        true,
+        { original: 'widget\nwidget', split: true }
+      )
+      const finder = new TabFinder(root, { foldedText: () => null })
+      try {
+        expect(finder.search('widget', false)).toBe(editing ? 2 : 4)
+      } finally {
+        finder.clear()
+        viewer.destroy()
+      }
+    }
+  )
   it('selects the current code match when revealing and navigating without editing text', async () => {
     const code = root.appendChild(document.createElement('div'))
     const text = 'first widget\nlast widget'

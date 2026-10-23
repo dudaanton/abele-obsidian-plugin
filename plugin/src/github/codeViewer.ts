@@ -1,6 +1,7 @@
 import { streamBLabel } from '@/i18n/streamBLabels'
 import { t } from '@/i18n'
 import { comparisonTheme } from './comparisonTheme'
+import { FIND_SKIP_ATTR } from './find/finder'
 /**
  * Read-only CodeMirror editors for a file's diff and for a file at a ref.
  *
@@ -164,6 +165,8 @@ function mount(
   const view =
     merge?.b ??
     new EditorView({ parent, state: EditorState.create({ doc, extensions: configured }) })
+  // Current-file Find targets the working document while editing a comparison.
+  if (merge && onChange) merge.a.dom.setAttribute(FIND_SKIP_ATTR, '')
   const lineTop = (n: number | null) => {
     if (n === null || n < 1 || n > view.state.doc.lines) return null
     if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
