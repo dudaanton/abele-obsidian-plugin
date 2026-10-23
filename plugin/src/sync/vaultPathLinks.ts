@@ -1931,7 +1931,7 @@ export function checkedVaultPort(
   }
 ) {
   // Lease clocks also run in headless hosts, independently of any UI window.
-  const timers = globalThis
+  const timers = { setTimeout, clearTimeout }
   return {
     async acquire(paths: string[]) {
       let release!: () => void
