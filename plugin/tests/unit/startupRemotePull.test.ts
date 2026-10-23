@@ -15,10 +15,9 @@ it.each([false, true])(
   (sameSize) => remoteBeforeLocalWork('fingerprint', sameSize)
 )
 
-// BUG: SDK reconciliationScan enumerates the whole inventory before the first pull.
-it.fails('applies a remote note while the startup inventory is still being enumerated', () =>
-  remoteBeforeLocalWork('inventory')
-)
+// Startup inventory no longer delays the first pull.
+it('applies a remote note while the startup inventory is still being enumerated', () =>
+  remoteBeforeLocalWork('inventory'))
 
 async function remoteBeforeLocalWork(block: 'fingerprint' | 'inventory', sameSize = false) {
   const fs = new MemoryFileSystem(),

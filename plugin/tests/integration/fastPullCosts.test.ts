@@ -14,6 +14,7 @@ async function measure(folder: boolean) {
     bridge = 0,
     active = 0,
     maximum = 0
+  const operations = new Map<string, number>()
   const transaction = IDBDatabase.prototype.transaction
   const observed = vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
     ...args
@@ -30,7 +31,10 @@ async function measure(folder: boolean) {
         }
       : {}),
     diagnostic: (operation) => {
-      if (operation.startsWith('adapter ')) bridge++
+      if (operation.startsWith('adapter ')) {
+        bridge++
+        operations.set(operation, (operations.get(operation) ?? 0) + 1)
+      }
     },
   })
   const changes = await Promise.all(
@@ -81,7 +85,13 @@ async function measure(folder: boolean) {
     await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, () =>
       puller.apply(changes)
     )
-    console.log('[first pull costs]', { files: changes.length, bridge, writes, maximum })
+    console.log('[first pull costs]', {
+      files: changes.length,
+      bridge,
+      writes,
+      maximum,
+      operations: Object.fromEntries(operations),
+    })
     expect(report.applied).toBe(32)
     expect(report.held).toEqual([])
     expect(maximum).toBe(8)

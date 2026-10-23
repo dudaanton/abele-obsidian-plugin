@@ -2117,6 +2117,8 @@ export class TokenEngineRuntime
     this.assertHeld()
     try {
       await this.syncThroughReviews(retryHeld)
+      if (this.runFailure !== undefined && !this.yieldedForReview(this.runFailure))
+        throw this.runFailure
       await this.outbox.drain(retryHeld)
     } catch (error) {
       if (this.rootIssue) this.assertHeld()
