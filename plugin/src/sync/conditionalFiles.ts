@@ -82,7 +82,8 @@ const missing = (error: unknown) =>
 /** Every continuation must revalidate its lease before starting another host effect. */
 function leasedHost(
   host: ConditionalFileHost,
-  current: () => CheckedLease | undefined
+  current: () => CheckedLease | undefined,
+  pending?: Map<Promise<unknown>, string>
 ): ConditionalFileHost {
   const checked = host.withMutationCheck?.(() => current()?.check?.()) ?? host
   return new Proxy(checked, {
@@ -93,13 +94,22 @@ function leasedHost(
         const lease = current()
         lease?.check?.()
         const result = value.apply(target, args)
-        if (result && typeof result.then === 'function')
+        if (result && typeof result.then === 'function') {
+          if (lease && pending) {
+            const work = Promise.resolve(result)
+            pending.set(work, String(key))
+            void work.then(
+              () => pending.delete(work),
+              () => pending.delete(work)
+            )
+          }
           return (lease?.wait ? lease.wait(Promise.resolve(result)) : result).then(
             (answer: unknown) => {
               lease?.check?.()
               return answer
             }
           )
+        }
         lease?.check?.()
         return result
       }
@@ -109,6 +119,7 @@ function leasedHost(
 
 /** Quarantine is retained evidence, never disposable staging or an equality receipt. */
 export class ConditionalFiles {
+  private readonly lateRepairs = new Set<Promise<void>>()
   private readonly fallback = new MemoryRetention()
   private migration?: { paths: string[]; at: number }
   private softWarning = false
@@ -611,6 +622,62 @@ export class ConditionalFiles {
     await this.host.flush(parent + '/' + id + '.json')
     await this.host.flush(source, true)
   }
+  private async repairIntent(folder: string, id: string) {
+    const h = this.host
+    const intent = JSON.parse(
+      new TextDecoder().decode(await h.read(folder + '/intent.json'))
+    ) as Intent
+    h.validate(intent.path)
+    h.check()
+    await this.restore(folder + '/victim', intent.path)
+    if (intent.checked && intent.data === folder + '/data')
+      await this.restore(intent.data, intent.path, true)
+    await this.archive(folder, id, false)
+    h.changed([intent.path])
+  }
+  private repairAfterSettlement(
+    folder: string,
+    id: string,
+    pending: Map<Promise<unknown>, string>
+  ) {
+    const h = this.host,
+      key = h.root + '/' + id
+    const calls = [...pending]
+    const repair = (async () => {
+      await Promise.allSettled(calls.map(([work]) => work))
+      h.check()
+      const intent = JSON.parse(
+        new TextDecoder().decode(await h.read(folder + '/intent.json'))
+      ) as Intent
+      const victim = folder + '/victim'
+      const captured = (await h.stat(victim))?.type === 'file' ? await h.fingerprint(victim) : null
+      // The active intent predates the effect. This additional record describes its
+      // late settlement; a crash before it is written still recovers from the intent.
+      if (!(await h.stat(folder + '/late-effect.json')))
+        await this.record(folder + '/late-effect.json', {
+          methods: [...new Set(calls.map(([, method]) => method))],
+          captured,
+          matchesExpected:
+            captured !== null &&
+            captured.sha === intent.expected?.sha &&
+            captured.size === intent.expected?.size,
+        })
+      console.debug(
+        '[abele-sync] conditional refusal: repairing late effect',
+        intent.path,
+        calls.map(([, method]) => method)
+      )
+      await this.repairIntent(folder, id)
+    })()
+      .catch((error: unknown) => {
+        console.debug('[abele-sync] late effect repair remains pending', id, error)
+      })
+      .finally(() => {
+        h.active.delete(key)
+        this.lateRepairs.delete(repair)
+      })
+    this.lateRepairs.add(repair)
+  }
   async apply(op: ConditionalFileOperation): Promise<boolean> {
     const h = this.host
     h.check()
@@ -743,7 +810,8 @@ export class ConditionalFiles {
   }
   /** Content decision plus a pending-save/stat fence; no object-identity claim. */
   private async applyChecked(op: ConditionalFileOperation): Promise<boolean> {
-    const h = leasedHost(this.host, () => release),
+    const pending = new Map<Promise<unknown>, string>()
+    const h = leasedHost(this.host, () => release, pending),
       checked = h.checked
     const operation = new ConditionalFiles(h)
     const observe = async (path: string): Promise<FileVersion | null> => {
@@ -762,7 +830,8 @@ export class ConditionalFiles {
       key = h.root + '/' + id
     if (h.active.has(key)) return false
     h.active.add(key)
-    let recorded = false
+    let recorded = false,
+      repairing = false
     let release: CheckedLease | undefined
     try {
       if (await h.stat(folder)) return false
@@ -889,7 +958,12 @@ export class ConditionalFiles {
         error = expired
       }
       if (error instanceof EngineError && Reflect.get(error, 'leaseExpired') === true) {
-        // Keep active intent and captured bytes for recovery; never continue a revoked mutation.
+        // A foreign wrapper can still submit the captured callable. Keep ownership
+        // until it settles so concurrent recovery cannot archive an empty victim.
+        if (recorded) {
+          repairing = true
+          this.repairAfterSettlement(folder, id, pending)
+        }
         console.debug('[abele-sync] checked operation refused after lease expiry', op.path)
         return false
       }
@@ -915,12 +989,13 @@ export class ConditionalFiles {
       throw error
     } finally {
       release?.()
-      h.active.delete(key)
+      if (!repairing) h.active.delete(key)
     }
   }
   /** Turn refused first publication into journalled visible conflict evidence. */
   async recoverIncoming(from: string, path: string, lease?: CheckedLease): Promise<void> {
-    const h = leasedHost(this.host, () => lease),
+    const pending = new Map<Promise<unknown>, string>()
+    const h = leasedHost(this.host, () => lease, pending),
       operation = new ConditionalFiles(h),
       id = crypto.randomUUID(),
       folder = h.root + '/objects/' + id
@@ -935,19 +1010,28 @@ export class ConditionalFiles {
     h.validate(path)
     const key = h.root + '/' + id
     h.active.add(key)
+    let recorded = false,
+      repairing = false
     try {
       await h.mkdir(folder)
       await operation.record(folder + '/intent.json', intent)
       await h.mkdir(h.root + '/active')
       await operation.record(h.root + '/active/' + id + '.json', intent)
+      recorded = true
       await h.capture(from, intent.data)
       await operation.restore(intent.data, path, true)
       await operation.record(folder + '/complete', true)
       await operation.archive(folder, id, false)
       await operation.discard(id)
       console.debug('[abele-sync] publication occupied; incoming bytes recovered', path)
+    } catch (error) {
+      if (recorded && Reflect.get(Object(error), 'leaseExpired') === true) {
+        repairing = true
+        this.repairAfterSettlement(folder, id, pending)
+      }
+      throw error
     } finally {
-      h.active.delete(key)
+      if (!repairing) h.active.delete(key)
     }
   }
   async recover(): Promise<void> {
@@ -994,16 +1078,7 @@ export class ConditionalFiles {
             await this.archive(folder, id, false)
             continue
           }
-          const intent = JSON.parse(
-            new TextDecoder().decode(await h.read(folder + '/intent.json'))
-          ) as Intent
-          h.validate(intent.path)
-          h.check()
-          await this.restore(folder + '/victim', intent.path)
-          if (intent.checked && intent.data === folder + '/data')
-            await this.restore(intent.data, intent.path, true)
-          await this.archive(folder, id, false)
-          h.changed([intent.path])
+          await this.repairIntent(folder, id)
         } catch (error) {
           // Keep this pointer outstanding, but do not strand independent victims.
           failed ??= error
@@ -1088,6 +1163,7 @@ export class ConditionalFiles {
       folder + '/data',
       folder + '/allocation',
       folder + '/complete',
+      folder + '/late-effect.json',
       folder + '/intent.json',
       h.root + '/completed/' + id + '.json',
       h.root + '/active/' + id + '.json',

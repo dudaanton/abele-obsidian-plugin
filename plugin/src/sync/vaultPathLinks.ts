@@ -115,10 +115,36 @@ const nativeOrigins = new WeakMap<object, object>()
 const adapters = new WeakMap<DataAdapter, DataAdapter>()
 const mutationRebuilders = new WeakMap<DataAdapter, (check: () => void) => DataAdapter>()
 
-/** The sole issue boundary for an operation-owned mutation, including native handles. */
-function issueMutation<T>(check: () => void, invoke: () => T): T {
+/** Check before host submission; a foreign callable's late acknowledgement requires repair. */
+function issueMutation<T>(check: () => void, invoke: () => T, method: string): T {
   check()
-  return invoke()
+  const result = invoke()
+  if (result && typeof Reflect.get(Object(result), 'then') === 'function') {
+    const settled = () => {
+      try {
+        check()
+      } catch (error) {
+        if (Reflect.get(Object(error), 'leaseExpired') === true)
+          console.debug(
+            '[abele-sync] mutation outlived checked lease; possible slow wrapper',
+            method
+          )
+      }
+    }
+    // Preserve the underlying acknowledgement (including failures) for effect
+    // tracking and repair. Expiry cannot cancel an already captured callable.
+    return Promise.resolve(result).then(
+      (answer) => {
+        settled()
+        return answer
+      },
+      (error: unknown) => {
+        settled()
+        throw error
+      }
+    ) as T
+  }
+  return result
 }
 
 /** Rebuild validation above a checked leaf; never share an ambient lease with user saves. */
@@ -133,7 +159,8 @@ export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void):
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
         return /^(?:write.*|append.*|truncate|utimes|chmod|chown|sync|datasync)$/.test(String(key))
-          ? (...args: unknown[]) => issueMutation(check, () => value.apply(target, args))
+          ? (...args: unknown[]) =>
+              issueMutation(check, () => value.apply(target, args), String(key))
           : value.bind(target)
       },
     })
@@ -149,14 +176,15 @@ export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void):
             const writable =
               typeof args[1] === 'number' || (typeof args[1] === 'string' && /[wa+]/.test(args[1]))
             const handle = await (writable
-              ? issueMutation(check, () => value.apply(target, args))
+              ? issueMutation(check, () => value.apply(target, args), 'open')
               : value.apply(target, args))
             return handles(handle)
           }
         return /^(?:write.*|append.*|mkdir|rename|copy.*|unlink|rm|rmdir|link|symlink|truncate|utimes|chmod|chown)$/.test(
           String(key)
         )
-          ? (...args: unknown[]) => issueMutation(check, () => value.apply(target, args))
+          ? (...args: unknown[]) =>
+              issueMutation(check, () => value.apply(target, args), String(key))
           : value.bind(target)
       },
     })
@@ -168,8 +196,11 @@ export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void):
       if (typeof value !== 'function') return value
       const wrapped = mutator.test(String(key))
         ? (...args: unknown[]) =>
-            issueMutation(check, () =>
-              engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+            issueMutation(
+              check,
+              () =>
+                engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args),
+              String(key)
             )
         : value.bind(target)
       methods.set(key, wrapped)

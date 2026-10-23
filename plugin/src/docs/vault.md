@@ -286,6 +286,14 @@ restart. Uncertain writes retain evidence; settled victims use the same retentio
 Buffered mobile creates use the installation journal's private `temp`; replacements use
 the conditional object's `data` file. Adapter acknowledgements and the gate do not provide
 atomic exclusion against another native process inside the adapter's own move implementation.
+An expired checked operation keeps its active intent owned until any outstanding host call
+settles. It then records `late-effect.json` (host methods, captured fingerprint and whether it
+matches the expected base) in the conditional object before repairing from that intent.
+Repair restores a captured file to a vacant source or keeps it as a conflicted copy when the
+source is occupied. The original active intent also covers a crash before the late-effect
+record; failed repair remains pending for restart. A late acknowledgement never certifies
+success. This recovery requires retained bytes: a raw overwrite or unlink without a retained
+preimage cannot be repaired from a hash alone.
 Receipt cleanup first persists `retiring/<id>.json` outside the object directory. That marker
 survives deletion of installation metadata and pointers and is removed last; recovery resumes
 each idempotent step before inspecting ordinary captures. Retained-copy restoration has its
