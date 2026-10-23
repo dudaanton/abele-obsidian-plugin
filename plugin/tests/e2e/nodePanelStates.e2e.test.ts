@@ -139,7 +139,10 @@ const probe = (device: string) =>
       await reopen({ empty: true }).catch(() => {})
       const root = nodePanel.root()
       seen.empty = await until(() => root?.textContent.includes('to see its files and changes'))
-      seen.emptyFooter = Math.abs(root.querySelector('[data-connection-footer]').getBoundingClientRect().bottom - root.getBoundingClientRect().bottom) < 1;
+      // The host pane reserves bottom padding; the footer ends at its content edge.
+      const style = getComputedStyle(root)
+      const contentBottom = root.getBoundingClientRect().bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth || '0')
+      seen.emptyFooter = Math.abs(root.querySelector('[data-connection-footer]').getBoundingClientRect().bottom - contentBottom) < 1;
       await shot('empty')
       return seen
     } finally {
