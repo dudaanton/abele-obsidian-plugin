@@ -137,7 +137,7 @@ export class NodePathMainView extends ItemView {
   getState(): Record<string, unknown> {
     if (!this.saved) return {}
     return this.saved.kind === 'file' && this.navigationOriginLine
-      ? { ...this.saved, line: this.navigationOriginLine }
+      ? { ...this.saved, line: this.navigationOriginLine, endLine: undefined, match: undefined }
       : { ...this.saved }
   }
   getEphemeralState(): Record<string, unknown> {
