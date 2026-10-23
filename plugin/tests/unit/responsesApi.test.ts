@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { AgentLoop } from '@/ai/client/AgentLoop'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
+import { isTransient } from '@/ai/retry'
 import type { ModelConfig, Message, StreamEvent } from '@/ai/client/types'
 const model = {
   id: 'sample',
@@ -120,16 +121,52 @@ it('assembles parallel calls and maps results and images on the next turn', asyn
     ])
   )
 })
-it.each(['response.failed', 'error'])('reports %s safely', async (type) => {
-  fake([
-    event(type, {
-      message: 'private upstream body',
-      response: { error: { message: 'private upstream body' } },
-    }),
-  ])
+it.each(['response.failed', 'error'])('preserves and logs %s diagnostics', async (type) => {
+  const diagnostic = { code: 'server_error', message: '  Upstream busy  ', type: 'internal_error' }
+  const failure = event(
+    type,
+    type === 'error'
+      ? { code: diagnostic.code, message: diagnostic.message }
+      : { response: { error: diagnostic } }
+  )
+  const debug = vi.spyOn(console, 'debug')
+  fake([event('response.output_text.delta', { delta: 'Partial' }), failure])
   const events = await run()
-  expect(events.at(-1)).toMatchObject({ type: 'error' })
-  expect(JSON.stringify(events)).not.toContain('private upstream body')
+  expect(events.at(-1)).toMatchObject({
+    type: 'error',
+    error: 'Responses request failed: [server_error] Upstream busy',
+  })
+  expect(debug).toHaveBeenCalledWith('[Abele model] Responses failure', failure)
+  const last = events.at(-1)
+  expect(last?.type === 'error' && isTransient(last.error)).toBe(true)
+})
+it('keeps HTTP status and provider diagnostics', async () => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('Unsupported parameter', { status: 400 })
+  )
+  expect((await run()).at(-1)).toMatchObject({
+    type: 'error',
+    error: 'HTTP 400: Responses request failed: Unsupported parameter',
+  })
+})
+it('handles unknown events and SSE split across individual bytes', async () => {
+  const wire = [
+    event('response.future_event'),
+    event('response.output_text.delta', { delta: 'Hello' }),
+    event('response.incomplete', {
+      response: { incomplete_details: { reason: 'max_output_tokens' } },
+    }),
+  ]
+    .map((e) => `data: ${JSON.stringify(e)}\r\n\r\n`)
+    .join('')
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const byte of new TextEncoder().encode(wire)) controller.enqueue(new Uint8Array([byte]))
+      controller.close()
+    },
+  })
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body))
+  expect((await run()).at(-1)).toMatchObject({ type: 'done', message: { stopReason: 'length' } })
 })
 it('rejects EOF and maps output limits', async () => {
   const fetch = fake([event('response.output_text.delta', { delta: 'Partial' })])

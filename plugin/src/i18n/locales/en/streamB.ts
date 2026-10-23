@@ -29,6 +29,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Worktree deletion is in progress. Refresh the folder to check its result.',
   'streamB.providerUnavailable': 'The model provider is temporarily unavailable.',
+  'streamB.responsesFailure':
+    'Responses request failed. {details} Check the provider configuration or retry.',
   'streamB.permissionBypassDisabled': 'Running without asking is disabled on this node.',
   'streamB.permissionCopyCommand': 'Copy command',
   'streamB.permissionAskNow': 'Ask now',

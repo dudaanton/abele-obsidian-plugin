@@ -179,9 +179,13 @@ describe('trying again on its own', () => {
     expect(sent).toHaveLength(1)
   })
 
-  it('tries again when the failure is one that passes', async () => {
+  it.each([
+    'HTTP 429: rate limited',
+    'Responses request failed: [server_error] Upstream busy',
+    'Responses request failed: [rate_limit_exceeded] Slow down',
+  ])('tries again when the failure passes: %s', async (error) => {
     setRetry(2)
-    loopThat([failed('HTTP 429: rate limited'), answered('here you go')])
+    loopThat([failed(error), answered('here you go')])
 
     await sendThrough()
 
@@ -213,9 +217,13 @@ describe('trying again on its own', () => {
     await done
   })
 
-  it('does not repeat a failure that will never pass', async () => {
+  it.each([
+    'HTTP 401: invalid api key',
+    'Responses request failed: [invalid_request] Unsupported parameter',
+    'Responses request failed: [content_policy_violation] Request rejected',
+  ])('does not repeat permanent failure: %s', async (error) => {
     setRetry(3)
-    loopThat([failed('HTTP 401: invalid api key')])
+    loopThat([failed(error)])
 
     await sendThrough()
 

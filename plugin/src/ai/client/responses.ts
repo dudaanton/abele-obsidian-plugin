@@ -7,8 +7,16 @@ interface FunctionItem {
   name: string
   arguments: string
 }
+interface ProviderError {
+  code?: string
+  message?: string
+  type?: string
+}
 export interface ResponsesEvent {
   type: string
+  code?: string
+  message?: string
+  error?: ProviderError
   delta?: string
   output_index?: number
   call_id?: string
@@ -17,6 +25,7 @@ export interface ResponsesEvent {
   item_id?: string
   item?: FunctionItem
   response?: {
+    error?: ProviderError
     incomplete_details?: { reason?: string }
     usage?: {
       input_tokens?: number
@@ -105,9 +114,19 @@ export class ResponsesStreamAdapter {
         })
       }
       case 'response.failed':
-      case 'error':
+      case 'error': {
         this.completed = true
-        return [{ error: 'Responses request failed. Check the provider configuration or retry.' }]
+        console.debug('[Abele model] Responses failure', event)
+        const reason = event.response?.error ?? event.error ?? event
+        const code = reason.code?.trim() || (reason !== event ? reason.type?.trim() : '')
+        const details = [
+          code ? `[${code.slice(0, 100)}]` : '',
+          reason.message?.trim().slice(0, 1000),
+        ]
+          .filter(Boolean)
+          .join(' ')
+        return [{ error: `Responses request failed${details ? `: ${details}` : ''}` }]
+      }
       case 'response.completed':
       case 'response.incomplete': {
         this.completed = true

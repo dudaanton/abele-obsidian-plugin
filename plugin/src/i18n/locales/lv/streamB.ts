@@ -29,6 +29,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Darba koka dzēšana turpinās. Atsvaidziniet mapi, lai pārbaudītu rezultātu.',
   'streamB.providerUnavailable': 'Modeļa pakalpojums īslaicīgi nav pieejams.',
+  'streamB.responsesFailure':
+    'Responses pieprasījums neizdevās. {details} Pārbaudiet pakalpojuma sniedzēja iestatījumus vai mēģiniet vēlreiz.',
   'streamB.permissionBypassDisabled': 'Darbība bez jautāšanas šajā mezglā ir izslēgta.',
   'streamB.permissionCopyCommand': 'Kopēt komandu',
   'streamB.permissionAskNow': 'Tagad jautāt',

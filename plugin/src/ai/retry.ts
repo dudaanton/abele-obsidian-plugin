@@ -12,8 +12,15 @@ import { uiMessage, type UiMessage } from '@/i18n/streamBErrors'
 
 export type { RetrySettings }
 
-/** Keep provider diagnostics in the log; the chat says what the reader can do. */
+/** Show Responses diagnostics with a localized hint; retain other providers' presentation. */
 export function providerErrorPresentation(error: string): UiMessage | null {
+  if (/^(HTTP \d{3}: )?Responses request failed/.test(error))
+    return uiMessage('streamB.responsesFailure', {
+      details: error
+        .replace(/Responses request failed(?:: )?/, '')
+        .trim()
+        .slice(0, 1200),
+    })
   return /\bHTTP\s+5\d{2}\b/i.test(error) ? uiMessage('streamB.providerUnavailable') : null
 }
 
@@ -38,6 +45,22 @@ export function isTransient(error: string): boolean {
   if (status) {
     const code = Number(status[1])
     return code >= 500 || TRANSIENT_CODES.includes(code)
+  }
+
+  const providerCode = /^Responses request failed: \[([^\]]+)\]/.exec(error)?.[1]
+  if (providerCode) {
+    if (
+      /invalid_request|auth|permission|model_not_found|content_policy|content_filter|insufficient_quota/i.test(
+        providerCode
+      )
+    )
+      return false
+    if (
+      /^(server_error|internal_server_error|internal_error|rate_limit_exceeded|rate_limit_error|overloaded|overloaded_error|request_timeout|timeout|timeout_error|service_unavailable|bad_gateway|gateway_timeout|5\d{2})$/i.test(
+        providerCode
+      )
+    )
+      return true
   }
 
   return TRANSIENT_TEXT.test(error)

@@ -29,6 +29,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Рабочая копия удаляется. Обновите папку, чтобы проверить результат.',
   'streamB.providerUnavailable': 'Сервис модели временно недоступен.',
+  'streamB.responsesFailure':
+    'Запрос Responses завершился ошибкой. {details} Проверьте настройки провайдера или повторите попытку.',
   'streamB.permissionBypassDisabled': 'На этой ноде работа без вопросов отключена.',
   'streamB.permissionCopyCommand': 'Скопировать команду',
   'streamB.permissionAskNow': 'Сейчас — спрашивать',

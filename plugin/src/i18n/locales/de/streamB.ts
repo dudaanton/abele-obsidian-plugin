@@ -30,6 +30,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'Der Worktree wird gelöscht. Aktualisieren Sie den Ordner, um das Ergebnis zu prüfen.',
   'streamB.providerUnavailable': 'Der Modellanbieter ist vorübergehend nicht verfügbar.',
+  'streamB.responsesFailure':
+    'Die Responses-Anfrage ist fehlgeschlagen. {details} Prüfen Sie die Anbieterkonfiguration oder versuchen Sie es erneut.',
   'streamB.permissionBypassDisabled': 'Ausführen ohne Nachfrage ist auf diesem Knoten deaktiviert.',
   'streamB.permissionCopyCommand': 'Befehl kopieren',
   'streamB.permissionAskNow': 'Jetzt fragen',

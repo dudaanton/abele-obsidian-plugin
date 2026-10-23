@@ -29,6 +29,8 @@ export const streamB = {
   'streamB.worktreeDeletionPending':
     'La eliminación del árbol de trabajo está en curso. Actualiza la carpeta para comprobar el resultado.',
   'streamB.providerUnavailable': 'El proveedor del modelo no está disponible temporalmente.',
+  'streamB.responsesFailure':
+    'La solicitud Responses falló. {details} Revisa la configuración del proveedor o vuelve a intentarlo.',
   'streamB.permissionBypassDisabled': 'La ejecución sin preguntar está desactivada en este nodo.',
   'streamB.permissionCopyCommand': 'Copiar comando',
   'streamB.permissionAskNow': 'Preguntar ahora',

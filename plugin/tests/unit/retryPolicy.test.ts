@@ -6,7 +6,45 @@
  * provider, a connection that dropped.
  */
 import { describe, it, expect } from 'vitest'
-import { isTransient, backoffDelay, DEFAULT_RETRY } from '@/ai/retry'
+import { isTransient, backoffDelay, DEFAULT_RETRY, providerErrorPresentation } from '@/ai/retry'
+import { presentUiMessage } from '@/i18n/streamBErrors'
+
+it('shows provider details alongside the plain-language hint', () => {
+  for (const error of [
+    'Responses request failed: [server_error] Upstream busy',
+    'HTTP 503: Responses request failed: Upstream busy',
+  ]) {
+    const presentation = providerErrorPresentation(error)
+    expect(presentation).not.toBeNull()
+    const text = presentUiMessage(presentation!)
+    expect(text).toContain('Upstream busy')
+    expect(text).toContain('Check the provider configuration or retry.')
+    expect(text).toContain(error.startsWith('HTTP') ? 'HTTP 503' : '[server_error]')
+  }
+})
+
+it.each([
+  'server_error',
+  'rate_limit_exceeded',
+  'overloaded',
+  'overloaded_error',
+  'internal_server_error',
+  'request_timeout',
+  'timeout',
+])('retries provider code %s', (code) => {
+  expect(isTransient(`Responses request failed: [${code}] Provider could not complete`)).toBe(true)
+})
+it.each([
+  'invalid_request',
+  'invalid_request_error',
+  'authentication_error',
+  'model_not_found',
+  'content_policy_violation',
+])('does not retry permanent provider code %s', (code) => {
+  expect(isTransient(`Responses request failed: [${code}] Network timeout setting rejected`)).toBe(
+    false
+  )
+})
 
 describe('what is worth trying again', () => {
   it.each([

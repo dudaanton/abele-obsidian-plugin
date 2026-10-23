@@ -205,9 +205,7 @@ export class OpenAIClient {
           () => mobileBackground.active
         ).catch(() => 'Unreadable or oversized error response')
         throw new Error(
-          model.apiMode === 'responses'
-            ? `HTTP ${response.status}: Responses request failed. Check the provider configuration or retry.`
-            : `HTTP ${response.status}: ${errorText}`
+          `HTTP ${response.status}: ${model.apiMode === 'responses' ? 'Responses request failed: ' : ''}${errorText}`
         )
       }
       if (!response.body) throw new Error('No response body')
