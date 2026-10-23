@@ -1554,9 +1554,9 @@ export class ObsidianFileSystem implements FileSystem {
     // each folder this made, parents included, so the inventory finds them before the index.
     for (const made of missing)
       if ((await this.rawStat(made))?.type === 'folder') await this.directories.identity(made)
-    // Every cached listing above the new folder has to learn about them, including raw
-    // listings read before the folder existed.
-    this.updateInventory(missing.filter((one) => this.withinFileScope(one)))
+    // A confirmed existing folder may have appeared through private work since a raw
+    // parent listing was read. Refresh its membership as well as newly created prefixes.
+    this.updateInventory(prefixes.filter((one) => this.withinFileScope(one)))
     await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
