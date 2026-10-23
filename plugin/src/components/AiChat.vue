@@ -157,8 +157,10 @@
         @mousedown="readerTakesOver"
         @keydown="readerTakesOver"
       >
+        <!-- A side discussion opens on the words it is about, not on an empty chat. -->
+        <AiDiscussionAnchor v-if="session && commentSession" :key="session.id" :session="session" />
         <EmptyState
-          v-if="messages.length === 0"
+          v-if="messages.length === 0 && !commentSession"
           class="abele-ai-chat__empty"
           icon="tree-deciduous"
           :title="session?.agent.value?.name"
@@ -602,6 +604,7 @@ import AiRewindDialog from './AiRewindDialog.vue'
 import AiChatSetup from './AiChatSetup.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
 import AiCommentTrail from './AiCommentTrail.vue'
+import AiDiscussionAnchor from './AiDiscussionAnchor.vue'
 import { CommentService } from '@/ai/CommentService'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
