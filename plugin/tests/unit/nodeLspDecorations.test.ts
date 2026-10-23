@@ -333,6 +333,48 @@ it.each(['Control', 'Meta', 'Alt'])(
   }
 )
 
+it.each(['keydown', 'keyup'])(
+  'handles Option %s when the focused pane stops key propagation',
+  async (handledType) => {
+    const root = document.body.appendChild(document.createElement('div'))
+    const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+    doc.supported = true
+    const hover = vi.spyOn(doc, 'hover').mockResolvedValue('const sample: number')
+    const remove = provideLsp(root, { document: doc, navigate: () => {} })
+    const view = new EditorView({
+      parent: root,
+      doc: 'const sample = 1',
+      extensions: [nodeLspExtension()],
+    })
+    const handled = vi.fn((event: Event) => event.stopPropagation())
+    view.contentDOM.addEventListener(handledType, handled)
+    try {
+      vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+      vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+      view.contentDOM
+        .querySelector('.cm-line')!
+        .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Alt', altKey: true, bubbles: true })
+      )
+      await vi.waitFor(() => expect(hover).toHaveBeenCalled())
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-lsp-message pre')).not.toBeNull()
+      )
+      view.contentDOM.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }))
+      await vi.waitFor(() => expect(document.querySelector('.abele-lsp-message')).toBeNull())
+      expect(handled).toHaveBeenCalledOnce()
+    } finally {
+      view.contentDOM.removeEventListener(handledType, handled)
+      view.destroy()
+      remove()
+      await doc.close()
+      root.remove()
+      vi.restoreAllMocks()
+    }
+  }
+)
+
 it('leaves Alt-click available to the host without navigating', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')

@@ -68,8 +68,10 @@ const hoverModifiers = ViewPlugin.fromClass(
     constructor(readonly view: EditorView) {
       view.dom.addEventListener('mousemove', this.move)
       view.dom.addEventListener('mouseleave', this.leave)
-      view.dom.ownerDocument.addEventListener('keydown', this.key)
-      view.dom.ownerDocument.addEventListener('keyup', this.key)
+      // Observe modifiers before a focused pane or hotkey handler consumes the key.
+      // This does not prevent the host's selection or shortcut behavior.
+      view.dom.ownerDocument.addEventListener('keydown', this.key, true)
+      view.dom.ownerDocument.addEventListener('keyup', this.key, true)
       view.dom.ownerDocument.defaultView?.addEventListener('blur', this.blur)
     }
     private move = (event: MouseEvent) => {
@@ -120,8 +122,8 @@ const hoverModifiers = ViewPlugin.fromClass(
       this.revision++
       this.view.dom.removeEventListener('mousemove', this.move)
       this.view.dom.removeEventListener('mouseleave', this.leave)
-      this.view.dom.ownerDocument.removeEventListener('keydown', this.key)
-      this.view.dom.ownerDocument.removeEventListener('keyup', this.key)
+      this.view.dom.ownerDocument.removeEventListener('keydown', this.key, true)
+      this.view.dom.ownerDocument.removeEventListener('keyup', this.key, true)
       this.view.dom.ownerDocument.defaultView?.removeEventListener('blur', this.blur)
     }
   }

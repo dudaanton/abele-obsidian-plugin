@@ -91,6 +91,8 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
         const web=require('@electron/remote').getCurrentWebContents();
         require('@electron/remote').getCurrentWindow().focus();web.focus();
         const inputTrace=[];
+        const inputChecks=[];
+        const variants=[];
         const trace=e=>{inputTrace.push({type:e.type,key:e.key,alt:e.altKey,ctrl:e.ctrlKey,trusted:e.isTrusted,target:e.target?.className});if(inputTrace.length>20)inputTrace.shift()};
         for(const type of ['keydown','keyup','mousemove'])document.addEventListener(type,trace,true);
         const move=(p,mod=false)=>web.sendInputEvent({type:'mouseMove',x:Math.round(p.x),y:Math.round(p.y),modifiers:mod?['control']:[]});
@@ -109,6 +111,8 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
             throw Error(error.message+' '+JSON.stringify({inputTrace,targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
           });
+          if(!inputTrace.some(e=>e.type==='keydown'&&e.key==='Alt'&&e.trusted))throw Error('Native Option keydown missing: '+JSON.stringify(inputTrace));
+          inputChecks.push(theme+': trusted Option keydown over stationary symbol shows tooltip');
           const popup=document.querySelector('.abele-lsp-message');
           if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');
           if(!popup.textContent.includes('overload'))throw Error('Overloaded signature missing');
@@ -123,7 +127,9 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           alt(true);await wait(50);
           const short=point('sample',1);
           web.sendInputEvent({type:'mouseMove',x:Math.round(short.x),y:Math.round(short.y),modifiers:['alt']});
-          await until(()=>document.querySelector('.abele-lsp-message pre code'),'Short hover');
+          await until(()=>document.querySelector('.abele-lsp-message')?.textContent.includes('Sample dependency documentation.'),'Short hover');
+          if(!inputTrace.some(e=>e.type==='mousemove'&&e.alt&&e.trusted))throw Error('Native Option mousemove missing: '+JSON.stringify(inputTrace));
+          inputChecks.push(theme+': trusted Option mousemove shows tooltip');
           await shot(theme+'-short');
           alt(false);
           await until(()=>!document.querySelector('.abele-lsp-message'),'Alt release after move');
@@ -136,13 +142,43 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await shot(theme+'-diagnostic');
           web.sendInputEvent({type:'mouseMove',x:1,y:1});
           await until(()=>!document.querySelector('.abele-lsp-message'),'Leave diagnostic');
-        }} finally {
+        }
+        const content=document.querySelector('.abele-lsp-root .cm-content');
+        const originalTabIndex=content.getAttribute('tabindex');content.tabIndex=-1;
+        const other=document.createElement('input');
+        document.querySelector('.modal-content').appendChild(other);
+        try { for(const variant of ['editor focus','other field focus','handled Option keydown','handled Option keyup','other field handles Option','Control hover','Command hover']) {
+          const focus=variant.includes('other field')?other:content;
+          focus.focus();
+          if(document.activeElement!==focus)throw Error('Variant focus missing: '+variant);
+          const key=variant==='Control hover'?'Control':variant==='Command hover'?'Meta':'Alt';
+          const modifier=key==='Control'?'control':key==='Meta'?'meta':'alt';
+          const press=down=>web.sendInputEvent({type:down?'keyDown':'keyUp',keyCode:key,modifiers:down?[modifier]:[]});
+          const type=variant==='handled Option keyup'?'keyup':'keydown';
+          let consumed=0;
+          const consume=e=>{if(e.key==='Alt'){consumed++;e.stopPropagation()}};
+          if(variant.includes('handle'))focus.addEventListener(type,consume);
+          try {
+            move(point('sample',1));await wait(600);
+            inputTrace.length=0;
+            press(true);
+            await wait(1200);
+            const shown=!!document.querySelector('.abele-lsp-message pre code');
+            press(false);await wait(300);
+            const hidden=!document.querySelector('.abele-lsp-message');
+            variants.push({variant,shown,hidden,consumed,events:inputTrace.filter(e=>e.type!=='mousemove')});
+          } finally {
+            focus.removeEventListener(type,consume);
+            press(false);move({x:1,y:1});await wait(50);
+          }
+        }} finally {other.remove();if(originalTabIndex===null)content.removeAttribute('tabindex');else content.setAttribute('tabindex',originalTabIndex)}
+        } finally {
           alt(false);
           for(const type of ['keydown','keyup','mousemove'])document.removeEventListener(type,trace,true);
           document.body.classList.toggle('theme-dark',originalTheme);document.body.classList.toggle('theme-light',!originalTheme);
           document.querySelector('[data-lsp-close]')?.click();
         }
-        return JSON.stringify({opened,hover,definitions});
+        return JSON.stringify({opened,hover,definitions,inputChecks,variants});
       } finally { await client.lsp.close(root,'sample.ts'); }
     })()`,
         240000
@@ -151,6 +187,21 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
       opened: { servers: string[] }
       hover: { text: string }
       definitions: { path: string; range: { start: { line: number } } }[]
+      inputChecks: string[]
+      variants: {
+        variant: string
+        shown: boolean
+        hidden: boolean
+        consumed: number
+        events: unknown[]
+      }[]
+    }
+    console.log('Native language hover checks:', result.inputChecks)
+    console.log('Native language hover variants:', JSON.stringify(result.variants))
+    for (const variant of result.variants) {
+      if (variant.variant.includes('handle')) expect(variant.consumed).toBeGreaterThan(0)
+      expect(variant.shown, variant.variant + ' shows tooltip').toBe(true)
+      expect(variant.hidden, variant.variant + ' hides tooltip').toBe(true)
     }
     expect(result.opened.servers).toContain('typescript')
     expect(result.hover.text).toContain('number')
