@@ -36,6 +36,15 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({
 })
 
 describe('the status vocabulary', () => {
+  it('shows isolated retry work as waiting rather than fully synced', () => {
+    const waiting = statusOf({
+      ...status(),
+      state: 'idle',
+      waiting: 2,
+      waitingFiles: [],
+    })
+    expect(statusText(waiting)).toBe('Waiting (2)')
+  })
   it('gives every state a label and a glyph', () => {
     for (const state of STATES) {
       expect(STATUS_LABEL[state]).toBeTruthy()

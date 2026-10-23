@@ -98,6 +98,7 @@ export const STATUS_ICON: Record<SyncState, string> = {
  */
 export const statusOf = (engine: EngineStatus): SyncStatus => ({
   ...engine,
+  pending: Math.max(engine.pending, engine.waiting ?? 0),
   heldDeletes: engine.heldDeletes ?? 0,
   deferred: engine.deferred ?? 0,
 })

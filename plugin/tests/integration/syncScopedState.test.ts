@@ -3,6 +3,56 @@ import { IDBFactory } from 'fake-indexeddb'
 import type { StateStore } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 
+it('keeps retry schedules and exact retained answers atomic across interruption and restart', async () => {
+  const factory = new IDBFactory()
+  const name = 'sample-retry-restart'
+  let store = await IndexedDbStateStore.open(factory, name)
+  const schedule = 'file-retry:Shared%2Fsample.md'
+  const receipt = 'push-receipt:sample-operation'
+  const answer = JSON.stringify({
+    path: 'Shared/sample.md',
+    op: { op: 'delete', file_id: 'sample-file', base_version_id: 'sample-version' },
+    result: { status: 'applied', file_id: 'sample-file', version_id: 'sample-deleted' },
+    base: {
+      path: 'Shared/sample.md',
+      wirePath: 'Shared/sample.md',
+      fileId: 'sample-file',
+      versionId: 'sample-version',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1000,
+    },
+  })
+  try {
+    await store.transaction(async (tx) => {
+      await tx.setMeta!(schedule, 'malformed raw schedule retained verbatim')
+      await tx.setMeta!(receipt, answer)
+      expect(await tx.metadataKeys!('file-retry:')).toEqual([schedule])
+      expect(await tx.getMeta!(receipt)).toBe(answer)
+    })
+    await expect(
+      store.transaction(async (tx) => {
+        await tx.setMeta!(schedule, null)
+        await tx.setMeta!(receipt, null)
+        throw new Error('interrupted settlement')
+      })
+    ).rejects.toThrow('interrupted settlement')
+    store.close()
+    store = await IndexedDbStateStore.open(factory, name)
+    expect(await store.getMeta(schedule)).toBe('malformed raw schedule retained verbatim')
+    expect(await store.getMeta(receipt)).toBe(answer)
+    expect(await store.metadataKeys('push-receipt:')).toEqual([receipt])
+    await store.transaction(async (tx) => {
+      await tx.setMeta!(schedule, null)
+      await tx.setMeta!(receipt, null)
+    })
+    expect(await store.metadataKeys('file-retry:')).toEqual([])
+    expect(await store.metadataKeys('push-receipt:')).toEqual([])
+  } finally {
+    store.close()
+  }
+})
+
 it('isolates same-key root writes and revokes completed handles', async () => {
   const store = await IndexedDbStateStore.open(new IDBFactory(), 'sample-scoped')
   let handle!: StateStore

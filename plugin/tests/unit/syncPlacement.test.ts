@@ -10,6 +10,12 @@ import { analyze } from 'eslint-scope'
 const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
+it('keeps retained-answer filesystem settlement under the placement lease', () => {
+  const { id, input } = sample(version, 'pusher.js')
+  const output = syncPlacementPlugin().transform(input, id)!
+  expect(output.code).toContain('coordinatePlacement(this.recorder.fs, receiptPaths')
+  expect(output.code).toContain('current = await receiptStillCurrent(this.fs, tx, row)')
+})
 it('binds every transaction capability in transformed startup recovery', () => {
   const { id, input } = sample(version, 'pullRecovery.js')
   const output = syncPlacementPlugin().transform(input, id)!

@@ -2116,7 +2116,7 @@ export class TokenEngineRuntime
     await this.refreshHolds()
     this.assertHeld()
     try {
-      await this.syncThroughReviews()
+      await this.syncThroughReviews(retryHeld)
       await this.outbox.drain(retryHeld)
     } catch (error) {
       if (this.rootIssue) this.assertHeld()
@@ -2198,11 +2198,13 @@ export class TokenEngineRuntime
         (this.reviewYield > 0 || this.reviewInterruptions !== since))
     )
   }
-  private async syncThroughReviews(): Promise<void> {
+  private async syncThroughReviews(explicitRetry = false): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       const since = this.reviewInterruptions
       try {
-        await this.engine.sync()
+        if (explicitRetry && attempt === 0 && (this.engine.status.waiting ?? 0) > 0)
+          await this.engine.retryNow()
+        else await this.engine.sync()
         return
       } catch (error) {
         if (attempt >= 3 || !this.active || !this.yieldedForReview(error, since)) throw error
@@ -2336,7 +2338,12 @@ export class TokenEngineRuntime
   async pause(paused: boolean): Promise<void> {
     this.assertHeld()
     if (paused) this.pauseEngine()
-    else this.engine.resume()
+    else {
+      this.engine.resume()
+      // Resume starts a run asynchronously. Join it before exposing a fresh host
+      // comparison, so its preparation cannot revoke work begun after this call.
+      await this.engine.runExclusive(async () => {})
+    }
   }
   async resolve(fileId: string): Promise<ConsentTarget | null> {
     return this.options.localFiles?.resolve(fileId) ?? null

@@ -3683,3 +3683,14 @@ for their node folder during the plugin session.
 The optional `chats` map associates an exact `path\0hash` script version with its writing
 chat’s durable identity (or saved chat path for legacy chats). This device-local presentation
 metadata restores the review line when that chat reopens; it grants no execution authority.
+Native hosts with exclusive capture/publication and durable object evidence use the exclusive
+conditional tier. Adapter-only hosts use the checked tier: they compare current SHA-256 and
+size, retain size/mtime, drain pending host saves and stat again immediately before mutation.
+The interval between that final stat and mutation remains a race; success does not prove
+atomic exclusion or object identity. Checked hosts never certify a recovered installation.
+
+The sync ledger also retains per-file retry schedules (`file-retry:*`) and exact server
+answers awaiting local settlement (`push-receipt:*`), including their original operation,
+result and ledger base. Settlement retires the owning answer and retry schedule in one
+transaction. Unreadable scheduling records are retained for review rather than discarded.
+These records are device-local metadata; they are not synced or transferred with a connection.

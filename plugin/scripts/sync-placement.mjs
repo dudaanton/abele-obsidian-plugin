@@ -508,7 +508,32 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/pusher.js')) {
         code = replaceOnce(
           code,
-          'await transact(this.state, async (tx) => {',
+          `let current = false;
+            await transact(this.state, async (tx) => {
+                current = await receiptStillCurrent(this.fs, tx, row);`,
+          `let current = false;
+            const receiptPaths = [row.path, ...(previous ? [previous.path] : [])];
+            if (row.result.status !== 'rejected') {
+              receiptPaths.push(row.result.path);
+              if (row.result.status === 'conflict') receiptPaths.push(row.result.conflict_path);
+            }
+            await coordinatePlacement(this.recorder.fs, receiptPaths, () => transact(this.state, async (tx) => {
+                current = await receiptStillCurrent(this.fs, tx, row);`
+        )
+        code = replaceOnce(
+          code,
+          `await this.opts.retries?.succeeded(key, 'recovery', tx);
+            });
+            await this.opts.retries?.load();
+            const result = row.result;`,
+          `await this.opts.retries?.succeeded(key, 'recovery', tx);
+            }));
+            await this.opts.retries?.load();
+            const result = row.result;`
+        )
+        code = replaceOnce(
+          code,
+          'await transact(this.state, async (tx) => {\n                const recorder = this.recorder.withState(tx);',
           `const placementPaths = [], preservationPaths = [];
         for (const [at, op] of sending.entries()) {
           const paths = [];
@@ -532,7 +557,8 @@ export function syncPlacementPlugin() {
           placementPaths.push(...paths);
           if (mutates) preservationPaths.push(...paths);
         }
-        await coordinatePlacement(this.recorder.fs, placementPaths, () => transact(this.state, async (tx) => {`
+        await coordinatePlacement(this.recorder.fs, placementPaths, () => transact(this.state, async (tx) => {
+                const recorder = this.recorder.withState(tx);`
         )
         code = replaceOnce(
           code,

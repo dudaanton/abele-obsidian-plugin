@@ -585,6 +585,48 @@ it.each(['folder', 'group'] as const)(
   }
 )
 
+it('publishes waiting paths and exact retry metadata through existing connection activity', async () => {
+  const fixture = inspectionFixture()
+  fixture.release()
+  try {
+    await fixture.ui.connect(fixture.encoded)
+    const id = fixture.registry.records()[0].id
+    await fixture.ui.sync(id)
+    const waitingFiles = [
+      {
+        path: 'Notes/sample.md',
+        phase: 'pull' as const,
+        attempts: 3,
+        nextAt: 1000,
+        reason: 'sample disk failure',
+        quarantined: true,
+      },
+    ]
+    await (
+      fixture.host as unknown as {
+        changed(id: string, status: EngineStatus): Promise<void>
+      }
+    ).changed(id, {
+      state: 'idle',
+      pending: 0,
+      waiting: 1,
+      waitingFiles,
+      lastSyncAt: null,
+      lastError: null,
+      cursor: 1,
+      headSeq: 1,
+    })
+    expect(fixture.ui.activity.value[id]).toMatchObject({
+      pending: 1,
+      waiting: 1,
+      waitingFiles,
+      refused: [{ path: 'Notes/sample.md', reason: 'sample disk failure' }],
+    })
+  } finally {
+    await fixture.host.close()
+  }
+})
+
 it.each([
   'sample recovery record is unreadable',
   'External files: sample recovery record is unreadable',

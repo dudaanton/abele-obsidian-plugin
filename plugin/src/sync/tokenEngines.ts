@@ -1394,7 +1394,9 @@ export class TokenEngines {
     if (this.ui.registry.records().find((one) => one.id === id)?.status !== 'needs-token')
       this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
-      pending: status.pending,
+      pending: Math.max(status.pending, status.waiting ?? 0),
+      waiting: status.waiting ?? 0,
+      waitingFiles: status.waitingFiles ?? [],
       heldDeletes: status.heldDeletes ?? 0,
       deferred: status.deferred ?? 0,
       reconciliation: status.reconciliation,
@@ -1403,7 +1405,10 @@ export class TokenEngines {
     if (unsent) activity.pending = unsent.count
     const publications = this.live.get(id)?.publications() ?? []
     activity.pending = (activity.pending ?? 0) + publications.length
-    activity.refused = publications.map((one) => ({ path: one.path, reason: one.reason }))
+    activity.refused = [
+      ...publications.map((one) => ({ path: one.path, reason: one.reason })),
+      ...(status.waitingFiles ?? []).map((one) => ({ path: one.path, reason: one.reason })),
+    ]
     // Starting another attempt is not evidence that previously unsent bytes arrived.
     if (status.state === 'syncing' && !report) {
       const previous = this.ui.activity.value[id]?.refused ?? []

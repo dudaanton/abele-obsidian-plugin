@@ -31,6 +31,27 @@ import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 
+it('uses explicit retry for waiting files only on a manual sync', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const one = runtime(wire, new MemoryFileSystem())
+  vi.spyOn(one.runtime.engine, 'status', 'get').mockReturnValue({
+    ...one.runtime.engine.status,
+    waiting: 1,
+  })
+  const retry = vi.spyOn(one.runtime.engine, 'retryNow').mockResolvedValue(null)
+  const sync = vi.spyOn(one.runtime.engine, 'sync').mockResolvedValue(null)
+  try {
+    await one.runtime.sync()
+    expect(retry).toHaveBeenCalledOnce()
+    expect(sync).not.toHaveBeenCalled()
+    await one.runtime.sync(false)
+    expect(retry).toHaveBeenCalledOnce()
+    expect(sync).toHaveBeenCalledOnce()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it('treats intentional cancellation as a settled interruption without publication', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
   const one = runtime(wire, new MemoryFileSystem())
