@@ -11,6 +11,13 @@ import { generate, inventory, shapes } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
 import { validateBuildReceipt } from './build.mjs'
 import {
+  requireTime,
+  phaseTimings,
+  saveCheckpoint,
+  activeRequestIds,
+  recoveryTimings,
+} from './progress.mjs'
+import {
   compareInventory,
   budgets,
   markdown,
@@ -29,10 +36,12 @@ const evalProcess = resolve(here, '../e2e/helpers/obsidianEvalProcess.mjs')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const host = 'const h=app.plugins.plugins.abele?.tokenEngines;const u=h?.ui;'
+let deadline = Infinity
 
 async function wait(label, test, timeout = 120000) {
   const until = Date.now() + timeout
   while (Date.now() < until) {
+    requireTime(deadline)
     const result = await test()
     if (result) return result
     await sleep(100)
@@ -210,6 +219,7 @@ async function setupVault(config, root, device) {
 }
 
 export async function run(config) {
+  deadline = config.deadlineAt ?? Infinity
   // The external supervisor owns app-wide locks, resource reservation and crash cleanup.
   const lease = JSON.parse(await readFile(config.leaseFile, 'utf8'))
   if (!lease.exclusive || lease.pid === process.pid)
@@ -242,11 +252,25 @@ export async function run(config) {
   let issued
   let owner
   const devices = config.vaults.map((root) => new RealVault(config, root))
+  let saving = Promise.resolve()
+  let checkpointError = false
+  const checkpoint = () => {
+    saving = saving
+      .then(() => saveCheckpoint(config.output, report, proxies))
+      .catch(() => {
+        checkpointError = true
+      })
+  }
+  let checkpointTimer
   const settle = async (device, step) => {
+    const startedAt = Date.now()
+    let idle = false
     try {
       await device.idle(config.timeoutMs)
+      idle = true
       return true
     } catch (error) {
+      if (error.message === 'Run deadline reached') throw error
       const reason = [
         'Vault entered an error state',
         'Sync action failed (private details suppressed)',
@@ -258,6 +282,14 @@ export async function run(config) {
       await device.invalidateJob().catch(() => {})
       return false
     } finally {
+      ;(report.settleTimings ??= []).push({
+        step,
+        device: String(devices.indexOf(device)),
+        idle,
+        startedAt,
+        endedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+      })
       if (device === devices[0])
         report.caseRefusals.push(...(await device.refusals().catch(() => [])))
       if (device === devices[0])
@@ -294,6 +326,8 @@ export async function run(config) {
     return at
   }
   await mkdir(config.output, { recursive: true })
+  checkpointTimer = setInterval(checkpoint, config.checkpointMs ?? 30000)
+  checkpointTimer.unref()
   try {
     const artifact = JSON.parse(
       await readFile(join(config.buildDir, 'build-manifest.json'), 'utf8')
@@ -322,6 +356,7 @@ export async function run(config) {
     const created = await client.commitRaw([{ op: 'mkdir', path: prefix }], randomUUID())
     const directory = created.body.results.find((row) => row.file_id)
     if (!directory) throw new Error('Isolated server folder was not created')
+    report.scopeId = directory.file_id
     issued = await owner.issue({
       scope: { kind: 'folder', id: directory.file_id },
       label: 'Synthetic scale run',
@@ -341,6 +376,7 @@ export async function run(config) {
       tokenFiles.push(file)
     }
     const expected = report.expected.map((file) => ({ ...file, path: `${prefix}/${file.path}` }))
+    await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
     delete report.expected
     const a = devices[0],
       b = devices[1],
@@ -419,25 +455,35 @@ export async function run(config) {
     report.uploadedFiles = uploaded.length
     report.uploadedBytes = uploaded.reduce((sum, file) => sum + file.size, 0)
     const firstUploadMs = Date.now() - firstUploadAt
+    report.initialUploadMs = firstUploadMs
     report.filesPerSecond = report.uploadedFiles / (firstUploadMs / 1000)
     report.mibPerSecond = report.uploadedBytes / 1024 ** 2 / (firstUploadMs / 1000)
     phase('second device pull')
+    const peerDownloadAt = Date.now()
     await b.ready()
     await triggered(q, 'pull', () => b.connect(tokenFiles[1]))
     const pauseAt = Date.now()
-    const alreadyActive = new Set(q.active.keys())
     report.pauseActionAt = await b.paused(true)
+    report.pauseControllerAt = pauseAt
+    const alreadyActive = activeRequestIds(q.events, report.pauseActionAt)
     report.pauseActionOffsetMs = report.pauseActionAt - pauseAt
     q.release()
     await sleep(2500)
     Object.assign(
       report,
-      pauseMetrics(q.events, pauseAt, alreadyActive, new Set(q.active.keys()), Date.now())
+      pauseMetrics(
+        q.events,
+        report.pauseActionAt,
+        alreadyActive,
+        new Set(q.active.keys()),
+        Date.now()
+      )
     )
     mark('pause mid-pull')
     await b.paused(false)
     await b.sync()
     await settle(b, 'second device pull')
+    report.peerInitialDownloadMs = Date.now() - peerDownloadAt
     phase('edits and settle')
     const edits = [
       { device: a, path: `${prefix}/Notes/Device A.md`, text: '# Device A\n' },
@@ -460,6 +506,7 @@ export async function run(config) {
       await settle(a, `edit cycle ${i} device A`)
       await settle(b, `edit cycle ${i} device B`)
     }
+    await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
     await stop(false)
     phase('synced restart')
     const restartAt = Date.now()
@@ -510,7 +557,9 @@ export async function run(config) {
       )
     }
     const serverFiles = []
+    report.serverInventory = serverFiles
     for (const file of (await manifest(token)).filter((file) => file.kind !== 'directory')) {
+      requireTime(deadline)
       const response = await raw(
         token,
         `files/${encodeURIComponent(file.file_id)}/content?${new URLSearchParams({ version_id: file.version_id })}`
@@ -522,6 +571,7 @@ export async function run(config) {
         size += chunk.length
       }
       serverFiles.push({ path: file.path, size, sha: hash.digest('hex') })
+      report.serverHashesCompleted = serverFiles.length
     }
     report.mismatches.push(
       ...comparePeer(set, serverFiles, report.caseRefusals).map((row) => ({
@@ -538,7 +588,7 @@ export async function run(config) {
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.failure =
-      /^(Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
+      /^(Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )
         ? error.message
@@ -547,6 +597,11 @@ export async function run(config) {
       devices.map((device) => device.snapshot().catch(() => null))
     )
   } finally {
+    clearInterval(checkpointTimer)
+    await saving
+    if (checkpointError) report.checkpointFailure = true
+    // Cleanup waits must remain available after the scenario deadline.
+    deadline = Infinity
     await stop(true)
     report.ownDownloads = proxies.reduce((sum, proxy) => sum + proxy.ownDownloads(), 0)
     report.unresolvedDownloads = proxies.reduce(
@@ -554,6 +609,12 @@ export async function run(config) {
       0
     )
     report.wire = proxies.flatMap((proxy) => proxy.events)
+    report.phaseTimings = phaseTimings(report.phases)
+    report.recoveryTimings = recoveryTimings(
+      report.interruptions,
+      report.wire,
+      report.settleTimings ?? []
+    )
     for (const proxy of proxies) await proxy.close()
     for (const file of tokenFiles) await unlink(file).catch(() => {})
     if (issued && owner)
@@ -589,9 +650,10 @@ export async function run(config) {
     report.restartPluginIdleMs = worst('pluginLoadToIdleMs')
     report.pauseCallerTraces = entries.filter((e) => e.event === 'request-caller')
     attributePauseRequests(report.pauseRequests ?? [], report.pauseCallerTraces)
-    report.maxRendererTaskMs = Math.max(
-      0,
-      ...entries.filter((e) => e.event === 'long-task').map((e) => e.durationMs)
+    report.maxRendererTaskMs = entries.reduce(
+      (maximum, entry) =>
+        entry.event === 'long-task' ? Math.max(maximum, entry.durationMs) : maximum,
+      0
     )
     report.budgets = budgets(report)
     report.status =

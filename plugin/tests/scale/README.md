@@ -11,6 +11,18 @@ remove generated vaults, and release resources even if the transport disappears.
 supervisor writes a lease file containing `{"pid":12345,"exclusive":true}`. The runner
 checks its liveness; this file is a contract with the supervisor, not a security boundary.
 
+For bounded runs, `deadlineAt` is an absolute Unix timestamp in milliseconds. Leave the
+supervisor extra time to stop the app, finish evidence collection and release its leases.
+The scenario stops at its next observation wait or server-file boundary after that deadline;
+an outstanding request can still take its normal timeout. `checkpointMs` (default 30 seconds)
+controls atomic `checkpoint.json` snapshots containing the current phase and wire evidence.
+A checkpoint is partial evidence, never a passing result. Expected inventory is also saved
+separately. Final JSON/Markdown include phase durations and per-interruption recovery
+observations; null means no such observation occurred before the next interruption.
+The pause boundary is the renderer's actual invocation time, with in-flight requests
+reconstructed from timestamped starts/finishes/closures. Controller invocation time and CLI
+latency are retained separately. No timing budget is relaxed for that latency.
+
 ## Inputs
 
 Build the desired branch or commit in a disposable checkout with the normal checked build.

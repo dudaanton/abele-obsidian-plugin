@@ -159,6 +159,8 @@ export function markdown(report) {
       .join('\n') +
     `\n\nThroughput: ${report.filesPerSecond ?? 'unobserved'} files/s; ${report.mibPerSecond ?? 'unobserved'} MiB/s.\n` +
     (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '') +
+    details('Phase timings (ongoing means incomplete)', report.phaseTimings) +
+    details('Interruption recovery observations (null means unobserved)', report.recoveryTimings) +
     details('Notices (text, time, phase)', report.noticeDetails) +
     details('Excluded by settings', report.excludedBySettings) +
     details('Visible case refusals on primary', report.caseRefusals) +
