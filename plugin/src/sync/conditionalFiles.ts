@@ -961,14 +961,19 @@ export class ConditionalFiles {
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await h.mkdir(parent)
       const first = await h.stat(op.path)
-      if (first && (first.type !== 'file' || (!retainUnknown && first.size > checked.maxBytes)))
+      const replaces = op.effect.kind === 'write' || op.effect.kind === 'install'
+      // A replacement can preserve unreadable old bytes by capture. Only destructive
+      // equality decisions require reading them; a stat is never an equality receipt.
+      if (
+        first &&
+        (first.type !== 'file' || (!retainUnknown && !replaces && first.size > checked.maxBytes))
+      )
         return false
       if (op.expected && first === null && op.effect.kind === 'remove') {
         await checked.wait(op.path)
         return (await h.stat(op.path)) === null
       }
       if (op.expected === null ? first !== null : first === null) return false
-      const replaces = op.effect.kind === 'write' || op.effect.kind === 'install'
       let unverifiedVictim = false
       if (op.expected && !retainUnknown) {
         const have = await observe(op.path)
