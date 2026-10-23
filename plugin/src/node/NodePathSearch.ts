@@ -44,9 +44,11 @@ export async function searchNodePathCode(
   const read = async (
     cursor?: string,
     previous: CodeResults = { files: [], total: 0, capped: false },
-    visited = new Set<string>()
+    visited = new Set<string>(),
+    scan = { pages: 0, started: Date.now() }
   ): Promise<CodeResults> => {
     signal?.throwIfAborted()
+    scan.pages++
     const page = revision
       ? await client.repository.search({
           ...request,
@@ -101,6 +103,10 @@ export async function searchNodePathCode(
       const cursor = page.cursor
       const nextVisited = new Set(visited).add(cursor)
       result.next = () => read(cursor, result, nextVisited)
+      // A scan page can spend its budget without finding a match. Keep the caller
+      // searching, but yield a continuation for unusually large or slow scans.
+      if (!page.entries.length && scan.pages < 32 && Date.now() - scan.started < 10_000)
+        return read(cursor, result, nextVisited, scan)
     }
     return result
   }

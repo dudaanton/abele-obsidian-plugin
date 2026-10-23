@@ -229,6 +229,8 @@ const summary = computed(() => {
   const r = results.value
   if (!r) return ''
   const files = r.files.length
+  if (!files && r.next) return t('streamB.searching.c31723')
+  if (!files && r.capped) return t('repository.searchOmitted')
   if (scope.value === 'names') {
     if (!files) return t('streamB.noFileHasANameLikeThat.6774e4')
     return `${files}${r.capped ? '+' : ''} ${streamBWord(files, 'file')}`

@@ -182,6 +182,16 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       await closeFile()
       await sidebar('Files')
       await evalLong(`(async()=>{${prelude}
+        // A large scan may return an empty page before reaching matching files.
+        const client=nodes.connection(${JSON.stringify(node.registration)}).client;
+        const original=client.repository.search;let scanning=true;
+        client.repository.search=async function(params){
+          if(params.query!=='contentNeedle')return original.call(this,params);
+          if(scanning){scanning=false;return {entries:[],cursor:'sample-empty-scan',incomplete:false,omissions:[]}};
+          client.repository.search=original;
+          if(params.cursor!=='sample-empty-scan')throw Error('Search lost its empty-page continuation');
+          return original.call(this,{...params,cursor:undefined});
+        };
         await until(()=>visible('[data-node-project-search]'),'Project content search');visible('[data-node-project-search]').click();
         await until(()=>visible('.abele-github-search__query input'),'Project search field');const input=visible('.abele-github-search__query input');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
         await until(()=>visible('.abele-github-search__match'),'Highlighted project matches');

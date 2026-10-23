@@ -35,6 +35,36 @@ const page = (entries = [row('sample.ts', 7)], cursor: string | null = null) => 
   incomplete: false,
   omissions: [] as string[],
 })
+it.each(['worktree', 'workspace'] as const)(
+  'continues empty scan pages before returning %s content or filename results',
+  async (kind) => {
+    for (const scope of ['repo', 'names'] as const) {
+      const search = vi
+        .fn()
+        .mockResolvedValueOnce(page([], 'scan-1'))
+        .mockResolvedValueOnce(page([], 'scan-2'))
+        .mockResolvedValueOnce(
+          page([row('tests/sample.test.ts', 8), row('spec/sample.spec.ts', 3)])
+        )
+      const repository = { observe: vi.fn(async () => ({ revision })), search }
+      const result = await searchNodePathCode(
+        { repository, nodePath: { search } } as never,
+        { ...target, kind },
+        scope,
+        query,
+        ''
+      )
+      expect(result.files.map((f) => f.path)).toEqual([
+        'tests/sample.test.ts',
+        'spec/sample.spec.ts',
+      ])
+      expect(result.total).toBe(2)
+      expect(result.next).toBeUndefined()
+      expect(search.mock.calls.map(([p]) => p.cursor)).toEqual([undefined, 'scan-1', 'scan-2'])
+      expect(search.mock.calls[2][0].mode).toBe(scope === 'names' ? 'filename' : 'literal')
+    }
+  }
+)
 it('searches content, highlights it and pages the same observation without dropping earlier results', async () => {
   const repository = {
     observe: vi.fn(async () => ({ revision })),
@@ -122,4 +152,71 @@ it('keeps the incomplete-coverage warning after the last page and ignores a late
   expect(nodePath.search.mock.calls[1][0].workspace_id).toBe(target.id)
   expect(last.capped).toBe(true)
   expect(last.note).toBe(first.note)
+})
+
+it('bounds automatic scanning and lets a later continuation resume without losing its cursor', async () => {
+  const search = vi.fn(async (_params: { cursor?: string }) =>
+    page([], `scan-${search.mock.calls.length}`)
+  )
+  const result = await searchNodePathCode(
+    { nodePath: { search } } as never,
+    { ...target, kind: 'workspace' },
+    'repo',
+    query,
+    ''
+  )
+  expect(search).toHaveBeenCalledTimes(32)
+  expect(result.capped).toBe(true)
+  expect(result.next).toBeTypeOf('function')
+  search.mockResolvedValueOnce(page())
+  const last = await result.next!()
+  expect(search.mock.calls.at(-1)?.[0]).toMatchObject({ cursor: 'scan-32' })
+  expect(last.total).toBe(1)
+})
+
+it('yields a continuation after the scan time budget and stops repeated cursors', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(0)
+  try {
+    const search = vi.fn(async () => {
+      clock.mockReturnValue(10_000)
+      return page([], 'same-cursor')
+    })
+    const result = await searchNodePathCode(
+      { nodePath: { search } } as never,
+      { ...target, kind: 'workspace' },
+      'repo',
+      query,
+      ''
+    )
+    expect(search).toHaveBeenCalledTimes(1)
+    expect(result.next).toBeTypeOf('function')
+    const last = await result.next!()
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(last.next).toBeUndefined()
+    expect(last.note).toContain('Some files or matches were omitted')
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+it('cancels between empty scan pages and while a page is in flight', async () => {
+  const abort = new AbortController()
+  const search = vi
+    .fn()
+    .mockResolvedValueOnce(page([], 'scan-1'))
+    .mockImplementationOnce(async () => {
+      abort.abort()
+      return page([], 'scan-2')
+    })
+  await expect(
+    searchNodePathCode(
+      { nodePath: { search } } as never,
+      { ...target, kind: 'workspace' },
+      'repo',
+      query,
+      '',
+      abort.signal
+    )
+  ).rejects.toMatchObject({ name: 'AbortError' })
+  expect(search).toHaveBeenCalledTimes(2)
 })
