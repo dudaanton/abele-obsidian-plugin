@@ -587,11 +587,20 @@ export class ObsidianFileSystem implements FileSystem {
       })
     return inventory ? inventory.listings.stable(parent, read) : read()
   }
-  private updateInventory(paths: readonly string[], known?: 'file' | null): void {
+  private updateInventory(
+    paths: readonly string[],
+    known?: 'file' | 'folder' | null,
+    membershipOnly = false
+  ): void {
     const inventory = this.inventory
     if (!inventory) return
     for (const path of paths) {
       const parent = folderOf(path) === '/' ? '' : folderOf(path)
+      const changed = () => {
+        if (membershipOnly)
+          inventory.directoryChanges.set(this.pathKey(parent), ++inventory.localRevision)
+        else this.recordInventoryChange(inventory, path)
+      }
       const retain: (() => void)[] = []
       const names = known === 'file' ? inventory.indexedNames?.get(parent) : undefined
       if (names) {
@@ -603,7 +612,7 @@ export class ObsidianFileSystem implements FileSystem {
         !inventory.indexedChildren.has(parent) &&
         !inventory.listings.has(parent)
       ) {
-        this.recordInventoryChange(inventory, path)
+        changed()
         for (const refresh of retain) refresh()
         continue
       }
@@ -653,7 +662,7 @@ export class ObsidianFileSystem implements FileSystem {
         const patched = inventory.listings.get(parent)
         retain.push(() => inventory.listings.retain(parent, patched))
       }
-      this.recordInventoryChange(inventory, path)
+      changed()
       for (const refresh of retain) refresh()
     }
   }
@@ -1556,7 +1565,12 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(made))?.type === 'folder') await this.directories.identity(made)
     // A confirmed existing folder may have appeared through private work since a raw
     // parent listing was read. Refresh its membership as well as newly created prefixes.
-    this.updateInventory(prefixes.filter((one) => this.withinFileScope(one)))
+    this.updateInventory(missing.filter((one) => this.withinFileScope(one)))
+    this.updateInventory(
+      prefixes.filter((one) => this.withinFileScope(one) && !missing.includes(one)),
+      'folder',
+      true
+    )
     await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
