@@ -12,6 +12,7 @@ import type { ChatSession } from '@/ai/ChatSession'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 vi.mock('@/components/ChatArtifacts.vue', () => ({
   default: {
@@ -119,9 +120,13 @@ describe('the compact chat header', () => {
     expect(view.findComponent(ChatNavigation).exists()).toBe(true)
   })
   it('also offers both comment actions without losing the blocked promotion state', () => {
+    useVault([{ path: 'Notes/Sample source.md', content: 'Selected words' }])
     active.value = fakeChatSession({
       kind: 'comment',
-      overrides: { moving: ref(true) },
+      overrides: {
+        moving: ref(true),
+        anchor: ref({ note: 'Notes/Sample source.md', quote: 'Selected words' }),
+      },
     }) as ChatSession
     view = mountChat()
     const actions = view.findComponent(SheetHeaderActions).props('actions')
@@ -248,5 +253,38 @@ describe('the artifacts header entry', () => {
     active.value = undefined
     await nextTick()
     expect(view.findComponent(ChatArtifacts).exists()).toBe(false)
+  })
+})
+
+describe('the discussion source header action', () => {
+  const path = 'Notes/Sample source.md'
+  const back = () => view.find('[tooltip="Back to the passage this is about"]')
+  const discussion = () =>
+    fakeChatSession({
+      kind: 'comment',
+      overrides: { anchor: ref({ note: path, quote: 'Selected words' }), commentId: 'sample' },
+    }) as ChatSession
+
+  it('hides the passage action when a discussion opens after its source was deleted', () => {
+    active.value = discussion()
+    view = mountChat()
+    expect(back().exists()).toBe(false)
+  })
+
+  it('hides the action on source deletion and restores it when the source is recreated', async () => {
+    const app = useVault([{ path, content: 'Selected words' }])
+    const vault = GlobalStore.getInstance().app.vault
+    active.value = discussion()
+    view = mountChat()
+    expect(back().exists()).toBe(true)
+    const file = vault.getFileByPath(path)!
+    await vault.delete(file)
+    app.emit('vault', 'delete', file)
+    await nextTick()
+    expect(back().exists()).toBe(false)
+    const restored = await vault.create(path, 'Selected words')
+    app.emit('vault', 'create', restored)
+    await nextTick()
+    expect(back().exists()).toBe(true)
   })
 })

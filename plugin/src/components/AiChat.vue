@@ -61,7 +61,7 @@
                points back the way it came rather than being a panel glyph, because what it
                does is scroll a note, not move a pane. -->
           <Icon
-            v-if="commentSession && !session?.anchor.value?.message"
+            v-if="commentSession && !session?.anchor.value?.message && passageSourceExists"
             icon="corner-up-left"
             with-bg
             :tooltip="t('streamB.backToThePassageThisIsAbout.5b41fe')"
@@ -1364,6 +1364,24 @@ watch(
  * question, and a model run over that is a wait and a cost for an answer nobody wanted.
  */
 const commentSession = computed(() => session.value?.kind === 'comment')
+/** A discussion keeps its quote after deletion, but cannot navigate to a missing source. */
+const passageSourceExists = ref(false)
+const refreshPassageSource = () => {
+  const path = session.value?.anchor.value?.note
+  passageSourceExists.value = !!path && !!GlobalStore.getInstance().app.vault.getFileByPath(path)
+}
+watch(() => session.value?.anchor.value?.note, refreshPassageSource, { immediate: true })
+const sourceDisposers: (() => void)[] = []
+onMounted(() => {
+  const vault = GlobalStore.getInstance().app.vault
+  for (const event of ['create', 'delete', 'rename'] as const) {
+    const listener = vault.on(event, refreshPassageSource)
+    sourceDisposers.push(() => vault.offref(listener))
+  }
+})
+onUnmounted(() => {
+  for (const dispose of sourceDisposers) dispose()
+})
 
 /**
  * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
