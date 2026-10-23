@@ -753,13 +753,6 @@ it.each([
     ])
     if (native) {
       withDesktopFs(app)
-      Object.assign(Reflect.get(app.vault.adapter, 'fsPromises'), {
-        lstat: async (full: string) => {
-          if (!(await app.vault.adapter.stat(full.slice('/vault/'.length))))
-            throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-          return { isSymbolicLink: () => false }
-        },
-      })
     }
     Object.assign(app.workspace, { iterateAllLeaves: () => {} })
     // Obsidian indexes what the adapter creates later, from its file watcher: until then a
@@ -867,7 +860,7 @@ it.each([false, true])(
       buildFakeVault([...extra], { sensitiveNames: true }),
     ]
     for (const app of apps) {
-      withDesktopFs(app)
+      withDesktopFs(app, { root: `/vault-${apps.indexOf(app)}/` })
       Object.assign(app.workspace, { iterateAllLeaves: () => {} })
       // Obsidian's root is '/', available through getRoot(), not an empty-path lookup.
       const root = app.vault.getRoot()

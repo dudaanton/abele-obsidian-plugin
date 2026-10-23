@@ -12,7 +12,20 @@ import { desktopFsPort } from './desktopRequire'
  */
 import type { FakeApp } from './fakeVault'
 
-const ROOT = '/vault/'
+const nativeVolumes = new Map<string, WeakRef<object>>()
+const desktopVolumes = new Proxy(
+  {},
+  {
+    get(_target, method) {
+      return (full: string, ...args: unknown[]) => {
+        const root = '/' + full.split('/')[1] + '/'
+        const port = nativeVolumes.get(root)?.deref()
+        if (!port) throw Object.assign(new Error('missing native volume'), { code: 'ENOENT' })
+        return Reflect.get(port, method).call(port, full, ...args)
+      }
+    },
+  }
+)
 
 export interface DesktopCalls {
   renames: [string, string][]
@@ -21,8 +34,9 @@ export interface DesktopCalls {
 
 export function withDesktopFs(
   app: FakeApp,
-  options: { fenced?: boolean; maxBufferBytes?: number } = {}
+  options: { fenced?: boolean; maxBufferBytes?: number; root?: string } = {}
 ): DesktopCalls {
+  const ROOT = options.root ?? '/vault/'
   const adapter = app.vault.adapter
   const write = adapter.writeBinary.bind(adapter)
   const read = adapter.readBinary.bind(adapter)
@@ -178,6 +192,7 @@ export function withDesktopFs(
       },
     },
   })
-  desktopFsPort(Reflect.get(adapter, 'fsPromises'))
+  nativeVolumes.set(ROOT, new WeakRef(Reflect.get(adapter, 'fsPromises')))
+  desktopFsPort(desktopVolumes)
   return calls
 }
