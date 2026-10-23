@@ -4,6 +4,7 @@ import {
   closeNodePathDrawers,
   nodePathTabKey,
   openNodePathTab,
+  openNodeFileDestination,
   revealNodeDrawer,
 } from '@/node/nodePathNavigation'
 const target = (id = 'tree-a') => ({
@@ -14,6 +15,33 @@ const target = (id = 'tree-a') => ({
   id,
 })
 describe('main area node leaves', () => {
+  it('keeps a language jump in its source leaf even when another tab has the destination', async () => {
+    const origin = { kind: 'file', target: target(), path: 'source.ts', line: 4 }
+    const source = { getViewState: () => ({ state: origin }), setViewState: vi.fn() }
+    const other = {
+      getViewState: () => ({ state: { ...origin, path: 'destination.ts' } }),
+      setViewState: vi.fn(),
+    }
+    const workspace = {
+      getLeavesOfType: () => [other, source],
+      getMostRecentLeaf: () => source,
+      getLeaf: vi.fn(),
+      revealLeaf: vi.fn(),
+    }
+    await openNodeFileDestination(
+      workspace as never,
+      { ...origin, kind: 'file', path: 'destination.ts', line: 7 },
+      false,
+      source as never
+    )
+    expect(source.setViewState).toHaveBeenCalledWith({
+      type: 'abele-node-file',
+      active: true,
+      state: { ...origin, path: 'destination.ts', line: 7 },
+    })
+    expect(other.setViewState).not.toHaveBeenCalled()
+    expect(workspace.getLeaf).not.toHaveBeenCalled()
+  })
   it('prefers the same file opened from search over another file tab', async () => {
     const state = { kind: 'file', target: target(), path: 'sample.ts' }
     const first = {

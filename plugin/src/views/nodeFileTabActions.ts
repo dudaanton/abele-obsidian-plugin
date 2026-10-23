@@ -66,8 +66,9 @@ export class NodeFileTabActions {
       if (file) file.mode.value = file.mode.value === 'diff' ? 'file' : 'diff'
     })
     if (Platform.isPhone) return
-    add('chevron-left', t('streamBMeta.55f8f16499'), () => this.step(-1))
+    // addAction prepends: register next first so previous is on the left.
     add('chevron-right', t('streamBMeta.123245f14b'), () => this.step(1))
+    add('chevron-left', t('streamBMeta.55f8f16499'), () => this.step(-1))
     if (this.canEdit()) add('pencil', t('streamBMeta.de780488d5'), () => this.start())
   }
   paneMenu(menu: Menu): void {

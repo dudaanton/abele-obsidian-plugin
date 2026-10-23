@@ -15,6 +15,7 @@ import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import GithubCode from '@/components/github/GithubCode.vue'
 import NodeFileTools from '@/components/nodeWork/NodeFileTools.vue'
 import { LSP_CONNECTION } from '@/node/lspConnection'
+import { FILE_DESTINATION } from '@/node/fileNavigation'
 vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: () => true }))
 enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
@@ -145,6 +146,47 @@ describe('node language diagnostics in the shared file viewer', () => {
       await flushPromises()
       expect(menu).toHaveBeenCalledTimes(pending === 'menu' ? 0 : 1)
       expect(navigate).toHaveBeenCalledTimes(pending === 'menu' ? 1 : 0)
+    }
+  )
+  it.each(['definition', 'references'] as const)(
+    'sends a %s to the owning file history',
+    async (kind) => {
+      const fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+      await flushPromises()
+      const tools = fixture.getComponent(NodeLspTools)
+      const client = lspFor(document.querySelector('.abele-lsp-root')!)!.document.client
+      vi.spyOn(client.lsp, kind).mockResolvedValue([
+        {
+          path: 'destination.ts',
+          range: { start: { line: 6, character: 0 }, end: { line: 6, character: 4 } },
+        },
+      ])
+      const root = document.createElement('div')
+      const destination = vi.fn()
+      mount(NodeLspTools, {
+        props: { ...tools.props(), root, glyphHost: null },
+        global: {
+          provide: {
+            [LSP_CONNECTION as symbol]: { client, connect: async () => {} },
+            [FILE_DESTINATION as symbol]: destination,
+          },
+        },
+      })
+      await flushPromises()
+      const nav = lspNavigation(root, null)!
+      if (kind === 'definition')
+        await nav.goToDefinition('sample', 'sample.ts', { line: 1, character: 13 })
+      else nav.findReferences('sample', { line: 1, character: 13 })
+      await flushPromises()
+      expect(destination).toHaveBeenCalledWith(
+        {
+          kind: 'file',
+          target: tools.props('target'),
+          path: 'destination.ts',
+          line: 7,
+        },
+        2
+      )
     }
   )
   it('uses reader text for navigation alongside an unsaved editor and restores it on editor close', async () => {

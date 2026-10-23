@@ -15,7 +15,7 @@ import { NodeRepositorySource } from '@/repository/node'
 import type { RepositoryRevision } from '@/repository/source'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
+import { FILE_DESTINATION, FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
@@ -46,6 +46,8 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 /** Thin ItemView adapter; every callback is bound to this tab, not the sidebar selection. */
 export class NodePathMainView extends ItemView {
+  navigation = true
+  private navigationOriginLine?: number
   private readonly navigationLine = shallowRef<number>()
   private readonly navigationEndLine = shallowRef<number>()
   private readonly navigationMatch = shallowRef<{ column: number; length: number }>()
@@ -133,7 +135,26 @@ export class NodePathMainView extends ItemView {
         : t('streamBMeta.c37e36d928')
   }
   getState(): Record<string, unknown> {
-    return this.saved ? { ...this.saved } : {}
+    if (!this.saved) return {}
+    return this.saved.kind === 'file' && this.navigationOriginLine
+      ? { ...this.saved, line: this.navigationOriginLine }
+      : { ...this.saved }
+  }
+  getEphemeralState(): Record<string, unknown> {
+    if (this.saved?.kind !== 'file') return {}
+    const line = this.navigationOriginLine ?? this.navigationLine.value
+    return line ? { line } : {}
+  }
+  setEphemeralState(state: { line?: number }): void {
+    if (
+      this.saved?.kind !== 'file' ||
+      typeof state?.line !== 'number' ||
+      !Number.isInteger(state.line) ||
+      state.line < 1
+    )
+      return
+    this.navigationLine.value = state.line
+    this.saved = { ...this.saved, line: state.line }
   }
   /** Obsidian's current-file search command also calls this for non-markdown views. */
   async showSearch(): Promise<void> {
@@ -176,6 +197,19 @@ export class NodePathMainView extends ItemView {
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const parsed = NodePathTabSchema.parse(raw)
+    const originLine = this.navigationOriginLine
+    this.navigationOriginLine = undefined
+    if (
+      parsed.kind === 'file' &&
+      (this.saved?.kind !== 'file' ||
+        JSON.stringify([
+          this.saved.target,
+          this.saved.path,
+          this.saved.stage,
+          originLine ?? this.saved.line,
+        ]) !== JSON.stringify([parsed.target, parsed.path, parsed.stage, parsed.line]))
+    )
+      result.history = true
     this.navigationLine.value = parsed.kind === 'file' ? parsed.line : undefined
     this.navigationEndLine.value = parsed.kind === 'file' ? parsed.endLine : undefined
     this.navigationMatch.value = parsed.kind === 'file' ? parsed.match : undefined
@@ -449,6 +483,23 @@ export class NodePathMainView extends ItemView {
       )
       const root = {
         provide: {
+          [FILE_DESTINATION as symbol]: (
+            destination: Extract<NodePathTabState, { kind: 'file' }>,
+            originLine?: number
+          ) =>
+            this.act(async () => {
+              this.navigationOriginLine = originLine
+              try {
+                await openNodeFileDestination(
+                  this.app.workspace,
+                  destination,
+                  Platform.isMobile,
+                  this.leaf
+                )
+              } finally {
+                this.navigationOriginLine = undefined
+              }
+            }),
           [FILE_NAVIGATION as symbol]: (url: string) => {
             const destination = fileNavigation(
               state.target,
@@ -457,7 +508,7 @@ export class NodePathMainView extends ItemView {
             )
             if (!destination) return false
             this.act(() =>
-              openNodeFileDestination(this.app.workspace, destination, Platform.isMobile)
+              openNodeFileDestination(this.app.workspace, destination, Platform.isMobile, this.leaf)
             )
             return true
           },
@@ -486,10 +537,13 @@ export class NodePathMainView extends ItemView {
                 },
                 onNavigate: (destination: NodePathTabState) =>
                   this.act(() =>
-                    destination.kind === 'file' &&
-                    this.saved?.kind === 'file' &&
-                    destination.path === this.saved.path
-                      ? openNodeFileDestination(this.app.workspace, destination, Platform.isMobile)
+                    destination.kind === 'file'
+                      ? openNodeFileDestination(
+                          this.app.workspace,
+                          destination,
+                          Platform.isMobile,
+                          this.leaf
+                        )
                       : this.leaf.setViewState({
                           type: this.viewType,
                           active: true,

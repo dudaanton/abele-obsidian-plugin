@@ -5,6 +5,52 @@ import { NodePathMainView } from '@/views/NodePathMainView'
 import { FILE_NAVIGATION } from '@/node/fileNavigation'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
 
+it('renders previous before next in the prepended header actions', () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  const header = document.createElement('div')
+  ;(view as any).addAction = (icon: string) => {
+    const el = document.createElement('button')
+    el.dataset.icon = icon
+    header.prepend(el)
+    return el
+  }
+  ;(view as any).fileTab.render()
+  expect(Array.from(header.children, (el) => (el as HTMLElement).dataset.icon)).toEqual([
+    'chevron-left',
+    'chevron-right',
+    'file-diff',
+  ])
+})
+
+it('records file and same-file line changes in native history and restores them on Back', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  vi.spyOn(view as any, 'startBinding').mockImplementation(() => {})
+  const origin = { kind: 'file', target, path: 'source.ts', line: 4 }
+  await view.setState(origin, {})
+  const sameLine = {}
+  await view.setState({ ...origin, line: 18 }, sameLine)
+  expect(sameLine).toMatchObject({ history: true })
+  const otherFile = {}
+  await view.setState({ ...origin, path: 'definition.ts', line: 7 }, otherFile)
+  expect(otherFile).toMatchObject({ history: true })
+  await view.setState(origin, {})
+  expect(view.getState()).toMatchObject(origin)
+  expect((view as any).navigationLine.value).toBe(4)
+  const reveal = {}
+  await view.setState(origin, reveal)
+  expect(reveal).not.toHaveProperty('history', true)
+  // A modifier click need not move the caret or match the last revealed line.
+  ;(view as any).navigationOriginLine = 9
+  expect(view.getState()).toMatchObject({ path: 'source.ts', line: 9 })
+  expect(view.getEphemeralState()).toMatchObject({ line: 9 })
+  const fromPointer = {}
+  await view.setState(origin, fromPointer)
+  expect(fromPointer).toMatchObject({ history: true })
+  view.setEphemeralState({ line: 9 })
+  expect(view.getState()).toMatchObject({ path: 'source.ts', line: 9 })
+  expect((view as any).navigationLine.value).toBe(9)
+})
+
 it('reports retained local edits to file tree actions', () => {
   const view = Object.create(NodePathMainView.prototype) as NodePathMainView
   const dirty = shallowRef(true)
@@ -134,7 +180,8 @@ it('provides target-bound navigation and the destination line to the edited-file
     expect(fixture.openFile).toHaveBeenCalledWith(
       view.app.workspace,
       { kind: 'file', target, path: 'sample.ts', line: 2 },
-      expect.any(Boolean)
+      expect.any(Boolean),
+      view.leaf
     )
   )
   fixture.openFile.mockClear()
@@ -169,7 +216,8 @@ it('provides target-bound navigation and the destination line to the edited-file
     expect(fixture.openFile).toHaveBeenCalledWith(
       view.app.workspace,
       { kind: 'file', target, path: 'sample.ts', line: 2 },
-      expect.any(Boolean)
+      expect.any(Boolean),
+      view.leaf
     )
   )
   ;(view as any).editing.editor.value = { draftDirty: shallowRef(false) }

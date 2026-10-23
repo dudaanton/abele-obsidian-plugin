@@ -81,6 +81,7 @@ import { DefinitionPicker } from '@/github/search/definitionPicker'
 import { LSP_CONNECTION } from '@/node/lspConnection'
 import { lspMenuLabel } from '@/node/lspMenu'
 import { lspLanguage } from '@/node/lspLanguage'
+import { FILE_DESTINATION } from '@/node/fileNavigation'
 
 const props = defineProps<{
   root?: HTMLElement
@@ -91,6 +92,7 @@ const props = defineProps<{
   offline?: boolean
 }>()
 const injectedConnection = inject(LSP_CONNECTION, undefined)
+const fileDestination = inject(FILE_DESTINATION, undefined)
 const connectionForTarget = () =>
   injectedConnection ?? NodeService.connectionIfKnown?.(props.target.registrationId)
 const document = shallowRef<NodeLspDocument>()
@@ -126,13 +128,20 @@ const eslintMissing = computed(() =>
       s.language === 'eslint' && (!s.found || (!!s.project_eslint && s.project_eslint !== 'found'))
   )
 )
-function navigate(locations: LspLocation[]) {
+function navigate(locations: LspLocation[], origin?: { line: number; character: number }) {
   if (injectedConnection?.navigate) {
     injectedConnection.navigate(locations)
     return
   }
   const target = props.target
   const open = (hit: LspLocation) => {
+    if (fileDestination) {
+      fileDestination(
+        { kind: 'file', target, path: hit.path, line: hit.range.start.line + 1 },
+        origin ? origin.line + 1 : undefined
+      )
+      return
+    }
     void openNodePathTab(
       GlobalStore.getInstance().app.workspace,
       { kind: 'file', target, path: hit.path, line: hit.range.start.line + 1 },

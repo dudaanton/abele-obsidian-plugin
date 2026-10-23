@@ -8,6 +8,58 @@ import { targets } from './helpers/target'
 targets('desktop')
 const shots = shotDir('abele-node-navigation')
 
+it('returns through native history after language definition and reference jumps', async () => {
+  const result = JSON.parse(
+    await evalLong(`(async () => {
+    ${NODE_PANEL_FIXTURE}
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const until = async fn => { for(let i=0;i<160;i++){if(fn())return;await wait(50)} throw Error('Language history did not settle') };
+    let leaf;
+    try {
+      await nodePanel.open('root');
+      const fixture = window.__abeleNodePanelFixture;
+      const client = fixture.nodes.connections.get(fixture.registration.id).client;
+      const describe = client.describe;
+      client.describe = async () => { const info=await describe(); info.capabilities.capabilities.lsp_v1={status:'supported'};return info };
+      client.lsp = {status:async()=>[],open:async()=>({servers:['typescript']}),close:async()=>({}),diagnostics:async()=>[],
+        definition:async()=>[{path:'src/definition.ts',range:{start:{line:6,character:0},end:{line:6,character:6}}}],
+        references:async()=>[{path:'src/definition.ts',range:{start:{line:11,character:0},end:{line:11,character:6}}}]};
+      const text=Array.from({length:18},(_,i)=>'export const sample'+i+' = '+i).join(String.fromCharCode(10));
+      client.repository.blob=async()=>({content_id:'sample-history-content',size:text.length,binary:false,requires_larger_load:false,too_large:false});
+      client.repository.content=async()=>({offset:0,total:text.length,base64:btoa(text)});
+      leaf=app.workspace.getLeaf('tab');
+      await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{...fixture.model.current.value},path:'src/source.ts',line:4}});
+      await leaf.loadIfDeferred?.();await app.workspace.revealLeaf(leaf);
+      const pane=leaf.view.contentEl;
+      const editor=()=>{const el=pane.querySelector('.cm-editor');return el&&window.__abeleTest.codeView(el)};
+      const at=async(path,line)=>{await until(()=>leaf.view.getState().path===path&&leaf.view.getState().line===line&&pane.querySelector('.abele-github-code__line_target'));await wait(150)};
+      await at('src/source.ts',4);
+      const menuJump=async(title,line)=>{
+        await until(()=>pane.querySelector('.abele-lsp-root'));
+        const cm=editor();const pos=cm.state.doc.line(line).from+14;
+        cm.dispatch({selection:{anchor:pos}});
+        const box=cm.coordsAtPos(pos);
+        cm.contentDOM.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:box.left,clientY:box.top+4}));
+        await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent===title));
+        [...document.querySelectorAll('.menu-item-title')].find(el=>el.textContent===title).closest('.menu-item').click();
+      };
+      await menuJump('Go to definition',4);await at('src/definition.ts',7);
+      await wait(200);await leaf.history.back();await at('src/source.ts',4);
+      await leaf.history.forward();await at('src/definition.ts',7);
+      await menuJump('Find references',7);await at('src/definition.ts',12);
+      await wait(200);await leaf.history.back();await at('src/definition.ts',7);
+      await leaf.history.forward();await at('src/definition.ts',12);
+      const actions=[...leaf.containerEl.querySelectorAll('.view-action')].map(el=>el.getAttribute('aria-label'));
+      const previous=actions.indexOf('Previous changed file'),next=actions.indexOf('Next changed file');
+      if(previous<0||next!==previous+1)throw Error('Header arrow order: '+JSON.stringify(actions));
+      require('fs').writeFileSync(${JSON.stringify(shots + '/desktop-language-history.png')},(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+      return JSON.stringify({path:leaf.view.getState().path,line:leaf.view.getState().line});
+    } finally {leaf?.detach();await nodePanel.close()}
+  })()`)
+  ) as { path: string; line: number }
+  expect(result).toEqual({ path: 'src/definition.ts', line: 12 })
+})
+
 it.each([false, true])(
   'keeps a short linked file header visible, phone layout: %s',
   async (phone) => {

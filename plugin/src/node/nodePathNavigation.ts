@@ -1,5 +1,5 @@
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
-import type { Workspace } from 'obsidian'
+import type { Workspace, WorkspaceLeaf } from 'obsidian'
 import { z } from 'zod'
 import type { PathTarget } from './NodePathModel'
 import { TargetLocationSchema } from './nodeTargetIdentity'
@@ -219,7 +219,8 @@ export async function openNodePathTab(
 export async function openNodeFileDestination(
   workspace: Workspace,
   destination: Extract<NodePathTabState, { kind: 'file' }>,
-  mobile: boolean
+  mobile: boolean,
+  sourceLeaf?: WorkspaceLeaf
 ): Promise<void> {
   const state = NodePathTabSchema.parse(destination) as typeof destination
   const sameTarget = (a: PathTarget, b: PathTarget) =>
@@ -229,7 +230,7 @@ export async function openNodeFileDestination(
     a.kind === b.kind &&
     a.id === b.id
   let retained: typeof state | undefined
-  const leaves = workspace.getLeavesOfType(NODE_FILE_VIEW)
+  const leaves = sourceLeaf ? [sourceLeaf] : workspace.getLeavesOfType(NODE_FILE_VIEW)
   const active = workspace.getMostRecentLeaf()
   const existing = [...leaves]
     .sort((a, b) => Number(b === active) - Number(a === active))
@@ -246,7 +247,7 @@ export async function openNodeFileDestination(
       retained = old.data
       return true
     })
-  const leaf = existing ?? workspace.getLeaf('tab')
+  const leaf = existing ?? sourceLeaf ?? workspace.getLeaf('tab')
   await leaf.setViewState({
     type: NODE_FILE_VIEW,
     active: true,

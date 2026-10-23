@@ -2,6 +2,10 @@ import type { PathTarget } from './NodePathModel'
 import type { NodePathTabState } from './nodePathNavigation'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
 import type { InjectionKey } from 'vue'
+/** The owning file leaf records language destinations in its native navigation history. */
+export const FILE_DESTINATION: InjectionKey<
+  (state: Extract<NodePathTabState, { kind: 'file' }>, originLine?: number) => void
+> = Symbol('node-file-destination')
 export const FILE_NAVIGATION: InjectionKey<(url: string) => boolean> =
   Symbol('node-file-navigation')
 /** Rendered Markdown follows project links in its current tab. Other file tools keep their destinations. */
