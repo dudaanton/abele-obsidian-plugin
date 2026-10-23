@@ -9,6 +9,7 @@ import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
+import { validateBuildReceipt } from './build.mjs'
 import {
   compareInventory,
   budgets,
@@ -297,6 +298,12 @@ export async function run(config) {
     const artifact = JSON.parse(
       await readFile(join(config.buildDir, 'build-manifest.json'), 'utf8')
     )
+    if (config.sdkTarball && !config.buildReceipt)
+      throw new Error('Selected build SDK tarball requires a build receipt')
+    if (config.buildReceipt) {
+      report.buildReceipt = JSON.parse(await readFile(config.buildReceipt, 'utf8'))
+      validateBuildReceipt(report.buildReceipt, artifact, config.build, config.sdkTarball)
+    }
     if (artifact.provenance?.git?.revision !== config.build)
       throw new Error('Selected build does not match artifact revision')
     for (const name of ['main.js', 'main.css', 'manifest.json']) {

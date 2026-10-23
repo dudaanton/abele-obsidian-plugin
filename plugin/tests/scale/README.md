@@ -18,6 +18,51 @@ Pass the resulting `plugin/build` directory and the **resolved commit SHA**, not
 branch name. Asset digests and the build's recorded revision are checked before installation.
 The build can be changed independently of this driver, including to test an SDK migration.
 
+### Building with a development SDK archive
+
+`build.mjs` prepares a **clean detached checkout** at an explicitly resolved plugin commit.
+Run it under the external supervisor's build resource reservation, before taking the app
+lease. It does not acquire machine or app locks itself. Its configuration is separate from
+the live credentials and vault configuration:
+
+```json
+{
+  "pluginRoot": "/test-export/plugin",
+  "build": "resolved 40-character plugin commit",
+  "output": "/test-run/evidence",
+  "sdkTarball": {
+    "path": "/test-inputs/sync-sdk.tgz",
+    "sha256": "SHA-256 supplied with the archive"
+  }
+}
+```
+
+```sh
+node tests/scale/build.mjs /test-run/build-config.json
+```
+
+The archive checksum is checked before npm runs. A private snapshot of those exact bytes is
+installed with scripts disabled. The export's package and lock metadata record an honest
+local-file dependency and SHA-512 integrity; the SDK payload is hashed and checked again
+before and after compilation. Only dependency metadata changes in the export; product source
+and the production registry-pin verifier are untouched. Omit `sdkTarball` for the ordinary
+registry build. `offline: true` forbids dependency downloads; otherwise npm may fetch the
+archive's transitive dependencies. `npmCache` can name the supervisor's disposable cache.
+
+The explicit archive build substitutes checksum/payload verification for the registry-only
+release-pin check. It still runs the original normal and strict type checks, requires their
+matching input receipt around bundling, and runs the original artifact verifier. This is a
+development test artifact, not a registry release qualification. Start a fresh export after
+a failed preparation rather than repairing an override in an attached branch.
+
+`build-receipt.json` in `output` records the base plugin revision, archive path/SHA-256,
+installed version, local lock resolution/SHA-512, every SDK payload hash, dependency metadata
+hashes, changed metadata paths, and artifact provenance. Its manifest digest hashes canonical
+`JSON.stringify` output. Keep `output` outside the export or under an ignored scratch folder.
+For the live configuration, set `buildReceipt` to that receipt and carry the same
+`sdkTarball` selection. The runner verifies the receipt against the selected artifact before
+creating server content. An SDK override without its matching receipt fails closed.
+
 The default shape is `smoke`: exactly 1,000 payload files and 200 MiB. `scale` is exactly
 33,000 payload files and 11 GiB. Both use the same generator and seeded content algorithm.
 `parameters.files` and `parameters.bytes` override these sizes. The payload has deep folders,
@@ -130,4 +175,5 @@ Targeted harness tests:
 
 ```sh
 npx vitest run tests/harness/scaleHarness.test.ts --maxWorkers=2
+npx vitest run tests/harness/scaleBuild.test.ts --maxWorkers=2
 ```
