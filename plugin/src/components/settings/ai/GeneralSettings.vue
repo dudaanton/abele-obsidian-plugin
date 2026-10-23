@@ -565,16 +565,6 @@
             </Setting>
           </template>
           <template #endpoint>
-            <Setting :name="t('settings.ai.apiMode')" :desc="t('settings.ai.apiModeDescription')">
-              <Dropdown
-                :model-value="provider.apiMode || 'chat-completions'"
-                :options="[
-                  { value: 'chat-completions', display: t('settings.ai.chatCompletions') },
-                  { value: 'responses', display: t('settings.ai.responses') },
-                ]"
-                @update:model-value="updateProvider(pIdx, 'apiMode', $event)"
-              />
-            </Setting>
             <Setting
               :name="t('settings.ai.GeneralSettings.api_type.72e7cc4c')"
               :desc="t('settings.ai.GeneralSettings.openai_uses_v_images_generations.12e3117d')"

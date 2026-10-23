@@ -214,3 +214,35 @@ it('keeps Chat Completions by default and saves Responses per provider', async (
   expect(config.ai.providers[0].apiMode).toBe('responses')
   expect(save).toHaveBeenCalled()
 })
+
+it('keeps the chat API choice out of image provider settings', async () => {
+  useVault([])
+  const config = AbeleConfig.getInstance()
+  config.destroy()
+  config.applySettings(undefined)
+  config.ai.enabled = true
+  config.ai.providers = []
+  config.ai.imageProviders = [
+    {
+      id: 'sample-image',
+      name: 'Sample image',
+      apiType: 'openai',
+      endpoint: '',
+      apiKeyId: '',
+      models: [],
+    },
+  ]
+  vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  screen = mount(GeneralSettings, {
+    props: { page: 'models' },
+    global: { stubs: { Input: true, Dropdown: true, Search: true } },
+  })
+  await screen
+    .findAllComponents(Icon)
+    .find((item) => item.props('icon') === 'settings')!
+    .trigger('click')
+  expect(screen.findAllComponents(Setting).some((item) => item.props('name') === 'API')).toBe(false)
+  expect(screen.findAllComponents(Setting).some((item) => item.props('name') === 'API Type')).toBe(
+    true
+  )
+})
