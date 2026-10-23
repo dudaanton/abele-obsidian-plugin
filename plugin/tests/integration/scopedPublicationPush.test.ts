@@ -270,14 +270,19 @@ it('an uncertain request survives adapter restart and a local rename with its or
 })
 it('a lost acknowledgement of durable cleanup retries the identical settled request', async () => {
   one = await tokenPublicationFixture()
-  const save = one.state.setMeta.bind(one.state)
-  one.state.setMeta = async (key, value) => {
-    if (key === 'token-asset-outbox' && value === '[]') {
-      one!.state.setMeta = save
-      throw new Error('sample cleanup failure')
-    }
-    await save(key, value)
-  }
+  const transaction = one.state.transaction.bind(one.state)
+  one.state.transaction = (fn) =>
+    transaction(async (tx) => {
+      const save = tx.setMeta.bind(tx)
+      tx.setMeta = async (key, value) => {
+        if (key === 'token-asset-outbox' && value === '[]') {
+          one!.state.transaction = transaction
+          throw new Error('sample cleanup failure')
+        }
+        await save(key, value)
+      }
+      return fn(tx)
+    })
   await expect(one.runtime.publishAttachment('first')).rejects.toThrow('sample cleanup failure')
   const first = one.publish.mock.calls[0]
   await one.runtime.sync()

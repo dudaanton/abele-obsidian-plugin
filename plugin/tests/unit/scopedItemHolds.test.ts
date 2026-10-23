@@ -33,11 +33,16 @@ it('an aborted durable enqueue neither vacates retained work nor sends a request
   one.publish.mockRejectedValueOnce(new Error('sample response loss'))
   await one.runtime.publishAttachment('first').catch(() => {})
   const prior = await one.state.getMeta('token-asset-outbox'),
-    save = one.state.setMeta.bind(one.state)
-  one.state.setMeta = async (key, value) => {
-    if (key === 'token-asset-outbox') throw new Error('sample transaction abort')
-    await save(key, value)
-  }
+    transaction = one.state.transaction.bind(one.state)
+  one.state.transaction = (fn) =>
+    transaction(async (tx) => {
+      const save = tx.setMeta.bind(tx)
+      tx.setMeta = async (key, value) => {
+        if (key === 'token-asset-outbox') throw new Error('sample transaction abort')
+        await save(key, value)
+      }
+      return fn(tx)
+    })
   await expect(one.runtime.publishAttachment('second')).rejects.toThrow('sample transaction abort')
   expect(await one.state.getMeta('token-asset-outbox')).toBe(prior)
   expect(one.publish).toHaveBeenCalledOnce()

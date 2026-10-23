@@ -141,8 +141,8 @@ it('rejects an old overlay at flush rather than committing it after a successor 
   const entered = new Promise<void>((resolve) => {
     staged = resolve
   })
-  const transaction = store.transaction(async () => {
-    await store.setMeta('sample-pending', 'uncommitted')
+  const transaction = store.transaction(async (tx) => {
+    await tx.setMeta('sample-pending', 'uncommitted')
     staged()
     await waiting
   })

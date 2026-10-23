@@ -78,13 +78,13 @@ describe('strict identity before WebKit reconnect retry', () => {
       await requireLedger(app, store, ledger)
       await store.setMeta(LEDGER_IDENTITY_KEY, 'wrong-raw-header')
       await expect(
-        store.transaction(async () => {
-          await store.setMeta(LEDGER_IDENTITY_KEY, value)
+        store.transaction(async (tx) => {
+          await tx.setMeta!(LEDGER_IDENTITY_KEY, value)
           const db = (store as unknown as { db: IDBDatabase }).db
           vi.spyOn(db, 'transaction').mockImplementationOnce(() => {
             throw new DOMException('Connection to Indexed Database server lost', 'UnknownError')
           })
-          await store.getCursor()
+          await tx.getCursor()
         })
       ).rejects.toThrow('Sync recovery required')
     } finally {

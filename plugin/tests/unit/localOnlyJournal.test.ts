@@ -25,7 +25,13 @@ it('preserves the replay slot if durable quarantine fails', async () => {
   const state = new MemoryStateStore(),
     journal = pending()
   await state.setJournal(journal)
-  vi.spyOn(state, 'setMeta').mockRejectedValue(new Error('Storage unavailable'))
+  const transaction = state.transaction.bind(state)
+  vi.spyOn(state, 'transaction').mockImplementation((fn) =>
+    transaction(async (tx) => {
+      vi.spyOn(tx, 'setMeta').mockRejectedValue(new Error('Storage unavailable'))
+      return fn(tx)
+    })
+  )
   await expect(quarantineLocalOnlyJournal(state, () => true)).rejects.toThrow('Storage unavailable')
   expect(await state.getJournal()).toEqual(journal)
 })

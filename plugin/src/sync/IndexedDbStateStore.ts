@@ -468,10 +468,12 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.committed = new Promise<void>((resolve) => {
       finish = resolve
     })
+    this.transactionPending++
     try {
       await previous
       return await this.runScoped(fn)
     } finally {
+      this.transactionPending--
       finish()
     }
   }
@@ -488,7 +490,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       const rows = await Promise.all(paths.map((path) => this.get(path)))
       return rows.filter((row): row is StateEntry => row !== null)
     })
-    this.transactionPending++
     try {
       const result = await fn(scoped)
       scoped.close()
@@ -520,7 +521,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       return result
     } finally {
       scoped.close()
-      this.transactionPending--
+      this.normalizationCache?.clear()
     }
   }
 

@@ -39,15 +39,15 @@ it('invalidates cached holds on writes and never retains rolled-back holds', asy
         await state.setMeta(key, '[]')
         expect(await state.getMeta(key)).toBe('[]')
         await expect(
-          state.transaction(async () => {
-            await state.setMeta(key, '["sample hold"]')
-            expect(await state.getMeta(key)).toBe('["sample hold"]')
+          state.transaction(async (tx) => {
+            await tx.setMeta!(key, '["sample hold"]')
+            expect(await tx.getMeta!(key)).toBe('["sample hold"]')
             throw new Error('sample rollback')
           })
         ).rejects.toThrow('sample rollback')
         expect(await state.getMeta(key)).toBe('[]')
-        await state.transaction(async () => {
-          await state.setMeta(key, null)
+        await state.transaction(async (tx) => {
+          await tx.setMeta!(key, null)
         })
         expect(await state.getMeta(key)).toBeNull()
       }
