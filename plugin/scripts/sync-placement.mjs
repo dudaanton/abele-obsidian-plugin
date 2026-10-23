@@ -313,14 +313,14 @@ export function syncPlacementPlugin() {
         }
         code = replaceOnce(
           code,
-          'async drop(entry) {',
-          `async drop(entry) {
+          'async drop(entry, change) {',
+          `async drop(entry, change) {
           return coordinatePlacement(this.fs, [entry.path], async () => {
             if (await this.edited(entry)) return false;
-            return this.dropUnlocked(entry);
+            return this.dropUnlocked(entry, change);
           });
         }
-        async dropUnlocked(entry) {`
+        async dropUnlocked(entry, change) {`
         )
         code = replaceOnce(
           code,
