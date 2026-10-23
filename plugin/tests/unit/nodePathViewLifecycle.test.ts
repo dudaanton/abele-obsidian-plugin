@@ -129,6 +129,15 @@ it('provides target-bound navigation and the destination line to the edited-file
   view.app = { workspace: { requestSaveLayout() {} } } as any
   await view.setState({ kind: 'file', target, path: 'sample.ts', line: 2 }, {})
   await vi.waitFor(() => expect((view as any).file?.document.value).toBeDefined())
+  fixture.root.render().props.onNavigate({ kind: 'file', target, path: 'sample.ts', line: 2 })
+  await vi.waitFor(() =>
+    expect(fixture.openFile).toHaveBeenCalledWith(
+      view.app.workspace,
+      { kind: 'file', target, path: 'sample.ts', line: 2 },
+      expect.any(Boolean)
+    )
+  )
+  fixture.openFile.mockClear()
   const navigate = fixture.root.provide?.[FILE_NAVIGATION as symbol]
   expect(navigate).toBeTypeOf('function')
   const comparisonLink = nodeRepositoryLink(

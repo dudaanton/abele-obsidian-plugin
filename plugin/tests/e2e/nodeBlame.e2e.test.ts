@@ -95,7 +95,7 @@ async function scenario(layout: string) {
           const firstDate=root.querySelector('.abele-github-blame-range__date').textContent;
           await new Promise(r=>setTimeout(r,300));
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
-          const scroll=root.querySelector('.abele-node-main');
+          const scroll=root.querySelector('.abele-file-view__file');
           scroll.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:100}));
           scroll.scrollTop=scroll.scrollHeight;
           await until(()=>{

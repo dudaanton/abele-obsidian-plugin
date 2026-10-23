@@ -39,10 +39,9 @@ it.each([false, true])(
       await until(()=>pane.querySelector('.cm-searchMatch')?.textContent==='v07');
       if(getComputedStyle(pane.querySelector('.cm-searchMatch')).backgroundColor==='rgba(0, 0, 0, 0)')throw Error('Search destination has no visible highlight');
       await wait(1200);
-      const content = pane.querySelector('.abele-node-main');
-      const card = pane.querySelector('.abele-file-view');
-      const style = getComputedStyle(content);
-      const height = card.getBoundingClientRect().height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) - 24;
+      const content = pane.querySelector('.abele-file-view__file');
+      const card = content;
+      const height = card.getBoundingClientRect().height - 24;
       content.style.flex = '0 0 auto';
       content.style.height = height+'px';
       content.style.maxHeight = height+'px';

@@ -481,11 +481,15 @@ export class NodePathMainView extends ItemView {
                 },
                 onNavigate: (destination: NodePathTabState) =>
                   this.act(() =>
-                    this.leaf.setViewState({
-                      type: this.viewType,
-                      active: true,
-                      state: destination,
-                    })
+                    destination.kind === 'file' &&
+                    this.saved?.kind === 'file' &&
+                    destination.path === this.saved.path
+                      ? openNodeFileDestination(this.app.workspace, destination, Platform.isMobile)
+                      : this.leaf.setViewState({
+                          type: this.viewType,
+                          active: true,
+                          state: destination,
+                        })
                   ),
                 model: file,
                 match: this.navigationMatch.value,

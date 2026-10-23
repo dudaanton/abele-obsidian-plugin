@@ -77,6 +77,15 @@ describe('pinning a target into view', () => {
     pinIntoView(target, elementTop(find), { context: 96 })
     expect(pane.scrollTop).toBe(800 - 96)
   })
+  it('reveals a target below the pinned file-card header', () => {
+    pane.classList.add('abele-file-view__file')
+    const header = pane.appendChild(document.createElement('div'))
+    header.className = 'abele-file-view__header'
+    header.style.position = 'sticky'
+    header.getBoundingClientRect = () => rect(PANE_TOP, 40)
+    pinIntoView(target, elementTop(find), { context: 0 })
+    expect(pane.scrollTop).toBe(800 - 40)
+  })
 
   it('keeps linked lines and their context below the pinned path as it wraps', () => {
     inner.classList.add('abele-github')

@@ -99,12 +99,15 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
   const container = scrollParent(from)
   if (!container) return () => {}
 
-  // Only the path stays pinned; controls scroll away. Keep the requested source context
-  // below the path, including when it wraps after the initial measurement.
-  const header = from
-    .closest('.abele-github-blob')
-    ?.closest('.abele-github')
-    ?.querySelector<HTMLElement>(':scope > .abele-github-header_path > .abele-github-header__title')
+  // Keep targets below the pinned file-card header or repository path, including when it wraps.
+  const header = container.matches('.abele-file-view__file')
+    ? container.querySelector<HTMLElement>(':scope > .abele-file-view__header')
+    : from
+        .closest('.abele-github-blob')
+        ?.closest('.abele-github')
+        ?.querySelector<HTMLElement>(
+          ':scope > .abele-github-header_path > .abele-github-header__title'
+        )
   const context = () => {
     if (!header) return o.context
     const style = win.getComputedStyle(header)
