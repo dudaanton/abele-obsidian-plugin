@@ -83,6 +83,7 @@ export class TokenEngines {
     Awaited<ReturnType<typeof tokenOffloadConnection>>
   >()
   private closed = false
+  private drainingUploads = false
   private closing: Promise<void> | undefined
   private rebuilding: Promise<void> = Promise.resolve()
   private readonly localFiles: TokenAttachmentHost
@@ -378,7 +379,10 @@ export class TokenEngines {
       await this.engines.settled()
     }
     if (visible) this.presentReviews()
-    if (!Platform.isMobile) return
+    if (!Platform.isMobile && visible) return
+    await this.flushUploads()
+  }
+  private async flushUploads(): Promise<void> {
     await Promise.all(
       [...this.live].map(async ([id, runtime]) => {
         if (this.ui.registry.records().find((record) => record.id === id)?.paused) return
@@ -532,7 +536,7 @@ export class TokenEngines {
         record.ledgerId,
         () =>
           active &&
-          !this.closed &&
+          (!this.closed || this.drainingUploads) &&
           (!stateHandle || stateHandle.permitsEngineEffects) &&
           this.key(record.secretReference) === credential &&
           this.ui.registry
@@ -1130,7 +1134,7 @@ export class TokenEngines {
           assertHeld: () => fence.assertReady(),
           publicationChanged: () => {
             if (runtime)
-              void this.changed(record.id, runtime.engine.status).catch((error) =>
+              void this.changed(record.id, runtime.statusWithQuiet()).catch((error) =>
                 this.failed(record.id, error)
               )
           },
@@ -1472,7 +1476,7 @@ export class TokenEngines {
       // A completion is an event, not a replaceable status snapshot. Directory,
       // retry and publication status updates may overtake the awaited path lookups.
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(
-        runtime?.engine.status ?? status,
+        runtime?.statusWithQuiet() ?? status,
         report
       )
       const results = report.push.committed?.results ?? []
@@ -1664,6 +1668,7 @@ export class TokenEngines {
   close(): Promise<void> {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
+    this.drainingUploads = true
     this.closed = true
     this.stopBackgroundActivity()
     this.ui.itemSets.uninstall()
@@ -1673,7 +1678,10 @@ export class TokenEngines {
     this.app.vault.offref(this.deleteEvent)
     this.ui.connectionsChanged = async () => {}
     this.ui.connectionForgotten = async () => {}
-    this.closing = this.engines.close()
+    this.closing = this.flushUploads().finally(() => {
+      this.drainingUploads = false
+      return this.engines.close()
+    })
     recordTeardown(this.app, Promise.all([prior, this.closing]))
     return this.closing
   }

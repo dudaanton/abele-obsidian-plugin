@@ -74,6 +74,7 @@ import { verifyFolderSet, type FolderEntries } from './verifyFolderSet'
 import { tokenScope } from './v2/client'
 import { RetainedShareCopies } from './retainedShareCopies'
 import type { ConnectionItem } from './shareSets'
+import { UploadQuietPeriod } from './uploadQuietPeriod'
 
 export interface TokenEngineOptions {
   mobile?: boolean
@@ -145,6 +146,20 @@ export class TokenEngineRuntime
     return this.placement?.localMetadata(rows) ?? rows
   }
   readonly trace = new ExchangeTrace()
+  private readonly quiet: UploadQuietPeriod
+  private notifyLocal: ((paths: string[]) => void) | undefined
+  private readonly incomingQuietConflicts = new Set<string>()
+  /** Pacing is pending work, rather than a file failure requiring user action. */
+  statusWithQuiet(status: EngineStatus = this.engine.status): EngineStatus {
+    const waitingFiles = status.waitingFiles?.filter(
+      (row) => !UploadQuietPeriod.isQuiet({ code: 'rate_limited', message: row.reason })
+    )
+    return {
+      ...status,
+      pending: Math.max(status.pending, this.quiet.pending),
+      ...(waitingFiles ? { waitingFiles, waiting: waitingFiles.length } : {}),
+    }
+  }
   /** Hashes whose bytes this server holds: own uploads and fully verified received versions.
    * Only lets a matching local receipt stand in for rereading a large file. */
   private readonly wholeReadUploads = new Set<string>()
@@ -290,6 +305,18 @@ export class TokenEngineRuntime
   private readonly serverPaths?: ServerFolderPaths
   private readonly localFs: FileSystem
   constructor(private readonly options: TokenEngineOptions) {
+    const changed = options.changed.bind(options)
+    options = this.options = {
+      ...options,
+      changed: (status, report) => changed(this.statusWithQuiet(status), report),
+    }
+    this.quiet = new UploadQuietPeriod(
+      options.fs,
+      (paths) => this.notifyLocal?.(paths),
+      () => {
+        if (this.engine && this.active) options.changed(this.engine.status)
+      }
+    )
     if (options.localOnly) {
       const held = (path: string) => options.localOnly?.(path) ?? false
       const original = options.state
@@ -964,9 +991,21 @@ export class TokenEngineRuntime
     const refusalState = (state: StateStore): StateStore =>
       new Proxy(state, {
         get: (target, name) => {
+          if (name === 'setMeta')
+            return (key: string, value: string | null) => {
+              // Pacing has its own clock, not exponential failure backoff. In particular
+              // a restart must send durable unsent edits immediately, without a stale wait.
+              if (
+                key.startsWith('file-retry:') &&
+                value &&
+                UploadQuietPeriod.isQuiet({ code: 'rate_limited', message: value })
+              )
+                return target.setMeta(key, null)
+              return target.setMeta(key, value)
+            }
           if (name === Symbol.for('abele.sync.push-refusal-v1'))
             return (row: SyncReport['push']['rejected'][number]) => {
-              if (!this.active || row.path === undefined) return
+              if (!this.active || row.path === undefined || UploadQuietPeriod.isQuiet(row)) return
               this.pushRefusals.set(row.path, row)
               options.changed(this.engine.status)
             }
@@ -1005,16 +1044,51 @@ export class TokenEngineRuntime
       },
     })
     const beginPull = this.trace.beginPull.bind(this.trace)
+    const engineClient = options.engineClient?.(this.client) ?? this.client
+    const hearIncoming = async (
+      items: readonly { path: string; file_id: string; version_id?: string }[]
+    ) => {
+      for (const item of items) {
+        if (!this.quiet.refusal(item.path)) continue
+        const entry = await (options.engineState ?? options.state).byFileId(item.file_id)
+        if (!entry || entry.versionId !== item.version_id)
+          this.incomingQuietConflicts.add(item.path)
+      }
+    }
     this.engine = new SyncEngine({
       transferBudget: this.transferBudget,
-      client: options.engineClient?.(this.client) ?? this.client,
+      client: new Proxy(engineClient, {
+        get: (target, name) => {
+          if (name === 'pathRefusal')
+            return (path: string) =>
+              target.pathRefusal?.(path) ??
+              (this.incomingQuietConflicts.has(path) ? undefined : this.quiet.refusal(path))
+          // Competing remote versions must use the engine's ordinary conflict path,
+          // including any publication it needs to settle the two versions safely.
+          if (name === 'manifest')
+            return async (...args: Parameters<EngineClient['manifest']>) => {
+              const page = await target.manifest(...args)
+              await hearIncoming(page.items)
+              return page
+            }
+          if (name === 'changes')
+            return async (...args: Parameters<EngineClient['changes']>) => {
+              const page = await target.changes(...args)
+              await hearIncoming(page.items)
+              return page
+            }
+          const value = Reflect.get(target, name)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      }),
       fs: new Proxy(options.fs, {
         get: (target, name) => {
           if (name === Symbol.for('abele.sync.upload-owner-v1'))
             return (path: string) => options.uploadAllowed?.(path) ?? true
           if (name === 'watch' && target.watch)
-            return (notify: (paths: string[]) => void) =>
-              target.watch((paths) => {
+            return (notify: (paths: string[]) => void) => {
+              this.notifyLocal = notify
+              const unwatch = target.watch((paths) => {
                 if (this.rootIssue) return
                 // Polling settings and editor activity also reports ignored files.
                 // They cannot change this connection's inventory; keep the ignore
@@ -1023,8 +1097,18 @@ export class TokenEngineRuntime
                   (path) =>
                     path === '.abele-sync-ignore' || !this.ignore?.ignores(path.normalize('NFC'))
                 )
-                if (relevant.length) notify(relevant)
+                if (relevant.length)
+                  void this.quiet.notice(relevant).catch((error) => {
+                    console.debug('[abele-sync] cannot schedule local changes', error)
+                    // An unavailable stat must not swallow the original change report.
+                    if (this.active) notify(relevant)
+                  })
               })
+              return () => {
+                this.notifyLocal = undefined
+                unwatch()
+              }
+            }
           if (name === 'conditionalFile' && target.conditionalFile)
             return async (operation: Parameters<NonNullable<FileSystem['conditionalFile']>>[0]) => {
               const applied = await this.trace.run(
@@ -1242,7 +1326,17 @@ export class TokenEngineRuntime
         (configurationPath(path, options.paths) && path !== options.ownSettingsPath),
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
-      onApplied: (change) => {
+      onApplied: async (change) => {
+        if (change.kind === 'delete') this.quiet.forget(change.path)
+        if (change.kind === 'move' && change.from) this.quiet.forget(change.from)
+        if (change.origin === 'remote') this.quiet.forget(change.path)
+        if (change.origin === 'local' && (change.kind === 'upsert' || change.kind === 'move')) {
+          this.quiet.synced(change.path)
+          const info = await options.fs.stat(change.path)
+          const entry = await (options.engineState ?? options.state).byFileId(change.fileId)
+          if (info && entry && (info.size !== entry.size || info.mtime !== entry.mtime))
+            await this.quiet.notice([change.path])
+        }
         if (change.origin === 'remote' && change.kind === 'upsert') this.pulled(change.path)
         options.event?.(
           change.origin === 'remote' &&
@@ -1253,6 +1347,26 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        this.incomingQuietConflicts.clear()
+        void this.quiet
+          .settle(
+            options.engineState ?? options.state,
+            new Set(
+              report.push.rejected
+                .filter((row) => UploadQuietPeriod.isQuiet(row))
+                .flatMap((row) => (row.path ? [row.path] : []))
+            )
+          )
+          .catch((error) =>
+            console.debug('[abele-sync] cannot settle local upload scheduling', error)
+          )
+        report = {
+          ...report,
+          push: {
+            ...report.push,
+            rejected: report.push.rejected.filter((row) => !UploadQuietPeriod.isQuiet(row)),
+          },
+        }
         this.pushRefusals.clear()
         for (const row of report.push.rejected)
           if (row.path !== undefined) this.pushRefusals.set(row.path, row)
@@ -1272,6 +1386,7 @@ export class TokenEngineRuntime
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.incomingQuietConflicts.clear()
         this.wholeReadUploads.clear()
         this.uploadEntitlements.clear()
         this.trace.finishPull(false)
@@ -1312,11 +1427,13 @@ export class TokenEngineRuntime
       },
       log: (line) => {
         this.trace.log(line)
+        if (UploadQuietPeriod.isQuiet({ code: 'rate_limited', message: line })) return
         if (!isSyncTriggerLine(line)) options.event?.(line)
       },
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
+      this.quiet.pause(status.state === 'paused')
       const retention = Reflect.get(options.fs, Symbol.for('abele.sync.retention-idle-v1'))
       if (typeof retention === 'function')
         void retention.call(options.fs, this.active && status.state === 'idle')
@@ -2153,6 +2270,11 @@ export class TokenEngineRuntime
   }
   private runFailure: unknown
   async sync(retryHeld = true): Promise<void> {
+    await this.checkRoot()
+    if (retryHeld) return this.quiet.flush(() => this.syncUnpaced(retryHeld))
+    return this.syncUnpaced(false)
+  }
+  private async syncUnpaced(retryHeld: boolean): Promise<void> {
     this.runFailure = undefined
     await this.checkRoot()
     await this.refreshHolds()
@@ -2330,6 +2452,7 @@ export class TokenEngineRuntime
     await this.engine.reconcile()
   }
   invalidate(): void {
+    this.quiet.stop()
     this.active = false
     const retention = Reflect.get(this.options.fs, Symbol.for('abele.sync.retention-idle-v1'))
     if (typeof retention === 'function') void retention.call(this.options.fs, false)
@@ -2382,6 +2505,7 @@ export class TokenEngineRuntime
     await this.close()
   }
   private pauseEngine(): void {
+    this.quiet.pause(true)
     this.comparisonCancellation.abort()
     this.engine.pause()
   }
@@ -2389,6 +2513,7 @@ export class TokenEngineRuntime
     this.assertHeld()
     if (paused) this.pauseEngine()
     else {
+      this.quiet.pause(false)
       this.engine.resume()
       // Resume starts a run asynchronously. Join it before exposing a fresh host
       // comparison, so its preparation cannot revoke work begun after this call.

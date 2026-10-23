@@ -3727,6 +3727,16 @@ result and ledger base. Settlement retires the owning answer and retry schedule 
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
 
+Repeated local uploads have a per-file quiet period measured from the last completed
+local upload of that file: 10 seconds through 10 KiB, 20 seconds through 100 KiB, and 30 seconds
+above that. Other files, deletes and renames proceed independently. Waiting edits stay
+pending; explicit sync, background, normal quit and plugin unload attempt to flush them.
+Pause takes precedence over flushing. Competing incoming versions use ordinary conflict
+handling. Quiet deadlines are memory-only: the file and its unchanged durable baseline
+remain the restart obligation, so a new runtime uploads unsent disk edits immediately.
+First uploads and incoming-write notifications pass straight through to the engine's
+ordinary watcher checks; initial and reconnected pulls never enter upload pacing.
+
 Explicit server deletion can retire an unpublished receipt after its writer has drained.
 Its incoming bytes are moved into private recovery storage and reported through the existing
 recovery notice. The owned write-journal entry keeps the retained locator and a

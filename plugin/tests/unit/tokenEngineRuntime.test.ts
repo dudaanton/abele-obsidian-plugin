@@ -31,6 +31,296 @@ import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 
+it('keeps incoming changes outside local upload pacing without bridge calls or redundant status publication', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const fs = new MemoryFileSystem()
+  const changed = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, { changed })
+  try {
+    await flushPromises()
+    const stat = vi.spyOn(fs, 'stat')
+    changed.mockClear()
+    const applied = Reflect.get(one.runtime.engine, 'opts').onApplied
+    await applied({
+      origin: 'remote',
+      kind: 'upsert',
+      path: 'Notes/sample.md',
+      fileId: 'sample-file',
+    })
+    expect(stat).not.toHaveBeenCalled()
+    expect(changed).not.toHaveBeenCalled()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+async function quietFixture() {
+  const wire = await server('Notes/unused.md', '')
+  const send = wire.fetch.getMockImplementation()!
+  let commits = 0
+  let head = { sha: '', size: 0, mtime: 0 }
+  const operations: string[] = []
+  wire.fetch.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
+    if (route === '/v2/changes')
+      return Response.json({ items: [], cursor: Math.max(1, commits), next: null })
+    if (route === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      operations.push(...ops.map((op: { op: string }) => op.op))
+      return Response.json({
+        cursor: ++commits,
+        results: ops.map(
+          (op: { op: string; sha?: string; size?: number; mtime?: number; to_path?: string }) => {
+            if (op.sha !== undefined) head = { sha: op.sha, size: op.size!, mtime: op.mtime! }
+            return {
+              status: 'applied',
+              file_id: 'local-file',
+              version_id: `version-${commits}`,
+              seq: commits,
+              path: op.to_path ?? 'Notes/local.md',
+              ...head,
+              sha: op.op === 'delete' ? null : head.sha,
+            }
+          }
+        ),
+      })
+    }
+    return send(input, init)
+  })
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('first'), 1000)
+  const changed = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, { changed })
+  await one.runtime.start()
+  await one.runtime.sync()
+  return { one, fs, wire, changed, operations, commits: () => commits }
+}
+
+it('paces automatic re-uploads across fallback cycles and flushes on explicit sync', async () => {
+  const { one, fs, changed, commits } = await quietFixture()
+  try {
+    expect(commits()).toBe(1)
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('second'), 2000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.engine.sync()
+    expect(commits()).toBe(1)
+    expect(changed.mock.lastCall?.[0].pending).toBe(1)
+    expect(one.runtime.pushRefusalRows()).toEqual([])
+    expect(await one.state.metadataKeys('file-retry:')).toEqual([])
+    await one.runtime.sync()
+    expect(commits()).toBe(2)
+    expect(changed.mock.lastCall?.[0].pending).toBe(0)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('settles a delayed notification of already-synced bytes at its deadline without uploading', async () => {
+  const { one, fs, changed, commits } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(11_000)
+    await one.runtime.engine.runExclusive(async () => {})
+    await flushPromises()
+    expect(changed.mock.lastCall?.[0].pending).toBe(0)
+    expect(commits()).toBe(1)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('retains a reported edit even when its size and timestamp match the baseline', async () => {
+  const { one, fs, changed, commits } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('other'), 1000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.engine.sync()
+    expect(commits()).toBe(1)
+    expect(changed.mock.lastCall?.[0].pending).toBe(1)
+    await one.runtime.sync()
+    expect(commits()).toBe(2)
+    expect((await one.state.get('Notes/local.md'))?.sha).toBe(
+      await sha256(new TextEncoder().encode('other'))
+    )
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('retains the incoming conflict obligation while a local edit is waiting', async () => {
+  const { one, fs, wire } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local waiting text'), 3000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    const bytes = new TextEncoder().encode('remote competing text')
+    const item = {
+      ...wire.item,
+      file_id: 'local-file',
+      version_id: 'remote-version',
+      path: 'Notes/local.md',
+      size: bytes.length,
+      sha: await sha256(bytes),
+      mtime: 4000,
+    }
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname.includes('/content')) return new Response(bytes)
+      if (url.pathname === '/v2/changes')
+        return Response.json({
+          items:
+            Number(url.searchParams.get('since')) < 2
+              ? [
+                  {
+                    type: 'content',
+                    item,
+                    file_id: item.file_id,
+                    path: item.path,
+                    cursor: 2,
+                    prev_path: null,
+                    at: '2025-01-01T00:00:00Z',
+                  },
+                ]
+              : [],
+          cursor: 2,
+          next: null,
+        })
+      return send(input, init)
+    })
+    const report = await one.runtime.engine.sync()
+    const contents = [...fs.snapshot().values()]
+      .map((bytes) => new TextDecoder().decode(bytes))
+      .join('\n')
+    // Conflict handling may retain the local version on the server before installing
+    // the remote version, rather than making another on-disk copy.
+    expect(report.push.committed?.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sha: await sha256(new TextEncoder().encode('local waiting text')),
+        }),
+      ])
+    )
+    expect(contents).toContain('remote competing text')
+    expect(report.pull.held).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: 'Notes/local.md' })])
+    )
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('sends at most six re-uploads during sixty seconds of continuous typing', async () => {
+  const { one, fs, commits } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    for (let second = 1; second <= 60; second++) {
+      await fs.writeAtomic(
+        'Notes/local.md',
+        new TextEncoder().encode(`edit ${second}`),
+        2000 + second
+      )
+      fs.emitChange(['Notes/local.md'])
+      await vi.advanceTimersByTimeAsync(1000)
+      await one.runtime.engine.runExclusive(async () => {})
+    }
+    expect(commits() - 1).toBeGreaterThanOrEqual(3)
+    expect(commits() - 1).toBeLessThanOrEqual(6)
+    await one.runtime.sync()
+    expect((await one.state.get('Notes/local.md'))?.sha).toBe(
+      await sha256(new TextEncoder().encode('edit 60'))
+    )
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it.each(['delete', 'rename'])('sends a %s during the quiet wait immediately', async (kind) => {
+  const { one, fs, operations } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('waiting edit'), 3000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    if (kind === 'delete') {
+      await fs.remove('Notes/local.md')
+      fs.emitChange(['Notes/local.md'])
+    } else {
+      await fs.move('Notes/local.md', 'Notes/moved.md')
+      fs.emitChange(['Notes/local.md', 'Notes/moved.md'])
+    }
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.engine.sync()
+    expect(operations).toContain(kind === 'delete' ? 'delete' : 'move')
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('clears pending status without an upload when an edit returns to the synced bytes', async () => {
+  const { one, fs, changed, commits } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('waiting edit'), 3000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('first'), 4000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.sync(false)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await one.runtime.engine.runExclusive(async () => {})
+    await flushPromises()
+    expect(commits()).toBe(1)
+    expect(changed.mock.lastCall?.[0].pending).toBe(0)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('does not upload on pause expiry, and uploads the waiting disk edit after a restart', async () => {
+  const { one, fs, commits } = await quietFixture()
+  try {
+    vi.useFakeTimers()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('waiting edit'), 3000)
+    fs.emitChange(['Notes/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.pause(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await one.runtime.sync()
+    expect(commits()).toBe(1)
+    await one.runtime.close()
+    // The disk and baseline survive; the restarted scheduler has no stale quiet deadline.
+    const old = one.runtime
+    const wire = Reflect.get(old, 'options') as TokenEngineOptions
+    const restarted = new TokenEngineRuntime({ ...wire, state: one.state })
+    try {
+      await restarted.start()
+      await restarted.engine.sync()
+      expect(commits()).toBe(2)
+    } finally {
+      await restarted.close()
+    }
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
 it('uses explicit retry for waiting files only on a manual sync', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
   const one = runtime(wire, new MemoryFileSystem())

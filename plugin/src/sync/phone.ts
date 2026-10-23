@@ -1,3 +1,5 @@
+import type { Plugin } from 'obsidian'
+
 /**
  * What a phone does differently: no socket, a shorter clock, and a sync on the way out.
  *
@@ -41,7 +43,7 @@ export function phoneSocket(): typeof WebSocket {
 export interface FrontHandlers {
   /** Ask a question about held deletes that was found while the app was away. */
   held(): void
-  /** Sync, on a phone: `visible` is whether the app just came to the front. */
+  /** Flush on background everywhere; also sync on phone foreground. */
   sync(visible: boolean): void
 }
 
@@ -70,6 +72,15 @@ export function watchTheFront(
   if (!phone) plugin.registerDomEvent(window, 'focus', () => on.held())
   plugin.registerDomEvent(document, 'visibilitychange', () => {
     on.held()
-    if (phone) on.sync(document.visibilityState === 'visible')
+    if (phone || document.visibilityState !== 'visible')
+      on.sync(document.visibilityState === 'visible')
   })
+}
+
+/** The host waits for registered quit tasks before closing the vault. */
+export function watchSyncQuit(
+  plugin: Pick<Plugin, 'app' | 'registerEvent'>,
+  flush: () => Promise<void>
+): void {
+  plugin.registerEvent(plugin.app.workspace.on('quit', (tasks) => tasks.add(flush)))
 }

@@ -134,7 +134,7 @@ import { recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
-import { watchTheFront } from './sync/phone'
+import { watchTheFront, watchSyncQuit } from './sync/phone'
 import { TokenEngines } from './sync/tokenEngines'
 import { renderStatus, type SyncStatus } from './sync/status'
 import { unrenderKit } from './components/obsidian/mount'
@@ -446,6 +446,9 @@ export default class AbelePlugin extends Plugin {
             sync: (visible) => {
               void this.tokenEngines?.foreground(visible)
             },
+          })
+          watchSyncQuit(this, async () => {
+            await this.tokenEngines?.foreground(false)
           })
           ui.openFile = async (path) => {
             await openSyncedFile(

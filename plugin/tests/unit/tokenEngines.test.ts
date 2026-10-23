@@ -586,6 +586,47 @@ it.each(['folder', 'group'] as const)(
 )
 import { deferred } from '../helpers/deferred'
 
+it.each(['background', 'unload'])(
+  'flushes active uploads before revoking runtime ownership on %s',
+  async (exit) => {
+    const f = inspectionFixture()
+    f.release()
+    try {
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await f.ui.sync(id)
+      const runtime = Reflect.get(f.host, 'live').get(id)
+      const sync = vi.spyOn(runtime, 'sync').mockImplementation(async () => {
+        expect(Reflect.get(runtime, 'active')).toBe(true)
+        Reflect.get(runtime, 'options').assertHeld()
+      })
+      if (exit === 'background') await f.host.foreground(false)
+      else await f.host.close()
+      expect(sync).toHaveBeenCalledOnce()
+    } finally {
+      await f.host.close()
+    }
+  }
+)
+
+it('does not flush a paused connection when leaving the foreground or unloading', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    await f.ui.pause(id, true)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const sync = vi.spyOn(runtime, 'sync')
+    await f.host.foreground(false)
+    await f.host.close()
+    expect(sync).not.toHaveBeenCalled()
+  } finally {
+    await f.host.close()
+  }
+})
+
 it('delivers a completed report when a newer status overtakes its path lookup', async () => {
   const f = inspectionFixture()
   f.release()
