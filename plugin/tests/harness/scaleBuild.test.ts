@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile, readFile, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   installSdkTarball,
@@ -43,6 +43,35 @@ async function fixture() {
 }
 
 describe('scale development SDK input', () => {
+  it('does not mistake npm-generated nested dependency bin links for archive payload', async () => {
+    const f = await fixture()
+    try {
+      const sdk = await installSdkTarball(
+        f.plugin,
+        { path: f.path, sha256: f.sha256 },
+        async (...args) => {
+          const result = await execute(...args)
+          const nested = join(f.plugin, 'node_modules/@abele/sync-sdk/node_modules')
+          await mkdir(join(nested, '.bin'), { recursive: true })
+          await writeFile(join(nested, 'sample-bin.js'), 'sample dependency')
+          await symlink('../sample-bin.js', join(nested, '.bin/sample'))
+          return result
+        },
+        { offline: true, cache: join(f.root, 'cache') }
+      )
+      expect(sdk.payload['node_modules/.bin/sample']).toBe(
+        `link:../sample-bin.js:${sha(Buffer.from('sample dependency'))}`
+      )
+      await verifyPreparedSdk(f.plugin, sdk)
+      await writeFile(
+        join(f.plugin, 'node_modules/@abele/sync-sdk/node_modules/sample-bin.js'),
+        'changed dependency'
+      )
+      await expect(verifyPreparedSdk(f.plugin, sdk)).rejects.toThrow('payload')
+    } finally {
+      await rm(f.root, { recursive: true, force: true })
+    }
+  })
   it('rejects a wrong checksum before invoking npm or modifying the export', async () => {
     const f = await fixture()
     const calls = []
@@ -55,6 +84,27 @@ describe('scale development SDK input', () => {
       ).rejects.toThrow('checksum')
       expect(calls).toEqual([])
       expect(await readFile(join(f.plugin, 'package.json'), 'utf8')).toBe(before)
+    } finally {
+      await rm(f.root, { recursive: true, force: true })
+    }
+  })
+  it('refuses a nested executable link escaping the installed SDK', async () => {
+    const f = await fixture()
+    try {
+      await expect(
+        installSdkTarball(
+          f.plugin,
+          { path: f.path, sha256: f.sha256 },
+          async (...args) => {
+            const result = await execute(...args)
+            const bin = join(f.plugin, 'node_modules/@abele/sync-sdk/node_modules/.bin')
+            await mkdir(bin, { recursive: true })
+            await symlink(join(f.root, 'input/package/index.js'), join(bin, 'sample'))
+            return result
+          },
+          { offline: true, cache: join(f.root, 'cache') }
+        )
+      ).rejects.toThrow('Linked SDK payload refused')
     } finally {
       await rm(f.root, { recursive: true, force: true })
     }

@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile, writeFile, mkdir, readdir, realpath, lstat } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, readdir, realpath, lstat, readlink } from 'node:fs/promises'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -31,7 +31,13 @@ async function payload(root, prefix = '') {
     a.name.localeCompare(b.name)
   )) {
     const path = prefix ? `${prefix}/${entry.name}` : entry.name
-    if (entry.isSymbolicLink()) throw new Error('Linked SDK payload refused')
+    if (entry.isSymbolicLink()) {
+      const target = await realpath(join(root, path))
+      if (!path.startsWith('node_modules/.bin/') || !target.startsWith(resolve(root) + '/'))
+        throw new Error('Linked SDK payload refused')
+      files[path] = `link:${await readlink(join(root, path))}:${digest(await readFile(target))}`
+      continue
+    }
     if (entry.isDirectory()) Object.assign(files, await payload(root, path))
     else files[path] = digest(await readFile(join(root, path)))
   }
