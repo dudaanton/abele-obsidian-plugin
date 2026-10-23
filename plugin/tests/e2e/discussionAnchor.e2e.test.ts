@@ -19,7 +19,9 @@ const probe = (layout: string) => `(async () => {
   const sourcePath = 'sample-anchor-source.abchat'
   const notePath = 'sample-anchor-note.md'
   const quote = 'Keep the soil moist until the seedlings emerge.'
-  const meta = { v: 2, k: 'meta', type: 'abele-chat', title: 'Growing seedlings', created: '2024-01-01' }
+  // Keep the fixture independent of the vault's default agent permissions. These overrides
+  // belong only to the synthetic chats, which are removed in finally; no agent is changed.
+  const meta = { v: 2, k: 'meta', type: 'abele-chat', title: 'Growing seedlings', created: '2024-01-01', permissionMode: 'confirm-all', toolModes: { edit_selection: 'ask' } }
   const msg = (id,role,content,parentId) => ({ k:'msg',id,role,content,parentId,timestamp:1704110400000 })
   const log = (metadata,messages) => [metadata,...messages].map(JSON.stringify).join('\\n')+'\\n'
   const make = async (path,text) => { if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic fixture already exists'); const file=await app.vault.create(path,text); files.push(file); return file }
