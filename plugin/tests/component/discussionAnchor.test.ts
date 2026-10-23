@@ -29,6 +29,7 @@ const session = () =>
     anchor: ref({ note: 'Sample.md', quote: 'seed' }),
     agent: ref(null),
     toolModes: ref({}),
+    permissionMode: ref('confirm-all'),
     messages: ref([]),
   }) as unknown as ChatSession
 const view = (over: Partial<DiscussionAnchorView> = {}): DiscussionAnchorView => ({
@@ -88,4 +89,19 @@ it('refreshes changed and deleted source state while open and releases subscript
   expect(wrapper.text()).toContain('deleted')
   wrapper.unmount()
   expect(listeners.size).toBe(0)
+})
+
+it('refreshes context when the effective permission mode changes', async () => {
+  const current = session()
+  setDiscussionAnchorResolver(async (session) =>
+    view({ context: [{ key: 'mode', icon: 'shield', title: session.permissionMode.value }] })
+  )
+  const wrapper = mount(AiDiscussionAnchor, { props: { session: current } })
+  await flushPromises()
+  await wrapper.find('[aria-expanded]').trigger('click')
+  expect(wrapper.text()).toContain('confirm-all')
+  current.permissionMode.value = 'allow-all'
+  await flushPromises()
+  expect(wrapper.text()).toContain('allow-all')
+  wrapper.unmount()
 })

@@ -90,6 +90,7 @@ watch(
       props.session.anchor.value,
       props.session.agent.value,
       props.session.toolModes.value,
+      props.session.permissionMode.value,
       revision.value,
     ] as const,
   async ([session]) => {
