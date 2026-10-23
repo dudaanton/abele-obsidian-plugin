@@ -114,6 +114,9 @@ export class ChatSummarizer {
       if (this.host.manualTitle?.value || !title || title === this.host.chatTitle.value) return
 
       this.host.chatTitle.value = title
+      // The turn was saved before this background request. Persist its name before the
+      // file move publishes it to navigation, which reads titles from the chat metadata.
+      await this.host.save()
 
       if (this.host.currentChatFile.value) {
         const newFile = await ChatStorage.getInstance().renameChat(

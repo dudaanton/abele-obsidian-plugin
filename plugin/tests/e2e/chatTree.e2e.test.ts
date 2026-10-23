@@ -319,6 +319,40 @@ const probe = (label: string) => `(async () => {
     reopened.chatTitle.value = '2025-02-03 10-20 Plan a sample trip.'
     await until(() => current().querySelector('.abele-chat-switch__title')?.textContent === 'Plan a sample trip.')
     await shot('restored-chat-title')
+    const titleClient = window.__abeleTest.OpenAIClient.prototype
+    const originalStream = titleClient.stream
+    const originalAuxiliary = reopened.auxiliaryModel
+    const originalTitle = reopened.chatTitle.value
+    const originalManual = reopened.manualTitle.value
+    let titleRequests = 0
+    try {
+      reopened.auxiliaryModel = () => ({ id: 'sample-title-model', name: 'Sample', baseUrl: 'http://localhost/v1', apiKey: '' })
+      titleClient.stream = async function* () {
+        titleRequests++
+        yield { type: 'text_delta', delta: 'Sample travel planning' }
+      }
+      reopened.manualTitle.value = false
+      await reopened.summarizer.generateTitle()
+      await until(() => current().querySelector('.abele-chat-switch__title')?.textContent === 'Sample travel planning')
+      const stored = await window.__abeleTest.ChatStorage.getInstance().loadChat(reopened.currentChatFile.value)
+      if (stored.metadata.title !== 'Sample travel planning') throw Error('Generated title was not persisted')
+      if (current().getAttribute('aria-expanded') !== 'true') current().click()
+      await service.tree.refresh()
+      await until(() => document.querySelector('[data-chat="' + reopened.id + '"]')?.textContent.includes('Sample travel planning'))
+      await shot('generated-chat-title')
+      service.tree.rename(reopened.id, 'Chosen travel title')
+      await until(() => reopened.manualTitle.value && reopened.chatTitle.value === 'Chosen travel title')
+      await reopened.summarizer.generateTitle()
+      if (titleRequests !== 1 || reopened.chatTitle.value !== 'Chosen travel title') throw Error('Automatic naming replaced a manual title')
+      await shot('manual-chat-title')
+    } finally {
+      titleClient.stream = originalStream
+      reopened.auxiliaryModel = originalAuxiliary
+      reopened.manualTitle.value = originalManual
+      reopened.chatTitle.value = originalTitle
+      await reopened.save()
+      if (current().getAttribute('aria-expanded') === 'true') current().click()
+    }
     const composer = root.querySelector('.abele-chat-input')
     const editable = composer.querySelector('.cm-content, textarea')
     const geometry = () => ({ height: composer.getBoundingClientRect().height, focused: composer.contains(document.activeElement), keyboard: root.classList.contains('abele-keyboard-open'), editor: composer.querySelector('.abele-chat-input__field').getBoundingClientRect().height, toolbar: composer.querySelector('.abele-chat-input__toolbar').getBoundingClientRect().height, parts: [...composer.querySelectorAll('.markdown-source-view, .cm-editor, .cm-scroller, .cm-sizer, .cm-content')].map(el => { const css = getComputedStyle(el); return { cls: el.className, height: el.getBoundingClientRect().height, minHeight: css.minHeight, padding: css.padding, inline: el.getAttribute('style') } }) })
