@@ -78,6 +78,8 @@ const probe = (device: string) =>
     [...line.querySelectorAll('a')].find(link=>link.textContent==='Node log').click();
     await until(()=>document.querySelector('.abele-node-log__line.is-marked'),'Log did not load and mark the error time');
     if(document.querySelector('.abele-node-log__facts')?.textContent.trim()!=='Node 0.4.50')throw Error('Log version lacks its Node label');
+    const versionFact=document.querySelector('.abele-node-log__facts');
+    if(versionFact.scrollWidth>versionFact.clientWidth+1)throw Error('Log version is clipped');
     const log=document.querySelector('.abele-node-log'), logBox=log.querySelector('.abele-node-log__lines');
     if(Math.abs(logBox.getBoundingClientRect().bottom-log.getBoundingClientRect().bottom)>2)throw Error('Log box does not fill the dialog');
     await capture('03-log');

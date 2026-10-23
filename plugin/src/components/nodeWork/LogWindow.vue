@@ -116,13 +116,17 @@ watch(
   gap: var(--size-4-2);
 }
 .abele-node-log__facts {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.abele-node-log__bar > .abele-obsidian-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .abele-node-log__lines {
   flex: 1 1 auto;
