@@ -688,6 +688,7 @@ export class ObsidianFileSystem implements FileSystem {
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
    * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
   private readonly observedBases = new Map<string, { sha: string } | { absent: true }>()
+  private readonly legacyRecoveryPaths = new Set<string>()
   private readonly ledger: ObsidianFileSystemOptions['ledger'] | null
   /** Pulls can finish before Obsidian's file index sees their adapter renames. */
   private readonly awaitingIndex = new Set<string>()
@@ -964,7 +965,24 @@ export class ObsidianFileSystem implements FileSystem {
             },
           }
         : {}),
-      conditionalFile: (operation) => this.conditionalFile(operation),
+      conditionalFile: async (operation) => {
+        // Old journals may own backups outside the current private staging root.
+        // Admit only the exact owned source for this recovery move, never wire paths.
+        const destination = operation.effect.kind === 'move' ? operation.effect.to : undefined
+        const legacy =
+          destination !== undefined &&
+          isAdapterTemp(operation.path) &&
+          operation.path.endsWith('.old') &&
+          (await this.journal.currentEntries()).some(
+            (entry) => entry.backup === operation.path && entry.target === destination
+          )
+        if (legacy) this.legacyRecoveryPaths.add(operation.path)
+        try {
+          return await this.conditionalFile(operation)
+        } finally {
+          if (legacy) this.legacyRecoveryPaths.delete(operation.path)
+        }
+      },
       retainInstalled: !!options.ledger,
       published: (entry) => {
         if (entry.temp)
@@ -1023,7 +1041,8 @@ export class ObsidianFileSystem implements FileSystem {
         const privatePath =
           (this.privateRoot && withinRoot(path, this.privateRoot)) ||
           withinRoot(path, stagingDirectory(this.configDir, this.privateRoot)) ||
-          withinRoot(path, conditionalRoot)
+          withinRoot(path, conditionalRoot) ||
+          this.legacyRecoveryPaths.has(path)
         if (privatePath) {
           const parts = path.split('/')
           if (path.includes('\\') || parts.some((part) => !part || part === '.' || part === '..'))
