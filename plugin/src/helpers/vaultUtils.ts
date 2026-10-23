@@ -67,6 +67,13 @@ export function getFileByPath(path: string): TFile | null {
   return file instanceof TFile ? file : null
 }
 
+/** Read the persisted source used by model context; absent files have no source text. */
+export async function readCachedFileContent(path: string): Promise<string | null> {
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getFileByPath(path)
+  return file ? app.vault.cachedRead(file) : null
+}
+
 export const readFileContent = async (file: TFile | string): Promise<string> => {
   if (typeof file === 'string') {
     const resolved = GlobalStore.getInstance().app.vault.getFileByPath(file)

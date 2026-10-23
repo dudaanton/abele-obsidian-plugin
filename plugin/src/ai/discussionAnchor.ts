@@ -13,6 +13,7 @@ import { describeMessageCommentContext } from './messageComments'
 import { parseChat } from './ChatLog'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { stripMarkers } from '@/editor/commentMarkers'
+import { readCachedFileContent } from '@/helpers/vaultUtils'
 
 export interface AnchorSource {
   /** Lucide name: file-text for a note, message-square for a chat answer, book-open for a book. */
@@ -59,7 +60,7 @@ export async function resolveDiscussionAnchor(
   session: ChatSession,
   sources: DiscussionAnchorSources
 ): Promise<DiscussionAnchorView | null> {
-  const anchor = session.anchor.value
+  const anchor = session.anchor?.value
   if (!anchor?.quote) return null
   const content = anchor.cfi ? '' : await sources.read(anchor.note)
   const back = content === null ? undefined : () => sources.reveal(session)
@@ -164,7 +165,7 @@ export async function resolveDiscussionAnchor(
       open: back,
     })
   }
-  const agent = session.agent.value
+  const agent = session.agent?.value
   if (agent)
     context.push({
       key: 'agent',
@@ -176,14 +177,16 @@ export async function resolveDiscussionAnchor(
   if (
     !anchor.message &&
     !anchor.cfi &&
-    (session.toolModes.value.edit_selection ?? 'ask') !== 'off'
+    (session.toolModes?.value?.edit_selection ?? 'ask') !== 'off'
   ) {
     context.push({
       key: 'edit',
       icon: 'pencil',
       title: t('discussion.editSelection'),
       detail: t(
-        session.needsApproval('edit_selection') ? 'discussion.askFirst' : 'discussion.withoutAsking'
+        (session.needsApproval?.('edit_selection') ?? true)
+          ? 'discussion.askFirst'
+          : 'discussion.withoutAsking'
       ),
     })
   }
@@ -191,19 +194,13 @@ export async function resolveDiscussionAnchor(
 }
 
 let resolver: Resolver = async (session) => {
-  const [{ GlobalStore }, { CommentService }, { revealAnchor }, { replyMarkdownText }] =
-    await Promise.all([
-      import('@/stores/GlobalStore'),
-      import('./CommentService'),
-      import('./openChat'),
-      import('./replyMarkdown'),
-    ])
-  const { app } = GlobalStore.getInstance()
+  const [{ CommentService }, { revealAnchor }, { replyMarkdownText }] = await Promise.all([
+    import('./CommentService'),
+    import('./openChat'),
+    import('./replyMarkdown'),
+  ])
   return resolveDiscussionAnchor(session, {
-    read: async (path) => {
-      const file = app.vault.getFileByPath(path)
-      return file ? app.vault.cachedRead(file) : null
-    },
+    read: readCachedFileContent,
     lineage: (anchor) => CommentService.getInstance().lineage(anchor),
     rendered: replyMarkdownText,
     book: async (anchor) =>

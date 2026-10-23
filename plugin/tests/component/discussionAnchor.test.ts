@@ -105,3 +105,13 @@ it('refreshes context when the effective permission mode changes', async () => {
   expect(wrapper.text()).toContain('allow-all')
   wrapper.unmount()
 })
+
+it('tolerates a render-only session without optional permission state', async () => {
+  const current = session()
+  Reflect.deleteProperty(current, 'permissionMode')
+  setDiscussionAnchorResolver(async () => view())
+  const wrapper = mount(AiDiscussionAnchor, { props: { session: current } })
+  await flushPromises()
+  expect(wrapper.text()).toContain('seed')
+  wrapper.unmount()
+})

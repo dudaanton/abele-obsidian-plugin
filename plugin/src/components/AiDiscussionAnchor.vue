@@ -67,7 +67,7 @@ onMounted(() => {
   const vault = GlobalStore.getInstance().app.vault
   for (const event of ['modify', 'delete', 'rename', 'create'] as const) {
     const listener = vault.on(event, (file) => {
-      if (file.path === props.session.anchor.value?.note || file.path.endsWith('.abchat'))
+      if (file.path === props.session.anchor?.value?.note || file.path.endsWith('.abchat'))
         revision.value++
     })
     disposers.push(() => vault.offref(listener))
@@ -78,7 +78,7 @@ onUnmounted(() => {
   for (const dispose of disposers) dispose()
 })
 watch(
-  () => [props.session.id, props.session.anchor.value] as const,
+  () => [props.session.id, props.session.anchor?.value] as const,
   () => {
     open.value = false
   }
@@ -87,10 +87,10 @@ watch(
   () =>
     [
       props.session,
-      props.session.anchor.value,
-      props.session.agent.value,
-      props.session.toolModes.value,
-      props.session.permissionMode.value,
+      props.session.anchor?.value,
+      props.session.agent?.value,
+      props.session.toolModes?.value,
+      props.session.permissionMode?.value,
       revision.value,
     ] as const,
   async ([session]) => {

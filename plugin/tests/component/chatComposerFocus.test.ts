@@ -67,6 +67,7 @@ describe('the cursor in the composer', () => {
   it.each([false, true])(
     'keeps one route back for a discussion (parent message=%s)',
     async (message) => {
+      if (!message) useVault([{ path: 'Notes/sample.md', content: 'Sample passage' }])
       const session = service.activeSession.value!
       session.kind = 'comment'
       session.anchor.value = {
