@@ -1,3 +1,4 @@
+import { InspectionDirectories } from '../inspectionDirectories'
 import { nativeChunkPort } from '../vaultPathLinks'
 import { vaultDisk } from '../vaultPathLinks'
 import { guardedVaultAdapter, assertVaultPath } from '../vaultPathLinks'
@@ -398,6 +399,7 @@ export async function projectionEvidence(
   inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
+  const directories = new InspectionDirectories()
   let folders = 1
   const walk = async (folder: string): Promise<void> => {
     assertCurrent()
@@ -408,7 +410,9 @@ export async function projectionEvidence(
       throw new ExternalRecoveryRequired('projection inventory is incomplete')
     seen.add(folder)
     if (folder === privateRecoveryDirectory(app.vault.configDir)) return
+    const observed = directories.observe(disk, folder)
     const listed = await readOnly(() => disk.list(folder))
+    observed(listed.folders)
     assertCurrent()
     for (const file of listed.files) if (included(file)) paths.add(file)
     folders += listed.folders.length
@@ -560,6 +564,7 @@ export async function projectionEvidence(
         ...inspected,
       ],
     })
+  directories.attach(inventory)
   inspection.inventory?.(inventory)
   console.debug(
     '[Abele Sync]',

@@ -1,3 +1,4 @@
+import { inspectedAbsent } from './inspectionDirectories'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
 import { vaultPathKey } from './vaultPathLinks'
 import type { ConditionalFileHost } from './conditionalFiles'
@@ -1252,6 +1253,10 @@ export class ObsidianFileSystem implements FileSystem {
     if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
   }
   recoverConditionalFiles(): Promise<void> {
+    const root = this.privateRoot
+      ? this.privateRoot + '/conditional'
+      : this.configDir + '/plugins/abele/sync-conditional'
+    if (inspectedAbsent(this.startupInventory?.(), root)) return Promise.resolve()
     return this.conditional.recover()
   }
   private retentionIdle = false

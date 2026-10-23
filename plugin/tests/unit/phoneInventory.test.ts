@@ -109,6 +109,42 @@ it('reuses inspection inventory for the first and fallback local listings', asyn
   expect(stat).not.toHaveBeenCalled()
 })
 
+it('invalidates inspected absence when new private capture evidence arrives', async () => {
+  const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}' }])
+  let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
+  await projectionEvidence(app as never, () => {}, true, new Set(), {
+    inventory: (files) => {
+      inventory = files
+    },
+  })
+  const disk = new ObsidianFileSystem(app as never, { startupInventory: () => inventory })
+  await disk.recoverConditionalFiles()
+  const root = '.obsidian/plugins/abele/sync-conditional'
+  const folder = root + '/objects/sample-capture'
+  for (const path of [
+    '.obsidian/plugins',
+    '.obsidian/plugins/abele',
+    root,
+    root + '/objects',
+    folder,
+    root + '/active',
+  ])
+    await app.vault.adapter.mkdir(path)
+  const intent = {
+    checked: true,
+    path: 'safe.md',
+    destination: 'safe.md',
+    expected: { size: 11, mtime: 1000, sha: 'a'.repeat(64) },
+    data: folder + '/victim',
+    kind: 'remove',
+  }
+  await app.vault.adapter.write(folder + '/victim', 'local bytes')
+  await app.vault.adapter.write(folder + '/intent.json', JSON.stringify(intent))
+  await app.vault.adapter.write(root + '/active/sample-capture.json', JSON.stringify(intent))
+  await disk.recoverConditionalFiles()
+  expect(await app.vault.adapter.read('safe.md')).toBe('local bytes')
+})
+
 it.each([undefined, ['Alias/Shared'], ['Moved/Shared']])(
   'refuses linked ancestors before startup inspection (roots=%s)',
   async (roots) => {

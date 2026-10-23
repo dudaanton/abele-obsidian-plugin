@@ -1100,7 +1100,8 @@ export function observeAdapterConfig(
     Object.defineProperty(shared, CONFIG_OBSERVERS, { value: new Set<ConfigObserver>() })
   const callback: ConfigObserver = (paths, directory) => {
     const relevant = paths.filter(
-      (path) => path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
+      (path) =>
+        root === '' || path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
     )
     if (relevant.length) observe(relevant, directory)
   }
@@ -1143,7 +1144,10 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
             paths.some(
               (path) =>
                 typeof path === 'string' &&
-                (path === root || path.startsWith(root + '/') || root.startsWith(path + '/'))
+                (root === '' ||
+                  path === root ||
+                  path.startsWith(root + '/') ||
+                  root.startsWith(path + '/'))
             )
           )
             held.set(root, revision + 1)
@@ -1200,7 +1204,8 @@ function bumpConfigRevision(adapter: DataAdapter, paths: readonly string[]): voi
   for (const [root, revision] of roots)
     if (
       paths.some(
-        (path) => path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
+        (path) =>
+          root === '' || path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
       )
     )
       roots.set(root, revision + 1)

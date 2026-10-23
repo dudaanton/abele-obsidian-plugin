@@ -1,0 +1,43 @@
+import type { DataAdapter } from 'obsidian'
+import { adapterConfigRevision } from './vaultPathLinks'
+
+const ABSENT = Symbol.for('abele.sync.inspected-absence-v1')
+
+/** Process-local listing evidence, never a persisted assertion about private bytes. */
+export class InspectionDirectories {
+  private readonly listings = new Map<
+    string,
+    {
+      revision: () => number
+      at: number
+      folders: Set<string>
+    }
+  >()
+  observe(adapter: DataAdapter, path: string) {
+    const revision = adapterConfigRevision(adapter, path)
+    const at = revision()
+    return (folders: readonly string[]) => {
+      if (revision() === at) this.listings.set(path, { revision, at, folders: new Set(folders) })
+    }
+  }
+  attach(inventory: object): void {
+    Reflect.set(inventory, ABSENT, (path: string) => {
+      const parts = path.split('/')
+      for (let i = 0; i < parts.length; i++) {
+        const parent = parts.slice(0, i).join('/')
+        const held = this.listings.get(parent)
+        if (
+          held &&
+          held.revision() === held.at &&
+          !held.folders.has(parts.slice(0, i + 1).join('/'))
+        )
+          return true
+      }
+      return false
+    })
+  }
+}
+
+export function inspectedAbsent(inventory: object | undefined, path: string): boolean {
+  return inventory !== undefined && Reflect.get(inventory, ABSENT)?.(path) === true
+}
