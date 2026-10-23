@@ -17,6 +17,26 @@ export function verifyServerLimits(actual, expected) {
       throw new Error('Advertised server limit differs from selected stand')
 }
 
+export async function verifyUploadPresence(address, key, fetch = globalThis.fetch) {
+  const bytes = randomBytes(32)
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  const headers = { authorization: `Bearer ${key}` }
+  const request = (method, hash, body) =>
+    fetch(`${address}/v2/uploads/${hash}`, {
+      method,
+      headers,
+      body,
+      signal: AbortSignal.timeout(10000),
+    })
+  const put = await request('PUT', sha, bytes)
+  if (!put.ok) throw new Error('Local fixture upload HEAD preflight upload failed')
+  const present = await request('HEAD', sha)
+  const absent = await request('HEAD', createHash('sha256').update(randomBytes(32)).digest('hex'))
+  if (!present.ok || absent.status !== 404)
+    throw new Error('Local fixture upload HEAD capability unavailable')
+  return { presentStatus: present.status, absentStatus: absent.status, bytes: bytes.length }
+}
+
 export async function openServer(config) {
   if ((config.serverMode ?? 'remote') === 'remote')
     return {
@@ -26,7 +46,18 @@ export async function openServer(config) {
       close: async () => {},
     }
   if (config.serverMode !== 'local') throw new Error('Unknown server mode')
-  const fixture = verifySyncFixture(config.serverFixture)
+  const revision = config.serverCommit ?? SERVER_TEST_COMMIT
+  if (!/^[a-f0-9]{40}$/.test(revision))
+    throw new Error('Local fixture requires an exact server commit')
+  const fixture = verifySyncFixture(config.serverFixture, revision)
+  const provenance = JSON.parse(await readFile(join(fixture, '.abele-sync-fixture.json'), 'utf8'))
+  if (config.serverCommit && !provenance.files['packages/core/package.json'])
+    throw new Error('Local fixture SDK manifest has no build checksum')
+  const coreVersion = JSON.parse(
+    await readFile(join(fixture, 'packages/core/package.json'), 'utf8')
+  ).version
+  if (config.serverSdkVersion && coreVersion !== config.serverSdkVersion)
+    throw new Error('Local fixture core version differs from selected SDK')
   const directory = resolve(config.localServerDirectory)
   await mkdir(directory, { recursive: true })
   if ((await readdir(directory)).length) throw new Error('Local server storage must be empty')
@@ -116,7 +147,9 @@ export async function openServer(config) {
         fixtureReceiptSha256: createHash('sha256')
           .update(await readFile(join(fixture, '.abele-sync-fixture.json')))
           .digest('hex'),
-        revision: SERVER_TEST_COMMIT,
+        revision,
+        coreVersion,
+        sourceTree: provenance.tree ?? null,
         version,
         database: 'sqlite',
         bind: '127.0.0.1',

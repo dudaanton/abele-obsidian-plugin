@@ -14,6 +14,8 @@ const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' 
 const git = (...args) =>
   execFileSync('git', ['-C', resolve(repo), ...args], { encoding: 'utf8' }).trim()
 const commit = git('rev-parse', `${revision}^{commit}`)
+if (!/^[a-f0-9]{40}$/.test(revision) || commit !== revision)
+  throw new Error('Fixture preparation requires an exact full commit SHA')
 const scratch = join(plugin, '..', '.scratch', 'sync-inputs')
 mkdirSync(scratch, { recursive: true })
 const work = mkdtempSync(join(scratch, 'fixture-'))
@@ -47,6 +49,13 @@ const filesOf = (root, prefix = '') =>
   )
 const provenance = {
   commit,
+  tree: git('rev-parse', `${commit}^{tree}`),
+  packageVersions: Object.fromEntries(
+    ['core', 'protocol', 'server', 'cli'].map((name) => [
+      name,
+      JSON.parse(readFileSync(join(source, 'packages', name, 'package.json'))).version,
+    ])
+  ),
   lockSha256: lockHash,
   node: process.version,
   npm: execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(),
@@ -56,6 +65,9 @@ const provenance = {
 }
 const files = {}
 for (const name of ['core', 'protocol', 'server', 'cli']) {
+  files[`packages/${name}/package.json`] = hash(
+    readFileSync(join(source, 'packages', name, 'package.json'))
+  )
   for (const part of ['src', 'dist', 'tests']) {
     const root = join(source, 'packages', name, part)
     for (const [path, checksum] of Object.entries(filesOf(root)))
