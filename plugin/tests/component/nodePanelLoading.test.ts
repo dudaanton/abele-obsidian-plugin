@@ -65,7 +65,11 @@ it('keeps the tree on reload and moves the slow count and log into the footer', 
     client: { channel: { channel: { welcome: { methods: ['node.log.v1.tail'] } } } },
   }
   vi.spyOn(NodeService, 'peekConnection').mockReturnValue(connection as never)
-  const { view } = setup(true)
+  const { model, view } = setup(true)
+  model.changes.value = [{ path: 'sample-retained.ts', kind: 'modified' }] as never
+  await flushPromises()
+  const retainedTree = view.get('.abele-file-tree').element
+  expect(view.get('.abele-file-tree').text()).toContain('sample-retained.ts')
   expect(view.get('.abele-file-tree').exists()).toBe(true)
   expect(view.get('[data-connection-footer]').text()).toContain('Updating changes…')
   await vi.advanceTimersByTimeAsync(3000)
@@ -74,6 +78,8 @@ it('keeps the tree on reload and moves the slow count and log into the footer', 
   )
   expect(view.get('[data-connection-footer] a').text()).toBe('Node log')
   expect(view.get('.abele-file-tree').text()).not.toContain('Still reading')
+  expect(view.get('.abele-file-tree').element).toBe(retainedTree)
+  expect(view.get('.abele-file-tree').text()).toContain('sample-retained.ts')
   view.unmount()
 })
 it('moves a prolonged first read to the footer without repeating the loading line', async () => {
