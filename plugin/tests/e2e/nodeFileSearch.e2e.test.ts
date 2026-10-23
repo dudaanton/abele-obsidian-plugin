@@ -231,10 +231,16 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       await search(shell, 'mapped-source')
       await checkTools(shell, 'mapped-source')
       await closeFile()
+      // Historical comparisons stay read-only, including a direct attempt to start editing.
+      await evalLong(`(async()=>{${prelude}
+        const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:{kind:'committed',base:${JSON.stringify(comparisonBase)}},edit:true}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('.abele-diff'),'Historical comparison');
+        if(leaf.containerEl.querySelector('.view-action[aria-label="Edit the file"]'))throw Error('Historical comparison offers editing');leaf.view.fileTab.start();await new Promise(resolve=>setTimeout(resolve,100));if(leaf.view.editing?.active.value||file()?.querySelector('.cm-content[contenteditable="true"]'))throw Error('Historical comparison accepted editing');return 'historical editing refused'})()`)
+      await capture(`${shell}-historical-read-only`)
+      await closeFile()
       for (const comparison of [false, true]) {
         if (comparison) {
           await evalLong(`(async()=>{${prelude}
-            const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:{kind:'committed',base:${JSON.stringify(comparisonBase)}}}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('[data-node-find]'),'Committed comparison');return 'comparison file'})()`)
+            const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:{nodeId:${JSON.stringify(node.node)},registrationId:${JSON.stringify(node.registration)},projectId:${JSON.stringify(ids.project)},kind:'worktree',id:${JSON.stringify(ids.root)}},path:'src/sample.ts',stage:'unstaged'}});await app.workspace.revealLeaf(leaf);await until(()=>file()?.querySelector('.abele-diff'),'Working comparison');return 'comparison file'})()`)
         } else {
           await node.open(ids.session, 'Source links')
           await evalLong(
