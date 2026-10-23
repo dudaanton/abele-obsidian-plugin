@@ -5,8 +5,9 @@ import type { InjectionKey } from 'vue'
 export const FILE_NAVIGATION: InjectionKey<(url: string) => boolean> =
   Symbol('node-file-navigation')
 /** Rendered Markdown follows project links in its current tab. Other file tools keep their destinations. */
-export const MARKDOWN_FILE_NAVIGATION: InjectionKey<(url: string) => boolean> =
-  Symbol('node-markdown-file-navigation')
+export const MARKDOWN_FILE_NAVIGATION: InjectionKey<(url: string) => boolean> = Symbol(
+  'node-markdown-file-navigation'
+)
 
 /** Working-file navigation stays in the file surface; historical links keep their revision. */
 export function fileNavigation(
