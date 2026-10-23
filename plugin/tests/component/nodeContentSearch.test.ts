@@ -98,3 +98,21 @@ it.each(['repo', 'names'] as const)('explains incomplete empty %s searches', asy
   )
   w.unmount()
 })
+
+it('shows an empty-search omission notice only once when the result already carries it', async () => {
+  const note = 'Some files or matches were omitted'
+  const w = mount(GithubCodeSearch, {
+    props: {
+      code: {
+        refLabel: () => 'sample',
+        search: vi.fn(async () => ({ files: [], total: 0, capped: true, note })),
+      },
+      ready: false,
+      request: { text: 'needle', scope: 'repo', nonce: 1 },
+    },
+  })
+  await w.setProps({ ready: true })
+  await flushPromises()
+  expect(w.text().split(note)).toHaveLength(2)
+  w.unmount()
+})
