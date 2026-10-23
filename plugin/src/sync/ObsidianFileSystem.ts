@@ -2715,7 +2715,7 @@ export class ObsidianFileSystem implements FileSystem {
     const read = () => {
       if (!operation) return this.rawStat(path)
       let known = operation.cache.get(path)
-      if (!known) operation.cache.set(path, (known = this.rawStat(path)))
+      if (known === undefined) operation.cache.set(path, (known = this.rawStat(path)))
       return known
     }
     const standing = this.inventory
