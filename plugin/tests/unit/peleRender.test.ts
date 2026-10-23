@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderDiagram } from '@/mermaid/renderMermaid'
+import { renderDiagram, formatDiagramError } from '@/mermaid/renderMermaid'
 import { findMermaidFences } from '@/mermaid/mermaidSource'
 
 describe('pele rendering', () => {
@@ -34,6 +34,43 @@ describe('pele rendering', () => {
     if (result.ok) return
     expect(result.error).toMatch(/line|Line/)
     expect(result.error).toContain('^')
+  })
+  it.each(['flowchart LR\n A[broken', 'flowchart LR\n A[broken\n'])(
+    'points at the end of the last source line once: %s',
+    async (source) => {
+      const result = await renderDiagram(source, 'light')
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.line).toBe(2)
+      expect(result.column).toBe(10)
+      expect(result.snippet).toBe(' A[broken\n         ^')
+      expect(result.error.match(/\^/g)).toHaveLength(1)
+      expect(result.error).toContain('end of diagram')
+      expect(result.error).toMatch(/ A\[broken\n {9}\^\nLine 2, column 10$/)
+    }
+  )
+  it('shows the lexical message, source and location once in that order', async () => {
+    const result = await renderDiagram('flowchart LR\n A --> )', 'light')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toBe(
+      'Lexical error: Unrecognized text.\n A --> )\n       ^\nLine 2, column 8'
+    )
+  })
+  it('uses the source when the parser leaves its snippet empty', () => {
+    const result = formatDiagramError('flowchart LR\n A --> )', {
+      message: 'Unexpected token',
+      line: 2,
+      column: 8,
+      snippet: '',
+    })
+    expect(result).toEqual({
+      ok: false,
+      line: 2,
+      column: 8,
+      snippet: ' A --> )\n       ^',
+      error: 'Unexpected token\n A --> )\n       ^\nLine 2, column 8',
+    })
   })
   it('recognizes pele fences', () => {
     expect(findMermaidFences(['```pele', 'pie', '```'])).toHaveLength(1)

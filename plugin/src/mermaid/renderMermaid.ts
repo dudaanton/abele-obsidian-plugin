@@ -56,20 +56,54 @@ async function draw(source: string, typography: DiagramTypography): Promise<Diag
     return { ok: true, ...result, renderId }
   } catch (error) {
     console.debug('Abele: pele could not draw a diagram', error)
-    const detail = error as { message?: string; line?: number; column?: number; snippet?: string }
-    const line = detail?.line ?? 0
-    const column = detail?.column ?? 0
-    const snippet = detail?.snippet ?? ''
-    const message = detail?.message ?? String(error)
-    return {
-      ok: false,
-      error: [message, line ? `Line ${line}, column ${column}` : '', snippet]
-        .filter(Boolean)
-        .join('\n'),
-      line,
-      column,
-      snippet,
+    return formatDiagramError(source, error)
+  }
+}
+
+/** Keep parser diagnostics in one source-based snippet, including synthetic EOF locations. */
+export function formatDiagramError(
+  source: string,
+  error: unknown
+): Extract<DiagramResult, { ok: false }> {
+  const detail = error as { message?: string; line?: number; column?: number; snippet?: string }
+  let line = detail?.line ?? 0
+  let column = detail?.column ?? 0
+  let message = detail?.message ?? (typeof error === 'string' ? error : 'Diagram rendering failed')
+  // Parser messages may already carry their snippet. Remove it before adding our source line.
+  if (detail?.snippet) message = message.split(detail.snippet).join('')
+  const messageLines = message.split('\n')
+  for (let i = messageLines.length - 1; i >= 0; i--) {
+    if (/^[\s-]*\^\s*$/.test(messageLines[i])) {
+      messageLines.splice(Math.max(0, i - 1), i > 0 ? 2 : 1)
     }
+  }
+  message = messageLines
+    .filter((text) => text.trim())
+    .join('\n')
+    .replace(/^(Parse|Lexical) error on line \d+[:.]\s*/, '$1 error: ')
+    .trim()
+  const lines = source.split(/\r?\n/)
+  const end =
+    line > lines.length ||
+    (line > 0 && !lines[line - 1]?.trim() && /\$end|end of input|EOF/i.test(message))
+  if (end) {
+    line = lines.length
+    while (line > 1 && !lines[line - 1].trim()) line--
+    column = lines[line - 1].length + 1
+    message += ' (end of diagram)'
+  }
+  const snippet =
+    line > 0 && line <= lines.length
+      ? lines[line - 1] + '\n' + ' '.repeat(Math.max(0, column - 1)) + '^'
+      : ''
+  return {
+    ok: false,
+    error: [message, snippet, line ? `Line ${line}, column ${column}` : '']
+      .filter(Boolean)
+      .join('\n'),
+    line,
+    column,
+    snippet,
   }
 }
 

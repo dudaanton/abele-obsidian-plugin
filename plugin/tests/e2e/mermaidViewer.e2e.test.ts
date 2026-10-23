@@ -139,6 +139,11 @@ function diagramStateCases(phoneLayout: boolean): void {
               const found = await until(() => root.querySelector(${JSON.stringify(name === 'error' ? '.abele-mermaid__error-text' : `.abele-mermaid__canvas svg.pele-${({ flowchart: 'flowchart', sequence: 'sequence', gantt: 'gantt', xy: 'xychart' } as Record<string, string>)[name]}`)}))
               if (!found) return { error: 'missing pele state', shots, colours }
               if (${JSON.stringify(name)} === 'error' && !/Line \\d+, column \\d+/.test(found.textContent)) return { error: 'missing error location', shots, colours }
+              if (${JSON.stringify(name)} === 'error') {
+                const text = found.textContent
+                if (text.split('^').length !== 2 || !text.includes(${JSON.stringify(' A[broken\n         ^')}) || !text.endsWith('Line 2, column 10') || !text.includes('end of diagram'))
+                  return { error: 'error excerpt is duplicated or not located in the source', shots, colours }
+              }
               found.scrollIntoView({ block: 'center' })
               await wait(400)
               if (${JSON.stringify(name)} !== 'error') colours.push(getComputedStyle(found).color)
