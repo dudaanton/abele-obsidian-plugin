@@ -97,7 +97,7 @@ it('sets the other settings out under headings by what they are about', () => {
       expect.arrayContaining([
         'Own drawing of properties',
         'Counter properties',
-        'Mermaid viewer',
+        'Draw diagrams',
         'Open canvases in Abele',
         'Editor syntax highlighting',
       ])
