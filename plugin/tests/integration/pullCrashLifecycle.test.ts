@@ -24,6 +24,23 @@ type Operation = 'new' | 'replace' | 'move' | 'case'
 // Ordinary errors are retryable file refusals. A process cut interrupts the entire run.
 const killed = () => Object.assign(new SyncCancelled(), { message: 'Sample process killed' })
 
+async function expectSamePendingAuthority(state: MemoryStateStore, before: string | null) {
+  expect(before).not.toBeNull()
+  const raw = await state.getMeta('pull-write:sample-file')
+  expect(raw).not.toBeNull()
+  const prior = JSON.parse(before!),
+    current = JSON.parse(raw!)
+  if (current.heldOrder !== undefined) {
+    expect(Number.isSafeInteger(current.heldOrder)).toBe(true)
+    expect(current.heldOrder).toBeGreaterThan(0)
+  }
+  if (prior.heldOrder !== undefined) expect(current.heldOrder).toBe(prior.heldOrder)
+  expect(current).toEqual({
+    ...prior,
+    ...(current.heldOrder === undefined ? {} : { heldOrder: current.heldOrder }),
+  })
+}
+
 async function scenario(
   operation: Operation,
   window: Window,
@@ -207,8 +224,7 @@ async function scenario(
     served = incoming.slice()
     served[0] ^= 1
   }
-  // CORE: sealed-stage-discard. A refused commit must retain its exact owned
-  // sealed stage and pull intent; these assertions remain failing until core fixes it.
+  // A restart must authenticate retained stage bytes before publishing them.
   if (failure === 'stage') {
     const journal = app.loadLocalStorage(JOURNAL_KEY) as { temp: string }[]
     const stage = journal[0].temp,
@@ -281,11 +297,7 @@ it.each(
           : (['partial', 'complete', 'published'] as const)
         ).flatMap((window) =>
           (['take', 'recover'] as const).map((entryPoint) => ({
-            dependency:
-              entryPoint === 'take' &&
-              ((!bounded && !small && window !== 'published') || (!sameBytes && (bounded || small)))
-                ? 'D-182: '
-                : '',
+            dependency: '',
             bounded,
             entryPoint,
             small,
@@ -329,19 +341,21 @@ it.each(
       expect(await result.app.vault.adapter.exists(result.change.path)).toBe(false)
       expect((await result.state.byFileId('sample-file'))?.versionId).toBe('base')
       expect(result.intentBeforeRecovery).not.toBeNull()
-      expect(await result.state.getMeta('pull-write:sample-file')).toBe(result.intentBeforeRecovery)
+      await expectSamePendingAuthority(result.state, result.intentBeforeRecovery)
       expect(result.moves).not.toHaveBeenCalled()
       expect(result.app.loadLocalStorage(RECOVERED_WRITES_KEY) ?? []).toEqual([])
       if (entryPoint === 'take') {
         expect(result.report?.held).toEqual([result.change])
         expect(result.log).toHaveBeenCalledWith(
-          expect.stringContaining('source may have been recreated')
+          JSON.parse(result.intentBeforeRecovery!).stageId
+            ? `pull: holding ${result.change.path}: pending stage lacks source publication authority`
+            : expect.stringContaining('source may have been recreated')
         )
       }
       const again = await result.retry()
       expect(again.held).toEqual([result.change])
       expect(result.moves).not.toHaveBeenCalled()
-      expect(await result.state.getMeta('pull-write:sample-file')).toBe(result.intentBeforeRecovery)
+      await expectSamePendingAuthority(result.state, result.intentBeforeRecovery)
       expect(await sha256(new Uint8Array(await result.rawRead(result.original.path)))).toBe(
         await sha256(result.local)
       )
@@ -409,14 +423,7 @@ const matrix = (
     [false, true].flatMap((bounded) =>
       [false, true].flatMap((edited) =>
         (['take', 'recover'] as const).map((entryPoint) => ({
-          dependency:
-            (window === 'partial' || window === 'complete') &&
-            operation === 'move' &&
-            !bounded &&
-            !edited &&
-            entryPoint === 'take'
-              ? 'D-182: '
-              : '',
+          dependency: '',
           window,
           operation,
           bounded,
@@ -469,10 +476,12 @@ it.each(matrix)(
     const result = await scenario(operation, window, edited, entryPoint, false, bounded)
     const held =
       window === 'before-stage'
-        ? edited || (!bounded && operation !== 'new')
+        ? edited
+          ? operation === 'move' || (entryPoint === 'take' && (bounded || operation === 'new'))
+          : !bounded && operation === 'move' && entryPoint === 'take'
         : (window === 'partial' || window === 'complete') &&
           operation === 'move' &&
-          (edited || entryPoint === 'take')
+          (edited || !bounded)
     if (held) {
       expect((await result.state.byFileId('sample-file'))?.versionId).not.toBe('incoming')
       if (edited)
@@ -480,7 +489,9 @@ it.each(matrix)(
           await sha256(result.local)
         )
       if (operation === 'move')
-        expect(await result.app.vault.adapter.exists(result.original.path)).toBe(true)
+        expect(await sha256(new Uint8Array(await result.rawRead(result.original.path)))).toBe(
+          await sha256(result.incoming)
+        )
       if (window !== 'before-stage') {
         expect(await result.state.getMeta('pull-write:sample-file')).not.toBeNull()
         if (entryPoint === 'recover')
