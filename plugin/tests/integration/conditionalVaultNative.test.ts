@@ -32,6 +32,7 @@ it.each(
     }
     const crash = new Error('simulated process exit')
     let crashed = false
+    let publicationPath = ''
     const stop = () => {
       crashed = true
       throw crash
@@ -39,13 +40,15 @@ it.each(
     const { root, app } = await setup({
       link: async (from, to) => {
         await fs.link(from, to)
-        if (boundary === 'install' && to === join(root, 'sample.bin')) stop()
+        if (boundary === 'install' && to === publicationPath) stop()
       },
       unlink: async (path) => {
         await fs.unlink(path)
         if (boundary === 'alias-remove' && String(path).includes('.abele-receipt-')) stop()
       },
     })
+    // Native boundaries receive resolved paths even when the temporary root is a link.
+    publicationPath = join(await fs.realpath(root), 'sample.bin')
     let host = await HostSyncStorage.open(factory, 'sample-host', storage)
     const state = await IndexedDbStateStore.open(factory, 'sample-ledger')
     try {
