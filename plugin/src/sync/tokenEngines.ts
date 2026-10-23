@@ -1439,6 +1439,12 @@ export class TokenEngines {
       activity.startup = undefined
       activity.completed = report.pull.applied + (report.secondPull?.applied ?? 0)
       activity.total = activity.completed + status.pending
+      // A completion is an event, not a replaceable status snapshot. Directory,
+      // retry and publication status updates may overtake the awaited path lookups.
+      await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(
+        runtime?.engine.status ?? status,
+        report
+      )
       const results = report.push.committed?.results ?? []
       const refused = await Promise.all(
         report.push.rejected.map(async (one) => ({
@@ -1476,6 +1482,30 @@ export class TokenEngines {
       )
     }
     if (this.activityEpoch.get(id) !== epoch) {
+      if (
+        report &&
+        runtime &&
+        !this.closed &&
+        this.live.get(id) === runtime &&
+        this.activityReports.get(id) === reportEpoch &&
+        this.ui.registry.records().some((one) => one.id === id)
+      ) {
+        const current = this.ui.activity.value[id]
+        const refused = [...(current?.refused ?? [])]
+        for (const item of activity.refused)
+          if (!refused.some((one) => one.path === item.path)) refused.push(item)
+        this.ui.publish(id, {
+          completed: activity.completed,
+          total: (activity.completed ?? 0) + (current?.pending ?? 0),
+          conflicts: activity.conflicts,
+          refused,
+          ...(activity.lastSync === undefined ? {} : { lastSync: activity.lastSync }),
+          ...(runtime.engine.status.state === 'idle' &&
+          runtime.engine.status.lastSyncAt === status.lastSyncAt
+            ? { error: undefined, startup: undefined }
+            : {}),
+        })
+      }
       // A slow pending scan may finish during the next attempt. Keep its evidence,
       // but never replace a later successful report or a replacement runtime.
       if (
@@ -1496,7 +1526,7 @@ export class TokenEngines {
     }
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       this.ui.publish(id, activity)
-    if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
+    if (!report && !this.closed && this.ui.registry.records().some((one) => one.id === id))
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(status, report)
   }
   /** Explicit reset/unload cancellation; does not forget records or bypass departure checks. */

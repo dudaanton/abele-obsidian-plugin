@@ -584,6 +584,60 @@ it.each(['folder', 'group'] as const)(
     }
   }
 )
+import { deferred } from '../helpers/deferred'
+
+it('delivers a completed report when a newer status overtakes its path lookup', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const entered = deferred<void>(),
+      resume = deferred<string>()
+    const path = vi.spyOn(runtime, 'pathFor').mockImplementation(async () => {
+      entered.resolve()
+      return resume.promise
+    })
+    const status: EngineStatus = { ...runtime.engine.status, state: 'idle', pending: 0 }
+    const report: SyncReport = {
+      pull: { applied: 1, held: [], skipped: 0, cursor: 1, deferred: 0, bootstrapped: false },
+      push: {
+        committed: null,
+        applied: 1,
+        merged: 0,
+        conflicts: 0,
+        replayed: false,
+        kept: [],
+        rejected: [
+          {
+            op: { op: 'delete', file_id: 'sample-absent', base_version_id: 'sample-version' },
+            code: 'quota_exceeded',
+            message: 'sample quota',
+          },
+        ],
+      },
+      secondPull: null,
+      collisions: [],
+      deferred: 0,
+      joined: false,
+    }
+    const changed = Reflect.get(f.host, 'changed').bind(f.host)
+    const completed = changed(id, status, report)
+    await entered.promise
+    await changed(id, { ...status, waiting: 1 })
+    resume.resolve('Notes/sample.md')
+    await completed
+    path.mockRestore()
+    expect(TokenSettingsPort.forConnection(f.ui, id, f.app as never).log.value).toContain(
+      'sync: done (pushed 1)'
+    )
+    expect(f.ui.activity.value[id]).toMatchObject({ completed: 1, waiting: 1 })
+  } finally {
+    await f.host.close()
+  }
+})
 
 it('publishes waiting paths and exact retry metadata through existing connection activity', async () => {
   const fixture = inspectionFixture()

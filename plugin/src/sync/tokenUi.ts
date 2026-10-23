@@ -1216,7 +1216,10 @@ export class TokenUi {
         }
       }
       if (failures.length)
-        throw new AggregateError(failures, failures.map(connectionError).join('; '))
+        throw new AggregateError(
+          failures,
+          failures.map((error) => connectionError(error)).join('; ')
+        )
       return
     }
     await this.syncRecord(id)
@@ -1227,7 +1230,6 @@ export class TokenUi {
     if (record?.state['abele-sync-token-state:server-delete'])
       throw new Error('Server deletion is awaiting confirmation')
     if (!record) throw new Error('Sync connection is unavailable')
-    if (record.paused) throw new Error('Sync connection is paused')
     let runtime = this.runtimes.get(id)
     if (!runtime) {
       await this.retryConnection(id, () => {
