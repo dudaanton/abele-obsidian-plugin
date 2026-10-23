@@ -797,10 +797,14 @@ export function nativeOf(
   }
   const native: NativeFs = {
     async rename(from, to) {
-      await assertVaultPath(adapter, from)
-      await assertVaultPath(adapter, to)
-      assertEffect([from, to])
-      await rename(at(from), at(to))
+      const capture = async () => {
+        await assertVaultPath(adapter, from)
+        await assertVaultPath(adapter, to)
+        assertEffect([from, to])
+        await rename(at(from), at(to))
+      }
+      if (raw.queue) await raw.queue.call(adapter, capture)
+      else await capture()
       await reconcile(from, to)
     },
     async rmdirEmpty(path) {
