@@ -35,6 +35,7 @@
       v-if="
         card.reason &&
         !permissionExplanation &&
+        !isCodexNetworkRefusal(card.reason) &&
         ![OWNER_STOP_REASON, 'pi_worker_lost', 'time_limit'].includes(card.reason)
       "
       original

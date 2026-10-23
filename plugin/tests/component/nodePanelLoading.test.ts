@@ -13,6 +13,11 @@ afterEach(() => {
 })
 const setup = (loaded = false) => {
   useVault([])
+  // The sidebar asks the node service for the folder's Codex network setting; this fake node
+  // advertises no such method, so the globe stays hidden and nothing is loaded.
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    connection: () => ({ client: {} }),
+  } as never)
   const model = {
     registrationId: 'sample-registration',
     current: ref({ id: 'sample-tree', projectId: 'sample-project', kind: 'worktree' }),
