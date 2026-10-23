@@ -267,7 +267,8 @@ export function markdown(report) {
       'Raw strict-zero pause count (measurement only)',
       report.pauseNewRequests == null ? [] : [{ count: report.pauseNewRequests }]
     ) +
-    details('Vault writes after pause grace', report.pauseWritesAfterGrace) +
+    details('Sync or unattributed vault writes after pause grace', report.pauseWritesAfterGrace) +
+    details('Proven host persistence after pause grace', report.pauseHostWritesAfterGrace) +
     details(
       'Primary visible activity snapshots (full rows in JSON)',
       report.primaryActivity?.map((snapshot) => ({

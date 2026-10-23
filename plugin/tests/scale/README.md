@@ -335,3 +335,11 @@ This captures the beginning of long tasks during sustained heavy work. Abrupt ap
 still censor the current unsaved segment; that gap remains unqualified. Debugger coverage
 around rebuilds remains separate. The build receipt distinguishes the candidate's own
 verified `pinned-archive` SDK input from a registry pin or an explicit harness override.
+
+Pause write evidence includes caller stacks. Only recognized host settings/workspace
+persistence with a proven host stack is reported separately and excluded from the sync-write
+budget. A matching settings path alone never exempts a write; plugin and unknown callers
+still fail. Adapter/native layers remain a conservative operation upper bound, not unique
+physical bytes. Native handle `sync`/`datasync` start/finish receipts include elapsed durations
+for phase analysis; these cover observed vault handles, not every filesystem flush by the
+app, database or operating system.
