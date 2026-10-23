@@ -399,7 +399,11 @@ export async function projectionEvidence(
   inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
-  const directories = new InspectionDirectories()
+  const privateArea = connectionPrivateArea(app)
+  const directories = new InspectionDirectories([
+    app.vault.configDir + '/plugins/abele/sync-conditional',
+    ...(privateArea ? [privateArea + '/conditional'] : []),
+  ])
   let folders = 1
   const walk = async (folder: string): Promise<void> => {
     assertCurrent()

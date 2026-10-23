@@ -109,6 +109,24 @@ it('reuses inspection inventory for the first and fallback local listings', asyn
   expect(stat).not.toHaveBeenCalled()
 })
 
+it('bounds recovery-probe revision tracking independently of ordinary vault folder count', async () => {
+  const app = buildFakeVault([
+    { path: '.obsidian/app.json', content: '{}' },
+    ...Array.from({ length: 300 }, (_, i) => ({
+      path: `Notes/folder-${i}/sample.md`,
+      content: 'note',
+    })),
+  ])
+  await projectionEvidence(app as never)
+  // Every mutation visits this registry: unrelated folders must not add per-write work.
+  const revisions = Reflect.get(
+    app.vault.adapter,
+    Symbol.for('abele.sync.adapter-config-revisions-v1')
+  ) as Map<string, number>
+  console.debug('[recovery probe counters]', { folders: 300, counters: revisions.size })
+  expect(revisions.size).toBeLessThanOrEqual(8)
+})
+
 it.each(['adapter', 'poll'] as const)(
   'invalidates inspected absence when private capture evidence arrives through %s',
   async (through) => {

@@ -5,6 +5,7 @@ const ABSENT = Symbol.for('abele.sync.inspected-absence-v1')
 
 /** Process-local listing evidence, never a persisted assertion about private bytes. */
 export class InspectionDirectories {
+  constructor(private readonly roots: readonly string[]) {}
   private readonly listings = new Map<
     string,
     {
@@ -14,6 +15,9 @@ export class InspectionDirectories {
     }
   >()
   observe(adapter: DataAdapter, path: string) {
+    // Revision counters are visited on every mutation. Keep their number bounded
+    // by recovery ancestry rather than by the number of ordinary vault folders.
+    if (path && !this.roots.some((root) => root.startsWith(path + '/'))) return () => {}
     const revision = adapterConfigRevision(adapter, path)
     const at = revision()
     return (entries: readonly string[]) => {
