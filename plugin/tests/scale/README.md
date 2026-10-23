@@ -104,6 +104,11 @@ Restart timing starts at app launch; resume timing measures the next upload/comm
 Pause timing starts before the pause CLI action and includes completion of already active
 requests. New HTTP requests include endpoint/kind summaries, per-second buckets and each
 request's click-relative time. Caller attribution is null unless supplied by the trace.
+Response closures, including cancellations, carry timestamps. If an active request vanished
+without a completion timestamp, stop latency is unknown and fails its budget; absence of new
+requests alone never proves zero stop latency.
+The in-renderer pause invocation timestamp is recorded separately from the controller's
+earlier observation boundary. The original strict request-window budget is retained.
 Startup reports retain launch totals and observe the product's existing `abele:onload-start`
 performance mark, emitted at entry to its onload. The first-request and idle budgets start
 from that product mark; absent marks fail the budgets. Observer load remains a separate time.

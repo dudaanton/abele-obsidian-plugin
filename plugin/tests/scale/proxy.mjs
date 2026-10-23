@@ -90,7 +90,10 @@ export class WireProxy extends EventEmitter {
         this.record({ event: 'trigger', kind: 'large-upload', id, sent })
       }
     })
-    const complete = () => this.active.delete(id)
+    const complete = () => {
+      this.active.delete(id)
+      this.record({ event: 'close', id, completed: res.writableFinished })
+    }
     res.once('close', complete)
     if (this.offline) {
       req.destroy()

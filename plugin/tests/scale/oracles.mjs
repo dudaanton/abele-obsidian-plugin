@@ -16,10 +16,14 @@ export function compareInventory(expected, actual) {
 export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observedAt) {
   const relevant = events.filter((event) => event.at >= pausedAt && event.at <= observedAt)
   const starts = relevant.filter((event) => event.event === 'start')
+  const watched = new Set([...activeAtPause, ...starts.map((event) => event.id)])
   const completions = relevant.filter(
-    (event) => event.event === 'finish' && activeAtPause.has(event.id)
+    (event) => ['finish', 'close'].includes(event.event) && watched.has(event.id)
   )
-  const pending = [...activeAtPause].filter((id) => activeNow.has(id)).length
+  const pending = [...watched].filter((id) => activeNow.has(id)).length
+  const closedWithoutTimestamp = [...watched].filter(
+    (id) => !activeNow.has(id) && !completions.some((event) => event.id === id)
+  ).length
   const pauseRequests = starts.map((event) => ({
     ...event,
     afterPauseMs: event.at - pausedAt,
@@ -52,6 +56,9 @@ export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observe
   }
   return {
     pauseAt: pausedAt,
+    pauseActiveAtPause: [...activeAtPause],
+    pauseClosedWithoutTimestamp: closedWithoutTimestamp,
+    pauseStopUpperBoundMs: pending ? null : observedAt - pausedAt,
     pauseRequests,
     pauseByEndpoint: [...groups.values()],
     pauseBySecond: Array.from(
@@ -64,11 +71,13 @@ export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observe
     pauseNewRequests: starts.length,
     pauseInFlight: pending,
     pauseObservedMs: observedAt - pausedAt,
-    pauseLatencyMs: Math.max(
-      0,
-      ...[...starts, ...completions].map((event) => event.at - pausedAt),
-      pending ? observedAt - pausedAt : 0
-    ),
+    pauseLatencyMs: closedWithoutTimestamp
+      ? undefined
+      : Math.max(
+          0,
+          ...[...starts, ...completions].map((event) => event.at - pausedAt),
+          pending ? observedAt - pausedAt : 0
+        ),
   }
 }
 

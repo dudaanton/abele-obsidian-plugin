@@ -118,8 +118,8 @@ export class RealVault {
     )
   }
   async paused(value) {
-    await this.evaluate(
-      `${host}window.__scaleCaptureCallers=${value};for(const r of u.rows.value)void u.pause(r.id,${value}).catch(()=>{});return true`
+    return this.evaluate(
+      `${host}window.__scaleCaptureCallers=${value};const at=Date.now();for(const r of u.rows.value)void u.pause(r.id,${value}).catch(()=>{});return at`
     )
   }
   async idle(timeout) {
@@ -419,7 +419,8 @@ export async function run(config) {
     await triggered(q, 'pull', () => b.connect(tokenFiles[1]))
     const pauseAt = Date.now()
     const alreadyActive = new Set(q.active.keys())
-    await b.paused(true)
+    report.pauseActionAt = await b.paused(true)
+    report.pauseActionOffsetMs = report.pauseActionAt - pauseAt
     q.release()
     await sleep(2500)
     Object.assign(

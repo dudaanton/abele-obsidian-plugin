@@ -23,6 +23,64 @@ import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  it('records the pause invocation time separately from the controller observation boundary', async () => {
+    const vault = new RealVault({}, '/sample-vault')
+    const window = {},
+      calls = []
+    const app = {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              ui: {
+                rows: { value: [{ id: 'sample' }] },
+                pause: async (...args) => {
+                  calls.push(args)
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+    vault.evaluate = async (body) =>
+      runInNewContext(`(async()=>{${body}})()`, { app, window, Date: { now: () => 42 } })
+    expect(await vault.paused(true)).toBe(42)
+    expect(calls).toEqual([['sample', true]])
+    expect(window.__scaleCaptureCallers).toBe(true)
+  })
+  it('does not call an un-timestamped paused cancellation zero latency', () => {
+    const measured = pauseMetrics(
+      [{ event: 'start', id: 1, at: 900 }],
+      1000,
+      new Set([1]),
+      new Set(),
+      3500
+    )
+    expect(measured.pauseLatencyMs).toBeUndefined()
+    expect(measured.pauseClosedWithoutTimestamp).toBe(1)
+    expect(budgets(measured).find((row) => row.name === 'pause latency').status).toBe('FAIL')
+    const timed = pauseMetrics(
+      [
+        { event: 'start', id: 1, at: 900 },
+        { event: 'close', id: 1, at: 1100, completed: false },
+      ],
+      1000,
+      new Set([1]),
+      new Set(),
+      3500
+    )
+    expect(timed.pauseLatencyMs).toBe(100)
+    const later = pauseMetrics(
+      [{ event: 'start', id: 2, at: 1050, method: 'GET', route: '/v2/changes' }],
+      1000,
+      new Set(),
+      new Set([2]),
+      3500
+    )
+    expect(later.pauseInFlight).toBe(1)
+    expect(later.pauseLatencyMs).toBe(2500)
+  })
   it('matches each pause request to its nearest preceding caller once, without guessing missing callers', () => {
     const starts = [110, 210, 220].map((at) => ({
       device: '0',
@@ -90,14 +148,17 @@ describe('scale harness independent guarantees', () => {
   })
   it('observes the existing product performance mark without wrapping product onload', async () => {
     const evidence = [],
-      registrations = []
+      registrations = [],
+      debugCalls = []
+    const window = {}
+    const console = { debug: (...args) => debugCalls.push(args) }
     const source = await readFile(new URL('../scale/observer.cjs', import.meta.url), 'utf8')
     const module = { exports: null }
     runInNewContext(source, {
       module,
       performance: { timeOrigin: 1000 },
-      console: { debug() {} },
-      window: {},
+      console,
+      window,
       URL,
       Error,
       require: (name) =>
@@ -141,6 +202,15 @@ describe('scale harness independent guarantees', () => {
       { at: 1250, device: '0', source: 'abele:onload-start' },
     ])
     expect(registrations).toContainEqual({ type: 'mark', buffered: true })
+    console.debug('[abele-sync] GET http://127.0.0.1:1234/v2/changes')
+    expect(evidence.filter((row) => row.event === 'request-caller')).toHaveLength(0)
+    window.__scaleCaptureCallers = true
+    console.debug('[abele-sync] GET http://127.0.0.1:1234/v2/changes?key=sample-secret')
+    expect(evidence.filter((row) => row.event === 'request-caller')).toMatchObject([
+      { method: 'GET', route: '/v2/changes', stack: expect.any(String) },
+    ])
+    expect(debugCalls).toHaveLength(2)
+    expect(JSON.stringify(evidence)).not.toContain('sample-secret')
   })
   it('reads configured policy and exact refusals from the primary UI', async () => {
     const vault = new RealVault({}, '/sample-vault')
@@ -402,6 +472,9 @@ describe('scale harness independent guarantees', () => {
       await transfer
       upstream.closeAllConnections()
       await new Promise<void>((resolve) => upstream.close(() => resolve()))
+      expect(
+        proxy.events.some((event) => event.event === 'close' && event.completed === true)
+      ).toBe(true)
     }
   })
   it('fences a late failure from the job that a plugin reload retired', async () => {
@@ -592,6 +665,9 @@ describe('scale harness independent guarantees', () => {
       clearTimeout(timer)
       await proxy.close()
       await transfer
+      expect(
+        proxy.events.some((event) => event.event === 'close' && event.completed === false)
+      ).toBe(true)
       upstream.closeAllConnections()
       await new Promise<void>((resolve) => upstream.close(() => resolve()))
     }
