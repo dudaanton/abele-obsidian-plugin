@@ -254,7 +254,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       await operate('sample-created/renamed.ts','Move…','sample-moved.ts');
       await until(()=>row('sample-moved.ts')&&!row('sample-created/renamed.ts'));
       await operate('sample-moved.ts','Delete…');
-      await until(()=>!row('sample-moved.ts'));
+      await until(()=>!row('sample-moved.ts')).catch(error=>{throw Error(String(error)+'; '+JSON.stringify({exists:require('fs').existsSync(${JSON.stringify(projectPath)}+'/sample-moved.ts'),notices:[...document.querySelectorAll('.notice')].map(el=>el.textContent),row:row('sample-moved.ts')?.outerHTML,connection:nodes.connection(window.__sampleRepositoryNode).state.value}))});
       for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.getViewState().state?.target?.registrationId===window.__sampleRepositoryNode)leaf.detach();
       return 'file operations applied and tree refreshed';
     })()`)

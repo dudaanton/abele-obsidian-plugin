@@ -109,7 +109,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover').catch(error=>{
             const cm=api.codeView(document.querySelector('.abele-lsp-root .cm-content'));
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
-            throw Error(error.message+' '+JSON.stringify({inputTrace,targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
+            throw Error(error.message+' '+JSON.stringify({inputTrace,hitTarget:document.elementFromPoint(long.x,long.y)?.outerHTML.slice(0,500),targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
           });
           if(!inputTrace.some(e=>e.type==='keydown'&&e.key==='Alt'&&e.trusted))throw Error('Native Option keydown missing: '+JSON.stringify(inputTrace));
           inputChecks.push(theme+': trusted Option keydown over stationary symbol shows tooltip');
