@@ -1713,8 +1713,8 @@ export function checkedVaultPort(
         entered()
         await held
       })
-      await entering
       try {
+        await Promise.race([entering, revoked])
         if (abort.signal.aborted) throw expired
         options.ready()
       } catch (error) {

@@ -8,8 +8,65 @@ import {
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { queueBinaryAdapter } from '../helpers/queuedBinaryAdapter'
+import { deferred } from '../helpers/deferred'
 
 const bytes = new TextEncoder().encode('saved').buffer
+
+it.each([false, true])(
+  'bounds acquisition behind an ordinary mutation (reentrant=%s)',
+  async (reentrant) => {
+    vi.useFakeTimers()
+    const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const entered = deferred(),
+      finish = deferred()
+    const app = buildFakeVault([])
+    const original = app.vault.adapter.writeBinary
+    let acquiring: Promise<unknown>
+    const port = checkedVaultPort(app.vault as never, app.vault.adapter as never, {
+      ready() {},
+      effect: (work) => work(),
+    })
+    app.vault.adapter.writeBinary = async function (...args) {
+      entered.resolve()
+      await finish.promise
+      if (reentrant) await acquiring
+      await original.apply(this, args)
+    }
+    adapterPathGate(app.vault.adapter)
+    const saving = app.vault.adapter.writeBinary('sample.md', bytes)
+    await entered.promise
+    let result: unknown
+    acquiring = port
+      .acquire(['sample.md'])
+      .then(
+        (release) => {
+          release()
+          return 'acquired'
+        },
+        (error: unknown) => error
+      )
+      .then((answer) => {
+        result = answer
+        return answer
+      })
+    try {
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(result).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(result).toMatchObject({ leaseExpired: true })
+      finish.resolve()
+      await saving
+      await acquiring
+      expect(await app.vault.adapter.read('sample.md')).toBe('saved')
+      expect(loud).toHaveBeenCalledOnce()
+    } finally {
+      finish.resolve()
+      // Failed pre-fix assertions must not wait on the intentionally deadlocked wrapper.
+      loud.mockRestore()
+      vi.useRealTimers()
+    }
+  }
+)
 
 it('does not multiply the save deadline through queued checked leases', async () => {
   vi.useFakeTimers()
