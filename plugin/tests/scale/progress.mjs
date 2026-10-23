@@ -1,5 +1,6 @@
-import { writeFile, rename, mkdir } from 'node:fs/promises'
+import { copyFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { writeEvidenceJson } from './evidence.mjs'
 
 export function requireServerCapacity(plan, limits) {
   const requiredFileBytes = plan.reduce((largest, file) => Math.max(largest, file.size), 0)
@@ -61,15 +62,34 @@ export function phaseTimings(phases, now = Date.now()) {
 }
 
 export async function saveCheckpoint(output, report, proxies, now = Date.now(), boundary = false) {
-  const snapshot = JSON.stringify({
+  await writeEvidenceJson(join(output, 'phase-status.json'), {
+    phase: report.phase,
+    checkpointAt: now,
+    phaseTimings: phaseTimings(report.phases, now),
+    harnessFailures: report.harnessFailures,
+    remainingPhaseEvidence: report.remainingPhaseEvidence,
+    failure: report.failure,
+    metrics: Object.fromEntries(
+      [
+        'initialUploadMs',
+        'peerInitialDownloadMs',
+        'resumeUploadMs',
+        'uploadedFiles',
+        'uploadedBytes',
+        'peakAppRssBytes',
+      ].map((key) => [key, report[key]])
+    ),
+    interruptionCount: report.interruptions?.length ?? 0,
+    wireEvents: proxies.reduce((n, proxy) => n + proxy.events.length, 0),
+  })
+  const snapshot = {
     ...report,
     checkpointAt: now,
     phaseTimings: phaseTimings(report.phases, now),
     wire: proxies.flatMap((proxy) => proxy.events),
-  })
+  }
   const path = join(output, 'checkpoint.json')
-  await writeFile(path + '.next', snapshot)
-  await rename(path + '.next', path)
+  await writeEvidenceJson(path, snapshot)
   if (boundary) {
     const folder = join(output, 'phases')
     await mkdir(folder, { recursive: true })
@@ -77,7 +97,29 @@ export async function saveCheckpoint(output, report, proxies, now = Date.now(), 
       folder,
       `${now}-${report.phases.length}-${report.interruptions?.length ?? 0}.json`
     )
-    await writeFile(phasePath + '.next', snapshot)
+    await copyFile(path, phasePath + '.next')
     await rename(phasePath + '.next', phasePath)
   }
+}
+
+export async function saveFailureCheckpoint(output, report, proxies, stage, at = Date.now()) {
+  const phases = [
+    'preflight',
+    'generate and install',
+    'first upload',
+    'resume upload',
+    'comparison interruption',
+    'network and plugin interruption',
+    'second device pull',
+    'edits and settle',
+    'synced restart',
+    'byte verification',
+    'complete',
+  ]
+  report.harnessFailures ??= []
+  report.harnessFailures.push({ stage, phase: report.phase, at })
+  report.remainingPhaseEvidence = phases
+    .slice(phases.indexOf(report.phase) + 1)
+    .map((phase) => ({ phase, status: 'not run' }))
+  await saveCheckpoint(output, report, proxies, at, true)
 }

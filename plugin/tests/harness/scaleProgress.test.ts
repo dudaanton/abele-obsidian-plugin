@@ -9,7 +9,43 @@ import {
   activeRequestIds,
   recoveryTimings,
   requireServerCapacity,
+  saveFailureCheckpoint,
 } from '../scale/progress.mjs'
+
+it('persists the failed phase and explicitly marks remaining evidence unrun', async () => {
+  const root = await mkdtemp(join(process.cwd(), '.scale-failure-'))
+  try {
+    const report = {
+      phase: 'second device pull',
+      phases: [{ name: 'second device pull', at: 100 }],
+      interruptions: [],
+      failure: 'Harness operation failed',
+    }
+    await saveFailureCheckpoint(
+      root,
+      report,
+      [{ events: [{ event: 'start', at: 120 }] }],
+      'scenario',
+      130
+    )
+    const checkpoint = JSON.parse(await readFile(join(root, 'checkpoint.json'), 'utf8'))
+    expect(checkpoint.harnessFailures).toEqual([
+      { stage: 'scenario', phase: 'second device pull', at: 130 },
+    ])
+    expect(checkpoint.remainingPhaseEvidence).toContainEqual({
+      phase: 'synced restart',
+      status: 'not run',
+    })
+    expect(checkpoint.wire).toEqual([{ event: 'start', at: 120 }])
+    expect(report.phase).toBe('second device pull')
+    const status = JSON.parse(await readFile(join(root, 'phase-status.json'), 'utf8'))
+    expect(status.harnessFailures).toEqual(checkpoint.harnessFailures)
+    expect(status.remainingPhaseEvidence).toEqual(checkpoint.remainingPhaseEvidence)
+    expect(status.wire).toBeUndefined()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 it('rejects an undersized server without excluding or trimming the required files', () => {
   const plan = [{ path: 'Attachments/sample.pdf', size: 256 * 1024 ** 2 }]

@@ -58,6 +58,35 @@ The build can be changed independently of this driver, including to test an SDK 
 
 ### Local or remote server
 
+For a candidate needing a matching core/server implementation, prepare that exact core
+commit on the build host, independently of the plugin checkout:
+
+```sh
+node plugin/scripts/prepare-sync-fixture.mjs /path/to/core-repository "$SCALE_CORE_COMMIT"
+```
+
+`SCALE_CORE_COMMIT` must be the full immutable 40-character commit SHA. Preparation uses
+`git archive` of that object, `npm ci`, and forced TypeScript builds of protocol, server,
+core and CLI. It never builds in the source repository's working tree. Its printed
+`ABELE_SYNC_DIR` is the resulting fixture path, not an automatically selected checkout.
+The receipt records commit/tree, lock digest, package versions, tool versions and hashes
+of source, compiled output, tests and package manifests.
+
+Set `serverMode: "local"`, `serverFixture`, `serverCommit` and
+`localServerDirectory` in the run config. With `serverCommit`, the runner verifies the
+fixture against that exact commit and checks its core version against the selected
+plugin build receipt's pinned SDK version. Checksummed inputs are verified before launch;
+wrong commit/version or changed files fail instead of falling back to the older fixture.
+The server receipt records this selection and the fixture receipt digest.
+
+An explicitly selected local server also must prove `HEAD /v2/uploads/:sha` before fixture
+generation: upload 32 random synthetic bytes, require successful HEAD for that known SHA,
+and require 404 for another absent SHA. A missing HEAD route therefore cannot masquerade
+as successful absence detection. This probe uses the owned local server only, outside
+the workload folder and timing interval; its status/byte receipt contains no credentials.
+The fresh SQLite database and blobs are removed on close. The default legacy fixture pin
+below remains available for comparison runs; a new candidate must pass `serverCommit`.
+
 `serverMode: "remote"` (the backwards-compatible default) uses `server` and `tokenFile` as
 before. Supply `serverVersion` when known; an absent version is recorded as unknown. This
 mode remains useful for a separate network-realistic run.
@@ -354,3 +383,22 @@ byte counts a conservative upper bound rather than unique physical bytes. Read a
 port wrappers are restored together in reverse installation order on observer unload.
 
 Renderer JSONL receipts are read as a stream, so evidence can exceed the runtime single-string limit. In-memory payload-read operations are retained only for the synced-restart window; the raw receipts remain complete. Corrupt completed receipts fail analysis; only a live scan may defer an incomplete final receipt.
+
+Growing JSON checkpoints/final reports and Markdown details are written incrementally to
+atomic temporary files. This includes nested restart read evidence; a large row is not
+serialized as one string. Snapshot copies use structured cloning, not JSON round trips.
+JSONL rows have a 4 MiB limit, enforced before line concatenation. Individual JSON inputs
+(rotated CPU/coverage segments, small rebuild receipts and baseline comparison input) have
+a 64 MiB read limit; a corrupt/unrotated segment fails evidence analysis explicitly.
+Supply a compact baseline summary if its full report exceeds that limit. Main-process
+profiles rotate every ten seconds; profile analysis loads sequentially with four cached
+segments rather than loading a whole recording concurrently. Build assets, configuration,
+tokens and single rebuild-control receipts are not accumulated log readers.
+
+Every checkpoint first writes a small `phase-status.json` without raw wire receipts.
+Monitors should read it instead of loading the full checkpoint repeatedly. Controller
+exceptions save a boundary checkpoint with the failed phase, stage (`scenario`/`analysis`)
+and explicit `remainingPhaseEvidence: [{phase, status: "not run"}]`. Final-analysis exceptions
+also write `failure-report.json`; raw JSONL, profiles and earlier phase files stay intact.
+The driver does not execute dependent phases after an abort or manufacture their results.
+A failed profile/receipt read fails the run even when the rest of analysis can continue.

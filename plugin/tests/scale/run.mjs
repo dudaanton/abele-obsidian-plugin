@@ -6,7 +6,12 @@ import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { rendererEntries } from './evidence.mjs'
+import {
+  rendererEntries,
+  readEvidenceJson,
+  writeEvidenceJson,
+  writeEvidenceChunks,
+} from './evidence.mjs'
 import {
   declaredInterruptions,
   reindexEvidence,
@@ -14,7 +19,7 @@ import {
   hashTracepoints,
   digestCoverage,
 } from './reindex.mjs'
-import { openServer, verifyServerLimits } from './local-server.mjs'
+import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
 import {
@@ -32,13 +37,14 @@ import {
   requireTime,
   phaseTimings,
   saveCheckpoint,
+  saveFailureCheckpoint,
   activeRequestIds,
   recoveryTimings,
 } from './progress.mjs'
 import {
   compareInventory,
   budgets,
-  markdown,
+  markdownChunks,
   pauseMetrics,
   expectedSet,
   comparePeer,
@@ -307,8 +313,8 @@ export async function run(config) {
   let saving = Promise.resolve()
   let checkpointError = false
   const checkpoint = (boundary = false) => {
-    const snapshot = JSON.parse(JSON.stringify(report))
-    const wire = JSON.parse(JSON.stringify(proxies.map((p) => ({ events: p.events }))))
+    const snapshot = structuredClone(report)
+    const wire = structuredClone(proxies.map((p) => ({ events: p.events })))
     const at = Date.now()
     saving = saving
       .then(() => saveCheckpoint(config.output, snapshot, wire, at, boundary))
@@ -317,6 +323,15 @@ export async function run(config) {
       })
   }
   let checkpointTimer
+  const loadEvidence = async (path) => {
+    try {
+      return await readEvidenceJson(path)
+    } catch (error) {
+      report.failure ??= 'Harness evidence JSON could not be read'
+      report.evidenceReadFailures = (report.evidenceReadFailures ?? 0) + 1
+      throw error
+    }
+  }
   const settle = async (device, step) => {
     const startedAt = Date.now()
     let idle = false
@@ -430,7 +445,12 @@ export async function run(config) {
     }
     if (devices.length !== 2 || devices[0].root === devices[1].root)
       throw new Error('Two separate disposable vaults required')
-    serverSession = await openServer(config)
+    if (config.serverCommit && !report.buildReceipt?.sdk?.version)
+      throw new Error('Selected build SDK provenance required for matching server')
+    serverSession = await openServer({
+      ...config,
+      ...(config.serverCommit ? { serverSdkVersion: report.buildReceipt.sdk.version } : {}),
+    })
     config = { ...config, server: serverSession.address }
     report.serverReceipt = serverSession.receipt
     const encoded = serverSession.token
@@ -438,6 +458,8 @@ export async function run(config) {
     if (new URL(owner.token.address).origin !== new URL(config.server).origin)
       throw new Error('Token endpoint does not match configured server')
     report.serverLimits = (await owner.connection()).limits
+    if (config.serverMode === 'local' && config.serverCommit)
+      report.serverReceipt.uploadHead = await verifyUploadPresence(config.server, owner.token.key)
     report.serverReceipt.advertisedLimits = report.serverLimits
     await writeFile(
       join(config.output, 'server-receipt.json'),
@@ -544,10 +566,11 @@ export async function run(config) {
         join(config.output, 'renderer.jsonl') + '.' + declared.device + '.reindex.json'
       const receipt = async (file) => {
         try {
-          const row = JSON.parse(await readFile(file, 'utf8'))
+          const row = await readEvidenceJson(file)
           return row.id === id ? row : null
-        } catch {
-          return null
+        } catch (error) {
+          if (error.code === 'ENOENT') return null
+          throw error
         }
       }
       const clicked = await wait(
@@ -809,6 +832,13 @@ export async function run(config) {
     report.harnessFailureFrames = String(error.stack ?? '')
       .split('\n')
       .slice(1, 6)
+    await saving
+    await saveFailureCheckpoint(
+      config.output,
+      report,
+      proxies.map((p) => ({ events: p.events })),
+      'scenario'
+    )
     report.lastSnapshots = await Promise.all(
       devices.map((device) => device.snapshot().catch(() => null))
     )
@@ -843,6 +873,7 @@ export async function run(config) {
         report.restartAt
       ).catch(() => {
         report.failure ??= 'Renderer evidence could not be read'
+        report.evidenceReadFailures = (report.evidenceReadFailures ?? 0) + 1
         return []
       })
       for (const saved of rebuilds) {
@@ -918,9 +949,7 @@ export async function run(config) {
         const hashUnknown = hashes.some(
           (row) => row.source === 'unknown' && fileHashes.has(row.sha)
         )
-        const jsHashes = await javascriptHashEvidence(saved.operation, entries, async (path) =>
-          JSON.parse(await readFile(path, 'utf8'))
-        )
+        const jsHashes = await javascriptHashEvidence(saved.operation, entries, loadEvidence)
         const digestProof = digestCoverage(
           saved.operation,
           entries,
@@ -983,9 +1012,7 @@ export async function run(config) {
       }
       report.noticeCounts = noticeSummary(entries)
       report.notices = entries.length ? report.noticeCounts.abele : undefined
-      report.longTaskAttribution = await profileSummary(entries, entries, async (path) =>
-        JSON.parse(await readFile(path, 'utf8'))
-      )
+      report.longTaskAttribution = await profileSummary(entries, entries, loadEvidence)
       for (const rebuild of report.reindexes) {
         rebuild.longTasks = report.longTaskAttribution.filter(
           (row) =>
@@ -1061,6 +1088,13 @@ export async function run(config) {
           report.cleanupFailure = true
         })
       report.budgets = budgets(report)
+      if (report.evidenceReadFailures)
+        await saveFailureCheckpoint(
+          config.output,
+          report,
+          proxies.map((p) => ({ events: p.events })),
+          'analysis'
+        )
       report.status =
         report.budgets.every((row) => row.status === 'PASS') &&
         !report.failure &&
@@ -1068,12 +1102,31 @@ export async function run(config) {
           ? 'PASS'
           : 'FAIL'
       if (config.baselineReport)
-        report.comparison = compareReports(
-          JSON.parse(await readFile(config.baselineReport, 'utf8')),
-          report
-        )
-      await writeFile(join(config.output, 'report.json'), JSON.stringify(report, null, 2))
-      await writeFile(join(config.output, 'report.md'), markdown(report))
+        report.comparison = compareReports(await loadEvidence(config.baselineReport), report)
+      await writeEvidenceJson(join(config.output, 'report.json'), report)
+      await writeEvidenceChunks(join(config.output, 'report.md'), markdownChunks(report))
+    } catch {
+      report.failure ??= 'Harness final evidence analysis failed; checkpoint retained'
+      report.status = 'FAIL'
+      await saveFailureCheckpoint(
+        config.output,
+        report,
+        proxies.map((p) => ({ events: p.events })),
+        'analysis'
+      ).catch(() => {
+        report.checkpointFailure = true
+      })
+      const failureSummary = {
+        status: report.status,
+        failure: report.failure,
+        phase: report.phase,
+        harnessFailures: report.harnessFailures,
+        remainingPhaseEvidence: report.remainingPhaseEvidence,
+        checkpointFailure: report.checkpointFailure,
+      }
+      await writeEvidenceJson(join(config.output, 'failure-report.json'), failureSummary)
+      // Never leave a previously written PASS JSON beside a failed Markdown/analyzer exit.
+      await writeEvidenceJson(join(config.output, 'report.json'), failureSummary)
     } finally {
       if (serverSession) await serverSession.close()
     }

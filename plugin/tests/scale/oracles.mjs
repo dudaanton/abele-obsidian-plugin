@@ -1,3 +1,4 @@
+import { jsonPieces } from './evidence.mjs'
 import { isExcluded, selectiveDefaults, IgnoreRules, settingsCategory } from '@abele/sync-sdk/core'
 
 export function compareInventory(expected, actual) {
@@ -209,108 +210,115 @@ export function budgets(m) {
 }
 
 export function markdown(report) {
-  const details = (title, rows) =>
-    `\n## ${title}\n\n` +
-    (rows?.length
-      ? rows.map((row) => `- ${JSON.stringify(row).replaceAll('|', '\\|')}`).join('\n')
-      : 'Unobserved / none recorded') +
-    '\n'
-  return (
-    `# Sync scale run\n\nBuild: ${report.build}\nSeed: ${report.seed}\nShape: ${report.files} files / ${report.bytes} bytes\n\n` +
-    '| Budget | Result | Observed | Required |\n|---|---|---|---|\n' +
-    report.budgets
-      .map((row) => `| ${row.name} | ${row.status} | ${JSON.stringify(row.value)} | ${row.limit} |`)
-      .join('\n') +
-    `\n\nThroughput: ${report.filesPerSecond ?? 'unobserved'} files/s; ${report.mibPerSecond ?? 'unobserved'} MiB/s.\n` +
-    (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '') +
-    details('Phase timings (ongoing means incomplete)', report.phaseTimings) +
-    details('Interruption recovery observations (null means unobserved)', report.recoveryTimings) +
-    details(
-      'Vault cache rebuilds (missing causal evidence fails)',
-      report.reindexes?.map((row) => ({
-        id: row.id,
-        device: row.device,
-        phase: row.phase,
-        at: row.at,
-        durationMs: row.durationMs,
-        requests: row.requests?.length,
-        writes: row.writes?.length,
-        deletions: row.deletions?.length,
-        serverDeletions: row.serverDeletions?.length,
-        recoveryDeletions: row.recoveryDeletions,
-        extraUploads: row.extraUploads,
-        extraDownloads: row.extraDownloads,
-        extraRendererHashes: row.extraRendererHashes,
-        notices: row.notices,
-        longTasks: row.longTasks?.map(({ startedAt, durationMs, source, samplesBySource }) => ({
-          startedAt,
-          durationMs,
-          source,
-          samplesBySource,
-        })),
-        javascriptHashCoverage: row.javascriptHashCoverage,
-        settledAt: row.settledAt,
-        status: row.status,
-      }))
-    ) +
-    details('Notices (text, time, phase, creation origin)', report.noticeDetails) +
-    details(
-      'Notice counts by source (only Abele notices enter the notice gate)',
-      report.noticeCounts ? [report.noticeCounts] : []
-    ) +
-    details(
-      'Server provenance and advertised limits',
-      report.serverReceipt ? [report.serverReceipt] : []
-    ) +
-    details('Synced restart content read evidence', report.restartReadEvidence) +
-    details('Renderer long-task sampled CPU attribution', report.longTaskAttribution) +
-    details('Sampled peak app RSS', [
-      {
-        bytes: report.peakAppRssBytes ?? null,
-        samples: report.memorySamples ?? 0,
-        coverage: report.memorySampling,
-      },
-    ]) +
-    details('Excluded by settings', report.excludedBySettings) +
-    details('Visible case refusals on primary', report.caseRefusals) +
-    details('Oversized refusal evidence', report.oversizedEvidence) +
-    details(
-      'Raw strict-zero pause count (measurement only)',
-      report.pauseNewRequests == null ? [] : [{ count: report.pauseNewRequests }]
-    ) +
-    details('Sync or unattributed vault writes after pause grace', report.pauseWritesAfterGrace) +
-    details('Proven host persistence after pause grace', report.pauseHostWritesAfterGrace) +
-    details(
-      'Primary visible activity snapshots (full rows in JSON)',
-      report.primaryActivity?.map((snapshot) => ({
-        phase: snapshot.phase,
-        at: snapshot.at,
-        connections: snapshot.activity?.map((row) => ({
-          id: row.id,
-          refused: row.refused,
-          events: row.events.length,
-        })),
-      }))
-    ) +
-    details('Pause requests by endpoint', report.pauseByEndpoint) +
-    details('Pause requests by second after action', report.pauseBySecond) +
-    details('Pause request timeline (component null means unavailable)', report.pauseRequests) +
-    details(
-      'Startup timing (observer load is not product plugin load; null means unavailable)',
-      report.startupTiming
-    ) +
-    details('Diagnostic findings', report.findings) +
-    (report.comparison
-      ? '\n## Master smoke versus candidate\n\nUnknown baseline product-load timing stays unknown; launch and product clocks are shown separately.\n\n| Metric | Master | Candidate |\n|---|---|---|\n' +
-        report.comparison
-          .map(
-            (row) =>
-              `| ${row.metric} | ${row.master ?? 'unobserved'} | ${row.candidate ?? 'unobserved'} |`
-          )
-          .join('\n') +
-        '\n'
-      : '')
+  return [...markdownChunks(report)].join('')
+}
+
+export function* markdownChunks(report) {
+  function* details(title, rows) {
+    yield `\n## ${title}\n\n`
+    if (!rows?.length) yield 'Unobserved / none recorded'
+    else
+      for (const row of rows) {
+        yield '- '
+        for (const piece of jsonPieces(row)) yield piece.replaceAll('|', '\\|')
+        yield '\n'
+      }
+    yield '\n'
+  }
+  yield `# Sync scale run\n\nBuild: ${report.build}\nSeed: ${report.seed}\nShape: ${report.files} files / ${report.bytes} bytes\n\n`
+  yield '| Budget | Result | Observed | Required |\n|---|---|---|---|\n'
+  for (const row of report.budgets)
+    yield `| ${row.name} | ${row.status} | ${JSON.stringify(row.value)} | ${row.limit} |\n`
+  yield `\nThroughput: ${report.filesPerSecond ?? 'unobserved'} files/s; ${report.mibPerSecond ?? 'unobserved'} MiB/s.\n`
+  if (report.failure) yield `\nStopped in ${report.phase}: ${report.failure}\n`
+  yield* details('Phase timings (ongoing means incomplete)', report.phaseTimings)
+  yield* details(
+    'Interruption recovery observations (null means unobserved)',
+    report.recoveryTimings
   )
+  yield* details(
+    'Vault cache rebuilds (missing causal evidence fails)',
+    report.reindexes?.map((row) => ({
+      id: row.id,
+      device: row.device,
+      phase: row.phase,
+      at: row.at,
+      durationMs: row.durationMs,
+      requests: row.requests?.length,
+      writes: row.writes?.length,
+      deletions: row.deletions?.length,
+      serverDeletions: row.serverDeletions?.length,
+      recoveryDeletions: row.recoveryDeletions,
+      extraUploads: row.extraUploads,
+      extraDownloads: row.extraDownloads,
+      extraRendererHashes: row.extraRendererHashes,
+      notices: row.notices,
+      longTasks: row.longTasks?.map(({ startedAt, durationMs, source, samplesBySource }) => ({
+        startedAt,
+        durationMs,
+        source,
+        samplesBySource,
+      })),
+      javascriptHashCoverage: row.javascriptHashCoverage,
+      settledAt: row.settledAt,
+      status: row.status,
+    }))
+  )
+  yield* details('Notices (text, time, phase, creation origin)', report.noticeDetails)
+  yield* details(
+    'Notice counts by source (only Abele notices enter the notice gate)',
+    report.noticeCounts ? [report.noticeCounts] : []
+  )
+  yield* details(
+    'Server provenance and advertised limits',
+    report.serverReceipt ? [report.serverReceipt] : []
+  )
+  yield* details('Synced restart content read evidence', report.restartReadEvidence)
+  yield* details('Renderer long-task sampled CPU attribution', report.longTaskAttribution)
+  yield* details('Sampled peak app RSS', [
+    {
+      bytes: report.peakAppRssBytes ?? null,
+      samples: report.memorySamples ?? 0,
+      coverage: report.memorySampling,
+    },
+  ])
+  yield* details('Excluded by settings', report.excludedBySettings)
+  yield* details('Visible case refusals on primary', report.caseRefusals)
+  yield* details('Oversized refusal evidence', report.oversizedEvidence)
+  yield* details(
+    'Raw strict-zero pause count (measurement only)',
+    report.pauseNewRequests == null ? [] : [{ count: report.pauseNewRequests }]
+  )
+  yield* details(
+    'Sync or unattributed vault writes after pause grace',
+    report.pauseWritesAfterGrace
+  )
+  yield* details('Proven host persistence after pause grace', report.pauseHostWritesAfterGrace)
+  yield* details(
+    'Primary visible activity snapshots (full rows in JSON)',
+    report.primaryActivity?.map((snapshot) => ({
+      phase: snapshot.phase,
+      at: snapshot.at,
+      connections: snapshot.activity?.map((row) => ({
+        id: row.id,
+        refused: row.refused,
+        events: row.events.length,
+      })),
+    }))
+  )
+  yield* details('Pause requests by endpoint', report.pauseByEndpoint)
+  yield* details('Pause requests by second after action', report.pauseBySecond)
+  yield* details('Pause request timeline (component null means unavailable)', report.pauseRequests)
+  yield* details(
+    'Startup timing (observer load is not product plugin load; null means unavailable)',
+    report.startupTiming
+  )
+  yield* details('Diagnostic findings', report.findings)
+  if (report.comparison) {
+    yield '\n## Master smoke versus candidate\n\nUnknown baseline product-load timing stays unknown; launch and product clocks are shown separately.\n\n| Metric | Master | Candidate |\n|---|---|---|\n'
+    for (const row of report.comparison)
+      yield `| ${row.metric} | ${row.master ?? 'unobserved'} | ${row.candidate ?? 'unobserved'} |\n`
+  }
 }
 
 export function compareReports(master, candidate) {
