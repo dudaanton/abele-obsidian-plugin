@@ -678,3 +678,11 @@ it('preserves both versions after a lost write acknowledgement and never adopts 
     await disk.installedFile('sample-mobile', 'sample.bin', await sha256(bytes('after')))
   ).toBe(false)
 })
+
+it('keeps the existing physical spelling during a legacy configuration replacement', async () => {
+  const app = buildFakeVault([{ path: '.obsidian/sample.json', content: 'before' }])
+  const disk = new ObsidianFileSystem(app as never)
+  await disk.writeAtomic('.obsidian/SAMPLE.json', bytes('after'), 2000)
+  expect((await app.vault.adapter.list('.obsidian')).files).toEqual(['.obsidian/sample.json'])
+  expect(await app.vault.adapter.read('.obsidian/sample.json')).toBe('after')
+})

@@ -979,7 +979,7 @@ export class ObsidianFileSystem implements FileSystem {
       journal: this.journal,
       fingerprint: (path) => this.io.fingerprint(path, undefined, true),
       adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
-      indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
+      indexed: (path) => app.vault.getAbstractFileByPath(path)?.path === path,
       makeParents: (path) => this.makeParents(path),
       installed: (path) => {
         this.awaitingIndex.add(path)
@@ -2442,8 +2442,15 @@ export class ObsidianFileSystem implements FileSystem {
   private async writeUnreserved(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     this.runtimeFence?.assertReady()
     const expected = await this.legacyBase(path)
-    await this.beforeEngineMutation?.([path])
-    if (!(await this.conditionalFile({ path, expected, effect: { kind: 'write', bytes, mtime } })))
+    const target = expected === null ? path : await this.writer.held(path)
+    await this.beforeEngineMutation?.([target])
+    if (
+      !(await this.conditionalFile({
+        path: target,
+        expected,
+        effect: { kind: 'write', bytes, mtime },
+      }))
+    )
       throw new EngineError('conflict', 'File changed before publication')
     this.observedBases.delete(this.pathKey(path))
   }
