@@ -136,7 +136,7 @@ export interface FakeApp {
     offref(ref: { id: string }): void
   }
   metadataCache: {
-    initialized: boolean
+    initialized?: boolean
     isCacheClean(): boolean
     getFileCache(file: TFile): FakeFileCache | null
     getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null
@@ -163,7 +163,7 @@ export interface FakeApp {
   setFrontmatter(path: string, frontmatter: Record<string, unknown>): void
   /** Obsidian's workspace, for the events that live there — `css-change` among them. */
   workspace: {
-    layoutReady: boolean
+    layoutReady?: boolean
     on(name: string, callback: (...args: unknown[]) => void): { id: string }
     offref(ref: { id: string }): void
     /** The fake's layout is always ready, so the callback runs at once, as Obsidian does then. */
@@ -937,7 +937,6 @@ export function buildFakeVault(
       },
     },
     workspace: {
-      layoutReady: true,
       getLeavesOfType: (): never[] => [],
       on: register('workspace'),
       offref,
@@ -946,7 +945,6 @@ export function buildFakeVault(
       },
     },
     metadataCache: {
-      initialized: true,
       isCacheClean: () => true,
       on: register('metadataCache'),
       offref,

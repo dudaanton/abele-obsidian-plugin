@@ -296,13 +296,17 @@ export class ObsidianFileSystem implements FileSystem {
   private writtenStat: FileInfo | null = null
   private indexProbe = 0
   private indexFallback = false
+  private layoutReady = false
 
   private indexReady(): boolean {
     const cache = this.app.metadataCache as typeof this.app.metadataCache & {
       initialized?: boolean
       isCacheClean?: () => boolean
     }
-    if (this.app.workspace?.layoutReady !== true || cache?.initialized === false)
+    if (
+      (this.app.workspace?.layoutReady ?? this.layoutReady) !== true ||
+      cache?.initialized === false
+    )
       this.indexFallback = true
     try {
       const clean = cache?.isCacheClean?.()
@@ -362,6 +366,10 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async [INVENTORY_PASS]<T>(work: () => Promise<T>): Promise<T> {
+    if (this.inventoryDepth === 0) {
+      this.indexFallback = false
+      this.indexReady()
+    }
     // Shared filesystem instances may have overlapping engines. Never share their snapshots.
     this.inventory = ++this.inventoryDepth === 1 ? this.createInventory() : null
     const inventory = this.inventory
@@ -784,6 +792,9 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.app.workspace?.onLayoutReady?.(() => {
+      this.layoutReady = true
+    })
     this.indexReady()
     this.pathKey = vaultPathKey(app.vault)
     this.placementStages = privatePlacementStages(
@@ -2190,8 +2201,13 @@ export class ObsidianFileSystem implements FileSystem {
     // turning every restart into a disk stat of every indexed path.
     if (readiness === true && indexed.size) {
       const files = [...indexed.values()]
+      const startup = this.startupInventory?.()
       for (let n = 0; n < Math.min(16, files.length); n++) {
         const file = files[this.indexProbe++ % files.length]
+        const inspected = startup?.get(file.path)
+        if (inspected?.size === file.stat.size && inspected.mtime === stamp(file.stat.mtime))
+          continue
+        if (await crossesSymlink(file.path, (path) => this.isSymlink(path))) continue
         const stat = await this.rawStat(file.path)
         if (
           !stat ||

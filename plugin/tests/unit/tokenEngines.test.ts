@@ -943,6 +943,7 @@ function inspectionFixture(
   const metadata = new MemoryStateStore()
   const scope = { kind, id: 'root', path: folder }
   let cursor = 1
+  const serverPaths = new Map<string, string>()
   const transport = vi.fn<typeof fetch>(async (input, init) => {
     const path = new URL(String(input)).pathname
     if (path === '/v2/connection')
@@ -968,16 +969,22 @@ function inspectionFixture(
       cursor++
       return Response.json({
         cursor,
-        results: ops.map((op) => ({
-          status: 'applied',
-          file_id: op.file_id ?? crypto.randomUUID(),
-          version_id: crypto.randomUUID(),
-          seq: cursor,
-          path: op.path ?? op.to_path ?? scope.path,
-          sha: op.sha ?? null,
-          size: op.size ?? 0,
-          mtime: op.mtime ?? 0,
-        })),
+        results: ops.map((op) => {
+          const fileId = op.file_id ?? crypto.randomUUID()
+          // Modify carries an id, not a path; the server retains that file's path.
+          const path = op.path ?? op.to_path ?? serverPaths.get(fileId) ?? scope.path
+          serverPaths.set(fileId, path)
+          return {
+            status: 'applied',
+            file_id: fileId,
+            version_id: crypto.randomUUID(),
+            seq: cursor,
+            path,
+            sha: op.sha ?? null,
+            size: op.size ?? 0,
+            mtime: op.mtime ?? 0,
+          }
+        }),
       })
     }
     if (path.startsWith('/v2/uploads/')) return new Response(null, { status: 201 })

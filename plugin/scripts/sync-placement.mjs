@@ -32,7 +32,13 @@ let inventorySince = performance.now();
 async function yieldInventory() {
   if (++inventorySteps < 256 && performance.now() - inventorySince < 8) return;
   inventorySteps = 0;
-  await new Promise(resolve => setTimeout(resolve, 0));
+  if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
+  else if (typeof MessageChannel !== 'undefined') await new Promise(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };
+    channel.port2.postMessage(null);
+  });
+  else await new Promise(resolve => setTimeout(resolve, 0));
   inventorySince = performance.now();
 }
 async function* inventoryEntries(state) {

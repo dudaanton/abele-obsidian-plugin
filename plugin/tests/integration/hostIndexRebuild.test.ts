@@ -6,10 +6,87 @@ import {
   applyStaged,
   ExpectedWrites,
   type EngineClient,
+  SyncEngine,
 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
+import { selectiveFrom } from '@/sync/connection'
+
+it('starts a synced engine during a partial stale rebuild without transfers or content reads', async () => {
+  const app = buildFakeVault([
+    { path: 'a.md', content: 'x', mtime: 1000 },
+    { path: 'b.md', content: 'x', mtime: 1000 },
+  ])
+  const files = app.vault.getFiles()
+  files[0].stat = { ...files[0].stat, mtime: 0 }
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue(files.slice(0, 1))
+  const diskStat = app.vault.adapter.stat.bind(app.vault.adapter)
+  app.vault.adapter.stat = async (path) => {
+    const info = await diskStat(path)
+    return info?.type === 'file' ? { ...info, mtime: 1000 } : info
+  }
+  app.metadataCache.isCacheClean = () => false
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  withDesktopFs(app)
+  const state = new MemoryStateStore()
+  const fs = new ObsidianFileSystem(app as never, { ledger: state })
+  const sha = await sha256(new Uint8Array([120]))
+  for (const path of ['a.md', 'b.md']) {
+    const entry = { path, wirePath: path, fileId: path, versionId: 'v1', sha, size: 1, mtime: 1000 }
+    await state.put(entry)
+    await state.setMeta(
+      'paired-file:' + path,
+      JSON.stringify({ ...entry, identity: await fs.fileIdentity!(path) })
+    )
+  }
+  await state.setCursor(1)
+  read.mockClear()
+  const transfer = vi.fn(() => {
+    throw new Error('Unexpected transfer')
+  })
+  const client = {
+    state: async () => ({
+      head_seq: 1,
+      settings: {
+        conflict: 'merge',
+        max_file_bytes: 1000000,
+        quota_bytes: null,
+        retention: { notes_days: 30, attachments_days: 30, settings_days: 30 },
+      },
+    }),
+    changes: async () => ({ items: [], head_seq: 1, next_since: 1 }),
+    manifest: transfer,
+    commit: transfer,
+    commitRaw: transfer,
+    getBlob: transfer,
+    putBlob: transfer,
+  } as unknown as EngineClient
+  const engine = new SyncEngine({ fs, state, client, selective: selectiveFrom(undefined) })
+  try {
+    await engine.sync()
+    expect(transfer).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
+  } finally {
+    await engine.stop()
+  }
+})
+
+it('uses a settled index when layout becomes ready before the first inventory pass', async () => {
+  const app = buildFakeVault(
+    Array.from({ length: 32 }, (_, n) => ({ path: `sample-${n}.md`, content: 'x' }))
+  )
+  app.workspace.layoutReady = false
+  const fs = new ObsidianFileSystem(app as never)
+  app.workspace.layoutReady = true
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+    const paths = []
+    for await (const file of fs.list()) paths.push(file.path)
+    expect(paths).toHaveLength(32)
+  })
+  expect(stat.mock.calls.filter(([path]) => path.startsWith('sample-'))).toHaveLength(16)
+})
 
 it('keeps a recorded physical spelling when a rebuilding host normalizes its disk listing', async () => {
   const path = 'Cafe\u0301.md'
