@@ -504,7 +504,8 @@ export class CommentService implements CommentInfoSource {
     parent: ChatSession,
     messageId: string,
     quote?: string,
-    start?: number
+    start?: number,
+    code?: boolean
   ): Promise<ChatSession | null> {
     const chat = parent.currentChatFile.value
     if (!chat) {
@@ -521,7 +522,12 @@ export class CommentService implements CommentInfoSource {
 
     const session = await this.startComment(
       id,
-      { note: chat.path, ...(quote ? { quote } : {}), message: messageId },
+      {
+        note: chat.path,
+        ...(quote ? { quote } : {}),
+        ...(code ? { code: true } : {}),
+        message: messageId,
+      },
       // The chat's own agent answers: the comment is a side question inside its conversation,
       // asked of the agent that was having it — with that agent's scope, not the comment agent's.
       parent.agentId.value

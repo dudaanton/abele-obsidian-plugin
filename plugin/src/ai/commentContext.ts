@@ -53,19 +53,23 @@ function paragraphAround(noteText: string, pos: number): string {
  * `commentId` is how a cursor comment, which has no quote to match on, finds its own marker
  * among several.
  */
-export function buildCommentContext(
+export function describeCommentContext(
   anchor: CommentAnchor,
   noteText: string,
   commentId?: string
-): string {
+) {
   const lines = ['## Where you are', `Note: ${anchor.note}`]
 
   if (anchor.quote) lines.push('Selected text:', anchor.quote)
 
+  let paragraphIncluded = false
   const pos = anchorPosition(noteText, anchor, commentId)
   if (pos !== null) {
     const paragraph = paragraphAround(noteText, pos)
-    if (paragraph) lines.push('Around it:', paragraph)
+    if (paragraph) {
+      lines.push('Around it:', paragraph)
+      paragraphIncluded = true
+    }
   }
 
   const body = stripMarkers(noteText).trim()
@@ -75,5 +79,18 @@ export function buildCommentContext(
       : 'Whole note: too long to include here — use read for the rest.'
   )
 
-  return lines.join('\n')
+  return {
+    text: lines.join('\n'),
+    wholeNote: body.length < COMMENT_WHOLE_NOTE_LIMIT,
+    characters: body.length,
+    paragraph: paragraphIncluded,
+  }
+}
+
+export function buildCommentContext(
+  anchor: CommentAnchor,
+  noteText: string,
+  commentId?: string
+): string {
+  return describeCommentContext(anchor, noteText, commentId).text
 }

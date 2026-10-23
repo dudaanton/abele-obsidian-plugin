@@ -1032,9 +1032,9 @@ const revealNodePanel = async () => {
   await workspace.revealLeaf(leaf)
 }
 
-const onAskHere = (messageId: string, quote?: string, start?: number) => {
+const onAskHere = (messageId: string, quote?: string, start?: number, code?: boolean) => {
   const s = session.value
-  if (s) void CommentService.getInstance().createOnMessage(s, messageId, quote, start)
+  if (s) void CommentService.getInstance().createOnMessage(s, messageId, quote, start, code)
 }
 
 const replyReview = shallowRef<{

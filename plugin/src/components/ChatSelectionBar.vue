@@ -76,12 +76,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'ask', messageId: string, quote: string, start: number): void
+  (e: 'ask', messageId: string, quote: string, start: number, code?: boolean): void
   (e: 'reply', messageId: string, quote: string, start: number): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
 }>()
 
 interface Asked {
+  code?: boolean
   id: string
   quote: string
   start: number
@@ -180,7 +181,10 @@ function ask() {
   const asked = shown.value
   pressing = false
   shown.value = null
-  if (asked) emit('ask', asked.id, asked.quote, asked.start)
+  if (asked) {
+    if (asked.code) emit('ask', asked.id, asked.quote, asked.start, true)
+    else emit('ask', asked.id, asked.quote, asked.start)
+  }
 }
 
 function reply() {

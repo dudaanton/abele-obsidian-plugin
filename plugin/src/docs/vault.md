@@ -3361,3 +3361,5 @@ AI provider settings optionally retain `apiMode` (`chat-completions` or `respons
 An absent value keeps Chat Completions. Settings transfer carries this with the whole provider;
 chat history retains the same text, reasoning, function-call and tool-result records for both APIs.
 No provider response IDs are needed to resume a chat.
+
+Discussion anchors may also store `code: true` when their selected words originated in a code block. This preserves code typography when the discussion reopens; it does not change the selected text or the context sent to the model.

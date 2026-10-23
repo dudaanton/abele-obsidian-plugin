@@ -3688,9 +3688,4 @@ export const en = {
   'node.manager.integrationContextUpdate':
     'Update the node to 0.4.49 or later to integrate from this chat without a manager session.',
   'settings.metadata.checkDiagram': 'Check diagram',
-  'discussion.about': 'What this discussion is about',
-  'discussion.backTo': 'Back to the words in {where}',
-  'discussion.changed': 'changed since',
-  'discussion.deleted': 'deleted',
-  'discussion.whatTheAgentSees': 'What the agent sees',
 } as const

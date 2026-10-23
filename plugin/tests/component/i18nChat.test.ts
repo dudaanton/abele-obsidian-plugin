@@ -44,6 +44,7 @@ import SessionMarkLine from '../../src/components/nodeSession/SessionMarkLine.vu
 import { reduceTranscript } from '../../src/node/NodeTranscriptReducer'
 const surfaces = [
   'AiChat.vue',
+  'AiDiscussionAnchor.vue',
   'AiToolApproval.vue',
   'AiRewindDialog.vue',
   'NodeChatView.vue',

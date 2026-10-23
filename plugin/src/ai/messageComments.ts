@@ -97,7 +97,7 @@ function offsetOf(
 export function selectionAnchor(
   root: HTMLElement,
   range: Range
-): { quote: string; start: number } | null {
+): { quote: string; start: number; code?: boolean } | null {
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null
 
   const nodes = textNodes(root)
@@ -108,7 +108,16 @@ export function selectionAnchor(
   const quote = raw.trim()
   if (!quote) return null
 
-  return { quote, start: from + (raw.length - raw.trimStart().length) }
+  const element =
+    range.startContainer.nodeType === 1
+      ? (range.startContainer as Element)
+      : range.startContainer.parentElement
+  const code = element?.closest('pre')
+  return {
+    quote,
+    start: from + (raw.length - raw.trimStart().length),
+    ...(code?.contains(range.endContainer) ? { code: true } : {}),
+  }
 }
 
 /** The quote at `start` if it is still there, else its nearest occurrence, else nothing. */
@@ -269,8 +278,10 @@ export function flashExactSelection(
   if (
     projection.version !== CHAT_TEXT_PROJECTION_VERSION ||
     messageRenderedText(root) !== projection.text ||
-    !validRenderedRange(projection.text, range) || range.start === range.end
-  ) return null
+    !validRenderedRange(projection.text, range) ||
+    range.start === range.end
+  )
+    return null
   let first: HTMLElement | null = null
   wrap(root, range.start, range.end, 'abele-footnote-flash', (span) => {
     span.dataset.selectionReturn = ''
@@ -325,11 +336,20 @@ const ANSWER_LIMIT = 12_000
  * branch that leads to the answer, up to it. What came after the answer is not what the
  * question is about. `chatContent` is null when the chat has been deleted.
  */
-export function buildMessageCommentContext(
+export function describeMessageCommentContext(
   anchor: CommentAnchor,
   chatContent: string | null,
   lineage: string[] = []
-): string {
+) {
+  const facts = {
+    deleted: false,
+    answer: false,
+    before: 0,
+    lineage: 0,
+    title: '',
+    answerTruncated: false,
+    conversationTruncated: false,
+  }
   const lines = ['## Where you are']
   const parsed = chatContent === null ? null : parseChat(chatContent)
   const name =
@@ -341,13 +361,16 @@ export function buildMessageCommentContext(
   if (!parsed || parsed.metadata?.type !== 'abele-chat') {
     lines.push(`Chat: ${name} — it has been deleted since this comment was made.`)
     if (anchor.quote) lines.push('Selected text:', anchor.quote)
-    return lines.join('\n')
+    facts.deleted = true
+    return { ...facts, text: lines.join('\n') }
   }
 
   // A comment on a comment: the conversation it is in is a side discussion itself, named by the
   // question that opened it — its title, when it has one, is a date and that question.
   const nested = parsed.metadata.kind === 'comment'
   const title = nested ? firstQuestion(parsed.messages) || name : parsed.metadata.title || name
+  facts.title = title
+  facts.lineage = lineage.length
   lines.push(
     `${nested ? 'Side discussion' : 'Chat'}: ${title} (${anchor.note})`,
     'This comment is about a passage in one of the messages in that ' +
@@ -369,7 +392,7 @@ export function buildMessageCommentContext(
   const target = messages.find((message) => message.id === anchor.message)
   if (!target) {
     lines.push('The answer it was asked about is no longer in that chat.')
-    return lines.join('\n')
+    return { ...facts, text: lines.join('\n') }
   }
 
   const hasTree = messages.some((message) => message.parentId)
@@ -380,6 +403,8 @@ export function buildMessageCommentContext(
   const answer = conversationLines([target])[0]?.text ?? ''
   const before = answer ? said.slice(0, -1) : said
 
+  facts.answer = !!answer
+  facts.answerTruncated = answer.length > ANSWER_LIMIT
   if (answer) {
     const cut = answer.length > ANSWER_LIMIT ? `${answer.slice(0, ANSWER_LIMIT)}…` : answer
     const who = target.role === 'user' ? 'the person' : 'the agent'
@@ -393,6 +418,8 @@ export function buildMessageCommentContext(
     size += blocks[from - 1].length + 2
     from--
   }
+  facts.before = blocks.length - from
+  facts.conversationTruncated = from > 0
   if (from < blocks.length) {
     lines.push(
       'The conversation before it:',
@@ -400,5 +427,13 @@ export function buildMessageCommentContext(
     )
   }
 
-  return lines.join('\n')
+  return { ...facts, text: lines.join('\n') }
+}
+
+export function buildMessageCommentContext(
+  anchor: CommentAnchor,
+  chatContent: string | null,
+  lineage: string[] = []
+): string {
+  return describeMessageCommentContext(anchor, chatContent, lineage).text
 }

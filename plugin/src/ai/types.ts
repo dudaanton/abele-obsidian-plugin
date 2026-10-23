@@ -806,6 +806,8 @@ export interface ChatMessage {
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */
 export interface CommentAnchor {
+  /** The selection originated in a code block. */
+  code?: boolean
   /** The note the comment is in — or, when `message` is set, the chat whose answer it is on. */
   note: string
   /** The selected text. Absent for a cursor comment, which is anchored to a point. */

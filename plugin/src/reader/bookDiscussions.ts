@@ -52,27 +52,35 @@ export const discussionPath = (id: string): string => CommentService.getInstance
  * What a discussion's agent is told of where it is, every turn: the book, the place (a link it
  * can pass to `book_read`), the words, and the text around them, read out of the book as it is.
  */
-export async function bookDiscussionContext(anchor: CommentAnchor): Promise<string> {
+export async function describeBookDiscussionContext(anchor: CommentAnchor) {
+  let aroundIncluded = false
   const { app } = GlobalStore.getInstance()
   const lines = ['## Where you are', `Book: ${anchor.note}`]
   const file = app.vault.getFileByPath(anchor.note)
   if (!file || !anchor.cfi) {
     lines.push('The book is no longer in the vault.')
     if (anchor.quote) lines.push('Selected text:', anchor.quote)
-    return lines.join('\n')
+    return { text: lines.join('\n'), deleted: true, around: false }
   }
   lines.push(`Place: ${linkToPlace(app, file, { cfi: anchor.cfi }, file.basename)}`)
   if (anchor.quote) lines.push('Selected text:', anchor.quote)
   try {
     const around = await textAround(app, file, anchor.cfi)
-    if (around) lines.push(`Around it (${around.label || 'this part'}):`, around.text)
+    if (around) {
+      lines.push(`Around it (${around.label || 'this part'}):`, around.text)
+      aroundIncluded = true
+    }
   } catch (e) {
     console.debug('[Abele] no text around a discussion', e)
   }
   lines.push(
     'The person selected these words in the book and is asking about them. Read further with book_read on the link above if you can.'
   )
-  return lines.join('\n')
+  return { text: lines.join('\n'), deleted: false, around: aroundIncluded }
+}
+
+export async function bookDiscussionContext(anchor: CommentAnchor): Promise<string> {
+  return (await describeBookDiscussionContext(anchor)).text
 }
 
 async function textAround(

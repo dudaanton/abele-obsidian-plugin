@@ -2,10 +2,7 @@
   <!-- What this side discussion is about, before anything was said in it: the words, where they
        live, and what the agent was given with them, folded. It scrolls with the messages. -->
   <section v-if="view" class="abele-discussion-anchor" :aria-label="t('discussion.about')">
-    <Quote
-      :text="view.quote"
-      :class="{ 'abele-discussion-anchor__quote_code': view.code }"
-    />
+    <Quote :text="view.quote" :class="{ 'abele-discussion-anchor__quote_code': view.code }" />
     <div class="abele-discussion-anchor__source">
       <a
         v-if="view.source.open && view.source.missing !== 'deleted'"
@@ -49,7 +46,8 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import Icon from './obsidian/Icon.vue'
 import Quote from './obsidian/Quote.vue'
 import Disclosure from './obsidian/Disclosure.vue'
@@ -63,13 +61,46 @@ const view = ref<DiscussionAnchorView | null>(null)
 const open = ref(false)
 
 let generation = 0
+const revision = ref(0)
+const disposers: (() => void)[] = []
+onMounted(() => {
+  const vault = GlobalStore.getInstance().app.vault
+  for (const event of ['modify', 'delete', 'rename', 'create'] as const) {
+    const listener = vault.on(event, (file) => {
+      if (file.path === props.session.anchor.value?.note || file.path.endsWith('.abchat'))
+        revision.value++
+    })
+    disposers.push(() => vault.offref(listener))
+  }
+})
+onUnmounted(() => {
+  generation++
+  for (const dispose of disposers) dispose()
+})
 watch(
-  () => [props.session, props.session.anchor.value] as const,
+  () => [props.session.id, props.session.anchor.value] as const,
+  () => {
+    open.value = false
+  }
+)
+watch(
+  () =>
+    [
+      props.session,
+      props.session.anchor.value,
+      props.session.agent.value,
+      props.session.toolModes.value,
+      revision.value,
+    ] as const,
   async ([session]) => {
     const mine = ++generation
-    open.value = false
-    const next = await discussionAnchor(session)
-    if (mine === generation) view.value = next
+    try {
+      const next = await discussionAnchor(session)
+      if (mine === generation) view.value = next
+    } catch (error) {
+      console.debug('[Abele] discussion context unavailable', error)
+      if (mine === generation) view.value = null
+    }
   },
   { immediate: true }
 )

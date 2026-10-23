@@ -658,5 +658,74 @@
   },
   "chat.diffCollapse": {
     "englishHash": "3aa2cc0f158cfe97fc0784987f38bff9e52ed2a4cc0dc05f487f446e27332ab3"
+  },
+  "discussion.about": {
+    "englishHash": "569427dd1f0b838f2e09322a30cecef505f8edf63d167ba4986babf1d200c90a"
+  },
+  "discussion.backTo": {
+    "englishHash": "9d69c83b57be3ef99f98a90b7ff6cb32c05366143d9d4e1ac21b4054f967e74c"
+  },
+  "discussion.changed": {
+    "englishHash": "9075ca2c1d9069c998627f6f680a593d8591e335fc3c190f7a83a741c50b0685"
+  },
+  "discussion.deleted": {
+    "englishHash": "67a0d0c074405dee6a2bd3041c6f87a74d60280b44fc7fcd7a9dd6ddc281e548"
+  },
+  "discussion.whatTheAgentSees": {
+    "englishHash": "0a967782a784c56b703757fca70bab7c4118612185fa9b9d39e07afcc028b072"
+  },
+  "discussion.selection": {
+    "englishHash": "af5a2cf672eb7df7ccd025ebde6c9ad8c201217218db5988477971ba6542acef"
+  },
+  "discussion.person": {
+    "englishHash": "29c4e5ae7fb0cf590036330280e2d4b88f1cbcad19a6398d0321a640b16c191a"
+  },
+  "discussion.answer": {
+    "englishHash": "204450777f959cf54d4573ae7879f98f72352aabb63adaf9ae0f891ce11c3bde"
+  },
+  "discussion.limited": {
+    "englishHash": "9d4549abf1c896e4dadc85a3f42fdd80077f9f6b2521ed6f463646165457f1c5"
+  },
+  "discussion.conversation": {
+    "englishHash": "c525fd78016fbd655b286bee29d412576cf45ff87cdc44cdc95a446e61d3a809"
+  },
+  "discussion.messages": {
+    "englishHash": "9737d9b8b8616b85c020df478d87b0103e31a310db3cec116c512b5055ca036d"
+  },
+  "discussion.lineage": {
+    "englishHash": "a9bc34f70c5e7742a84d10620b6b1089de14d9522a4639ec6df163ce592bd5cd"
+  },
+  "discussion.passages": {
+    "englishHash": "7b4389551f31695a4fb99a55621a811b2b731630cd70ee31cdc29745eeaec9af"
+  },
+  "discussion.notSent": {
+    "englishHash": "9143c4337c2c1d5ba022d3e029849c22bd451eaee0e7a9b6fd524f68b19320f9"
+  },
+  "discussion.answerMissing": {
+    "englishHash": "1066aa43c22d5ec17522ef1a6a0297da22d8ef25433faf7094ce60e31d73823d"
+  },
+  "discussion.paragraph": {
+    "englishHash": "4c1b1f08f02c79f322cf4854bcfa6484e8f0fd4ded45e1700be88330d2f18ad4"
+  },
+  "discussion.wholeNote": {
+    "englishHash": "774a4d058ab48ed44bf0cb2ed345715bcfd0fe5b1491ef7e2aee97efd68be04d"
+  },
+  "discussion.characters": {
+    "englishHash": "5cbb62dec4254642bd8d162af690c877f71e6db3dfeaac5186afe591b7a7d88a"
+  },
+  "discussion.tooLong": {
+    "englishHash": "9586798981b90ecac56954b8b37ed3e98e185afcfe3d4995b5b1ed8c6532971f"
+  },
+  "discussion.instructionsTools": {
+    "englishHash": "5dc9e43de33a46eb224e9a1ed0ba725dbe7ecee20922bba608bfc176b154f1aa"
+  },
+  "discussion.editSelection": {
+    "englishHash": "f5b8b624b11b232a4c17bd48d4dc804388f55bb9f5a781bcea1d8f89d6898910"
+  },
+  "discussion.askFirst": {
+    "englishHash": "7625c7233acbe409bc43a95b9bfa5baced393153777dd7f071c0a965aa117371"
+  },
+  "discussion.withoutAsking": {
+    "englishHash": "56857e41f708053fe67d3cb3cee73080d238b1009699657e8b95426362710c28"
   }
 }
