@@ -3263,6 +3263,11 @@ their content as an acknowledged base. Recovery finishes that preservation befor
 Verified streaming stages are installed directly from their owned private source, without a
 whole-file copy or read-back. Their restoration plans remain in the conditional intent's own
 object directory even when the data source belongs to the streaming journal.
+A still-private stage keeps its original expected base during recovery. Missing stage data
+with a surviving host journal, or a native alias of the public file, marks publication as
+uncertain; only that path retains the current destination before replacement. A new stage's
+ownership callback runs before creation, and replacing a stage does not drop an earlier
+installation receipt before the ledger acknowledges the publication.
 The same recovery covers moves, case-only renames and older atomic-write intents without a
 stage ID. Recreated source paths still obey the pending move's occupancy guards. An existing
 private target stage can also resume by retaining an unverifiable installed destination;

@@ -244,8 +244,11 @@ export function syncPlacementPlugin() {
           code,
           'const notWritten = async () => {',
           `// A still-owned private stage must finish through recovery, not be orphaned by adoption.
-        if (pending.stageId !== undefined && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
-            await this.fs.stat(pending.stageId) !== null) return false;
+        if (this.fs[Symbol.for('abele.sync.recover-published-pull-v1')]) {
+          if (pending.stageId !== undefined) return false;
+          if (pending.receiptId === undefined ||
+              await this.fs.installedFile?.(pending.receiptId, pending.target, change.sha) !== true) return false;
+        }
         const notWritten = async () => {`
         )
         code = replaceOnce(
@@ -257,14 +260,40 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'if (pending?.stageId && this.fs.reopenStage && this.client.openVersion) {',
-          'if (pending && this.fs.reopenStage && this.client.openVersion && change.size !== null) {'
+          `if (pending && (this.fs.beginAtomicWrite || this.fs[Symbol.for('abele.sync.recover-published-pull-v1')]) && this.fs.reopenStage && this.client.openVersion && change.size !== null) {`
         )
         code = replaceOnce(
           code,
-          'await this.fs.reopenStage(pending.stageId)',
-          `await (this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')]
-            ? this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')](pending.stageId)
-            : this.fs.reopenStage(pending.stageId))`
+          `if (!pending?.stageId)
+            await this.pending.prepare(change, entry, target, from);
+        const stage = pending?.stageId !== undefined
+            ? await this.fs.reopenStage(pending.stageId)
+            : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, (id) => this.pending.prepare(change, entry, target, from, id));
+        if (!pending?.stageId)
+            await this.pending.prepare(change, entry, target, from, stage.id);`,
+          `const recoverHost = pending && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')];
+        const ownStage = (id) => this.pending.prepare(change, entry, target, from, id, pending?.receiptId);
+        if (!pending?.stageId && !recoverHost)
+            await this.pending.prepare(change, entry, target, from);
+        const stage = recoverHost
+            ? await recoverHost.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from, ownStage, base, pending.receiptId)
+            : pending?.stageId !== undefined
+              ? await (this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')]
+                  ? this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')](pending.stageId)
+                  : this.fs.reopenStage(pending.stageId))
+              : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, ownStage);
+        if (!pending?.stageId || recoverHost) await ownStage(stage.id);
+        if (recoverHost) pending.stageId = stage.id;`
+        )
+        code = replaceOnce(
+          code,
+          `if (from !== null &&
+                    beforeFrom !== null &&
+                    (entry === null ||`,
+          `if (from !== null &&
+                    beforeFrom !== null &&
+                    !(recoverHost && this.fs.pathKey && this.fs.pathKey(from) === this.fs.pathKey(target)) &&
+                    (entry === null ||`
         )
         for (const name of ['adopt', 'adoptExisting']) {
           const args = name === 'adoptExisting' ? 'change, entry, newest = false' : 'change, entry'
@@ -277,7 +306,9 @@ export function syncPlacementPlugin() {
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
               () => this.${name}Unlocked(${forward}), false);
           }
-          async ${name}Unlocked(${args}) {`
+          async ${name}Unlocked(${args}) {
+            ${name === 'adoptExisting' ? `if (this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+              await this.pending.matching(change, entry) !== null) return false;` : ''}`
           )
         }
         code = replaceOnce(
@@ -496,7 +527,10 @@ export function syncPlacementPlugin() {
                 continue;
             }
         }
-        await placer.adopt(change, entry);`
+        const adopted = await placer.adopt(change, entry);
+        if (!adopted && client?.openVersion && fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+            await new PendingPullWrites(state).matching(change, entry) !== null)
+            await placer.place(change, change.sha, entry, new Map(), new Map());`
         )
       } else if (file.endsWith('/pushSources.js')) {
         code = replaceOnce(

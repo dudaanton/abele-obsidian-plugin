@@ -50,7 +50,7 @@ it('does not install a staged new file after losing ownership during its temp wr
   expect(await app.vault.adapter.exists('sample.bin')).toBe(false)
 })
 
-it('does not install or restore through the mobile swap after losing ownership while reading its backup', async () => {
+it('does not install or restore after losing ownership while reading its captured victim', async () => {
   const app = useVault([{ path: 'sample.bin', content: 'sample original' }]),
     fence = new RuntimeFence(app, 'sample-writer', () => true)
   cleanup.push(() => fence.release())
@@ -60,7 +60,7 @@ it('does not install or restore through the mobile swap after losing ownership w
   let backup = ''
   vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
     const bytes = await read(path)
-    if (path.endsWith('.old')) {
+    if (path.endsWith('/victim')) {
       backup = path
       fence.release()
     }
@@ -72,7 +72,13 @@ it('does not install or restore through the mobile swap after losing ownership w
   ).rejects.toThrow()
   expect(rename.mock.calls).toEqual([['sample.bin', backup]])
   expect(await app.vault.adapter.read(backup)).toBe('sample original')
-  expect(app.loadLocalStorage(JOURNAL_KEY)).not.toBeNull()
+  const active = await app.vault.adapter.list('.obsidian/plugins/abele/sync-conditional/active')
+  expect(active.files).toHaveLength(1)
+  expect(JSON.parse(await app.vault.adapter.read(active.files[0]))).toMatchObject({
+    path: 'sample.bin',
+    kind: 'write',
+    expected: { sha: await sha256(bytesOf('sample original')) },
+  })
 })
 
 it.each(['cleanup', 'restore'] as const)(
@@ -89,14 +95,7 @@ it.each(['cleanup', 'restore'] as const)(
     const signature = await sha256(new TextEncoder().encode('sample incoming'))
     app.saveLocalStorage(JOURNAL_KEY, [{ target, backup, replacementSha: signature }])
     const fs = new ObsidianFileSystem(app as never, { runtimeFence: fence })
-    if (kind === 'cleanup') {
-      const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
-      vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
-        const bytes = await read(path)
-        fence.release()
-        return bytes
-      })
-    } else {
+    {
       const stat = app.vault.adapter.stat.bind(app.vault.adapter)
       vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
         const found = await stat(path)
@@ -126,6 +125,8 @@ it('rejects a lost claim during IndexedDB schema initialization without leaving 
   ).rejects.toThrow(/initialization claim|open/)
   expect(await factory.databases()).toEqual([])
 })
+
+const bytesOf = (text: string) => new TextEncoder().encode(text)
 
 it('rejects an old overlay at flush rather than committing it after a successor claim', async () => {
   const app = useVault([]),

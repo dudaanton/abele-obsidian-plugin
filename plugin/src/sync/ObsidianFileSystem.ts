@@ -88,6 +88,20 @@ const retentionCaches = new WeakMap<object, Map<string, RetentionIndex>>()
 export const RETENTION_IDLE = Symbol.for('abele.sync.retention-idle-v1')
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
+async function readConditionalRecord(disk: DataAdapter, io: BoundedVaultIo, path: string) {
+  const native = nativeChunkPort(disk)
+  if (!native.open || !native.fullPath) return new Uint8Array(await disk.readBinary(path))
+  const source = await io.openRead(path)
+  try {
+    if (source.size > MAX_CHUNK_BYTES)
+      throw new EngineError('io', 'Conditional metadata exceeds one transfer chunk')
+    const bytes = await source.read(0, source.size)
+    await source.assertUnchanged()
+    return bytes
+  } finally {
+    await source.close()
+  }
+}
 /** Revisions belong to reads, never to a later consumer of a cached value. */
 class InventoryCache<T> extends Map<string, T> {
   private readonly revisions = new Map<string, number>()
@@ -1034,7 +1048,7 @@ export class ObsidianFileSystem implements FileSystem {
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
           await this.io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
       },
-      read: async (path) => new Uint8Array(await this.disk.readBinary(path)),
+      read: (path) => readConditionalRecord(this.disk, this.io, path),
       mkdir: (path) => makeParents(this.disk, path + '/placeholder'),
       list: (path) => this.disk.list(path),
       capture: (from, to) =>
@@ -1106,7 +1120,7 @@ export class ObsidianFileSystem implements FileSystem {
       withMutationCheck: undefined,
       stat: (path) => disk.stat(path),
       fingerprint: (path, signal) => io.fingerprint(path, signal, true),
-      read: async (path) => new Uint8Array(await disk.readBinary(path)),
+      read: (path) => readConditionalRecord(disk, io, path),
       create: async (path, bytes, mtime) => {
         await io.create(path, mtime)
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
@@ -2310,9 +2324,47 @@ export class ObsidianFileSystem implements FileSystem {
     id: string | null,
     target: string,
     mtime: number,
-    from: string | null = null
+    from: string | null = null,
+    beforeCreate?: (id: string) => Promise<void>,
+    expectedBase?: { sha: string; size: number; mtime: number } | null,
+    receiptId?: string
   ) {
     const previous = id ? await this.journal.currentEntry(id) : undefined
+    // A still-private checked stage has not been published. Native stages retain
+    // an alias: only matching object identity proves that alias reached the target.
+    // Keep the original base for known-unpublished work, including allocation cuts.
+    if (expectedBase !== undefined) {
+      let uncertain = !!previous
+      if (id && (await this.disk.exists(id))) {
+        if (!previous?.streaming || previous.backup)
+          throw new EngineError('io', 'pull stage is unavailable or awaiting backup recovery')
+        uncertain = false
+        if (this.native?.sameObject) {
+          try {
+            uncertain = await this.native.sameObject(id, target)
+          } catch (error) {
+            if ((error as { code?: string }).code !== 'ENOENT') throw error
+          }
+        }
+        if (!uncertain) return this.reopenPullStage(id)
+      } else if (!id && receiptId) {
+        const receipt = (await this.journal.currentForTargets([target])).find(
+          (entry) => entry.conditionalReceipt === receiptId
+        )
+        uncertain = !!receipt
+        if (receipt?.temp && (await this.disk.exists(receipt.temp))) {
+          uncertain = false
+          if (this.native?.sameObject) {
+            try {
+              uncertain = await this.native.sameObject(receipt.temp, target)
+            } catch (error) {
+              if ((error as { code?: string }).code !== 'ENOENT') throw error
+            }
+          }
+        }
+      }
+      if (!uncertain) return this.beginAtomicWrite(target, mtime, expectedBase, beforeCreate)
+    }
     if (id && (await this.disk.exists(id))) {
       if (!previous?.streaming || previous.backup)
         throw new EngineError('io', 'pull stage is unavailable or awaiting backup recovery')
@@ -2329,7 +2381,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (previous?.backup)
       throw new EngineError('io', 'pull publication is awaiting backup recovery')
-    const stage = await this.beginAtomicWrite(target, mtime, null)
+    const stage = await this.beginAtomicWrite(target, mtime, null, beforeCreate)
     const entry = await this.journal.currentEntry(stage.id)
     if (!entry?.streaming) throw new EngineError('io', 'Recovery download stage lost its journal')
     if ((await this.rawStat(target)) ?? (from ? await this.rawStat(from) : null)) {

@@ -113,11 +113,20 @@ export function scopedFileSystem(
           return retained(await value.call(target, id))
         }
       if (key === Symbol.for('abele.sync.recover-published-pull-v1'))
-        return async (id: string | null, path: string, mtime: number, from: string | null) => {
+        return async (
+          id: string | null,
+          path: string,
+          mtime: number,
+          from: string | null,
+          beforeCreate?: (id: string) => Promise<void>,
+          ...recovery: unknown[]
+        ) => {
           if (id !== null) assertStage(id)
           assertPath(path)
           if (from !== null && from !== undefined) assertPath(from)
-          return retained(await value.call(target, id, path, mtime, from))
+          return retained(
+            await value.call(target, id, path, mtime, from, beforeCreate, ...recovery)
+          )
         }
       if (key === 'list' || key === 'listDirectories')
         return async function* () {

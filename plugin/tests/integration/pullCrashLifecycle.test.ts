@@ -6,6 +6,7 @@ import {
   MemoryStateStore,
   recoverPendingPullWrites,
   sha256,
+  SyncCancelled,
 } from '@abele/sync-sdk/core'
 import type { AtomicStage, EngineClient } from '@abele/sync-sdk/core'
 import type { ChangeItem } from '@abele/sync-sdk/protocol'
@@ -13,10 +14,13 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const CHUNK = 1024 * 1024
 type Window = 'before-stage' | 'partial' | 'complete' | 'moved' | 'published' | 'ledger'
 type Operation = 'new' | 'replace' | 'move' | 'case'
+// Ordinary errors are retryable file refusals. A process cut interrupts the entire run.
+const killed = () => Object.assign(new SyncCancelled(), { message: 'Sample process killed' })
 
 async function scenario(
   operation: Operation,
@@ -41,39 +45,7 @@ async function scenario(
       await rawWrite(path, bytes.buffer, options)
     },
   })
-  if (bounded)
-    Object.assign(app.vault.adapter, {
-      getFullPath: (path: string) => path,
-      fsPromises: {
-        open: async (path: string, flags: string) => {
-          if (flags === 'wx') await rawWrite(path, new ArrayBuffer(0))
-          return {
-            read: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
-              expect(buffer.length).toBeLessThanOrEqual(CHUNK)
-              const bytes = new Uint8Array(await rawRead(path)).subarray(
-                position,
-                position + length
-              )
-              buffer.set(bytes, offset)
-              return { bytesRead: bytes.length }
-            },
-            write: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
-              expect(buffer.buffer.byteLength).toBeLessThanOrEqual(CHUNK)
-              const before = new Uint8Array(await rawRead(path))
-              const bytes = new Uint8Array(Math.max(before.length, position + length))
-              bytes.set(before)
-              bytes.set(buffer.subarray(offset, offset + length), position)
-              await rawWrite(path, bytes.buffer)
-              return { bytesWritten: length }
-            },
-            sync: async () => {},
-            close: async () => {},
-          }
-        },
-        utimes: async (path: string, _atime: number, mtime: number) =>
-          rawWrite(path, await rawRead(path), { mtime: mtime * 1000 }),
-      },
-    })
+  if (bounded) withDesktopFs(app, { maxBufferBytes: CHUNK })
   const wholeRead = vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
     const size = (await app.vault.adapter.stat(path))?.size ?? 0
     if (size > CHUNK) throw new Error('Whole multi-chunk read forbidden')
@@ -99,7 +71,12 @@ async function scenario(
   }
   const expected = new ExpectedWrites()
   const engineClient = client as unknown as EngineClient
-  const opts = () => ({ dirty: new Set<string>(), expected, filter: { excluded: () => false } })
+  const opts = () => ({
+    dirty: new Set<string>(),
+    expected,
+    filter: { excluded: () => false },
+    log: console.debug,
+  })
   let disk = new ObsidianFileSystem(app as never)
   let crash: Window | null = null
   const fs = () => {
@@ -109,7 +86,7 @@ async function scenario(
         if (key === 'beginAtomicWrite')
           return async (...args: Parameters<typeof disk.beginAtomicWrite>) => {
             const source = args[0].startsWith('.abele-sync/placement-inbox/')
-            if (!source && crash === 'before-stage') throw new Error('Sample process killed')
+            if (!source && crash === 'before-stage') throw killed()
             const stage = await target.beginAtomicWrite!(...args)
             if (source) return stage
             return new Proxy(stage, {
@@ -121,11 +98,11 @@ async function scenario(
                       (name === 'append' && crash === 'partial') ||
                       (name === 'seal' && crash === 'complete')
                     )
-                      throw new Error('Sample process killed')
+                      throw killed()
                   }
                 if (name === 'commit' && crash === 'moved')
                   return async () => {
-                    throw new Error('Sample process killed')
+                    throw killed()
                   }
                 return Reflect.get(one, name)
               },
@@ -176,15 +153,26 @@ async function scenario(
   }
   crash = window
   let committedIntent: string | null = null
-  if (window === 'ledger') {
-    const save = state.setMeta.bind(state)
-    vi.spyOn(state, 'setMeta').mockImplementation(async (key, value) => {
-      if (key === 'pull-write:sample-file' && value !== null) committedIntent = value
-      await save(key, value)
-    })
+  if (window === 'ledger' || window === 'published') {
+    const transaction = state.transaction.bind(state)
+    let cut = window === 'published'
+    vi.spyOn(state, 'transaction').mockImplementation((fn) =>
+      transaction(async (tx) => {
+        const put = tx.put.bind(tx)
+        tx.put = async (entry) => {
+          if (entry.fileId === 'sample-file' && entry.versionId === 'incoming') {
+            committedIntent = await tx.getMeta('pull-write:sample-file')
+            if (cut) {
+              cut = false
+              throw killed()
+            }
+          }
+          return put(entry)
+        }
+        return fn(tx)
+      })
+    )
   }
-  if (window === 'published')
-    vi.spyOn(state, 'transaction').mockRejectedValueOnce(new Error('Sample process killed'))
   if (window === 'ledger') await applyStaged(engineClient, fs(), state, [change], opts())
   else
     await expect(applyStaged(engineClient, fs(), state, [change], opts())).rejects.toThrow('killed')

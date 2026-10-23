@@ -211,14 +211,23 @@ export class LocalFolderPlacement {
         if (key === Symbol.for('abele.sync.reopen-pull-stage-v1'))
           return async (id: string) => retainedStage(await value.call(target, id))
         if (key === Symbol.for('abele.sync.recover-published-pull-v1'))
-          return async (id: string | null, path: string, mtime: number, from: string | null) =>
+          return async (
+            id: string | null,
+            path: string,
+            mtime: number,
+            from: string | null,
+            beforeCreate?: (id: string) => Promise<void>,
+            ...recovery: unknown[]
+          ) =>
             retainedStage(
               await value.call(
                 target,
                 id,
                 placement.toLocal(path),
                 mtime,
-                from == null ? from : placement.toLocal(from)
+                from == null ? from : placement.toLocal(from),
+                beforeCreate,
+                ...recovery
               )
             )
         if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
