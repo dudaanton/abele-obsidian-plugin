@@ -72,6 +72,28 @@ export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observe
   }
 }
 
+export function attributePauseRequests(requests, traces) {
+  const used = new Set()
+  for (const request of requests) {
+    const caller = traces
+      .filter(
+        (e) =>
+          !used.has(e) &&
+          e.device === request.device &&
+          e.method === request.method &&
+          e.route === request.route &&
+          e.at <= request.at &&
+          request.at - e.at < 1000
+      )
+      .sort((a, b) => b.at - a.at)[0]
+    if (!caller) continue
+    used.add(caller)
+    request.component = 'transport call stack'
+    request.callerAt = caller.at
+    request.callerStack = caller.stack
+  }
+}
+
 export function budgets(m) {
   const check = (name, value, limit, pass) => ({
     name,
@@ -82,8 +104,16 @@ export function budgets(m) {
   const timing = (name, value, limit) =>
     check(name, value, `< ${limit} ms`, Number.isFinite(value) && value < limit)
   return [
-    timing('restart first request', m.restartRequestMs, 5000),
-    timing('restart idle', m.restartIdleMs, 60000),
+    timing(
+      'restart first request',
+      m.startupClock === 'plugin-load' ? m.restartPluginRequestMs : m.restartRequestMs,
+      5000
+    ),
+    timing(
+      'restart idle',
+      m.startupClock === 'plugin-load' ? m.restartPluginIdleMs : m.restartIdleMs,
+      60000
+    ),
     timing('resume upload', m.resumeUploadMs, 30000),
     timing('pause latency', m.pauseLatencyMs, 2000),
     check('pause new requests', m.pauseNewRequests, 0, m.pauseNewRequests === 0),
@@ -123,6 +153,18 @@ export function markdown(report) {
     details('Notices (text, time, phase)', report.noticeDetails) +
     details('Excluded by settings', report.excludedBySettings) +
     details('Visible case refusals on primary', report.caseRefusals) +
+    details(
+      'Primary visible activity snapshots (full rows in JSON)',
+      report.primaryActivity?.map((snapshot) => ({
+        phase: snapshot.phase,
+        at: snapshot.at,
+        connections: snapshot.activity?.map((row) => ({
+          id: row.id,
+          refused: row.refused,
+          events: row.events.length,
+        })),
+      }))
+    ) +
     details('Pause requests by endpoint', report.pauseByEndpoint) +
     details('Pause requests by second after action', report.pauseBySecond) +
     details('Pause request timeline (component null means unavailable)', report.pauseRequests) +
@@ -130,8 +172,50 @@ export function markdown(report) {
       'Startup timing (observer load is not product plugin load; null means unavailable)',
       report.startupTiming
     ) +
-    details('Diagnostic findings', report.findings)
+    details('Diagnostic findings', report.findings) +
+    (report.comparison
+      ? '\n## Master smoke versus candidate\n\nUnknown baseline product-load timing stays unknown; launch and product clocks are shown separately.\n\n| Metric | Master | Candidate |\n|---|---|---|\n' +
+        report.comparison
+          .map(
+            (row) =>
+              `| ${row.metric} | ${row.master ?? 'unobserved'} | ${row.candidate ?? 'unobserved'} |`
+          )
+          .join('\n') +
+        '\n'
+      : '')
   )
+}
+
+export function compareReports(master, candidate) {
+  const row = (metric, key) => ({
+    metric,
+    master: master[key] ?? null,
+    candidate: candidate[key] ?? null,
+  })
+  const format = (value) => (value ? `${JSON.stringify(value.value)} (${value.status})` : null)
+  return [
+    row('Build', 'build'),
+    {
+      metric: 'Startup budget clock',
+      master: master.startupClock ?? 'app launch',
+      candidate: candidate.startupClock ?? 'app launch',
+    },
+    row('First request from app launch (ms)', 'restartRequestMs'),
+    row('First request from plugin load (ms)', 'restartPluginRequestMs'),
+    row('Idle from app launch (ms)', 'restartIdleMs'),
+    row('Idle from plugin load (ms)', 'restartPluginIdleMs'),
+    ...[
+      ...new Set([...(master.budgets ?? []), ...(candidate.budgets ?? [])].map((one) => one.name)),
+    ].map((metric) => ({
+      metric,
+      master: format(master.budgets?.find((one) => one.name === metric)),
+      candidate: format(candidate.budgets?.find((one) => one.name === metric)),
+    })),
+    row('Files per second including interruptions', 'filesPerSecond'),
+    row('MiB per second including interruptions', 'mibPerSecond'),
+    row('Maximum renderer task, all activity (ms)', 'maxRendererTaskMs'),
+    row('Gate', 'status'),
+  ]
 }
 export function expectedSet(files, policy) {
   const defaults = selectiveDefaults()
@@ -189,7 +273,7 @@ export function noticeDetails(entries, phases = []) {
     }))
 }
 
-export function startupTiming(launchAt, firstAt, entries) {
+export function startupTiming(launchAt, firstAt, entries, idleAt) {
   const load = entries.find(
     (e) => e.event === 'renderer-start' && e.at >= launchAt && e.at <= firstAt
   )
@@ -209,6 +293,9 @@ export function startupTiming(launchAt, firstAt, entries) {
     launchToObserverLoadMs: load ? load.at - launchAt : null,
     observerLoadToFirstRequestMs: load && firstAt != null ? firstAt - load.at : null,
     pluginLoadToSyncStartMs: pluginLoad && sync ? sync.at - pluginLoad.at : null,
+    pluginLoadToFirstRequestMs: pluginLoad && firstAt != null ? firstAt - pluginLoad.at : null,
+    pluginLoadToIdleMs: pluginLoad && idleAt != null ? idleAt - pluginLoad.at : null,
+    launchToIdleMs: idleAt == null ? null : idleAt - launchAt,
     syncStartToFirstRequestMs: sync && firstAt != null ? firstAt - sync.at : null,
   }
 }

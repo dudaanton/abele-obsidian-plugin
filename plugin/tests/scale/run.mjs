@@ -18,6 +18,8 @@ import {
   comparePeer,
   noticeDetails,
   startupTiming,
+  compareReports,
+  attributePauseRequests,
 } from './oracles.mjs'
 
 const exec = promisify(execFile)
@@ -95,6 +97,11 @@ export class RealVault {
       `${host}return Object.values(u.activity.value).flatMap(a=>[...(a.refused??[]).map(({path,reason})=>({path,reason,source:'status'})),...[...(a.events??[])].flatMap(e=>{const m=/^scan: held (.+): (.+) is synced under the same name but for case;/.exec(e.text);return m?[{path:m[1],reason:'Case collision: '+e.text,at:e.at,source:'log'}]:[]})])`
     )
   }
+  async activityEvidence() {
+    return this.evaluate(
+      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,refused:a.refused??[],events:[...(a.events??[])]}))`
+    )
+  }
   async connect(tokenFile) {
     await this.evaluate(
       `${host}void u.connect(require('fs').readFileSync(${JSON.stringify(tokenFile)},'utf8')).catch(()=>{});return true`
@@ -112,7 +119,7 @@ export class RealVault {
   }
   async paused(value) {
     await this.evaluate(
-      `${host}for(const r of u.rows.value)void u.pause(r.id,${value}).catch(()=>{});return true`
+      `${host}window.__scaleCaptureCallers=${value};for(const r of u.rows.value)void u.pause(r.id,${value}).catch(()=>{});return true`
     )
   }
   async idle(timeout) {
@@ -221,6 +228,7 @@ export async function run(config) {
     phase: 'preflight',
     phases: [{ name: 'preflight', at: Date.now() }],
     caseRefusals: [],
+    primaryActivity: [],
   }
   const phase = (name) => {
     report.phase = name
@@ -251,6 +259,12 @@ export async function run(config) {
     } finally {
       if (device === devices[0])
         report.caseRefusals.push(...(await device.refusals().catch(() => [])))
+      if (device === devices[0])
+        report.primaryActivity.push({
+          phase: report.phase,
+          at: Date.now(),
+          activity: await device.activityEvidence().catch(() => null),
+        })
     }
   }
   const stop = async (hard) => {
@@ -459,7 +473,9 @@ export async function run(config) {
       ? Math.max(...report.deviceRestartRequestMs)
       : undefined
     const settledA = await settle(a, 'restart device A')
+    const idleA = settledA ? Date.now() : null
     const settledB = await settle(b, 'restart device B')
+    report.deviceRestartIdleAt = [idleA, settledB ? Date.now() : null]
     report.restartIdleMs = settledA && settledB ? Date.now() - restartAt : undefined
     report.restartObservedMs = Date.now() - restartAt
     await stop(false)
@@ -546,14 +562,25 @@ export async function run(config) {
     report.notices = entries.length ? entries.filter((e) => e.event === 'notice').length : undefined
     report.noticeDetails = noticeDetails(entries, report.phases)
     if (report.restartAt)
-      report.startupTiming = proxies.map((proxy) => ({
+      report.startupTiming = proxies.map((proxy, i) => ({
         device: proxy.device,
         ...startupTiming(
           report.restartAt,
           proxy.events.find((e) => e.event === 'start' && e.at >= report.restartAt)?.at,
-          entries.filter((e) => e.device === proxy.device)
+          entries.filter((e) => e.device === proxy.device),
+          report.deviceRestartIdleAt?.[i]
         ),
       }))
+    report.startupClock = 'plugin-load'
+    const worst = (key) =>
+      report.startupTiming?.length === devices.length &&
+      report.startupTiming.every((row) => Number.isFinite(row[key]))
+        ? Math.max(...report.startupTiming.map((row) => row[key]))
+        : undefined
+    report.restartPluginRequestMs = worst('pluginLoadToFirstRequestMs')
+    report.restartPluginIdleMs = worst('pluginLoadToIdleMs')
+    report.pauseCallerTraces = entries.filter((e) => e.event === 'request-caller')
+    attributePauseRequests(report.pauseRequests ?? [], report.pauseCallerTraces)
     report.maxRendererTaskMs = Math.max(
       0,
       ...entries.filter((e) => e.event === 'long-task').map((e) => e.durationMs)
@@ -565,6 +592,11 @@ export async function run(config) {
       !report.cleanupFailure
         ? 'PASS'
         : 'FAIL'
+    if (config.baselineReport)
+      report.comparison = compareReports(
+        JSON.parse(await readFile(config.baselineReport, 'utf8')),
+        report
+      )
     await writeFile(join(config.output, 'report.json'), JSON.stringify(report, null, 2))
     await writeFile(join(config.output, 'report.md'), markdown(report))
   }

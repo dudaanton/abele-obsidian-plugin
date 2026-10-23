@@ -16,11 +16,132 @@ import {
   expectedSet,
   comparePeer,
   markdown,
+  compareReports,
+  attributePauseRequests,
 } from '../scale/oracles.mjs'
 import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  it('matches each pause request to its nearest preceding caller once, without guessing missing callers', () => {
+    const starts = [110, 210, 220].map((at) => ({
+      device: '0',
+      method: 'GET',
+      route: '/v2/changes',
+      at,
+      component: null,
+    }))
+    attributePauseRequests(
+      starts,
+      [100, 200].map((at) => ({
+        device: '0',
+        method: 'GET',
+        route: '/v2/changes',
+        at,
+        stack: `sample-${at}`,
+      }))
+    )
+    expect(starts.map((row) => row.callerStack ?? null)).toEqual(['sample-100', 'sample-200', null])
+  })
+  it('compares clocks explicitly and leaves missing baseline product timing unknown', () => {
+    const rows = compareReports(
+      { restartRequestMs: 5200, budgets: [{ name: 'notices', value: 5, status: 'FAIL' }] },
+      {
+        startupClock: 'plugin-load',
+        restartRequestMs: 5100,
+        restartPluginRequestMs: 100,
+        budgets: [{ name: 'notices', value: 0, status: 'PASS' }],
+      }
+    )
+    expect(rows.find((row) => row.metric === 'First request from plugin load (ms)')).toMatchObject({
+      master: null,
+      candidate: 100,
+    })
+    expect(rows.find((row) => row.metric === 'First request from app launch (ms)')).toMatchObject({
+      master: 5200,
+      candidate: 5100,
+    })
+    expect(rows.find((row) => row.metric === 'notices')).toMatchObject({
+      master: '5 (FAIL)',
+      candidate: '0 (PASS)',
+    })
+  })
+  it('budgets restart from product onload while retaining launch timing', () => {
+    const timing = startupTiming(1000, 6200, [{ event: 'plugin-load', at: 6000 }], 6500)
+    expect(timing).toMatchObject({
+      launchToFirstRequestMs: 5200,
+      pluginLoadToFirstRequestMs: 200,
+      pluginLoadToIdleMs: 500,
+    })
+    expect(
+      budgets({
+        restartRequestMs: 5200,
+        restartIdleMs: 5500,
+        restartPluginRequestMs: 200,
+        restartPluginIdleMs: 500,
+        startupClock: 'plugin-load',
+      }).find((r) => r.name === 'restart first request').status
+    ).toBe('PASS')
+    expect(
+      budgets({ restartRequestMs: 200, startupClock: 'plugin-load' }).find(
+        (r) => r.name === 'restart first request'
+      ).status
+    ).toBe('FAIL')
+  })
+  it('observes the existing product performance mark without wrapping product onload', async () => {
+    const evidence = [],
+      registrations = []
+    const source = await readFile(new URL('../scale/observer.cjs', import.meta.url), 'utf8')
+    const module = { exports: null }
+    runInNewContext(source, {
+      module,
+      performance: { timeOrigin: 1000 },
+      console: { debug() {} },
+      window: {},
+      URL,
+      Error,
+      require: (name) =>
+        name === 'obsidian'
+          ? {
+              Plugin: class {
+                app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                register() {}
+              },
+            }
+          : name === 'fs'
+            ? {
+                readFileSync: () => JSON.stringify({ device: '0', evidence: 'sample' }),
+                appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+              }
+            : { join: (...parts) => parts.join('/') },
+      document: { body: {}, querySelectorAll: () => [] },
+      MutationObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+      PerformanceObserver: class {
+        constructor(callback) {
+          this.callback = callback
+        }
+        observe(options) {
+          registrations.push(options)
+          if (options.type === 'mark')
+            this.callback({
+              getEntries: () => [
+                { name: 'abele:onload-start', startTime: 250 },
+                { name: 'unrelated', startTime: 300 },
+              ],
+            })
+        }
+        disconnect() {}
+      },
+    })
+    new module.exports().onload()
+    expect(evidence.filter((row) => row.event === 'plugin-load')).toMatchObject([
+      { at: 1250, device: '0', source: 'abele:onload-start' },
+    ])
+    expect(registrations).toContainEqual({ type: 'mark', buffered: true })
+  })
   it('reads configured policy and exact refusals from the primary UI', async () => {
     const vault = new RealVault({}, '/sample-vault')
     const app = {

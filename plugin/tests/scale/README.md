@@ -104,9 +104,15 @@ Restart timing starts at app launch; resume timing measures the next upload/comm
 Pause timing starts before the pause CLI action and includes completion of already active
 requests. New HTTP requests include endpoint/kind summaries, per-second buckets and each
 request's click-relative time. Caller attribution is null unless supplied by the trace.
-Startup reports split launch-to-observer-load and observer-load-to-first-request. The observer
-loads before the product plugin: this is not its load time. Product sync-start markers are not
-available in the current trace; plugin-load-to-sync-start and sync-start-to-request stay null.
+Startup reports retain launch totals and observe the product's existing `abele:onload-start`
+performance mark, emitted at entry to its onload. The first-request and idle budgets start
+from that product mark; absent marks fail the budgets. Observer load remains a separate time.
+No product code is changed. Product sync-start markers are not available in the current trace;
+plugin-load-to-sync-start and sync-start-to-request stay null. During pause only, the observer
+captures the existing transport debug log's call stack without changing requests. Matching
+device/method/path/time evidence is attached to the pause timeline; missing matches stay null.
+The primary's exact refusal statuses and timestamped visible activity events are retained in
+JSON at settle points; summaries and case-refusal evidence are included in Markdown.
 Notice
 counting covers the entire instrumented app lifecycle, including second-device join.
 Throughput includes interruption downtime; it is not a raw-link benchmark. Renderer long tasks
