@@ -1,4 +1,4 @@
-import { writeFile, rename } from 'node:fs/promises'
+import { writeFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export function requireServerCapacity(plan, limits) {
@@ -60,7 +60,7 @@ export function phaseTimings(phases, now = Date.now()) {
   }))
 }
 
-export async function saveCheckpoint(output, report, proxies, now = Date.now()) {
+export async function saveCheckpoint(output, report, proxies, now = Date.now(), boundary = false) {
   const snapshot = JSON.stringify({
     ...report,
     checkpointAt: now,
@@ -70,4 +70,14 @@ export async function saveCheckpoint(output, report, proxies, now = Date.now()) 
   const path = join(output, 'checkpoint.json')
   await writeFile(path + '.next', snapshot)
   await rename(path + '.next', path)
+  if (boundary) {
+    const folder = join(output, 'phases')
+    await mkdir(folder, { recursive: true })
+    const phasePath = join(
+      folder,
+      `${now}-${report.phases.length}-${report.interruptions?.length ?? 0}.json`
+    )
+    await writeFile(phasePath + '.next', snapshot)
+    await rename(phasePath + '.next', phasePath)
+  }
 }

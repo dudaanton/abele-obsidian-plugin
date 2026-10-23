@@ -96,3 +96,29 @@ it('stops exactly at the deadline and permits only time strictly before it', () 
   expect(() => requireTime(1000, 1000)).toThrow('Run deadline reached')
   expect(() => requireTime(1000, 1001)).toThrow('Run deadline reached')
 })
+
+it('retains immutable phase-boundary evidence as newer checkpoints advance', async () => {
+  const root = await mkdtemp(join(process.cwd(), '.scale-phase-'))
+  try {
+    const upload = {
+      phase: 'upload',
+      phases: [{ name: 'upload', at: 100 }],
+      interruptions: [],
+      verificationComplete: false,
+    }
+    await saveCheckpoint(root, upload, [], 100, true)
+    await saveCheckpoint(
+      root,
+      { ...upload, phase: 'pull', phases: [...upload.phases, { name: 'pull', at: 200 }] },
+      [],
+      200,
+      true
+    )
+    const first = JSON.parse(await readFile(join(root, 'phases/100-1-0.json'), 'utf8'))
+    expect(first.phase).toBe('upload')
+    expect(first.verificationComplete).toBe(false)
+    expect(JSON.parse(await readFile(join(root, 'checkpoint.json'), 'utf8')).phase).toBe('pull')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

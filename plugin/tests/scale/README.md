@@ -11,12 +11,18 @@ remove generated vaults, and release resources even if the transport disappears.
 supervisor writes a lease file containing `{"pid":12345,"exclusive":true}`. The runner
 checks its liveness; this file is a contract with the supervisor, not a security boundary.
 
-For bounded runs, `deadlineAt` is an absolute Unix timestamp in milliseconds. Leave the
+The default worker plan is five hours from `workerStartedAt` (Unix milliseconds), with
+15 minutes reserved for evidence copying and cleanup. The external supervisor must receive
+that same absolute worker start before preparation/builds, not reset it when the app starts.
+The default scenario cutoff is therefore start + 4 h 45 min. An explicit `deadlineAt` overrides that scenario cutoff using an absolute Unix timestamp in milliseconds. Leave the
 supervisor extra time to stop the app, finish evidence collection and release its leases.
 The scenario stops at its next observation wait or server-file boundary after that deadline;
 an outstanding request can still take its normal timeout. `checkpointMs` (default 30 seconds)
 controls atomic `checkpoint.json` snapshots containing the current phase and wire evidence.
-A checkpoint is partial evidence, never a passing result. Expected inventory is also saved
+Every phase transition, interruption and settle completion also queues an immutable snapshot
+under `phases/`; it captures the report and wire state at invocation, rather than when a later
+queued write runs. The latest checkpoint remains atomic. Failed checkpoint writes fail the
+phase-evidence gate. A checkpoint is partial evidence, never a passing result. Expected inventory is also saved
 separately. Final JSON/Markdown include phase durations and per-interruption recovery
 observations; null means no such observation occurred before the next interruption.
 The pause boundary is the renderer's actual invocation time, with in-flight requests
@@ -49,6 +55,49 @@ Build the desired branch or commit in a disposable checkout with the normal chec
 Pass the resulting `plugin/build` directory and the **resolved commit SHA**, not a moving
 branch name. Asset digests and the build's recorded revision are checked before installation.
 The build can be changed independently of this driver, including to test an SDK migration.
+
+### Local or remote server
+
+`serverMode: "remote"` (the backwards-compatible default) uses `server` and `tokenFile` as
+before. Supply `serverVersion` when known; an absent version is recorded as unknown. This
+mode remains useful for a separate network-realistic run.
+
+`serverMode: "local"` starts the **existing pinned server-test fixture** on loopback with a
+fresh SQLite database, blobs and generated keys. It does not use a tunnel, Docker, PostgreSQL,
+a service install or a global database. The fixture must already be built in owned scratch
+using `scripts/prepare-sync-fixture.mjs` at `SERVER_TEST_COMMIT` from
+`scripts/server-test-fixtures.mjs`. That script exports exact committed source, installs only
+inside that export and records build/digest provenance. Prepare it under the external
+supervisor's build reservation; do not compile it in a shared live checkout. Set npm/cache,
+node-gyp devdir and temporary paths to owned scratch when preparing the fixture. Missing
+native build tools require operator setup, never an automatic system install by this tier.
+
+Local configuration adds:
+
+```json
+{
+  "serverMode": "local",
+  "serverFixture": "/test-run/server-fixture/source",
+  "localServerDirectory": "/test-run/server-data",
+  "expectedServerLimits": { "max_file_bytes": 209715200, "quota_bytes": null }
+}
+```
+
+Copy `expectedServerLimits` from the reference stand's recorded connection limits; the
+example is not a policy constant. The server's actual advertised limit still selects the
+multipart target and refusal set. Any mismatch fails preflight without changing settings or
+trimming the generated profile. `localServerDirectory` must be empty and owned by the run.
+Inherited `ABELE_*` variables are removed before configuring the isolated SQLite instance.
+A root token is provisioned through the fixture's admin CLI and held in memory, never printed.
+`server-receipt.json` and the run receipt record mode, exact fixture revision/build receipt
+hash, package version, Node version, endpoint, database kind and actual advertised limits.
+The fixture package can have an unversioned package label; its immutable revision identifies
+this test server, rather than pretending it is a deployed release.
+
+The server is stopped on normal/failing exits and its owned database/blobs removed. The
+external supervisor must kill the **whole controller process group**, including the local
+server, if the controller/transport dies. Retain receipts before deleting its owned scratch.
+Remote content retention/deletion remains an explicit operator action as before.
 
 ### Building with a development SDK archive
 
@@ -157,7 +206,8 @@ the plugin while a request is active. The large-file kill runs first; the batch 
 after a content commit is confirmed on the server and before the client sees its reply.
 Missing triggers time out and fail. It then joins the
 second vault, edits on both devices, settles, and restarts a synced vault. A startup observer
-loaded before the plugin records each DOM notice's text and timestamp and renderer long tasks.
+loaded before the plugin records each DOM notice's text, timestamp and synchronous creation
+origin, along with renderer long tasks.
 The controller's timestamped scenario phases assign each notice its phase in both reports.
 Notice evidence is local run output and may contain sensitive text; never commit it.
 It does not change the plugin's transport or engine implementation.
@@ -185,7 +235,7 @@ Response closures, including cancellations, carry timestamps. If an active reque
 without a completion timestamp, stop latency is unknown and fails its budget; absence of new
 requests alone never proves zero stop latency.
 The in-renderer pause invocation timestamp is recorded separately from the controller's
-earlier observation boundary. The original strict request-window budget is retained.
+earlier observation boundary. The raw strict-zero count is retained as measurement; the approved 100 ms request grace is the gate.
 Startup reports retain launch totals and observe the product's existing `abele:onload-start`
 performance mark, emitted at entry to its onload. The first-request and idle budgets start
 from that product mark; absent marks fail the budgets. Observer load remains a separate time.
@@ -195,10 +245,34 @@ captures the existing transport debug log's call stack without changing requests
 device/method/path/time evidence is attached to the pause timeline; missing matches stay null.
 The primary's exact refusal statuses and timestamped visible activity events are retained in
 JSON at settle points; summaries and case-refusal evidence are included in Markdown.
-Notice
-counting covers the entire instrumented app lifecycle, including second-device join.
-Throughput includes interruption downtime; it is not a raw-link benchmark. Renderer long tasks
-are reported as an upper bound for all renderer activity, without attributing them to sync.
+Notice counting covers the entire instrumented app lifecycle, including second-device join.
+Only proven Abele notices count against the notice gate. Host and other-plugin notices remain
+separate full evidence; unknown origins fail a separate attribution gate. No text is used to
+exempt a notice, including indexing messages. The observer captures the synchronous stack at
+`Notice.setMessage` or insertion of a notice DOM node, associates it with that actual element
+in a WeakMap and retains it when the DOM later acquires text. Plugin script URLs/paths and
+host bundle frames identify origins. Unrecognized or pre-observer nodes remain unknown.
+Throughput includes interruption downtime; it is not a raw-link benchmark. Renderer long tasks retain their actual start time and browser attribution metadata. A
+main-process watchdog receives renderer heartbeats every 25 ms. After 75 ms without one,
+it asks the debugger protocol to CPU-sample at 1 ms intervals; it stops when heartbeats resume,
+or after a 10 s capture chunk. Normal responsive periods are not CPU-profiled. The observer
+waits for debugger setup before finishing its onload so the first product load is covered.
+It never takes over an already attached debugger. Raw profiles and start/ack/stop times are
+retained in `profiles/` and `renderer.jsonl`. Failed capture disables sampling; unavailable
+profiles and destroyed renderers remain explicit unknowns.
+
+`longTaskAttribution` joins overlapping task/profile windows and retains sampled frame stacks
+and counts by source, including mixed host/plugin work. It excludes samples whose start-time
+uncertainty extends outside the task. The first 75 ms and debugger command latency are not
+profiled; tail samples cannot prove the whole task came from one component. Short tasks or
+lost captures remain unattributed. This diagnostic does not claim the no-sync-task-over-50-ms
+requirement passed merely because a tail sample contains host code.
+
+The external controller samples RSS every second using only the owned app PID and its
+transitive process descendants, including both renderers. `memory.jsonl` records timestamps,
+phase, PIDs and aggregate bytes across restarts; `peakAppRssBytes` is the maximum observed sum.
+This is a sampled app peak, not an instantaneous OS high-water mark or whole-machine memory.
+Absent process data is marked unavailable, never turned into zero.
 Missing measurements fail; a failed scenario never becomes an implicit pass.
 Device settle failures are retained while later reachable steps and the byte oracles continue.
 Byte equality cannot pass unless both device scans and every server download finished.
@@ -209,3 +283,6 @@ Targeted harness tests:
 npx vitest run tests/harness/scaleHarness.test.ts --maxWorkers=2
 npx vitest run tests/harness/scaleBuild.test.ts --maxWorkers=2
 ```
+
+Additional focused tests: `scaleDiagnostics.test.ts`, `scaleLocalServer.test.ts` and
+`scaleProgress.test.ts` in `tests/harness/`, always with `--maxWorkers=2`.

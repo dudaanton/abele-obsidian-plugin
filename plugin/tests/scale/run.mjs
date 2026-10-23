@@ -6,6 +6,9 @@ import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
+import { openServer, verifyServerLimits } from './local-server.mjs'
+import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
+import { appendFile } from 'node:fs/promises'
 import { fileExpectations, oversizedEvidence, pauseWriteMetrics } from './refusals.mjs'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
@@ -192,6 +195,7 @@ async function setupVault(config, root, device) {
   await mkdir(observer, { recursive: true })
   await copyFile(join(here, 'observer.cjs'), join(observer, 'main.js'))
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
+  await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -221,12 +225,15 @@ async function setupVault(config, root, device) {
       evidence: join(config.output, 'renderer.jsonl'),
       device,
       writeObserver: join(observer, 'writes.cjs'),
+      diagnostics: join(observer, 'diagnostics.cjs'),
+      profileDirectory: join(config.output, 'profiles'),
     })
   )
 }
 
 export async function run(config) {
-  deadline = config.deadlineAt ?? Infinity
+  const plannedDeadline = deadlinePlan(config.workerStartedAt ?? Date.now())
+  deadline = config.deadlineAt ?? plannedDeadline.scenarioDeadlineAt
   // The external supervisor owns app-wide locks, resource reservation and crash cleanup.
   const lease = JSON.parse(await readFile(config.leaseFile, 'utf8'))
   if (!lease.exclusive || lease.pid === process.pid)
@@ -240,6 +247,7 @@ export async function run(config) {
   }
   const report = {
     build: config.build,
+    plannedDeadline: { ...plannedDeadline, effectiveScenarioDeadlineAt: deadline },
     ...options,
     interruptions: [],
     failures: [],
@@ -252,9 +260,13 @@ export async function run(config) {
     report.phase = name
     report.phases.push({ name, at: Date.now() })
     console.debug('[scale]', name)
+    checkpoint(true)
   }
   const proxies = []
   const tokenFiles = []
+  let serverSession
+  let memoryTimer
+  let memoryPending = Promise.resolve()
   let appProcess
   let issued
   let owner
@@ -262,9 +274,12 @@ export async function run(config) {
   const devices = config.vaults.map((root) => new RealVault(config, root))
   let saving = Promise.resolve()
   let checkpointError = false
-  const checkpoint = () => {
+  const checkpoint = (boundary = false) => {
+    const snapshot = JSON.parse(JSON.stringify(report))
+    const wire = JSON.parse(JSON.stringify(proxies.map((p) => ({ events: p.events }))))
+    const at = Date.now()
     saving = saving
-      .then(() => saveCheckpoint(config.output, report, proxies))
+      .then(() => saveCheckpoint(config.output, snapshot, wire, at, boundary))
       .catch(() => {
         checkpointError = true
       })
@@ -306,9 +321,12 @@ export async function run(config) {
           at: Date.now(),
           activity: await device.activityEvidence().catch(() => null),
         })
+      checkpoint(true)
     }
   }
   const stop = async (hard) => {
+    clearInterval(memoryTimer)
+    await memoryPending
     if (!appProcess) return
     if (!hard)
       await devices[0]
@@ -326,6 +344,31 @@ export async function run(config) {
     const at = Date.now()
     appProcess = spawn(config.app, config.appArgs ?? [], { stdio: 'ignore' })
     appProcess.on('error', () => {})
+    const rootPid = appProcess.pid
+    let sampling = false
+    const sample = () => {
+      if (sampling) return
+      sampling = true
+      memoryPending = sampleMemory(rootPid)
+        .then(async (value) => {
+          if (!value) {
+            report.memoryUnavailable = true
+            return
+          }
+          const row = { at: Date.now(), phase: report.phase, rootPid, ...value }
+          report.peakAppRssBytes = Math.max(report.peakAppRssBytes ?? 0, value.rssBytes)
+          report.memorySamples = (report.memorySamples ?? 0) + 1
+          await appendFile(join(config.output, 'memory.jsonl'), JSON.stringify(row) + '\n')
+        })
+        .catch(() => {
+          report.memoryUnavailable = true
+        })
+        .finally(() => {
+          sampling = false
+        })
+    }
+    sample()
+    memoryTimer = setInterval(sample, 1000)
     for (const device of devices) {
       await wait('disposable vault window', () => device.evaluate('return true').catch(() => false))
       await device.evaluate('await app.plugins.setEnable(true);return true')
@@ -334,6 +377,7 @@ export async function run(config) {
     return at
   }
   await mkdir(config.output, { recursive: true })
+  checkpoint(true)
   checkpointTimer = setInterval(checkpoint, config.checkpointMs ?? 30000)
   checkpointTimer.unref()
   try {
@@ -354,11 +398,21 @@ export async function run(config) {
     }
     if (devices.length !== 2 || devices[0].root === devices[1].root)
       throw new Error('Two separate disposable vaults required')
-    const encoded = (await readFile(config.tokenFile, 'utf8')).trim()
+    serverSession = await openServer(config)
+    config = { ...config, server: serverSession.address }
+    report.serverReceipt = serverSession.receipt
+    const encoded = serverSession.token
     owner = AccessClient.fromToken(encoded, { fetch: globalThis.fetch })
     if (new URL(owner.token.address).origin !== new URL(config.server).origin)
       throw new Error('Token endpoint does not match configured server')
     report.serverLimits = (await owner.connection()).limits
+    report.serverReceipt.advertisedLimits = report.serverLimits
+    await writeFile(
+      join(config.output, 'server-receipt.json'),
+      JSON.stringify(report.serverReceipt, null, 2)
+    )
+    if (config.serverMode === 'local' || config.expectedServerLimits)
+      verifyServerLimits(report.serverLimits, config.expectedServerLimits)
     const declared = fileExpectations(planVault(options), report.serverLimits)
     report.filePlan = {
       limit: declared.limit,
@@ -402,6 +456,7 @@ export async function run(config) {
           sdk: report.buildReceipt?.sdk,
           ...options,
           serverLimits: report.serverLimits,
+          server: report.serverReceipt,
           oversizedFiles: report.oversizedFiles,
           interruptionTarget: report.interruptionTarget,
         },
@@ -428,7 +483,10 @@ export async function run(config) {
       )
       return event
     }
-    const mark = (kind) => report.interruptions.push({ kind, triggered: true, at: Date.now() })
+    const mark = (kind) => {
+      report.interruptions.push({ kind, triggered: true, at: Date.now() })
+      checkpoint(true)
+    }
     const firstUploadAt = Date.now()
     phase('first upload')
     await start()
@@ -623,7 +681,7 @@ export async function run(config) {
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.failure =
-      /^(Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
+      /^(Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )
         ? error.message
@@ -632,105 +690,119 @@ export async function run(config) {
       devices.map((device) => device.snapshot().catch(() => null))
     )
   } finally {
-    clearInterval(checkpointTimer)
-    await saving
-    if (checkpointError) report.checkpointFailure = true
-    // Cleanup waits must remain available after the scenario deadline.
-    deadline = Infinity
-    await stop(true)
-    report.ownDownloads = proxies.reduce((sum, proxy) => sum + proxy.ownDownloads(), 0)
-    report.unresolvedDownloads = proxies.reduce(
-      (sum, proxy) => sum + proxy.unresolvedDownloads(),
-      0
-    )
-    report.wire = proxies.flatMap((proxy) => proxy.events)
-    report.phaseTimings = phaseTimings(report.phases)
-    report.recoveryTimings = recoveryTimings(
-      report.interruptions,
-      report.wire,
-      report.settleTimings ?? []
-    )
-    for (const proxy of proxies) await proxy.close()
-    for (const file of tokenFiles) await unlink(file).catch(() => {})
-    if (issued && owner)
-      await owner.revoke(issued.info.id).catch(() => {
-        report.cleanupFailure = true
-      })
-    const renderer = await readFile(join(config.output, 'renderer.jsonl'), 'utf8').catch(() => '')
-    const entries = renderer.trim()
-      ? renderer
-          .trim()
-          .split('\n')
-          .map((line) => JSON.parse(line))
-      : []
-    report.notices = entries.length ? entries.filter((e) => e.event === 'notice').length : undefined
-    report.noticeDetails = noticeDetails(entries, report.phases)
-    report.primaryStateObservations = entries.filter((e) => e.event === 'primary-state')
-    const intact = []
-    for (const file of report.oversizedFiles ?? []) {
-      try {
-        const hash = createHash('sha256')
-        let size = 0
-        for await (const chunk of createReadStream(join(devices[0].root, file.path))) {
-          hash.update(chunk)
-          size += chunk.length
+    try {
+      clearInterval(checkpointTimer)
+      await saving
+      report.checkpointFailure = checkpointError
+      // Cleanup waits must remain available after the scenario deadline.
+      deadline = Infinity
+      await stop(true)
+      report.ownDownloads = proxies.reduce((sum, proxy) => sum + proxy.ownDownloads(), 0)
+      report.unresolvedDownloads = proxies.reduce(
+        (sum, proxy) => sum + proxy.unresolvedDownloads(),
+        0
+      )
+      report.wire = proxies.flatMap((proxy) => proxy.events)
+      report.phaseTimings = phaseTimings(report.phases)
+      report.recoveryTimings = recoveryTimings(
+        report.interruptions,
+        report.wire,
+        report.settleTimings ?? []
+      )
+      for (const proxy of proxies) await proxy.close()
+      for (const file of tokenFiles) await unlink(file).catch(() => {})
+      if (issued && owner)
+        await owner.revoke(issued.info.id).catch(() => {
+          report.cleanupFailure = true
+        })
+      const renderer = await readFile(join(config.output, 'renderer.jsonl'), 'utf8').catch(() => '')
+      const entries = renderer.trim()
+        ? renderer
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line))
+        : []
+      report.noticeCounts = noticeSummary(entries)
+      report.notices = entries.length ? report.noticeCounts.abele : undefined
+      report.longTaskAttribution = await profileSummary(entries, entries, async (path) =>
+        JSON.parse(await readFile(path, 'utf8'))
+      )
+      report.memorySampling =
+        'Maximum observed sum of owned app-tree RSS, sampled externally every second; not an instantaneous peak.'
+      report.noticeDetails = noticeDetails(entries, report.phases)
+      report.primaryStateObservations = entries.filter((e) => e.event === 'primary-state')
+      const intact = []
+      for (const file of report.oversizedFiles ?? []) {
+        try {
+          const hash = createHash('sha256')
+          let size = 0
+          for await (const chunk of createReadStream(join(devices[0].root, file.path))) {
+            hash.update(chunk)
+            size += chunk.length
+          }
+          intact.push({ path: file.path, size, sha: hash.digest('hex') })
+        } catch {
+          /* Missing or unreadable bytes fail the independent primary oracle. */
         }
-        intact.push({ path: file.path, size, sha: hash.digest('hex') })
-      } catch {
-        /* Missing or unreadable bytes fail the independent primary oracle. */
       }
+      report.oversizedEvidence = oversizedEvidence(
+        report.oversizedFiles ?? [],
+        intact,
+        report.primaryStateObservations,
+        report.wire,
+        report.interruptions
+      )
+      if (report.pauseActionAt && report.pauseWindowEndAt)
+        Object.assign(
+          report,
+          pauseWriteMetrics(entries, '1', report.pauseActionAt, report.pauseWindowEndAt)
+        )
+      if (report.restartAt)
+        report.startupTiming = proxies.map((proxy, i) => ({
+          device: proxy.device,
+          ...startupTiming(
+            report.restartAt,
+            proxy.events.find((e) => e.event === 'start' && e.at >= report.restartAt)?.at,
+            entries.filter((e) => e.device === proxy.device),
+            report.deviceRestartIdleAt?.[i]
+          ),
+        }))
+      report.startupClock = 'plugin-load'
+      const worst = (key) =>
+        report.startupTiming?.length === devices.length &&
+        report.startupTiming.every((row) => Number.isFinite(row[key]))
+          ? Math.max(...report.startupTiming.map((row) => row[key]))
+          : undefined
+      report.restartPluginRequestMs = worst('pluginLoadToFirstRequestMs')
+      report.restartPluginIdleMs = worst('pluginLoadToIdleMs')
+      report.pauseCallerTraces = entries.filter((e) => e.event === 'request-caller')
+      attributePauseRequests(report.pauseRequests ?? [], report.pauseCallerTraces)
+      report.maxRendererTaskMs = entries.reduce(
+        (maximum, entry) =>
+          entry.event === 'long-task' ? Math.max(maximum, entry.durationMs) : maximum,
+        0
+      )
+      if (serverSession)
+        await serverSession.close().catch(() => {
+          report.cleanupFailure = true
+        })
+      report.budgets = budgets(report)
+      report.status =
+        report.budgets.every((row) => row.status === 'PASS') &&
+        !report.failure &&
+        !report.cleanupFailure
+          ? 'PASS'
+          : 'FAIL'
+      if (config.baselineReport)
+        report.comparison = compareReports(
+          JSON.parse(await readFile(config.baselineReport, 'utf8')),
+          report
+        )
+      await writeFile(join(config.output, 'report.json'), JSON.stringify(report, null, 2))
+      await writeFile(join(config.output, 'report.md'), markdown(report))
+    } finally {
+      if (serverSession) await serverSession.close()
     }
-    report.oversizedEvidence = oversizedEvidence(
-      report.oversizedFiles ?? [],
-      intact,
-      report.primaryStateObservations,
-      report.wire,
-      report.interruptions
-    )
-    if (report.pauseActionAt && report.pauseWindowEndAt)
-      Object.assign(
-        report,
-        pauseWriteMetrics(entries, '1', report.pauseActionAt, report.pauseWindowEndAt)
-      )
-    if (report.restartAt)
-      report.startupTiming = proxies.map((proxy, i) => ({
-        device: proxy.device,
-        ...startupTiming(
-          report.restartAt,
-          proxy.events.find((e) => e.event === 'start' && e.at >= report.restartAt)?.at,
-          entries.filter((e) => e.device === proxy.device),
-          report.deviceRestartIdleAt?.[i]
-        ),
-      }))
-    report.startupClock = 'plugin-load'
-    const worst = (key) =>
-      report.startupTiming?.length === devices.length &&
-      report.startupTiming.every((row) => Number.isFinite(row[key]))
-        ? Math.max(...report.startupTiming.map((row) => row[key]))
-        : undefined
-    report.restartPluginRequestMs = worst('pluginLoadToFirstRequestMs')
-    report.restartPluginIdleMs = worst('pluginLoadToIdleMs')
-    report.pauseCallerTraces = entries.filter((e) => e.event === 'request-caller')
-    attributePauseRequests(report.pauseRequests ?? [], report.pauseCallerTraces)
-    report.maxRendererTaskMs = entries.reduce(
-      (maximum, entry) =>
-        entry.event === 'long-task' ? Math.max(maximum, entry.durationMs) : maximum,
-      0
-    )
-    report.budgets = budgets(report)
-    report.status =
-      report.budgets.every((row) => row.status === 'PASS') &&
-      !report.failure &&
-      !report.cleanupFailure
-        ? 'PASS'
-        : 'FAIL'
-    if (config.baselineReport)
-      report.comparison = compareReports(
-        JSON.parse(await readFile(config.baselineReport, 'utf8')),
-        report
-      )
-    await writeFile(join(config.output, 'report.json'), JSON.stringify(report, null, 2))
-    await writeFile(join(config.output, 'report.md'), markdown(report))
   }
   return report
 }
