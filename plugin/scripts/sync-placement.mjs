@@ -408,10 +408,14 @@ export function syncPlacementPlugin() {
           // Publication authenticates it again under the lease; do not prefetch it.
           const replayStage = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
           if (pendingPlacement?.stageId && this.fs.reopenStage && replayStage &&
-              await replayStage.call(this.fs) &&
-              (await this.fs.reopenStage(pendingPlacement.stageId)).offset === change.size)
-            return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-              () => this.placeUnlocked(change, sha, entry, fetched, local));
+              await replayStage.call(this.fs)) {
+            let complete = false;
+            try { complete = (await this.fs.reopenStage(pendingPlacement.stageId)).offset === change.size; }
+            catch (error) { if (!stageMissing(error)) throw error; }
+            if (complete)
+              return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+                () => this.placeUnlocked(change, sha, entry, fetched, local));
+          }
           // Preflight avoids unnecessary transfers; the lease repeats this content check.
           if (!recovering && ((entry !== null && await this.edited(entry)) ||
               await this.editedMoveDestination(change, entry)))

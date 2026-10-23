@@ -48,7 +48,13 @@ async function scenario(
   entryPoint: 'take' | 'recover',
   small = false,
   bounded = false,
-  failure?: 'network' | 'stage' | 'publish' | 'recreated-source' | 'recreated-source-same'
+  failure?:
+    | 'network'
+    | 'stage'
+    | 'publish'
+    | 'recreated-source'
+    | 'recreated-source-same'
+    | 'missing-stage'
 ) {
   const app = buildFakeVault([]),
     state = new MemoryStateStore()
@@ -214,6 +220,11 @@ async function scenario(
     if (await app.vault.adapter.exists(original.path)) await app.vault.adapter.remove(original.path)
     await rawWrite(original.path, local.buffer, { mtime: 10 })
   }
+  if (failure === 'missing-stage') {
+    const journal = app.loadLocalStorage(JOURNAL_KEY) as { temp: string }[]
+    expect(journal).toHaveLength(1)
+    await app.vault.adapter.remove(journal[0].temp)
+  }
   // A fresh adapter identity and filesystem lose all live receipts, just as a process exit does.
   app.vault.adapter = new Proxy(app.vault.adapter, {})
   disk = new ObsidianFileSystem(app as never)
@@ -316,6 +327,16 @@ async function expectRetainedLocal(result: Awaited<ReturnType<typeof scenario>>)
   // Prior base versions may also be retained; exactly one owned copy preserves this local save.
   expect(matches).toHaveLength(1)
 }
+
+it('recovers publication when its private native stage alias disappeared before restart', async () => {
+  const result = await scenario('new', 'published', false, 'take', false, true, 'missing-stage')
+  expect(result.error).toBeNull()
+  expect((await result.state.byFileId('sample-file'))?.versionId).toBe('incoming')
+  expect(await result.state.getMeta('pull-write:sample-file')).toBeNull()
+  expect(await sha256(new Uint8Array(await result.rawRead(result.change.path)))).toBe(
+    await sha256(result.incoming)
+  )
+})
 
 it.each(
   [false, true].flatMap((bounded) =>
