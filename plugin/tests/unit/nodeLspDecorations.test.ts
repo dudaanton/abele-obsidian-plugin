@@ -220,6 +220,48 @@ it('renders both diagnostic sources, tolerates stale ranges, and clears marks on
   }
 })
 
+it('keeps a fast hover response when analysis republishes unchanged diagnostics', async () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+  doc.supported = true
+  vi.spyOn(doc, 'hover').mockImplementation(async () => {
+    // A warm server can publish its cached diagnostics before the hover response.
+    await Promise.resolve()
+    doc.diagnostics = []
+    for (const listener of doc.listeners) listener()
+    return 'const sample: number'
+  })
+  const remove = provideLsp(root, { document: doc, navigate: () => {} })
+  const view = new EditorView({
+    parent: root,
+    doc: 'const sample = 1',
+    extensions: [nodeLspExtension()],
+  })
+  try {
+    vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+    await Promise.resolve()
+    view.contentDOM
+      .querySelector('.cm-line')!
+      .dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20, ctrlKey: true })
+      )
+    await vi.waitFor(
+      () =>
+        expect(document.querySelector('.abele-lsp-message pre')?.textContent).toBe(
+          'const sample: number'
+        ),
+      { timeout: 1500 }
+    )
+  } finally {
+    view.destroy()
+    remove()
+    await doc.close()
+    root.remove()
+    vi.restoreAllMocks()
+  }
+})
+
 it('requires Ctrl or Cmd for types, including a key pressed over a stationary symbol', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')

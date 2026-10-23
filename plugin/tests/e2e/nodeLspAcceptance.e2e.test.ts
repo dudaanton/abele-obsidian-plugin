@@ -101,7 +101,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover').catch(error=>{
             const cm=api.codeView(document.querySelector('.abele-lsp-root .cm-content'));
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
-            throw Error(error.message+' '+JSON.stringify({targetConnected:long.target.isConnected,modifiers}));
+            throw Error(error.message+' '+JSON.stringify({targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
           });
           const popup=document.querySelector('.abele-lsp-message');
           if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');

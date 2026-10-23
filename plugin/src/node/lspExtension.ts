@@ -217,7 +217,13 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
             if (!context) return
             this.stop?.()
             const refresh = () => {
-              if (!this.destroyed)
+              // Even an identical effect invalidates an asynchronous hover in CodeMirror.
+              // Status notifications and repeated cached diagnostics must leave it intact.
+              if (
+                !this.destroyed &&
+                JSON.stringify(view.state.field(diagnostics)) !==
+                  JSON.stringify(context.document.diagnostics)
+              )
                 view.dispatch({ effects: updateDiagnostics.of(context.document.diagnostics) })
             }
             context.document.listeners.add(refresh)
