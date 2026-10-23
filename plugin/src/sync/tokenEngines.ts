@@ -43,6 +43,7 @@ import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
 import {
   requireExternalLifecycleSafety,
+  settleStoppedInstallationsForDeletion,
   requireExternalEnrollmentSafety,
   recoverExternalState,
   activeExternalDocuments,
@@ -72,6 +73,7 @@ export class TokenEngines {
   private readonly engines = new ConnectionEngines()
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
+  private readonly drained = new Set<string>()
   private readonly retries = new Map<string, (assertCurrent: () => void) => Promise<void>>()
   private readonly startupCancels = new Map<string, () => void>()
   private readonly activityEpoch = new Map<string, number>()
@@ -227,6 +229,7 @@ export class TokenEngines {
         await runtime.disconnect()
         ui.runtimes.delete(id)
       } else await this.engines.remove(id)
+      this.drained.add(id)
     }
     ui.connectionForgotten = async (id) => {
       await this.engines.remove(id)
@@ -292,6 +295,23 @@ export class TokenEngines {
           : connectionJournalApp(this.app, id)
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
       if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
+      const deleting = !!record?.state?.['abele-sync-token-state:server-delete']
+      if (deleting) {
+        const stopped = () => {
+          assertCurrent()
+          const current = this.ui.registry.records().find((one) => one.id === id)
+          if (
+            this.closed ||
+            !this.drained.has(id) ||
+            !current?.state?.['abele-sync-token-state:server-delete']
+          )
+            throw new Error(
+              'Server deletion is awaiting confirmation; this connection cannot restart.'
+            )
+        }
+        stopped()
+        await settleStoppedInstallationsForDeletion(scopedApp, stopped)
+      }
       await requireExternalLifecycleSafety(
         scopedApp,
         factoryOf(this.deps),
@@ -300,7 +320,10 @@ export class TokenEngines {
         id ? this.ui.registry.records().find((one) => one.id === id)?.ledgerId : undefined,
         assertCurrent,
         {},
-        !inspecting
+        !inspecting,
+        false,
+        false,
+        deleting
       )
       assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
@@ -1192,6 +1215,7 @@ export class TokenEngines {
         state?.['abele-sync-token-state:scope-deleted']
       )
         throw new Error('Server deletion is awaiting confirmation; this connection cannot restart.')
+      this.drained.delete(record.id)
       active = true
       fence = undefined
       stateHandle = undefined
@@ -1407,7 +1431,7 @@ export class TokenEngines {
     activity.pending = (activity.pending ?? 0) + publications.length
     activity.refused = [
       ...Array.from(runtime?.pushRefusalRows?.() ?? [], (one) => ({
-        path: one.path!,
+        path: one.path,
         reason:
           connectionError({ code: one.code }) +
           (one.size === undefined ? '' : ` (${one.size} B / ${one.limit ?? '?'} B)`),

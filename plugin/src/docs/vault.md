@@ -3713,3 +3713,9 @@ answers awaiting local settlement (`push-receipt:*`), including their original o
 result and ledger base. Settlement retires the owning answer and retry schedule in one
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
+
+Explicit server deletion can retire an unpublished receipt after its writer has drained.
+Its incoming bytes are moved into private recovery storage and reported through the existing
+recovery notice. The owned write-journal entry keeps the retained locator and a
+`server-deletion` retirement generation; this does not acknowledge the server version or
+publish the incoming bytes at a public path. Unresolved local backups still require recovery.

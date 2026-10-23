@@ -74,9 +74,11 @@ const recoveryDirectory = (app: App) => {
 }
 export function privateRecoveryPath(app: App, path: string): string | null {
   const owned = connectionPrivateArea(app)
-  const prefix = (owned ? owned + '/external' : stagingDirectory(app.vault.configDir)) + '/'
-  if (!path.startsWith(prefix) || path.split('/').some((part) => part === '.' || part === '..'))
-    return null
+  const prefixes = owned
+    ? [owned + '/external/', stagingDirectory(app.vault.configDir, owned) + '/']
+    : [stagingDirectory(app.vault.configDir) + '/']
+  const prefix = prefixes.find((candidate) => path.startsWith(candidate))
+  if (!prefix || path.split('/').some((part) => part === '.' || part === '..')) return null
   return recoveryDirectory(app) + '/' + path.slice(prefix.length)
 }
 /** A deterministic destination survives a crash between the rename and ledger updates.

@@ -1,7 +1,7 @@
 import { InspectionDirectories } from '../inspectionDirectories'
 import { nativeChunkPort } from '../vaultPathLinks'
 import { vaultDisk } from '../vaultPathLinks'
-import { guardedVaultAdapter, assertVaultPath } from '../vaultPathLinks'
+import { guardedVaultAdapter, assertVaultPath, nativeOf } from '../vaultPathLinks'
 import {
   connectionRoot,
   connectionPrivateArea,
@@ -13,6 +13,7 @@ import {
   preservePrivateArtifacts,
   privateArtifactRecovered,
   privateRecoveryDirectory,
+  privateRecoveryPath,
   showPrivateRecoveryNotice,
 } from '../privateRecovery'
 import { sha256 } from './hash'
@@ -835,6 +836,60 @@ export async function requireExternalEnrollmentSafety(app: App): Promise<void> {
   )
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
 }
+/** Explicit departure resolves stopped first-publication receipts by retaining their bytes.
+ * It retires evidence, never acknowledges a version or replays it onto a public path. */
+export async function settleStoppedInstallationsForDeletion(
+  app: App,
+  assertCurrent: () => void
+): Promise<void> {
+  const owner = connectionJournalOwner(app)
+  if (!owner) throw new ExternalRecoveryRequired()
+  await pathCoordinatorOf(app.vault).run(
+    [''],
+    async () => {
+      assertCurrent()
+      const journal = new WriteJournal(app, assertCurrent, owner)
+      const disk = vaultDisk(app.vault)
+      let retired = false
+      for (const entry of await journal.currentEntries()) {
+        if (
+          entry.retiredGeneration ||
+          !entry.conditionalReceipt ||
+          !entry.temp ||
+          entry.streaming ||
+          entry.backup
+        )
+          continue
+        if (adapterWriteInFlight(entry.temp)) throw new ExternalRecoveryRequired()
+        const retained = privateRecoveryPath(app, entry.temp)
+        if (!retained) throw new ExternalRecoveryRequired()
+        if (!(await privateArtifactRecovered(app, entry.temp)))
+          await preservePrivateArtifacts(app, [entry.temp], assertCurrent)
+        assertCurrent()
+        if (await disk.exists(entry.temp)) throw new ExternalRecoveryRequired()
+        const hasRetained = await disk.exists(retained)
+        const native = nativeOf(disk, () => assertCurrent())
+        if (native && hasRetained) {
+          await native.syncPath(retained)
+          await native.syncPath(entry.temp, true)
+        }
+        await journal.persist(async () => {
+          assertCurrent()
+          if (!(await journal.isCurrent(entry))) throw new ExternalRecoveryRequired()
+          journal.replace(entry, {
+            ...entry,
+            temp: hasRetained ? retained : entry.temp,
+            retiredGeneration: 'server-deletion',
+          })
+        })
+        retired = true
+      }
+      if (retired) await showPrivateRecoveryNotice(app)
+    },
+    assertCurrent
+  )
+}
+
 export async function requireExternalLifecycleSafety(
   app: App,
   factory: IDBFactory,
