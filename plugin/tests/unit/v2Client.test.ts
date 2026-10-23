@@ -9,6 +9,28 @@ const token = {
   scope: { kind: 'folder', id: 'root', path: '/' },
 }
 const encoded = () => btoa(JSON.stringify(token))
+it.each([
+  { item: 'primary:sample-token', verified: undefined, selected: 'primary:sample-token' },
+  { item: 'primary:sample-token', verified: 'other-token', selected: 'primary:sample-token' },
+  { item: 'primary:sample-token', verified: 'sample-token', selected: null },
+  { item: 'additional-item', verified: 'sample-token', selected: 'additional-item' },
+])(
+  'keeps the deletion selector unless primary authority matches: %j',
+  async ({ item, verified, selected }) => {
+    let headers: Headers | undefined
+    const client = new V2Client(
+      token as ReturnType<typeof decodeAccessToken>,
+      async (_url, init) => {
+        headers = new Headers(init?.headers)
+        return Response.json({ cursor: 1, files: 0, revoked_tokens: [] })
+      },
+      item
+    )
+    await client.deleteScope('sample-request', verified)
+    expect(headers!.get('abele-scope-item')).toBe(selected)
+    expect(headers!.get('Idempotency-Key')).toBe('sample-request')
+  }
+)
 const authority = {
   protocol: 2,
   token_id: 'token-a',

@@ -1139,7 +1139,10 @@ export class TokenUi {
       assertCurrent()
       if (!attempt.result) {
         requesting()
-        attempt.result = await client.deleteScope(attempt.key)
+        attempt.result = await client.deleteScope(
+          attempt.key,
+          this.registry.records().find((one) => one.id === id)?.tokenId
+        )
         assertCurrent()
         storage.saveLocalStorage(slot, attempt)
       }
