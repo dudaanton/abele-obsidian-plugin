@@ -1280,7 +1280,13 @@ export class ObsidianFileSystem implements FileSystem {
         return false
       // The pull's durable stage owns the subsequent replacement. Its ordinary
       // conditional capture retains these unverified bytes before publication.
-      return await this.conditional.apply(operation, true)
+      const applied = await this.conditional.apply(operation, true)
+      if (applied) {
+        this.observedBases.delete(this.pathKey(operation.path))
+        this.observedBases.delete(this.pathKey(operation.effect.to))
+        await this.directories.removedChild(operation.path)
+      }
+      return applied
     } finally {
       release()
     }
@@ -1307,6 +1313,10 @@ export class ObsidianFileSystem implements FileSystem {
         return applied
       }
       const applied = await this.conditional.apply(operation)
+      if (applied && operation.effect.kind === 'move') {
+        this.observedBases.delete(this.pathKey(operation.path))
+        this.observedBases.delete(this.pathKey(operation.effect.to))
+      }
       if (applied && (operation.effect.kind === 'move' || operation.effect.kind === 'remove'))
         await this.directories.removedChild(operation.path)
       if (
@@ -2244,7 +2254,7 @@ export class ObsidianFileSystem implements FileSystem {
   async beginAtomicWrite(
     path: string,
     mtime: number,
-    expectedBase: (ContentIdentity & { mtime?: number }) | null,
+    expectedBase: (ContentIdentity & { mtime?: number; identity?: string }) | null,
     beforeCreate?: (stageId: string) => Promise<void>
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
@@ -2486,7 +2496,7 @@ export class ObsidianFileSystem implements FileSystem {
     mtime: number,
     from: string | null = null,
     beforeCreate?: (id: string) => Promise<void>,
-    expectedBase?: { sha: string; size: number; mtime: number } | null,
+    expectedBase?: { sha: string; size: number; mtime: number; identity?: string } | null,
     receiptId?: string
   ) {
     const previous = id ? await this.journal.currentEntry(id) : undefined

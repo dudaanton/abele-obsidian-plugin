@@ -1,16 +1,21 @@
 import { expect, it, vi } from 'vitest'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
-it.each([false, true])(
-  'uses paired identity without reading source bytes, changed=%s',
-  async (changed) => {
+it.each([false, true].flatMap((native) => [false, true].map((changed) => ({ native, changed }))))(
+  'uses paired identity without reading source bytes, native=$native, changed=$changed',
+  async ({ native, changed }) => {
     const app = buildFakeVault([{ path: 'sample.bin', content: 'sample bytes', mtime: 1000 }])
+    if (native) withDesktopFs(app)
     const disk = new ObsidianFileSystem(app as never)
     const host = Reflect.get(Reflect.get(disk, 'conditional'), 'host')
-    const expected = { ...(await disk.fingerprint('sample.bin')), identity: 'original-object' }
+    const expected = {
+      ...(await disk.fingerprint('sample.bin')),
+      identity: (native ? await disk.fileIdentity!('sample.bin') : 'original-object')!,
+    }
     host.withMutationCheck = undefined
-    host.fileIdentity = async () => 'original-object'
+    if (!native) host.fileIdentity = async () => 'original-object'
     const fingerprint = vi
       .spyOn(host, 'fingerprint')
       .mockRejectedValue(new Error('Content read forbidden'))

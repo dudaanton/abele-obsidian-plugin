@@ -23,7 +23,7 @@ export interface JournalEntry {
   /** A resumable chunk stage; retained until the engine explicitly discards it. */
   streaming?: {
     mtime: number
-    base: { size: number; sha: string; mtime?: number } | null
+    base: { size: number; sha: string; mtime?: number; identity?: string } | null
     sealed?: { size: number; sha: string }
     /** Uncertain installed bytes survive publication as a recoverable backup. */
     retainBase?: boolean

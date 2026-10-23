@@ -2192,6 +2192,8 @@ it('ends comparison at the confirmed boundary when a clean pass becomes idle', a
   await fs.writeAtomic('Notes/sample.md', new TextEncoder().encode('sample'), 1000)
   const bytes = new TextEncoder().encode('sample')
   Object.assign(fs, {
+    // Exercise content comparison on a host that cannot reuse paired identity.
+    fileIdentity: undefined,
     fingerprint: async () => ({ size: bytes.length, sha: await sha256(bytes), mtime: 1000 }),
   })
   const events: string[] = []
@@ -2223,6 +2225,8 @@ it.each([false, true])(
       release = resolve
     })
     Object.assign(fs, {
+      // Identity-capable hosts now skip unchanged content; this fixture measures hashing progress.
+      fileIdentity: undefined,
       fingerprint: async (path: string) => {
         if (path === 'Notes/local.md' && !blocked) {
           blocked = true
