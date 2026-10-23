@@ -79,13 +79,14 @@ export function withDesktopFs(
   Object.assign(adapter, {
     getFullPath: (path: string): string => ROOT + path,
     fsPromises: {
-      async lstat(full: string) {
+      async lstat(full: string, options?: { bigint?: boolean }) {
         const path = vaultPath(full),
           stat = path === '' ? { type: 'folder' } : await adapter.stat(path)
         if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
         return {
-          dev: 1,
-          ino: inode(path),
+          dev: options?.bigint ? 1n : 1,
+          ino: options?.bigint ? BigInt(inode(path)) : inode(path),
+          ...(options?.bigint ? { birthtimeNs: 1700000000000000000n + BigInt(inode(path)) } : {}),
           size: 'size' in stat ? stat.size : 0,
           mtimeMs: 'mtime' in stat ? stat.mtime : 0,
           ctimeMs: 'ctime' in stat ? stat.ctime : 0,

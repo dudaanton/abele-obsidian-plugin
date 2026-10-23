@@ -259,22 +259,31 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'if (pending?.stageId && this.fs.reopenStage && this.client.openVersion) {',
-          `if (pending && (this.fs.beginAtomicWrite || this.fs[Symbol.for('abele.sync.recover-published-pull-v1')]) && this.fs.reopenStage && this.client.openVersion && change.size !== null) {`
+          `if (entry !== null && (await this.edited(entry, target)))
+            return false;
+        const movedBase =`,
+          `if (pending && !pending.stageId && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] && this.fs.reopenStage && this.client.openVersion && change.size !== null) {
+          if (from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target) &&
+              (!pending.sourceIdentity || await this.fs.fileIdentity?.(from) !== pending.sourceIdentity)) return false;
+          return this.streamPlace(change, sha, entry, target, from, firstTarget, beforeFrom, local);
+        }
+        if (entry !== null && (await this.edited(entry, target)))
+            return false;
+        const movedBase =`
         )
         code = replaceOnce(
           code,
           `if (!pending?.stageId)
-            await this.pending.prepare(change, entry, target, from);
+            await this.pending.prepare(change, entry, target, from, undefined, undefined, sourceIdentity);
         const stage = pending?.stageId !== undefined
             ? await this.fs.reopenStage(pending.stageId)
-            : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, (id) => this.pending.prepare(change, entry, target, from, id));
+            : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, (id) => this.pending.prepare(change, entry, target, from, id, undefined, sourceIdentity));
         if (!pending?.stageId)
-            await this.pending.prepare(change, entry, target, from, stage.id);`,
+            await this.pending.prepare(change, entry, target, from, stage.id, undefined, sourceIdentity);`,
           `const recoverHost = pending && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')];
-        const ownStage = (id) => this.pending.prepare(change, entry, target, from, id, pending?.receiptId);
+        const ownStage = (id) => this.pending.prepare(change, entry, target, from, id, pending?.receiptId, sourceIdentity);
         if (!pending?.stageId && !recoverHost)
-            await this.pending.prepare(change, entry, target, from);
+            await this.pending.prepare(change, entry, target, from, undefined, undefined, sourceIdentity);
         const stage = recoverHost
             ? await recoverHost.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from, ownStage, base, pending.receiptId)
             : pending?.stageId !== undefined

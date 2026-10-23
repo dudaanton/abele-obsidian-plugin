@@ -9,6 +9,7 @@ const RETAINED_RECORD_OVERHEAD = 16 * 1024
 
 /** Structurally matches the next SDK's host port while the current SDK remains pinned. */
 export interface FileVersion {
+  identity?: string
   size: number
   mtime: number
   sha: string
@@ -39,6 +40,7 @@ interface CheckedLease {
   wait?<T>(work: Promise<T>): Promise<T>
 }
 export interface ConditionalFileHost {
+  fileIdentity?(path: string): Promise<string | null>
   withMutationCheck?(check: () => void): ConditionalFileHost
   checked?: {
     maxBytes: number
@@ -756,6 +758,11 @@ export class ConditionalFiles {
     h.check()
     h.validate(op.path)
     if (op.effect.kind === 'move') h.validate(op.effect.to)
+    if (
+      op.expected?.identity !== undefined &&
+      (!h.fileIdentity || (await h.fileIdentity(op.path)) !== op.expected.identity)
+    )
+      return false
     if (retainUnknown && op.effect.kind !== 'move')
       throw new EngineError('protocol', 'Retention requires an exclusive move')
     if (!h.sameObject && h.checked) return this.applyChecked(op, retainUnknown)
@@ -830,6 +837,14 @@ export class ConditionalFiles {
         await h.flush(victim)
         await h.flush(op.path, true)
         const info = await h.stat(victim)
+        if (
+          op.expected.identity !== undefined &&
+          (!h.fileIdentity || (await h.fileIdentity(victim)) !== op.expected.identity)
+        ) {
+          await restore()
+          await this.archive(folder, id, false)
+          return false
+        }
         const have = !retainUnknown && info?.type === 'file' ? await h.fingerprint(victim) : null
         if (
           !retainUnknown &&
@@ -987,9 +1002,11 @@ export class ConditionalFiles {
       release = await checked.acquire([op.path, destination])
       const last = await h.stat(op.path)
       if (
-        first === null
+        (op.expected?.identity !== undefined &&
+          (!h.fileIdentity || (await h.fileIdentity(op.path)) !== op.expected.identity)) ||
+        (first === null
           ? last !== null
-          : !last || last.type !== 'file' || last.size !== first.size || last.mtime !== first.mtime
+          : !last || last.type !== 'file' || last.size !== first.size || last.mtime !== first.mtime)
       ) {
         console.debug('[abele-sync] conditional file changed locally; retry later', op.path)
         // No public mutation was attempted; this intent owns no retained user bytes.
@@ -1005,6 +1022,14 @@ export class ConditionalFiles {
         // before publication or retirement, including same-size, same-time edits.
         const info = await h.stat(victim)
         const captured = !retainUnknown && info?.type === 'file' ? await observe(victim) : null
+        if (
+          op.expected.identity !== undefined &&
+          (!h.fileIdentity || (await h.fileIdentity(victim)) !== op.expected.identity)
+        ) {
+          await operation.restore(victim, op.path)
+          await operation.archive(folder, id, false)
+          return false
+        }
         if (!info || info.type !== 'file') {
           await operation.restore(victim, op.path)
           await operation.archive(folder, id, false)

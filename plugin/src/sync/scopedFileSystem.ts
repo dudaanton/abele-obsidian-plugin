@@ -182,6 +182,7 @@ export function scopedFileSystem(
         [
           'read',
           'stat',
+          'fileIdentity',
           'fingerprint',
           'openRead',
           'writeAtomic',

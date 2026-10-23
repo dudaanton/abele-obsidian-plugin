@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { desktopFsPort } from '../helpers/desktopRequire'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CONDITIONAL_RETENTION_MS } from '@/sync/conditionalFiles'
+import { CONDITIONAL_RETENTION_MS, type ConditionalFileHost } from '@/sync/conditionalFiles'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +16,73 @@ import { WriteJournal, JOURNAL_KEY } from '@/sync/writeJournal'
 import { deferred } from '../helpers/deferred'
 
 const roots: string[] = []
+it('restores a substituted object when identity changes at native capture', async () => {
+  const { root, disk } = await setup()
+  await fs.writeFile(join(root, 'identity.bin'), 'same bytes')
+  await fs.utimes(join(root, 'identity.bin'), 1, 1)
+  const host = disk()
+  const identity = await host.fileIdentity!('identity.bin')
+  const expected = { ...(await host.fingerprint('identity.bin')), identity: identity! }
+  let substituted = false
+  const port = Reflect.get(Reflect.get(host, 'conditional'), 'host') as ConditionalFileHost
+  const leased = port.withMutationCheck!.bind(port)
+  const wrap = (owned: ConditionalFileHost): ConditionalFileHost => {
+    const capture = owned.capture.bind(owned)
+    return {
+      ...owned,
+      capture: async (from, to) => {
+        if (from === 'identity.bin' && !substituted) {
+          substituted = true
+          await fs.rename(join(root, from), join(root, 'kept.bin'))
+          await fs.writeFile(join(root, from), 'same bytes')
+          await fs.utimes(join(root, from), 1, 1)
+        }
+        await capture(from, to)
+      },
+    }
+  }
+  Object.assign(port, wrap(port))
+  port.withMutationCheck = (check) => wrap(leased(check))
+  expect(
+    await host.conditionalFile({ path: 'identity.bin', expected, effect: { kind: 'remove' } })
+  ).toBe(false)
+  expect(substituted).toBe(true)
+  expect(await fs.readFile(join(root, 'identity.bin'), 'utf8')).toBe('same bytes')
+  expect(await fs.readFile(join(root, 'kept.bin'), 'utf8')).toBe('same bytes')
+  expect(await host.fileIdentity!('kept.bin')).toBe(identity)
+  expect(await host.fileIdentity!('identity.bin')).not.toBe(identity)
+})
+it('pairs desktop file identity with the conditional capture authority', async () => {
+  const { root, disk } = await setup()
+  await fs.writeFile(join(root, 'identity.bin'), 'same bytes')
+  const host = disk()
+  const identity = await Reflect.get(host, 'fileIdentity')('identity.bin')
+  expect(identity).toMatch(/^node-v1:\d+:\d+:\d+$/)
+  await fs.rename(join(root, 'identity.bin'), join(root, 'renamed.bin'))
+  expect(await Reflect.get(host, 'fileIdentity')('renamed.bin')).toBe(identity)
+  await fs.writeFile(join(root, 'identity.bin'), 'same bytes')
+  const before = await host.fingerprint('identity.bin')
+  expect(
+    await host.conditionalFile({
+      path: 'identity.bin',
+      expected: { ...before, identity },
+      effect: { kind: 'remove' },
+    } as never)
+  ).toBe(false)
+  expect(await fs.readFile(join(root, 'identity.bin'), 'utf8')).toBe('same bytes')
+  expect(await fs.readFile(join(root, 'renamed.bin'), 'utf8')).toBe('same bytes')
+})
+
+it('refuses identity authority when nanosecond birth time is unavailable', async () => {
+  const { root, disk } = await setup({
+    lstat: (async (...args: Parameters<typeof fs.lstat>) => {
+      const stat = await fs.lstat(...args)
+      return Object.assign(stat, { birthtimeNs: 0n })
+    }) as typeof fs.lstat,
+  })
+  await fs.writeFile(join(root, 'identity.bin'), 'sample bytes')
+  expect(await Reflect.get(disk(), 'fileIdentity')('identity.bin')).toBeNull()
+})
 it.each(
   ['install', 'public-flush', 'finish-entry', 'alias-remove', 'alias-flush', 'finish-complete']
     .map((boundary) => ({ boundary, committed: false }))

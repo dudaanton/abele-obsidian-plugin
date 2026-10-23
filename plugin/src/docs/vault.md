@@ -3719,3 +3719,9 @@ Its incoming bytes are moved into private recovery storage and reported through 
 recovery notice. The owned write-journal entry keeps the retained locator and a
 `server-deletion` retirement generation; this does not acknowledge the server version or
 publish the incoming bytes at a public path. Unresolved local backups still require recovery.
+
+On desktop, a pending move may retain its source object's identity: device, inode and exact
+nanosecond birth time. The host checks it again on the captured object before applying a
+conditional effect. Missing birth-time authority never falls back to stat or equal content.
+Adapter-only hosts do not expose this capability; after a restart a pending move holds a
+present source and retains its owned stage until the decision can safely resolve.

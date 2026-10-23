@@ -27,6 +27,7 @@ export const placementMethods = {
   writeAtomic: 'path',
   remove: 'path',
   stat: 'path',
+  fileIdentity: 'path',
   mkdir: 'path',
   removeDirectory: 'path',
   openRead: 'path',

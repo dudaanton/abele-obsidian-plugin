@@ -1,4 +1,5 @@
 import { directEntryDurability, entryEffect } from './directEntryDurability'
+import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
 import { diagnosticOrigin, nativeDiagnostics } from './nativeDiagnostics'
@@ -768,7 +769,16 @@ async function openNoFollow(
 }
 
 interface NodeFsPromises {
-  lstat(path: string): Promise<{ isSymbolicLink(): boolean }>
+  lstat(
+    path: string,
+    options?: { bigint: boolean }
+  ): Promise<{
+    isSymbolicLink(): boolean
+    isFile?(): boolean
+    dev?: unknown
+    ino?: unknown
+    birthtimeNs?: unknown
+  }>
   mkdir(path: string, options: { recursive: boolean }): Promise<unknown>
   unlink(path: string): Promise<void>
   stat(path: string): Promise<{ dev: number; ino: number }>
@@ -791,6 +801,7 @@ interface NodeFsPromises {
   }>
 }
 export interface NativeFs {
+  fileIdentity?(path: string): Promise<string | null>
   restoreDirectoryExclusive?(from: string, to: string): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
   syncPath?(path: string, parentsOnly?: boolean): Promise<void>
@@ -864,6 +875,19 @@ export function nativeOf(
       await reconcile(path)
     },
   }
+  if (fsp.lstat)
+    native.fileIdentity = async (path) => {
+      await assertVaultPath(adapter, path)
+      assertEffect([path])
+      try {
+        const stat = await fsp.lstat(at(path), { bigint: true })
+        assertEffect([path])
+        return stat.isFile?.() ? desktopFileIdentity(stat) : null
+      } catch (error) {
+        if ((error as { code?: string }).code === 'ENOENT') return null
+        throw error
+      }
+    }
   if (fsp.stat)
     native.sameObject = async (a, b) => {
       await assertVaultPath(adapter, a)

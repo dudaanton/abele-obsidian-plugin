@@ -5,6 +5,24 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { reviewFileSystem } from '@/sync/reviewFileSystem'
 import type { ConditionalFileOperation } from '@/sync/conditionalFiles'
 
+it('maps file identity queries without granting access beyond the folder scope', async () => {
+  const fileIdentity = vi.fn(async () => 'sample-object')
+  const disk = Object.assign(new MemoryFileSystem(), { fileIdentity })
+  const placed = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
+  const includes = (path: string) => path.startsWith('Shared/')
+  const scoped = scopedFileSystem(
+    placed,
+    (path) => {
+      if (!includes(path)) throw new Error('outside scope')
+    },
+    includes
+  )
+  expect(await scoped.fileIdentity!('Shared/sample.md')).toBe('sample-object')
+  expect(fileIdentity).toHaveBeenCalledExactlyOnceWith('Moved/sample.md')
+  await expect(scoped.fileIdentity!('Private/sample.md')).rejects.toThrow('outside scope')
+  expect(fileIdentity).toHaveBeenCalledOnce()
+})
+
 it('checks both public paths and opaque stages before a conditional scope effect', async () => {
   const conditionalFile = vi.fn(async () => true),
     installedFile = vi.fn(async () => true)

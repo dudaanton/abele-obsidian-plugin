@@ -287,6 +287,7 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
   private inventory: InventoryPass | null = null
@@ -1120,6 +1121,9 @@ export class ObsidianFileSystem implements FileSystem {
         await this.native.syncPath(path, parentsOnly)
       },
       ...(this.native?.sameObject ? { sameObject: (a, b) => this.native.sameObject(a, b) } : {}),
+      ...(this.native?.fileIdentity
+        ? { fileIdentity: (path: string) => this.native.fileIdentity(path) }
+        : {}),
       stage: async (id) => {
         const entry = await this.journal.currentEntry(id)
         if (!entry?.streaming?.sealed || entry.backup || entry.retiredGeneration)
@@ -1144,6 +1148,12 @@ export class ObsidianFileSystem implements FileSystem {
     conditionalHost.withMutationCheck = (check) =>
       this.leasedConditionalHost(conditionalHost, check)
     this.validateConditionalPath = (path) => conditionalHost.validate(path)
+    if (this.native?.fileIdentity)
+      this.fileIdentity = async (path) => {
+        this.runtimeFence?.assertReady()
+        this.validateConditionalPath(path)
+        return this.native.fileIdentity(path)
+      }
     this.conditional = new ConditionalFiles(conditionalHost)
   }
 
@@ -1208,6 +1218,9 @@ export class ObsidianFileSystem implements FileSystem {
         await native.syncPath(path, parentsOnly)
       },
       ...(native?.sameObject ? { sameObject: (a, b) => native.sameObject(a, b) } : {}),
+      ...(native?.fileIdentity
+        ? { fileIdentity: (path: string) => native.fileIdentity(path) }
+        : {}),
       remove: (path) => disk.remove(path),
       rmdir: async (path) => {
         if (native) return native.rmdirEmpty(path)
@@ -1377,6 +1390,7 @@ export class ObsidianFileSystem implements FileSystem {
             'archiveBackup',
             'syncPath',
             'sameObject',
+            'fileIdentity',
           ],
           false
         )
