@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { AgentLoop } from '@/ai/client/AgentLoop'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import type { ModelConfig, Message, StreamEvent } from '@/ai/client/types'
 const model = {
@@ -239,4 +240,106 @@ it('finishes at the terminal Responses event even when the connection stays open
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body))
   expect((await run()).at(-1)).toMatchObject({ type: 'done' })
   expect(cancel).toHaveBeenCalled()
+})
+
+it.each(['item_id', 'output_index', 'call_id'])(
+  'routes interleaved function arguments by %s across text and parallel calls',
+  async (identity) => {
+    const item = (id: string, args: string) => ({
+      type: 'function_call',
+      id: `item_${id}`,
+      call_id: `call_${id}`,
+      name: 'inspect',
+      arguments: args,
+    })
+    const key = (id: string) => ({
+      [identity]:
+        identity === 'output_index'
+          ? id === 'a'
+            ? 0
+            : 1
+          : `${identity === 'item_id' ? 'item' : 'call'}_${id}`,
+    })
+    fake([
+      event('response.output_item.added', { output_index: 0, item: item('a', '') }),
+      event('response.function_call_arguments.delta', { ...key('a'), delta: '{"path":' }),
+      event('response.output_text.delta', { delta: 'Inspecting samples.' }),
+      event('response.output_item.added', { output_index: 1, item: item('b', '') }),
+      event('response.function_call_arguments.delta', {
+        ...key('b'),
+        delta: '{"path":"second.md"}',
+      }),
+      event('response.function_call_arguments.delta', { ...key('a'), delta: '"first.md"}' }),
+      event('response.output_item.done', {
+        output_index: 0,
+        item: item('a', '{"path":"first.md"}'),
+      }),
+      event('response.output_item.done', {
+        output_index: 1,
+        item: item('b', '{"path":"second.md"}'),
+      }),
+      event('response.completed', { response: {} }),
+    ])
+    const events = await run()
+    const last = events.at(-1)!
+    expect(last.type).toBe('done')
+    if (last.type !== 'done') throw Error('Missing completion')
+    expect(last.message.content.filter((block) => block.type === 'toolCall')).toEqual([
+      { type: 'toolCall', id: 'call_a', name: 'inspect', arguments: { path: 'first.md' } },
+      { type: 'toolCall', id: 'call_b', name: 'inspect', arguments: { path: 'second.md' } },
+    ])
+    expect(last.message.content).toContainEqual({ type: 'text', text: 'Inspecting samples.' })
+    expect(events.filter((e) => e.type === 'tool_call_end')).toHaveLength(2)
+  }
+)
+
+it.each([true, false])('presents refusal text without duplication (deltas: %s)', async (deltas) => {
+  fake([
+    ...(deltas
+      ? [
+          event('response.refusal.delta', {
+            item_id: 'message_sample',
+            content_index: 0,
+            delta: 'I cannot ',
+          }),
+          event('response.refusal.delta', {
+            item_id: 'message_sample',
+            content_index: 0,
+            delta: 'help with that.',
+          }),
+        ]
+      : []),
+    event('response.refusal.done', {
+      item_id: 'message_sample',
+      content_index: 0,
+      refusal: 'I cannot help with that.',
+    }),
+    event('response.completed', { response: {} }),
+  ])
+  expect((await run()).at(-1)).toMatchObject({
+    type: 'done',
+    message: { stopReason: 'stop', content: [{ type: 'text', text: 'I cannot help with that.' }] },
+  })
+})
+
+it('retains each call’s streamed arguments when an interleaved turn is stopped', async () => {
+  const loop = new AgentLoop()
+  vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
+    yield { type: 'tool_call_start', toolCallId: 'call_a', toolName: 'inspect' }
+    yield { type: 'tool_call_delta', toolCallId: 'call_a', delta: '{"path":' }
+    yield { type: 'text_delta', delta: 'Inspecting samples.' }
+    yield { type: 'tool_call_start', toolCallId: 'call_b', toolName: 'inspect' }
+    yield { type: 'tool_call_delta', toolCallId: 'call_b', delta: '{"path":"second.md"}' }
+    yield { type: 'tool_call_delta', toolCallId: 'call_a', delta: '"first.md"}' }
+    loop.abort()
+    throw new Error('Stopped stream')
+  })
+  const result = await loop.run({ model, systemPrompt: '', messages: [user], tools: [] })
+  const reply = result.messages.find((message) => message.role === 'assistant')!
+  expect(reply).toMatchObject({ stopReason: 'aborted' })
+  if (reply.role !== 'assistant') throw Error('Missing reply')
+  expect(reply.content.filter((block) => block.type === 'toolCall')).toEqual([
+    { type: 'toolCall', id: 'call_a', name: 'inspect', arguments: { path: 'first.md' } },
+    { type: 'toolCall', id: 'call_b', name: 'inspect', arguments: { path: 'second.md' } },
+  ])
 })

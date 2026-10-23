@@ -218,7 +218,7 @@ export type StreamEvent =
   | { type: 'thinking_delta'; delta: string }
   | { type: 'thinking_end'; thinking: string }
   | { type: 'tool_call_start'; toolCallId: string; toolName: string }
-  | { type: 'tool_call_delta'; delta: string }
+  | { type: 'tool_call_delta'; delta: string; toolCallId?: string }
   | { type: 'tool_call_end'; toolCall: ToolCallContent }
   | { type: 'done'; message: AssistantMessage }
   | { type: 'error'; error: string; message?: AssistantMessage }

@@ -312,7 +312,7 @@ export class AgentLoop {
         let result: AssistantMessage | null = null
         const partial = empty()
         let block: AssistantMessage['content'][number] | undefined
-        let partialArguments = ''
+        const partialArguments = new Map<string, string>()
         this.emit({ type: 'message_start', message: empty() })
         try {
           for await (const event of this.client.stream(model, systemPrompt, messages, toolDefs, {
@@ -341,13 +341,20 @@ export class AgentLoop {
                   arguments: {},
                 }
                 partial.content.push(block)
-                partialArguments = ''
-              } else if (event.type === 'tool_call_delta' && block?.type === 'toolCall') {
-                partialArguments += event.delta
+                partialArguments.set(event.toolCallId, '')
+              } else if (event.type === 'tool_call_delta') {
+                const call = event.toolCallId
+                  ? partial.content.find(
+                      (item) => item.type === 'toolCall' && item.id === event.toolCallId
+                    )
+                  : block
+                if (call?.type !== 'toolCall') continue
+                const raw = (partialArguments.get(call.id) ?? '') + event.delta
+                partialArguments.set(call.id, raw)
                 try {
-                  const args: unknown = JSON.parse(partialArguments)
+                  const args: unknown = JSON.parse(raw)
                   if (args && typeof args === 'object' && !Array.isArray(args))
-                    block.arguments = args as Record<string, unknown>
+                    call.arguments = args as Record<string, unknown>
                 } catch {
                   /* Unfinished arguments stay unexecuted, never repaired into an operation. */
                 }

@@ -158,6 +158,7 @@ export class OpenAIClient {
       ? AbortSignal.any([options.signal, connection.signal])
       : connection.signal
     let currentBlock: (AssistantContentBlock & { partialArgs?: string }) | null = null
+    const responseCalls = new Map<string, ToolCallContent & { partialArgs?: string }>()
     // Track which reasoning field this model uses (reasoning_content, reasoning, reasoning_text)
     let reasoningField: string | null = null
 
@@ -284,12 +285,33 @@ export class OpenAIClient {
             const tcName = tc.function?.name
             const tcArgs = tc.function?.arguments || ''
 
+            if (model.apiMode === 'responses') {
+              if (!tcId) throw new Error('Responses function call has no call ID')
+              let call = responseCalls.get(tcId)
+              if (!call) {
+                call = {
+                  type: 'toolCall',
+                  id: tcId,
+                  name: tcName || '',
+                  arguments: {},
+                  partialArgs: '',
+                }
+                responseCalls.set(tcId, call)
+                yield { type: 'tool_call_start', toolCallId: call.id, toolName: call.name }
+              }
+              if (tcArgs) {
+                call.partialArgs = (call.partialArgs || '') + tcArgs
+                yield { type: 'tool_call_delta', delta: tcArgs, toolCallId: call.id }
+              }
+              continue
+            }
+
             // New tool call starts when we get an ID
             if (tcId) {
               if (currentBlock) yield* this.finishBlock(currentBlock, output)
               currentBlock = {
                 type: 'toolCall',
-                id: model.apiMode === 'responses' ? tcId : this.sanitizeToolCallId(tcId),
+                id: this.sanitizeToolCallId(tcId),
                 name: tcName || '',
                 arguments: {},
                 partialArgs: '',
@@ -319,6 +341,7 @@ export class OpenAIClient {
         reason: options.signal?.aborted ? 'turn_signal' : 'transport_failure',
       })
       if (currentBlock) yield* this.finishBlock(currentBlock, output)
+      for (const call of responseCalls.values()) yield* this.finishBlock(call, output)
 
       // Only Stop's signal is a user cancellation. A transport can also reject with
       // AbortError (for example its own timeout); that must remain a visible failure.
@@ -336,6 +359,7 @@ export class OpenAIClient {
 
     // Finish any remaining block
     if (currentBlock) yield* this.finishBlock(currentBlock, output)
+    for (const call of responseCalls.values()) yield* this.finishBlock(call, output)
 
     const hasAnswer = output.content.some(
       (block) =>
