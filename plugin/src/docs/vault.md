@@ -289,6 +289,11 @@ an independent `data-restored` marker after acknowledged conflict-copy publicati
 settled receipt cleanup removes that marker without touching the visible copy. They carry
 `checked: true`, use no allocation sentinel, and cannot certify installation identity after
 restart. Uncertain writes retain evidence; settled victims use the same retention policy.
+When bounded verification of an existing target is unavailable, replacement may capture
+it by rename and retain it before publishing incoming bytes without overwriting. Its intent
+records `unverifiedVictim: true`: this authorizes retention of the owned capture, never
+content equality, move adoption or immediate deletion. Interrupted private downloads use
+the same preservation path rather than reading the whole existing target.
 Buffered mobile creates use the installation journal's private `temp`; replacements use
 the conditional object's `data` file. Adapter acknowledgements and the gate do not provide
 atomic exclusion against another native process inside the adapter's own move implementation.

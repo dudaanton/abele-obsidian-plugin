@@ -24,6 +24,7 @@ export interface ConditionalFileOperation {
 }
 interface Intent {
   checked?: boolean
+  unverifiedVictim?: boolean
   incoming?: { size: number; sha: string }
   receipt?: boolean
   path: string
@@ -175,13 +176,16 @@ export class ConditionalFiles {
     // authorizes retention as a settled base, never immediate unlinking.
     if (!intent.expected) return
     const info = await h.stat(victim)
-    const have = info?.type === 'file' ? await h.fingerprint(victim) : null
+    const have =
+      !intent.unverifiedVictim && info?.type === 'file' ? await h.fingerprint(victim) : null
     if (
       !info ||
-      !have ||
-      have.sha !== intent.expected.sha ||
-      have.size !== intent.expected.size ||
-      Math.round(info.mtime) !== intent.expected.mtime
+      info.type !== 'file' ||
+      (!intent.unverifiedVictim &&
+        (!have ||
+          have.sha !== intent.expected.sha ||
+          have.size !== intent.expected.size ||
+          Math.round(info.mtime) !== intent.expected.mtime))
     ) {
       await this.restore(victim, intent.path)
       return
@@ -942,12 +946,18 @@ export class ConditionalFiles {
         return (await h.stat(op.path)) === null
       }
       if (op.expected === null ? first !== null : first === null) return false
+      const replaces = op.effect.kind === 'write' || op.effect.kind === 'install'
+      let unverifiedVictim = false
       if (op.expected && !retainUnknown) {
         const have = await observe(op.path)
-        if (!have || have.sha !== op.expected.sha || have.size !== op.expected.size) return false
+        if (!have) {
+          if (!replaces) return false
+          unverifiedVictim = true
+        } else if (have.sha !== op.expected.sha || have.size !== op.expected.size) return false
       }
       const intent: Intent = {
         checked: true,
+        ...(unverifiedVictim ? { unverifiedVictim: true } : {}),
         ...(payload ? { incoming: { size: payload.length, sha: await sha256(payload) } } : {}),
         receipt: op.effect.kind === 'write' && op.effect.receipt !== undefined,
         path: op.path,
@@ -988,8 +998,20 @@ export class ConditionalFiles {
         // before publication or retirement, including same-size, same-time edits.
         const info = await h.stat(victim)
         const captured = !retainUnknown && info?.type === 'file' ? await observe(victim) : null
+        if (!info || info.type !== 'file') {
+          await operation.restore(victim, op.path)
+          await operation.archive(folder, id, false)
+          return false
+        }
+        if (replaces && !retainUnknown && !captured && !intent.unverifiedVictim) {
+          // This capture owns the displaced bytes, but makes no equality claim.
+          intent.unverifiedVictim = true
+          await operation.record(folder + '/intent.json', intent)
+          await operation.record(h.root + '/active/' + id + '.json', intent)
+        }
         if (
           !retainUnknown &&
+          !intent.unverifiedVictim &&
           (!info ||
             info.type !== 'file' ||
             info.size !== op.expected.size ||
