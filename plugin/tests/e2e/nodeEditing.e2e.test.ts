@@ -84,7 +84,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
     reloadPlugin()
     evalAsync(`(async()=>{${prelude}
       await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>document.querySelector('.abele-node-files [contenteditable="true"]'));
-      await until(()=>document.querySelector('.abele-node-files .cm-content').textContent==='local draft');press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await enter('competing draft');return true
+      await until(()=>document.querySelector('.abele-node-files .cm-content').textContent==='local draft');await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await enter('competing draft');return true
     })()`)
     expect(readFileSync(resolve(workspacePath, 'sample.txt'), 'utf8')).toBe('local draft')
     writeFileSync(resolve(workspacePath, 'sample.txt'), 'external')
@@ -97,7 +97,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
     writeFileSync(resolve(workspacePath, 'sample.txt'), 'later external')
     reloadPlugin()
     evalAsync(`(async()=>{${prelude}
-      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Check save'));press('Check save');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await close();return true
+      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Check save'&&!b.disabled));press('Check save');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await close();return true
     })()`)
     expect(readFileSync(resolve(workspacePath, 'sample.txt'), 'utf8')).toBe('later external')
   } finally {
