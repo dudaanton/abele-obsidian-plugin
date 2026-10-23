@@ -51,6 +51,7 @@
       <template #editor="{ layout }">
         <GithubCode
           :text="visibleText"
+          :range="range"
           :comparison="{ original: comparisonOriginal, split: layout === 'split' }"
           :path="model.filePath.value"
           :editable="editable"

@@ -103,6 +103,21 @@ it('keeps the comparison baseline while the shared file editor saves a working d
   }
 })
 
+it('reveals cited lines in the working side of an edited comparison', async () => {
+  const { model, initialPath } = await nodeFilesFixture('files')
+  await model.openFile(initialPath!)
+  await model.beginEditing()
+  const view = mount(NodePathEditorPane, {
+    props: { model, comparison: { original: 'old sample', split: true }, line: 1 },
+  })
+  try {
+    await flushPromises()
+    expect(view.getComponent(GithubCode).props('range')).toEqual({ start: 1, end: 1 })
+  } finally {
+    view.unmount()
+  }
+})
+
 it('offers no pencil for historical, staged or deleted comparisons and refuses a direct edit action', () => {
   const document = shallowRef<PathDocument>()
   const start = vi.fn()
