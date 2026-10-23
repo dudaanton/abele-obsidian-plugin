@@ -7,6 +7,29 @@ import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
+
+it('shares verified mobile capabilities across operation ports and reprobes after a fresh poll', async () => {
+  const fixture = mobileStreamFixture()
+  const base = new BoundedVaultIo(fixture.adapter)
+  const operation = new BoundedVaultIo(fixture.adapter)
+  operation.reuseCapabilitiesFrom(base)
+  const available = await base.canReplayStage()
+  const probes = fixture.fetcher.mock.calls.length
+  expect(probes).toBeGreaterThan(0)
+  expect(await operation.canReplayStage()).toBe(available)
+  expect(fixture.fetcher.mock.calls.length).toBe(probes)
+  base.invalidateCapabilities()
+  expect(await operation.canReplayStage()).toBe(available)
+  expect(fixture.fetcher.mock.calls.length).toBeGreaterThan(probes)
+  const files = Reflect.get(window, 'Capacitor').Plugins.Filesystem
+  const original = files.readFile
+  files.readFile = async (options: { path: string; offset: number; length: number }) => {
+    const answer = await original(options)
+    return { data: btoa(atob(answer.data).slice(options.offset, options.offset + options.length)) }
+  }
+  expect(await operation.canReplayStage()).toBe(true)
+})
+
 describe('bounded vault I/O', () => {
   it.each([
     [true, false],

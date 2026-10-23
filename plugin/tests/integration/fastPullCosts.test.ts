@@ -15,6 +15,8 @@ async function measure(folder: boolean) {
     active = 0,
     maximum = 0
   const operations = new Map<string, number>()
+  const probes = new Map<string, number>()
+  const firstTargetStats: string[] = []
   const transaction = IDBDatabase.prototype.transaction
   const observed = vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
     ...args
@@ -30,9 +32,20 @@ async function measure(folder: boolean) {
           adapter: connectionAdapter(app.vault.adapter, 'shared', '.abele-sync/connections/sample'),
         }
       : {}),
-    diagnostic: (operation) => {
+    diagnostic: (operation, _started, _outcome, paths) => {
       if (operation.startsWith('adapter ')) {
+        if (operation === 'adapter stat' && paths?.[0].endsWith('sample-0.md'))
+          firstTargetStats.push(new Error().stack ?? 'unavailable')
         bridge++
+        for (const path of paths ?? []) {
+          const key =
+            operation +
+            ': ' +
+            path
+              .replace(/sample-\d+\.md/g, 'sample-N.md')
+              .replace(/\.abele-receipt-[^/]+/g, 'receipt.tmp')
+          probes.set(key, (probes.get(key) ?? 0) + 1)
+        }
         operations.set(operation, (operations.get(operation) ?? 0) + 1)
       }
     },
@@ -80,7 +93,7 @@ async function measure(folder: boolean) {
     { dirty: new Set(), expected: new ExpectedWrites(), filter: { excluded: () => false } },
     report
   )
-  const placements = vi.spyOn(fs, 'writeAtomic')
+  const placements = vi.spyOn(fs, 'conditionalFile')
   try {
     await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, () =>
       puller.apply(changes)
@@ -91,15 +104,28 @@ async function measure(folder: boolean) {
       writes,
       maximum,
       operations: Object.fromEntries(operations),
+      probes: Object.fromEntries(probes),
+      firstTargetStats,
     })
     expect(report.applied).toBe(32)
     expect(report.held).toEqual([])
     expect(maximum).toBe(8)
     expect(bridge).toBeLessThanOrEqual(32 * 5 + 8)
     expect(writes).toBeLessThanOrEqual(32 * 2 + 1)
-    expect(placements.mock.calls.map(([path]) => path)).toEqual(changes.map((one) => one.path))
+    expect(placements.mock.calls.map(([operation]) => operation.path)).toEqual(
+      changes.map((one) => one.path)
+    )
+    expect(placements.mock.calls.map(([operation]) => operation.effect)).toEqual(
+      changes.map((change) => ({
+        kind: 'write',
+        bytes: change.bytes,
+        mtime: change.mtime,
+        receipt: expect.any(String),
+      }))
+    )
+    const measured = { bridge, writes, files: changes.length }
     for (const change of changes) expect(await fs.read(change.path)).toEqual(change.bytes)
-    return { bridge, writes, files: changes.length }
+    return measured
   } finally {
     observed.mockRestore()
     state.close()
@@ -108,7 +134,7 @@ async function measure(folder: boolean) {
 
 it.each([false, true])('bounds first-pull costs and order (folder=%s)', measure)
 
-it.fails('BUG: first pull still needs more than four bridge operations per file', async () => {
+it('keeps first pull within four bridge operations per file', async () => {
   const counts = await measure(false)
   expect(counts.bridge).toBeLessThanOrEqual(counts.files * 4 + 8)
 })

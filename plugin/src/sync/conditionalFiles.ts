@@ -64,6 +64,7 @@ export interface ConditionalFileHost {
   install(from: string, to: string): Promise<void>
   restoreDirectory?(from: string, to: string): Promise<void>
   flush(path: string, parentsOnly?: boolean): Promise<void>
+  resumeNamespace?(paths: readonly string[]): void
   sameObject?(a: string, b: string): Promise<boolean>
   stage(
     id: string
@@ -652,6 +653,12 @@ export class ConditionalFiles {
       new TextDecoder().decode(await h.read(folder + '/intent.json'))
     ) as Intent
     h.validate(intent.path)
+    h.resumeNamespace?.([
+      intent.path,
+      intent.destination ?? intent.path,
+      intent.data,
+      folder + '/intent.json',
+    ])
     h.check()
     let restoreIncoming = intent.checked && intent.data !== folder + '/victim'
     if (restoreIncoming && intent.incoming && (await h.stat(intent.data))) {
@@ -1179,6 +1186,11 @@ export class ConditionalFiles {
             const intent = JSON.parse(
               new TextDecoder().decode(await h.read(folder + '/intent.json'))
             ) as Intent
+            h.resumeNamespace?.([
+              intent.destination ?? intent.path,
+              folder + '/intent.json',
+              pointer,
+            ])
             await h.flush(intent.destination ?? intent.path, true)
             await this.retireVictim(folder, intent)
             await this.archive(folder, id, true)

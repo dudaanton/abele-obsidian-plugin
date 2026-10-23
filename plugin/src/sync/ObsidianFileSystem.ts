@@ -1,4 +1,5 @@
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
+import { directEntryDurability } from './directEntryDurability'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
 import { vaultPathKey } from './vaultPathLinks'
 import type { ConditionalFileHost } from './conditionalFiles'
@@ -180,16 +181,19 @@ interface InventoryPass {
   publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
   listings: InventoryCache<Promise<ListedFiles>>
+  stats: InventoryCache<Promise<Stat | null>>
   mutations: Set<string>
   localChanges: Map<string, number>
   directoryChanges: Map<string, number>
   localRevision: number
+  pollRevision: number
   configRevision: number
   children: InventoryCache<Promise<InventoryChild[]>>
   indexedChildren: InventoryCache<Promise<InventoryChild[]>>
   directoryStamp?: string
   directoryRevision: number
 }
+const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
 const normalizationPossible = (path: string) =>
   path !== path.normalize('NFC') || path.normalize('NFD') !== path
@@ -331,7 +335,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.rootChain = undefined
   }
 
-  async [Symbol.for('abele.sync.inventory-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
+  async [INVENTORY_PASS]<T>(work: () => Promise<T>): Promise<T> {
     // Shared filesystem instances may have overlapping engines. Never share their snapshots.
     this.inventory = ++this.inventoryDepth === 1 ? this.createInventory() : null
     const inventory = this.inventory
@@ -415,14 +419,19 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
   }
+  [Symbol.for('abele.sync.operation-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
+    return this.inventoryDepth ? work() : this[INVENTORY_PASS](work)
+  }
   private createInventory(): InventoryPass {
     const cache = <T>() => new InventoryCache<T>((path) => this.inventoryRevision(path, inventory))
     const inventory: InventoryPass = {
       listings: cache(),
+      stats: cache(),
       mutations: new Set(),
       localChanges: new Map(),
       directoryChanges: new Map(),
       localRevision: 0,
+      pollRevision: 0,
       directoryRevision: 0,
       configRevision: this.configRevision(),
       children: cache(),
@@ -453,7 +462,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   private pathRevision(path: string, inventory: InventoryPass): number {
-    let revision = 0
+    let revision = inventory.pollRevision
     // Ancestor renames/deletions also invalidate observations of their children.
     for (
       let current = this.pathKey(path);
@@ -1064,6 +1073,12 @@ export class ObsidianFileSystem implements FileSystem {
         this.externalCoordination.assertEnginePaths([path])
       },
       stat: (path) => this.rawStat(path),
+      resumeNamespace: (paths) => {
+        if (this.native)
+          directEntryDurability(this.disk).resume(
+            paths.filter((path) => typeof path === 'string' && path.length > 0)
+          )
+      },
       retirementStat: (path) => retainedFileStat(this.disk, path),
       fingerprint: async (path, signal) => this.io.fingerprint(path, signal, true),
       create: async (path, bytes, mtime) => {
@@ -1149,6 +1164,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.configDir,
       this.privateRoot
     )
+    io.reuseCapabilitiesFrom(this.io)
     return {
       ...base,
       withMutationCheck: undefined,
@@ -1640,6 +1656,16 @@ export class ObsidianFileSystem implements FileSystem {
         try {
           this.runtimeFence?.assertOwned()
           const publishedTargets = new Set<string>()
+          if (this.native) {
+            const entries = await this.journal.currentEntries()
+            directEntryDurability(this.disk).resume(
+              entries.flatMap((entry) =>
+                [entry.target, entry.temp, entry.backup].filter(
+                  (path): path is string => !!path && !path.startsWith('/')
+                )
+              )
+            )
+          }
           await this.writer.recover(publishedTargets)
           if (publishedTargets.size && this.ledger?.readCommittedEntries)
             await this.acknowledgeWrites(
@@ -2210,6 +2236,10 @@ export class ObsidianFileSystem implements FileSystem {
     if (!entry?.streaming || entry.backup || entry.retiredGeneration)
       throw new EngineError('io', 'streaming stage is unavailable or awaiting recovery')
     if (stat.type !== 'file') throw new EngineError('io', 'streaming stage is not a file')
+    if (!this.stages.has(id) && this.native) {
+      directEntryDurability(this.disk).resume([id])
+      this.stages.set(id, entry)
+    }
     let offset = stat.size,
       busy = false,
       finished = false
@@ -2635,7 +2665,9 @@ export class ObsidianFileSystem implements FileSystem {
     const indexed = this.app.vault.getFileByPath(path)
     if (indexed && !this.awaitingIndex.has(path))
       return { path, size: indexed.stat.size, mtime: stamp(indexed.stat.mtime) }
-    const standing = await this.rawStat(path)
+    const standing = this.inventory
+      ? await this.inventory.stats.stable(path, () => this.rawStat(path))
+      : await this.rawStat(path)
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
     // back against what it holds, and a name it did not ask about would be a different file.
@@ -2783,7 +2815,12 @@ export class ObsidianFileSystem implements FileSystem {
    * it is neither in the file index nor under the config folder.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
-    if (this.configPolled) invalidateInspectedAbsence(this.startupInventory?.())
+    if (this.configPolled) {
+      invalidateInspectedAbsence(this.startupInventory?.())
+      directEntryDurability(this.disk).forgetDirectories()
+      this.io.invalidateCapabilities()
+      if (this.inventory) this.inventory.pollRevision = ++this.inventory.localRevision
+    }
     const taken = new Map<string, string>()
     if (this.scopedRoot() || this.discovery) {
       this.configPolled = true

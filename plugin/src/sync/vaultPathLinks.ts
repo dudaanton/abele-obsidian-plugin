@@ -1,3 +1,4 @@
+import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
 import { diagnosticOrigin, nativeDiagnostics } from './nativeDiagnostics'
@@ -370,6 +371,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
     adapters.set(adapter, proxy)
     return proxy
   }
+  const durability = directEntryDurability(adapter)
   const virtual = full('') === ''
   const rootPin = virtual ? undefined : pinnedRoot(nativeOrigins.get(native) ?? native, full(''))
   const guardedNative =
@@ -417,14 +419,29 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
               physical[n] =
                 pinned.path + pathArgument(args[n]).replace(/\\/g, '/').slice(root.length)
           const rawNative = nativeOrigins.get(native) ?? native
-          if (virtual) return Reflect.get(rawNative, key).apply(rawNative, physical)
+          const localPaths = args
+            .slice(0, count)
+            .map((path) =>
+              pathArgument(path).replace(/\\/g, '/').slice(root.length).replace(/^\//, '')
+            )
+          const issue = (work: () => Promise<unknown>) =>
+            ['mkdir', 'unlink', 'rmdir', 'rename', 'link'].includes(String(key))
+              ? entryEffect(durability, key === 'link' ? localPaths.slice(1) : localPaths, work)
+              : work()
+          if (virtual) {
+            const answer = await issue(() => Reflect.get(rawNative, key).apply(rawNative, physical))
+            if (key === 'open' && typeof args[1] === 'string' && /[wa]/.test(args[1]))
+              durability.changed(localPaths[0])
+            return answer
+          }
           if (key === 'open')
             return openNoFollow(
               rawNative,
               pathArgument(physical[0]),
               physical[1],
               pinned?.path ?? root,
-              pinned
+              pinned,
+              () => durability.changed(localPaths[0])
             )
           if (key === 'readFile') {
             const handle = await openNoFollow(
@@ -440,7 +457,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
               await handle.close()
             }
           }
-          const invoke = () => Reflect.get(rawNative, key).apply(rawNative, physical)
+          const invoke = () => issue(() => Reflect.get(rawNative, key).apply(rawNative, physical))
           if (['unlink', 'rmdir', 'rename', 'link'].includes(String(key)) && pinned)
             return guardedNativeMutation(
               rawNative as typeof import('node:fs/promises'),
@@ -527,7 +544,17 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
         // immediate recheck cannot close an on-device attacker racing its async queue.
         for (const path of args.slice(0, paths[String(key)]))
           await assertVaultPath(adapter, pathArgument(path))
-        return engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+        const invoke = () =>
+          engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+        return ['write', 'writeBinary', 'mkdir', 'rename', 'copy', 'remove', 'rmdir'].includes(
+          String(key)
+        )
+          ? entryEffect(
+              durability,
+              args.slice(key === 'copy' ? 1 : 0, paths[String(key)]).map(pathArgument),
+              invoke
+            )
+          : invoke()
       }
     },
   })
@@ -542,11 +569,15 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
 
 /** Create one component at a time, never recursive mkdir through an unchecked parent. */
 export async function ensureVaultDirectory(adapter: DataAdapter, path: string): Promise<void> {
+  await assertVaultPath(adapter, path)
+  const durability = directEntryDurability(adapter)
+  if (durability.directoryKnown(path)) return
   if (Reflect.get(adapter, Symbol.for('abele.sync.scoped-adapter-v1'))) {
     const parts = path.split('/')
     for (let n = 1; n <= parts.length; n++) {
       const part = parts.slice(0, n).join('/')
       if (part && !(await adapter.exists(part))) await adapter.mkdir(part)
+      if (part) durability.rememberDirectory(part)
     }
     return
   }
@@ -564,6 +595,7 @@ export async function ensureVaultDirectory(adapter: DataAdapter, path: string): 
   for (let n = 1; n <= parts.length; n++) {
     const component = parts.slice(0, n).join('/')
     if (!component) continue
+    if (durability.directoryKnown(component)) continue
     await assertVaultPath(adapter, component)
     if (raw.getFullPath && direct?.lstat) {
       const check = async () => {
@@ -579,8 +611,10 @@ export async function ensureVaultDirectory(adapter: DataAdapter, path: string): 
         if ((error as { code?: string }).code !== 'ENOENT') throw error
         try {
           if (direct.mkdir)
-            await direct.mkdir(
-              pinned ? physicalPath(pinned.path, component) : raw.getFullPath(component)
+            await entryEffect(directEntryDurability(adapter), [component], () =>
+              direct.mkdir(
+                pinned ? physicalPath(pinned.path, component) : raw.getFullPath(component)
+              )
             )
           else await adapter.mkdir(component)
         } catch (occupied) {
@@ -589,6 +623,7 @@ export async function ensureVaultDirectory(adapter: DataAdapter, path: string): 
         await check()
       }
     } else if (!(await adapter.exists(component))) await adapter.mkdir(component)
+    durability.rememberDirectory(component)
   }
 }
 
@@ -651,7 +686,8 @@ async function openNoFollow(
   path: string,
   flags: unknown,
   root: string,
-  expectedRoot?: RootIdentity
+  expectedRoot?: RootIdentity,
+  created?: () => void
 ) {
   const desktop = desktopNodeFs()
   // A checked port carries the lease down to the native leaf. Ordinary adapters
@@ -692,7 +728,21 @@ async function openNoFollow(
     if (stat.isSymbolicLink()) throw new EngineError('io', 'Native parent contains a symbolic link')
     parents.push({ path: parent, dev: stat.dev, ino: stat.ino })
   }
-  const handle = await fs.open(path, (mode & ~constants.O_TRUNC) | constants.O_NOFOLLOW)
+  const opening = (mode & ~constants.O_TRUNC) | constants.O_NOFOLLOW
+  let handle: Awaited<ReturnType<typeof fs.open>>
+  if (mode & constants.O_CREAT) {
+    try {
+      handle = await fs.open(path, opening | constants.O_EXCL)
+      created?.()
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'EEXIST') {
+        created?.()
+        throw error
+      }
+      if (mode & constants.O_EXCL) throw error
+      handle = await fs.open(path, opening & ~constants.O_CREAT)
+    }
+  } else handle = await fs.open(path, opening)
   try {
     const opened = await handle.stat()
     const linked = await fs.lstat(path)
@@ -823,17 +873,7 @@ export function nativeOf(
     }
   if (fsp.open)
     native.syncPath = async (path, parentsOnly = false) => {
-      const paths: string[] = []
-      if (!parentsOnly) paths.push(path)
-      for (
-        let parent = path.slice(0, Math.max(0, path.lastIndexOf('/')));
-        ;
-        parent = parent.slice(0, Math.max(0, parent.lastIndexOf('/')))
-      ) {
-        paths.push(parent)
-        if (!parent) break
-      }
-      for (const part of new Set(paths)) {
+      const flush = async (part: string) => {
         await assertVaultPath(adapter, part)
         assertEffect([part])
         const handle = await fsp.open(at(part), 'r')
@@ -844,6 +884,8 @@ export function nativeOf(
           await handle.close()
         }
       }
+      if (!parentsOnly) await flush(path)
+      await directEntryDurability(adapter).flushAncestors(path, flush)
     }
   const scopedSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
   if (typeof scopedSync === 'function')
@@ -1327,6 +1369,7 @@ async function desktopOperation(
   pin: RootPin
 ) {
   const io = native as typeof import('node:fs/promises')
+  const durability = directEntryDurability(adapter)
   const root = await pin.verify()
   const local = pathArgument(args[0]),
     at = (path: string) => root.path + (path ? '/' + path.replace(/^\//, '') : '')
@@ -1343,7 +1386,9 @@ async function desktopOperation(
       })
   }
   const mutate = <T>(paths: string[], operation: () => Promise<T>) =>
-    guardedNativeMutation(io, root.path, paths.map(at), operation, (error) => pin.stop(error))
+    entryEffect(durability, paths, () =>
+      guardedNativeMutation(io, root.path, paths.map(at), operation, (error) => pin.stop(error))
+    )
   await check(local)
   if (['read', 'readBinary', 'readBinaryPrefix'].includes(key)) {
     const handle = await openNoFollow(io, at(local), 'r', root.path, root)
@@ -1410,7 +1455,8 @@ async function desktopOperation(
       at(local),
       append ? 'a' : key === 'process' ? 'r+' : 'w',
       root.path,
-      root
+      root,
+      () => durability.changed(local)
     )
     try {
       await pin.verify()
@@ -1528,7 +1574,19 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
       const wrapped = async (...args: unknown[]) => {
         for (const path of args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1))
           await assertVaultPath(target, pathArgument(path))
-        return engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+        const invoke = () =>
+          engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+        return ['write', 'writeBinary', 'mkdir', 'rename', 'copy', 'remove', 'rmdir'].includes(
+          String(key)
+        )
+          ? entryEffect(
+              directEntryDurability(target),
+              args
+                .slice(key === 'copy' ? 1 : 0, key === 'rename' || key === 'copy' ? 2 : 1)
+                .map(pathArgument),
+              invoke
+            )
+          : invoke()
       }
       methods.set(key, { source: value, wrapped })
       return wrapped
@@ -1777,6 +1835,7 @@ export function connectionAdapter(
         )
       : false
   }
+  directEntryDurability(adapter)
   const nativePort =
     native && typeof full === 'function'
       ? new Proxy(native, {
@@ -1825,16 +1884,7 @@ export function connectionAdapter(
           const parentSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
           if (typeof parentSync === 'function') return parentSync(path, parentsOnly, diagnostic)
           const fs = diagnostic ? nativeDiagnostics(native, diagnostic) : native
-          const paths = parentsOnly ? [] : [path]
-          for (
-            let parent = path.slice(0, Math.max(0, path.lastIndexOf('/')));
-            ;
-            parent = parent.slice(0, Math.max(0, parent.lastIndexOf('/')))
-          ) {
-            paths.push(parent)
-            if (!parent) break
-          }
-          for (const part of new Set(paths)) {
+          const flush = async (part: string) => {
             const handle = await fs.open(full.call(adapter, part), 'r')
             try {
               if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
@@ -1843,6 +1893,8 @@ export function connectionAdapter(
               await handle.close()
             }
           }
+          if (!parentsOnly) await flush(path)
+          await directEntryDurability(adapter).flushAncestors(path, flush)
         }
       }
       if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink

@@ -35,6 +35,11 @@ interface MobileFiles {
 interface MobileAccess {
   files?: MobileFiles
 }
+interface MobileProbeResult {
+  access: MobileAccess | null
+  resource: Awaited<ReturnType<typeof probeResourceRanges>>
+  sequential: Awaited<ReturnType<typeof probeSequentialFiles>>
+}
 const mobileFiles = (): MobileFiles | undefined =>
   typeof window === 'undefined'
     ? undefined
@@ -80,9 +85,40 @@ const writeReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
   private readonly taskBudget = new SyncTaskBudget()
-  private rangedMobile: Promise<MobileAccess | null> | undefined
+  private rangedMobile: Promise<MobileProbeResult> | undefined
   private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
   private resourceMobile: Awaited<ReturnType<typeof probeResourceRanges>> = null
+  private capabilitySource?: BoundedVaultIo
+  private capabilitySignature?: unknown[]
+  reuseCapabilitiesFrom(source: BoundedVaultIo): void {
+    this.capabilitySource = source
+  }
+  invalidateCapabilities(): void {
+    this.capabilitySource?.invalidateCapabilities()
+    this.rangedMobile = undefined
+    this.sequentialMobile = null
+    this.resourceMobile = null
+    this.capabilitySignature = undefined
+  }
+  private capabilityInputs(): unknown[] {
+    const files = mobileFiles()
+    let mapping: string
+    try {
+      mapping = this.mobilePath(
+        stagingDirectory(this.configDir, this.privateRoot) + '/capability-check.tmp'
+      )
+    } catch {
+      mapping = 'unavailable'
+    }
+    return [
+      typeof window === 'undefined' ? undefined : Reflect.get(window, 'fetch'),
+      files,
+      files && Reflect.get(files, 'stat'),
+      files && Reflect.get(files, 'readFile'),
+      files && Reflect.get(files, 'readFileInChunks'),
+      mapping,
+    ]
+  }
   constructor(
     readonly disk: DataAdapter,
     private readonly assertOwned: () => void = () => {},
@@ -183,13 +219,36 @@ export class BoundedVaultIo {
   }
   /** No Directory is supplied: use the adapter's native path or Capacitor file resource URL.
    * Probe both mapping and offset/length against a tiny file, never against a large input. */
-  private mobile(): Promise<MobileAccess | null> {
-    return (this.rangedMobile ??= this.probeMobile())
+  private async mobile(): Promise<MobileAccess | null> {
+    this.assertOwned()
+    if (this.capabilitySource) {
+      const access = await this.capabilitySource.mobile()
+      this.assertOwned()
+      this.resourceMobile = this.capabilitySource.resourceMobile
+      this.sequentialMobile = this.capabilitySource.sequentialMobile
+      return access
+    }
+    const inputs = this.capabilityInputs()
+    if (
+      !this.capabilitySignature ||
+      inputs.some((input, at) => input !== this.capabilitySignature?.[at])
+    ) {
+      this.invalidateCapabilities()
+      this.capabilitySignature = inputs
+    }
+    const pending = (this.rangedMobile ??= this.runMobileProbe())
+    const result = await pending
+    if (this.rangedMobile !== pending) return this.mobile()
+    this.resourceMobile = result.resource
+    this.sequentialMobile = result.sequential
+    return result.access
   }
-  async diagnoseMobile() {
+  async diagnoseMobile(): Promise<{ available: boolean; mode: string; events: ProbeEvent[] }> {
+    if (this.capabilitySource) return this.capabilitySource.diagnoseMobile()
+    this.capabilitySignature = this.capabilityInputs()
     const events: ProbeEvent[] = []
-    this.rangedMobile = this.probeMobile((event) => events.push(event))
-    const available = await this.rangedMobile
+    this.rangedMobile = this.runMobileProbe((event) => events.push(event))
+    const available = await this.mobile()
     return {
       available: available !== null,
       mode: this.resourceMobile
@@ -202,11 +261,19 @@ export class BoundedVaultIo {
       events,
     }
   }
-  private async probeMobile(
+  private async runMobileProbe(
     trace: (event: ProbeEvent) => void = () => {}
+  ): Promise<MobileProbeResult> {
+    const state: MobileProbeResult = { access: null, resource: null, sequential: null }
+    state.access = await this.probeMobile(trace, state)
+    return state
+  }
+  private async probeMobile(
+    trace: (event: ProbeEvent) => void,
+    state: MobileProbeResult
   ): Promise<MobileAccess | null> {
-    this.sequentialMobile = null
-    this.resourceMobile =
+    state.sequential = null
+    state.resource =
       typeof window === 'undefined' || typeof window.fetch !== 'function'
         ? null
         : await probeResourceRanges(
@@ -216,7 +283,7 @@ export class BoundedVaultIo {
             this.configDir,
             this.privateRoot
           )
-    if (this.resourceMobile) {
+    if (state.resource) {
       console.debug('[abele-sync] WebView file ranges verified')
       return {}
     }
@@ -228,14 +295,14 @@ export class BoundedVaultIo {
       readFileInChunks: typeof files?.readFileInChunks,
     })
     if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
-    this.sequentialMobile = await probeSequentialFiles(
+    state.sequential = await probeSequentialFiles(
       this.disk,
       files,
       trace,
       this.configDir,
       this.privateRoot
     )
-    if (this.sequentialMobile) {
+    if (state.sequential) {
       console.debug('[abele-sync] native filesystem sequential chunks verified')
       return { files }
     }

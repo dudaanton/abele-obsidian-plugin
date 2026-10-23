@@ -113,7 +113,7 @@ it.each(
     }
   }
 )
-it('flushes the full directory ancestry without granting ancestor reads to a scoped adapter', async () => {
+it('flushes only dirty directory ancestry without granting ancestor reads to a scoped adapter', async () => {
   const { root, app } = await setup()
   await fs.mkdir(join(root, 'Scoped/nested'), { recursive: true })
   await fs.writeFile(join(root, 'Scoped/nested/sample.md'), 'sample')
@@ -131,8 +131,16 @@ it('flushes the full directory ancestry without granting ancestor reads to a sco
       if (operation === 'native open r') opened.push(...(paths ?? []))
     }
   )!
-  await port.syncPath!('Scoped/nested/sample.md')
-  expect(opened).toContain(root)
+  await adapter.mkdir('Scoped/nested/created')
+  const full = Reflect.get(app.vault.adapter, 'getFullPath').bind(app.vault.adapter)
+  const native = Reflect.get(adapter, 'fsPromises')
+  await native.link(full('Scoped/nested/sample.md'), full('Scoped/nested/created/linked.md'))
+  await port.syncPath!('Scoped/nested/created/linked.md')
+  expect(opened).toEqual([
+    join(root, 'Scoped/nested/created/linked.md'),
+    join(root, 'Scoped/nested/created'),
+    join(root, 'Scoped/nested'),
+  ])
   expect(() =>
     (adapter as unknown as { getFullPath(path: string): string }).getFullPath('')
   ).toThrow('outside this connection')

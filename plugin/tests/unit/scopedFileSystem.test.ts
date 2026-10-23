@@ -18,17 +18,23 @@ it('permits cleanup of an owned opaque stage but refuses foreign cleanup', async
   expect(discardStage).toHaveBeenCalledExactlyOnceWith('Shared/sample.tmp')
 })
 
-it('delegates inventory passes and filters cached directory inventories', async () => {
-  const pass = Symbol.for('abele.sync.inventory-pass-v1')
-  const directories = Symbol.for('abele.sync.inventory-directories-v1')
-  const disk = Object.assign(new MemoryFileSystem(), {
-    [pass]: async (work: () => Promise<unknown>) => work(),
-    [directories]: async () => [{ path: 'Shared' }, { path: 'Private' }],
-  })
-  const fs = scopedFileSystem(disk, assertPath, includes)
-  expect(await Reflect.get(fs, pass)(async () => 42)).toBe(42)
-  expect(await Reflect.get(fs, directories)()).toEqual([{ path: 'Shared' }])
-})
+it.each(['abele.sync.inventory-pass-v1', 'abele.sync.operation-pass-v1'])(
+  'delegates %s without widening scoped access',
+  async (name) => {
+    const pass = Symbol.for(name)
+    const directories = Symbol.for('abele.sync.inventory-directories-v1')
+    const disk = Object.assign(new MemoryFileSystem(), {
+      [pass]: async (work: () => Promise<unknown>) => work(),
+      [directories]: async () => [{ path: 'Shared' }, { path: 'Private' }],
+    })
+    const fs = scopedFileSystem(disk, assertPath, includes)
+    expect(await Reflect.get(fs, pass)(async () => 42)).toBe(42)
+    await expect(Reflect.get(fs, pass)(() => fs.read('Private/sample.md'))).rejects.toThrow(
+      'outside scope'
+    )
+    expect(await Reflect.get(fs, directories)()).toEqual([{ path: 'Shared' }])
+  }
+)
 
 it.each([
   'abele.sync.fingerprint-pull-v1',

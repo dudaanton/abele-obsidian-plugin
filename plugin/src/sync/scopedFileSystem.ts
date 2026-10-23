@@ -52,6 +52,7 @@ export function scopedFileSystem(
       if (key === 'pathKey') return value.bind(target)
       if (
         key === Symbol.for('abele.sync.inventory-pass-v1') ||
+        key === Symbol.for('abele.sync.operation-pass-v1') ||
         key === Symbol.for('abele.sync.retention-idle-v1')
       )
         return value.bind(target)

@@ -338,6 +338,11 @@ export function syncPlacementPlugin() {
           code,
           'async place(change, sha, entry, fetched, local) {',
           `async place(change, sha, entry, fetched, local) {
+          const pass = this.fs[Symbol.for('abele.sync.operation-pass-v1')];
+          const run = () => this.placeWithTrace(change, sha, entry, fetched, local);
+          return pass ? pass.call(this.fs, run) : run();
+        }
+        async placeWithTrace(change, sha, entry, fetched, local) {
           const observe = this.fs[Symbol.for('abele.sync.trace-pull-v1')];
           if (!observe) return this.placeObserved(change, sha, entry, fetched, local);
           const prefetched = fetched[Symbol.for('abele.sync.prefetched-files-v1')]?.has(change.file_id);
@@ -590,9 +595,40 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'await transact(this.state, async (tx) => {\n                const recorder = this.recorder.withState(tx);',
+          `await transact(this.state, async (tx) => {
+                const recorder = this.recorder.withState(tx);
+                for (const [k, run] of verdicts.runs.entries()) {`,
+          `const preparedRuns = verdicts.runs.length ? verdicts.runs : [[]];
+          for (const [k, run] of preparedRuns.entries()) {`
+        )
+        code = replaceOnce(code,
+          'await this.planner.fetchRun(run, verdicts, tx);',
+          'await this.planner.fetchRun(run, verdicts, this.state);')
+        code = replaceOnce(code,
+          `if (k > 0) {
+                        if (this.opts.signal?.aborted) {
+                            interrupted = true;
+                            return;`,
+          `if (k > 0) {
+                        if (this.opts.signal?.aborted) {
+                            interrupted = true;
+                            break;`)
+        code = replaceOnce(code,
+          `if (!this.opts.signal?.aborted)
+                                throw error;
+                            interrupted = true;
+                            return;`,
+          `if (!this.opts.signal?.aborted)
+                                throw error;
+                            interrupted = true;
+                            break;`)
+        code = replaceOnce(code,
+          `                    for (const at of run) {
+                        // Commit completed ledger entries`,
           `const placementPaths = [], preservationPaths = [];
-        for (const [at, op] of sending.entries()) {
+        for (const at of run) {
+          const op = sending[at];
+          if (!op) continue;
           const paths = [];
           if (op.op === 'create') paths.push(op.path);
           else { const old = await this.state.byFileId(op.file_id); if (old) paths.push(old.path); }
@@ -615,12 +651,24 @@ export function syncPlacementPlugin() {
           if (mutates) preservationPaths.push(...paths);
         }
         await coordinatePlacement(this.recorder.fs, placementPaths, () => transact(this.state, async (tx) => {
-                const recorder = this.recorder.withState(tx);`
+                const recorder = this.recorder.withState(tx);
+                    for (const at of run) {
+                        // Commit completed ledger entries`
         )
         code = replaceOnce(
           code,
-          'await tx.setJournal(null);\n            });',
-          'await tx.setJournal(null);\n            }), preservationPaths);'
+          `                }
+                await this.opts.onCommitted?.(sending, tx);
+                await tx.setJournal(null);
+            });`,
+          `                if (!interrupted && k === preparedRuns.length - 1) {
+                  await this.opts.onCommitted?.(sending, tx);
+                  await tx.setJournal(null);
+                }
+            }), preservationPaths);
+            for (const change of applied.splice(0)) await notifyApplied(this.opts, change);
+            if (interrupted) break;
+          }`
         )
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
