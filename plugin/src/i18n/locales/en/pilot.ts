@@ -1,4 +1,10 @@
 export const en = {
+  'settings.ai.apiMode': 'API',
+  'settings.ai.apiModeDescription':
+    'API used for this provider. Existing setups use Chat Completions.',
+  'settings.ai.chatCompletions': 'Chat Completions',
+  'settings.ai.responses': 'Responses',
+
   'node.analysis.contentUnavailable': 'File contents are not available for analysis.',
 
   'node.analysis.nodeUnsupported': 'Code analysis is not available on this node.',

@@ -130,6 +130,13 @@ Switching it on clears that flag and keeps the previous `reasoningEffort` (low, 
 high). Older models without the flag keep the provider's default when reasoning is off.
 These model fields travel with the provider in settings transfers.
 
+Each model provider has an **API** choice (`ai.providers.N.apiMode`):
+`chat-completions` (the default when absent) or `responses`. Responses uses `/responses`
+for streaming text, reasoning and function tools, including image input. Choose it when a
+compatible endpoint requires Responses for reasoning with tools. The choice applies to every
+model in that provider, including background and delegated agents, and travels with settings.
+Requests send the full conversation with `store: false`; they do not depend on a saved response ID.
+
 Each model connection has **Client name** (`ai.providers.N.clientName`): an optional
 `User-Agent` for chat (including image attachments), agent, fallback and background requests,
 and fetching the model list. Empty or whitespace-only keeps the existing transport defaults.

@@ -177,3 +177,40 @@ it('toggles a fetched model once from its checkbox and once from its label', asy
     expect(control.attributes('aria-checked')).toBe('false')
   }
 })
+
+it('keeps Chat Completions by default and saves Responses per provider', async () => {
+  useVault([])
+  const config = AbeleConfig.getInstance()
+  config.destroy()
+  config.applySettings(undefined)
+  config.ai.enabled = true
+  config.ai.providers = [
+    {
+      id: 'sample',
+      name: 'Sample',
+      baseUrl: 'https://sample.invalid/v1',
+      apiKeyId: '',
+      models: [],
+    },
+  ]
+  const save = vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  screen = mount(GeneralSettings, {
+    props: { page: 'models' },
+    global: { stubs: { Input: true, Dropdown: true, Search: true } },
+  })
+  await screen
+    .findAllComponents(Icon)
+    .find((item) => item.props('icon') === 'settings')!
+    .trigger('click')
+  const setting = screen.findAllComponents(Setting).find((item) => item.props('name') === 'API')!
+  expect(setting).toBeDefined()
+  const dropdown = setting.findComponent(Dropdown)
+  expect(dropdown.props('modelValue')).toBe('chat-completions')
+  expect(dropdown.props('options')).toEqual([
+    { value: 'chat-completions', display: 'Chat Completions' },
+    { value: 'responses', display: 'Responses' },
+  ])
+  await dropdown.vm.$emit('update:model-value', 'responses')
+  expect(config.ai.providers[0].apiMode).toBe('responses')
+  expect(save).toHaveBeenCalled()
+})

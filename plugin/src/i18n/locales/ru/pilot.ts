@@ -1,5 +1,11 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'settings.ai.apiMode': 'API',
+  'settings.ai.apiModeDescription':
+    'API этого провайдера. Существующие подключения используют Chat Completions.',
+  'settings.ai.chatCompletions': 'Chat Completions',
+  'settings.ai.responses': 'Responses',
+
   'node.analysis.contentUnavailable': 'Содержимое файла недоступно для анализа.',
 
   'node.analysis.nodeUnsupported': 'Анализ кода недоступен на этой ноде.',

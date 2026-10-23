@@ -3356,3 +3356,8 @@ pointer retirement. Completed history is not walked during startup recovery.
 Native publication receipts verify the retained inode and current content. A mobile adapter
 without stable object identity conservatively refuses to certify installation after restart;
 content equality or a sealed stage alone is never publication evidence.
+
+AI provider settings optionally retain `apiMode` (`chat-completions` or `responses`).
+An absent value keeps Chat Completions. Settings transfer carries this with the whole provider;
+chat history retains the same text, reasoning, function-call and tool-result records for both APIs.
+No provider response IDs are needed to resume a chat.

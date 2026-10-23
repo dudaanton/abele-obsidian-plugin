@@ -1,5 +1,11 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'settings.ai.apiMode': 'API',
+  'settings.ai.apiModeDescription':
+    'Šī pakalpojumu sniedzēja API. Esošie savienojumi izmanto Chat Completions.',
+  'settings.ai.chatCompletions': 'Chat Completions',
+  'settings.ai.responses': 'Responses',
+
   'node.analysis.contentUnavailable': 'Faila saturs nav pieejams analīzei.',
 
   'node.analysis.nodeUnsupported': 'Šajā mezglā koda analīze nav pieejama.',

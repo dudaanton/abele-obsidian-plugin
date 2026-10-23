@@ -28308,5 +28308,45 @@
       "es",
       "de"
     ]
+  },
+  "settings.ai.apiMode": {
+    "englishHash": "0a1109e3919dd9b7406f465a4482173b096039e458ef33a5ed510c01a552ef3f",
+    "context": "Provider API selection in AI model settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.ai.apiModeDescription": {
+    "englishHash": "dd2127977c5441827ff8aca111536ca7d0cf5a6c832b078cb997cce732442dac",
+    "context": "Provider API selection in AI model settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.ai.chatCompletions": {
+    "englishHash": "54702452ff855ee9a88a8c6811384ee9c0d81d48c1b01c4740961b84023e4081",
+    "context": "Provider API selection in AI model settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.ai.responses": {
+    "englishHash": "829bbeab6a85401a13d585f273d78139b69611bd59c440f286f672957c6ccb3a",
+    "context": "Provider API selection in AI model settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

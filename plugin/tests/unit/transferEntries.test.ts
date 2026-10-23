@@ -1308,3 +1308,12 @@ describe('the keys that arrived', () => {
     expect(keychain.get('key-p1')).toBe('sk-kept')
   })
 })
+
+it('transfers a provider API mode with its existing key reference and models', () => {
+  const source = settings()
+  source.ai.providers[0].apiMode = 'responses'
+  const entry = find(collectEntries(source), 'ai-providers', 'p1')!
+  const received = applyEntries([entry], settings())
+  expect(received.ai.providers[0]).toEqual(source.ai.providers[0])
+  expect(entry.secretIds).toEqual(['key-p1'])
+})
