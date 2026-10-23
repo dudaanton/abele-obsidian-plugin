@@ -23,6 +23,7 @@ it('returns through native history after language definition and reference jumps
       const describe = client.describe;
       client.describe = async () => { const info=await describe(); info.capabilities.capabilities.lsp_v1={status:'supported'};return info };
       client.lsp = {status:async()=>[],open:async()=>({servers:['typescript']}),close:async()=>({}),diagnostics:async()=>[],
+        hover:async()=>({text:'Sample type documentation'}),
         definition:async()=>[{path:'src/definition.ts',range:{start:{line:6,character:0},end:{line:6,character:6}}}],
         references:async()=>[{path:'src/definition.ts',range:{start:{line:11,character:0},end:{line:11,character:6}}},{path:'src/other.ts',range:{start:{line:1,character:0},end:{line:1,character:6}}}]};
       const text=Array.from({length:18},(_,i)=>'export const sample'+i+' = '+i).join(String.fromCharCode(10));
@@ -42,8 +43,8 @@ it('returns through native history after language definition and reference jumps
         cm.dispatch({selection:{anchor:pos}});
         const box=cm.coordsAtPos(pos);
         cm.contentDOM.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:box.left,clientY:box.top+4}));
-        await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent===title));
-        [...document.querySelectorAll('.menu-item-title')].find(el=>el.textContent===title).closest('.menu-item').click();
+        await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.startsWith(title)));
+        [...document.querySelectorAll('.menu-item-title')].find(el=>el.textContent.startsWith(title)).closest('.menu-item').click();
       };
       await menuJump('Go to definition',4);await at('src/definition.ts',7);
       await wait(200);await leaf.history.back();await at('src/source.ts',4);
