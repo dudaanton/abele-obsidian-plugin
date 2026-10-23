@@ -186,7 +186,8 @@ const missingImage = (img: HTMLImageElement, path: string) => {
   note.className = 'abele-github-md__missing'
   const glyph = note.createSpan()
   setIcon(glyph, 'image-off')
-  note.createSpan({ text: img.getAttribute('alt') || path.split('/').pop() || path })
+  const label = img.getAttribute('alt') || path.split('/').pop() || path
+  note.createSpan({ text: label })
   note.setAttribute('aria-label', t('streamB.nodeImageUnavailable', { path }))
   img.replaceWith(note)
 }
