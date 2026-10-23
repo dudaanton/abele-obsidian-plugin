@@ -5,6 +5,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { checkedVaultPort } from '@/sync/vaultPathLinks'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { deferred } from '../helpers/deferred'
+import { RuntimeFence } from '@/sync/external/recovery'
 import { virtualNativeVault } from '../helpers/virtualNativeVault'
 import {
   guardedVaultAdapter,
@@ -16,6 +17,73 @@ type Path = 'recovery' | 'publish' | 'rename' | 'remove'
 const payload = new TextEncoder().encode('incoming')
 const mutates =
   /^(?:write.*|append.*|process|mkdir|rename|copy.*|remove|rmdir|trash.*|unlink|link|truncate|utimes|sync|datasync)$/
+
+it.each([false, true])(
+  'tracks submitted leased effects until acknowledgement (native=%s)',
+  async (native) => {
+    vi.useFakeTimers()
+    const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fixture = native ? virtualNativeVault() : undefined
+    const app = fixture?.app ?? buildFakeVault([])
+    if (fixture) desktopFsPort(fixture.native)
+    await app.vault.adapter.writeBinary('sample.bin', payload.buffer)
+    const entered = deferred(),
+      resume = deferred()
+    const target = fixture?.native ?? app.vault.adapter
+    const rename = target.rename
+    target.rename = async (...args: [string, string]) => {
+      await rename.apply(target, args)
+      entered.resolve()
+      await resume.promise
+    }
+    const values = new Map<string, unknown>()
+    const fence = new RuntimeFence(
+      {
+        loadLocalStorage: (key) => values.get(key) ?? null,
+        saveLocalStorage: (key, value) => {
+          values.set(key, value)
+        },
+      },
+      'sample-lease-effects',
+      () => true
+    )
+    fence.activate()
+    const disk = new ObsidianFileSystem(app as never, { runtimeFence: fence })
+    const port = checkedVaultPort(app.vault as never, app.vault.adapter as never, {
+      ready() {},
+      effect: (work) => work(),
+    })
+    const lease = await port.acquire(['sample.bin', 'moved.bin'])
+    const host = Reflect.get(Reflect.get(disk, 'conditional'), 'host').withMutationCheck(() =>
+      lease.check()
+    )
+    const work = host.capture('sample.bin', 'moved.bin') as Promise<void>
+    const result = lease.wait(work).catch((error: unknown) => error)
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      await entered.promise
+      let drained = false
+      const draining = fence.settlePredecessors().then(() => {
+        drained = true
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(drained).toBe(false)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(await result).toMatchObject({ leaseExpired: true })
+      expect(drained).toBe(false)
+      resume.resolve()
+      await work
+      await draining
+      expect(drained).toBe(true)
+    } finally {
+      resume.resolve()
+      lease()
+      fence.release()
+      loud.mockRestore()
+      vi.useRealTimers()
+    }
+  }
+)
 
 async function runCut(native: boolean, path: Path, cut?: number) {
   const fixture = native ? virtualNativeVault() : undefined

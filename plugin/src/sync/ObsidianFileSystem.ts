@@ -715,25 +715,27 @@ export class ObsidianFileSystem implements FileSystem {
     this.discovery = options.discovery
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
-    const runtimeAdapter = this.runtimeFence
-      ? fencedPort(
-          this.scopedAdapter,
-          this.runtimeFence,
-          [
-            'write',
-            'writeBinary',
-            'appendBinary',
-            'append',
-            'process',
-            'mkdir',
-            'rename',
-            'remove',
-            'rmdir',
-            'copy',
-          ],
-          false
-        )
-      : this.scopedAdapter
+    const runtimePort = (adapter: DataAdapter): DataAdapter =>
+      this.runtimeFence
+        ? fencedPort(
+            adapter,
+            this.runtimeFence,
+            [
+              'write',
+              'writeBinary',
+              'appendBinary',
+              'append',
+              'process',
+              'mkdir',
+              'rename',
+              'remove',
+              'rmdir',
+              'copy',
+            ],
+            false
+          )
+        : adapter
+    const runtimeAdapter = runtimePort(this.scopedAdapter)
     this.diagnostic = options.diagnostic
     const instrument = (runtimeAdapter: DataAdapter): DataAdapter => {
       const diagnosticNative = new WeakMap<object, object>()
@@ -834,11 +836,13 @@ export class ObsidianFileSystem implements FileSystem {
     this.guardedAdapter = instrument(runtimeAdapter)
     this.mutationAdapter = (check) =>
       instrument(
-        guardedVaultAdapter(
-          mutationCheckedAdapter(this.scopedAdapter, () => {
-            check()
-            this.runtimeFence?.assertOwned()
-          })
+        runtimePort(
+          guardedVaultAdapter(
+            mutationCheckedAdapter(this.scopedAdapter, () => {
+              check()
+              this.runtimeFence?.assertOwned()
+            })
+          )
         )
       )
     this.directories = new VaultDirectories(
@@ -1039,15 +1043,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   private leasedConditionalHost(base: ConditionalFileHost, check: () => void): ConditionalFileHost {
     const disk = this.mutationAdapter(check)
-    const native = nativeOf(
-      disk,
-      (paths = []) => {
-        check()
-        this.externalCoordination.assertEnginePaths(paths)
-      },
-      this.privateRoot ? this.privateRoot + '/recovery' : undefined,
-      this.diagnostic
-    )
+    const native = this.nativeFor(disk)
     const io = new BoundedVaultIo(
       disk,
       () => {
@@ -1206,8 +1202,12 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
   private get native(): NativeFs | null {
+    return this.nativeFor(this.disk)
+  }
+
+  private nativeFor(disk: DataAdapter): NativeFs | null {
     const native = nativeOf(
-      this.disk,
+      disk,
       (paths = []) => {
         for (const path of paths) this.inventory?.mutations.add(path)
         this.runtimeFence?.assertOwned()
