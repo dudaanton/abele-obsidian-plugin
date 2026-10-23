@@ -80,8 +80,8 @@ export function formatDiagramError(
   message = messageLines
     .filter((text) => text.trim())
     .join('\n')
-    .replace(/^(Parse|Lexical) error on line \d+[:.]\s*/, '$1 error: ')
     .trim()
+  if (line > 0) message = message.replace(/^(Parse|Lexical) error on line \d+[:.]\s*/, '$1 error: ')
   const lines = source.split(/\r?\n/)
   const end =
     line > lines.length ||
