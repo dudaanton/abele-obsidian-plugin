@@ -151,6 +151,10 @@ exports.createStallProfiler = function ({
 }
 
 const watches = new Map()
+const ownedContents = new Map()
+const coverageWatches = new Map()
+exports.beginReindexCoverage = (channel, id) => coverageWatches.get(channel)?.begin(id)
+exports.endReindexCoverage = (channel) => coverageWatches.get(channel)?.end()
 exports.unwatch = (channel) => watches.get(channel)?.()
 exports.watch = async function (id, serializedConfig) {
   const config = JSON.parse(serializedConfig)
@@ -168,6 +172,7 @@ exports.watch = async function (id, serializedConfig) {
       config.evidence,
       JSON.stringify({ at: Date.now(), device: config.device, ...e }) + '\n'
     )
+  await ownedContents.get(id)?.()
   if (!wc || wc.debugger.isAttached()) {
     emit({
       event: 'cpu-profile-unavailable',
@@ -204,17 +209,66 @@ exports.watch = async function (id, serializedConfig) {
       return file
     },
   })
+  let coverageId
+  const endCoverage = async () => {
+    if (!coverageId) return
+    const id = coverageId
+    coverageId = undefined
+    try {
+      const result = await transport.sendCommand('Profiler.takePreciseCoverage')
+      await transport.sendCommand('Profiler.stopPreciseCoverage')
+      const file = `${config.profileDirectory}/${config.device}-${randomUUID()}.coverage.json`
+      fs.mkdirSync(config.profileDirectory, { recursive: true })
+      fs.writeFileSync(file, JSON.stringify(result))
+      emit({ event: 'reindex-js-coverage', id, file })
+    } catch {
+      emit({ event: 'reindex-js-coverage-unavailable', id })
+    }
+  }
+  const beginCoverage = async (id) => {
+    if (coverageId) await endCoverage()
+    try {
+      await transport.sendCommand('Profiler.startPreciseCoverage', {
+        callCount: true,
+        detailed: true,
+      })
+      coverageId = id
+      emit({ event: 'reindex-js-coverage-ready', id })
+      return true
+    } catch {
+      emit({ event: 'reindex-js-coverage-unavailable', id })
+      return false
+    }
+  }
   const heartbeat = (event) => {
     if (event.sender.id === id) profiler.heartbeat(Date.now())
   }
-  const close = async () => {
-    if (closed) return
+  let closing
+  const close = () => {
+    if (closed) return closing
     closed = true
-    watches.delete(channel)
-    clearInterval(timer)
-    ipcMain.removeListener(channel, heartbeat)
-    await profiler.close(Date.now())
-    if (transport.isAttached()) transport.detach()
+    closing = (async () => {
+      watches.delete(channel)
+      coverageWatches.delete(channel)
+      wc.removeListener('destroyed', destroyed)
+      wc.removeListener('did-start-navigation', navigating)
+      clearInterval(timer)
+      ipcMain.removeListener(channel, heartbeat)
+      try {
+        await endCoverage()
+        await profiler.close(Date.now())
+      } finally {
+        if (transport.isAttached()) transport.detach()
+        if (ownedContents.get(id) === close) ownedContents.delete(id)
+      }
+    })()
+    return closing
+  }
+  const destroyed = () => {
+    void close().catch(() => {})
+  }
+  const navigating = (_event, _url, inPlace, mainFrame) => {
+    if (mainFrame && !inPlace) destroyed()
   }
   try {
     await transport.sendCommand('Profiler.enable')
@@ -224,11 +278,12 @@ exports.watch = async function (id, serializedConfig) {
     timer = setInterval(() => {
       void profiler.poll(Date.now())
     }, 25)
-    wc.once('destroyed', () => {
-      void close().catch(() => {})
-    })
+    wc.once('destroyed', destroyed)
+    wc.on('did-start-navigation', navigating)
     emit({ event: 'cpu-profile-ready', channel, stallMs: 75, sampleIntervalUs: 1000 })
     watches.set(channel, close)
+    coverageWatches.set(channel, { begin: beginCoverage, end: endCoverage })
+    ownedContents.set(id, close)
     return channel
   } catch {
     await close()

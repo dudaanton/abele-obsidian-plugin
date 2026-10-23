@@ -155,6 +155,7 @@ it('waits for main-process profiling setup before finishing observer load and ke
     device: '0',
     evidence: 'sample',
     writeObserver: '/sample/writes.cjs',
+    reindexObserver: '/sample/reindex.cjs',
     diagnostics: '/sample/diagnostics.cjs',
   }
   const module = { exports: null }
@@ -188,10 +189,14 @@ it('waits for main-process profiling setup before finishing observer load and ke
         }
       if (name === 'fs')
         return {
+          existsSync: () => false,
           readFileSync: () => JSON.stringify(config),
           appendFileSync: (_p, line) => events.push(JSON.parse(line)),
         }
+      if (name === 'node:crypto') return {}
       if (name === 'path') return { join: (...p) => p.join('/') }
+      if (name === config.reindexObserver)
+        return { observeRebuild: () => {}, observeHashes: () => () => {} }
       if (name === config.writeObserver) return { observeWrites: () => () => {} }
       if (name === config.diagnostics) return diagnostics
       if (name === 'electron') return { ipcRenderer: { send: (channel) => sent.push(channel) } }
@@ -285,4 +290,66 @@ it('recognizes the host DOM helper in a captured notice creation stack', () => {
       'Error\n at capture (/sample/diagnostics.cjs:1:1)\n at window.createEl (app://obsidian.md/enhance.js:1:9548)\n at new Notice (app://obsidian.md/app.js:1:1302954)\n at app://obsidian.md/app.js:1:1758476'
     )
   ).toBe('host')
+})
+
+it('replaces only its own debugger watch across a renderer reload', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const { runInNewContext } = await import('node:vm')
+  const { EventEmitter } = await import('node:events')
+  const source = await readFile(new URL('../scale/diagnostics.cjs', import.meta.url), 'utf8')
+  const wc = new EventEmitter() as any
+  let attached = false,
+    detached = 0
+  wc.debugger = {
+    isAttached: () => attached,
+    attach: () => {
+      attached = true
+    },
+    detach: () => {
+      attached = false
+      detached++
+    },
+    sendCommand: async (name) =>
+      name === 'Performance.getMetrics' ? { metrics: [{ name: 'Timestamp', value: 1 }] } : {},
+  }
+  const ipcMain = new EventEmitter(),
+    rows = []
+  let sequence = 0
+  const module = { exports: {} }
+  runInNewContext(source, {
+    exports: module.exports,
+    module,
+    Date,
+    setInterval: () => 1,
+    clearInterval() {},
+    require: (name) => {
+      if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain }
+      if (name === 'node:crypto') return { randomUUID: () => String(++sequence) }
+      if (name === 'node:fs')
+        return {
+          appendFileSync: (_p, line) => rows.push(JSON.parse(line)),
+          mkdirSync() {},
+          writeFileSync() {},
+        }
+      throw Error(name)
+    },
+  })
+  const api = module.exports as any,
+    config = JSON.stringify({ evidence: 'sample', device: '0' })
+  const first = await api.watch(7, config)
+  expect(await api.beginReindexCoverage(first, 'sample')).toBe(true)
+  const second = await api.watch(7, config)
+  expect(first).not.toBe(second)
+  expect(rows.filter((row) => row.event === 'cpu-profile-ready')).toHaveLength(2)
+  expect(detached).toBe(1)
+  expect(rows.filter((row) => row.event === 'reindex-js-coverage')).toHaveLength(1)
+  wc.emit('did-start-navigation', {}, 'app://obsidian.md', false, true)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(wc.listenerCount('did-start-navigation')).toBe(0)
+  expect(attached).toBe(false)
+  expect(ipcMain.eventNames()).toHaveLength(0)
+  attached = true // A debugger owned by somebody else must stay attached.
+  await api.watch(7, config)
+  expect(detached).toBe(2)
+  expect(rows.at(-1).event).toBe('cpu-profile-unavailable')
 })
