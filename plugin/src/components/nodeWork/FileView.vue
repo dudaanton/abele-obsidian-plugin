@@ -408,6 +408,7 @@ function onMenu(e: MouseEvent) {
 }
 .abele-file-view__tools {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
 }
 .abele-file-view__metadata {
@@ -441,6 +442,16 @@ function onMenu(e: MouseEvent) {
     flex-basis: 100%;
     color: var(--text-muted);
     font-weight: var(--font-normal);
+  }
+  .abele-file-view__header .abele-file-view__path {
+    white-space: nowrap;
+    overflow: hidden;
+    overflow-wrap: normal;
+  }
+}
+@container (max-width: 24em) {
+  .abele-file-view__header > .abele-file-view__size {
+    display: none;
   }
 }
 </style>
