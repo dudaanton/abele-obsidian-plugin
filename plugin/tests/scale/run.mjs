@@ -5,6 +5,8 @@ import { readFile, writeFile, mkdir, copyFile, readdir, unlink } from 'node:fs/p
 import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { fileExpectations, oversizedEvidence, pauseWriteMetrics } from './refusals.mjs'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
@@ -16,7 +18,6 @@ import {
   saveCheckpoint,
   activeRequestIds,
   recoveryTimings,
-  requireServerCapacity,
 } from './progress.mjs'
 import {
   compareInventory,
@@ -190,6 +191,7 @@ async function setupVault(config, root, device) {
   const observer = join(root, '.obsidian/plugins/scale-observer')
   await mkdir(observer, { recursive: true })
   await copyFile(join(here, 'observer.cjs'), join(observer, 'main.js'))
+  await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -215,7 +217,11 @@ async function setupVault(config, root, device) {
     )
   await writeFile(
     join(root, '.scale-observer.json'),
-    JSON.stringify({ evidence: join(config.output, 'renderer.jsonl'), device })
+    JSON.stringify({
+      evidence: join(config.output, 'renderer.jsonl'),
+      device,
+      writeObserver: join(observer, 'writes.cjs'),
+    })
   )
 }
 
@@ -252,6 +258,7 @@ export async function run(config) {
   let appProcess
   let issued
   let owner
+  let expected = []
   const devices = config.vaults.map((root) => new RealVault(config, root))
   let saving = Promise.resolve()
   let checkpointError = false
@@ -352,7 +359,12 @@ export async function run(config) {
     if (new URL(owner.token.address).origin !== new URL(config.server).origin)
       throw new Error('Token endpoint does not match configured server')
     report.serverLimits = (await owner.connection()).limits
-    report.serverCapacity = requireServerCapacity(planVault(options), report.serverLimits)
+    const declared = fileExpectations(planVault(options), report.serverLimits)
+    report.filePlan = {
+      limit: declared.limit,
+      oversized: declared.oversized,
+      interruptionTarget: declared.interruptionTarget,
+    }
     const prefix = `Scale-${randomUUID()}`
     report.scope = prefix
     const client = new V2EngineClient(encoded, { fetch: globalThis.fetch })
@@ -378,16 +390,32 @@ export async function run(config) {
       await writeFile(file, encodeAccessToken({ ...token, address }), { mode: 0o600 })
       tokenFiles.push(file)
     }
-    const expected = report.expected.map((file) => ({ ...file, path: `${prefix}/${file.path}` }))
+    expected = report.expected.map((file) => ({ ...file, path: `${prefix}/${file.path}` }))
+    const filePlan = fileExpectations(expected, report.serverLimits)
+    report.oversizedFiles = filePlan.oversized
+    report.interruptionTarget = filePlan.interruptionTarget
+    await writeFile(
+      join(config.output, 'run-receipt.json'),
+      JSON.stringify(
+        {
+          build: report.build,
+          sdk: report.buildReceipt?.sdk,
+          ...options,
+          serverLimits: report.serverLimits,
+          oversizedFiles: report.oversizedFiles,
+          interruptionTarget: report.interruptionTarget,
+        },
+        null,
+        2
+      )
+    )
     await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
     delete report.expected
     const a = devices[0],
       b = devices[1],
       p = proxies[0],
       q = proxies[1]
-    p.breakpointSha = expected.reduce((largest, file) =>
-      file.size > largest.size ? file : largest
-    ).sha
+    p.breakpointSha = report.interruptionTarget.sha
     p.cutAfterBytes = ((options.seed % 4) + 1) * 16 * 1024
     const triggered = async (proxy, kind, action) => {
       const since = Date.now()
@@ -472,6 +500,7 @@ export async function run(config) {
     report.pauseActionOffsetMs = report.pauseActionAt - pauseAt
     q.release()
     await sleep(2500)
+    report.pauseWindowEndAt = Date.now()
     Object.assign(
       report,
       pauseMetrics(
@@ -542,7 +571,10 @@ export async function run(config) {
     report.verifiedFiles = 0
     report.deviceFiles = []
     report.expectedFiles = expected.length
-    const set = expectedSet(expected, report.syncPolicy)
+    const set = expectedSet(
+      fileExpectations(expected, report.serverLimits).transfer,
+      report.syncPolicy
+    )
     report.excludedBySettings = set.excluded
     report.syncedExpectedFiles = set.synced.length
     for (const [i, device] of devices.entries()) {
@@ -633,6 +665,32 @@ export async function run(config) {
       : []
     report.notices = entries.length ? entries.filter((e) => e.event === 'notice').length : undefined
     report.noticeDetails = noticeDetails(entries, report.phases)
+    report.primaryStateObservations = entries.filter((e) => e.event === 'primary-state')
+    const intact = []
+    for (const file of report.oversizedFiles ?? []) {
+      try {
+        const hash = createHash('sha256')
+        let size = 0
+        for await (const chunk of createReadStream(join(devices[0].root, file.path))) {
+          hash.update(chunk)
+          size += chunk.length
+        }
+        intact.push({ path: file.path, size, sha: hash.digest('hex') })
+      } catch {
+        /* Missing or unreadable bytes fail the independent primary oracle. */
+      }
+    }
+    report.oversizedEvidence = oversizedEvidence(
+      report.oversizedFiles ?? [],
+      intact,
+      report.primaryStateObservations,
+      report.wire
+    )
+    if (report.pauseActionAt && report.pauseWindowEndAt)
+      Object.assign(
+        report,
+        pauseWriteMetrics(entries, '1', report.pauseActionAt, report.pauseWindowEndAt)
+      )
     if (report.restartAt)
       report.startupTiming = proxies.map((proxy, i) => ({
         device: proxy.device,

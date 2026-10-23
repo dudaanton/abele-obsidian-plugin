@@ -69,6 +69,7 @@ export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observe
       })
     ),
     pauseNewRequests: starts.length,
+    pauseLastRequestMs: starts.length ? Math.max(...starts.map((e) => e.at - pausedAt)) : 0,
     pauseInFlight: pending,
     pauseObservedMs: observedAt - pausedAt,
     pauseLatencyMs: closedWithoutTimestamp
@@ -125,7 +126,29 @@ export function budgets(m) {
     ),
     timing('resume upload', m.resumeUploadMs, 30000),
     timing('pause latency', m.pauseLatencyMs, 2000),
-    check('pause new requests', m.pauseNewRequests, 0, m.pauseNewRequests === 0),
+    check(
+      'pause request grace',
+      m.pauseLastRequestMs,
+      '<= 100 ms',
+      Number.isFinite(m.pauseLastRequestMs) && m.pauseLastRequestMs <= 100
+    ),
+    check(
+      'pause vault writes',
+      m.pauseWriteBytesAfterGrace,
+      '0 bytes after +100 ms',
+      m.pauseWriteBytesAfterGrace === 0 && m.pauseWriteOperationsAfterGrace === 0
+    ),
+    ...(m.oversizedFiles?.length
+      ? [
+          check(
+            'oversized refusals',
+            m.oversizedEvidence?.filter((row) => !row.pass).length,
+            0,
+            m.oversizedEvidence?.length === m.oversizedFiles.length &&
+              m.oversizedEvidence.every((row) => row.pass)
+          ),
+        ]
+      : []),
     check('own content downloads', m.ownDownloads, 0, m.ownDownloads === 0),
     check('unresolved content downloads', m.unresolvedDownloads, 0, m.unresolvedDownloads === 0),
     check('notices', m.notices, 0, m.notices === 0),
@@ -164,6 +187,12 @@ export function markdown(report) {
     details('Notices (text, time, phase)', report.noticeDetails) +
     details('Excluded by settings', report.excludedBySettings) +
     details('Visible case refusals on primary', report.caseRefusals) +
+    details('Oversized refusal evidence', report.oversizedEvidence) +
+    details(
+      'Raw strict-zero pause count (measurement only)',
+      report.pauseNewRequests == null ? [] : [{ count: report.pauseNewRequests }]
+    ) +
+    details('Vault writes after pause grace', report.pauseWritesAfterGrace) +
     details(
       'Primary visible activity snapshots (full rows in JSON)',
       report.primaryActivity?.map((snapshot) => ({

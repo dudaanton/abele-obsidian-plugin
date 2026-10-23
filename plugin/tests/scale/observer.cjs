@@ -19,6 +19,43 @@ module.exports = class extends Plugin {
         JSON.stringify({ at: Date.now(), device: config.device, ...data }) + '\n'
       )
     emit({ event: 'renderer-start' })
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
+    const { observeWrites } = require(config.writeObserver)
+    this.register(observeWrites(this.app.vault.adapter, emit))
+    let previous = ''
+    const seenActivity = new Set()
+    const stateTimer = setInterval(() => {
+      if (config.device !== '0') return
+      const host = this.app.plugins?.plugins?.abele?.tokenEngines
+      const ui = host?.ui
+      if (!ui) return
+      const state = {
+        event: 'primary-state',
+        snapshot: {
+          rows: ui.rows.value.map(({ status, paused }) => ({ status, paused })),
+          engines: [...host.live.values()].map((e) => ({
+            state: e.engine.status.state,
+            pending: e.engine.status.pending,
+            lastSyncAt: e.engine.status.lastSyncAt,
+          })),
+        },
+        activity: Object.entries(ui.activity.value).map(([id, a]) => ({
+          refused: a.refused ?? [],
+          events: [...(a.events ?? [])].filter((e) => {
+            const key = `${id}:${e.at}:${e.text}`
+            if (seenActivity.has(key)) return false
+            seenActivity.add(key)
+            return true
+          }),
+        })),
+      }
+      const next = JSON.stringify(state)
+      if (next !== previous) {
+        emit(state)
+        previous = next
+      }
+    }, 1000)
+    this.register(() => clearInterval(stateTimer))
     try {
       const marks = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {

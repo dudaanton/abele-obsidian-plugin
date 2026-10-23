@@ -159,6 +159,8 @@ describe('scale harness independent guarantees', () => {
       performance: { timeOrigin: 1000 },
       console,
       window,
+      setInterval: () => 0,
+      clearInterval: () => {},
       URL,
       Error,
       require: (name) =>
@@ -169,12 +171,19 @@ describe('scale harness independent guarantees', () => {
                 register() {}
               },
             }
-          : name === 'fs'
-            ? {
-                readFileSync: () => JSON.stringify({ device: '0', evidence: 'sample' }),
-                appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
-              }
-            : { join: (...parts) => parts.join('/') },
+          : name === '/sample/absolute-writes.cjs'
+            ? { observeWrites: () => () => {} }
+            : name === 'fs'
+              ? {
+                  readFileSync: () =>
+                    JSON.stringify({
+                      device: '0',
+                      evidence: 'sample',
+                      writeObserver: '/sample/absolute-writes.cjs',
+                    }),
+                  appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                }
+              : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [] },
       MutationObserver: class {
         observe() {}
@@ -263,6 +272,8 @@ describe('scale harness independent guarantees', () => {
     const module = { exports: null }
     runInNewContext(source, {
       module,
+      setInterval: () => 0,
+      clearInterval: () => {},
       require: (name) =>
         name === 'obsidian'
           ? {
@@ -271,12 +282,19 @@ describe('scale harness independent guarantees', () => {
                 register() {}
               },
             }
-          : name === 'fs'
-            ? {
-                readFileSync: () => JSON.stringify({ device: '0', evidence: 'sample' }),
-                appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
-              }
-            : { join: (...parts) => parts.join('/') },
+          : name === '/sample/absolute-writes.cjs'
+            ? { observeWrites: () => () => {} }
+            : name === 'fs'
+              ? {
+                  readFileSync: () =>
+                    JSON.stringify({
+                      device: '0',
+                      evidence: 'sample',
+                      writeObserver: '/sample/absolute-writes.cjs',
+                    }),
+                  appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                }
+              : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [node] },
       MutationObserver: class {
         constructor(callback) {

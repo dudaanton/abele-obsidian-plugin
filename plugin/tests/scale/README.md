@@ -22,11 +22,24 @@ observations; null means no such observation occurred before the next interrupti
 The pause boundary is the renderer's actual invocation time, with in-flight requests
 reconstructed from timestamped starts/finishes/closures. Controller invocation time and CLI
 latency are retained separately. No timing budget is relaxed for that latency.
-Before creating a server scope or generating payload, the runner checks the server's
-advertised file-size limit against the unchanged generated plan. An insufficient or missing
-limit fails preflight; no large file is silently excluded and the interruption target is not
-replaced by a smaller file. Advertised quota is recorded, but available remaining quota is
-not inferred from that limit.
+The advertised file-size limit partitions the unchanged generated plan. Oversized files
+remain required intact on the primary. Their absence on peer/server is expected only with
+exact-path size refusals in both primary status and activity log, no repeated initiation for
+unchanged refused bytes, and no fully-synced claim. Upload attempt counts and visible states
+are retained. Multipart interruption targets the largest eligible file, recorded with size
+and hash. A missing limit or eligible target fails preflight. Quota is recorded without
+inferring remaining capacity. Hidden/settings exclusions remain a separate category.
+
+Pause permits requests dispatched within 100 ms of the renderer invocation, requires all
+requests closed within 2 seconds and zero vault-write operations/bytes after +100 ms.
+The raw strict-zero request count remains reported but is not a gate. A disposable observer,
+loaded before the product, records desktop adapter writes and the native promise/handle
+ports used by the sync filesystem. It includes private stages and settings writes inside
+the fixture vault. Begin/end intervals conservatively include operations overlapping the
+grace boundary; byte totals are upper bounds and may overlap across layers. Atomic installs
+and truncation also count as mutations. Unknown coverage/bytes or unfinished operations fail
+closed. These are API observations, not kernel syscall attribution. The observer restores
+the original ports on unload, and never changes product source or filesystem arguments.
 
 ## Inputs
 
