@@ -13,6 +13,16 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { selectiveFrom } from '@/sync/connection'
 
+it('distinguishes a missing download parent from a failed listing during rebuild', async () => {
+  const app = buildFakeVault([])
+  app.metadataCache.isCacheClean = () => false
+  const fs = new ObsidianFileSystem(app as never)
+  expect(await fs.listChildren('Incoming')).toEqual([])
+  await app.vault.createFolder('Incoming')
+  vi.spyOn(app.vault.adapter, 'list').mockRejectedValue(new Error('sample listing failure'))
+  await expect(fs.listChildren('Incoming')).rejects.toThrow('sample listing failure')
+})
+
 it('starts a synced engine during a partial stale rebuild without transfers or content reads', async () => {
   const app = buildFakeVault([
     { path: 'a.md', content: 'x', mtime: 1000 },

@@ -619,8 +619,9 @@ export class ObsidianFileSystem implements FileSystem {
   private inventoryListing(parent: string): Promise<ListedFiles> {
     const inventory = this.inventory
     const read = () =>
-      this.disk.list(parent).catch((error): ListedFiles => {
-        if (notFound(error)) return { files: [], folders: [] }
+      this.disk.list(parent).catch(async (error): Promise<ListedFiles> => {
+        if (notFound(error) || (await this.rawStat(parent)) === null)
+          return { files: [], folders: [] }
         inventory?.listings.delete(parent)
         throw error
       })

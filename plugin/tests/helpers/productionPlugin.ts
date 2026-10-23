@@ -65,8 +65,9 @@ export async function bootProductionPlugin(code: string) {
   const app = buildFakeVault([]) as any
   app.appId = 'sample-' + crypto.randomUUID()
   const ready: Array<() => void> = []
+  let layoutReady = false
   Object.assign(app.workspace, {
-    onLayoutReady: (fn: () => void) => ready.push(fn),
+    onLayoutReady: (fn: () => void) => (layoutReady ? fn() : ready.push(fn)),
     getActiveViewOfType: () => null,
     getMostRecentLeaf: () => null,
     getLayout: () => ({ type: 'split', children: [] }),
@@ -189,6 +190,7 @@ export async function bootProductionPlugin(code: string) {
     addRibbonIcon: () => {},
   })
   await plugin.onload()
+  layoutReady = true
   ready.splice(0).forEach((fn) => fn())
   return {
     app,
