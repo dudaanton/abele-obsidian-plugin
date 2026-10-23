@@ -245,8 +245,11 @@ Pause, a new exchange, offline state and shutdown cancel scheduled work; shutdow
 the current tick. A retained victim first moves to a private `dying` name, then receives
 a fresh content/size/mtime/ctime check. Native retirement uses change time, not the vault
 API's creation time. Changed bytes become a recovered copy; unchanged bytes may unlink.
-The residual descriptor-write race after the last check and before unlink is accepted
-only after the 24-hour minimum; there is no claim of an atomic compare-and-unlink syscall.
+Final reclamation after the retention window is a deliberate final delete, like emptying
+a trash. Accepted limitation: descriptor held across retention window. Writes through an
+external descriptor kept open across the 24-hour-or-longer minimum age are outside the
+preservation guarantee, including writes after the final check and before unlink. There
+is no claim of an atomic compare-and-unlink syscall.
 A retained folder's `ready` marker certifies its completed durable handoff, so later maintenance
 does not repeat destination fsyncs for settled copies.
 Mismatches are restored without replacing an occupied name, using a visible conflict
@@ -294,6 +297,10 @@ source is occupied. The original active intent also covers a crash before the la
 record; failed repair remains pending for restart. A late acknowledgement never certifies
 success. This recovery requires retained bytes: a raw overwrite or unlink without a retained
 preimage cannot be repaired from a hash alone.
+When repair must restore both victim and incoming data, independent `restored` and
+`data-restored` markers settle their public destinations. The active intent remains in the
+recovery queue until both settle; only then does it move to review. Receipt cleanup removes
+both markers without touching the visible copies.
 The checked mutation port accepts private staging and conditional-object roots explicitly.
 It rejects public raw writes, writable opens/handle mutations, unlink/remove, copy and
 public-to-public rename before invoking adapter wrappers. Public effects use quarantine

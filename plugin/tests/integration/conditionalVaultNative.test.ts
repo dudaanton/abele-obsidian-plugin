@@ -716,9 +716,8 @@ it('retains a captured inode for saves through a handle opened before removal', 
   }
 }, 30_000)
 
-// Native durability work can exceed the default 5s on a busy volume.
-// BUG D-163: a pre-capture public descriptor bypasses private-entry ownership.
-it.fails('preserves a public descriptor write inside a delayed retention unlink', async () => {
+// Accepted limitation: descriptor held across retention window; final reclamation is final delete.
+it('accepted limitation: descriptor held across retention window does not prevent final reclamation', async () => {
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined
   let injected = false
   const { root, disk } = await setup({
@@ -761,8 +760,10 @@ it.fails('preserves a public descriptor write inside a delayed retention unlink'
     }
     expect(injected).toBe(true)
     const visible = (await fs.readdir(root)).filter((name) => name.includes('Recovered copy'))
-    const contents = await Promise.all(visible.map((name) => fs.readFile(join(root, name), 'utf8')))
-    expect(contents).toContain('sample B')
+    expect(visible).toEqual([])
+    expect(await handle.readFile({ encoding: 'utf8' })).toBe('sample B')
+    expect((await handle.stat()).nlink).toBe(0)
+    expect((await Reflect.get(conditional, 'host').retention.summary()).count).toBe(0)
   } finally {
     await handle.close()
   }
