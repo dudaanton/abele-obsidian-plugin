@@ -202,17 +202,30 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
       } else if (drawn && typeof require === 'function') {
         const win = require('@electron/remote').getCurrentWindow()
         const original = win.getContentSize()
+        const panels = [app.workspace.leftSplit.collapsed, app.workspace.rightSplit.collapsed]
         try {
+          app.workspace.leftSplit.collapse()
+          app.workspace.rightSplit.collapse()
+          await app.workspace.revealLeaf(leaf)
           require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
           for (const width of [1280, 390]) {
             win.setContentSize(width, width === 390 ? 844 : 800)
             await wait(500)
+            leaf.view.canvas.zoomToFit()
+            await wait(500)
+            const bounds = leaf.view.containerEl.querySelector('svg.pele').getBoundingClientRect()
+            if (bounds.width < 40 || bounds.height <= 0 || bounds.left < 0 || bounds.right > innerWidth)
+              throw new Error('Canvas diagram is outside the screenshot viewport')
             const image = await require('@electron/remote').getCurrentWebContents().capturePage()
             const path = ${JSON.stringify(SHOTS)} + '/pele-canvas-card-' + width + '.png'
             require('fs').writeFileSync(path, image.toPNG())
             shots.push(path)
           }
-        } finally { win.setContentSize(...original) }
+        } finally {
+          win.setContentSize(...original)
+          if (!panels[0]) app.workspace.leftSplit.expand()
+          if (!panels[1]) app.workspace.rightSplit.expand()
+        }
       }
       return { drawn, shots }
     `)
