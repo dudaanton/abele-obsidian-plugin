@@ -19,6 +19,11 @@ module.exports = class extends Plugin {
         JSON.stringify({ at: Date.now(), device: config.device, ...data }) + '\n'
       )
     emit({ event: 'renderer-start' })
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer module.
+    const reindexObserver = require(config.reindexObserver)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
+    const nativeCrypto = require('node:crypto')
+    this.register(reindexObserver.observeHashes(nativeCrypto, globalThis.crypto?.subtle, emit))
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
     const { observeWrites } = require(config.writeObserver)
     this.register(observeWrites(this.app.vault.adapter, emit))
@@ -151,6 +156,15 @@ module.exports = class extends Plugin {
         remote.getCurrentWebContents().id,
         JSON.stringify(config)
       )
+      globalThis.__scaleReindexCoverage = {
+        begin: (id) => diagnostic.beginReindexCoverage(channel, id),
+        end: () => diagnostic.endReindexCoverage(channel),
+      }
+      const pendingFile = config.evidence + '.' + config.device + '.reindex.json'
+      if (fs.existsSync(pendingFile)) {
+        const pending = JSON.parse(fs.readFileSync(pendingFile, 'utf8'))
+        await diagnostic.beginReindexCoverage(channel, pending.id)
+      }
       ipcRenderer.send(channel)
       const heartbeat = setInterval(() => ipcRenderer.send(channel), 25)
       this.register(() => {
@@ -160,5 +174,6 @@ module.exports = class extends Plugin {
     } catch {
       emit({ event: 'cpu-profile-unavailable' })
     }
+    reindexObserver.observeRebuild(this.app, config, emit, (dispose) => this.register(dispose))
   }
 }

@@ -164,26 +164,30 @@ describe('scale harness independent guarantees', () => {
       URL,
       Error,
       require: (name) =>
-        name === 'obsidian'
-          ? {
-              Plugin: class {
-                app = { vault: { adapter: { getBasePath: () => '/sample' } } }
-                register() {}
-              },
-            }
-          : name === '/sample/absolute-writes.cjs'
-            ? { observeWrites: () => () => {} }
-            : name === 'fs'
-              ? {
-                  readFileSync: () =>
-                    JSON.stringify({
-                      device: '0',
-                      evidence: 'sample',
-                      writeObserver: '/sample/absolute-writes.cjs',
-                    }),
-                  appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
-                }
-              : { join: (...parts) => parts.join('/') },
+        name === '/sample/reindex.cjs'
+          ? { observeRebuild: () => {}, observeHashes: () => () => {} }
+          : name === 'obsidian'
+            ? {
+                Plugin: class {
+                  app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                  register() {}
+                },
+              }
+            : name === '/sample/absolute-writes.cjs'
+              ? { observeWrites: () => () => {} }
+              : name === 'fs'
+                ? {
+                    existsSync: () => false,
+                    readFileSync: () =>
+                      JSON.stringify({
+                        device: '0',
+                        evidence: 'sample',
+                        writeObserver: '/sample/absolute-writes.cjs',
+                        reindexObserver: '/sample/reindex.cjs',
+                      }),
+                    appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                  }
+                : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [] },
       MutationObserver: class {
         observe() {}
@@ -275,26 +279,30 @@ describe('scale harness independent guarantees', () => {
       setInterval: () => 0,
       clearInterval: () => {},
       require: (name) =>
-        name === 'obsidian'
-          ? {
-              Plugin: class {
-                app = { vault: { adapter: { getBasePath: () => '/sample' } } }
-                register() {}
-              },
-            }
-          : name === '/sample/absolute-writes.cjs'
-            ? { observeWrites: () => () => {} }
-            : name === 'fs'
-              ? {
-                  readFileSync: () =>
-                    JSON.stringify({
-                      device: '0',
-                      evidence: 'sample',
-                      writeObserver: '/sample/absolute-writes.cjs',
-                    }),
-                  appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
-                }
-              : { join: (...parts) => parts.join('/') },
+        name === '/sample/reindex.cjs'
+          ? { observeRebuild: () => {}, observeHashes: () => () => {} }
+          : name === 'obsidian'
+            ? {
+                Plugin: class {
+                  app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                  register() {}
+                },
+              }
+            : name === '/sample/absolute-writes.cjs'
+              ? { observeWrites: () => () => {} }
+              : name === 'fs'
+                ? {
+                    existsSync: () => false,
+                    readFileSync: () =>
+                      JSON.stringify({
+                        device: '0',
+                        evidence: 'sample',
+                        writeObserver: '/sample/absolute-writes.cjs',
+                        reindexObserver: '/sample/reindex.cjs',
+                      }),
+                    appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                  }
+                : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [node] },
       MutationObserver: class {
         constructor(callback) {

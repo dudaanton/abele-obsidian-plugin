@@ -115,9 +115,9 @@ export class WireProxy extends EventEmitter {
     if (url.pathname === '/v2/commit')
       req.on('end', () => {
         try {
-          entry.contentCommit = JSON.parse(Buffer.concat(body).toString()).ops.some(
-            (op) => !!op.sha
-          )
+          const ops = JSON.parse(Buffer.concat(body).toString()).ops
+          entry.contentCommit = ops.some((op) => !!op.sha)
+          entry.operations = ops.map(({ op, path, sha }) => ({ op, path, sha }))
         } catch {
           entry.contentCommit = false
         }

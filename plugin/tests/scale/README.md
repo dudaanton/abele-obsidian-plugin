@@ -286,3 +286,36 @@ npx vitest run tests/harness/scaleBuild.test.ts --maxWorkers=2
 
 Additional focused tests: `scaleDiagnostics.test.ts`, `scaleLocalServer.test.ts` and
 `scaleProgress.test.ts` in `tests/harness/`, always with `--maxWorkers=2`.
+
+## Vault cache rebuild interruption
+
+The `scale` profile declares three separate `reindex` occurrences: during primary upload,
+peer initial download, and primary startup comparison after a synced restart. Each must
+actually click the English host's **Files & links → Rebuild vault cache** setting while
+sync has an in-flight request. The tier seeds English; an absent or ambiguous setting fails
+instead of calling cache internals. The setting reloads the vault window. The observer
+persists its receipt outside the vault and observes the host's cache-clean callback after
+reload; the earlier `finished` event alone does not establish indexing completion.
+
+Each rebuild records actual click/completion times, requests and vault writes during indexing,
+deletions, notices, long tasks, and activity through the subsequent sync settle. Independent
+Node-side content snapshots retain existing-file integrity while allowing new peer downloads.
+Server-before and local-before hashes distinguish already-present content from pending work.
+These snapshots read fixture bytes outside the renderer and their preparation cost is included
+in phase timing. Final byte verification and sync settle are still required. Every declared
+kind/occurrence must trigger; repeating another occurrence cannot replace one.
+
+Native hash observation preserves hash inputs/results. Bundled JavaScript hashing is separately
+observed with precise debugger call counts spanning the old and new renderer contexts, only
+for the rebuild/recovery window. Raw coverage files accompany CPU profiles. Missing segments,
+unrecognized hash functions, and ambiguous positive JavaScript hash counts remain unproven
+and fail the rebuild oracle; native zero counters alone never prove zero renderer hashing.
+Call counts can include setup/normal sync work and are not themselves a claim that indexing
+caused a redundant file hash. This additional observation has overhead and requires live
+qualification before interpreting a timing comparison. Owned debugger sessions are disposed
+on navigation and replacement; a debugger belonging to another tool is never detached.
+
+If the driver exits from a signal the worker did not send, do **not** restart a live run.
+Copy the last checkpoint/observer/CPU/memory evidence, let the supervisor clean up, verify
+resource release, and report the external stop. Partial phases remain unqualified. A new live
+attempt requires a new instruction authorizing it.

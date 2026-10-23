@@ -6,6 +6,7 @@ import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
+import { declaredInterruptions, reindexEvidence, javascriptHashEvidence } from './reindex.mjs'
 import { openServer, verifyServerLimits } from './local-server.mjs'
 import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
@@ -93,6 +94,11 @@ export class RealVault {
     }
     if (result?.scaleError) throw new Error('Vault action failed (private details suppressed)')
     return result
+  }
+  async reindex(operation) {
+    return this.evaluate(`const fs=require('node:fs');
+      const config=JSON.parse(fs.readFileSync(require('node:path').join(app.vault.adapter.getBasePath(),'.scale-observer.json'),'utf8'));
+      return require(config.reindexObserver).clickRebuild(app,document,${JSON.stringify(operation)},config.evidence+'.'+config.device+'.reindex.json')`)
   }
   async ready() {
     return wait('plugin startup', () => this.evaluate(`${host}return !!u`).catch(() => false))
@@ -195,6 +201,7 @@ async function setupVault(config, root, device) {
   await mkdir(observer, { recursive: true })
   await copyFile(join(here, 'observer.cjs'), join(observer, 'main.js'))
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
+  await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
@@ -225,6 +232,7 @@ async function setupVault(config, root, device) {
       evidence: join(config.output, 'renderer.jsonl'),
       device,
       writeObserver: join(observer, 'writes.cjs'),
+      reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
       profileDirectory: join(config.output, 'profiles'),
     })
@@ -249,7 +257,9 @@ export async function run(config) {
     build: config.build,
     plannedDeadline: { ...plannedDeadline, effectiveScenarioDeadlineAt: deadline },
     ...options,
+    declaredInterruptions: declaredInterruptions(config.shape === 'scale'),
     interruptions: [],
+    reindexes: [],
     failures: [],
     phase: 'preflight',
     phases: [{ name: 'preflight', at: Date.now() }],
@@ -262,6 +272,7 @@ export async function run(config) {
     console.debug('[scale]', name)
     checkpoint(true)
   }
+  const rebuilds = []
   const proxies = []
   const tokenFiles = []
   let serverSession
@@ -487,6 +498,87 @@ export async function run(config) {
       report.interruptions.push({ kind, triggered: true, at: Date.now() })
       checkpoint(true)
     }
+    const reindex = async (id, device, proxy) => {
+      const declared = report.declaredInterruptions.find((one) => one.id === id)
+      if (!declared) return
+      await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
+      const allowed = new Set(expected.map((file) => file.path))
+      for (const file of expected) {
+        const parts = file.path.split('/')
+        while (parts.length > 1) {
+          parts.pop()
+          allowed.add(parts.join('/'))
+        }
+      }
+      const snapshotExcluded = (path) => !allowed.has(path)
+      const before = await inventory(device.root, snapshotExcluded)
+      const serverBefore = await manifest(token)
+      await wait('reindex active sync at click', () => proxy.active.size > 0, config.timeoutMs)
+      await device.reindex(declared)
+      const readEntries = async () =>
+        (await readFile(join(config.output, 'renderer.jsonl'), 'utf8'))
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .flatMap((line) => {
+            try {
+              return [JSON.parse(line)]
+            } catch {
+              return []
+            }
+          })
+      const pendingFile =
+        join(config.output, 'renderer.jsonl') + '.' + declared.device + '.reindex.json'
+      const receipt = async (file) => {
+        try {
+          const row = JSON.parse(await readFile(file, 'utf8'))
+          return row.id === id ? row : null
+        } catch {
+          return null
+        }
+      }
+      const clicked = await wait(
+        'reindex user button click',
+        async () => (await receipt(pendingFile)) ?? (await receipt(pendingFile + '.complete.json')),
+        config.timeoutMs
+      )
+      const operation = {
+        ...declared,
+        at: clicked.at,
+        triggered: activeRequestIds(proxy.events, clicked.at).size > 0,
+      }
+      proxy.release()
+      report.interruptions.push(operation)
+      const saved = { operation, before, serverBefore }
+      rebuilds.push(saved)
+      report.reindexes.push(
+        reindexEvidence(operation, await readEntries(), proxy.events, { before })
+      )
+      checkpoint(true)
+      await wait(
+        'reindex host cache completion',
+        () => receipt(pendingFile + '.complete.json'),
+        config.timeoutMs
+      )
+      await device.ready()
+      const after = await inventory(device.root, snapshotExcluded)
+      saved.after = after
+      // Checkpoint raw evidence immediately; final settle and transfer attribution follow.
+      report.reindexes[report.reindexes.findIndex((row) => row.id === id)] = reindexEvidence(
+        operation,
+        await readEntries(),
+        proxy.events,
+        { before, after }
+      )
+      checkpoint(true)
+    }
+    const endReindex = async (id, device) => {
+      const saved = rebuilds.find((one) => one.operation.id === id)
+      if (!saved) return
+      await device.evaluate('await globalThis.__scaleReindexCoverage?.end?.();return true')
+      saved.settledAt = Date.now()
+      checkpoint(true)
+    }
     const firstUploadAt = Date.now()
     phase('first upload')
     await start()
@@ -538,7 +630,9 @@ export async function run(config) {
     await a.evaluate(`await app.plugins.enablePlugin('abele');return true`)
     mark('plugin disable-enable')
     await a.ready()
+    await reindex('reindex-primary-upload', a, p)
     report.firstUploadSettled = await settle(a, 'first upload')
+    await endReindex('reindex-primary-upload', a)
     report.syncPolicy = await a.policy()
     const uploaded = (await manifest(token)).filter((file) => file.kind !== 'directory')
     report.uploadedFiles = uploaded.length
@@ -572,7 +666,9 @@ export async function run(config) {
     mark('pause mid-pull')
     await b.paused(false)
     await b.sync()
-    await settle(b, 'second device pull')
+    await reindex('reindex-peer-download', b, q)
+    report.peerPullSettled = await settle(b, 'second device pull')
+    await endReindex('reindex-peer-download', b)
     report.peerInitialDownloadMs = Date.now() - peerDownloadAt
     phase('edits and settle')
     const edits = [
@@ -601,7 +697,9 @@ export async function run(config) {
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt
-    await start()
+    if (config.shape === 'scale') await triggered(p, 'comparison', start)
+    else await start()
+    await reindex('reindex-restart-comparison', a, p)
     await wait(
       'restart first server request',
       () =>
@@ -618,6 +716,7 @@ export async function run(config) {
       ? Math.max(...report.deviceRestartRequestMs)
       : undefined
     const settledA = await settle(a, 'restart device A')
+    await endReindex('reindex-restart-comparison', a)
     const idleA = settledA ? Date.now() : null
     const settledB = await settle(b, 'restart device B')
     report.deviceRestartIdleAt = [idleA, settledB ? Date.now() : null]
@@ -722,11 +821,129 @@ export async function run(config) {
             .split('\n')
             .map((line) => JSON.parse(line))
         : []
+      for (const saved of rebuilds) {
+        const proxy = proxies[Number(saved.operation.device)]
+        const end = entries.find(
+          (row) => row.event === 'reindex-complete' && row.id === saved.operation.id
+        )
+        const during = proxy.events.filter(
+          (row) =>
+            row.at >= saved.operation.at && row.at <= (saved.settledAt ?? end?.at ?? Infinity)
+        )
+        const knownLocal = new Set(saved.before.map((file) => file.sha))
+        const knownServer = new Set(saved.serverBefore.map((file) => file.sha))
+        const reads = during.filter(
+          (row) => row.event === 'start' && /\/content$/.test(row.route ?? '')
+        )
+        const uploads = during.filter(
+          (row) =>
+            row.event === 'start' &&
+            row.method === 'POST' &&
+            /\/uploads\/[a-f0-9]{64}\/begin$/.test(row.route ?? '')
+        )
+        const unknown = reads.some((row) => !proxy.versions.has(row.version))
+        const hashes = entries.filter(
+          (row) =>
+            row.device === saved.operation.device &&
+            row.at >= saved.operation.at &&
+            row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
+            row.event === 'renderer-hash'
+        )
+        const coverage = entries.some(
+          (row) =>
+            row.device === saved.operation.device &&
+            row.at >= saved.operation.at &&
+            row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
+            row.event === 'hash-observer-ready'
+        )
+        const previouslyHashed = new Set(
+          entries
+            .filter(
+              (row) =>
+                row.device === saved.operation.device &&
+                row.at < saved.operation.at &&
+                row.event === 'renderer-hash' &&
+                row.source === 'abele'
+            )
+            .map((row) => row.sha)
+        )
+        const fileHashes = new Set(
+          [...expected, ...saved.before, ...saved.serverBefore].map((file) => file.sha)
+        )
+        const extraHashes = hashes.filter(
+          (row) =>
+            row.source === 'abele' &&
+            fileHashes.has(row.sha) &&
+            (previouslyHashed.has(row.sha) ||
+              knownServer.has(row.sha) ||
+              (saved.operation.device === '1' && knownLocal.has(row.sha)))
+        )
+        const hashUnknown = hashes.some(
+          (row) => row.source === 'unknown' && fileHashes.has(row.sha)
+        )
+        const jsHashes = await javascriptHashEvidence(saved.operation, entries, async (path) =>
+          JSON.parse(await readFile(path, 'utf8'))
+        )
+        const result = reindexEvidence(saved.operation, entries, proxy.events, {
+          before: saved.before,
+          after: saved.after,
+          settled: report.verificationComplete === true,
+          extraDeletes:
+            during
+              .flatMap((row) => row.operations ?? [])
+              .filter((op) => /delete|remove|unlink|tombstone/.test(op.op)).length +
+            entries.filter(
+              (row) =>
+                row.device === saved.operation.device &&
+                row.at >= saved.operation.at &&
+                row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
+                row.event === 'vault-delete'
+            ).length,
+          extraUploads: uploads.filter((row) => knownServer.has(row.route.split('/')[3])).length,
+          extraDownloads: unknown
+            ? undefined
+            : reads.filter((row) => knownLocal.has(proxy.versions.get(row.version))).length,
+          extraRendererHashes:
+            coverage && !hashUnknown && jsHashes.complete && jsHashes.calls === 0
+              ? extraHashes.length
+              : undefined,
+        })
+        result.settledAt = saved.settledAt ?? null
+        result.afterIndexUntilSettle = {
+          requests: proxy.events.filter(
+            (row) => row.at > (end?.at ?? Infinity) && row.at <= (saved.settledAt ?? Infinity)
+          ),
+          renderer: entries.filter(
+            (row) =>
+              row.device === saved.operation.device &&
+              row.at > (end?.at ?? Infinity) &&
+              row.at <= (saved.settledAt ?? Infinity) &&
+              [
+                'vault-delete',
+                'renderer-hash',
+                'write-start',
+                'write-finish',
+                'notice',
+                'long-task',
+              ].includes(row.event)
+          ),
+        }
+        result.javascriptHashCoverage = jsHashes
+        report.reindexes[report.reindexes.findIndex((row) => row.id === result.id)] = result
+      }
       report.noticeCounts = noticeSummary(entries)
       report.notices = entries.length ? report.noticeCounts.abele : undefined
       report.longTaskAttribution = await profileSummary(entries, entries, async (path) =>
         JSON.parse(await readFile(path, 'utf8'))
       )
+      for (const rebuild of report.reindexes) {
+        rebuild.longTasks = report.longTaskAttribution.filter(
+          (row) =>
+            row.device === rebuild.device &&
+            (row.startedAt ?? row.at) >= rebuild.at &&
+            (row.startedAt ?? row.at) <= (rebuild.completedAt ?? Infinity)
+        )
+      }
       report.memorySampling =
         'Maximum observed sum of owned app-tree RSS, sampled externally every second; not an instantaneous peak.'
       report.noticeDetails = noticeDetails(entries, report.phases)

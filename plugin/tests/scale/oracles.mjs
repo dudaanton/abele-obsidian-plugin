@@ -164,11 +164,36 @@ export function budgets(m) {
       0,
       m.verificationComplete === true && m.verifiedFiles > 0 && m.mismatches?.length === 0
     ),
+    ...(m.declaredInterruptions?.some((one) => one.kind === 'reindex')
+      ? [
+          check(
+            'reindex invariants',
+            m.reindexes?.length,
+            'all declared rebuilds proven',
+            m.declaredInterruptions
+              .filter((one) => one.kind === 'reindex')
+              .every((required) =>
+                m.reindexes?.some((one) => one.id === required.id && one.status === 'PASS')
+              )
+          ),
+        ]
+      : []),
     check(
       'interruptions',
       m.interruptions?.filter((one) => one.triggered).length,
-      '>= 6 distinct',
-      new Set(m.interruptions?.filter((one) => one.triggered).map((one) => one.kind)).size >= 6
+      m.declaredInterruptions ? 'every declared occurrence' : '>= 6 distinct',
+      m.declaredInterruptions
+        ? m.declaredInterruptions.length > 0 &&
+            m.declaredInterruptions.every((required) =>
+              m.interruptions?.some(
+                (one) =>
+                  one.triggered &&
+                  one.kind === required.kind &&
+                  (!required.id || one.id === required.id) &&
+                  (!required.device || one.device === required.device)
+              )
+            )
+        : new Set(m.interruptions?.filter((one) => one.triggered).map((one) => one.kind)).size >= 6
     ),
   ]
 }
@@ -190,6 +215,34 @@ export function markdown(report) {
     (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '') +
     details('Phase timings (ongoing means incomplete)', report.phaseTimings) +
     details('Interruption recovery observations (null means unobserved)', report.recoveryTimings) +
+    details(
+      'Vault cache rebuilds (missing causal evidence fails)',
+      report.reindexes?.map((row) => ({
+        id: row.id,
+        device: row.device,
+        phase: row.phase,
+        at: row.at,
+        durationMs: row.durationMs,
+        requests: row.requests?.length,
+        writes: row.writes?.length,
+        deletions: row.deletions?.length,
+        serverDeletions: row.serverDeletions?.length,
+        recoveryDeletions: row.recoveryDeletions,
+        extraUploads: row.extraUploads,
+        extraDownloads: row.extraDownloads,
+        extraRendererHashes: row.extraRendererHashes,
+        notices: row.notices,
+        longTasks: row.longTasks?.map(({ startedAt, durationMs, source, samplesBySource }) => ({
+          startedAt,
+          durationMs,
+          source,
+          samplesBySource,
+        })),
+        javascriptHashCoverage: row.javascriptHashCoverage,
+        settledAt: row.settledAt,
+        status: row.status,
+      }))
+    ) +
     details('Notices (text, time, phase, creation origin)', report.noticeDetails) +
     details(
       'Notice counts by source (only Abele notices enter the notice gate)',
