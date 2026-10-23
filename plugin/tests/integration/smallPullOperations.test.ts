@@ -36,6 +36,11 @@ async function measure(
   folder = false
 ) {
   const root = await native.mkdtemp(join(tmpdir(), 'sample-pull-'))
+  // This fixture measures issued operations, not storage-device flush latency.
+  // Physical flush behavior has its own native suite; retain all call counters here.
+  const probe = await native.open(root, 'r')
+  const flush = vi.spyOn(Object.getPrototypeOf(probe), 'sync').mockResolvedValue(undefined)
+  await probe.close()
   const trace = isolateTransport && diagnostics ? new ExchangeTrace() : null
   const quiet = isolateTransport ? vi.spyOn(console, 'debug').mockImplementation(() => {}) : null
   const nativeCalls: string[] = []
@@ -278,6 +283,7 @@ async function measure(
     return await run()
   } finally {
     quiet?.mockRestore()
+    flush.mockRestore()
     await native.rm(root, { recursive: true, force: true })
   }
   async function run() {

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import '../helpers/desktopRequire'
+import { desktopFsPort } from '../helpers/desktopRequire'
 import { IDBFactory } from 'fake-indexeddb'
 import {
   preservePrivateArtifacts,
@@ -21,9 +21,29 @@ import { WriteJournal } from '@/sync/writeJournal'
 async function fixture(queued = true) {
   const root = await disk.mkdtemp(join(tmpdir(), 'sample-regression-'))
   const app = buildFakeVault([])
+  let flushes = 0
+  // These cases assert placement/retained bytes, not kernel flush latency. Physical
+  // durability is exercised by conditionalVaultNative; keep this acknowledgement deterministic.
+  const filesystem = {
+    ...disk,
+    open: async (...args: Parameters<typeof disk.open>) => {
+      const handle = await disk.open(...args)
+      return new Proxy(handle, {
+        get(target, key) {
+          if (key === 'sync')
+            return async () => {
+              flushes++
+            }
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    },
+  }
+  desktopFsPort(filesystem)
   Object.assign(app.vault.adapter, {
     getFullPath: (path: string) => join(root, path),
-    fsPromises: disk,
+    fsPromises: filesystem,
     queue: queued ? async (work: () => Promise<void>) => work() : undefined,
     exists: async (path: string) =>
       disk.access(join(root, path)).then(
@@ -73,7 +93,13 @@ async function fixture(queued = true) {
     }),
   })
   const fs = new ObsidianFileSystem(app as unknown as App)
-  return { root, fs, app, close: () => disk.rm(root, { recursive: true, force: true }) }
+  return {
+    root,
+    fs,
+    app,
+    flushes: () => flushes,
+    close: () => disk.rm(root, { recursive: true, force: true }),
+  }
 }
 
 for (const mobile of [false, true])
@@ -118,6 +144,7 @@ for (const mobile of [false, true])
       await stage.append(0, bytes)
       await stage.seal({ size: bytes.length, sha })
       await stage.commit()
+      if (!mobile) expect(f.flushes()).toBeGreaterThan(0)
       await stage.discard() // The caller has acknowledged publication; now retire stage evidence.
       expect(await disk.readdir(join(f.root, 'notes'))).toEqual(['sample.bin'])
       await f.fs.move('notes/sample.bin', 'moved/sample.bin')
