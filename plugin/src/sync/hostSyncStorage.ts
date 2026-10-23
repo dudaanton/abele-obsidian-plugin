@@ -383,6 +383,7 @@ export class HostSyncStorage implements LocalStorage {
     const done = completion(tx, 'cannot commit sync host records')
     void done.catch(() => {})
     const groups = new Map<string, Map<string, HostRecord>>()
+    const advancedHeaders = new Set<string>()
     try {
       const store = tx.objectStore(RECORDS)
       // Header.order is the append counter (migration places it after the existing rows).
@@ -429,7 +430,7 @@ export class HostSyncStorage implements LocalStorage {
           if (!prior) {
             const header = { ...group.get('!header'), order: row.order + 1 }
             group.set('!header', header)
-            await wait(store.put(header))
+            advancedHeaders.add(change.key)
           }
         }
       }
@@ -452,7 +453,10 @@ export class HostSyncStorage implements LocalStorage {
           }
           for (const [id, row] of live) if (!group.has(id)) group.set(id, row)
         }
-        const selection = normalizeHostHeader(key, live)
+        // The append counter and normalized header commit once with the whole batch.
+        const selection =
+          normalizeHostHeader(key, live) ??
+          (advancedHeaders.has(key) ? group.get('!header') : undefined)
         if (selection) {
           await wait(store.put(selection))
           group.set(selection.id, selection)

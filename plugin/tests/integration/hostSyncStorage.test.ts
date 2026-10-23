@@ -365,8 +365,40 @@ it('retires only unchanged archived entries after another host writes during the
   }
 })
 
+it('writes the append counter once per journal batch', async () => {
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-batch-counter', local())
+  const journal = new WriteJournal(host)
+  const writes = vi.spyOn(FakeObjectStore.prototype, 'put')
+  try {
+    await journal.persist(() => {
+      for (let i = 0; i < 3; i++) journal.add({ target: `sample-${i}.md`, temp: `sample-${i}.tmp` })
+    })
+    expect(writes).toHaveBeenCalledTimes(4)
+  } finally {
+    writes.mockRestore()
+    host.close()
+  }
+})
+
 it('adds retires and drops 5000 entries with linear synchronous identity work', async () => {
-  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-mutation-cost', local())
+  // This test measures synchronous identity work, not secondary-index maintenance.
+  // The fake scans entire indexes by primary-key value on every overwrite/delete.
+  // Indexed lookup correctness is exercised by the other tests with the full schema.
+  const createIndex = FakeObjectStore.prototype.createIndex
+  const indexes = vi.spyOn(FakeObjectStore.prototype, 'createIndex').mockImplementation(function (
+    this: FakeObjectStore,
+    ...args
+  ) {
+    const index = createIndex.apply(this, args)
+    if (this.name === 'host-records-v3') this.deleteIndex(index.name)
+    return index
+  })
+  let host: HostSyncStorage
+  try {
+    host = await HostSyncStorage.open(new IDBFactory(), 'sample-mutation-cost', local())
+  } finally {
+    indexes.mockRestore()
+  }
   const journal = new WriteJournal(host)
   const entries = Array.from({ length: 5000 }, (_, i) => ({
     target: `sample-${i}.md`,
@@ -417,7 +449,7 @@ it('adds retires and drops 5000 entries with linear synchronous identity work', 
     serialized.mockRestore()
     host.close()
   }
-}, 120000)
+}, 10000)
 
 it('retires 5000 journal entries with linear IndexedDB record reads', async () => {
   const seed = local()
