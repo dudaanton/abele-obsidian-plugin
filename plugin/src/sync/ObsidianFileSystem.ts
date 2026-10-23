@@ -2452,7 +2452,11 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([from, to])
     const expected = await this.legacyBase(from)
-    if (expected === null) throw new EngineError('io', 'Move source is absent')
+    if (expected === null) {
+      await this.onlyFileOrNothing(from)
+      throw new EngineError('io', 'Move source is absent')
+    }
+    await this.onlyFileOrNothing(to)
     if (from === to) return
     await this.beforeEngineMutation?.([from, to])
     if (!(await this.conditionalFile({ path: from, expected, effect: { kind: 'move', to } })))
@@ -2463,7 +2467,11 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([path])
     const expected = await this.legacyBase(path)
-    if (expected === null) return
+    if (expected === null) {
+      if (await this.onlyFileOrNothing(path))
+        throw new EngineError('conflict', 'File appeared before removal')
+      return
+    }
     await this.beforeEngineMutation?.([path])
     if (!(await this.conditionalFile({ path, expected, effect: { kind: 'remove' } })))
       throw new EngineError('conflict', 'File changed before removal')
