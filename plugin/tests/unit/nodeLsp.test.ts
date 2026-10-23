@@ -43,6 +43,55 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('does not insert a delayed analysis notice after diagnostics have already arrived', async () => {
+    const f = fixture()
+    let finish!: () => void
+    f.lsp.open.mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { servers: ['typescript'] }
+    })
+    const opening = f.doc.open('sample')
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    f.push({
+      workspace_id: 'sample-workspace',
+      path: 'sample.ts',
+      diagnostics: [problem('typescript')],
+    })
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    try {
+      expect(f.doc.loading).toBe(false)
+    } finally {
+      finish()
+      await opening
+      await f.doc.close()
+    }
+  })
+  it('publishes initial server availability before exposing diagnostics to the view', async () => {
+    const f = fixture()
+    let finish!: (status: any[]) => void
+    f.lsp.status.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const opening = f.doc.open('sample')
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    try {
+      expect(f.doc.supported).toBe(false)
+      expect(f.client.onEvent).not.toHaveBeenCalled()
+    } finally {
+      finish([
+        { language: 'typescript', found: true },
+        { language: 'eslint', found: false },
+      ])
+      await opening
+      await f.doc.close()
+    }
+    expect(f.doc.status).toContainEqual({ language: 'eslint', found: false })
+  })
   it('retains diagnostics until the next analysis answers', async () => {
     const f = fixture()
     await f.doc.open('before')

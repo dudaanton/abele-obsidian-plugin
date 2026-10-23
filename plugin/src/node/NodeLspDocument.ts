@@ -60,6 +60,10 @@ export class NodeLspDocument {
       })
       .safeParse(description)
     if (this.stopped || !parsed.success) return
+    // Availability notices affect the code's position. Publish them before cached
+    // diagnostics can make the editor interactive at a soon-to-change location.
+    this.status = await this.client.lsp.status(this.root)
+    if (this.stopped) return
     this.supported = true
     this.changed()
     this.unsubscribe = this.client.onEvent((event) => {
@@ -94,6 +98,7 @@ export class NodeLspDocument {
         return
       ++this.pushes
       this.diagnostics = data.diagnostics
+      this.loading = false
       this.changed()
     })
     await this.client.subscribe('catalog')
@@ -104,8 +109,9 @@ export class NodeLspDocument {
     this.pending = this.pending.then(async () => {
       if (this.stopped) return
       if (this.openedText === text && !this.error && !this.unavailable) return
+      const analysisPushes = this.pushes
       const loadingTimer = window.setTimeout(() => {
-        if (!this.stopped) {
+        if (!this.stopped && this.pushes === analysisPushes) {
           this.loading = true
           this.changed()
         }
@@ -113,10 +119,9 @@ export class NodeLspDocument {
       this.error = ''
       this.changed()
       try {
+        if (this.supported && !this.opens) this.status = await this.client.lsp.status(this.root)
         await (this.admission ??= this.admit())
         if (!this.supported || this.stopped) return
-        if (!this.opens) this.status = await this.client.lsp.status(this.root)
-        if (this.stopped) return
         if (this.unavailable) {
           this.diagnostics = []
           console.debug('[node] Language analysis waiting for available trusted servers', this.path)
