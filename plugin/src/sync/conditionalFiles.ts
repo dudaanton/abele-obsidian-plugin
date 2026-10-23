@@ -830,16 +830,17 @@ export class ConditionalFiles {
         (await h.sameObject?.(victim, op.effect.to))
       )
         await h.remove(victim) // Only an alias; the acknowledged retained destination owns the inode.
-      // The public effect has landed even if subsequent journal settlement fails.
-      if (op.effect.kind === 'move') {
-        h.changed([op.path], null)
-        h.changed([op.effect.to], 'file')
-      } else h.changed([op.path], op.effect.kind === 'remove' ? null : 'file')
+      // New bytes have a public home even if later journal settlement fails.
+      if (op.effect.kind === 'write' || op.effect.kind === 'install') h.changed([op.path], 'file')
       // A completed marker is durable before the operation leaves the recovery queue.
       await this.record(folder + '/complete', true)
       await this.retireVictim(folder, intent)
       await this.archive(folder, id, true)
       if (!intent.receipt) await this.discardOwned(id, intent)
+      if (op.effect.kind === 'move') {
+        h.changed([op.path], null)
+        h.changed([op.effect.to], 'file')
+      } else if (op.effect.kind === 'remove') h.changed([op.path], null)
       return true
     } catch (error) {
       // Capture itself may have reached disk before its acknowledgement was lost.
@@ -991,12 +992,15 @@ export class ConditionalFiles {
       }
       release?.()
       release = undefined
-      h.changed([op.path], op.effect.kind === 'remove' || op.effect.kind === 'move' ? null : 'file')
-      if (op.effect.kind === 'move') h.changed([destination], 'file')
+      if (op.effect.kind === 'write' || op.effect.kind === 'install') h.changed([op.path], 'file')
       await operation.record(folder + '/complete', true)
       await operation.retireVictim(folder, intent)
       await operation.archive(folder, id, true)
       if (!intent.receipt) await operation.discardOwned(id, intent)
+      if (op.effect.kind === 'move') {
+        h.changed([op.path], null)
+        h.changed([destination], 'file')
+      } else if (op.effect.kind === 'remove') h.changed([op.path], null)
       return true
     } catch (cause) {
       let error = cause

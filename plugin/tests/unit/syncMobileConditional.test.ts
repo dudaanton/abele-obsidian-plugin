@@ -686,3 +686,43 @@ it('keeps the existing physical spelling during a legacy configuration replaceme
   expect((await app.vault.adapter.list('.obsidian')).files).toEqual(['.obsidian/sample.json'])
   expect(await app.vault.adapter.read('.obsidian/sample.json')).toBe('after')
 })
+
+it.each(['write', 'remove'] as const)(
+  'reports only durable new bytes before a failed completion marker (%s)',
+  async (kind) => {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'original', mtime: 1000 }])
+    const fs = new ObsidianFileSystem(app as never)
+    const conditional = Reflect.get(fs, 'conditional'),
+      host = Reflect.get(conditional, 'host')
+    const changed = vi.spyOn(host, 'changed')
+    const prototype = Object.getPrototypeOf(conditional) as {
+      record(path: string, value: unknown): Promise<void>
+    }
+    const record = prototype.record
+    const fail = vi.spyOn(prototype, 'record').mockImplementation(async function (path, value) {
+      if (path.endsWith('/complete')) throw new Error('completion unavailable')
+      return record.call(this, path, value)
+    })
+    try {
+      await expect(
+        fs.conditionalFile({
+          path: 'sample.bin',
+          expected: { size: 8, mtime: 1000, sha: await sha256(bytes('original')) },
+          effect: kind === 'write' ? { kind, bytes: bytes('incoming'), mtime: 2000 } : { kind },
+        })
+      ).rejects.toThrow('completion unavailable')
+      expect(
+        changed.mock.calls.some(
+          ([paths, known]) => (paths as string[]).includes('sample.bin') && known === 'file'
+        )
+      ).toBe(kind === 'write')
+      expect(changed.mock.calls.some(([, known]) => known === null)).toBe(false)
+      expect(await app.vault.adapter.read('sample.bin')).toBe(
+        kind === 'write' ? 'incoming' : 'original'
+      )
+    } finally {
+      fail.mockRestore()
+      changed.mockRestore()
+    }
+  }
+)
