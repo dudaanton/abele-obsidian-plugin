@@ -420,8 +420,21 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
   }
-  [Symbol.for('abele.sync.operation-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
-    return this.inventoryDepth ? work() : this[INVENTORY_PASS](work)
+  private operationStats?: { revision: number; cache: Map<string, Promise<Stat | null>> }
+  private operationDepth = 0
+  private readonly operationRevision: () => number
+  async [Symbol.for('abele.sync.operation-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
+    if (this.inventoryDepth) return work()
+    this.operationStats =
+      ++this.operationDepth === 1
+        ? { revision: this.operationRevision(), cache: new Map() }
+        : undefined
+    try {
+      return await work()
+    } finally {
+      this.operationStats = undefined
+      this.operationDepth--
+    }
   }
   private createInventory(): InventoryPass {
     const cache = <T>() => new InventoryCache<T>((path) => this.inventoryRevision(path, inventory))
@@ -743,6 +756,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.stageOperations = stageOperations.get(app.vault) ?? new Set<string>()
     stageOperations.set(app.vault, this.stageOperations)
     this.configRevision = adapterConfigRevision(this.scopedAdapter, app.vault.configDir)
+    this.operationRevision = adapterConfigRevision(this.scopedAdapter, '')
     this.cachedConfigRevision = this.configRevision()
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.fileScope = options.fileScope
@@ -2679,9 +2693,20 @@ export class ObsidianFileSystem implements FileSystem {
     const indexed = this.app.vault.getFileByPath(path)
     if (indexed && !this.awaitingIndex.has(path))
       return { path, size: indexed.stat.size, mtime: stamp(indexed.stat.mtime) }
+    const operation = this.operationStats
+    if (operation && operation.revision !== this.operationRevision()) {
+      operation.cache.clear()
+      operation.revision = this.operationRevision()
+    }
+    const read = () => {
+      if (!operation) return this.rawStat(path)
+      let known = operation.cache.get(path)
+      if (!known) operation.cache.set(path, (known = this.rawStat(path)))
+      return known
+    }
     const standing = this.inventory
       ? await this.inventory.stats.stable(path, () => this.rawStat(path))
-      : await this.rawStat(path)
+      : await read()
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
     // back against what it holds, and a name it did not ask about would be a different file.
@@ -2830,6 +2855,7 @@ export class ObsidianFileSystem implements FileSystem {
    */
   private async configSnapshot(): Promise<Map<string, string>> {
     if (this.configPolled) {
+      this.operationStats?.cache.clear()
       invalidateInspectedAbsence(this.startupInventory?.())
       directEntryDurability(this.disk).forgetDirectories()
       this.io.invalidateCapabilities()
