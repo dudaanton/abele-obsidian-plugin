@@ -35,7 +35,7 @@ module.exports = class extends Plugin {
     )
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
     const { observeWrites } = require(config.writeObserver)
-    this.register(observeWrites(this.app.vault.adapter, emit))
+    this.register(observeWrites(this.app.vault.adapter, emit, fs.promises ? [fs.promises] : []))
     let previous = ''
     const seenActivity = new Set()
     const stateTimer = setInterval(() => {

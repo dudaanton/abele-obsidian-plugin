@@ -88,3 +88,23 @@ it('captures write caller stacks and sync durations without changing results', a
     undo()
   }
 })
+
+it('observes direct native ports as well as the host adapter without double wrapping shared ports', async () => {
+  const { observeWrites } = require('../scale/writes.cjs')
+  const events = []
+  const handle = { sync: async () => 7 }
+  const direct = { open: async () => handle, rename: async () => {} }
+  const adapterPort = { open: async () => ({}), rename: async () => {} }
+  const adapter = {
+    getBasePath: () => '/sample',
+    fsPromises: adapterPort,
+    writeBinary: async () => {},
+  }
+  const undo = observeWrites(adapter, (e) => events.push(e), [direct, adapterPort])
+  try {
+    expect(await (await direct.open('/sample/sample.md', 'w')).sync()).toBe(7)
+    expect(events.filter((e) => e.method === 'handle.sync')).toHaveLength(1)
+  } finally {
+    undo()
+  }
+})

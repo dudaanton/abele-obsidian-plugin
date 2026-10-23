@@ -19,10 +19,11 @@ exports.isHostPersistence = (row) =>
 
 // Observe the desktop adapter/native ports before the product binds them. Never replace
 // an operation's arguments, result, error or scheduling with synthetic filesystem behavior.
-exports.observeWrites = function (adapter, emit) {
+exports.observeWrites = function (adapter, emit, nativePorts = []) {
   const root = path.resolve(adapter.getBasePath())
   const generation = `${Date.now()}-${Math.random()}`
   const restore = []
+  const handles = new WeakSet()
   let sequence = 0
   const bytes = (value) =>
     typeof value === 'string' ? Buffer.byteLength(value) : (value?.byteLength ?? null)
@@ -95,7 +96,8 @@ exports.observeWrites = function (adapter, emit) {
     })
   }
   try {
-    const native = adapter.fsPromises
+    const hostNative = adapter.fsPromises
+    const native = hostNative
     if (
       !native ||
       typeof native.open !== 'function' ||
@@ -119,108 +121,116 @@ exports.observeWrites = function (adapter, emit) {
         (args) => relative(path.join(root, args[1])),
         () => 0
       )
-    for (const name of ['writeFile', 'appendFile'])
-      wrap(
-        native,
-        name,
-        'native',
-        (args) => relative(args[0]),
-        (args) => bytes(args[1])
-      )
-    for (const name of ['rename', 'link', 'copyFile'])
-      wrap(
-        native,
-        name,
-        'native',
-        (args) => relative(args[1]),
-        () => 0
-      )
-    const originalOpen = native.open
-    const open = async function (...args) {
-      const file = relative(args[0])
-      const mutates =
-        typeof args[1] === 'string'
-          ? /[wa+]/.test(args[1])
-          : !!(
-              args[1] &
-              (constants.O_WRONLY |
-                constants.O_RDWR |
-                constants.O_APPEND |
-                constants.O_CREAT |
-                constants.O_TRUNC)
-            )
-      const id = ++sequence
-      const startedAt = performance.now()
-      const stack = new Error().stack
-      if (file != null && mutates)
-        emit({
-          event: 'write-start',
-          generation,
-          id,
-          method: 'native.open',
-          path: file,
-          bytes: 0,
-          stack,
-          source: exports.writeOrigin(stack),
-        })
-      let handle
-      try {
-        handle = await originalOpen.apply(this, args)
-      } finally {
+    for (const native of new Set([hostNative, ...nativePorts])) {
+      for (const name of ['writeFile', 'appendFile'])
+        wrap(
+          native,
+          name,
+          'native',
+          (args) => relative(args[0]),
+          (args) => bytes(args[1])
+        )
+      for (const name of ['rename', 'link', 'copyFile'])
+        wrap(
+          native,
+          name,
+          'native',
+          (args) => relative(args[1]),
+          () => 0
+        )
+      const originalOpen = native.open
+      const open = async function (...args) {
+        const file = relative(args[0])
+        const mutates =
+          typeof args[1] === 'string'
+            ? /[wa+]/.test(args[1])
+            : !!(
+                args[1] &
+                (constants.O_WRONLY |
+                  constants.O_RDWR |
+                  constants.O_APPEND |
+                  constants.O_CREAT |
+                  constants.O_TRUNC)
+              )
+        const id = ++sequence
+        const startedAt = performance.now()
+        const stack = new Error().stack
         if (file != null && mutates)
-          emit({ event: 'write-finish', generation, id, durationMs: performance.now() - startedAt })
-      }
-      if (file != null && mutates) {
+          emit({
+            event: 'write-start',
+            generation,
+            id,
+            method: 'native.open',
+            path: file,
+            bytes: 0,
+            stack,
+            source: exports.writeOrigin(stack),
+          })
+        let handle
         try {
-          wrap(
-            handle,
-            'write',
-            'handle',
-            () => file,
-            (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0]))
-          )
-          wrap(
-            handle,
-            'writev',
-            'handle',
-            () => file,
-            (a) => a[0].reduce((sum, b) => sum + bytes(b), 0)
-          )
-          for (const name of ['writeFile', 'appendFile'])
+          handle = await originalOpen.apply(this, args)
+        } finally {
+          if (file != null && mutates)
+            emit({
+              event: 'write-finish',
+              generation,
+              id,
+              durationMs: performance.now() - startedAt,
+            })
+        }
+        if (file != null && mutates && !handles.has(handle)) {
+          handles.add(handle)
+          try {
             wrap(
               handle,
-              name,
+              'write',
               'handle',
               () => file,
-              (a) => bytes(a[0])
+              (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0]))
             )
-          for (const name of ['sync', 'datasync'])
             wrap(
               handle,
-              name,
+              'writev',
+              'handle',
+              () => file,
+              (a) => a[0].reduce((sum, b) => sum + bytes(b), 0)
+            )
+            for (const name of ['writeFile', 'appendFile'])
+              wrap(
+                handle,
+                name,
+                'handle',
+                () => file,
+                (a) => bytes(a[0])
+              )
+            for (const name of ['sync', 'datasync'])
+              wrap(
+                handle,
+                name,
+                'handle',
+                () => file,
+                () => 0
+              )
+            wrap(
+              handle,
+              'truncate',
               'handle',
               () => file,
               () => 0
             )
-          wrap(
-            handle,
-            'truncate',
-            'handle',
-            () => file,
-            () => 0
-          )
-        } catch {
-          emit({ event: 'write-observer-error', generation })
+          } catch {
+            emit({ event: 'write-observer-error', generation })
+          }
         }
+        return handle
       }
-      return handle
+      native.open = open
+      if (native.open !== open) throw new Error('Observer open port is not writable')
+      restore.push(() => {
+        if (native.open === open) native.open = originalOpen
+      })
     }
-    native.open = open
-    if (native.open !== open) throw new Error('Observer open port is not writable')
-    restore.push(() => {
-      if (native.open === open) native.open = originalOpen
-    })
-    if (adapter.fsPromises !== native) throw new Error('Observer native port is not stable')
+    if (adapter.fsPromises !== hostNative) throw new Error('Observer native port is not stable')
     emit({
       event: 'write-observer-ready',
       generation,
