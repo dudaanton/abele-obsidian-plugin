@@ -133,6 +133,17 @@ describe('ChatSummarizer.generateTitle', () => {
     expect(host.isGeneratingTitle.value).toBe(false)
   })
 
+  it('queues generated title metadata without starting another write', async () => {
+    nextResponse = 'Sample garden plan'
+    const { host, dirtyCount, saveCount } = buildHost()
+
+    await new ChatSummarizer(host).generateTitle()
+
+    expect(host.chatTitle.value).toBe('Sample garden plan')
+    expect(dirtyCount()).toBe(1)
+    expect(saveCount()).toBe(0)
+  })
+
   it('strips quotes and characters a filename cannot carry', async () => {
     nextResponse = '"Fix: the/broken|thing"'
     const { host } = buildHost()

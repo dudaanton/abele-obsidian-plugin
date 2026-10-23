@@ -116,6 +116,7 @@ it('names the first exchange in the tab and tree and retains it on reopen', asyn
   expect(chatsOf(service.tree.root.value).find((chat) => chat.id === id)?.title).toBe(
     'Sample garden plan'
   )
+  await session.flush()
   const file = session.currentChatFile.value!
   const saved = parseChat(await GlobalStore.getInstance().app.vault.read(file))
   expect(saved.metadata?.title).toBe('Sample garden plan')

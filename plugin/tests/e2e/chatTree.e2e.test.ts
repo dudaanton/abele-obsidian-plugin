@@ -333,6 +333,7 @@ const probe = (label: string) => `(async () => {
       }
       reopened.manualTitle.value = false
       await reopened.summarizer.generateTitle()
+      await reopened.flush()
       await until(() => current().querySelector('.abele-chat-switch__title')?.textContent === 'Sample travel planning')
       const stored = await window.__abeleTest.ChatStorage.getInstance().loadChat(reopened.currentChatFile.value)
       if (stored.metadata.title !== 'Sample travel planning') throw Error('Generated title was not persisted')
