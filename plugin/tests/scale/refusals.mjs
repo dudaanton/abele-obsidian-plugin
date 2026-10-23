@@ -14,11 +14,27 @@ export function fileExpectations(files, limits) {
 
 export function oversizedEvidence(files, primary, snapshots, wire) {
   const sizeReason = /too_large|too large|larger than|size.*limit|limit.*size/i
+  const namesPath = (text, path) => {
+    if (typeof text !== 'string') return false
+    for (let at = text.indexOf(path); at >= 0; at = text.indexOf(path, at + 1)) {
+      const before = at === 0 ? ' ' : text[at - 1]
+      const after = text[at + path.length] ?? ' '
+      if (/[\s"'`(:[{]/.test(before) && /[\s"'`):;,\]}]/.test(after)) return true
+    }
+    return false
+  }
   return files.map((file) => {
     const statuses = snapshots.flatMap((s) => (s.activity ?? []).flatMap((a) => a.refused ?? []))
     const logs = snapshots.flatMap((s) => (s.activity ?? []).flatMap((a) => a.events ?? []))
     const status = statuses.filter((r) => r.path === file.path && sizeReason.test(r.reason))
-    const log = logs.filter((r) => r.text.includes(file.path) && sizeReason.test(r.text))
+    const log = logs.filter((r) => namesPath(r.text, file.path) && sizeReason.test(r.text))
+    const uploadRequests = wire.filter(
+      (e) =>
+        e.device === '0' &&
+        e.event === 'start' &&
+        e.method !== 'GET' &&
+        (e.route === `/v2/uploads/${file.sha}` || e.route.startsWith(`/v2/uploads/${file.sha}/`))
+    )
     const intact = primary.some(
       (actual) => actual.path === file.path && actual.sha === file.sha && actual.size === file.size
     )
@@ -36,6 +52,7 @@ export function oversizedEvidence(files, primary, snapshots, wire) {
       log,
       intact,
       attempts,
+      uploadRequests,
       syncedClaims: syncedClaims.map((s) => ({ at: s.at, snapshot: s.snapshot })),
       pass:
         status.length > 0 &&

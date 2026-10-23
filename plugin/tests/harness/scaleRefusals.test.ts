@@ -52,6 +52,24 @@ it('requires exact visible size reasons in both status and log, intact primary, 
       []
     )[0].pass
   ).toBe(false)
+  expect(
+    oversizedEvidence(
+      [file],
+      [file],
+      [
+        {
+          ...snapshots[0],
+          activity: [
+            {
+              refused: snapshots[0].activity[0].refused,
+              events: [{ text: `too_large: ${file.path}-different` }],
+            },
+          ],
+        },
+      ],
+      []
+    )[0].pass
+  ).toBe(false)
   const starts = [1, 2].map((id) => ({
     id,
     device: '0',
