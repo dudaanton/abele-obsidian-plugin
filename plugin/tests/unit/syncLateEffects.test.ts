@@ -373,3 +373,55 @@ it.each([
     vi.useRealTimers()
   }
 })
+
+it('keeps both versions recoverable when publication repair fails through the checked caller', async () => {
+  const app = buildFakeVault([]),
+    raw = app.vault.adapter
+  await raw.writeBinary('sample.bin', bytes('original').buffer)
+  const save = raw.writeBinary.bind(raw)
+  const disk = new ObsidianFileSystem(app as never)
+  const conditional = Reflect.get(disk, 'conditional'),
+    host = Reflect.get(conditional, 'host')
+  const install = host.install,
+    stat = host.stat
+  let refusePublish = true,
+    interruptIncoming = true
+  host.install = async (from: string, to: string) => {
+    if (refusePublish && to === 'sample.bin' && from.endsWith('/data')) {
+      refusePublish = false
+      await save('sample.bin', bytes('competing').buffer)
+      throw Object.assign(new Error('EEXIST occupied'), { code: 'EEXIST' })
+    }
+    return install(from, to)
+  }
+  host.stat = async (path: string) => {
+    if (!refusePublish && interruptIncoming && path.endsWith('/data-restored')) {
+      interruptIncoming = false
+      throw Object.assign(new Error('EEXIST interrupted restoration'), { code: 'EEXIST' })
+    }
+    return stat(path)
+  }
+  host.withMutationCheck = undefined
+  await conditional
+    .apply({
+      path: 'sample.bin',
+      expected: {
+        sha: await sha256(bytes('original')),
+        size: 8,
+        mtime: (await raw.stat('sample.bin'))!.mtime,
+      },
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000 },
+    })
+    .catch(() => {})
+  expect(interruptIncoming).toBe(false)
+  const recovery = Reflect.get(new ObsidianFileSystem(app as never), 'conditional')
+  await recovery.recover()
+  const files = (await raw.list('')).files.sort()
+  const content = await Promise.all(
+    files.map(async (path) => [...new Uint8Array(await raw.readBinary(path))])
+  )
+  expect(content).toContainEqual([...bytes('original')])
+  expect(content).toContainEqual([...bytes('incoming')])
+  await recovery.recover()
+  expect((await raw.list('')).files.sort()).toEqual(files)
+})

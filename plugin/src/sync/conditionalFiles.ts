@@ -1013,7 +1013,9 @@ export class ConditionalFiles {
         return false
       }
       try {
-        if (recorded) await operation.restore(victim, op.path)
+        // Error recovery owns both the captured victim and incoming data. Never
+        // archive the shared intent after restoring only the victim.
+        if (recorded) await operation.repairIntent(folder, id)
         if (
           (error as { code?: string })?.code === 'EEXIST' ||
           /^(EEXIST\b|File already exists|Destination file already exists)/.test(
