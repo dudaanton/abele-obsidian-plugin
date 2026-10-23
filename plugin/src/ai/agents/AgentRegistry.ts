@@ -200,6 +200,7 @@ export class AgentRegistry {
       id: found.model.id,
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
+      apiMode: found.provider.apiMode,
       clientName: found.provider.clientName,
       requestTimeoutSeconds: requestTimeoutSeconds(
         found.model.requestTimeoutSeconds,

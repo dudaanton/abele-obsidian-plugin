@@ -185,6 +185,8 @@ export interface ModelConfig {
   id: string
   name: string
   baseUrl: string
+  /** Absent preserves Chat Completions. */
+  apiMode?: 'chat-completions' | 'responses'
   clientName?: string
   apiKey: string
   /** Seconds to connect or wait for the next response chunk. Defaults to 60. */

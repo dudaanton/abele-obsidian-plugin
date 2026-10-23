@@ -52,6 +52,8 @@ export interface AiProvider {
   id: string
   name: string
   baseUrl: string
+  /** Absent preserves Chat Completions. */
+  apiMode?: 'chat-completions' | 'responses'
   /** Optional identifying User-Agent; empty preserves the transport default. */
   clientName?: string
   apiKeyId: string // reference for Obsidian keychain

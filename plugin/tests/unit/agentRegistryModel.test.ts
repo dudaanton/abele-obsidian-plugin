@@ -111,3 +111,20 @@ describe('AgentRegistry.resolveModel', () => {
     expect(AgentRegistry.getInstance().resolveModel(agent)!.apiKey).toBe('')
   })
 })
+
+it('uses the selected provider API for primary, fallback and background models', () => {
+  const config = AbeleConfig.getInstance()
+  config.ai.providers[0] = { ...openai, apiMode: 'responses' }
+  const agent = createAgent({
+    providerId: 'openai',
+    modelId: 'o3',
+    fallbackProviderId: 'openai',
+    fallbackModelId: 'gpt-4o',
+    auxiliaryProviderId: 'openai',
+    auxiliaryModelId: 'gpt-4o',
+  })
+  const registry = AgentRegistry.getInstance()
+  for (const options of [{}, { fallback: true }, { background: true }]) {
+    expect(registry.resolveModel(agent, options)?.apiMode).toBe('responses')
+  }
+})

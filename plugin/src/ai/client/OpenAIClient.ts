@@ -1,3 +1,4 @@
+import { ResponsesStreamAdapter, type ResponsesEvent } from './responses'
 import { request as requestUrl, withDeadline, readTextLimited, checkRequest } from '@/helpers/http'
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import { mobileBackground } from '@/ai/mobileBackground'
@@ -77,7 +78,7 @@ interface ChunkUsage {
   completion_tokens_details?: { reasoning_tokens?: number }
 }
 
-interface StreamChunk {
+export interface StreamChunk {
   id?: string
   choices?: ChunkChoice[]
   usage?: ChunkUsage
@@ -202,11 +203,16 @@ export class OpenAIClient {
           },
           () => mobileBackground.active
         ).catch(() => 'Unreadable or oversized error response')
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+        throw new Error(
+          model.apiMode === 'responses'
+            ? `HTTP ${response.status}: Responses request failed. Check the provider configuration or retry.`
+            : `HTTP ${response.status}: ${errorText}`
+        )
       }
       if (!response.body) throw new Error('No response body')
 
-      for await (const chunk of this.parseSSE(response.body, signal, timeoutMs)) {
+      const adapter = model.apiMode === 'responses' ? new ResponsesStreamAdapter() : undefined
+      for await (const chunk of this.parseSSE(response.body, signal, timeoutMs, adapter)) {
         if (!chunk || typeof chunk !== 'object') continue
         if (chunk.error) {
           throw new Error(
@@ -283,7 +289,7 @@ export class OpenAIClient {
               if (currentBlock) yield* this.finishBlock(currentBlock, output)
               currentBlock = {
                 type: 'toolCall',
-                id: this.sanitizeToolCallId(tcId),
+                id: model.apiMode === 'responses' ? tcId : this.sanitizeToolCallId(tcId),
                 name: tcName || '',
                 arguments: {},
                 partialArgs: '',
@@ -396,7 +402,7 @@ export class OpenAIClient {
 
   private getUrl(model: ModelConfig): string {
     const base = model.baseUrl.replace(/\/+$/, '')
-    return `${base}/chat/completions`
+    return `${base}/${model.apiMode === 'responses' ? 'responses' : 'chat/completions'}`
   }
 
   private buildRequestBody(
@@ -406,7 +412,59 @@ export class OpenAIClient {
     tools: ToolDefinition[],
     options: StreamOptions
   ): Record<string, unknown> {
-    const openaiMessages = this.convertMessages(systemPrompt, messages, model.supportsReasoning)
+    const openaiMessages = this.convertMessages(
+      model.apiMode === 'responses' ? '' : systemPrompt,
+      messages,
+      model.supportsReasoning
+    )
+    if (model.apiMode === 'responses') {
+      const input = openaiMessages.flatMap((message): Record<string, unknown>[] => {
+        if (message.role === 'tool')
+          return [
+            {
+              type: 'function_call_output',
+              call_id: message.tool_call_id,
+              output: message.content,
+            },
+          ]
+        const items: Record<string, unknown>[] = []
+        if (message.content)
+          items.push({
+            role: message.role,
+            content: Array.isArray(message.content)
+              ? message.content.map((part) =>
+                  part.type === 'text'
+                    ? { type: 'input_text', text: part.text }
+                    : { type: 'input_image', image_url: part.image_url.url }
+                )
+              : message.content,
+          })
+        for (const call of message.tool_calls ?? [])
+          items.push({
+            type: 'function_call',
+            call_id: call.id,
+            name: call.function.name,
+            arguments: call.function.arguments,
+          })
+        return items
+      })
+      const body: Record<string, unknown> = {
+        model: model.id,
+        stream: true,
+        store: false,
+        instructions: systemPrompt,
+        input,
+        max_output_tokens:
+          options.maxTokens ||
+          Math.min(model.maxTokens, OpenAIClient.DEFAULT_MAX_COMPLETION_TOKENS),
+      }
+      if (tools.length)
+        body.tools = tools.map((tool) => ({ type: 'function', ...tool, strict: false }))
+      if (options.reasoningEffort && model.supportsReasoning)
+        body.reasoning = { effort: options.reasoningEffort, summary: 'auto' }
+      if (options.temperature != null) body.temperature = options.temperature
+      return body
+    }
     const openaiTools = this.convertTools(tools)
 
     const body: Record<string, unknown> = {
@@ -656,9 +714,14 @@ export class OpenAIClient {
   private async *parseSSE(
     body: ReadableStream<Uint8Array>,
     signal?: AbortSignal,
-    timeoutMs = requestTimeoutSeconds(undefined) * 1000
+    timeoutMs = requestTimeoutSeconds(undefined) * 1000,
+    adapter?: ResponsesStreamAdapter
   ): AsyncGenerator<StreamChunk> {
     const reader = body.getReader()
+    const abort = () => {
+      void reader.cancel().catch(() => {})
+    }
+    signal?.addEventListener('abort', abort, { once: true })
     const decoder = new TextDecoder()
     let buffer = ''
     let dataLines: string[] = []
@@ -679,6 +742,7 @@ export class OpenAIClient {
           },
           () => mobileBackground.active
         )
+        signal?.throwIfAborted()
         if (done) break
         bytes += value.byteLength
         if (bytes > 20 * 1024 * 1024) throw new Error('Chat response too large')
@@ -699,9 +763,15 @@ export class OpenAIClient {
               dataLines = []
               eventSize = 0
               try {
-                const chunk = JSON.parse(jsonStr) as StreamChunk
-                if (chunk?.choices?.[0]?.finish_reason) completed = true
-                yield chunk
+                const raw = JSON.parse(jsonStr)
+                const chunks = adapter
+                  ? adapter.accept(raw as ResponsesEvent)
+                  : [raw as StreamChunk]
+                for (const chunk of chunks) {
+                  if (chunk?.choices?.[0]?.finish_reason || adapter?.completed) completed = true
+                  yield chunk
+                }
+                if (adapter?.completed) return
               } catch {
                 // Skip malformed JSON chunks
               }
@@ -711,7 +781,10 @@ export class OpenAIClient {
 
           if (stripped.startsWith(':')) continue // SSE comment
 
-          if (stripped === 'data: [DONE]') return
+          if (stripped === 'data: [DONE]') {
+            if (!adapter || adapter.completed) return
+            throw new Error('Model response ended before completion. Retry the request.')
+          }
 
           eventSize += stripped.length
           if (eventSize > 2 * 1024 * 1024) throw new Error('Chat event too large')
@@ -727,9 +800,12 @@ export class OpenAIClient {
       if (dataLines.length > 0) {
         const jsonStr = dataLines.join('\n')
         try {
-          const chunk = JSON.parse(jsonStr) as StreamChunk
-          if (chunk?.choices?.[0]?.finish_reason) completed = true
-          yield chunk
+          const raw = JSON.parse(jsonStr)
+          const chunks = adapter ? adapter.accept(raw as ResponsesEvent) : [raw as StreamChunk]
+          for (const chunk of chunks) {
+            if (chunk?.choices?.[0]?.finish_reason || adapter?.completed) completed = true
+            yield chunk
+          }
         } catch {
           // Skip malformed JSON chunks
         }
@@ -745,6 +821,7 @@ export class OpenAIClient {
         reason: completed ? 'complete' : signal?.aborted ? 'aborted' : 'incomplete',
       })
       void reader.cancel().catch(() => {})
+      signal?.removeEventListener('abort', abort)
       reader.releaseLock()
     }
   }
