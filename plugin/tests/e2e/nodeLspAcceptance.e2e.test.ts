@@ -88,7 +88,13 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           }
           throw Error('Symbol not drawn: '+word);
         };
-        const move=(p,mod=false)=>p.target.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:p.x,clientY:p.y,ctrlKey:mod}));
+        const web=require('@electron/remote').getCurrentWebContents();
+        require('@electron/remote').getCurrentWindow().focus();web.focus();
+        const inputTrace=[];
+        const trace=e=>{inputTrace.push({type:e.type,key:e.key,alt:e.altKey,ctrl:e.ctrlKey,trusted:e.isTrusted,target:e.target?.className});if(inputTrace.length>20)inputTrace.shift()};
+        for(const type of ['keydown','keyup','mousemove'])document.addEventListener(type,trace,true);
+        const move=(p,mod=false)=>web.sendInputEvent({type:'mouseMove',x:Math.round(p.x),y:Math.round(p.y),modifiers:mod?['control']:[]});
+        const alt=down=>web.sendInputEvent({type:down?'keyDown':'keyUp',keyCode:'Alt',modifiers:down?['alt']:[]});
         const shot=async name=>{await wait(150);require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+name+'.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())};
         const originalTheme=document.body.classList.contains('theme-dark');
         try { for(const theme of ['light','dark']) {
@@ -97,11 +103,11 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await wait(600);
           if(document.querySelector('.abele-lsp-message'))throw Error('Plain hover exposed type');
           await shot(theme+'-plain');
-          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Alt',altKey:true,bubbles:true}));
+          alt(true);
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover').catch(error=>{
             const cm=api.codeView(document.querySelector('.abele-lsp-root .cm-content'));
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
-            throw Error(error.message+' '+JSON.stringify({targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
+            throw Error(error.message+' '+JSON.stringify({inputTrace,targetConnected:long.target.isConnected,modifiers,pointer:{x:long.x,y:long.y},currentSymbol:((p)=>({x:p.x,y:p.y}))(point('register',2)),position:cm.posAtCoords(long)}));
           });
           const popup=document.querySelector('.abele-lsp-message');
           if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');
@@ -112,19 +118,27 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           const docsBox=docs.getBoundingClientRect(), popupBox=popup.getBoundingClientRect();
           if(docsBox.bottom>popupBox.bottom+1 || docsBox.top<popupBox.top)throw Error('Hover documentation cannot be scrolled into view');
           await shot(theme+'-overloaded-docs');
-          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Alt',bubbles:true}));
+          alt(false);
           await until(()=>!document.querySelector('.abele-lsp-message'),'Modifier release');
-          const short=point('sample',1);move(short,true);
+          alt(true);await wait(50);
+          const short=point('sample',1);
+          web.sendInputEvent({type:'mouseMove',x:Math.round(short.x),y:Math.round(short.y),modifiers:['alt']});
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Short hover');
           await shot(theme+'-short');
-          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));
+          alt(false);
+          await until(()=>!document.querySelector('.abele-lsp-message'),'Alt release after move');
+          move(short,true);
+          await until(()=>document.querySelector('.abele-lsp-message pre code'),'Control hover');
+          web.sendInputEvent({type:'keyUp',keyCode:'Control'});
           const problem=point('broken',3);move(problem);
           await until(()=>document.querySelector('.abele-lsp-problem'),'Plain diagnostic');
           if(document.querySelector('.abele-lsp-message pre'))throw Error('Diagnostic exposed type');
           await shot(theme+'-diagnostic');
-          problem.target.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true}));
+          web.sendInputEvent({type:'mouseMove',x:1,y:1});
           await until(()=>!document.querySelector('.abele-lsp-message'),'Leave diagnostic');
         }} finally {
+          alt(false);
+          for(const type of ['keydown','keyup','mousemove'])document.removeEventListener(type,trace,true);
           document.body.classList.toggle('theme-dark',originalTheme);document.body.classList.toggle('theme-light',!originalTheme);
           document.querySelector('[data-lsp-close]')?.click();
         }
