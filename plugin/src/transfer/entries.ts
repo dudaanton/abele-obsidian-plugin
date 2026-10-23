@@ -202,7 +202,8 @@ export const SECTIONS: Section[] = [
   aiBlock('ai-voice', 'Voice input', ['voice'], {
     secretsOf: (settings) => [ai(settings).voice?.apiKeyId || DEFAULT_TRANSCRIPTION.apiKeyId],
   }),
-  // Whole providers travel, including clientName and each model's requestTimeoutSeconds.
+  // Whole providers travel, including clientName and each model's requestTimeoutSeconds
+  // and explicit reasoningDisabled choice.
   aiList('ai-providers', 'AI providers', 'providers', (p: Identified & { apiKeyId?: string }) =>
     p.apiKeyId ? [p.apiKeyId] : []
   ),

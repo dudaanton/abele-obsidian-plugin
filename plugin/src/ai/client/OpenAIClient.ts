@@ -431,7 +431,9 @@ export class OpenAIClient {
       body.temperature = options.temperature
     }
 
-    if (options.reasoningEffort && model.supportsReasoning) {
+    if (!model.supportsReasoning && model.reasoningDisabled) {
+      body.reasoning_effort = 'none'
+    } else if (options.reasoningEffort && model.supportsReasoning) {
       body.reasoning_effort = options.reasoningEffort
     }
 

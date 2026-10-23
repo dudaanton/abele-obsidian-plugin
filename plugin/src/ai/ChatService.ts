@@ -1588,6 +1588,7 @@ export class ChatService {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
+      reasoningDisabled: model.reasoningDisabled,
       reasoningEffort: model.reasoningEffort,
     }
   }
@@ -1631,6 +1632,7 @@ export class ChatService {
           contextWindow: model.contextWindow,
           maxTokens: model.maxTokens,
           supportsReasoning: model.supportsReasoning,
+          reasoningDisabled: model.reasoningDisabled,
         }
       }
     }
@@ -1751,6 +1753,7 @@ export class ChatService {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
+      reasoningDisabled: model.reasoningDisabled,
       reasoningEffort: model.reasoningEffort,
       requestTimeoutSeconds: requestTimeoutSeconds(
         model.requestTimeoutSeconds,

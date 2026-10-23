@@ -209,6 +209,7 @@ export class AgentRegistry {
       contextWindow: found.model.contextWindow,
       maxTokens: found.model.maxTokens,
       supportsReasoning: found.model.supportsReasoning,
+      reasoningDisabled: found.model.reasoningDisabled,
       ...(found.model.reasoningEffort ? { reasoningEffort: found.model.reasoningEffort } : {}),
     }
   }

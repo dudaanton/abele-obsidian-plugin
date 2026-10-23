@@ -124,6 +124,12 @@ and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.
 
+Each model's reasoning toggle stores `supportsReasoning`. Switching it off also stores
+`reasoningDisabled: true`, which sends `reasoning_effort: "none"` on Chat Completions.
+Switching it on clears that flag and keeps the previous `reasoningEffort` (low, medium or
+high). Older models without the flag keep the provider's default when reasoning is off.
+These model fields travel with the provider in settings transfers.
+
 Each model connection has **Client name** (`ai.providers.N.clientName`): an optional
 `User-Agent` for chat (including image attachments), agent, fallback and background requests,
 and fetching the model list. Empty or whitespace-only keeps the existing transport defaults.

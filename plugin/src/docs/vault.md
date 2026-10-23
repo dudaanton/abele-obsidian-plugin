@@ -9,6 +9,13 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+## Model reasoning settings
+
+Provider model configs in plugin settings retain an optional `reasoningDisabled` boolean.
+The reasoning toggle sets it to true on an explicit off choice and removes it when enabled.
+Absent means no explicit off choice was recorded; older configs are not migrated to off.
+The prior `reasoningEffort` is retained, and provider settings transfers carry both fields.
+
 ## Device-local connection trust
 
 Multi-item sync grouping uses the separate device-local `abele-sync-connection-sets-v1`

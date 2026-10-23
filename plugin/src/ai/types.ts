@@ -64,6 +64,8 @@ export interface AiModelConfig {
   contextWindow: number
   maxTokens: number
   supportsReasoning: boolean
+  /** Explicit off choice; absent preserves the provider's default. */
+  reasoningDisabled?: boolean
   reasoningEffort?: 'low' | 'medium' | 'high'
   /** Idle request timeout in seconds; absent follows the shared AI setting. */
   requestTimeoutSeconds?: number

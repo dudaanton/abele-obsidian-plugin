@@ -71,10 +71,7 @@
         :name="t('settings.ModelEditModal.reasoning.d8211e24')"
         :desc="t('settings.ModelEditModal.enable_reasoning_thinking_for_supported.f198e996')"
       >
-        <Checkbox
-          :is-enabled="form.supportsReasoning"
-          @toggle="form.supportsReasoning = !form.supportsReasoning"
-        />
+        <Checkbox :is-enabled="form.supportsReasoning" @toggle="toggleReasoning" />
       </Setting>
 
       <Setting
@@ -152,6 +149,11 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<AiModelConfig>({ ...props.model })
+const toggleReasoning = () => {
+  form.supportsReasoning = !form.supportsReasoning
+  if (form.supportsReasoning) delete form.reasoningDisabled
+  else form.reasoningDisabled = true
+}
 const timeoutInput = ref(
   form.requestTimeoutSeconds === undefined ? '' : String(form.requestTimeoutSeconds)
 )
