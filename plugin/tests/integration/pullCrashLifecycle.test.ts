@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest'
 import {
   applyStaged,
   ExpectedWrites,
+  EngineError,
   MemoryStateStore,
   recoverPendingPullWrites,
   sha256,
@@ -11,6 +12,7 @@ import {
 import type { AtomicStage, EngineClient } from '@abele/sync-sdk/core'
 import type { ChangeItem } from '@abele/sync-sdk/protocol'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import type { ConditionalFileHost } from '@/sync/conditionalFiles'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -214,10 +216,23 @@ async function scenario(
     bytes[0] ^= 1
     await rawWrite(stage, bytes.buffer, { mtime: (await app.vault.adapter.stat(stage))!.mtime })
   }
-  if (failure === 'publish')
-    vi.spyOn(app.vault.adapter, 'rename').mockRejectedValueOnce(
-      new Error('Sample publication failed')
-    )
+  if (failure === 'publish') {
+    // Cut public installation, rather than an unrelated private metadata rename.
+    const host = Reflect.get(Reflect.get(disk, 'conditional'), 'host') as ConditionalFileHost
+    const wrap = (port: ConditionalFileHost): ConditionalFileHost => {
+      const install = port.install.bind(port)
+      return {
+        ...port,
+        install: (from, to) => {
+          if (to === change.path) throw new EngineError('io', 'Sample publication failed')
+          return install(from, to)
+        },
+      }
+    }
+    const leased = host.withMutationCheck!.bind(host)
+    Object.assign(host, wrap(host))
+    host.withMutationCheck = (check) => wrap(leased(check))
+  }
   client.openVersion.mockClear()
   const intentBeforeRecovery = await state.getMeta('pull-write:sample-file')
   const moves = vi.spyOn(disk, 'move')

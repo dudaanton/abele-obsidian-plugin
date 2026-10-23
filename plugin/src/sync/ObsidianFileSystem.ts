@@ -2373,7 +2373,29 @@ export class ObsidianFileSystem implements FileSystem {
             if ((error as { code?: string }).code !== 'ENOENT') throw error
           }
         }
-        if (!uncertain) return this.reopenPullStage(id)
+        if (!uncertain) {
+          // The private stage proves non-publication, not continued ownership of
+          // the target. Preserve a save made since the interrupted download.
+          // A distinct move source remains the core's recreation decision.
+          const current = await this.rawStat(target)
+          if (
+            current &&
+            (from === null || this.pathKey(from) === this.pathKey(target)) &&
+            (expectedBase === null ||
+              current.size !== expectedBase.size ||
+              current.mtime !== expectedBase.mtime ||
+              (await this.io.fingerprint(target, undefined, true, true)).sha !== expectedBase.sha)
+          ) {
+            const retained: JournalEntry = {
+              ...previous,
+              streaming: { ...previous.streaming, base: null, retainBase: true },
+            }
+            await this.journal.persist(() => this.journal.replace(previous, retained))
+            this.stages.set(id, retained)
+            console.debug('[abele-sync] preserving a target saved during interrupted download')
+          }
+          return this.reopenPullStage(id)
+        }
       } else if (!id && receiptId) {
         const receipt = (await this.journal.currentForTargets([target])).find(
           (entry) => entry.conditionalReceipt === receiptId
