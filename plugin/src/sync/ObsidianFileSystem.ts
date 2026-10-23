@@ -2499,14 +2499,24 @@ export class ObsidianFileSystem implements FileSystem {
               }
             }
           }
-          if (retain) {
+          // Recovery may detach an independently recreated source and authorize
+          // installation into an absent destination. The old stage's source base
+          // must not require that absent target to exist; conditional install still
+          // checks absence again at publication.
+          const absentBase = !current && expectedBase === null && from === null
+          if (retain || absentBase) {
             const retained: JournalEntry = {
               ...previous,
-              streaming: { ...previous.streaming, base: null, retainBase: true },
+              streaming: { ...previous.streaming, base: null, retainBase: retain },
             }
             await this.journal.persist(() => this.journal.replace(previous, retained))
             this.stages.set(id, retained)
-            console.debug('[abele-sync] preserving a target saved during interrupted download')
+            console.debug(
+              '[abele-sync]',
+              retain
+                ? 'preserving a target saved during interrupted download'
+                : 'recovering private stage into absent target'
+            )
           }
           return this.reopenPullStage(id)
         }

@@ -507,7 +507,7 @@ it.each(matrix)(
           : !bounded && operation === 'move' && entryPoint === 'take'
         : (window === 'partial' || window === 'complete') &&
           operation === 'move' &&
-          (edited || !bounded)
+          (edited || (!bounded && entryPoint === 'take'))
     if (held) {
       expect((await result.state.byFileId('sample-file'))?.versionId).not.toBe('incoming')
       if (edited)
@@ -520,7 +520,12 @@ it.each(matrix)(
         )
       if (window !== 'before-stage') {
         expect(await result.state.getMeta('pull-write:sample-file')).not.toBeNull()
-        if (entryPoint === 'recover')
+        if (entryPoint === 'recover' && (bounded || !edited)) {
+          // A durable held intent is a successful recovery result, not an exception.
+          expect(result.error).toBeNull()
+          const pending = JSON.parse((await result.state.getMeta('pull-write:sample-file'))!)
+          expect(pending.heldOrder).toBeGreaterThan(0)
+        } else if (entryPoint === 'recover')
           expect(result.error).toMatchObject({ reason: 'recovery-required' })
       }
     } else {

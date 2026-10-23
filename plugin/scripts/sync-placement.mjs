@@ -117,6 +117,9 @@ export function syncPlacementPlugin() {
               const entry = await this.state.byFileId(change.file_id);
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
+              // Pending publication owns its source and resume offset. Recovery
+              // decides whether any bytes are missing; batch prefetch cannot.
+              if (await this.placer.pending.read(change.file_id) !== null) continue;
               if (this.placer.initialLocal.has(change.sha)) continue;
               let observed;
               // A missing receipt does not mean missing bytes. Let placement verify and adopt
@@ -399,7 +402,16 @@ export function syncPlacementPlugin() {
         async placeObserved(change, sha, entry, fetched, local) {
           // Interrupted intents own recovery. Ordinary offline-edit preflight must
           // not bypass their stage verification, preservation or case-only moves.
-          const recovering = await this.pending.matching(change, entry) !== null;
+          const pendingPlacement = await this.pending.matching(change, entry);
+          const recovering = pendingPlacement !== null;
+          // A complete readable private stage already owns the immutable bytes.
+          // Publication authenticates it again under the lease; do not prefetch it.
+          const replayStage = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
+          if (pendingPlacement?.stageId && this.fs.reopenStage && replayStage &&
+              await replayStage.call(this.fs) &&
+              (await this.fs.reopenStage(pendingPlacement.stageId)).offset === change.size)
+            return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+              () => this.placeUnlocked(change, sha, entry, fetched, local));
           // Preflight avoids unnecessary transfers; the lease repeats this content check.
           if (!recovering && ((entry !== null && await this.edited(entry)) ||
               await this.editedMoveDestination(change, entry)))
@@ -554,7 +566,10 @@ export function syncPlacementPlugin() {
             }
         }
         const adopted = await placer.adopt(change, entry);
-        if (!adopted && client?.openVersion && fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+        // The SDK below already places staged intents and moves. Only its legacy
+        // stage-less, non-move lane needs host publication recovery here.
+        if (!adopted && intent.stageId === undefined && intent.from === null &&
+            client?.openVersion && fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
             await new PendingPullWrites(state).matching(change, entry) !== null)
             await placer.place(change, change.sha, entry, new Map(), new Map());`
         )
