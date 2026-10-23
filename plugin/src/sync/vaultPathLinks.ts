@@ -8,6 +8,55 @@ import type { Vault } from 'obsidian'
 import type { DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-sdk/core'
 import { PathCoordinator } from './pathCoordinator'
+import { caseKey } from '@abele/sync-sdk/protocol'
+
+const namePolicies = new WeakMap<DataAdapter, (path: string) => string>()
+
+/** A name policy belongs to the vault volume, not the desktop operating system. */
+export function vaultPathKey(vault: Vault): (path: string) => string {
+  const adapter = vault.adapter
+  const cached = namePolicies.get(adapter)
+  if (cached) return cached
+  let key: (path: string) => string
+  if (!Platform.isDesktopApp) {
+    // iOS APFS distinguishes case, but canonical Unicode spellings alias. Android
+    // app storage distinguishes both. No Node filesystem is loaded on mobile.
+    key = Platform.isIosApp ? (path) => path.normalize('NFC') : (path) => path
+  } else {
+    const base = Reflect.get(adapter, 'getBasePath') as (() => string) | undefined
+    if (!base)
+      key = caseKey // Non-native hosts retain the core's conservative fallback.
+    else {
+      const fs = window.require('fs') as typeof import('node:fs')
+      // A private, exclusively allocated directory on this very volume avoids guessing
+      // from OS defaults, pre-existing names, hard links or content identity.
+      const directory = fs.mkdtempSync(
+        base.call(adapter).replace(/[\\/]$/, '') + '/.abele-sync-policy-'
+      )
+      const sample = directory + '/Case-\u00e9'
+      let created = false
+      try {
+        fs.writeFileSync(sample, '', { flag: 'wx' })
+        created = true
+        const foldsCase = fs.existsSync(directory + '/case-\u00e9')
+        const foldsUnicode = fs.existsSync(directory + '/Case-e\u0301')
+        key = (path) => {
+          const normalized = foldsUnicode ? path.normalize('NFC') : path
+          return foldsCase ? normalized.toLowerCase() : normalized
+        }
+        console.debug('[abele-sync] vault name policy', { foldsCase, foldsUnicode })
+      } finally {
+        try {
+          if (created) fs.unlinkSync(sample)
+        } finally {
+          fs.rmdirSync(directory)
+        }
+      }
+    }
+  }
+  namePolicies.set(adapter, key)
+  return key
+}
 
 /** Probe from the vault boundary: lstat of a leaf alone follows linked parents. */
 export async function assertNoLinkedAncestors(

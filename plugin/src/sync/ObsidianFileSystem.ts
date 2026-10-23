@@ -1,4 +1,5 @@
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
+import { vaultPathKey } from './vaultPathLinks'
 import type { ConditionalFileHost } from './conditionalFiles'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
@@ -41,7 +42,6 @@ import { BoundedVaultIo } from './boundedVaultIo'
 import { ConditionalFiles, type ConditionalFileOperation } from './conditionalFiles'
 import { nativeDiagnostics } from './nativeDiagnostics'
 import type { JournalEntry } from './writeJournal'
-import { caseKey } from '@abele/sync-sdk/protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
 import { stagingDirectory } from './stagingDirectory'
@@ -291,10 +291,10 @@ export class ObsidianFileSystem implements FileSystem {
     if (names === undefined) {
       names = cache.observe(
         parent.path,
-        () => new Set(parent.children.map((child) => caseKey(child.path)))
+        () => new Set(parent.children.map((child) => this.pathKey(child.path)))
       )
     }
-    return !names.has(caseKey(path))
+    return !names.has(this.pathKey(path))
   }
 
   async [Symbol.for('abele.sync.written-stat-v1')](
@@ -423,9 +423,9 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private recordInventoryChange(inventory: InventoryPass, path: string, membership = true): void {
     const revision = ++inventory.localRevision
-    inventory.localChanges.set(caseKey(path), revision)
+    inventory.localChanges.set(this.pathKey(path), revision)
     if (membership)
-      inventory.directoryChanges.set(caseKey(folderOf(path).replace(/^\/$/, '')), revision)
+      inventory.directoryChanges.set(this.pathKey(folderOf(path).replace(/^\/$/, '')), revision)
   }
   private syncInventoryConfig(inventory: InventoryPass): void {
     // Config adapter writes have no vault event. Fold their free counter into the
@@ -433,7 +433,7 @@ export class ObsidianFileSystem implements FileSystem {
     const configRevision = this.configRevision()
     if (inventory.configRevision !== configRevision) {
       inventory.configRevision = configRevision
-      inventory.localChanges.set(caseKey(this.configDir), ++inventory.localRevision)
+      inventory.localChanges.set(this.pathKey(this.configDir), ++inventory.localRevision)
       inventory.directoryRevision++
     }
   }
@@ -441,7 +441,7 @@ export class ObsidianFileSystem implements FileSystem {
     let revision = 0
     // Ancestor renames/deletions also invalidate observations of their children.
     for (
-      let current = caseKey(path);
+      let current = this.pathKey(path);
       current;
       current = current.slice(0, current.lastIndexOf('/'))
     ) {
@@ -455,7 +455,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.syncInventoryConfig(inventory)
     return Math.max(
       this.pathRevision(path, inventory),
-      inventory.directoryChanges.get(caseKey(path)) ?? 0
+      inventory.directoryChanges.get(this.pathKey(path)) ?? 0
     )
   }
   private parentRevision(path: string, inventory: InventoryPass): number {
@@ -551,7 +551,7 @@ export class ObsidianFileSystem implements FileSystem {
       const retain: (() => void)[] = []
       const names = known === 'file' ? inventory.indexedNames?.get(parent) : undefined
       if (names) {
-        names.add(caseKey(path))
+        names.add(this.pathKey(path))
         retain.push(() => inventory.indexedNames?.retain(parent, names))
       } else inventory.indexedNames?.delete(parent)
       if (
@@ -692,11 +692,13 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly guardedAdapter: DataAdapter
   private readonly mutationAdapter: (check: () => void) => DataAdapter
   readonly externalCoordination: ExternalFileCoordination
+  readonly pathKey: (path: string) => string
 
   constructor(
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.pathKey = vaultPathKey(app.vault)
     this.placementStages = privatePlacementStages(
       this,
       options.connectionId ? connectionPrivateRoot(options.connectionId) : undefined
@@ -1610,8 +1612,8 @@ export class ObsidianFileSystem implements FileSystem {
         !entry.retiredGeneration &&
         (!entry.streaming || entry.backup !== undefined) &&
         paths.some((path) => {
-          const target = caseKey(entry.target),
-            key = caseKey(path)
+          const target = this.pathKey(entry.target),
+            key = this.pathKey(path)
           return target === key || target.startsWith(key + '/') || key.startsWith(target + '/')
         })
       )
@@ -1658,11 +1660,11 @@ export class ObsidianFileSystem implements FileSystem {
         if (!actual || actual.type !== 'file') continue
         if (actual.size === file.stat.size && stamp(actual.mtime) === stamp(file.stat.mtime))
           this.awaitingIndex.delete(file.path)
-        indexed.add(caseKey(file.path))
+        indexed.add(this.pathKey(file.path))
         yield { path: file.path, size: actual.size, mtime: stamp(actual.mtime) }
         continue
       }
-      indexed.add(caseKey(file.path))
+      indexed.add(this.pathKey(file.path))
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
     // A pull can finish before the index sees its adapter renames, including across engine
@@ -1674,15 +1676,15 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of candidates) {
       if (!withinScope(path)) continue
       if (this.discovery && !this.discovery.includes(path)) continue
-      if (indexed.has(caseKey(path)) || path.startsWith(`${this.configDir}/`)) {
+      if (indexed.has(this.pathKey(path)) || path.startsWith(`${this.configDir}/`)) {
         continue
       }
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
       // report.md. List its parent for the actual spelling, and never yield both names.
       const actual = await this.spellingOnDisk(path)
       const info = actual === null || !withinScope(actual) ? null : await this.fileAt(actual)
-      if (info !== null && !indexed.has(caseKey(info.path))) {
-        indexed.add(caseKey(info.path))
+      if (info !== null && !indexed.has(this.pathKey(info.path))) {
+        indexed.add(this.pathKey(info.path))
         yield info
       }
       if ((info === null || actual !== path) && !this.app.vault.getFileByPath(path))
@@ -1777,7 +1779,7 @@ export class ObsidianFileSystem implements FileSystem {
         else result.set(key, [path])
       }
       for (const path of paths) {
-        const key = caseKey(path)
+        const key = this.pathKey(path)
         for (let cut = key.indexOf('/'); cut !== -1; cut = key.indexOf('/', cut + 1))
           put(key.slice(0, cut), path)
         if (self) put(key, path)
@@ -1846,7 +1848,7 @@ export class ObsidianFileSystem implements FileSystem {
         (child) => relevant(child) && (recursive || normalizationPossible(child))
       )
       for (const child of expanded) {
-        const key = caseKey(child)
+        const key = this.pathKey(child)
         for (const path of filesUnder.get(key) ?? []) if (indexedFiles.delete(path)) dropFile(path)
         for (const path of foldersAt.get(key) ?? [])
           if (indexedFolders.delete(path)) folders.delete(path)
@@ -1948,7 +1950,7 @@ export class ObsidianFileSystem implements FileSystem {
   async read(path: string): Promise<Uint8Array> {
     try {
       const bytes = new Uint8Array(await this.disk.readBinary(path))
-      this.observedBases.set(caseKey(path), { sha: await sha256(bytes) })
+      this.observedBases.set(this.pathKey(path), { sha: await sha256(bytes) })
       return bytes
     } catch (cause) {
       if (cause instanceof EngineError) throw cause
@@ -1976,12 +1978,12 @@ export class ObsidianFileSystem implements FileSystem {
   ) {
     const identity = await this.io.fingerprintForUpload(path, consume, signal, acknowledged)
     if (!identity) return undefined
-    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
   }
   async fingerprint(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)
-    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
   }
   async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string) {
@@ -1999,7 +2001,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (!actual || actual === path) throw error
       identity = await this.io.fingerprint(actual, undefined, true)
     }
-    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     // Native stats retain fractional milliseconds for source-generation checks.
     // The core identity must use the same wire date as stat/list and staged bases.
     return { ...identity, mtime: stamp(identity.mtime) }
@@ -2163,7 +2165,7 @@ export class ObsidianFileSystem implements FileSystem {
             )
               throw new EngineError('conflict', 'stage target changed before publication')
             this.stages.delete(id)
-            this.observedBases.delete(caseKey(entry.target))
+            this.observedBases.delete(this.pathKey(entry.target))
             finished = true
             releaseSourceStage(id)
           } finally {
@@ -2264,7 +2266,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private async legacyBase(path: string) {
-    const observed = this.observedBases.get(caseKey(path))
+    const observed = this.observedBases.get(this.pathKey(path))
     if (observed && 'absent' in observed) return null
     const standing = await this.onlyFileOrNothing(path)
     if (standing === null) return null
@@ -2280,7 +2282,7 @@ export class ObsidianFileSystem implements FileSystem {
     await this.beforeEngineMutation?.([path])
     if (!(await this.conditionalFile({ path, expected, effect: { kind: 'write', bytes, mtime } })))
       throw new EngineError('conflict', 'File changed before publication')
-    this.observedBases.delete(caseKey(path))
+    this.observedBases.delete(this.pathKey(path))
   }
 
   async move(from: string, to: string): Promise<void> {
@@ -2362,7 +2364,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async stat(path: string): Promise<FileInfo | null> {
     const info = await this.fileAt(path)
-    if (info === null) this.observedBases.set(caseKey(path), { absent: true })
+    if (info === null) this.observedBases.set(this.pathKey(path), { absent: true })
     return info === null ? null : this.told(info, false)
   }
 
@@ -2590,7 +2592,7 @@ export class ObsidianFileSystem implements FileSystem {
       const listing = await this.inventoryListing(parent)
       return listing.files.includes(path)
         ? path
-        : (listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null)
+        : (listing.files.find((file) => this.pathKey(file) === this.pathKey(path)) ?? null)
     } catch (cause) {
       if (notFound(cause)) {
         return null

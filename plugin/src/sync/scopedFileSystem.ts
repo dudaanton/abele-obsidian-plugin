@@ -48,6 +48,8 @@ export function scopedFileSystem(
       if (key === PRIVATE_PLACEMENT_STAGES) return stages
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
+      // Comparing names is pure; it does not grant access to the named objects.
+      if (key === 'pathKey') return value.bind(target)
       if (
         key === Symbol.for('abele.sync.inventory-pass-v1') ||
         key === Symbol.for('abele.sync.retention-idle-v1')

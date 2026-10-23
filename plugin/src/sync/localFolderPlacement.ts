@@ -17,6 +17,7 @@ type PlacementFileSystem = FileSystem & {
 }
 // Adding a filesystem operation requires an explicit path/identity policy.
 export const placementMethods = {
+  pathKey: 'key',
   list: 'list',
   listDirectories: 'list',
   listChildren: 'children',
@@ -41,7 +42,7 @@ export const placementMethods = {
   recoverConditionalFiles: 'opaque',
 } satisfies Record<
   keyof PlacementFileSystem,
-  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque'
+  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque' | 'key'
 >
 /** The host's received-directory identity lookup takes one vault path. */
 const DIRECTORY_IDENTITY = Symbol.for('abele.sync.directory-identity-v1')
@@ -238,6 +239,7 @@ export class LocalFolderPlacement {
           key === Symbol.for('abele.sync.index-absent-v1')
             ? 'path'
             : placementMethods[key as keyof PlacementFileSystem]
+        if (policy === 'key') return (path: string) => value.call(target, placement.toLocal(path))
         if (policy === 'list')
           return async function* () {
             for await (const item of value.call(target)) {
