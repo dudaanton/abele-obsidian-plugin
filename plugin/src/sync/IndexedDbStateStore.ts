@@ -12,6 +12,7 @@ import {
   type StateStore,
 } from '@abele/sync-sdk/core'
 import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
+import { SyncTaskBudget } from './syncTaskBudget'
 import {
   initializeDatabaseIdentity,
   StateRecoveryRequired,
@@ -68,15 +69,18 @@ interface MetaRow {
 export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private normalizationCache: Map<string, Promise<string | null>> | null = null
   private normalizationPassDepth = 0
+  private entrySnapshot: Promise<StateEntry[]> | null = null
 
   async [Symbol.for('abele.sync.normalization-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
     // Overlapping passes never share a snapshot. Only the ordinary single-owner pass caches.
     this.normalizationCache = ++this.normalizationPassDepth === 1 ? new Map() : null
+    this.entrySnapshot = null
     try {
       return await work()
     } finally {
       this.normalizationPassDepth--
       this.normalizationCache = null
+      this.entrySnapshot = null
     }
   }
   readonly externalDurability = 'durable' as const
@@ -242,10 +246,21 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.assertRecovery()
     // Every row up front: the caller may await between steps, and an IDB cursor held across an
     // await sees its transaction commit out from under the walk.
-    const rows = await this.read('cannot read the state', [ENTRIES], async (tx) =>
-      wait<StateEntry[]>(tx.objectStore(ENTRIES).getAll())
-    )
-    for (const row of rows) yield { ...row }
+    const read = () =>
+      this.read('cannot read the state', [ENTRIES], async (tx) =>
+        wait<StateEntry[]>(tx.objectStore(ENTRIES).getAll())
+      )
+    const rows = await (this.normalizationCache
+      ? (this.entrySnapshot ??= read().catch((error) => {
+          this.entrySnapshot = null
+          throw error
+        }))
+      : read())
+    const budget = new SyncTaskBudget()
+    for (const row of rows) {
+      await budget.account(4096)
+      yield { ...row }
+    }
   }
 
   /**
@@ -391,6 +406,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   /** Data-only CAS over the existing ledger stores. Never joins an overlay or retries a write. */
   async commitExternalPhase(batch: ExternalPhaseBatch): Promise<void> {
     this.assertExternalBoundary()
+    this.entrySnapshot = null
     batch = structuredClone(batch)
     this.externalPhasePending = true
     let tx: IDBTransaction
@@ -455,6 +471,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       throw new ExternalStateError('aborted', { cause })
     } finally {
       this.externalPhasePending = false
+      this.entrySnapshot = null
     }
   }
 
@@ -609,6 +626,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     stores: string[],
     fn: (tx: IDBTransaction) => Promise<T>
   ): Promise<T> {
+    if (stores.includes(ENTRIES)) this.entrySnapshot = null
     return this.once(what, async () => {
       const tx = this.begin(what, [...new Set([...stores, META])], 'readwrite')
       const done = completion(tx, what)
@@ -628,6 +646,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       }
       await done
       return result
+    }).finally(() => {
+      if (stores.includes(ENTRIES)) this.entrySnapshot = null
     })
   }
 
