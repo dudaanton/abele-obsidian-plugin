@@ -92,3 +92,21 @@ it('rejects modified installed bytes even with the pinned version', () => {
   writeFileSync(id, input + '\nchanged')
   expect(() => syncPlacementPlugin().transform(input, id)).toThrow(/integrity.*run npm ci/i)
 })
+
+it('delivers structured push refusals before returning the operation verdict', async () => {
+  const { id, input } = sample(version, 'pushRefusal.js')
+  const output = syncPlacementPlugin().transform(input, id)
+  expect(output).not.toBeNull()
+  const make = new Function(
+    output!.code.replace('export async function', 'async function') + '; return rejectedOp'
+  )()
+  const received: unknown[] = []
+  const state = { [Symbol.for('abele.sync.push-refusal-v1')]: (row: unknown) => received.push(row) }
+  const row = await make(
+    state,
+    { op: 'create', path: 'Notes/sample.bin', size: 12 },
+    { code: 'too_large', message: 'limit', details: { max_bytes: 8 } }
+  )
+  expect(received).toEqual([row])
+  expect(row).toMatchObject({ path: 'Notes/sample.bin', size: 12, limit: 8 })
+})

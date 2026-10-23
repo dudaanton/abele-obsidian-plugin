@@ -2561,3 +2561,39 @@ it.each(['foreign-owner', 'prefix-sibling', 'traversal'])(
     }
   }
 )
+
+it('shows a structured refusal while the cycle is still uploading', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const state = Reflect.get(runtime.engine, 'opts').state
+    const status = { ...runtime.engine.status, state: 'syncing', pending: 2 }
+    vi.spyOn(runtime.engine, 'status', 'get').mockReturnValue(status)
+    const row = {
+      op: { op: 'create', path: 'Notes/large.bin', size: 12 },
+      path: 'Notes/large.bin',
+      size: 12,
+      limit: 8,
+      code: 'too_large',
+      message: 'sample limit',
+    }
+    state[Symbol.for('abele.sync.push-refusal-v1')](row)
+    await vi.waitFor(() =>
+      expect(f.ui.activity.value[id]?.refused).toEqual([
+        { path: row.path, reason: connectionError({ code: 'too_large' }) + ' (12 B / 8 B)' },
+      ])
+    )
+    await Reflect.get(f.host, 'changed').call(f.host, id, status)
+    expect(f.ui.activity.value[id]?.refused).toHaveLength(1)
+    expect(runtime.pushRefusals.get(row.path)).toEqual(row)
+    await state.transaction(async (tx) => {
+      expect(typeof tx[Symbol.for('abele.sync.push-refusal-v1')]).toBe('function')
+    })
+  } finally {
+    await f.host.close()
+  }
+})

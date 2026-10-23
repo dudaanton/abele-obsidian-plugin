@@ -1176,7 +1176,9 @@ it('reports local conflict and refused publication paths without changing wire m
     const report = {
       push: {
         committed: { results: [{ status: 'conflict', conflict_path: 'Shared/conflict.md' }] },
-        rejected: [{ op: { path: 'Shared/refused.md' }, code: 'quota_exceeded' }],
+        rejected: [
+          { op: { path: 'Shared/refused.md' }, path: 'Shared/refused.md', code: 'quota_exceeded' },
+        ],
       },
       pull: { applied: 0 },
     }
@@ -1188,6 +1190,8 @@ it('reports local conflict and refused publication paths without changing wire m
       },
     })
     expect(report.push.rejected[0].op.path).toBe('Shared/refused.md')
+    expect(one.runtime.pushRefusalRows()[0].path).toBe('Moved/refused.md')
+    expect(report.push.rejected[0].path).toBe('Shared/refused.md')
   } finally {
     await one.runtime.close()
   }

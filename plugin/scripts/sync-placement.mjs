@@ -295,6 +295,14 @@ export function syncPlacementPlugin() {
                     !(recoverHost && this.fs.pathKey && this.fs.pathKey(from) === this.fs.pathKey(target)) &&
                     (entry === null ||`
         )
+        code = replaceOnce(
+          code,
+          'async localSource(sha, local) {',
+          `async localSource(sha, local) {
+          const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
+          if (replay && !await replay.call(this.fs)) return null;
+        `
+        )
         for (const name of ['adopt', 'adoptExisting']) {
           const args = name === 'adoptExisting' ? 'change, entry, newest = false' : 'change, entry'
           const forward = name === 'adoptExisting' ? 'change, entry, newest' : 'change, entry'
@@ -307,8 +315,12 @@ export function syncPlacementPlugin() {
               () => this.${name}Unlocked(${forward}), false);
           }
           async ${name}Unlocked(${args}) {
-            ${name === 'adoptExisting' ? `if (this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
-              await this.pending.matching(change, entry) !== null) return false;` : ''}`
+            ${
+              name === 'adoptExisting'
+                ? `if (this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+              await this.pending.matching(change, entry) !== null) return false;`
+                : ''
+            }`
           )
         }
         code = replaceOnce(
@@ -416,7 +428,7 @@ export function syncPlacementPlugin() {
             // The content index is only a hint: verify the current file, then keep using a
             // bounded local source with the same mutation checks as an HTTP source.
             const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
-            const canReplay = change.size <= this.budget.maxChunkBytes || !replay || await replay.call(this.fs);
+            const canReplay = (this.opts.prefetchBytes !== 0 && change.size <= this.budget.maxChunkBytes) || !replay || await replay.call(this.fs);
             const candidate = canReplay && change.op !== 'move' && await this.pending.read(change.file_id) === null
               ? await this.localCandidate(sha, change.size, local) : null;
             if (candidate) {
@@ -426,7 +438,7 @@ export function syncPlacementPlugin() {
                 verified = have.sha === sha && have.size === change.size;
               } catch { /* A removed or changed candidate falls back to the server. */ }
               if (verified) {
-                if (change.size <= this.budget.maxChunkBytes) {
+                if (this.opts.prefetchBytes !== 0 && change.size <= this.budget.maxChunkBytes) {
                   const bytes = await this.fs.read(candidate.path);
                   if (bytes.length === change.size && await this.hash(bytes) === sha)
                     return placeFrom(() => this.fs.openRead(candidate.path), bytes);
@@ -435,7 +447,7 @@ export function syncPlacementPlugin() {
             }
             // Small pulls fit in one transfer chunk. Avoid a second journal, copy and file
             // read per note, while still verifying the network source outside the lease.
-            if (change.size <= this.budget.maxChunkBytes) {
+            if (this.opts.prefetchBytes !== 0 && change.size <= this.budget.maxChunkBytes) {
               let bytes = fetched.get(sha), signal;
               if (!bytes) await this.budget.run(async () => {
                 const source = await this.client.openVersion(change.file_id, change.version_id, identity);
@@ -540,6 +552,17 @@ export function syncPlacementPlugin() {
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
+        code = replaceOnce(
+          code,
+          'await this.uploadOne(sha, sources);',
+          `await this.uploadOne(sha, sources);
+                // Publish each completed refusal before waiting for other uploads in the pool.
+                const refused = this.refused.get(sha) ?? this.waiting.get(sha);
+                if (refused && this.state[Symbol.for('abele.sync.push-refusal-v1')])
+                    for (const op of ops)
+                        if ('sha' in op && op.sha === sha)
+                            await rejectedOp(this.state, op, refused, this.opts.maxFileBytes);`
+        )
         code = replaceOnce(
           code,
           `let current = false;
@@ -690,6 +713,16 @@ export function syncPlacementPlugin() {
           code,
           'continue;\n                }\n                if (!entry)',
           '}); continue;\n                }\n                if (!entry)'
+        )
+      } else if (file.endsWith('/pushRefusal.js')) {
+        code = replaceOnce(code, '    return {', '    const row = {')
+        code = replaceOnce(
+          code,
+          '    };\n}',
+          `    };
+    state[Symbol.for('abele.sync.push-refusal-v1')]?.(row);
+    return row;
+}`
         )
       } else return null
       const body = helper + code

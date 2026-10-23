@@ -1406,6 +1406,12 @@ export class TokenEngines {
     const publications = this.live.get(id)?.publications() ?? []
     activity.pending = (activity.pending ?? 0) + publications.length
     activity.refused = [
+      ...Array.from(runtime?.pushRefusalRows?.() ?? [], (one) => ({
+        path: one.path!,
+        reason:
+          connectionError({ code: one.code }) +
+          (one.size === undefined ? '' : ` (${one.size} B / ${one.limit ?? '?'} B)`),
+      })),
       ...publications.map((one) => ({ path: one.path, reason: one.reason })),
       ...(status.waitingFiles ?? []).map((one) => {
         const code = ErrorCodeSchema.safeParse(one.reason.split(':', 1)[0])
@@ -1449,18 +1455,24 @@ export class TokenEngines {
       const refused = await Promise.all(
         report.push.rejected.map(async (one) => ({
           path:
-            'path' in one.op
+            one.path ??
+            ('path' in one.op
               ? one.op.path
               : 'to_path' in one.op
                 ? one.op.to_path
                 : ((await this.live
                     .get(id)
                     ?.pathFor(one.op.file_id)
-                    .catch((): null => null)) ?? 'A file'),
-          reason: connectionError({ code: one.code }),
+                    .catch((): null => null)) ?? 'A file')),
+          reason:
+            connectionError({ code: one.code }) +
+            (one.size === undefined ? '' : ` (${one.size} B / ${one.limit ?? '?'} B)`),
         }))
       )
-      activity.refused = [...activity.refused, ...refused]
+      activity.refused = [
+        ...activity.refused.filter((one) => !refused.some((row) => row.path === one.path)),
+        ...refused,
+      ]
       const points = (path: string) =>
         Array.from(path)
           .map((char) => 'U+' + char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'))

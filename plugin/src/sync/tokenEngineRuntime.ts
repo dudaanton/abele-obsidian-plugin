@@ -139,6 +139,11 @@ export interface TokenEngineOptions {
 export class TokenEngineRuntime
   implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
 {
+  readonly pushRefusals = new Map<string, SyncReport['push']['rejected'][number]>()
+  pushRefusalRows(): SyncReport['push']['rejected'] {
+    const rows = [...this.pushRefusals.values()]
+    return this.placement?.localMetadata(rows) ?? rows
+  }
   readonly trace = new ExchangeTrace()
   /** Hashes whose bytes this server holds: own uploads and fully verified received versions.
    * Only lets a matching local receipt stand in for rereading a large file. */
@@ -955,7 +960,24 @@ export class TokenEngineRuntime
         this.activeUploads--
       }
     }
-    const progressState = new Proxy(options.engineState ?? options.state, {
+    // Refusals can be assembled inside a scoped ledger callback as well as at root.
+    const refusalState = (state: StateStore): StateStore =>
+      new Proxy(state, {
+        get: (target, name) => {
+          if (name === Symbol.for('abele.sync.push-refusal-v1'))
+            return (row: SyncReport['push']['rejected'][number]) => {
+              if (!this.active || row.path === undefined) return
+              this.pushRefusals.set(row.path, row)
+              options.changed(this.engine.status)
+            }
+          if (name === 'transaction')
+            return <T>(work: (tx: StateStore) => Promise<T>) =>
+              target.transaction((tx) => work(refusalState(tx)))
+          const value = Reflect.get(target, name)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    const progressState = new Proxy(refusalState(options.engineState ?? options.state), {
       get: (target, name) => {
         if (name === 'setJournal')
           return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
@@ -1231,6 +1253,9 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        this.pushRefusals.clear()
+        for (const row of report.push.rejected)
+          if (row.path !== undefined) this.pushRefusals.set(row.path, row)
         // An empty scan has no push journal, but still completed its metadata checks.
         activityLog.finishComparison(this.inventoryTotal)
         this.serverAvailable = true
