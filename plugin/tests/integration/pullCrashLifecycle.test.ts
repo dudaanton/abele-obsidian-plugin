@@ -297,7 +297,12 @@ it.each(
           : (['partial', 'complete', 'published'] as const)
         ).flatMap((window) =>
           (['take', 'recover'] as const).map((entryPoint) => ({
-            dependency: '',
+            dependency:
+              entryPoint === 'take' && !bounded && window === 'complete' && !small
+                ? 'BUG: R23-C1'
+                : entryPoint === 'take' && !bounded && window === 'published' && small
+                  ? 'BUG: R23-C2'
+                  : '',
             bounded,
             entryPoint,
             small,
