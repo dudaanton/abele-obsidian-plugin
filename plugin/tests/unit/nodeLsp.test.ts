@@ -454,7 +454,8 @@ describe('node LSP document', () => {
       position,
       expect.any(AbortSignal)
     )
-    expect(navigate).toHaveBeenCalledWith([hit])
+    // History needs the clicked source position even when the caret did not move.
+    expect(navigate).toHaveBeenCalledWith([hit], position)
     expect(fallback.goToDefinition).not.toHaveBeenCalled()
     f.lsp.definition.mockResolvedValue([])
     await nav.goToDefinition('sample', 'sample.ts', position)
