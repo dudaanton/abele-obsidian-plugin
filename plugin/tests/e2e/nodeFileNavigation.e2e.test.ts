@@ -23,7 +23,7 @@ it('returns through native history after language definition and reference jumps
       client.describe = async () => { const info=await describe(); info.capabilities.capabilities.lsp_v1={status:'supported'};return info };
       client.lsp = {status:async()=>[],open:async()=>({servers:['typescript']}),close:async()=>({}),diagnostics:async()=>[],
         definition:async()=>[{path:'src/definition.ts',range:{start:{line:6,character:0},end:{line:6,character:6}}}],
-        references:async()=>[{path:'src/definition.ts',range:{start:{line:11,character:0},end:{line:11,character:6}}}]};
+        references:async()=>[{path:'src/definition.ts',range:{start:{line:11,character:0},end:{line:11,character:6}}},{path:'src/other.ts',range:{start:{line:1,character:0},end:{line:1,character:6}}}]};
       const text=Array.from({length:18},(_,i)=>'export const sample'+i+' = '+i).join(String.fromCharCode(10));
       client.repository.blob=async()=>({content_id:'sample-history-content',size:text.length,binary:false,requires_larger_load:false,too_large:false});
       client.repository.content=async()=>({offset:0,total:text.length,base64:btoa(text)});
@@ -46,7 +46,10 @@ it('returns through native history after language definition and reference jumps
       await menuJump('Go to definition',4);await at('src/definition.ts',7);
       await wait(200);await leaf.history.back();await at('src/source.ts',4);
       await leaf.history.forward();await at('src/definition.ts',7);
-      await menuJump('Find references',7);await at('src/definition.ts',12);
+      await menuJump('Find references',7);
+      await until(()=>[...document.querySelectorAll('.abele-github-definition__place')].some(el=>el.textContent==='src/definition.ts:12'));
+      [...document.querySelectorAll('.abele-github-definition__place')].find(el=>el.textContent==='src/definition.ts:12').closest('.suggestion-item').click();
+      await at('src/definition.ts',12);
       await wait(200);await leaf.history.back();await at('src/definition.ts',7);
       await leaf.history.forward();await at('src/definition.ts',12);
       const actions=[...leaf.containerEl.querySelectorAll('.view-action')].map(el=>el.getAttribute('aria-label'));
