@@ -324,7 +324,9 @@ export function buildFakeVault(
     const file = byPath.get(path)
     if (!file) return null
     return {
-      bytes: encoder.encode(rawByPath.get(path) ?? ''),
+      bytes: binByPath.has(path)
+        ? new Uint8Array(binByPath.get(path)!)
+        : encoder.encode(rawByPath.get(path) ?? ''),
       ctime: file.stat.ctime,
       mtime: file.stat.mtime,
     }
@@ -646,6 +648,7 @@ export function buildFakeVault(
   }
 
   const bytesOf = (path: string): ArrayBuffer =>
+    (disk.get(path)?.bytes.slice().buffer as ArrayBuffer) ??
     binByPath.get(path) ??
     new TextEncoder().encode(rawByPath.get(path) ?? hidden.get(path) ?? '').buffer
 
@@ -726,6 +729,9 @@ export function buildFakeVault(
         options?: { mtime?: number; ctime?: number }
       ) {
         if (await this.adapter.exists(path)) throw new Error('File already exists')
+        // The high-level fixture has always supplied parent scaffolding. Keep raw
+        // adapter writes strict while letting these writes pass through its hooks.
+        ensureDiskFolders(path)
         await this.adapter.writeBinary(path, data, options)
         stats.create++
         stats.written += data.byteLength
