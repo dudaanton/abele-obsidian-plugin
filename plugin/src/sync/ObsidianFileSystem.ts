@@ -2478,10 +2478,15 @@ export class ObsidianFileSystem implements FileSystem {
         if (!uncertain) {
           // The private stage proves non-publication, not continued ownership of
           // the target. Preserve a save made since the interrupted download.
-          // A distinct move source remains the core's recreation decision.
+          // A still-present distinct source remains the core's recreation decision.
           const current = await this.rawStat(target)
           let retain = false
-          if (current && (from === null || this.pathKey(from) === this.pathKey(target))) {
+          if (
+            current &&
+            (from === null ||
+              this.pathKey(from) === this.pathKey(target) ||
+              (await this.rawStat(from)) === null)
+          ) {
             retain =
               expectedBase === null ||
               current.size !== expectedBase.size ||
