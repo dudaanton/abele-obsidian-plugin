@@ -352,3 +352,5 @@ reads, missing observer coverage in either renderer generation or observer error
 closed. Raw read receipts remain in renderer.jsonl; overlapping API layers make positive
 byte counts a conservative upper bound rather than unique physical bytes. Read and write
 port wrappers are restored together in reverse installation order on observer unload.
+
+Renderer JSONL receipts are read as a stream, so evidence can exceed the runtime single-string limit. In-memory payload-read operations are retained only for the synced-restart window; the raw receipts remain complete. Corrupt completed receipts fail analysis; only a live scan may defer an incomplete final receipt.

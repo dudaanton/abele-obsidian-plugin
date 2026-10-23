@@ -6,6 +6,7 @@ import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
+import { rendererEntries } from './evidence.mjs'
 import {
   declaredInterruptions,
   reindexEvidence,
@@ -537,18 +538,8 @@ export async function run(config) {
       const serverBefore = await manifest(token)
       await wait('reindex active sync at click', () => proxy.active.size > 0, config.timeoutMs)
       await device.reindex(declared)
-      const readEntries = async () =>
-        (await readFile(join(config.output, 'renderer.jsonl'), 'utf8'))
-          .trim()
-          .split('\n')
-          .filter(Boolean)
-          .flatMap((line) => {
-            try {
-              return [JSON.parse(line)]
-            } catch {
-              return []
-            }
-          })
+      const readEntries = () =>
+        rendererEntries(createReadStream(join(config.output, 'renderer.jsonl')), undefined, true)
       const pendingFile =
         join(config.output, 'renderer.jsonl') + '.' + declared.device + '.reindex.json'
       const receipt = async (file) => {
@@ -847,13 +838,13 @@ export async function run(config) {
         await owner.revoke(issued.info.id).catch(() => {
           report.cleanupFailure = true
         })
-      const renderer = await readFile(join(config.output, 'renderer.jsonl'), 'utf8').catch(() => '')
-      const entries = renderer.trim()
-        ? renderer
-            .trim()
-            .split('\n')
-            .map((line) => JSON.parse(line))
-        : []
+      const entries = await rendererEntries(
+        createReadStream(join(config.output, 'renderer.jsonl')),
+        report.restartAt
+      ).catch(() => {
+        report.failure ??= 'Renderer evidence could not be read'
+        return []
+      })
       for (const saved of rebuilds) {
         const proxy = proxies[Number(saved.operation.device)]
         const end = entries.find(
