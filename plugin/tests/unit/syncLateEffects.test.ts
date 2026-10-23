@@ -10,6 +10,180 @@ import { checkedVaultPort } from '@/sync/vaultPathLinks'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 
+async function repairCut(native: boolean, cut?: number) {
+  const fixture = native ? virtualNativeVault() : undefined
+  const app = fixture?.app ?? buildFakeVault([])
+  if (fixture) desktopFsPort(fixture.native)
+  const raw = app.vault.adapter
+  const conditional = Reflect.get(new ObsidianFileSystem(app as never), 'conditional')
+  const host = Reflect.get(conditional, 'host')
+  const id = 'sample-two-version-repair',
+    folder = host.root + '/objects/' + id
+  const original = new Uint8Array([0, 255, 16, 128]),
+    incoming = new Uint8Array([254, 0, 64])
+  const intent = {
+    checked: true,
+    path: 'sample.bin',
+    destination: 'sample.bin',
+    expected: { size: original.length, sha: await sha256(original), mtime: 1000 },
+    data: folder + '/data',
+    kind: 'write',
+  }
+  await host.mkdir(folder)
+  await host.mkdir(host.root + '/active')
+  await host.create(folder + '/victim', original, 1000)
+  await host.create(folder + '/data', incoming, 2000)
+  const record = bytes(JSON.stringify(intent))
+  await host.create(folder + '/intent.json', record, 0)
+  await host.create(host.root + '/active/' + id + '.json', record, 0)
+  const trace: string[] = []
+  let stopped = false
+  const killed = new Error('process stopped')
+  const check = host.check
+  host.check = () => {
+    if (stopped) throw killed
+    check()
+  }
+  for (const method of [
+    'stat',
+    'fingerprint',
+    'create',
+    'read',
+    'mkdir',
+    'list',
+    'capture',
+    'install',
+    'restoreDirectory',
+    'flush',
+    'sameObject',
+    'remove',
+    'rmdir',
+  ]) {
+    const originalMethod = Reflect.get(host, method)
+    if (typeof originalMethod !== 'function') continue
+    Reflect.set(host, method, async (...args: unknown[]) => {
+      if (stopped) throw killed
+      const ordinal = trace.push(method + ':' + String(args[0])) - 1
+      const answer = await originalMethod.apply(host, args)
+      if (ordinal === cut) {
+        stopped = true
+        throw killed
+      }
+      return answer
+    })
+  }
+  const key = host.root + '/' + id
+  host.active.add(key)
+  try {
+    const result = await conditional.repairIntent(folder, id).then(
+      () => null,
+      (error: unknown) => error
+    )
+    if (cut === undefined) expect(result).toBeNull()
+    else {
+      expect(stopped).toBe(true)
+      expect(result).toBe(killed)
+    }
+  } finally {
+    host.active.delete(key)
+  }
+  // A new host has no stopped continuations, but exactly the surviving disk state.
+  const recovery = Reflect.get(new ObsidianFileSystem(app as never), 'conditional')
+  await recovery.recover()
+  const files = (await raw.list('')).files.sort()
+  const contents = await Promise.all(
+    files.map(async (file) => [...new Uint8Array(await raw.readBinary(file))])
+  )
+  expect(contents, `original after ${cut}: ${trace[cut ?? 0]}`).toContainEqual([...original])
+  expect(contents, `incoming after ${cut}: ${trace[cut ?? 0]}`).toContainEqual([...incoming])
+  expect(
+    contents.filter((value) => JSON.stringify(value) === JSON.stringify([...original]))
+  ).toHaveLength(1)
+  expect(
+    contents.filter((value) => JSON.stringify(value) === JSON.stringify([...incoming]))
+  ).toHaveLength(1)
+  await recovery.recover()
+  expect((await raw.list('')).files.sort()).toEqual(files)
+  return trace
+}
+
+it.each([false, true])(
+  'recovers both versions after every repair await (native=%s)',
+  async (native) => {
+    const baseline = await repairCut(native)
+    for (let cut = 0; cut < baseline.length; cut++) await repairCut(native, cut)
+    console.debug('[two-version repair crash cuts]', { native, cuts: baseline.length })
+  }
+)
+
+it('keeps a late replacement recoverable between victim and incoming restoration', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const app = buildFakeVault([]),
+    raw = app.vault.adapter
+  await raw.writeBinary('sample.bin', bytes('base').buffer)
+  const stat = await raw.stat('sample.bin')
+  const entered = deferred(),
+    resume = deferred()
+  const rename = raw.rename
+  raw.rename = async function (from, to) {
+    if (from === 'sample.bin' && to.endsWith('/victim')) {
+      entered.resolve()
+      await resume.promise
+    }
+    await rename.call(this, from, to)
+  }
+  const conditional = Reflect.get(new ObsidianFileSystem(app as never), 'conditional')
+  const host = Reflect.get(conditional, 'host'),
+    observe = host.stat,
+    check = host.check
+  let stopped = false
+  host.check = () => {
+    if (stopped) throw new Error('process stopped')
+    check()
+  }
+  host.stat = async (path: string) => {
+    if (path.endsWith('/data-restored')) {
+      stopped = true
+      throw new Error('process stopped')
+    }
+    return observe(path)
+  }
+  try {
+    const work = conditional.apply({
+      path: 'sample.bin',
+      expected: { sha: await sha256(bytes('base')), size: 4, mtime: stat!.mtime },
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 2000 },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await work).toBe(false)
+    await raw.writeBinary('sample.bin', bytes('new user save').buffer)
+    resume.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.all(Reflect.get(conditional, 'lateRepairs'))
+    expect(stopped).toBe(true)
+    expect((await raw.list(host.root + '/active')).files).toHaveLength(1)
+    const recovery = Reflect.get(new ObsidianFileSystem(app as never), 'conditional')
+    await recovery.recover()
+    const files = (await raw.list('')).files.sort()
+    const contents = await Promise.all(
+      files.map(async (file) => [...new Uint8Array(await raw.readBinary(file))])
+    )
+    expect(contents).toContainEqual([...bytes('new user save')])
+    expect(contents).toContainEqual([...bytes('incoming')])
+    await recovery.recover()
+    expect((await raw.list('')).files.sort()).toEqual(files)
+  } finally {
+    resume.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.all(Reflect.get(conditional, 'lateRepairs'))
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it.each([false, true])('repairs a late incoming recovery capture (native=%s)', async (native) => {
   vi.useFakeTimers()
   const loud = vi.spyOn(console, 'error').mockImplementation(() => {})

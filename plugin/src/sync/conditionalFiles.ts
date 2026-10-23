@@ -629,9 +629,11 @@ export class ConditionalFiles {
     ) as Intent
     h.validate(intent.path)
     h.check()
-    await this.restore(folder + '/victim', intent.path)
-    if (intent.checked && intent.data === folder + '/data')
-      await this.restore(intent.data, intent.path, true)
+    const restoreIncoming = intent.checked && intent.data === folder + '/data'
+    // Both restorations share one recovery intent. Settle the victim independently
+    // without archiving that intent before the incoming copy has a public home.
+    await this.restore(folder + '/victim', intent.path, restoreIncoming)
+    if (restoreIncoming) await this.restore(intent.data, intent.path, true)
     await this.archive(folder, id, false)
     h.changed([intent.path])
   }
@@ -926,8 +928,7 @@ export class ConditionalFiles {
           (await h.stat(op.path)) ||
           !(await operation.install(intent.data, op.path))
         ) {
-          await operation.restore(victim, op.path)
-          await operation.restore(intent.data, op.path, true)
+          await operation.repairIntent(folder, id)
           // Both versions now have acknowledged public destinations. Receipt retirement
           // may remove only this operation's metadata, never either recovered copy.
           await operation.record(folder + '/complete', true)
@@ -1175,6 +1176,7 @@ export class ConditionalFiles {
       folder + '/allocation',
       folder + '/complete',
       folder + '/late-effect.json',
+      folder + '/restored',
       folder + '/intent.json',
       h.root + '/completed/' + id + '.json',
       h.root + '/active/' + id + '.json',
