@@ -7,11 +7,190 @@ import { runInNewContext } from 'node:vm'
 import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { planVault, contentChunk, shapes } from '../scale/generate.mjs'
-import { compareInventory, budgets, pauseMetrics } from '../scale/oracles.mjs'
+import {
+  compareInventory,
+  budgets,
+  pauseMetrics,
+  noticeDetails,
+  startupTiming,
+  expectedSet,
+  comparePeer,
+  markdown,
+} from '../scale/oracles.mjs'
 import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  it('reads configured policy and exact refusals from the primary UI', async () => {
+    const vault = new RealVault({}, '/sample-vault')
+    const app = {
+      vault: {
+        configDir: '.prefs',
+        adapter: { exists: async () => true, read: async () => 'Private/' },
+      },
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              ui: {
+                registry: { records: () => [{ selective: { excludedFolders: ['Private'] } }] },
+                activity: {
+                  value: {
+                    sample: {
+                      refused: [{ path: 'Notes/case.md', reason: 'Case collision' }],
+                      events: [
+                        {
+                          at: 42,
+                          text: 'scan: held Notes/case.md: Notes/Case.md is synced under the same name but for case; rename one of them to sync both',
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+    vault.evaluate = async (body) => runInNewContext(`(async()=>{${body}})()`, { app })
+    expect(await vault.policy()).toMatchObject({
+      configDir: '.prefs',
+      ignoreText: 'Private/',
+      selective: { excludedFolders: ['Private'] },
+    })
+    expect(await vault.refusals()).toMatchObject([
+      { path: 'Notes/case.md', source: 'status' },
+      { path: 'Notes/case.md', source: 'log', at: 42 },
+    ])
+  })
+  it('captures notice text even when the DOM fills an initially empty notice later', async () => {
+    const evidence = []
+    const node = { textContent: '' }
+    let observe
+    const source = await readFile(new URL('../scale/observer.cjs', import.meta.url), 'utf8')
+    const module = { exports: null }
+    runInNewContext(source, {
+      module,
+      require: (name) =>
+        name === 'obsidian'
+          ? {
+              Plugin: class {
+                app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                register() {}
+              },
+            }
+          : name === 'fs'
+            ? {
+                readFileSync: () => JSON.stringify({ device: '0', evidence: 'sample' }),
+                appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+              }
+            : { join: (...parts) => parts.join('/') },
+      document: { body: {}, querySelectorAll: () => [node] },
+      MutationObserver: class {
+        constructor(callback) {
+          observe = callback
+        }
+        observe() {}
+        disconnect() {}
+      },
+      PerformanceObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+    })
+    new module.exports().onload()
+    node.textContent = 'Sample notice'
+    observe()
+    expect(evidence.filter((row) => row.event === 'notice')).toMatchObject([
+      { text: 'Sample notice', device: '0' },
+    ])
+  })
+  it('retains notice text, time and phase, including unavailable legacy text', () => {
+    const details = noticeDetails(
+      [
+        { event: 'notice', at: 15, text: 'Sample warning' },
+        { event: 'notice', at: 25 },
+      ],
+      [
+        { name: 'pull', at: 10 },
+        { name: 'pause', at: 20 },
+      ]
+    )
+    expect(details[0]).toMatchObject({ text: 'Sample warning', at: 15, phase: 'pull' })
+    expect(details[1]).toMatchObject({ text: null, phase: 'pause' })
+    expect(markdown({ budgets: [], noticeDetails: details })).toContain('Sample warning')
+  })
+  it('splits pause traffic by endpoint and click-relative time without inventing a caller', () => {
+    const result = pauseMetrics(
+      [
+        { event: 'start', id: 2, at: 1100, method: 'GET', route: '/v2/changes' },
+        {
+          event: 'start',
+          id: 3,
+          at: 2200,
+          method: 'POST',
+          route: '/v2/commit',
+          contentCommit: true,
+          component: 'sample',
+        },
+      ],
+      1000,
+      new Set(),
+      new Set(),
+      2500
+    )
+    expect(result.pauseRequests.map((r) => [r.afterPauseMs, r.kind, r.component])).toEqual([
+      [100, 'metadata', null],
+      [1200, 'content commit', 'sample'],
+    ])
+    expect(result.pauseByEndpoint.map((r) => r.count)).toEqual([1, 1])
+  })
+  it('keeps startup components unknown when no sync-start marker exists', () => {
+    expect(startupTiming(1000, 6200, [{ event: 'renderer-start', at: 2000 }])).toMatchObject({
+      launchToFirstRequestMs: 5200,
+      pluginLoadToSyncStartMs: null,
+      syncStartToFirstRequestMs: null,
+    })
+    expect(
+      startupTiming(1000, 6200, [
+        { event: 'renderer-start', at: 2000 },
+        { event: 'sync-start', at: 3000 },
+      ])
+    ).toMatchObject({ pluginLoadToSyncStartMs: null, syncStartToFirstRequestMs: 3200 })
+    expect(
+      startupTiming(1000, 6200, [
+        { event: 'plugin-load', at: 2000 },
+        { event: 'sync-start', at: 3000 },
+      ])
+    ).toMatchObject({ pluginLoadToSyncStartMs: 1000, syncStartToFirstRequestMs: 3200 })
+  })
+  it('derives exclusions from settings and requires exact visible case refusals', () => {
+    const files = [
+      'Scope/Notes/Case.md',
+      'Scope/Notes/case.md',
+      'Scope/Private/a.md',
+      'Scope/.prefs/a.json',
+    ].map((path) => ({ path, sha: 'aa', size: 2 }))
+    const set = expectedSet(files, {
+      configDir: '.prefs',
+      selective: { excludedFolders: ['Scope/Private'] },
+    })
+    expect(set.excluded.map((f) => f.path)).toEqual(['Scope/Private/a.md', 'Scope/.prefs/a.json'])
+    expect(
+      expectedSet(files, { configDir: '.prefs', selective: { excludedFolders: [] } }).synced
+    ).toHaveLength(3)
+    expect(comparePeer(set, [files[0]], [])).toEqual([{ path: files[1].path, kind: 'missing' }])
+    expect(
+      comparePeer(set, [files[0]], [{ path: files[0].path, reason: 'Case collision' }])
+    ).toHaveLength(1)
+    expect(
+      comparePeer(set, [files[0]], [{ path: files[1].path, reason: 'Case collision' }])
+    ).toEqual([])
+    expect(
+      comparePeer(set, [files[0], files[2]], [{ path: files[1].path, reason: 'Case collision' }])
+    ).toContainEqual({ path: files[2].path, kind: 'extra' })
+  })
   it('accepts a framed CLI reply even while a descendant keeps its output pipe open', async () => {
     const parent = join(process.cwd(), '.scratch')
     await mkdir(parent, { recursive: true })

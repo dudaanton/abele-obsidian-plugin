@@ -23,13 +23,14 @@ module.exports = class extends Plugin {
     const observe = () => {
       for (const node of document.querySelectorAll('.notice')) {
         if (seen.has(node)) continue
+        if (!node.textContent) continue
         seen.add(node)
-        // Counts only: a notice can contain a credential or a private path.
-        emit({ event: 'notice' })
+        // Evidence stays in the disposable run directory, never in tracked fixtures.
+        emit({ event: 'notice', text: node.textContent ?? '' })
       }
     }
     const observer = new MutationObserver(observe)
-    observer.observe(document.body, { childList: true, subtree: true })
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
     observe()
     this.register(() => observer.disconnect())
     try {

@@ -1,3 +1,5 @@
+import { isExcluded, selectiveDefaults, IgnoreRules, settingsCategory } from '@abele/sync-sdk/core'
+
 export function compareInventory(expected, actual) {
   const wanted = new Map(expected.map((file) => [file.path, file]))
   const found = new Map(actual.map((file) => [file.path, file]))
@@ -18,7 +20,47 @@ export function pauseMetrics(events, pausedAt, activeAtPause, activeNow, observe
     (event) => event.event === 'finish' && activeAtPause.has(event.id)
   )
   const pending = [...activeAtPause].filter((id) => activeNow.has(id)).length
+  const pauseRequests = starts.map((event) => ({
+    ...event,
+    afterPauseMs: event.at - pausedAt,
+    kind: event.contentCommit
+      ? 'content commit'
+      : /\/content$/.test(event.route)
+        ? 'content download'
+        : /\/uploads\//.test(event.route)
+          ? 'upload'
+          : 'metadata',
+    component: event.component ?? null,
+  }))
+  const groups = new Map()
+  for (const request of pauseRequests) {
+    const endpoint = request.route
+      .replace(/\/files\/[^/]+\/content$/, '/files/:id/content')
+      .replace(/\/uploads\/.+$/, '/uploads/:sha/:upload/:chunk')
+    const key = `${request.method} ${endpoint} ${request.kind}`
+    const group = groups.get(key) ?? {
+      method: request.method,
+      route: endpoint,
+      kind: request.kind,
+      count: 0,
+      firstAfterPauseMs: request.afterPauseMs,
+      lastAfterPauseMs: request.afterPauseMs,
+    }
+    group.count++
+    group.lastAfterPauseMs = request.afterPauseMs
+    groups.set(key, group)
+  }
   return {
+    pauseAt: pausedAt,
+    pauseRequests,
+    pauseByEndpoint: [...groups.values()],
+    pauseBySecond: Array.from(
+      { length: Math.ceil((observedAt - pausedAt) / 1000) },
+      (_, second) => ({
+        second,
+        count: starts.filter((event) => Math.floor((event.at - pausedAt) / 1000) === second).length,
+      })
+    ),
     pauseNewRequests: starts.length,
     pauseInFlight: pending,
     pauseObservedMs: observedAt - pausedAt,
@@ -64,6 +106,12 @@ export function budgets(m) {
 }
 
 export function markdown(report) {
+  const details = (title, rows) =>
+    `\n## ${title}\n\n` +
+    (rows?.length
+      ? rows.map((row) => `- ${JSON.stringify(row).replaceAll('|', '\\|')}`).join('\n')
+      : 'Unobserved / none recorded') +
+    '\n'
   return (
     `# Sync scale run\n\nBuild: ${report.build}\nSeed: ${report.seed}\nShape: ${report.files} files / ${report.bytes} bytes\n\n` +
     '| Budget | Result | Observed | Required |\n|---|---|---|---|\n' +
@@ -71,6 +119,96 @@ export function markdown(report) {
       .map((row) => `| ${row.name} | ${row.status} | ${JSON.stringify(row.value)} | ${row.limit} |`)
       .join('\n') +
     `\n\nThroughput: ${report.filesPerSecond ?? 'unobserved'} files/s; ${report.mibPerSecond ?? 'unobserved'} MiB/s.\n` +
-    (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '')
+    (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '') +
+    details('Notices (text, time, phase)', report.noticeDetails) +
+    details('Excluded by settings', report.excludedBySettings) +
+    details('Visible case refusals on primary', report.caseRefusals) +
+    details('Pause requests by endpoint', report.pauseByEndpoint) +
+    details('Pause requests by second after action', report.pauseBySecond) +
+    details('Pause request timeline (component null means unavailable)', report.pauseRequests) +
+    details(
+      'Startup timing (observer load is not product plugin load; null means unavailable)',
+      report.startupTiming
+    ) +
+    details('Diagnostic findings', report.findings)
   )
+}
+export function expectedSet(files, policy) {
+  const defaults = selectiveDefaults()
+  const selective = {
+    ...defaults,
+    ...policy.selective,
+    settings: { ...defaults.settings, ...policy.selective?.settings },
+  }
+  const rules = policy.ignoreText ? IgnoreRules.parse(policy.ignoreText) : null
+  const excluded = [],
+    synced = []
+  for (const file of files) {
+    const hidden =
+      file.path.split('/').some((part) => part.startsWith('.')) &&
+      !(
+        settingsCategory(`${policy.configDir}/app.json`) !== null &&
+        file.path.startsWith(policy.configDir + '/')
+      )
+    if (
+      hidden ||
+      rules?.ignores(file.path) ||
+      isExcluded(file.path, file.size, selective, policy.scriptsFolder ?? 'Scripts')
+    )
+      excluded.push({ ...file, reason: 'excluded by settings' })
+    else synced.push(file)
+  }
+  return { synced, excluded }
+}
+
+export function comparePeer(set, actual, refusals) {
+  return compareInventory(set.synced, actual).filter((row) => {
+    if (row.kind !== 'missing') return true
+    const twin = set.synced.some(
+      (file) =>
+        file.path !== row.path &&
+        file.path.normalize('NFC').toLowerCase() === row.path.normalize('NFC').toLowerCase()
+    )
+    return (
+      !twin ||
+      !refusals.some(
+        (refusal) => refusal.path === row.path && /case.*collision/i.test(refusal.reason)
+      )
+    )
+  })
+}
+
+export function noticeDetails(entries, phases = []) {
+  return entries
+    .filter((entry) => entry.event === 'notice')
+    .map((entry) => ({
+      ...entry,
+      text: entry.text ?? null,
+      phase:
+        entry.phase ?? phases.filter((phase) => phase.at <= entry.at).at(-1)?.name ?? 'unobserved',
+    }))
+}
+
+export function startupTiming(launchAt, firstAt, entries) {
+  const load = entries.find(
+    (e) => e.event === 'renderer-start' && e.at >= launchAt && e.at <= firstAt
+  )
+  const sync = entries.find(
+    (e) => e.event === 'sync-start' && e.at >= (load?.at ?? launchAt) && e.at <= firstAt
+  )
+  const pluginLoad = entries.find(
+    (e) => e.event === 'plugin-load' && e.at >= launchAt && e.at <= (sync?.at ?? firstAt)
+  )
+  return {
+    launchAt,
+    firstRequestAt: firstAt ?? null,
+    observerLoadAt: load?.at ?? null,
+    pluginLoadAt: pluginLoad?.at ?? null,
+    syncStartAt: sync?.at ?? null,
+    launchToFirstRequestMs: firstAt == null ? null : firstAt - launchAt,
+    launchToObserverLoadMs: load ? load.at - launchAt : null,
+    observerLoadToFirstRequestMs: load && firstAt != null ? firstAt - load.at : null,
+    pluginLoadToSyncStartMs: pluginLoad && sync ? sync.at - pluginLoad.at : null,
+    syncStartToFirstRequestMs: sync && firstAt != null ? firstAt - sync.at : null,
+  }
 }

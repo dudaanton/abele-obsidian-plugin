@@ -9,7 +9,16 @@ import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
-import { compareInventory, budgets, markdown, pauseMetrics } from './oracles.mjs'
+import {
+  compareInventory,
+  budgets,
+  markdown,
+  pauseMetrics,
+  expectedSet,
+  comparePeer,
+  noticeDetails,
+  startupTiming,
+} from './oracles.mjs'
 
 const exec = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
@@ -74,6 +83,16 @@ export class RealVault {
   async snapshot() {
     return this.evaluate(
       `${host}return !u?null:{job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+    )
+  }
+  async policy() {
+    return this.evaluate(
+      `${host}const v=app.vault;return {configDir:v.configDir,selective:u.registry.records()[0]?.selective,ignoreText:await v.adapter.exists('.abele-sync-ignore')?await v.adapter.read('.abele-sync-ignore'):null}`
+    )
+  }
+  async refusals() {
+    return this.evaluate(
+      `${host}return Object.values(u.activity.value).flatMap(a=>[...(a.refused??[]).map(({path,reason})=>({path,reason,source:'status'})),...[...(a.events??[])].flatMap(e=>{const m=/^scan: held (.+): (.+) is synced under the same name but for case;/.exec(e.text);return m?[{path:m[1],reason:'Case collision: '+e.text,at:e.at,source:'log'}]:[]})])`
     )
   }
   async connect(tokenFile) {
@@ -171,6 +190,11 @@ async function setupVault(config, root, device) {
   )
   await writeFile(join(root, '.obsidian/core-plugins.json'), '[]')
   await writeFile(join(root, '.obsidian/app.json'), JSON.stringify({ promptDelete: false }))
+  if (config.pluginSettings)
+    await writeFile(
+      join(root, '.obsidian/plugins/abele/data.json'),
+      JSON.stringify(config.pluginSettings)
+    )
   await writeFile(
     join(root, '.scale-observer.json'),
     JSON.stringify({ evidence: join(config.output, 'renderer.jsonl'), device })
@@ -195,9 +219,12 @@ export async function run(config) {
     interruptions: [],
     failures: [],
     phase: 'preflight',
+    phases: [{ name: 'preflight', at: Date.now() }],
+    caseRefusals: [],
   }
   const phase = (name) => {
     report.phase = name
+    report.phases.push({ name, at: Date.now() })
     console.debug('[scale]', name)
   }
   const proxies = []
@@ -221,6 +248,9 @@ export async function run(config) {
       report.failures.push({ step, reason, snapshot: await device.snapshot().catch(() => null) })
       await device.invalidateJob().catch(() => {})
       return false
+    } finally {
+      if (device === devices[0])
+        report.caseRefusals.push(...(await device.refusals().catch(() => [])))
     }
   }
   const stop = async (hard) => {
@@ -363,6 +393,7 @@ export async function run(config) {
     mark('plugin disable-enable')
     await a.ready()
     report.firstUploadSettled = await settle(a, 'first upload')
+    report.syncPolicy = await a.policy()
     const uploaded = (await manifest(token)).filter((file) => file.kind !== 'directory')
     report.uploadedFiles = uploaded.length
     report.uploadedBytes = uploaded.reduce((sum, file) => sum + file.size, 0)
@@ -410,6 +441,7 @@ export async function run(config) {
     await stop(false)
     phase('synced restart')
     const restartAt = Date.now()
+    report.restartAt = restartAt
     await start()
     await wait(
       'restart first server request',
@@ -436,6 +468,9 @@ export async function run(config) {
     report.verifiedFiles = 0
     report.deviceFiles = []
     report.expectedFiles = expected.length
+    const set = expectedSet(expected, report.syncPolicy)
+    report.excludedBySettings = set.excluded
+    report.syncedExpectedFiles = set.synced.length
     for (const [i, device] of devices.entries()) {
       const actual = await inventory(
         device.root,
@@ -444,7 +479,10 @@ export async function run(config) {
       report.deviceFiles.push(actual.length)
       report.verifiedFiles += actual.length
       report.mismatches.push(
-        ...compareInventory(expected, actual).map((row) => ({ device: String(i), ...row }))
+        ...(i === 0
+          ? compareInventory(expected, actual)
+          : comparePeer(set, actual, report.caseRefusals)
+        ).map((row) => ({ device: String(i), ...row }))
       )
     }
     const serverFiles = []
@@ -462,7 +500,10 @@ export async function run(config) {
       serverFiles.push({ path: file.path, size, sha: hash.digest('hex') })
     }
     report.mismatches.push(
-      ...compareInventory(expected, serverFiles).map((row) => ({ device: 'server', ...row }))
+      ...comparePeer(set, serverFiles, report.caseRefusals).map((row) => ({
+        device: 'server',
+        ...row,
+      }))
     )
     report.serverFiles = serverFiles.length
     report.verifiedFiles += serverFiles.length
@@ -503,6 +544,16 @@ export async function run(config) {
           .map((line) => JSON.parse(line))
       : []
     report.notices = entries.length ? entries.filter((e) => e.event === 'notice').length : undefined
+    report.noticeDetails = noticeDetails(entries, report.phases)
+    if (report.restartAt)
+      report.startupTiming = proxies.map((proxy) => ({
+        device: proxy.device,
+        ...startupTiming(
+          report.restartAt,
+          proxy.events.find((e) => e.event === 'start' && e.at >= report.restartAt)?.at,
+          entries.filter((e) => e.device === proxy.device)
+        ),
+      }))
     report.maxRendererTaskMs = Math.max(
       0,
       ...entries.filter((e) => e.event === 'long-task').map((e) => e.durationMs)
