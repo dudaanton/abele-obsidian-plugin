@@ -291,7 +291,10 @@ describe('settings changed on another device', () => {
     const failure = vi
       .spyOn(BoundedVaultIo.prototype, 'append')
       .mockImplementation(async function (path, offset, bytes, mtime) {
-        if (path.endsWith('/data') && new TextDecoder().decode(bytes).includes('"there"'))
+        if (
+          (path.endsWith('/data') || path.endsWith('.tmp')) &&
+          new TextDecoder().decode(bytes).includes('"there"')
+        )
           throw new Error('write unavailable')
         return append.call(this, path, offset, bytes, mtime)
       })

@@ -60,9 +60,18 @@ it('inventories only the connection subtree and synthesizes ancestors when the i
   const paths: string[] = []
   for await (const one of fs.listDirectories()) paths.push(one.path)
   expect(paths).toEqual(['Fixtures/Shared', 'Fixtures/Shared/Inner'])
-  expect(await fs.listChildren('')).toEqual([{ path: 'Fixtures', kind: 'directory' }])
+  expect(await fs.listChildren('')).toEqual([
+    { path: 'Fixtures', kind: 'directory', identity: 'scope-ancestor:' + fs.pathKey('Fixtures') },
+  ])
   expect(await fs.listChildren('Fixtures')).toEqual([
-    { path: 'Fixtures/Shared', kind: 'directory' },
+    {
+      path: 'Fixtures/Shared',
+      kind: 'directory',
+      identity: await Reflect.get(fs, Symbol.for('abele.sync.directory-identity-v1')).call(
+        fs,
+        'Fixtures/Shared'
+      ),
+    },
   ])
 })
 
@@ -437,8 +446,9 @@ it('enumerates raw normalization twins hidden by the file index', async () => {
 
 let app: FakeApp
 
-function useVault(specs: FakeFileSpec[]): ObsidianFileSystem {
+function useVault(specs: FakeFileSpec[], native = false): ObsidianFileSystem {
   app = buildFakeVault(specs)
+  if (native) withDesktopFs(app)
   return new ObsidianFileSystem(app as unknown as App, { pollMs: POLL_MS })
 }
 
@@ -927,15 +937,17 @@ describe('ObsidianFileSystem — moving and removing', () => {
    * listing is what keeps a folder that holds something.
    */
   it('removes the folders a remove or a move emptied, and no other', async () => {
-    const fs = useVault([
-      ...VAULT,
-      { path: 'Burst/deep/a.md', content: 'a', mtime: 1000, ctime: 900 },
-      { path: 'Kept/b.md', content: 'b', mtime: 1000, ctime: 900 },
-      { path: 'Kept/c.md', content: 'c', mtime: 1000, ctime: 900 },
-      { path: 'Moved/d.md', content: 'd', mtime: 1000, ctime: 900 },
-    ])
+    const fs = useVault(
+      [
+        ...VAULT,
+        { path: 'Burst/deep/a.md', content: 'a', mtime: 1000, ctime: 900 },
+        { path: 'Kept/b.md', content: 'b', mtime: 1000, ctime: 900 },
+        { path: 'Kept/c.md', content: 'c', mtime: 1000, ctime: 900 },
+        { path: 'Moved/d.md', content: 'd', mtime: 1000, ctime: 900 },
+      ],
+      true
+    )
     // This guarantee needs the desktop's non-recursive removal API; mobile leaves folders.
-    withDesktopFs(app)
     await app.vault.adapter.mkdir('Empty')
 
     await fs.remove('Burst/deep/a.md')

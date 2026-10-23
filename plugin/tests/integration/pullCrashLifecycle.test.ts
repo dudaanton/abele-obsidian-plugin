@@ -203,6 +203,8 @@ async function scenario(
     served = incoming.slice()
     served[0] ^= 1
   }
+  // CORE: sealed-stage-discard. A refused commit must retain its exact owned
+  // sealed stage and pull intent; these assertions remain failing until core fixes it.
   if (failure === 'stage') {
     const journal = app.loadLocalStorage(JOURNAL_KEY) as { temp: string }[]
     const stage = journal[0].temp,
