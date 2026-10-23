@@ -13,6 +13,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { WriteJournal, JOURNAL_KEY } from '@/sync/writeJournal'
+import { deferred } from '../helpers/deferred'
 
 const roots: string[] = []
 it.each(
@@ -721,7 +722,30 @@ it.each(['rename', 'fingerprint', 'lost-rename'] as const)(
   async (boundary) => {
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined
     let injected = false
+    let pauseFlush = false
+    let heldFlush = false
+    const flushing = deferred(),
+      acknowledge = deferred()
+    const sync = vi.fn(async () => {
+      if (pauseFlush && !heldFlush) {
+        heldFlush = true
+        flushing.resolve()
+        await acknowledge.promise
+      }
+    })
     const { root, disk } = await setup({
+      // This race checks real inode/descriptor behavior, not disk-flush throughput.
+      // Keep every flush call, but let the test acknowledge it explicitly.
+      open: async (...args: Parameters<typeof fs.open>) => {
+        const file = await fs.open(...args)
+        return new Proxy(file, {
+          get(target, key) {
+            if (key === 'sync') return sync
+            const value = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+      },
       rename: async (from: string, to: string) => {
         await fs.rename(from, to)
         if ((boundary === 'rename' || boundary === 'lost-rename') && to.endsWith('/dying')) {
@@ -765,7 +789,23 @@ it.each(['rename', 'fingerprint', 'lost-rename'] as const)(
           await expect(conditional.maintenanceStep()).rejects.toThrow(
             'retirement acknowledgement lost'
           )
-        for (let i = 0; i < 3; i++) await conditional.maintenanceStep()
+        pauseFlush = true
+        let settled = false
+        const sweeping = conditional.maintenanceStep().then(() => {
+          settled = true
+        })
+        try {
+          await flushing.promise
+          expect(settled).toBe(false)
+          expect((await port.retention.summary()).count).toBe(1)
+          expect(
+            (await fs.readdir(root)).filter((name) => name.includes('Recovered copy'))
+          ).toEqual([])
+        } finally {
+          acknowledge.resolve()
+          await sweeping
+        }
+        for (let i = 0; i < 2; i++) await conditional.maintenanceStep()
       } finally {
         clock.mockRestore()
       }
@@ -774,7 +814,10 @@ it.each(['rename', 'fingerprint', 'lost-rename'] as const)(
       expect(visible).toHaveLength(1)
       expect(await fs.readFile(join(root, visible[0]), 'utf8')).toBe('sample B')
       expect((await port.retention.summary()).count).toBe(0)
+      expect(heldFlush).toBe(true)
+      expect(sync).toHaveBeenCalled()
     } finally {
+      acknowledge.resolve()
       await handle.close()
     }
   }
