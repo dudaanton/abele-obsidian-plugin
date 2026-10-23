@@ -42,6 +42,7 @@ import { Menu } from 'obsidian'
 import StatusDot from '../obsidian/StatusDot.vue'
 import Icon from '../obsidian/Icon.vue'
 import { t } from '@/i18n'
+import { openExternal } from '@/helpers/openExternal'
 import { NodeService } from '@/node/NodeService'
 import { NodePathMutations } from '@/node/NodePathMutations'
 import { acquireLspDocument, type NodeLspDocument, type LspLocation } from '@/node/NodeLspDocument'
@@ -222,7 +223,7 @@ function populateAnalysis(menu: Menu) {
     menu.addItem((item) =>
       item
         .setTitle(t('node.analysis.eslintHelp'))
-        .onClick(() => window.open('https://eslint.org/docs/latest/use/getting-started', '_blank'))
+        .onClick(() => openExternal('https://eslint.org/docs/latest/use/getting-started', '_blank'))
     )
 }
 function showAnalysis() {
