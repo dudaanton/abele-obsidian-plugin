@@ -160,7 +160,7 @@ it('production retry repeats the exact successful request after its response is 
 it('a copied obsolete script marker does not block ordinary token exchange', async () => {
   const s = await fixture()
   await s.app.vault.adapter.write('.abele-script-managed', 'untrusted sample marker')
-  await s.app.vault.adapter.write(
+  await s.app.vault.create(
     'Notes/local.md',
     '---\ngroups: ["[[Groups/sample]]"]\n---\nlocal sample'
   )
