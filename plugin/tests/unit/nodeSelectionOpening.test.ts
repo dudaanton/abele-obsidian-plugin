@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { openNodeChat, openNodePathTab } from '@/node/nodePathNavigation'
 
 const f = vi.hoisted(() => ({
+  available: true,
   draft: { value: { text: '' } },
   open: vi.fn(),
   refresh: vi.fn(async () => {}),
@@ -11,7 +12,7 @@ vi.mock('@/ai/ChatService', () => ({
   ChatService: {
     getInstance: () => ({
       openNodeSession: f.open,
-      getNodeSession: () => ({ draft: f.draft, refresh: f.refresh }),
+      getNodeSession: () => (f.available ? { draft: f.draft, refresh: f.refresh } : null),
       revealSidebar: f.reveal,
     }),
   },
@@ -72,4 +73,29 @@ it('shows the selected code draft while the remote session is still loading', as
     loaded()
     await opening
   }
+})
+
+it('retains the quote when folder reveal delays creation of the session presenter', async () => {
+  f.available = false
+  f.draft.value.text = 'Saved draft'
+  f.open.mockImplementationOnce(async () => {
+    await Promise.resolve()
+    f.available = true
+  })
+  await openNodeChat(
+    {
+      kind: 'chat',
+      sessionId: 'sample-delayed',
+      title: 'Sample',
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+    },
+    'Selected code'
+  )
+  expect(f.draft.value.text).toBe('Saved draft\n\nSelected code')
 })

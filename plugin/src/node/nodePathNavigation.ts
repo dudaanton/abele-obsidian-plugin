@@ -286,7 +286,13 @@ export async function openNodeChat(
     title: state.title,
   })
   if (text) {
-    const presenter = chats.getNodeSession(`node:${state.target.registrationId}:${state.sessionId}`)
+    const id = `node:${state.target.registrationId}:${state.sessionId}`
+    let presenter = chats.getNodeSession(id)
+    if (!presenter) {
+      // Folder visibility may be restored before the new presenter is registered.
+      await opening
+      presenter = chats.getNodeSession(id)
+    }
     if (presenter) {
       // Restore the local draft before editing it; connecting to the node may take
       // much longer, so do not wait for the remote part of opening the session.
