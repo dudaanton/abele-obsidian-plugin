@@ -22,7 +22,7 @@ it('keeps the cause text when a shared-item manual sync fails', async () => {
   await expect(ui.sync('sample-set')).rejects.toThrow('sample locked ignore file')
 })
 
-it('runs an explicit sync on a paused connection without changing automatic sync', async () => {
+it('refuses explicit sync while paused without starting or sending work', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)
   const id = registry.records()[0].id
@@ -32,8 +32,9 @@ it('runs an explicit sync on a paused connection without changing automatic sync
     expect(registry.records()[0].paused).toBe(true)
     ui.runtimes.set(id, { sync } as never)
   }
-  await ui.sync(id)
-  expect(sync).toHaveBeenCalledOnce()
+  await expect(ui.sync(id)).rejects.toThrow(/paused/i)
+  expect(sync).not.toHaveBeenCalled()
+  expect(ui.runtimes.has(id)).toBe(false)
   expect(registry.records()[0].paused).toBe(true)
 })
 
