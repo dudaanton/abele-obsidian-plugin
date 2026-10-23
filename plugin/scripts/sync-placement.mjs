@@ -601,10 +601,13 @@ export function syncPlacementPlugin() {
           `const preparedRuns = verdicts.runs.length ? verdicts.runs : [[]];
           for (const [k, run] of preparedRuns.entries()) {`
         )
-        code = replaceOnce(code,
+        code = replaceOnce(
+          code,
           'await this.planner.fetchRun(run, verdicts, tx);',
-          'await this.planner.fetchRun(run, verdicts, this.state);')
-        code = replaceOnce(code,
+          'await this.planner.fetchRun(run, verdicts, this.state);'
+        )
+        code = replaceOnce(
+          code,
           `if (k > 0) {
                         if (this.opts.signal?.aborted) {
                             interrupted = true;
@@ -612,8 +615,10 @@ export function syncPlacementPlugin() {
           `if (k > 0) {
                         if (this.opts.signal?.aborted) {
                             interrupted = true;
-                            break;`)
-        code = replaceOnce(code,
+                            break;`
+        )
+        code = replaceOnce(
+          code,
           `if (!this.opts.signal?.aborted)
                                 throw error;
                             interrupted = true;
@@ -621,8 +626,10 @@ export function syncPlacementPlugin() {
           `if (!this.opts.signal?.aborted)
                                 throw error;
                             interrupted = true;
-                            break;`)
-        code = replaceOnce(code,
+                            break;`
+        )
+        code = replaceOnce(
+          code,
           `                    for (const at of run) {
                         // Commit completed ledger entries`,
           `const placementPaths = [], preservationPaths = [];

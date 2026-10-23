@@ -364,16 +364,16 @@ it.each([
         console.log('[cold token-host pull calls]', JSON.stringify(events))
 
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 10, preparationBridge: 1 })
+        expect(firstPull!.small.max).toMatchObject({ bridge: 6, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
         // One private payload write and one exclusive rename replace the overwrite-capable
-        // public create. Five target checks include preparation; one stat protects the receipt.
+        // public create. Preparation shares the target fact; one stat protects the receipt.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
             .map((event) => event.operation)
         ).toEqual([
-          ...Array<string>(6).fill('adapter stat'),
+          ...Array<string>(2).fill('adapter stat'),
           'adapter exists',
           'adapter exists',
           'adapter mkdir',
