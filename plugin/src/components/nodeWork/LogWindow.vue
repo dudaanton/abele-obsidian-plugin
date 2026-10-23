@@ -1,7 +1,9 @@
 <template>
   <div class="abele-node-log">
     <div class="abele-node-log__bar">
-      <span class="abele-node-log__facts">{{ version }}</span>
+      <span class="abele-node-log__facts">{{
+        version ? `${t('streamB.node.e93372')} ${version}` : ''
+      }}</span>
       <Dropdown v-model="model.level.value" :options="options" :aria-label="t('node.log.filter')" />
       <Icon
         icon="refresh-cw"
@@ -95,8 +97,13 @@ watch(
 </script>
 
 <style>
+.abele-node-log-modal .abele-modal__body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .abele-node-log {
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -118,7 +125,8 @@ watch(
   white-space: nowrap;
 }
 .abele-node-log__lines {
-  height: min(60vh, 440px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-s);

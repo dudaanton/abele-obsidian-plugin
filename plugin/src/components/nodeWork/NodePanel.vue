@@ -402,13 +402,15 @@ body.is-phone .abele-node-panel__link {
   order: 1;
   flex: 0 0 auto;
   box-sizing: border-box;
-  min-height: calc(1lh + var(--size-4-2) + var(--border-width));
   max-height: 50%;
   overflow-y: auto;
-  border-top: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+.abele-node-panel__connection-footer:has(> .abele-state-line) {
+  min-height: calc(1lh + var(--size-4-2) + var(--border-width));
+  border-top: var(--border-width) solid var(--background-modifier-border);
 }
 .abele-node-panel__connection-footer > .abele-state-line {
   border-top: 0;

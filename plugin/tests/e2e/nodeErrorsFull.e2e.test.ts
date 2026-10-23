@@ -27,6 +27,7 @@ const probe = (device: string) =>
     const connection=state.nodes.connections.get(state.registration.id);
     Object.assign(connection,window.__abeleTest.nodeErrorFixtureState());
     connection.client.channel={channel:{welcome:{methods:['node.log.v1.tail','project.trust']}}};
+    const admittedChannel=connection.client.channel;
     const request=connection.client.request.bind(connection.client);
     const time=Date.now();
     let logFailure=false;
@@ -53,6 +54,7 @@ const probe = (device: string) =>
     const file=leaf.view.file, pane=leaf.view.contentEl;
     const touch=()=>{state.model.receivedAt.value=Date.now()+count+1};
     const showFile=async(error)=>{
+      connection.client.channel=admittedChannel;
       connection.state.value='connected';connection.error.value='';connection.activity.slowSince.value=0;
       state.model.error.value='';code=error;file.document.value=undefined;
       await file.open('sample.ts').catch(()=>{});touch();
@@ -75,6 +77,9 @@ const probe = (device: string) =>
     await capture('02-details');
     [...line.querySelectorAll('a')].find(link=>link.textContent==='Node log').click();
     await until(()=>document.querySelector('.abele-node-log__line.is-marked'),'Log did not load and mark the error time');
+    if(document.querySelector('.abele-node-log__facts')?.textContent.trim()!=='Node 0.4.50')throw Error('Log version lacks its Node label');
+    const log=document.querySelector('.abele-node-log'), logBox=log.querySelector('.abele-node-log__lines');
+    if(Math.abs(logBox.getBoundingClientRect().bottom-log.getBoundingClientRect().bottom)>2)throw Error('Log box does not fill the dialog');
     await capture('03-log');
     const select=document.querySelector('.abele-node-log select');select.value='warn';select.dispatchEvent(new Event('change',{bubbles:true}));
     await until(()=>document.querySelectorAll('.abele-node-log__line').length===2,'Log filter failed');
@@ -87,6 +92,7 @@ const probe = (device: string) =>
     connection.activity.slowSince.value=0;connection.state.value='connecting';file.document.value=undefined;file.error.value='offline';touch();
     await until(()=>nodePanel.root().textContent.includes('Reconnecting…'),'Reconnect state missing');
     await capture('06-reconnecting');
+    connection.client.channel=undefined;
     connection.state.value='offline';connection.error.value='connection_lost';touch();
     await until(()=>nodePanel.root().textContent.includes('Reconnect'),'Offline action missing');
     await capture('07-offline');
@@ -140,6 +146,10 @@ const probe = (device: string) =>
     state.model.inspections.value={};touch();
     await until(()=>nodePanel.root().textContent.includes('Loading changes…'),'Initial loading missing');
     await capture('17-first-load');
+    const first=nodePanel.root().querySelector('.abele-node-sidebar__first');
+    if(parseFloat(getComputedStyle(first).paddingTop)<16)throw Error('First load lacks the search spacing step');
+    const quietFooter=nodePanel.root().querySelector('[data-connection-footer]');
+    if(quietFooter.getBoundingClientRect().height>0||parseFloat(getComputedStyle(quietFooter).borderTopWidth)>0)throw Error('Empty footer draws a band');
     state.model.inspections.value={[key]:inspection};touch();
     await until(()=>nodePanel.root().textContent.includes('Updating changes…'),'Updating footer missing');
     await until(()=>nodePanel.root().querySelector('.abele-file-tree')?.textContent.includes('sample-retained.ts'),'Reload discarded the existing tree');

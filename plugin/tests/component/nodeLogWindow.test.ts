@@ -11,7 +11,8 @@ it('shows an empty filter and keeps escaped loaded evidence when offline', async
   })
   const model = new NodeLogModel({ online: () => true, read })
   await model.refresh()
-  const view = mount(LogWindow, { props: { model } })
+  const view = mount(LogWindow, { props: { model, version: '0.4.50' } })
+  expect(view.get('.abele-node-log__facts').text()).toBe('Node 0.4.50')
   expect(view.get('.abele-node-log__text').text()).toBe('<img src="sample">')
   expect(view.find('img').exists()).toBe(false)
   model.level.value = 'warn'

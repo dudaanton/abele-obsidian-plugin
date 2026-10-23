@@ -532,7 +532,7 @@ watch(
 </script>
 <style lang="scss">
 .abele-node-sidebar__first {
-  padding: var(--size-4-2) var(--size-4-3);
+  padding: var(--size-4-4) var(--size-4-3) var(--size-4-2);
 }
 .abele-node-sidebar__step {
   display: flex;
