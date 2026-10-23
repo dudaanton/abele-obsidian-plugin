@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { runInThisContext } from 'node:vm'
 import { IDBFactory } from 'fake-indexeddb'
+import { load as loadYaml } from 'js-yaml'
 import { request as httpRequest } from 'node:http'
 import * as obsidian from '../mocks/obsidian'
 import { buildFakeVault } from './fakeVault'
@@ -83,6 +84,11 @@ export async function bootProductionPlugin(code: string) {
     const links: any[] = [],
       embeds: any[] = []
     const start = source.startsWith('---\n') ? source.indexOf('\n---', 4) + 4 : 0
+    const parsed = start > 4 ? loadYaml(source.slice(4, start - 4)) : null
+    app.setFrontmatter(
+      file.path,
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    )
     for (const match of source.slice(start).matchAll(/!?\[\[([^\]]+)\]\]/g)) {
       const offset = start + match.index!
       const item = {
@@ -92,7 +98,7 @@ export async function bootProductionPlugin(code: string) {
       }
       ;(match[0].startsWith('!') ? embeds : links).push(item)
     }
-    const cache = { links, embeds }
+    const cache = { ...app.metadataCache.getFileCache(file), links, embeds }
     caches.set(file.path, cache)
     app.emit('metadataCache', 'changed', file, source, cache)
   }
