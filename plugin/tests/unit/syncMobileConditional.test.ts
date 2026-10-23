@@ -648,17 +648,32 @@ it('refuses a directory without moving its children', async () => {
   expect(await app.vault.adapter.read('sample.bin/child')).toBe('child')
 })
 
-it('refuses an oversized whole-file decision before reading or mutating bytes', async () => {
+it('captures an oversized target without whole-file reads and retains it after replacement', async () => {
   const { app, write } = await fixture()
+  const rawRead = app.vault.adapter.readBinary.bind(app.vault.adapter)
   const stat = app.vault.adapter.stat.bind(app.vault.adapter)
   vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
     const info = await stat(path)
-    return path === 'sample.bin' && info ? { ...info, size: MOBILE_WHOLE_READ_MAX + 1 } : info
+    return (path === 'sample.bin' || path.endsWith('/victim')) && info?.size === 6
+      ? { ...info, size: MOBILE_WHOLE_READ_MAX + 1 }
+      : info
   })
   const read = vi.spyOn(app.vault.adapter, 'readBinary')
-  expect(await write()).toBe(false)
-  expect(read).not.toHaveBeenCalled()
-  expect(await app.vault.adapter.read('sample.bin')).toBe('before')
+  expect(await write()).toBe(true)
+  expect(read.mock.calls.some(([path]) => path === 'sample.bin' || path.endsWith('/victim'))).toBe(
+    false
+  )
+  expect(new TextDecoder().decode(await rawRead('sample.bin'))).toBe('after')
+  const root = '.obsidian/plugins/abele/sync-conditional'
+  expect(new TextDecoder().decode(await rawRead(root + '/trash/sample-mobile/victim'))).toBe(
+    'before'
+  )
+  expect(
+    JSON.parse(new TextDecoder().decode(await rawRead(root + '/trash/sample-mobile/ready')))
+  ).toBe(true)
+  expect((await app.vault.adapter.list(root + '/retained')).files).toEqual([
+    root + '/retained/sample-mobile.json',
+  ])
 })
 
 it('preserves both versions after a lost write acknowledgement and never adopts by equality', async () => {
