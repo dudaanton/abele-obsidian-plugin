@@ -28218,5 +28218,95 @@
       "es",
       "de"
     ]
+  },
+  "node.analysis.nodeUnsupported": {
+    "englishHash": "80944bfb3745f5ee16a168a41e6eaa0b8388634e23b6b44bfdb7bf7d4c6fb661",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.fileTooLarge": {
+    "englishHash": "1bfeaeb1f90faf7e3a823ed23b55ba1930c9ed552c4cf17bebaffa3964e8aaf3",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.noServers": {
+    "englishHash": "fb92bf9cfcec8ece42b7320f1ce4eff72b974dceb9f16a9ed580c9c180902295",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.noConnection": {
+    "englishHash": "8cc8383fd14b866c696e88eb6e3bb7d4af4c5509d449efd0e6b8ce78847a5c83",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.pastRevision": {
+    "englishHash": "616a49576a5dd5520c66256591c3825832b051806210d8443494fd42170bc35e",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.comparison": {
+    "englishHash": "987dc61bd9464d0403a2be3c21cdb42cb76735ac5eeea817910733c3ba75ffb8",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.unsupportedFile": {
+    "englishHash": "70a7efb2f3657f21e01e84990cfdb9bd4222f87d0118d09b2ba51c2d9b9b2e43",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.documentLimit": {
+    "englishHash": "07b53b9f70a5f0c30cdc4f317ddadf3e4ab0642aee22eab6550f477e9bb9d27f",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.analysis.contentUnavailable": {
+    "englishHash": "502cf79824bbe0f5cb8dbefcb1d04a3a650e2052d9f329a2c8dad2db86527394",
+    "context": "Node file analysis admission reason in the header menu",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

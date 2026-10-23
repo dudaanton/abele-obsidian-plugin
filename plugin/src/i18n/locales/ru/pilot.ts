@@ -1,5 +1,17 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.analysis.contentUnavailable': 'Содержимое файла недоступно для анализа.',
+
+  'node.analysis.nodeUnsupported': 'Анализ кода недоступен на этой ноде.',
+  'node.analysis.fileTooLarge': 'Файл слишком большой для анализа (предел: 512 КиБ).',
+  'node.analysis.noServers': 'Ни один языковой сервер не принял этот файл.',
+  'node.analysis.noConnection': 'Нет подключения к этой ноде.',
+  'node.analysis.pastRevision': 'В этом окне открыта прошлая версия.',
+  'node.analysis.comparison': 'Откройте просмотр файла для анализа кода.',
+  'node.analysis.unsupportedFile': 'Анализ кода не поддерживает этот тип файла.',
+  'node.analysis.documentLimit':
+    'Достигнут предел документов для анализа на ноде. Закройте другие файлы кода и повторите.',
+
   'node.loading.changes': 'Загружаем изменения…',
   'node.loading.history': 'Загружаем историю…',
   'node.loading.files': 'Загружаем файлы…',

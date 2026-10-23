@@ -1,5 +1,18 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.analysis.contentUnavailable':
+    'El contenido del archivo no está disponible para el análisis.',
+
+  'node.analysis.nodeUnsupported': 'El análisis de código no está disponible en este nodo.',
+  'node.analysis.fileTooLarge': 'El archivo es demasiado grande para analizarlo (límite: 512 KiB).',
+  'node.analysis.noServers': 'Ningún servidor de lenguaje aceptó este archivo.',
+  'node.analysis.noConnection': 'No hay conexión disponible con este nodo.',
+  'node.analysis.pastRevision': 'Esta vista muestra una revisión anterior.',
+  'node.analysis.comparison': 'Abre la vista del archivo para analizar el código.',
+  'node.analysis.unsupportedFile': 'El análisis de código no admite este tipo de archivo.',
+  'node.analysis.documentLimit':
+    'El nodo alcanzó el límite de documentos de análisis. Cierra otros archivos de código y vuelve a intentarlo.',
+
   'node.loading.changes': 'Cargando cambios…',
   'node.loading.history': 'Cargando historial…',
   'node.loading.files': 'Cargando archivos…',

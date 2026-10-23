@@ -25,6 +25,7 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
+  lspAdmission?: string
   lspFile?: { target: import('@/node/NodePathModel').PathTarget; text: string }
   delegationCommand?: string | string[]
   managerLegacyIntegration?: boolean
@@ -524,7 +525,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-lsp-eslint': () => mountAlone(NodeLspFixture, { state: 'eslint' }, 'node-lsp-eslint'),
   'node-lsp-failed': () => mountAlone(NodeLspFixture, { state: 'failed' }, 'node-lsp-failed'),
   'node-lsp-off': () => mountAlone(NodeLspFixture, { state: 'off' }, 'node-lsp-off'),
-  'node-lsp-ready': () => mountAlone(NodeLspFixture, { state: 'ready' }, 'node-lsp-ready'),
+  'node-lsp-ready': (options) =>
+    mountAlone(
+      NodeLspFixture,
+      { state: 'ready', admission: options?.lspAdmission },
+      'node-lsp-ready'
+    ),
   'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),
   'node-edit-conflict': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),

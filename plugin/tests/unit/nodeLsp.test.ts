@@ -43,6 +43,59 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('exposes a failed hover buffer refresh instead of silently falling back', async () => {
+    const f = fixture()
+    await f.doc.open('small')
+    f.lsp.open.mockRejectedValueOnce(new Error('Sample buffer unavailable'))
+    expect(await f.doc.hover({ line: 0, character: 1 })).toBe('')
+    expect(f.doc.error).toBe('Sample buffer unavailable')
+    await f.doc.close()
+  })
+  it('resumes the previous small buffer after an oversized draft', async () => {
+    const f = fixture()
+    await f.doc.open('small')
+    await f.doc.open('界'.repeat(180000))
+    await f.doc.open('small')
+    expect(f.doc.unavailableReason).toBe('')
+    await f.doc.close()
+  })
+  it('explains missing node capability instead of silently declining admission', async () => {
+    const f = fixture([])
+    await f.doc.open('sample')
+    expect(f.doc.unavailableReason).toBe('nodeUnsupported')
+    expect(f.lsp.open).not.toHaveBeenCalled()
+    await f.doc.close()
+  })
+  it('does not call an empty open result ready when no analyzer accepted the file', async () => {
+    const f = fixture()
+    f.lsp.open.mockResolvedValue({ servers: [] })
+    await f.doc.open('sample')
+    expect(f.doc.unavailableReason).toBe('noServers')
+    expect(f.lsp.diagnostics).not.toHaveBeenCalled()
+    await f.doc.close()
+  })
+  it('keeps the structured document limit reason returned by the node', async () => {
+    const f = fixture()
+    f.lsp.open.mockRejectedValue(
+      Object.assign(new Error('Language analysis is unavailable.'), {
+        code: 'lsp_unavailable',
+        details: { reason: 'lsp_document_limit' },
+      })
+    )
+    await f.doc.open('sample')
+    expect(f.doc.errorReason).toBe('lsp_document_limit')
+    await f.doc.close()
+  })
+  it('rejects oversized UTF-8 text with an explicit reason and recovers on shrink', async () => {
+    const f = fixture()
+    await f.doc.open('界'.repeat(180000))
+    expect(f.doc.unavailableReason).toBe('fileTooLarge')
+    expect(f.lsp.open).not.toHaveBeenCalled()
+    await f.doc.open('small')
+    expect(f.doc.unavailableReason).toBe('')
+    expect(f.lsp.open).toHaveBeenCalledOnce()
+    await f.doc.close()
+  })
   it('recovers Retry after failed status, hover, and an edit with another admission failure', async () => {
     const f = fixture()
     f.lsp.status.mockRejectedValue(new Error('Sample status unavailable'))

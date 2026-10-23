@@ -1,13 +1,14 @@
 <template>
   <div ref="root" class="abele-file-view" @contextmenu="onMenu">
     <NodeLspTools
-      v-if="codeTarget && !repository && !image && !metadataNote && (mode === 'file' || !change)"
+      v-if="codeTarget && !image"
       :root="root"
       :glyph-host="glyphHost"
       :target="codeTarget"
       :path="path"
       :text="text"
       :offline="offline"
+      :disabled-reason="analysisDisabledReason"
     />
     <NodeFileTools
       v-if="!image && !metadataNote"
@@ -72,6 +73,7 @@
         :text="text"
         :file="repositoryFile"
         :glyph-host="fileGlyphHost"
+        :analysis="!codeTarget"
         plain
         :offline="offline"
         :range="linkedRange"
@@ -192,6 +194,17 @@ const metadataNote = computed(() =>
 const comparison = computed(() =>
   !props.image && !metadataNote.value && props.mode === 'diff' ? props.change : undefined
 )
+const analysisDisabledReason = computed(() => {
+  if (metadataNote.value) return 'contentUnavailable'
+  if (
+    props.revision &&
+    props.revision !== 'Working tree' &&
+    props.revision !== 'WORKTREE' &&
+    !props.revision.startsWith('working-')
+  )
+    return 'pastRevision'
+  return comparison.value ? 'comparison' : undefined
+})
 const imageUrl = ref('')
 const releaseImage = () => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)

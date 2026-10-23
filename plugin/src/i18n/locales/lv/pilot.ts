@@ -1,5 +1,17 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.analysis.contentUnavailable': 'Faila saturs nav pieejams analīzei.',
+
+  'node.analysis.nodeUnsupported': 'Šajā mezglā koda analīze nav pieejama.',
+  'node.analysis.fileTooLarge': 'Fails ir pārāk liels analīzei (ierobežojums: 512 KiB).',
+  'node.analysis.noServers': 'Neviens valodas serveris nepieņēma šo failu.',
+  'node.analysis.noConnection': 'Nav pieejams savienojums ar šo mezglu.',
+  'node.analysis.pastRevision': 'Šajā skatā ir atvērta iepriekšēja versija.',
+  'node.analysis.comparison': 'Lai analizētu kodu, atveriet faila skatu.',
+  'node.analysis.unsupportedFile': 'Koda analīze neatbalsta šo faila tipu.',
+  'node.analysis.documentLimit':
+    'Mezglā sasniegts analīzes dokumentu ierobežojums. Aizveriet citus koda failus un mēģiniet vēlreiz.',
+
   'node.loading.changes': 'Ielādē izmaiņas…',
   'node.loading.history': 'Ielādē vēsturi…',
   'node.loading.files': 'Ielādē failus…',

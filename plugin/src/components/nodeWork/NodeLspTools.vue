@@ -66,6 +66,7 @@ const props = defineProps<{
   path: string
   text: string
   offline?: boolean
+  disabledReason?: 'pastRevision' | 'comparison' | 'noConnection' | 'contentUnavailable'
 }>()
 const injectedConnection = inject(LSP_CONNECTION, undefined)
 const fileDestination = inject(FILE_DESTINATION, undefined)
@@ -93,6 +94,19 @@ const statuses = computed(() => {
   return document.value?.status ?? []
 })
 const language = computed(() => lspLanguage(props.path))
+const offReason = computed(() => {
+  if (props.disabledReason) return t(`node.analysis.${props.disabledReason}`)
+  if (props.offline) return t('node.state.offline')
+  if (!language.value) return t('node.analysis.unsupportedFile')
+  const reason = document.value?.unavailableReason
+  if (reason) return t(`node.analysis.${reason}`)
+  if (settled.value && !document.value) return t('node.analysis.noConnection')
+  return ''
+})
+const failureReason = computed(() => {
+  if (document.value?.errorReason === 'lsp_document_limit') return t('node.analysis.documentLimit')
+  return actionError.value || document.value?.error || ''
+})
 const relevant = computed(() =>
   statuses.value.filter(
     (s) =>
@@ -111,8 +125,7 @@ const eslintMissing = computed(() =>
 )
 const analysisState = computed(() => {
   if (actionError.value || document.value?.error) return 'failed'
-  if (!language.value || props.offline || (settled.value && !document.value?.supported))
-    return 'off'
+  if (offReason.value || (settled.value && !document.value?.supported)) return 'off'
   if (untrusted.value || missing.value || eslintMissing.value) return 'degraded'
   if (relevant.value.some((s) => s.diagnostic)) return 'failed'
   if (!settled.value || busy.value) return 'starting'
@@ -126,14 +139,16 @@ const tone = computed(() => {
 })
 const analyzerNames: Record<string, string> = { typescript: 'TypeScript', eslint: 'ESLint' }
 function analyzerState(status: (typeof relevant.value)[number]) {
+  if (offReason.value) return offReason.value
   if (status.reason === 'untrusted_folder') return t('node.analysis.untrusted')
   if (!status.found || (status.language === 'eslint' && eslintMissing.value))
     return t('node.analysis.notSetUp')
-  const reason = status.diagnostic || actionError.value || document.value?.error
+  const reason = status.diagnostic || failureReason.value
   if (reason) return t('node.analysis.stopped', { reason })
   return t(analysisState.value === 'starting' ? 'node.analysis.starting' : 'node.analysis.running')
 }
 function analyzerIcon(status: (typeof relevant.value)[number]) {
+  if (offReason.value) return 'circle-off'
   if (status.reason === 'untrusted_folder') return 'shield-alert'
   if (!status.found || (status.language === 'eslint' && eslintMissing.value)) return 'circle-alert'
   if (status.diagnostic || actionError.value || document.value?.error) return 'circle-alert'
@@ -169,7 +184,7 @@ function populateAnalysis(menu: Menu) {
   if (!relevant.value.length)
     menu.addItem((item) =>
       item
-        .setTitle(analysisTooltip.value)
+        .setTitle(offReason.value || analysisTooltip.value)
         .setIcon(
           analysisState.value === 'off'
             ? 'circle-off'
@@ -180,15 +195,14 @@ function populateAnalysis(menu: Menu) {
         .setDisabled(true)
     )
   // With no analyser status to carry it, the failure reason gets its own row.
-  const failure =
-    actionError.value ||
-    (document.value?.error ? t('node.lsp.error', { message: document.value.error }) : '')
+  const failure = failureReason.value
   if (!relevant.value.length && failure) {
     menu.addSeparator()
     menu.addItem((item) => item.setTitle(failure).setDisabled(true))
   }
   const restart =
-    document.value?.supported &&
+    document.value &&
+    !offReason.value &&
     (analysisState.value === 'failed' ||
       document.value.diagnostics.some((item) => item.severity === 1))
   const setup =
@@ -372,12 +386,19 @@ function install() {
   }
 }
 async function refresh() {
-  if (!props.offline) await document.value?.open(props.text)
+  if (!props.offline && !props.disabledReason) await document.value?.open(props.text)
 }
 watch(
-  [() => props.root, () => JSON.stringify(props.target), () => props.path, () => props.offline],
+  [
+    () => props.root,
+    () => JSON.stringify(props.target),
+    () => props.path,
+    () => props.offline,
+    () => props.disabledReason,
+  ],
   (_values, _old, cleanup) => {
     removeContext?.()
+    removeContext = undefined
     removeListener?.()
     void releaseDocument?.()
     releaseDocument = undefined
@@ -386,9 +407,15 @@ watch(
     actionError.value = ''
     canInstall.value = false
     canTrust.value = false
-    if (!props.root || props.offline || !language.value) return
+    if (!props.root || props.offline || props.disabledReason || !language.value) {
+      settled.value = true
+      return
+    }
     const connection = connectionForTarget()
-    if (!connection) return
+    if (!connection) {
+      settled.value = true
+      return
+    }
     const root =
       props.target.kind === 'worktree'
         ? { worktree_id: props.target.id }

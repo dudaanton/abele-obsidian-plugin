@@ -8,6 +8,7 @@
       :path="file.path"
       :text="visibleText"
       :offline="offline"
+      :disabled-reason="analysisDisabledReason"
     />
     <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
       <!-- A node's markdown file: rendered or as code, one lit glyph like blame beside it. -->
@@ -223,6 +224,8 @@ const props = withDefaults(
     editor?: NodeFilesModel
     writable?: boolean
     offline?: boolean
+    /** The containing file view may already own analysis and its header action. */
+    analysis?: boolean
     contentId?: string | null
     documentNote?: string
     refresh?: () => Promise<unknown>
@@ -237,6 +240,7 @@ const props = withDefaults(
     editor: undefined,
     writable: false,
     offline: false,
+    analysis: true,
     contentId: undefined,
     documentNote: undefined,
     refresh: undefined,
@@ -336,17 +340,23 @@ const source = useRepositorySource(
   () => props.client,
   () => props.file
 )
+const liveRevision = computed(
+  () =>
+    props.file.ref === 'Working tree' ||
+    props.file.ref === 'WORKTREE' ||
+    props.file.ref.startsWith('working-')
+)
+const analysisDisabledReason = computed(() => {
+  if (props.documentNote) return 'contentUnavailable'
+  if (!lspTarget.value?.nodeId) return 'noConnection'
+  return liveRevision.value ? undefined : 'pastRevision'
+})
 const lspTarget = computed<PathTarget | undefined>(() => {
   const identity = source.value?.identity
-  if (
-    identity?.provider !== 'node' ||
-    !(props.file.ref === 'Working tree' || props.file.ref.startsWith('working-'))
-  )
-    return undefined
+  if (!props.analysis || identity?.provider !== 'node') return undefined
   const nodeId = NodeService.connectionIfKnown?.(identity.node)?.client.target?.expected_node_id
-  if (!nodeId) return undefined
   return {
-    nodeId,
+    nodeId: nodeId ?? '',
     registrationId: identity.node,
     projectId: identity.project,
     kind: 'worktree',

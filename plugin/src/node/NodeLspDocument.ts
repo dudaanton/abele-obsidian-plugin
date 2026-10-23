@@ -17,6 +17,8 @@ export class NodeLspDocument {
   supported = false
   loading = false
   error = ''
+  errorReason = ''
+  unavailableReason: '' | 'nodeUnsupported' | 'fileTooLarge' | 'noServers' = ''
   private opens = 0
   private text = ''
   private openedText?: string
@@ -41,6 +43,13 @@ export class NodeLspDocument {
   private changed() {
     for (const listener of this.listeners) listener()
   }
+  private failed(error: unknown) {
+    this.error =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'lsp_failed'
+    const detail = z.object({ details: z.object({ reason: z.string() }) }).safeParse(error)
+    this.errorReason = detail.success ? detail.data.details.reason : ''
+    this.changed()
+  }
   private get unavailable(): boolean {
     const language = lspLanguage(this.path)
     const relevant = this.status.filter(
@@ -61,7 +70,11 @@ export class NodeLspDocument {
         }),
       })
       .safeParse(description)
-    if (this.stopped || !parsed.success) return
+    if (this.stopped) return
+    if (!parsed.success) {
+      this.unavailableReason = 'nodeUnsupported'
+      return
+    }
     this.supported = true
     // Availability notices affect the code's position. Publish them before cached
     // diagnostics can make the editor interactive at a soon-to-change location.
@@ -121,7 +134,8 @@ export class NodeLspDocument {
     // Serialize updates so a slow open can never replace a newer version of the draft.
     this.pending = this.pending.then(async () => {
       if (this.stopped) return
-      if (this.openedText === text && !this.error && !this.unavailable) return
+      if (this.openedText === text && !this.error && !this.unavailable && !this.unavailableReason)
+        return
       const analysisPushes = this.pushes
       const loadingTimer = window.setTimeout(() => {
         if (!this.stopped && this.pushes === analysisPushes) {
@@ -130,11 +144,21 @@ export class NodeLspDocument {
         }
       }, 300)
       this.error = ''
+      this.errorReason = ''
+      this.unavailableReason = ''
       this.changed()
       try {
+        if (new TextEncoder().encode(text).byteLength > 512 * 1024) {
+          this.unavailableReason = 'fileTooLarge'
+          this.diagnostics = []
+          return
+        }
         if (this.admitted && !this.opens) this.status = await this.client.lsp.status(this.root)
         await this.ensureAdmission()
-        if (!this.admitted || this.stopped) return
+        if (!this.admitted || this.stopped) {
+          this.admission = undefined
+          return
+        }
         if (this.unavailable) {
           this.diagnostics = []
           console.debug('[node] Language analysis waiting for available trusted servers', this.path)
@@ -143,13 +167,18 @@ export class NodeLspDocument {
         const pushes = this.pushes
         ++this.opens
         // Versions belong to the shared node buffer, including refreshes from other clients.
-        await (this.opening = this.client.lsp.open(
+        const opened = await (this.opening = this.client.lsp.open(
           this.root,
           this.path,
           text,
           undefined,
           this.abort.signal
         ))
+        if (!opened.servers.length) {
+          this.unavailableReason = 'noServers'
+          this.diagnostics = []
+          return
+        }
         this.openedText = text
         const diagnostics = await this.client.lsp.diagnostics(
           this.root,
@@ -160,7 +189,7 @@ export class NodeLspDocument {
       } catch (error) {
         if (!this.stopped) {
           console.debug('[node] Language analysis unavailable', error)
-          this.error = error instanceof Error ? error.message : String(error)
+          this.failed(error)
         }
       } finally {
         window.clearTimeout(loadingTimer)
@@ -182,7 +211,8 @@ export class NodeLspDocument {
     run: () => Promise<T>
   ): Promise<T> {
     const work = this.pending.then(async () => {
-      if (!this.admitted || this.stopped || this.unavailable) return fallback
+      if (!this.admitted || this.stopped || this.unavailable || this.unavailableReason)
+        return fallback
       try {
         ++this.opens
         await (this.opening = this.client.lsp.open(
@@ -199,6 +229,7 @@ export class NodeLspDocument {
       } catch (error) {
         if (kind === 'hover') console.debug('[node] Language hover unavailable', error)
         else console.debug('[node] Language navigation unavailable', error)
+        if (!this.stopped) this.failed(error)
         return fallback
       }
     })

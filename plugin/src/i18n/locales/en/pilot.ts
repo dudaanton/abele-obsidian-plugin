@@ -1,4 +1,16 @@
 export const en = {
+  'node.analysis.contentUnavailable': 'File contents are not available for analysis.',
+
+  'node.analysis.nodeUnsupported': 'Code analysis is not available on this node.',
+  'node.analysis.fileTooLarge': 'File too large for analysis (limit: 512 KiB).',
+  'node.analysis.noServers': 'No language server accepted this file.',
+  'node.analysis.noConnection': 'No connection to this node is available.',
+  'node.analysis.pastRevision': 'This view is a past revision.',
+  'node.analysis.comparison': 'Open the file view to analyze code.',
+  'node.analysis.unsupportedFile': 'Code analysis does not support this file type.',
+  'node.analysis.documentLimit':
+    'The node reached its analysis document limit. Close other code files and retry.',
+
   'node.loading.changes': 'Loading changes…',
   'node.loading.history': 'Loading history…',
   'node.loading.files': 'Loading files…',

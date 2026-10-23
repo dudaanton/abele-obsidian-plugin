@@ -1,5 +1,17 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.analysis.contentUnavailable': 'Der Dateiinhalt ist für die Analyse nicht verfügbar.',
+
+  'node.analysis.nodeUnsupported': 'Codeanalyse ist auf diesem Knoten nicht verfügbar.',
+  'node.analysis.fileTooLarge': 'Die Datei ist zu groß für die Analyse (Grenze: 512 KiB).',
+  'node.analysis.noServers': 'Kein Sprachserver hat diese Datei angenommen.',
+  'node.analysis.noConnection': 'Keine Verbindung zu diesem Knoten verfügbar.',
+  'node.analysis.pastRevision': 'Diese Ansicht zeigt eine frühere Version.',
+  'node.analysis.comparison': 'Öffne die Dateiansicht zur Codeanalyse.',
+  'node.analysis.unsupportedFile': 'Die Codeanalyse unterstützt diesen Dateityp nicht.',
+  'node.analysis.documentLimit':
+    'Der Knoten hat die Grenze für Analysedokumente erreicht. Schließe andere Codedateien und versuche es erneut.',
+
   'node.loading.changes': 'Änderungen werden geladen…',
   'node.loading.history': 'Verlauf wird geladen…',
   'node.loading.files': 'Dateien werden geladen…',

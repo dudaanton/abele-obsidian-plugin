@@ -141,6 +141,36 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           }
           await close();
         }
+        for (const [admission, reason] of Object.entries({
+          comparison: 'Open the file view to analyze code.',
+          pastRevision: 'This view is a past revision.',
+          nodeUnsupported: 'Code analysis is not available on this node.',
+          noConnection: 'No connection to this node is available.',
+          offline: 'The node is offline.',
+          contentUnavailable: 'File contents are not available for analysis.',
+          fileTooLarge: 'File too large for analysis (limit: 512 KiB).',
+          noServers: 'No language server accepted this file.',
+          documentLimit: 'The node reached its analysis document limit.',
+          describeFailure: 'Sample description timeout',
+          linkedWorktree: 'TypeScript — running',
+        })) {
+          phase = 'admission-' + admission;
+          await window.__abeleTest.openDialog('node-lsp-ready', { lspAdmission: admission });
+          const expected = admission === 'linkedWorktree' ? 'ready' : ['documentLimit', 'describeFailure'].includes(admission) ? 'failed' : 'off';
+          await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === expected);
+          document.querySelector(${mobile} ? '[data-lsp-overflow]' : '[data-lsp-analysis] button').click();
+          if (${mobile}) {
+            await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent === 'Code analysis'));
+            [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent === 'Code analysis').closest('.menu-item').click();
+          }
+          await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent.includes(reason)));
+          await shot('admission-' + admission + '-menu');
+          document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          await until(() => !document.querySelector('.menu'));
+          const rect = document.querySelector('.modal.abele-modal').getBoundingClientRect();
+          results.push({ state: admission, text: reason, fits: rect.left >= -1 && rect.right <= innerWidth + 1 });
+          await close();
+        }
         return JSON.stringify(results);
         } finally { window.removeEventListener('unhandledrejection', onError); window.removeEventListener('error', onError); }
       })()`,

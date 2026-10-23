@@ -15,7 +15,24 @@
     <FileView
       :path="state === 'off' ? 'sample.txt' : 'sample.ts'"
       :text="text"
-      mode="file"
+      :mode="admission === 'comparison' ? 'diff' : 'file'"
+      :change="
+        admission === 'comparison' || admission === 'contentUnavailable'
+          ? {
+              path: 'sample.ts',
+              kind: 'modified',
+              before: 'before',
+              after: text,
+              added: 1,
+              removed: 1,
+              ...(admission === 'contentUnavailable'
+                ? { previewNote: 'Sample content omitted' }
+                : {}),
+            }
+          : undefined
+      "
+      :revision="admission === 'pastRevision' ? 'sample-commit' : undefined"
+      :offline="admission === 'offline'"
       :code-target="target"
       :line="line"
     />
@@ -64,6 +81,7 @@ function overflow(event: MouseEvent) {
 }
 const props = defineProps<{
   state: 'missing' | 'untrusted' | 'loading' | 'errors' | 'eslint' | 'failed' | 'off' | 'ready'
+  admission?: string
 }>()
 let settle: (() => void) | undefined
 const emit = defineEmits<{ close: [] }>()
@@ -71,10 +89,13 @@ const target = {
   nodeId: 'sample-node',
   registrationId: 'sample-node',
   projectId: 'sample-project',
-  kind: 'workspace' as const,
-  id: 'sample-workspace',
+  kind: props.admission === 'linkedWorktree' ? ('worktree' as const) : ('workspace' as const),
+  id: props.admission === 'linkedWorktree' ? 'sample-linked-worktree' : 'sample-workspace',
 }
-const text = 'export const sample: string = 42\nconsole.log(sample)\n'
+const text =
+  props.admission === 'fileTooLarge'
+    ? '/*' + 'x'.repeat(512 * 1024) + '*/'
+    : 'export const sample: string = 42\nconsole.log(sample)\n'
 const line = ref<number>()
 const destination = ref('')
 const installed = ref(false)
@@ -86,9 +107,15 @@ const client = new NodeClient(
 Object.defineProperty(client, 'channel', {
   value: { channel: { welcome: { methods: ['lsp.v1.install', 'project.trust'] } } },
 })
-client.describe = async () => ({
-  capabilities: { capabilities: { lsp_v1: { status: 'supported' } } },
-})
+client.describe = async () => {
+  if (props.admission === 'describeFailure') throw new Error('Sample description timeout')
+  return {
+    capabilities: {
+      capabilities:
+        props.admission === 'nodeUnsupported' ? {} : { lsp_v1: { status: 'supported' } },
+    },
+  }
+}
 client.subscribe = async () => ({})
 client.lsp.status = async () =>
   ['typescript', 'eslint'].map((language) => ({
@@ -104,7 +131,17 @@ client.lsp.status = async () =>
         }
       : {}),
   }))
-client.lsp.open = async () => {
+client.lsp.open = async (root, path) => {
+  if (
+    props.admission === 'linkedWorktree' &&
+    (!('worktree_id' in root) || root.worktree_id !== target.id || path !== 'sample.ts')
+  )
+    throw new Error('Sample linked worktree identity mismatch')
+  if (props.admission === 'documentLimit')
+    throw Object.assign(new Error('Sample analysis limit'), {
+      details: { reason: 'lsp_document_limit' },
+    })
+  if (props.admission === 'noServers') return { servers: [] }
   if (props.state === 'failed') throw new Error('Sample analysis server stopped')
   return {
     servers:
@@ -149,14 +186,15 @@ client.lsp.references = async () => [
     range: { start: { line: 1, character: 12 }, end: { line: 1, character: 18 } },
   },
 ]
-provide(LSP_CONNECTION, {
-  client,
-  connect: async () => {},
-  navigate(locations) {
-    line.value = locations[0].range.start.line + 1
-    destination.value = `${locations[0].path}:${line.value}`
-  },
-})
+if (props.admission !== 'noConnection')
+  provide(LSP_CONNECTION, {
+    client,
+    connect: async () => {},
+    navigate(locations) {
+      line.value = locations[0].range.start.line + 1
+      destination.value = `${locations[0].path}:${line.value}`
+    },
+  })
 </script>
 <style scoped>
 .abele-lsp-fixture-header {
