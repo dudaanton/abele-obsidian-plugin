@@ -253,7 +253,10 @@ export class TokenConnectionRegistry {
         writes.push([ITEM_SELECTION_KEY, selection])
       }
       if (!writes.length) return
-      const before = writes.map(([key]) => [key, clone(this.local.loadLocalStorage(key))] as const)
+      const before = writes.map(([key]) => {
+        const value = this.local.loadLocalStorage(key)
+        return [key, value == null ? value : clone(value)] as const
+      })
       this.local.saveLocalStorage(REGISTRY_WRITE_KEY, clone(writes))
       if (!same(this.local.loadLocalStorage(REGISTRY_WRITE_KEY), writes)) throw recovery()
       this.repairWrite(before)
