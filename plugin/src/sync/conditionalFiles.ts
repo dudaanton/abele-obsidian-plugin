@@ -935,7 +935,8 @@ export class ConditionalFiles {
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await h.mkdir(parent)
       const first = await h.stat(op.path)
-      if (first && (first.type !== 'file' || first.size > checked.maxBytes)) return false
+      if (first && (first.type !== 'file' || (!retainUnknown && first.size > checked.maxBytes)))
+        return false
       if (op.expected && first === null && op.effect.kind === 'remove') {
         await checked.wait(op.path)
         return (await h.stat(op.path)) === null
