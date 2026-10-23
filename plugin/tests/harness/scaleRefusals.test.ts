@@ -135,3 +135,36 @@ it('admits only the approved pause grace and requires a healthy write observer w
     pauseWriteOperationsAfterGrace: 1,
   })
 })
+
+it('counts the final synced restart as a generation without allowing retries inside it', () => {
+  const file = { path: 'Attachments/sample.bin', size: 256, sha: 'abc' }
+  const state = [
+    {
+      snapshot: { rows: [{ status: 'attention' }] },
+      activity: [
+        {
+          refused: [{ path: file.path, reason: 'too large' }],
+          events: [{ text: `too_large: ${file.path}` }],
+        },
+      ],
+    },
+  ]
+  const attempts = [10, 30, 40].map((at, id) => ({
+    at,
+    id,
+    device: '0',
+    event: 'start',
+    method: 'POST',
+    route: '/v2/uploads/abc/begin',
+  }))
+  expect(oversizedEvidence([file], [file], state, attempts.slice(0, 2), [], 20)[0]).toMatchObject({
+    attempts: 2,
+    maxAttemptsPerGeneration: 1,
+    pass: true,
+  })
+  expect(oversizedEvidence([file], [file], state, attempts, [], 20)[0]).toMatchObject({
+    attempts: 3,
+    maxAttemptsPerGeneration: 2,
+    pass: false,
+  })
+})

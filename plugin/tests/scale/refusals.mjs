@@ -12,17 +12,18 @@ export function fileExpectations(files, limits) {
   }
 }
 
-export function oversizedEvidence(files, primary, snapshots, wire, interruptions = []) {
-  const restarts = interruptions
-    .filter((e) =>
+export function oversizedEvidence(files, primary, snapshots, wire, interruptions = [], restartAt) {
+  const restarts = [
+    ...interruptions.filter((e) =>
       [
         'kill mid-large-file',
         'quit mid-batch',
         'quit during comparison',
         'plugin disable-enable',
       ].includes(e.kind)
-    )
-    .sort((a, b) => a.at - b.at)
+    ),
+    ...(Number.isFinite(restartAt) ? [{ at: restartAt }] : []),
+  ].sort((a, b) => a.at - b.at)
   const sizeReason = /too_large|too large|larger than|size.*limit|limit.*size/i
   const namesPath = (text, path) => {
     if (typeof text !== 'string') return false

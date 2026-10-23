@@ -750,7 +750,8 @@ export async function run(config) {
         intact,
         report.primaryStateObservations,
         report.wire,
-        report.interruptions
+        report.interruptions,
+        report.restartAt
       )
       if (report.pauseActionAt && report.pauseWindowEndAt)
         Object.assign(
