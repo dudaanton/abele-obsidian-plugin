@@ -181,6 +181,8 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
         for(const type of ['mouseDown','mouseUp'])web.sendInputEvent({type,x:Math.round(symbol.x),y:Math.round(symbol.y),button:'left',clickCount:1,modifiers:['alt']});
         alt(false);
         await until(()=>Array.from(document.querySelectorAll('.cm-content')).some(el=>el.textContent.includes('export declare const sample')),'Option click definition');
+        const destinations=app.workspace.getLeavesOfType('abele-node-file').filter(leaf=>leaf.view.getState().target?.registrationId===${JSON.stringify(node.registration)});
+        if(destinations.length!==1||destinations[0].view.getState().path!=='node_modules/sample-types/index.d.ts')throw Error('Option click did not open exactly one definition tab');
         if(cm.state.selection!==selection)throw Error('Option click changed source selection');
         if(document.querySelector('.menu, .suggestion-container'))throw Error('Option click opened an extra menu');
         inputChecks.push('trusted Option click opens the definition without changing source selection');
@@ -225,6 +227,12 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
       })
     )
   } finally {
-    await node.close()
+    try {
+      await evalLong(
+        `(()=>{for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.registrationId===${JSON.stringify(node.registration)})leaf.detach();return 'closed fixture definition tabs'})()`
+      )
+    } finally {
+      await node.close()
+    }
   }
 }, 300000)
