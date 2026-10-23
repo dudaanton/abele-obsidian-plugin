@@ -210,12 +210,20 @@ they do not travel in settings, manifests, transfers, server device records or p
 
 On storage without bounded local reads, streamed receipt and hydration hash acknowledged
 append chunks and check the resulting size before publication. Their write identities and
-file stamps remain in process memory, never in the ledger or journal. Changed stamps,
+streaming file stamps remain in process memory, never in the ledger or journal. Changed stamps,
 uncertain writes or a process restart invalidate that evidence: existing bytes then require
 ordinary verification. Without bounded reads, unknown local files above 50 MiB refuse
 non-upload whole-file reads while retaining the original and any recovery artifacts. Unknown large staging
 bytes still refuse bounded-only recovery above 50 MiB. This
 read fallback does not cap streamed receipt or hydration; selective-download limits still apply.
+
+On hosts with stable file identity, `paired-file:<path>` ledger metadata binds a verified
+hash to the file object, size and modification time. Matching pairs avoid content reads
+on an ordinary synced restart. Changed objects or metadata require verification; explicit
+content reconciliation still reads bytes. These records are local evidence, not server data.
+Without ranged reads or identity, a streamed move installs the server version and retains
+the unverified source through the same owned, ready-marked conditional capture as replacement.
+The ledger advances only after the destination is installed; interruption preserves the intent.
 
 Native unfenced publication retains displaced inodes in a device-local recovery directory
 beside the vault, outside its indexed tree. The preserved-copy journal stores their absolute

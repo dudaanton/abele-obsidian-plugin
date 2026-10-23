@@ -21,6 +21,10 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 const CHUNK = 1024 * 1024
 type Window = 'before-stage' | 'partial' | 'complete' | 'moved' | 'published' | 'ledger'
 type Operation = 'new' | 'replace' | 'move' | 'case'
+// Hosts without ranged reads or stable identity stream a move's destination and
+// retain its unverified source under the replacement capture contract. The moved,
+// published and ledger cuts still require real publication, owned recovery and
+// cleanup; refusal before the cut does not satisfy these scenarios.
 // Ordinary errors are retryable file refusals. A process cut interrupts the entire run.
 const killed = () => Object.assign(new SyncCancelled(), { message: 'Sample process killed' })
 
@@ -524,7 +528,8 @@ it.each(matrix)(
     const held =
       window === 'before-stage'
         ? edited
-          ? operation === 'move' || (entryPoint === 'take' && (bounded || operation === 'new'))
+          ? operation === 'move' ||
+            (entryPoint === 'take' && ((bounded && operation !== 'case') || operation === 'new'))
           : !bounded && operation === 'move' && entryPoint === 'take'
         : (window === 'partial' || window === 'complete') &&
           operation === 'move' &&
@@ -558,6 +563,8 @@ it.each(matrix)(
         await sha256(window === 'ledger' && edited ? result.local : result.incoming)
       )
       if (edited && window !== 'ledger') {
+        // A case move can use paired object/size/time authority. Even a same-stat
+        // in-place save remains recoverable through the owned retained capture.
         await expectRetainedLocal(result)
       }
       expect(result.app.loadLocalStorage(JOURNAL_KEY) ?? []).toEqual([])

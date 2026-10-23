@@ -153,7 +153,7 @@ export function scopedFileSystem(
           assertStage(id)
           return value.call(target, id)
         }
-      if (key === 'conditionalFile')
+      if (key === 'conditionalFile' || key === Symbol.for('abele.sync.stream-move-source-v1'))
         return (operation: import('./conditionalFiles').ConditionalFileOperation) => {
           assertPath(operation.path)
           if (operation.effect.kind === 'move') assertPath(operation.effect.to)

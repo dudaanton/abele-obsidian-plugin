@@ -131,6 +131,7 @@ it.each([
   'published-restart-twice',
   'published-restart-edited',
   'published-move',
+  'published-move-cold',
   'published-move-case',
   'published-move-recreated',
   'published-update-partial',
@@ -227,8 +228,15 @@ it.each([
       at: '2025-01-01T00:00:00Z',
       actor: { kind: 'system', id: 'sample', name: 'Sample' },
     }
+    // No ranged reads or stable identity: stream the destination and retain the
+    // unverified source in an owned, ready-marked capture. Never equate a move
+    // acknowledgement with a synced ledger entry before destination publication.
     if (outcome.startsWith('published-move') || outcome === 'published-update-partial') {
       expect(await placer().place(change, sha, null, new Map(), new Map())).toBe(true)
+      if (outcome === 'published-move-cold') {
+        app.vault.adapter = new Proxy(app.vault.adapter, {})
+        disk = new ObsidianFileSystem(app as never)
+      }
       const entry = await state.get(change.path)
       const updating = outcome === 'published-update-partial'
       if (updating) bytes[0] ^= 1
@@ -253,6 +261,19 @@ it.each([
       await expect(placer().place(moved, incomingSha, entry, new Map(), new Map())).rejects.toThrow(
         updating ? 'interrupted' : 'killed'
       )
+      if (!updating) {
+        const root = '.obsidian/plugins/abele/sync-conditional'
+        const records = (await app.vault.adapter.list(root + '/retained')).files
+        expect(records).toHaveLength(1)
+        const id = records[0].split('/').at(-1)!.replace('.json', '')
+        expect(
+          JSON.parse(new TextDecoder().decode(await nativeRead(`${root}/trash/${id}/ready`)))
+        ).toBe(true)
+        expect(await sha256(new Uint8Array(await nativeRead(`${root}/trash/${id}/victim`)))).toBe(
+          sha
+        )
+        expect((await state.byFileId(change.file_id))?.versionId).toBe(change.version_id)
+      }
       app.vault.adapter = new Proxy(app.vault.adapter, {})
       disk = new ObsidianFileSystem(app as never)
       await disk.recover()

@@ -27,6 +27,25 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
+async function pairedBaseline(fs, state, entry) {
+  if (!fs.fileIdentity || !state.getMeta) return null;
+  const raw = await state.getMeta('paired-file:' + entry.path);
+  if (!raw) return null;
+  let saved;
+  try { saved = JSON.parse(raw); } catch { return null; }
+  if (!saved.identity || saved.sha !== entry.sha || saved.size !== entry.size || saved.mtime !== entry.mtime)
+    return null;
+  const info = await fs.stat(entry.path);
+  return info && info.size === saved.size && info.mtime === saved.mtime &&
+    await fs.fileIdentity(entry.path) === saved.identity ? saved : null;
+}
+async function recordPaired(fs, state, path, info, sha, beforeIdentity) {
+  if (!beforeIdentity || !state.setMeta) return;
+  const after = await fs.stat(path);
+  const identity = await fs.fileIdentity?.(path);
+  if (identity !== beforeIdentity || !after || after.size !== info.size || after.mtime !== info.mtime) return;
+  await state.setMeta('paired-file:' + path, JSON.stringify({ identity, size: info.size, mtime: info.mtime, sha }));
+}
 async function coordinatePlacement(fs, paths, work, preserve = true) {
   const run = fs[Symbol.for('abele.sync.placement-v1')];
   return run ? run.call(fs, paths, work, preserve) : work();
@@ -200,13 +219,31 @@ export function syncPlacementPlugin() {
             return fetched;
           }`
         )
+      } else if (file.endsWith('/reconciliation.js')) {
+        code = replaceOnce(
+          code,
+          'if (!selected.has(path) && !changed)',
+          'if (!changed && (!selected.has(path) || await pairedBaseline(fs, state, entry)))'
+        )
+        code = replaceOnce(
+          code,
+          'const fingerprint = cached === null',
+          'const beforeIdentity = await fs.fileIdentity?.(info.path);\n                const fingerprint = cached === null'
+        )
+        code = replaceOnce(
+          code,
+          'found.hashes.set(path, fingerprint.sha);',
+          'if (cached === null) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);\n                found.hashes.set(path, fingerprint.sha);'
+        )
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
           'const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);',
-          `const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
+          `const beforeIdentity = await fs.fileIdentity?.(info.path);
+            const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
             const fingerprint = fresh && (revalidate.has(wirePath) || opts.verifyPaths?.has(wirePath))
-              ? await fresh.call(fs, info.path, opts.signal) : await fingerprintFile(fs, info.path, hash, opts.signal);`
+              ? await fresh.call(fs, info.path, opts.signal) : await fingerprintFile(fs, info.path, hash, opts.signal);
+            if (!opts.readOnly) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);`
         )
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
@@ -220,6 +257,63 @@ export function syncPlacementPlugin() {
           'await inventoryChildren(fs, parent, path)'
         )
       } else if (file.endsWith('/pullPlace.js')) {
+        code = replaceOnce(
+          code,
+          'const identity = { sha, size: change.size };',
+          `const identity = { sha, size: change.size };
+        const paired = entry && from !== null ? await pairedBaseline(this.fs, this.state, entry) : null;`
+        )
+        code = replaceOnce(
+          code,
+          '? { sha: entry.sha, size: entry.size, mtime: entry.mtime }',
+          '? { sha: entry.sha, size: entry.size, mtime: entry.mtime, ...(paired ? { identity: paired.identity } : {}) }'
+        )
+        code = replaceOnce(
+          code,
+          '...(sourceIdentity === undefined ? {} : { identity: sourceIdentity }),',
+          '...(paired?.identity === sourceIdentity && sourceIdentity !== undefined ? { identity: sourceIdentity } : {}),'
+        )
+        code = replaceOnce(
+          code,
+          'const stage = await this.fs.reopenStage(pending.stageId);',
+          `let stage;
+          try { stage = await this.fs.reopenStage(pending.stageId); }
+          catch (error) { if (stageMissing(error)) {
+            this.opts.log?.(\`pull: holding \${target}: pending stage lacks source publication authority\`);
+            return false;
+          } throw error; }`
+        )
+        code = replaceOnce(
+          code,
+          'async streamPlace(change, sha, entry, target, from, beforeTarget, beforeFrom, local) {',
+          `async streamPlace(change, sha, entry, target, from, beforeTarget, beforeFrom, local) {
+          const moveSource = (op) => this.fs[Symbol.for('abele.sync.stream-move-source-v1')]
+            ? this.fs[Symbol.for('abele.sync.stream-move-source-v1')](op) : this.effect(op);`
+        )
+        code = replaceOnce(
+          code,
+          '!(await this.effect({\n                            path: from,',
+          '!(await moveSource({\n                            path: from,'
+        )
+        code = replaceOnce(
+          code,
+          'const have = await settledStat(this.fs, target, sha, wrote, this.hash);',
+          'const beforeIdentity = await this.fs.fileIdentity?.(target);\n        const have = await settledStat(this.fs, target, sha, wrote, this.hash);'
+        )
+        code = replaceOnce(
+          code,
+          'if (this.sequenceKnown)\n                await recordPull(tx, change);',
+          'await recordPaired(this.fs, tx, target, have, sha, beforeIdentity);\n            if (this.sequenceKnown)\n                await recordPull(tx, change);'
+        )
+        code = replaceOnce(
+          code,
+          'if ((await fingerprintFile(this.fs, path, this.hash)).sha !== entry.sha)',
+          `if (!(target !== entry.path && (
+              await pairedBaseline(this.fs, this.state, { ...entry, path }) ||
+              (this.fs[Symbol.for('abele.sync.stream-move-source-v1')] &&
+                await this.fs[Symbol.for('abele.sync.replay-stage-v1')]?.() === false))) &&
+            (await fingerprintFile(this.fs, path, this.hash)).sha !== entry.sha)`
+        )
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         if (!code.includes('fingerprintFile(this.fs,'))
           throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
@@ -417,7 +511,7 @@ export function syncPlacementPlugin() {
                 () => this.placeUnlocked(change, sha, entry, fetched, local));
           }
           // Preflight avoids unnecessary transfers; the lease repeats this content check.
-          if (!recovering && ((entry !== null && await this.edited(entry)) ||
+          if (!recovering && ((entry !== null && await this.edited(entry, change.path)) ||
               await this.editedMoveDestination(change, entry)))
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
               async () => false);
@@ -538,7 +632,17 @@ export function syncPlacementPlugin() {
 `
         )
       } else if (file.endsWith('/pullRecovery.js')) {
-        code = `import { PendingPullWrites } from './pullWrite.js';\n` + code
+        code =
+          `import { PendingPullWrites } from './pullWrite.js';\nimport { EngineError } from './errors.js';\n` +
+          code
+        code = replaceOnce(
+          code,
+          'checkCancellation(opts.signal);\n            if (!opts.retries',
+          `checkCancellation(opts.signal);
+            if (error instanceof EngineError && error.code === 'conflict')
+              error = new ExternalStateError('recovery-required', { cause: error });
+            if (!opts.retries`
+        )
         code = replaceOnce(
           code,
           'await placer.adopt(change, entry);',

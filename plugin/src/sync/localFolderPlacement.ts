@@ -162,7 +162,7 @@ export class LocalFolderPlacement {
         if (key === PRIVATE_PLACEMENT_STAGES) return stages
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
-        if (key === 'conditionalFile')
+        if (key === 'conditionalFile' || key === Symbol.for('abele.sync.stream-move-source-v1'))
           return (operation: import('./conditionalFiles').ConditionalFileOperation) =>
             value.call(target, {
               ...operation,

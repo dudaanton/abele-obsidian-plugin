@@ -1255,6 +1255,37 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
+  /** A streamed replacement owns incoming bytes; an unreadable source is preserved, not proved equal. */
+  async [Symbol.for('abele.sync.stream-move-source-v1')](
+    operation: ConditionalFileOperation
+  ): Promise<boolean> {
+    if (
+      operation.effect.kind !== 'move' ||
+      operation.expected?.identity ||
+      (await this.io.canReplayStage())
+    )
+      return this.conditionalFile(operation)
+    const release = this.externalCoordination.beginEngineMutation([
+      operation.path,
+      operation.effect.to,
+    ])
+    try {
+      const info = await this.stat(operation.path)
+      if (
+        !operation.expected ||
+        !info ||
+        info.size !== operation.expected.size ||
+        info.mtime !== operation.expected.mtime
+      )
+        return false
+      // The pull's durable stage owns the subsequent replacement. Its ordinary
+      // conditional capture retains these unverified bytes before publication.
+      return await this.conditional.apply(operation, true)
+    } finally {
+      release()
+    }
+  }
+
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {
     const release = this.externalCoordination.beginEngineMutation([
       operation.path,
@@ -2393,7 +2424,7 @@ export class ObsidianFileSystem implements FileSystem {
             if (
               !(await this.conditionalFile({
                 path: entry.target,
-                expected: base ? { sha: base.sha, size: base.size, mtime: base.mtime } : null,
+                expected: base ? { ...base, mtime: base.mtime } : null,
                 effect: { kind: 'install', stageId: id },
               }))
             )
