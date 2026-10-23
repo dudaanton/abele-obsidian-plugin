@@ -23,6 +23,7 @@ it('fails closed on corrupt completed receipts and tolerates only a live partial
   await expect(rendererEntries(Readable.from(['{"event":']))).rejects.toThrow()
   expect(await rendererEntries(Readable.from(['{}\n{"event":']), undefined, true)).toEqual([{}])
   await expect(rendererEntries(Readable.from(['bad\n{}\n']), undefined, true)).rejects.toThrow()
+  await expect(rendererEntries(Readable.from(['bad\n']), undefined, true)).rejects.toThrow()
 })
 
 it('keeps observer errors but excludes pre-restart read volume without a restart', async () => {
