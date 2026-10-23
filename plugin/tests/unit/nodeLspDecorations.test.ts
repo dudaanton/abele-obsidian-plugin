@@ -262,58 +262,108 @@ it('keeps a fast hover response when analysis republishes unchanged diagnostics'
   }
 })
 
-it('requires Ctrl or Cmd for types, including a key pressed over a stationary symbol', async () => {
+it.each(['Control', 'Meta', 'Alt'])(
+  'requires %s for types, including a key pressed over a stationary symbol',
+  async (key) => {
+    const root = document.body.appendChild(document.createElement('div'))
+    const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+    doc.supported = true
+    const hover = vi.spyOn(doc, 'hover').mockResolvedValue('const sample: number')
+    const remove = provideLsp(root, { document: doc, navigate: () => {} })
+    const view = new EditorView({
+      parent: root,
+      doc: 'const sample = 1',
+      extensions: [nodeLspExtension()],
+    })
+    try {
+      vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+      vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
+      const move = () =>
+        view.contentDOM
+          .querySelector('.cm-line')!
+          .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
+      // Syntax and diagnostic redraws can replace the token under a stationary pointer.
+      const token = view.contentDOM
+        .querySelector('.cm-line')!
+        .appendChild(document.createElement('span'))
+      token.textContent = 'sample'
+      token.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
+      token.remove()
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      expect(hover).not.toHaveBeenCalled()
+      expect(document.querySelector('.abele-lsp-message')).toBeNull()
+      {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key,
+            ctrlKey: key === 'Control',
+            metaKey: key === 'Meta',
+            altKey: key === 'Alt',
+          })
+        )
+        await vi.waitFor(() =>
+          expect(document.querySelector('.abele-lsp-message pre')).not.toBeNull()
+        )
+        document.dispatchEvent(new KeyboardEvent('keyup', { key }))
+        await vi.waitFor(() => expect(document.querySelector('.abele-lsp-message')).toBeNull())
+      }
+      hover.mockClear()
+      doc.diagnostics = [
+        {
+          source: 'typescript',
+          message: 'Sample problem',
+          range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
+        },
+      ]
+      for (const listener of doc.listeners) listener()
+      move()
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-lsp-problem')?.textContent).toContain(
+          'Sample problem'
+        )
+      )
+      expect(hover).not.toHaveBeenCalled()
+    } finally {
+      view.destroy()
+      remove()
+      await doc.close()
+      root.remove()
+      vi.restoreAllMocks()
+    }
+  }
+)
+
+it('leaves Alt-click available to the host without navigating', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
   doc.supported = true
-  const hover = vi.spyOn(doc, 'hover').mockResolvedValue('const sample: number')
-  const remove = provideLsp(root, { document: doc, navigate: () => {} })
+  const query = vi.spyOn(doc, 'query').mockResolvedValue([])
+  const navigate = vi.fn()
+  const hostMouseDown = vi.fn((event: MouseEvent) => {
+    expect(event.defaultPrevented).toBe(false)
+    return true
+  })
+  const remove = provideLsp(root, { document: doc, navigate })
   const view = new EditorView({
     parent: root,
     doc: 'const sample = 1',
-    extensions: [nodeLspExtension()],
+    extensions: [
+      nodeLspExtension(),
+      codeNavAddon(),
+      // Stand in for host selection handling after navigation has declined the event.
+      EditorView.domEventHandlers({ mousedown: hostMouseDown }),
+    ],
   })
   try {
     vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
-    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 10, bottom: 30 })
-    const move = () =>
-      view.contentDOM
-        .querySelector('.cm-line')!
-        .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
-    // Syntax and diagnostic redraws can replace the token under a stationary pointer.
-    const token = view.contentDOM
-      .querySelector('.cm-line')!
-      .appendChild(document.createElement('span'))
-    token.textContent = 'sample'
-    token.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }))
-    token.remove()
-    await new Promise((resolve) => setTimeout(resolve, 600))
-    expect(hover).not.toHaveBeenCalled()
-    expect(document.querySelector('.abele-lsp-message')).toBeNull()
-    for (const key of ['Control', 'Meta']) {
-      document.dispatchEvent(
-        new KeyboardEvent('keydown', { key, ctrlKey: key === 'Control', metaKey: key === 'Meta' })
-      )
-      await vi.waitFor(() =>
-        expect(document.querySelector('.abele-lsp-message pre')).not.toBeNull()
-      )
-      document.dispatchEvent(new KeyboardEvent('keyup', { key }))
-      await vi.waitFor(() => expect(document.querySelector('.abele-lsp-message')).toBeNull())
+    for (const type of ['mousedown', 'click']) {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, altKey: true })
+      view.contentDOM.querySelector('.cm-line')!.dispatchEvent(event)
     }
-    hover.mockClear()
-    doc.diagnostics = [
-      {
-        source: 'typescript',
-        message: 'Sample problem',
-        range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
-      },
-    ]
-    for (const listener of doc.listeners) listener()
-    move()
-    await vi.waitFor(() =>
-      expect(document.querySelector('.abele-lsp-problem')?.textContent).toContain('Sample problem')
-    )
-    expect(hover).not.toHaveBeenCalled()
+    await Promise.resolve()
+    expect(hostMouseDown).toHaveBeenCalledOnce()
+    expect(query).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
   } finally {
     view.destroy()
     remove()

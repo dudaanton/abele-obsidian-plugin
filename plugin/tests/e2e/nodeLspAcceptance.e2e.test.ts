@@ -97,7 +97,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await wait(600);
           if(document.querySelector('.abele-lsp-message'))throw Error('Plain hover exposed type');
           await shot(theme+'-plain');
-          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true}));
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Alt',altKey:true,bubbles:true}));
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover').catch(error=>{
             const cm=api.codeView(document.querySelector('.abele-lsp-root .cm-content'));
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
@@ -112,7 +112,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           const docsBox=docs.getBoundingClientRect(), popupBox=popup.getBoundingClientRect();
           if(docsBox.bottom>popupBox.bottom+1 || docsBox.top<popupBox.top)throw Error('Hover documentation cannot be scrolled into view');
           await shot(theme+'-overloaded-docs');
-          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));
+          document.dispatchEvent(new KeyboardEvent('keyup',{key:'Alt',bubbles:true}));
           await until(()=>!document.querySelector('.abele-lsp-message'),'Modifier release');
           const short=point('sample',1);move(short,true);
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Short hover');

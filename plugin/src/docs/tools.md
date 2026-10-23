@@ -1329,7 +1329,8 @@ the provider may continue processing a request already submitted.
 
 Current node file views use the node's `lsp_v1` capability automatically: TypeScript and
 ESLint diagnostics appear together in code, with their sources, and the header count opens
-the diagnostic list. Hover shows language information; Cmd/Ctrl-click or the phone's
+the diagnostic list. Hold Ctrl, Cmd or Alt (Option) while hovering for language information;
+release the key to hide it. Cmd/Ctrl-click or the phone's
 long-press menu offers definitions and references. Empty or unavailable LSP navigation falls
 back to the existing pattern search. Historical revisions are not analyzed as current files.
 Project-code servers require the folder's existing explicit trust. The view offers Trust folder

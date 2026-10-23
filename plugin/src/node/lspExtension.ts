@@ -74,7 +74,7 @@ const hoverModifiers = ViewPlugin.fromClass(
     }
     private move = (event: MouseEvent) => {
       this.pointer = event
-      this.setActive(event.ctrlKey || event.metaKey)
+      this.setActive(event.ctrlKey || event.metaKey || event.altKey)
       // A navigation mark can replace the event target before it reaches this listener.
       if (event.target && 'isConnected' in event.target && event.target.isConnected === false)
         queueMicrotask(() => {
@@ -90,6 +90,7 @@ const hoverModifiers = ViewPlugin.fromClass(
           clientY: this.pointer.clientY,
           ctrlKey: event.ctrlKey,
           metaKey: event.metaKey,
+          altKey: event.altKey,
         })
       )
     }
@@ -105,7 +106,7 @@ const hoverModifiers = ViewPlugin.fromClass(
       return true
     }
     private key = (event: KeyboardEvent) => {
-      if (!this.setActive(event.ctrlKey || event.metaKey) || !this.pointer) return
+      if (!this.setActive(event.ctrlKey || event.metaKey || event.altKey) || !this.pointer) return
       // The editor content survives syntax and diagnostic token redraws.
       this.replay(event)
     }

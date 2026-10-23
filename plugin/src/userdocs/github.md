@@ -294,3 +294,9 @@ permission; this connection list is not a general sandbox.
 **Page width** sets how wide a tab's text runs: your notes' line width, a fixed width in pixels, or
 the full tab. Code and diffs always take the whole tab. **Show people by** picks names or logins.
 Names and pictures are kept on this device for a week; **Kept names and pictures** clears them.
+
+## Node code tooltips
+
+In node code views, hold Ctrl, Cmd or Alt (Option) while pointing at a symbol to show its
+type and documentation. Releasing the key hides the tooltip. Cmd/Ctrl-click opens a
+definition; Alt-click keeps its usual behavior.
