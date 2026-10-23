@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-sdk/core'
+import { EngineError, sha256 } from '@abele/sync-sdk/core'
 import { RETENTION_MS, MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
@@ -24,6 +24,7 @@ export interface ConditionalFileOperation {
 }
 interface Intent {
   checked?: boolean
+  incoming?: { size: number; sha: string }
   receipt?: boolean
   path: string
   expected: FileVersion | null
@@ -648,7 +649,15 @@ export class ConditionalFiles {
     ) as Intent
     h.validate(intent.path)
     h.check()
-    const restoreIncoming = intent.checked && intent.data !== folder + '/victim'
+    let restoreIncoming = intent.checked && intent.data !== folder + '/victim'
+    if (restoreIncoming && intent.incoming && (await h.stat(intent.data))) {
+      const have = await h.fingerprint(intent.data)
+      if (have.size !== intent.incoming.size || have.sha !== intent.incoming.sha) {
+        // A failed payload write is retained evidence, never a public recovered file.
+        restoreIncoming = false
+        console.debug('[abele-sync] incomplete incoming bytes retained privately', intent.path)
+      }
+    }
     // Both restorations share one recovery intent. Settle the victim independently
     // without archiving that intent before the incoming copy has a public home.
     await this.restore(folder + '/victim', intent.path, restoreIncoming)
@@ -938,6 +947,7 @@ export class ConditionalFiles {
       }
       const intent: Intent = {
         checked: true,
+        ...(payload ? { incoming: { size: payload.length, sha: await sha256(payload) } } : {}),
         receipt: op.effect.kind === 'write' && op.effect.receipt !== undefined,
         path: op.path,
         expected: op.expected && { ...op.expected, mtime: Math.max(0, Math.round(first.mtime)) },

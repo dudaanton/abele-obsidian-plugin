@@ -282,6 +282,9 @@ Displaced files are quarantined before replacement or removal. Incoming bytes ar
 to an owned private staging name, then renamed into the public path without overwriting
 an existing destination. A refused publication keeps the local occupant and surfaces the
 incoming bytes as a journalled recovered copy. Checked intent records carry
+an `incoming` size and SHA-256 for buffered payloads before writing them. Recovery checks
+that identity before exposing incoming bytes; a failed partial payload stays privately
+owned for review and never becomes a visible recovered file. Checked intent records carry
 an independent `data-restored` marker after acknowledged conflict-copy publication;
 settled receipt cleanup removes that marker without touching the visible copy. They carry
 `checked: true`, use no allocation sentinel, and cannot certify installation identity after

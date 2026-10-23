@@ -274,7 +274,9 @@ function crashNextWrite(app: FakeApp): void {
   const real = app.vault.adapter.writeBinary.bind(app.vault.adapter)
   let armed = true
   app.vault.adapter.writeBinary = async (path, data, options) => {
-    if (!armed) return real(path, data, options)
+    // Conditional metadata and empty allocation are preparation, not the payload cut.
+    if (!armed || !data.byteLength || !path.includes('/.abele-receipt-'))
+      return real(path, data, options)
     armed = false
     await real(path, data.slice(0, Math.floor(data.byteLength / 2)), options)
     throw new Error('the app was closed')
@@ -308,13 +310,22 @@ for (const platform of ['phone', 'desktop'] as const) {
 
     it('leaves the whole old note when a write dies half way', async () => {
       const { app, fs } = useVault()
+      const incoming = text('the new note, longer')
       crashNextWrite(app)
-      await expect(
-        codeOf(fs.writeAtomic('Note.md', text('the new note, longer'), 9000))
-      ).resolves.toBe('io')
+      await expect(codeOf(fs.writeAtomic('Note.md', incoming, 9000))).resolves.toBe('io')
       expect(read(await app.vault.adapter.readBinary('Note.md'))).toBe('the whole old note')
       expect((await fs.stat('Note.md'))?.mtime).toBe(1000)
       expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+      const partial = (await everything(app)).filter((path) => /\/objects\/[^/]+\/data$/.test(path))
+      expect(partial).toHaveLength(1)
+      expect(new Uint8Array(await app.vault.adapter.readBinary(partial[0]))).toEqual(
+        incoming.slice(0, Math.floor(incoming.length / 2))
+      )
+      await listed(new ObsidianFileSystem(app as unknown as App))
+      expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+      expect(
+        (await everything(app)).filter((path) => /\/objects\/[^/]+\/data$/.test(path))
+      ).toEqual(partial)
     })
 
     it('leaves the whole old data.json when a write dies half way', async () => {
