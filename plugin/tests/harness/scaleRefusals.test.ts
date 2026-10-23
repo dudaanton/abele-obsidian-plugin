@@ -81,6 +81,12 @@ it('requires exact visible size reasons in both status and log, intact primary, 
     attempts: 2,
     pass: false,
   })
+  const acrossRestart = starts.map((e, i) => ({ ...e, at: 10 + i * 20 }))
+  expect(
+    oversizedEvidence([file], [file], snapshots, acrossRestart, [
+      { kind: 'kill mid-large-file', at: 20 },
+    ])[0]
+  ).toMatchObject({ attempts: 2, maxAttemptsPerGeneration: 1, pass: true })
 })
 
 it('admits only the approved pause grace and requires a healthy write observer with no late writes', () => {

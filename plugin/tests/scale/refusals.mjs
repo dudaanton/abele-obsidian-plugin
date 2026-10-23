@@ -12,7 +12,17 @@ export function fileExpectations(files, limits) {
   }
 }
 
-export function oversizedEvidence(files, primary, snapshots, wire) {
+export function oversizedEvidence(files, primary, snapshots, wire, interruptions = []) {
+  const restarts = interruptions
+    .filter((e) =>
+      [
+        'kill mid-large-file',
+        'quit mid-batch',
+        'quit during comparison',
+        'plugin disable-enable',
+      ].includes(e.kind)
+    )
+    .sort((a, b) => a.at - b.at)
   const sizeReason = /too_large|too large|larger than|size.*limit|limit.*size/i
   const namesPath = (text, path) => {
     if (typeof text !== 'string') return false
@@ -38,13 +48,29 @@ export function oversizedEvidence(files, primary, snapshots, wire) {
     const intact = primary.some(
       (actual) => actual.path === file.path && actual.sha === file.sha && actual.size === file.size
     )
-    const attempts = wire.filter(
+    const attemptEvents = wire.filter(
       (e) =>
         e.device === '0' &&
         e.event === 'start' &&
         ((e.method === 'POST' && e.route === `/v2/uploads/${file.sha}/begin`) ||
           (e.method === 'PUT' && e.route === `/v2/uploads/${file.sha}`))
-    ).length
+    )
+    const attempts = attemptEvents.length
+    const generations = new Map()
+    for (const event of attemptEvents) {
+      const generation = restarts.filter((r) => r.at <= event.at).length
+      const group = generations.get(generation) ?? {
+        generation,
+        attempts: 0,
+        firstAt: event.at,
+        lastAt: event.at,
+      }
+      group.attempts++
+      group.lastAt = event.at
+      generations.set(generation, group)
+    }
+    const attemptsByGeneration = [...generations.values()]
+    const maxAttemptsPerGeneration = Math.max(0, ...attemptsByGeneration.map((g) => g.attempts))
     const syncedClaims = snapshots.filter((s) => s.snapshot?.rows?.some((r) => r.status === 'idle'))
     return {
       ...file,
@@ -52,13 +78,15 @@ export function oversizedEvidence(files, primary, snapshots, wire) {
       log,
       intact,
       attempts,
+      attemptsByGeneration,
+      maxAttemptsPerGeneration,
       uploadRequests,
       syncedClaims: syncedClaims.map((s) => ({ at: s.at, snapshot: s.snapshot })),
       pass:
         status.length > 0 &&
         log.length > 0 &&
         intact &&
-        attempts <= 1 &&
+        maxAttemptsPerGeneration <= 1 &&
         syncedClaims.length === 0 &&
         snapshots.length > 0,
     }

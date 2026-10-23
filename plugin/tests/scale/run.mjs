@@ -684,7 +684,8 @@ export async function run(config) {
       report.oversizedFiles ?? [],
       intact,
       report.primaryStateObservations,
-      report.wire
+      report.wire,
+      report.interruptions
     )
     if (report.pauseActionAt && report.pauseWindowEndAt)
       Object.assign(

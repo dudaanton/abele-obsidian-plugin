@@ -24,8 +24,10 @@ reconstructed from timestamped starts/finishes/closures. Controller invocation t
 latency are retained separately. No timing budget is relaxed for that latency.
 The advertised file-size limit partitions the unchanged generated plan. Oversized files
 remain required intact on the primary. Their absence on peer/server is expected only with
-exact-path size refusals in both primary status and activity log, no repeated initiation for
-unchanged refused bytes, and no fully-synced claim. Upload attempt counts and visible states
+exact-path size refusals in both primary status and activity log, no repeated initiation
+within an engine generation, and no fully-synced claim. Only the harness's deliberate crash,
+quit and plugin-reload interruptions define generation boundaries; a network drop does not.
+Total/per-generation upload attempt counts and visible states
 are retained. Multipart interruption targets the largest eligible file, recorded with size
 and hash. A missing limit or eligible target fails preflight. Quota is recorded without
 inferring remaining capacity. Hidden/settings exclusions remain a separate category.
