@@ -412,7 +412,7 @@ export async function projectionEvidence(
     if (folder === privateRecoveryDirectory(app.vault.configDir)) return
     const observed = directories.observe(disk, folder)
     const listed = await readOnly(() => disk.list(folder))
-    observed(listed.folders)
+    observed([...listed.folders, ...listed.files])
     assertCurrent()
     for (const file of listed.files) if (included(file)) paths.add(file)
     folders += listed.folders.length

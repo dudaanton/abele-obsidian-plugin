@@ -1,4 +1,4 @@
-import { inspectedAbsent } from './inspectionDirectories'
+import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
 import { vaultPathKey } from './vaultPathLinks'
 import type { ConditionalFileHost } from './conditionalFiles'
@@ -2783,8 +2783,10 @@ export class ObsidianFileSystem implements FileSystem {
    * it is neither in the file index nor under the config folder.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
+    if (this.configPolled) invalidateInspectedAbsence(this.startupInventory?.())
     const taken = new Map<string, string>()
     if (this.scopedRoot() || this.discovery) {
+      this.configPolled = true
       const ignore = await this.stat(IGNORE_FILE)
       if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
       return taken

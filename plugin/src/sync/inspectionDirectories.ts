@@ -10,14 +10,14 @@ export class InspectionDirectories {
     {
       revision: () => number
       at: number
-      folders: Set<string>
+      entries: Set<string>
     }
   >()
   observe(adapter: DataAdapter, path: string) {
     const revision = adapterConfigRevision(adapter, path)
     const at = revision()
-    return (folders: readonly string[]) => {
-      if (revision() === at) this.listings.set(path, { revision, at, folders: new Set(folders) })
+    return (entries: readonly string[]) => {
+      if (revision() === at) this.listings.set(path, { revision, at, entries: new Set(entries) })
     }
   }
   attach(inventory: object): void {
@@ -29,7 +29,7 @@ export class InspectionDirectories {
         if (
           held &&
           held.revision() === held.at &&
-          !held.folders.has(parts.slice(0, i + 1).join('/'))
+          !held.entries.has(parts.slice(0, i + 1).join('/'))
         )
           return true
       }
@@ -40,4 +40,9 @@ export class InspectionDirectories {
 
 export function inspectedAbsent(inventory: object | undefined, path: string): boolean {
   return inventory !== undefined && Reflect.get(inventory, ABSENT)?.(path) === true
+}
+
+/** A fresh poll can observe changes made outside the adapter wrappers. */
+export function invalidateInspectedAbsence(inventory: object | undefined): void {
+  if (inventory) Reflect.deleteProperty(inventory, ABSENT)
 }
