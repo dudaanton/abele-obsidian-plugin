@@ -310,13 +310,6 @@ export class TokenEngineRuntime
       ...options,
       changed: (status, report) => changed(this.statusWithQuiet(status), report),
     }
-    this.quiet = new UploadQuietPeriod(
-      options.fs,
-      (paths) => this.notifyLocal?.(paths),
-      () => {
-        if (this.engine && this.active) options.changed(this.engine.status)
-      }
-    )
     if (options.localOnly) {
       const held = (path: string) => options.localOnly?.(path) ?? false
       const original = options.state
@@ -454,6 +447,15 @@ export class TokenEngineRuntime
         options.preparePlacement = (paths) =>
           prepare(paths.map((path) => this.placement.toLocal(path)))
     }
+    // Watch reports and ledger entries use server paths, so scheduling must read
+    // through the same scope and local-folder placement as the engine.
+    this.quiet = new UploadQuietPeriod(
+      options.fs,
+      (paths) => this.notifyLocal?.(paths),
+      () => {
+        if (this.engine && this.active) options.changed(this.engine.status)
+      }
+    )
     if (this.token.scope.kind === 'group') this.nameCandidates([this.token.scope.path])
     const transport: typeof fetch = (input, init) =>
       this.trace.run(

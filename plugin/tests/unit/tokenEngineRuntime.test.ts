@@ -54,8 +54,13 @@ it('keeps incoming changes outside local upload pacing without bridge calls or r
   }
 })
 
-async function quietFixture() {
-  const wire = await server('Notes/unused.md', '')
+async function quietFixture(localRoot?: string) {
+  const wire = await server(
+    'Notes/unused.md',
+    '',
+    undefined,
+    localRoot ? { kind: 'folder', id: 'root', path: 'Notes' } : scope
+  )
   const send = wire.fetch.getMockImplementation()!
   let commits = 0
   let head = { sha: '', size: 0, mtime: 0 }
@@ -89,13 +94,88 @@ async function quietFixture() {
     return send(input, init)
   })
   const fs = new MemoryFileSystem()
-  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('first'), 1000)
+  await fs.writeAtomic(`${localRoot ?? 'Notes'}/local.md`, new TextEncoder().encode('first'), 1000)
   const changed = vi.fn()
-  const one = runtime(wire, fs, undefined, undefined, null, { changed })
+  const one = runtime(wire, fs, undefined, undefined, null, { changed, localRoot })
   await one.runtime.start()
   await one.runtime.sync()
   return { one, fs, wire, changed, operations, commits: () => commits }
 }
+
+it('paces a server folder mounted under another local name and flushes its server-path work', async () => {
+  const { one, fs, changed, commits } = await quietFixture('Shared')
+  try {
+    vi.useFakeTimers()
+    const stat = vi.spyOn(fs, 'stat')
+    await fs.writeAtomic('Shared/local.md', new TextEncoder().encode('second'), 2000)
+    fs.emitChange(['Shared/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await one.runtime.engine.sync()
+    expect(commits()).toBe(1)
+    expect(changed.mock.lastCall?.[0].pending).toBe(1)
+    expect(stat.mock.calls.map(([path]) => path)).toContain('Shared/local.md')
+    expect(stat.mock.calls.map(([path]) => path)).not.toContain('Notes/local.md')
+    await one.runtime.sync()
+    expect(commits()).toBe(2)
+    expect((await one.state.get('Notes/local.md'))?.sha).toBe(
+      await sha256(new TextEncoder().encode('second'))
+    )
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('settles an unchanged mounted file using server ledger paths and mapped disk paths', async () => {
+  const { one, fs, changed, commits } = await quietFixture('Shared')
+  try {
+    vi.useFakeTimers()
+    const stat = vi.spyOn(fs, 'stat')
+    await fs.writeAtomic('Shared/local.md', new TextEncoder().encode('waiting edit'), 3000)
+    fs.emitChange(['Shared/local.md'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await fs.writeAtomic('Shared/local.md', new TextEncoder().encode('first'), 4000)
+    fs.emitChange(['Shared/local.md'])
+    await vi.advanceTimersByTimeAsync(11_000)
+    await one.runtime.engine.runExclusive(async () => {})
+    await flushPromises()
+    expect(commits()).toBe(1)
+    expect(changed.mock.lastCall?.[0].pending).toBe(0)
+    expect(stat.mock.calls.map(([path]) => path)).not.toContain('Notes/local.md')
+    expect((await one.state.get('Notes/local.md'))?.mtime).toBe(4000)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it.each(['delete', 'rename'])(
+  'forwards a mounted file %s without waiting for its upload deadline',
+  async (kind) => {
+    const { one, fs, operations } = await quietFixture('Shared')
+    try {
+      vi.useFakeTimers()
+      await fs.writeAtomic('Shared/local.md', new TextEncoder().encode('waiting edit'), 3000)
+      fs.emitChange(['Shared/local.md'])
+      await vi.advanceTimersByTimeAsync(1000)
+      if (kind === 'delete') {
+        await fs.remove('Shared/local.md')
+        fs.emitChange(['Shared/local.md'])
+      } else {
+        await fs.move('Shared/local.md', 'Shared/moved.md')
+        fs.emitChange(['Shared/local.md', 'Shared/moved.md'])
+      }
+      await vi.advanceTimersByTimeAsync(1000)
+      await one.runtime.engine.sync()
+      expect(operations).toContain(kind === 'delete' ? 'delete' : 'move')
+      if (kind === 'rename')
+        expect((await one.state.byFileId('local-file'))?.path).toBe('Notes/moved.md')
+    } finally {
+      await one.runtime.close()
+      vi.useRealTimers()
+    }
+  }
+)
 
 it('paces automatic re-uploads across fallback cycles and flushes on explicit sync', async () => {
   const { one, fs, changed, commits } = await quietFixture()
