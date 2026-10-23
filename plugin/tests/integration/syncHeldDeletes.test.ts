@@ -73,7 +73,11 @@ beforeEach(async () => {
   Platform.isMobile = false
   AbeleConfig.getInstance().init(plugin)
   AbeleConfig.getInstance().applySettings(undefined)
-  app = buildFakeVault([])
+  // Delete decisions start from an already-present replica, rather than timing
+  // a hundred unrelated first-download publications inside the setup deadline.
+  app = buildFakeVault(
+    Array.from({ length: NOTES }, (_, n) => ({ path: note(n), content: `note ${n}` }))
+  )
   setSecrets(createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin))
   const user = await createUser(
     { db: server.db, pepper: server.config.tokenPepper },
