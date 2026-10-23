@@ -9,6 +9,19 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 
+it('keeps the cause text when a shared-item manual sync fails', async () => {
+  const { ui } = setup()
+  vi.spyOn(ui.itemSets.store, 'get').mockReturnValue({
+    items: [{ recordId: 'sample-record', detached: false }],
+  } as never)
+  vi.spyOn(ui.itemSets, 'refresh').mockResolvedValue(false)
+  vi.spyOn(
+    ui as unknown as { syncRecord(id: string): Promise<void> },
+    'syncRecord'
+  ).mockRejectedValue(new Error('sample locked ignore file'))
+  await expect(ui.sync('sample-set')).rejects.toThrow('sample locked ignore file')
+})
+
 it('runs an explicit sync on a paused connection without changing automatic sync', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)

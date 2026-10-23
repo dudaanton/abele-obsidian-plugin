@@ -1218,7 +1218,7 @@ export class TokenUi {
       if (failures.length)
         throw new AggregateError(
           failures,
-          failures.map((error) => connectionError(error)).join('; ')
+          failures.map((error) => connectionError(error, true)).join('; ')
         )
       return
     }
