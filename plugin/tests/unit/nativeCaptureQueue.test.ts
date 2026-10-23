@@ -3,6 +3,28 @@ import { nativeOf } from '@/sync/nativeVaultFs'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
+it('publishes exclusively before a local save queued at the publication syscall', async () => {
+  const app = buildFakeVault([{ path: 'incoming.bin', content: 'remote bytes' }])
+  withDesktopFs(app)
+  const adapter = app.vault.adapter
+  const raw = adapter as unknown as {
+    fsPromises: { link(from: string, to: string): Promise<void> }
+  }
+  const link = raw.fsPromises.link.bind(raw.fsPromises)
+  let save: Promise<void> | undefined
+  raw.fsPromises.link = async (from, to) => {
+    if (to.endsWith('/sample.md'))
+      save = adapter.writeBinary('sample.md', new TextEncoder().encode('local bytes').buffer)
+    await link(from, to)
+  }
+  try {
+    await nativeOf(adapter)!.installExclusive!('incoming.bin', 'sample.md')
+  } finally {
+    await save
+  }
+  expect(await adapter.read('sample.md')).toBe('local bytes')
+})
+
 it('captures a native victim in the save queue without reentering adapter writes', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content: 'local bytes' }])
   withDesktopFs(app)

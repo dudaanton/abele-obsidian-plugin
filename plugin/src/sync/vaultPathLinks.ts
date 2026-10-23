@@ -1005,10 +1005,14 @@ export function nativeOf(
   if (typeof fsp.link === 'function') {
     const link = fsp.link.bind(fsp)
     native.installExclusive = async (from, to) => {
-      await assertVaultPath(adapter, from)
-      await assertVaultPath(adapter, to)
-      assertEffect([from, to])
-      await link(at(from), at(to))
+      const publish = async () => {
+        await assertVaultPath(adapter, from)
+        await assertVaultPath(adapter, to)
+        assertEffect([from, to])
+        await link(at(from), at(to))
+      }
+      if (raw.queue) await raw.queue.call(adapter, publish)
+      else await publish()
       // The source name remains journal-owned until completion; never weaken exclusive
       // installation by replacing an occupied destination with a rename.
       await reconcile(to)

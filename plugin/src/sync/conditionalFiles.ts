@@ -79,6 +79,13 @@ const missing = (error: unknown) =>
   (error as { code?: string })?.code === 'ENOENT' ||
   /^ENOENT\b/.test((error as { message?: string })?.message ?? '')
 
+const operationRevisions = new WeakMap<Set<string>, { value: number }>()
+function revisionOf(active: Set<string>): { value: number } {
+  let revision = operationRevisions.get(active)
+  if (!revision) operationRevisions.set(active, (revision = { value: 0 }))
+  return revision
+}
+
 /** Every continuation must revalidate its lease before starting another host effect. */
 function leasedHost(
   host: ConditionalFileHost,
@@ -130,6 +137,12 @@ export class ConditionalFiles {
     private readonly host: ConditionalFileHost,
     private readonly retentionBytes = CONDITIONAL_RETENTION_BYTES
   ) {}
+  assertSettled(previous?: number): number {
+    const revision = revisionOf(this.host.active).value
+    if (this.host.active.size || (previous !== undefined && previous !== revision))
+      throw new EngineError('io', 'scan held while conditional file effects are in flight')
+    return revision
+  }
   private async record(path: string, value: unknown) {
     await this.host.create(path, new TextEncoder().encode(JSON.stringify(value)), 0)
     await this.host.flush(path)
@@ -710,6 +723,15 @@ export class ConditionalFiles {
     )
   }
   async apply(op: ConditionalFileOperation, retainUnknown = false): Promise<boolean> {
+    const revision = revisionOf(this.host.active)
+    revision.value++
+    try {
+      return await this.applyOwned(op, retainUnknown)
+    } finally {
+      revision.value++
+    }
+  }
+  private async applyOwned(op: ConditionalFileOperation, retainUnknown: boolean): Promise<boolean> {
     const h = this.host
     h.check()
     h.validate(op.path)
@@ -1090,6 +1112,15 @@ export class ConditionalFiles {
     }
   }
   async recover(): Promise<void> {
+    const revision = revisionOf(this.host.active)
+    revision.value++
+    try {
+      await this.recoverOwned()
+    } finally {
+      revision.value++
+    }
+  }
+  private async recoverOwned(): Promise<void> {
     const h = this.host
     let failed: unknown
     const retiring = h.root + '/retiring'

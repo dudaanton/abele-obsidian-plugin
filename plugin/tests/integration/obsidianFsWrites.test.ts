@@ -7,8 +7,9 @@
  * and is all the fake vault has, and the desktop's, which also holds Node's `fs.promises`
  * (`withDesktopFs`). A crash is a `writeBinary` or `rename` that stops half way and throws.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
+import { constants } from 'node:fs'
 import {
   EngineError,
   MemoryStateStore,
@@ -18,11 +19,28 @@ import {
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
 import { RuntimeFence } from '@/sync/external/recovery'
+import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { isDeviceLocalPluginState } from '@/sync/deviceLocalState'
+import type { ConditionalFileHost } from '@/sync/conditionalFiles'
 import { buildFakeVault, type FakeApp, type FakeFileSpec } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const text = (value: string): Uint8Array => new TextEncoder().encode(value)
 const read = (bytes: Uint8Array | ArrayBuffer): string => new TextDecoder().decode(bytes)
+afterEach(() => vi.restoreAllMocks())
+
+/** Conditional payloads use the same bounded writer on native and adapter hosts. */
+function afterPayloadWrite(work: () => Promise<void>): void {
+  const append = BoundedVaultIo.prototype.append
+  let armed = true
+  vi.spyOn(BoundedVaultIo.prototype, 'append').mockImplementation(async function (...args) {
+    await append.apply(this, args)
+    if (armed && /\/objects\/[^/]+\/data$/.test(args[0])) {
+      armed = false
+      await work()
+    }
+  })
+}
 
 it('retains ownership when a failed write cannot remove its private temp', async () => {
   const app = buildFakeVault([])
@@ -233,6 +251,24 @@ async function everything(app: FakeApp, folder = '/'): Promise<string[]> {
   return out.sort()
 }
 
+const CONDITIONAL = '.obsidian/plugins/abele/sync-conditional'
+async function ownedInventory(app: FakeApp): Promise<string[]> {
+  const paths = await everything(app)
+  for (const path of paths.filter((one) =>
+    /^.*\/sync-conditional\/(objects|trash)\/[^/]+\/(victim|data)$/.test(one)
+  )) {
+    const parts = path.split('/'),
+      id = parts.at(-2)!
+    const pointers = ['active', 'completed', 'review', 'retiring', 'retained']
+      .map((area) => `${CONDITIONAL}/${area}/${id}.json`)
+      .filter((pointer) => paths.includes(pointer))
+    expect(pointers.length, `unowned conditional bytes: ${path}`).toBeGreaterThan(0)
+    for (const pointer of pointers)
+      expect(JSON.parse(await app.vault.adapter.read(pointer))).toBeTypeOf('object')
+  }
+  return paths.filter((path) => !isDeviceLocalPluginState(path, app.vault.configDir))
+}
+
 /** A `writeBinary` that dies half way through the next write it is asked for. */
 function crashNextWrite(app: FakeApp): void {
   const real = app.vault.adapter.writeBinary.bind(app.vault.adapter)
@@ -243,6 +279,23 @@ function crashNextWrite(app: FakeApp): void {
     await real(path, data.slice(0, Math.floor(data.byteLength / 2)), options)
     throw new Error('the app was closed')
   }
+  const append = BoundedVaultIo.prototype.append
+  vi.spyOn(BoundedVaultIo.prototype, 'append').mockImplementation(
+    async function (path, offset, bytes, mtime, signal) {
+      if (!armed || !/\/objects\/[^/]+\/data$/.test(path))
+        return append.call(this, path, offset, bytes, mtime, signal)
+      armed = false
+      await append.call(
+        this,
+        path,
+        offset,
+        bytes.slice(0, Math.floor(bytes.length / 2)),
+        mtime,
+        signal
+      )
+      throw new Error('the app was closed')
+    }
+  )
 }
 
 for (const platform of ['phone', 'desktop'] as const) {
@@ -261,7 +314,7 @@ for (const platform of ['phone', 'desktop'] as const) {
       ).resolves.toBe('io')
       expect(read(await app.vault.adapter.readBinary('Note.md'))).toBe('the whole old note')
       expect((await fs.stat('Note.md'))?.mtime).toBe(1000)
-      expect(await everything(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+      expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
     })
 
     it('leaves the whole old data.json when a write dies half way', async () => {
@@ -290,7 +343,7 @@ for (const platform of ['phone', 'desktop'] as const) {
       expect(read(await fs.read('Note.md'))).toBe('second')
       expect(await fs.stat('Note.md')).toEqual({ path: 'Note.md', size: 6, mtime: 8000 })
       await fs.writeAtomic('.obsidian/plugins/abele/DATA.json', text('{}'), 8100)
-      expect(await everything(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+      expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
       expect(read(await fs.read('.obsidian/plugins/abele/data.json'))).toBe('{}')
     })
 
@@ -299,11 +352,9 @@ for (const platform of ['phone', 'desktop'] as const) {
       async (target) => {
         const { app, fs } = useVault()
         const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
-        app.vault.adapter.writeBinary = async (path, bytes, options) => {
-          await write(path, bytes, options)
-          if (path.endsWith('.tmp'))
-            await write(target, text('local edit').buffer as ArrayBuffer, { mtime: 9001 })
-        }
+        afterPayloadWrite(() =>
+          write(target, text('local edit').buffer as ArrayBuffer, { mtime: 9001 })
+        )
         expect(await codeOf(fs.writeAtomic(target, text('remote replacement'), 9000))).toBe(
           'conflict'
         )
@@ -317,8 +368,43 @@ for (const platform of ['phone', 'desktop'] as const) {
       const real = app.vault.adapter.writeBinary.bind(app.vault.adapter)
       app.vault.adapter.writeBinary = async (path, data, options) => {
         await real(path, data, options)
-        if (path.includes('.abele-sync-'))
+        if (path.includes('.abele-sync-') || path.includes('.abele-receipt-'))
           await real('Theirs.md', text('mine').buffer as ArrayBuffer)
+      }
+      if (platform === 'desktop') {
+        const raw = app.vault.adapter as unknown as {
+          fsPromises: {
+            link(from: string, to: string): Promise<void>
+            open(
+              path: string,
+              flags: number
+            ): Promise<{
+              write(
+                bytes: Uint8Array,
+                offset: number,
+                length: number,
+                position: number
+              ): Promise<unknown>
+              close(): Promise<void>
+            }>
+          }
+        }
+        const link = raw.fsPromises.link.bind(raw.fsPromises)
+        raw.fsPromises.link = async (from, to) => {
+          if (to.endsWith('/Theirs.md')) {
+            // An independent native writer does not join the cooperative save queue.
+            const handle = await raw.fsPromises.open(
+              to,
+              constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
+            )
+            try {
+              await handle.write(text('mine'), 0, 4, 0)
+            } finally {
+              await handle.close()
+            }
+          }
+          return link(from, to)
+        }
       }
       await expect(codeOf(fs.writeAtomic('Theirs.md', text('pulled'), 9000))).resolves.toBe(
         'conflict'
@@ -330,6 +416,22 @@ for (const platform of ['phone', 'desktop'] as const) {
 }
 
 describe('ObsidianFileSystem writes on the desktop', () => {
+  it('rejects a partial scan when a conditional replacement completes between its yields', async () => {
+    const app = buildFakeVault(VAULT)
+    withDesktopFs(app)
+    const reader = new ObsidianFileSystem(app as unknown as App)
+    const writer = new ObsidianFileSystem(app as unknown as App)
+    const listing = reader.list()[Symbol.asyncIterator]()
+    expect((await listing.next()).done).toBe(false)
+    await writer.writeAtomic('Note.md', text('new complete bytes'), 9000)
+    const finish = async () => {
+      while (!(await listing.next()).done) {
+        /* Drain the same snapshot. */
+      }
+    }
+    await expect(finish()).rejects.toMatchObject({ code: 'io' })
+    expect(read(await writer.read('Note.md'))).toBe('new complete bytes')
+  })
   it('preserves an independent edit made at the native rename boundary', async () => {
     const app = buildFakeVault(VAULT)
     // No cooperative adapter queue: preserve the independently written source at the native boundary.
@@ -339,6 +441,7 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     }
     const rename = raw.fsPromises.rename.bind(raw.fsPromises)
     raw.fsPromises.rename = async (from, to) => {
+      if (!from.endsWith('/Note.md') || !to.endsWith('/victim')) return rename(from, to)
       await app.vault.adapter.writeBinary(
         'Note.md',
         text('last-instant local edit').buffer as ArrayBuffer,
@@ -352,23 +455,28 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     })
     expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('conflict')
     expect(read(await fs.read('Note.md'))).toBe('last-instant local edit')
-    expect(written).toEqual([])
+    // Restoring the captured edit must invalidate its index entry exactly once.
+    expect(written).toEqual(['Note.md'])
+    expect((await ownedInventory(app)).filter((path) => path !== 'Note.md')).toEqual([
+      '.obsidian/plugins/abele/data.json',
+    ])
   })
 
   it('serializes a local save queued at replacement rather than dropping its bytes', async () => {
     const app = buildFakeVault(VAULT)
     withDesktopFs(app)
     const raw = app.vault.adapter as unknown as {
-      fsPromises: { rename(from: string, to: string): Promise<void> }
+      fsPromises: { link(from: string, to: string): Promise<void> }
     }
-    const rename = raw.fsPromises.rename.bind(raw.fsPromises)
+    const link = raw.fsPromises.link.bind(raw.fsPromises)
     let save: Promise<void> | null = null
-    raw.fsPromises.rename = async (from, to) => {
-      save = app.vault.adapter.writeBinary(
-        'Note.md',
-        text('queued local edit').buffer as ArrayBuffer
-      )
-      await rename(from, to)
+    raw.fsPromises.link = async (from, to) => {
+      if (to.endsWith('/Note.md'))
+        save = app.vault.adapter.writeBinary(
+          'Note.md',
+          text('queued local edit').buffer as ArrayBuffer
+        )
+      await link(from, to)
     }
     const fs = new ObsidianFileSystem(app as unknown as App)
     await fs.writeAtomic('Note.md', text('remote'), 9000)
@@ -385,7 +493,7 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     const link = raw.fsPromises.link.bind(raw.fsPromises)
     let once = true
     raw.fsPromises.link = async (from, to) => {
-      if (once) {
+      if (once && to.endsWith('/Note.md')) {
         once = false
         await app.vault.adapter.writeBinary(
           'Note.md',
@@ -395,12 +503,13 @@ describe('ObsidianFileSystem writes on the desktop', () => {
       await link(from, to)
     }
     const fs = new ObsidianFileSystem(app as unknown as App)
-    expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('io')
+    expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('conflict')
     expect(read(await fs.read('Note.md'))).toBe('recreated locally')
     await listed(fs)
-    const kept = app.loadLocalStorage('abele-sync-recovered-writes') as { backup: string }[]
-    expect(kept).toHaveLength(1)
-    expect(read(await app.vault.adapter.readBinary(kept[0]!.backup))).toBe('the whole old note')
+    await ownedInventory(app)
+    const retained = (await everything(app)).filter((path) => path.endsWith('/victim'))
+    expect(retained).toHaveLength(1)
+    expect(read(await app.vault.adapter.readBinary(retained[0]))).toBe('the whole old note')
   })
 
   it('does not let another scanner interpret a live unfenced swap gap as deletion', async () => {
@@ -418,6 +527,7 @@ describe('ObsidianFileSystem writes on the desktop', () => {
       release = resolve
     })
     raw.fsPromises.link = async (from, to) => {
+      if (!to.endsWith('/Note.md')) return link(from, to)
       entered()
       await ready
       await link(from, to)
@@ -435,52 +545,95 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     expect(read(await fs.read('Note.md'))).toBe('remote')
   })
 
-  it('replaces the file with one rename over it', async () => {
+  it('publishes the complete file once after retaining the displaced inode', async () => {
     const app = buildFakeVault(VAULT)
     const calls = withDesktopFs(app)
+    const raw = app.vault.adapter as unknown as {
+      fsPromises: { link(from: string, to: string): Promise<void> }
+    }
+    const link = raw.fsPromises.link.bind(raw.fsPromises)
+    const publications: string[] = []
+    raw.fsPromises.link = async (from, to) => {
+      if (to.endsWith('/Note.md')) publications.push(from)
+      return link(from, to)
+    }
     const fs = new ObsidianFileSystem(app as unknown as App)
     await fs.writeAtomic('Note.md', text('second'), 8000)
-    expect(calls.renames).toHaveLength(1)
-    expect(calls.renames[0]![0]).toMatch(
-      /^\.obsidian\/plugins\/abele\/sync-staging\/\.abele-sync-[a-z0-9]{8}\.tmp$/
-    )
-    expect(calls.renames[0]![1]).toBe('Note.md')
+    expect(calls.renames.filter(([from]) => from === 'Note.md')).toHaveLength(1)
+    expect(calls.renames.some(([, to]) => to === 'Note.md')).toBe(false)
+    expect(publications).toHaveLength(1)
+    expect(publications[0]).toMatch(/\/objects\/[^/]+\/data$/)
+    expect(read(await fs.read('Note.md'))).toBe('second')
+    await ownedInventory(app)
   })
 })
 
 describe('ObsidianFileSystem writes on a phone, interrupted between the two renames', () => {
-  function crashRenameInto(app: FakeApp, target: string): void {
-    const real = app.vault.adapter.rename.bind(app.vault.adapter)
-    let armed = true
-    app.vault.adapter.rename = async (from, to) => {
-      if (armed && to === target && from.includes('.abele-sync-')) {
-        armed = false
-        // The app is gone: nothing after this runs, including putting the old file back.
-        app.vault.adapter.rename = async () => {
-          throw new Error('the app was closed')
-        }
-        throw new Error('the app was closed')
+  function crashRenameInto(fs: ObsidianFileSystem, target: string): () => void {
+    const host = Reflect.get(Reflect.get(fs, 'conditional'), 'host') as ConditionalFileHost
+    let dead = false,
+      armed = true
+    const check = () => {
+      if (dead) throw new EngineError('io', 'the app was closed')
+    }
+    const wrap = (port: ConditionalFileHost): ConditionalFileHost => {
+      const { check: ready, stat, capture, install } = port
+      return {
+        ...port,
+        check: () => {
+          check()
+          ready()
+        },
+        stat: (path) => {
+          check()
+          return stat(path)
+        },
+        capture: (from, to) => {
+          check()
+          return capture(from, to)
+        },
+        install: (from, to) => {
+          check()
+          if (armed && to === target && /\/objects\/[^/]+\/data$/.test(from)) {
+            armed = false
+            dead = true
+            throw new Error('the app was closed')
+          }
+          return install(from, to)
+        },
       }
-      await real(from, to)
+    }
+    const leased = host.withMutationCheck!.bind(host)
+    Object.assign(host, wrap(host))
+    host.withMutationCheck = (current) => wrap(leased(current))
+    return () => {
+      dead = false
     }
   }
+  const pending = async (app: FakeApp) =>
+    (await app.vault.adapter.list(CONDITIONAL + '/active')).files
 
   it('puts the old note back at the next listing', async () => {
     const app = buildFakeVault(VAULT)
-    const realRename = app.vault.adapter.rename.bind(app.vault.adapter)
-    crashRenameInto(app, 'Note.md')
     const fs = new ObsidianFileSystem(app as unknown as App)
+    crashRenameInto(fs, 'Note.md')
     await expect(codeOf(fs.writeAtomic('Note.md', text('new'), 9000))).resolves.toBe('io')
     // Right after the crash: the note is at its backup name, and the journal says so.
     expect(await app.vault.adapter.exists('Note.md')).toBe(false)
-    expect(app.loadLocalStorage(JOURNAL_KEY)).not.toBeNull()
+    expect(await pending(app)).toHaveLength(1)
 
-    app.vault.adapter.rename = realRename
     const next = new ObsidianFileSystem(app as unknown as App)
     const paths = (await listed(next)).map((info) => info.path)
     expect(paths).toContain('Note.md')
     expect(read(await next.read('Note.md'))).toBe('the whole old note')
-    expect(await everything(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+    const recovered = (await ownedInventory(app)).filter(
+      (path) => path !== '.obsidian/plugins/abele/data.json' && path !== 'Note.md'
+    )
+    expect(recovered).toHaveLength(1)
+    expect(read(await next.read(recovered[0]))).toBe('new')
+    await listed(next)
+    expect(await ownedInventory(app)).toEqual(paths.sort())
+    expect(await pending(app)).toHaveLength(0)
     expect(app.loadLocalStorage(JOURNAL_KEY)).toBeNull()
   })
 
@@ -488,21 +641,23 @@ describe('ObsidianFileSystem writes on a phone, interrupted between the two rena
     const app = buildFakeVault(VAULT)
     const fs = new ObsidianFileSystem(app as unknown as App)
     await listed(fs)
-    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
-    const stat = app.vault.adapter.stat.bind(app.vault.adapter)
-    crashRenameInto(app, 'Note.md')
+    const resume = crashRenameInto(fs, 'Note.md')
     expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('io')
     expect(await codeOf(listed(fs))).toBe('io')
-    app.vault.adapter.stat = async (path) => {
-      if (path.endsWith('.old')) throw Object.assign(new Error('unavailable'), { code: 'EIO' })
+    resume()
+    const host = Reflect.get(Reflect.get(fs, 'conditional'), 'host') as ConditionalFileHost
+    const stat = host.stat
+    host.stat = async (path) => {
+      if (path.endsWith('/victim')) throw Object.assign(new Error('unavailable'), { code: 'EIO' })
       return stat(path)
     }
     expect(await codeOf(listed(fs))).toBe('io')
-    expect(app.loadLocalStorage(JOURNAL_KEY)).not.toBeNull()
-    app.vault.adapter.stat = stat
-    app.vault.adapter.rename = rename
+    expect(await pending(app)).toHaveLength(1)
+    host.stat = stat
     expect((await listed(fs)).map((file) => file.path)).toContain('Note.md')
     expect(read(await fs.read('Note.md'))).toBe('the whole old note')
+    await ownedInventory(app)
+    expect(await pending(app)).toHaveLength(0)
     expect(app.loadLocalStorage(JOURNAL_KEY)).toBeNull()
   })
 
@@ -520,29 +675,41 @@ describe('ObsidianFileSystem writes on a phone, interrupted between the two rena
     app.saveLocalStorage = () => {
       throw new Error('storage unavailable')
     }
+    const append = BoundedVaultIo.prototype.append
+    vi.spyOn(BoundedVaultIo.prototype, 'append').mockImplementation(function (...args) {
+      if (args[0].endsWith('/intent.json')) throw new Error('storage unavailable')
+      return append.apply(this, args)
+    })
     const fs = new ObsidianFileSystem(app as unknown as App)
     expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('io')
     expect(read(await fs.read('Note.md'))).toBe('the whole old note')
     expect((await everything(app)).filter((path) => path.includes('.abele-sync-'))).toEqual([])
   })
 
-  it('drops the old copy when the new file had already taken the name', async () => {
+  it('retires interrupted conditional metadata after publication while retaining the old bytes', async () => {
     const app = buildFakeVault(VAULT)
     const realRemove = app.vault.adapter.remove.bind(app.vault.adapter)
+    let crashed = true
     app.vault.adapter.remove = async (path) => {
-      if (path.endsWith('.old')) throw new Error('the app was closed')
+      if (crashed && /\/objects\/[^/]+\/intent.json$/.test(path))
+        throw new Error('the app was closed')
       await realRemove(path)
     }
     const fs = new ObsidianFileSystem(app as unknown as App)
-    await fs.writeAtomic('Note.md', text('new'), 9000)
+    expect(await codeOf(fs.writeAtomic('Note.md', text('new'), 9000))).toBe('io')
+    crashed = false
     app.vault.adapter.remove = realRemove
-    // A backup left behind stands beside the finished file; the journal still names it.
-    expect((await everything(app)).some((path) => path.endsWith('.old'))).toBe(true)
+    const victims = (await everything(app)).filter((path) => path.endsWith('/victim'))
+    expect(victims).toHaveLength(1)
+    expect(await app.vault.adapter.read(victims[0])).toBe('the whole old note')
 
     const next = new ObsidianFileSystem(app as unknown as App)
     await listed(next)
     expect(read(await next.read('Note.md'))).toBe('new')
-    expect(await everything(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+    expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+    expect((await everything(app)).filter((path) => path.endsWith('/victim'))).toEqual(victims)
+    await listed(next)
+    expect((await everything(app)).filter((path) => path.endsWith('/victim'))).toEqual(victims)
   })
 
   it('never lists a temp name, and sweeps one left in the config folder', async () => {
@@ -568,6 +735,7 @@ describe('ObsidianFileSystem tidying folders', () => {
     const rmdir = app.vault.adapter.rmdir.bind(app.vault.adapter)
     let called = false
     app.vault.adapter.rmdir = async (path, recursive) => {
+      if (path !== 'Inbox') return rmdir(path, recursive)
       called = true
       await app.vault.adapter.writeBinary(`${path}/New.md`, text('new').buffer as ArrayBuffer)
       await rmdir(path, recursive)
@@ -584,7 +752,7 @@ describe('ObsidianFileSystem tidying folders', () => {
     try {
       await new ObsidianFileSystem(app as unknown as App).remove('Inbox/a.md')
       expect(await app.vault.adapter.exists('Inbox')).toBe(true)
-      expect(calls.rmdirs).toEqual([])
+      expect(calls.rmdirs.filter((path) => path === 'Inbox')).toEqual([])
     } finally {
       Platform.isMobile = before
     }
@@ -594,17 +762,19 @@ describe('ObsidianFileSystem tidying folders', () => {
     const app = buildFakeVault([...VAULT, { path: 'Burst/a.md', content: 'a', mtime: 1 }])
     const calls = withDesktopFs(app)
     const fs = new ObsidianFileSystem(app as unknown as App)
-    const realList = app.vault.adapter.list.bind(app.vault.adapter)
-    app.vault.adapter.list = async (path) => {
-      const listing = await realList(path)
-      // Obsidian, or the person, puts a file in the folder right after it was looked at.
-      if (path === 'Burst')
+    const raw = app.vault.adapter as unknown as {
+      fsPromises: { rmdir(path: string): Promise<void> }
+    }
+    const rmdir = raw.fsPromises.rmdir.bind(raw.fsPromises)
+    raw.fsPromises.rmdir = async (path) => {
+      // A native empty-only removal must refuse a note arriving at its syscall boundary.
+      if (path.endsWith('/Burst'))
         await app.vault.adapter.writeBinary('Burst/new.md', text('new').buffer as ArrayBuffer)
-      return listing
+      return rmdir(path)
     }
     await fs.remove('Burst/a.md')
     expect(read(await app.vault.adapter.readBinary('Burst/new.md'))).toBe('new')
-    expect(calls.rmdirs).toEqual(['Burst'])
+    expect(calls.rmdirs.filter((path) => path === 'Burst')).toEqual(['Burst'])
   })
 
   it('still removes a folder the sync emptied (desktop)', async () => {

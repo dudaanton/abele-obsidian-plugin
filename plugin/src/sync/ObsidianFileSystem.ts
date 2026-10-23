@@ -1749,6 +1749,7 @@ export class ObsidianFileSystem implements FileSystem {
     const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
     await this.recover()
+    const conditionalRevision = this.conditional.assertSettled()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
@@ -1812,6 +1813,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
       for (const info of this.configInventory) yield await this.told(info, true)
     }
+    this.conditional.assertSettled(conditionalRevision)
     if (mutations.revision !== revision) {
       throw new EngineError(
         'io',
