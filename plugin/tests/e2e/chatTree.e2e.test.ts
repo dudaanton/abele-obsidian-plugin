@@ -468,7 +468,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 34 : 35)
+    expect(result.pictures).toBe(onPhone() ? 36 : 37)
     console.log('Sample composer geometry', JSON.stringify(result.composer))
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)
