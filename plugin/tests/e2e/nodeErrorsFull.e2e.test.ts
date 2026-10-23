@@ -132,7 +132,7 @@ const probe = (device: string) =>
     await showFile('git_timeout');
     app.workspace.leftSplit.expand();
     const key=JSON.stringify([state.model.current.value.nodeId,state.model.current.value.kind,state.model.current.value.id]);
-    const inspection=state.model.inspections.value[key];
+    const inspection={...state.model.inspections.value[key],changes:[{path:'sample-retained.ts',kind:'modified',stage:'unstaged'}]};
     originalBranch=state.model.port.branch;
     state.model.port.branch=async()=>({state:{base:'main',ahead:0,behind:0,unpushed:0},committed:[]});
     state.model.panelMode.value='changes';state.model.panelBranch.value=undefined;
@@ -142,8 +142,10 @@ const probe = (device: string) =>
     await capture('17-first-load');
     state.model.inspections.value={[key]:inspection};touch();
     await until(()=>nodePanel.root().textContent.includes('Updating changes…'),'Updating footer missing');
+    await until(()=>nodePanel.root().querySelector('.abele-file-tree')?.textContent.includes('sample-retained.ts'),'Reload discarded the existing tree');
     await capture('18-updating');
     await until(()=>nodePanel.root().textContent.includes('Still reading the files…'),'Slow loading footer missing');
+    if(!nodePanel.root().querySelector('.abele-file-tree')?.textContent.includes('sample-retained.ts'))throw Error('Slow reload discarded the existing tree');
     await capture('19-slow-loading');
     const foot=nodePanel.root().querySelector('[data-connection-footer]');
     [...foot.querySelectorAll('a')].find(link=>link.textContent==='Node log').click();
