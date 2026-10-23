@@ -1,5 +1,61 @@
 import { expect, it } from 'vitest'
 import { ConditionalFiles, type ConditionalFileHost } from '@/sync/conditionalFiles'
+import { EngineError } from '@abele/sync-sdk/core'
+import { deferred } from '../helpers/deferred'
+
+it('restores a late captured save even when its content cannot be fingerprinted', async () => {
+  const { host, files } = await fixture()
+  files.clear()
+  const text = (value: string) => new TextEncoder().encode(value)
+  files.set('sample.md', { bytes: text('before') })
+  host.sameObject = undefined
+  host.flush = async () => {}
+  host.remove = async (path) => {
+    files.delete(path)
+  }
+  const entered = deferred(),
+    resume = deferred(),
+    revoked = deferred<never>()
+  void revoked.promise.catch(() => {})
+  const expired = Object.assign(new EngineError('conflict', 'lease expired'), {
+    leaseExpired: true,
+  })
+  let expiredNow = false
+  const lease = Object.assign(() => {}, {
+    check: () => {
+      if (expiredNow) throw expired
+    },
+    wait: <T>(work: Promise<T>) => Promise.race([work, revoked.promise]),
+  })
+  host.checked = {
+    maxBytes: 1024,
+    wait: async () => {},
+    acquire: async () => lease,
+    publicationCheck: () => () => true,
+  }
+  const capture = host.capture
+  host.capture = async (from, to) => {
+    if (from === 'sample.md') {
+      entered.resolve()
+      await resume.promise
+    }
+    await capture(from, to)
+  }
+  const recovery = new ConditionalFiles(host)
+  const operation = recovery.retainUncertain('sample.md', '.private/backup')
+  await entered.promise
+  expiredNow = true
+  revoked.reject(expired)
+  expect(await operation).toBe(false)
+  files.set('sample.md', { bytes: text('new save') })
+  const repairs = [...Reflect.get(recovery, 'lateRepairs')] as Promise<void>[]
+  resume.resolve()
+  await Promise.all(repairs)
+  expect(files.get('sample.md')?.bytes).toEqual(text('new save'))
+  expect([...files.keys()].filter((path) => path.endsWith('/late-effect.json'))).toHaveLength(1)
+  await recovery.recover()
+  expect(files.get('sample.md')?.bytes).toEqual(text('new save'))
+})
 
 async function fixture() {
   const files = new Map<string, { bytes: Uint8Array }>()

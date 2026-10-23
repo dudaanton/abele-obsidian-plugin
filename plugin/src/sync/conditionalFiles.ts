@@ -658,7 +658,17 @@ export class ConditionalFiles {
         new TextDecoder().decode(await h.read(folder + '/intent.json'))
       ) as Intent
       const victim = folder + '/victim'
-      const captured = (await h.stat(victim))?.type === 'file' ? await h.fingerprint(victim) : null
+      let captured: FileVersion | null = null
+      try {
+        if ((await h.stat(victim))?.type === 'file') captured = await h.fingerprint(victim)
+      } catch (error) {
+        // A diagnostic hash is not authority to strand captured user bytes. Restore
+        // them conservatively even when bounded verification is unavailable.
+        console.debug(
+          '[abele-sync] late capture cannot be fingerprinted; restoring retained bytes',
+          error
+        )
+      }
       // The active intent predates the effect. This additional record describes its
       // late settlement; a crash before it is written still recovers from the intent.
       if (!(await h.stat(folder + '/late-effect.json')))
