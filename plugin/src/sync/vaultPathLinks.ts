@@ -2051,15 +2051,16 @@ export function setGatedAdapterMethod(adapter: object, name: string, value: unkn
   if (gates.has(adapter)) gate.methods.set(name, raw)
   const run = (...args: unknown[]) => raw.apply(adapterEngineReceiver(adapter), args)
   const wrapped = (...args: unknown[]) => {
-    console.debug('[abele-sync] adapter mutation waiting', name, args[0])
+    const trace = Reflect.get(adapter, Symbol.for('abele.sync.adapter-mutation-debug-v1')) === true
+    if (trace) console.debug('[abele-sync] adapter mutation waiting', name, args[0])
     return gate.locks.run(
       args.slice(0, name === 'rename' || name === 'copy' ? 2 : 1).map(String),
       async () => {
-        console.debug('[abele-sync] adapter mutation entered', name, args[0])
+        if (trace) console.debug('[abele-sync] adapter mutation entered', name, args[0])
         try {
           return await run(...args)
         } finally {
-          console.debug('[abele-sync] adapter mutation finished', name, args[0])
+          if (trace) console.debug('[abele-sync] adapter mutation finished', name, args[0])
         }
       }
     )
