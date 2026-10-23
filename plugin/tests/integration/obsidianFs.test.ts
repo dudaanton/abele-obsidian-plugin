@@ -799,7 +799,7 @@ describe('ObsidianFileSystem — moving and removing', () => {
     expect(read(await fs.read('Notes/Deep/second.md'))).toBe('second body')
   })
 
-  it('takes the new spelling in two steps when one rename will not do it', async () => {
+  it('takes the new spelling through capture when an in-place rename would do nothing', async () => {
     const fs = useVault(VAULT)
     // A mount that reads rename(2) between two names of one file as doing nothing at all.
     const renamed = app.vault.adapter.rename.bind(app.vault.adapter)
@@ -816,37 +816,33 @@ describe('ObsidianFileSystem — moving and removing', () => {
 
     await fs.move('Note.md', 'note.md')
 
-    expect(refusals).toBe(1)
+    // Conditional publication avoids the unreliable in-place rename altogether.
+    expect(refusals).toBe(0)
     expect(read(await fs.read('note.md'))).toBe('first')
     expect(await app.vault.adapter.exists('note.md', true)).toBe(true)
-    // Out from the name that is there either way, and back. The name it goes through is
-    // beside the file rather than built on it — a segment may already be at the 255 bytes a
-    // filesystem allows — and hidden, so Obsidian's index never sees it.
-    const [temp] = asked[1]!.slice(1)
-    expect(asked).toEqual([
-      ['Note.md', 'note.md'],
-      ['note.md', temp],
+    const publicEffects = asked.filter(([from, to]) => from === 'Note.md' || to === 'note.md')
+    const temp = publicEffects[0]![1]
+    expect(publicEffects).toEqual([
+      ['Note.md', temp],
       [temp, 'note.md'],
     ])
-    // `.old`: between the two renames it is the file's only copy, which the write journal
-    // puts back after a crash and no sweep ever removes.
+    // The owned victim, not an in-place case rename, bridges the two public effects.
     expect(temp).toMatch(
-      /^\.obsidian\/plugins\/abele\/sync-staging\/\.abele-sync-[a-z0-9]{8}\.old$/
+      /^\.obsidian\/plugins\/abele\/sync-conditional\/objects\/[a-z0-9-]+\/victim$/
     )
     // Nothing of the adapter's own is left behind in the vault.
     const paths = (await listed(fs)).map((info) => info.path)
     expect(paths.filter((path) => path.includes('abele-sync'))).toEqual([])
   })
 
-  it('leaves a rename that took alone when the listing after it hiccups', async () => {
+  it('acknowledges a conditional case move without a public confirmation listing', async () => {
     const fs = useVault(VAULT)
     const real = app.vault.adapter.list.bind(app.vault.adapter)
     let hiccuped = false
-    // The rename works; the one listing that would confirm it does not. Reading that as "the
-    // old spelling is still there" would send the rename round again, and the second one has
-    // nothing left to move — a conflict held on every sync from then on.
+    // A public confirmation listing is unavailable. The conditional acknowledgement
+    // must suffice without guessing the old spelling and replaying the move.
     app.vault.adapter.list = async (path: string) => {
-      if (!hiccuped) {
+      if (!hiccuped && (path === '/' || path === '')) {
         hiccuped = true
         throw new Error(`EIO: ${path}`)
       }
@@ -855,14 +851,15 @@ describe('ObsidianFileSystem — moving and removing', () => {
     const renamed = app.vault.adapter.rename.bind(app.vault.adapter)
     let renames = 0
     app.vault.adapter.rename = async (from: string, to: string) => {
-      renames++
+      if (from === 'Note.md' || to === 'note.md') renames++
       await renamed(from, to)
     }
 
     await expect(fs.move('Note.md', 'note.md')).resolves.toBeUndefined()
-    expect(hiccuped).toBe(true)
-    // One rename, not three: the file was not sent round the temp name after the fact.
-    expect(renames).toBe(1)
+    // Conditional acknowledgement needs no public listing to confirm the new spelling.
+    expect(hiccuped).toBe(false)
+    // Exactly capture and installation; no speculative in-place attempt or replay.
+    expect(renames).toBe(2)
     expect(await app.vault.adapter.exists('note.md', true)).toBe(true)
     expect(read(await fs.read('note.md'))).toBe('first')
   })
@@ -882,11 +879,14 @@ describe('ObsidianFileSystem — moving and removing', () => {
 
   it('holds a rename the disk will not make at all', async () => {
     const fs = useVault(VAULT)
+    const renamed = app.vault.adapter.rename.bind(app.vault.adapter)
     app.vault.adapter.rename = async (from: string, to: string) => {
-      if (from.toLowerCase() === to.toLowerCase()) return
-      throw new Error(`this disk will not rename ${from} to ${to}`)
+      // Refuse the public capture while allowing its durable ownership metadata.
+      if (from === 'Note.md') return
+      await renamed(from, to)
     }
     await expect(codeOf(fs.move('Note.md', 'note.md'))).resolves.toBe('conflict')
+    expect(read(await fs.read('Note.md'))).toBe('first')
   })
 
   it('renames a file into another spelling of its own name', async () => {
