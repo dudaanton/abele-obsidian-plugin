@@ -11,9 +11,11 @@ import { targets } from './helpers/target'
 
 targets('desktop')
 const shots = shotDir('abele-node-file-search')
+// A split comparison renders the read-only original first; editing targets its working pane.
 const prelude = `${PAIRED_PRELUDE}
 const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&!el.closest('.workspace-leaf.mod-hidden'));
-const file=()=>visible('.abele-file-view')??visible('.abele-node-main:has([data-node-find])');`
+const file=()=>visible('.abele-file-view')??visible('.abele-node-main:has([data-node-find])');
+const content=()=>file()?.querySelector('.cm-content[contenteditable="true"]')??file()?.querySelector('.cm-content');`
 
 async function capture(name: string) {
   await evalLong(
@@ -31,7 +33,7 @@ async function search(shell: string, entry: string) {
     await close();
     if(!app.commands.executeCommandById('editor:open-search'))throw Error('Current-file command unavailable');
     await until(()=>file()?.querySelector('[role=search] input'),'Current-file command');await close();
-    file().querySelector('.cm-content').focus();return 'button and host command'})()`)
+    content().focus();return 'button and host command'})()`)
   await evalLong(
     `(()=>{const web=require('@electron/remote').getCurrentWebContents(),modifiers=require('process').platform==='darwin'?['meta']:['control'];web.sendInputEvent({type:'keyDown',keyCode:'F',modifiers});web.sendInputEvent({type:'keyUp',keyCode:'F',modifiers});return 'native find'})()`
   )
@@ -241,11 +243,11 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         }
         await evalLong(`(async()=>{${prelude}
         const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file())),edit=leaf.containerEl.querySelector('.view-action[aria-label="Edit the file"]');if(edit)edit.click();else{const menu=leaf.containerEl.querySelector('.view-action.mod-more-options, .view-action[aria-label="More options"]');if(!menu)throw Error('File view menu missing');menu.click();await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Edit the file')),'Edit menu action');[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Edit the file')).click()}
-        await until(()=>file()?.querySelector('.cm-content')?.contentEditable==='true','Editable file').catch(async error=>{require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${comparison ? 'comparison' : 'file'}-edit-failure.png`))},(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());throw Error(String(error)+'; '+JSON.stringify({comparison:${comparison},state:leaf.view.getState(),active:leaf.view.editing?.active.value,locked:leaf.view.editing?.locked.value,text:leaf.view.contentEl.textContent,editors:[...leaf.view.contentEl.querySelectorAll('.cm-content')].map(el=>({editable:el.contentEditable,text:el.textContent})),modals:[...document.querySelectorAll('.modal')].map(el=>el.textContent)}))});return 'edit ordinary file'})()`)
+        await until(()=>file()?.querySelector('.cm-content[contenteditable="true"]')?.contentEditable==='true','Editable file').catch(async error=>{require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${comparison ? 'comparison' : 'file'}-edit-failure.png`))},(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());throw Error(String(error)+'; '+JSON.stringify({comparison:${comparison},state:leaf.view.getState(),active:leaf.view.editing?.active.value,locked:leaf.view.editing?.locked.value,text:leaf.view.contentEl.textContent,editors:[...leaf.view.contentEl.querySelectorAll('.cm-content')].map(el=>({editable:el.contentEditable,text:el.textContent})),modals:[...document.querySelectorAll('.modal')].map(el=>el.textContent)}))});return 'edit ordinary file'})()`)
         const entry = comparison ? 'edited-comparison' : 'edited-file'
         await search(shell, entry)
         await evalLong(`(async()=>{${prelude}
-        const leaves=app.workspace.getLeavesOfType('abele-node-file'),leaf=leaves.find(l=>l.view.contentEl.contains(file())),repos=app.workspace.getLeavesOfType('abele-github').length,row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:box.left+box.width/2,clientY:box.top+box.height/2,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin'}));
+        const leaves=app.workspace.getLeavesOfType('abele-node-file'),leaf=leaves.find(l=>l.view.contentEl.contains(file())),repos=app.workspace.getLeavesOfType('abele-github').length,row=content().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:box.left+box.width/2,clientY:box.top+box.height/2,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin'}));
         await until(()=>leaf.view.getState().line===1&&file()?.querySelector('.abele-github-code__line_target'),'Definition inside edited file');if(!leaf.view.getState().edit||app.workspace.getLeavesOfType('abele-node-file').length!==leaves.length||app.workspace.getLeavesOfType('abele-github').length!==repos)throw Error('Edited definition replaced the editor or opened another tab');return 'edited definition'})()`)
         await capture(`${shell}-${entry}-definition`)
         await closeFile()
