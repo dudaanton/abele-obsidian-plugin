@@ -237,9 +237,15 @@ export const chat = {
   'discussion.answer': 'Answer',
   'discussion.limited': 'Text limited to fit the context',
   'discussion.conversation': 'Conversation before it',
-  'discussion.messages': '{count} messages · words only, no tool calls',
+  'discussion.messages': {
+    one: '{count} message · words only, no tool calls',
+    other: '{count} messages · words only, no tool calls',
+  },
   'discussion.lineage': 'Where this discussion began',
-  'discussion.passages': '{count} passages · selected words and sources only',
+  'discussion.passages': {
+    one: '{count} passage · selected words and sources only',
+    other: '{count} passages · selected words and sources only',
+  },
   'discussion.notSent': 'deleted, not sent',
   'discussion.answerMissing': 'answer missing, not sent',
   'discussion.paragraph': 'Paragraph around the words',

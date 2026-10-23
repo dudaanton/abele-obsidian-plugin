@@ -239,9 +239,15 @@ export const chat = {
   'discussion.answer': 'Antwort',
   'discussion.limited': 'Text für den Kontext gekürzt',
   'discussion.conversation': 'Vorheriges Gespräch',
-  'discussion.messages': '{count} Nachrichten · nur Text, keine Werkzeugaufrufe',
+  'discussion.messages': {
+    one: '{count} Nachricht · nur Text, keine Werkzeugaufrufe',
+    other: '{count} Nachrichten · nur Text, keine Werkzeugaufrufe',
+  },
   'discussion.lineage': 'Wo diese Diskussion begann',
-  'discussion.passages': '{count} Passagen · nur ausgewählte Worte und Quellen',
+  'discussion.passages': {
+    one: '{count} Passage · nur ausgewählte Worte und Quellen',
+    other: '{count} Passagen · nur ausgewählte Worte und Quellen',
+  },
   'discussion.notSent': 'gelöscht, nicht gesendet',
   'discussion.answerMissing': 'Antwort fehlt, nicht gesendet',
   'discussion.paragraph': 'Absatz um die Worte',

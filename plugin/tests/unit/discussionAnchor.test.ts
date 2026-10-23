@@ -186,8 +186,8 @@ it('describes nested discussions and checks changed rendered answer words', asyn
   let view = (await resolveDiscussionAnchor(session, sources))!
   expect(view.source.missing).toBeUndefined()
   expect(view.source.text).toContain('Which seeds?')
-  expect(view.context.find((row) => row.key === 'lineage')?.detail).toContain('1 passages')
-  expect(view.context.find((row) => row.key === 'conversation')?.detail).toContain('1 messages')
+  expect(view.context.find((row) => row.key === 'lineage')?.detail).toContain('1 passage ·')
+  expect(view.context.find((row) => row.key === 'conversation')?.detail).toContain('1 message ·')
   expect(view.context.some((row) => row.key === 'edit')).toBe(false)
   expect(view.code).toBe(true)
   sources.rendered = async () => 'other words'

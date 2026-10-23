@@ -94,7 +94,7 @@ const probe = (layout: string) => `(async () => {
   } finally {
     for(const id of ids.reverse()) await comments.remove(id)
     for(const file of files.reverse()) if(app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
-    for(const dir of dirs){const folder=app.vault.getAbstractFileByPath(dir);if(folder?.children?.length===0)await app.vault.delete(folder)}
+    for(const dir of dirs){const folder=app.vault.getAbstractFileByPath(dir);if(folder?.children?.length===0)await app.vault.delete(folder,true)}
   }
 })()`
 

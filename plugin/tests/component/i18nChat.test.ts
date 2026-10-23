@@ -489,3 +489,10 @@ it('translates local live-session fallbacks without changing journal projections
   expect(mark?.text).toBe('it stopped with the session')
   line.unmount()
 })
+
+it('uses singular discussion context counts for a single message or passage', () => {
+  initializeLocale('en', catalogs.en)
+  expect(t('discussion.messages', { count: 1 })).toBe('1 message · words only, no tool calls')
+  expect(t('discussion.passages', { count: 1 })).toBe('1 passage · selected words and sources only')
+  expect(t('discussion.messages', { count: 2 })).toBe('2 messages · words only, no tool calls')
+})
