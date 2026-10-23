@@ -540,14 +540,18 @@ export class BoundedVaultIo {
     this.receipts.set(path, { hash, stamp: source.stamp })
     return { ...source.stamp, ...identity }
   }
-  async create(path: string, mtime: number): Promise<void> {
+  async create(
+    path: string,
+    mtime: number,
+    durability: 'acknowledged' | 'deferred' = 'acknowledged'
+  ): Promise<void> {
     this.assertOwned()
     const cut = path.lastIndexOf('/')
     if (cut > 0) await this.effect(() => ensureVaultDirectory(this.disk, path.slice(0, cut)))
     if (this.raw.open && this.raw.fullPath) {
       const handle = await this.effect(() => this.raw.open(this.raw.fullPath(path), 'wx'))
       try {
-        await this.effect(() => handle.sync())
+        if (durability === 'acknowledged') await this.effect(() => handle.sync())
       } finally {
         await handle.close()
       }
@@ -563,7 +567,8 @@ export class BoundedVaultIo {
     offset: number,
     bytes: Uint8Array,
     mtime: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    durability: 'acknowledged' | 'deferred' = 'acknowledged'
   ): Promise<void> {
     signal?.throwIfAborted()
     this.assertOwned()
@@ -585,7 +590,7 @@ export class BoundedVaultIo {
           if (!result.bytesWritten) throw new EngineError('io', 'short staging write')
           written += result.bytesWritten
         }
-        await this.effect(() => handle.sync())
+        if (durability === 'acknowledged') await this.effect(() => handle.sync())
       } finally {
         await handle.close()
       }

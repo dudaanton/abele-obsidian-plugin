@@ -8,10 +8,12 @@ import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
-it('appends, fsyncs, dates and replaces a native stage with bounded buffers inside the save queue', async () => {
+async function measure(recordsOnly = false) {
   const root = await fs.mkdtemp(join(tmpdir(), 'sample-streaming-'))
   const app = buildFakeVault([])
   const chunk = new Uint8Array(1024 * 1024).fill(27)
+  const synced = new Map<string, number>()
+  const acknowledged = new Set<string>()
   let syncs = 0,
     queued = false,
     published = false
@@ -39,14 +41,22 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
               return handle.write(bytes, offset, length, position)
             },
             sync: async () => {
+              synced.set(path, (synced.get(path) ?? 0) + 1)
               syncs++
               await handle.sync()
+              acknowledged.add(path)
             },
             close: () => handle.close(),
           }
         },
         rename: async (from: string, to: string) => {
           expect(queued).toBe(true)
+          if (from === join(root, 'sample.bin')) {
+            expect([...acknowledged].some((path) => path.endsWith('/intent.json'))).toBe(true)
+            expect(
+              [...acknowledged].some((path) => path.includes('/sync-conditional/active/'))
+            ).toBe(true)
+          }
           published = true
           await fs.rename(from, to)
         },
@@ -97,7 +107,12 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
     await stage.commit()
     await stage.discard()
     expect(published).toBe(true)
-    expect(syncs).toBe(3)
+    console.log('[native durable paths]', Object.fromEntries(synced))
+    if (recordsOnly) {
+      const records = [...synced].filter(([path]) => path.endsWith('.json'))
+      expect(records.length).toBeGreaterThan(0)
+      for (const [, count] of records) expect(count).toBe(1)
+    } else expect(syncs).toBe(3)
     expect(await writer.fingerprint('sample.bin')).toMatchObject({
       sha: expected.sha,
       size: 2 * chunk.length,
@@ -106,4 +121,8 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
   } finally {
     await fs.rm(root, { recursive: true, force: true })
   }
-})
+}
+
+it('appends, fsyncs, dates and replaces a native stage with bounded buffers inside the save queue', () =>
+  measure())
+it('flushes each immutable conditional record once before publication', () => measure(true))

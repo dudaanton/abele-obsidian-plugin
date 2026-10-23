@@ -1067,9 +1067,17 @@ export class ObsidianFileSystem implements FileSystem {
       retirementStat: (path) => retainedFileStat(this.disk, path),
       fingerprint: async (path, signal) => this.io.fingerprint(path, signal, true),
       create: async (path, bytes, mtime) => {
-        await this.io.create(path, mtime)
+        // ConditionalFiles flushes the complete record before acknowledging its intent.
+        await this.io.create(path, mtime, 'deferred')
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
-          await this.io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+          await this.io.append(
+            path,
+            at,
+            bytes.slice(at, at + MAX_CHUNK_BYTES),
+            mtime,
+            undefined,
+            'deferred'
+          )
       },
       read: (path) => readConditionalRecord(this.disk, this.io, path),
       mkdir: (path) => makeParents(this.disk, path + '/placeholder'),
@@ -1148,9 +1156,17 @@ export class ObsidianFileSystem implements FileSystem {
       fingerprint: (path, signal) => io.fingerprint(path, signal, true),
       read: (path) => readConditionalRecord(disk, io, path),
       create: async (path, bytes, mtime) => {
-        await io.create(path, mtime)
+        // The protocol flush is the durability barrier for this complete record.
+        await io.create(path, mtime, 'deferred')
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
-          await io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+          await io.append(
+            path,
+            at,
+            bytes.slice(at, at + MAX_CHUNK_BYTES),
+            mtime,
+            undefined,
+            'deferred'
+          )
       },
       mkdir: (path) => makeParents(disk, path + '/placeholder'),
       list: (path) => disk.list(path),
