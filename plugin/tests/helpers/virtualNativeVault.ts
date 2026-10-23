@@ -63,6 +63,9 @@ export function virtualNativeVault() {
       const creates = typeof flags === 'number' ? !!(flags & constants.O_CREAT) : flags === 'wx'
       if (exclusive && entries.has(path)) throw failure('EEXIST')
       const entry = creates && !entries.has(path) ? create(path) : get(path)
+      const truncates =
+        typeof flags === 'number' ? !!(flags & constants.O_TRUNC) : flags.startsWith('w')
+      if (truncates) entry.bytes = new Uint8Array()
       return {
         stat: async () => info(entry),
         readFile: async () => entry.bytes.slice(),
