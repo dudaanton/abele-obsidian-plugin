@@ -182,8 +182,10 @@ function populateAnalysis(menu: Menu) {
   const failure =
     actionError.value ||
     (document.value?.error ? t('node.lsp.error', { message: document.value.error }) : '')
-  if (!relevant.value.length && failure)
+  if (!relevant.value.length && failure) {
+    menu.addSeparator()
     menu.addItem((item) => item.setTitle(failure).setDisabled(true))
+  }
   const restart =
     document.value?.supported &&
     (analysisState.value === 'failed' ||

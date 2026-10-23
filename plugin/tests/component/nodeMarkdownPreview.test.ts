@@ -10,6 +10,8 @@ import { nodeRepositoryFixture, identity, HEAD } from '../helpers/nodeRepository
 import { useVault } from '../helpers/testEnv'
 import { NodePathTabSchema } from '@/node/nodePathNavigation'
 import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION } from '@/node/fileNavigation'
+import { NodeService } from '@/node/NodeService'
+import NodeLspTools from '@/components/nodeWork/NodeLspTools.vue'
 
 enableAutoUnmount(afterEach)
 beforeEach(() => useVault([]))
@@ -19,6 +21,35 @@ function source() {
   const fixture = nodeRepositoryFixture()
   return new NodeRepositorySource(fixture.client, identity, { node: 'Sample', project: 'Project' })
 }
+it('keeps analysis information out of both markdown reading and source content', async () => {
+  const repo = source()
+  vi.spyOn(NodeService, 'connectionIfKnown').mockReturnValue({
+    client: { target: { expected_node_id: 'sample-node' } },
+  } as never)
+  const view = mount(FileView, {
+    props: {
+      text: '# Sample',
+      path: 'README.md',
+      mode: 'file',
+      repository: repo,
+      revision: 'Working tree',
+    },
+    attachTo: document.body,
+  })
+  await flushPromises()
+  expect(view.find('.abele-github-md').exists()).toBe(true)
+  expect(view.findComponent(NodeLspTools).exists()).toBe(true)
+  expect(view.find('[data-lsp-analysis]').attributes('data-state')).toBe('off')
+  expect(view.find('.abele-github-md [data-lsp-analysis]').exists()).toBe(false)
+  expect(view.find('.abele-lsp-status').exists()).toBe(false)
+  expect(view.text()).not.toMatch(/ESLint|analysis|Language server/)
+  await view.find('.abele-file-view__header [aria-label="Preview"]').trigger('click')
+  await flushPromises()
+  expect(view.find('.cm-editor').exists()).toBe(true)
+  expect(view.find('.abele-lsp-status').exists()).toBe(false)
+  expect(view.find('.cm-content').text()).toBe('# Sample')
+  repo.dispose()
+})
 it('reads a validated raster through the workspace repository content API', async () => {
   const fixture = nodeRepositoryFixture()
   const repo = new NodeRepositorySource(fixture.client, identity, {

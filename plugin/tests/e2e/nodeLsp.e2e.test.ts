@@ -1,21 +1,22 @@
 import { expect, it } from 'vitest'
-import { targets } from './helpers/target'
+import { onPhone, targets } from './helpers/target'
 import { evalJson, evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 
-targets('desktop')
+targets('desktop', 'phone')
 const shots = shotDir('abele-node-lsp')
 
 it('shows language analysis states and navigation on desktop and a phone-sized screen', async () => {
-  const bounds = evalJson<number[]>(
-    `require('@electron/remote').getCurrentWindow().getContentSize()`
-  )
+  const bounds = onPhone()
+    ? undefined
+    : evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
   try {
-    for (const mobile of [false, true]) {
+    for (const mobile of onPhone() ? [true] : [false]) {
       await reloadApp(`app.emulateMobile(${mobile})`)
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : '1000,800'})`
-      )
+      if (!onPhone())
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : '1000,800'})`
+        )
       const results = JSON.parse(
         await evalLong(
           `(async () => {
@@ -27,7 +28,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         window.addEventListener('error', onError);
         const until = async predicate => { for (let i=0;i<100;i++) { if(predicate()) return; await wait(50) } await shot('failure-' + phase); throw Error('Language fixture did not settle: ' + phase + ' · ' + document.querySelector('.modal.abele-modal')?.textContent + ' · runtime: ' + runtimeErrors.join('; ')) };
         const close = async () => { phase += '-close'; const button = document.querySelector('[data-lsp-close]'); if(!button) throw Error('Fixture dismiss action is missing'); button.click(); await until(() => !document.querySelector('.modal.abele-modal')); };
-        const shot = async name => { await wait(350); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); if (['diagnostic-tap','diagnostic-list','long-press'].includes(name)) { const label = document.querySelector('.abele-lsp-menu-message') ?? [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent.includes('Go to definition')); const box = label.getBoundingClientRect(); if (!document.elementFromPoint(box.left+box.width/2,box.top+Math.min(box.height/2,12))?.closest('.menu')) throw Error('Menu content is clipped or covered: ' + name); } require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); };
+        const shot = async name => { await wait(350); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); if (['diagnostic-tap','diagnostic-list','long-press'].includes(name)) { const label = document.querySelector('.abele-lsp-menu-message') ?? [...document.querySelectorAll('.menu-item-title')].find(el => el.textContent.includes('Go to definition')); const box = label.getBoundingClientRect(); if (!document.elementFromPoint(box.left+box.width/2,box.top+Math.min(box.height/2,12))?.closest('.menu')) throw Error('Menu content is clipped or covered: ' + name); } const path = ${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png'; if (window.__e2eHost) await window.__e2eHost.shot(path); else require('fs').writeFileSync(path, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); };
         const results = [];
         try { for (const state of ['missing','untrusted','loading','errors','eslint','failed','off','ready']) {
           phase = state + '-viewer';
@@ -155,9 +156,14 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
       expect(results.some((result) => result.state === 'navigation')).toBe(true)
     }
   } finally {
-    evalRaw(
-      `document.querySelector('[data-lsp-close]')?.click();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));require('@electron/remote').getCurrentWindow().setContentSize(${bounds[0]},${bounds[1]})`
-    )
-    await reloadApp('app.emulateMobile(false)')
+    if (bounds)
+      evalRaw(
+        `document.querySelector('[data-lsp-close]')?.click();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));require('@electron/remote').getCurrentWindow().setContentSize(${bounds[0]},${bounds[1]})`
+      )
+    if (onPhone())
+      evalRaw(
+        `document.querySelector('[data-lsp-close]')?.click();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`
+      )
+    else await reloadApp('app.emulateMobile(false)')
   }
 }, 240000)

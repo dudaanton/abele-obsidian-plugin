@@ -253,6 +253,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     expect(close).toHaveBeenCalledOnce()
   })
   it('shows the initial status error in the analysis menu and recovers through Restart', async () => {
+    const separator = vi.spyOn(Menu.prototype, 'addSeparator')
     const root = document.createElement('div')
     const glyphHost = document.body.appendChild(document.createElement('div'))
     const client = {
@@ -295,6 +296,8 @@ describe('node language diagnostics in the shared file viewer', () => {
     glyph.querySelector<HTMLButtonElement>('button')!.click()
     const items = show.mock.contexts.at(-1)!.items
     expect(items.some((item) => item.title.includes('Sample status failure'))).toBe(true)
+    // The reason is explanation beneath a hairline, not another analyser.
+    expect(separator).toHaveBeenCalledTimes(2)
     items.find((item) => item.title === 'Restart analysis')!.handler?.()
     await flushPromises()
     expect(glyph.getAttribute('data-state')).not.toBe('failed')
