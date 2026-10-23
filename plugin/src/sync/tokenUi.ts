@@ -1241,6 +1241,9 @@ export class TokenUi {
       if (!runtime)
         throw new ConnectStageError('Could not finish starting sync. Try Sync now again.')
     }
+    // Startup may have awaited a pause request; never turn that wait into a fresh run.
+    if (this.registry.records().find((one) => one.id === id)?.paused)
+      throw new Error('Sync connection is paused')
     await runtime.sync()
     this.refresh()
   }

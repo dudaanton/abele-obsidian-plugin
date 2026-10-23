@@ -38,6 +38,20 @@ it('refuses explicit sync while paused without starting or sending work', async 
   expect(registry.records()[0].paused).toBe(true)
 })
 
+it('refuses a manual exchange when pause arrives while runtime startup is pending', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  const sync = vi.fn(async () => {})
+  ui.retryConnection = async () => {
+    registry.setPaused(id, true)
+    ui.runtimes.set(id, { sync } as never)
+  }
+  await expect(ui.sync(id)).rejects.toThrow(/paused/i)
+  expect(sync).not.toHaveBeenCalled()
+  expect(registry.records()[0].paused).toBe(true)
+})
+
 it('does not resurrect departed activity when an older review refresh fails', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)
