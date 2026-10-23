@@ -3,11 +3,17 @@ const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/
 interface DirectoryNode {
   children: Map<string, DirectoryNode>
 }
+interface FlushWaiter {
+  flush: (directory: string) => Promise<void>
+  resolve: () => void
+  reject: (error: unknown) => void
+}
 
 /** Evidence about our own namespace mutations, never about content or external writers. */
 export class DirectEntryDurability {
   private readonly dirty = new Map<string, number>()
   private generation = 0
+  private readonly flushing = new Map<string, FlushWaiter[]>()
   private readonly directories: DirectoryNode = { children: new Map() }
   rememberDirectory(path: string): void {
     let node = this.directories
@@ -56,13 +62,38 @@ export class DirectEntryDurability {
   }
   async flushAncestors(path: string, flush: (directory: string) => Promise<void>): Promise<void> {
     for (let directory = parentOf(path); ; directory = parentOf(directory)) {
-      const generation = this.dirty.get(directory)
-      if (generation !== undefined) {
-        await flush(directory)
-        if (this.dirty.get(directory) === generation) this.dirty.delete(directory)
-      }
+      if (this.dirty.has(directory)) await this.flushShared(directory, flush)
       if (!directory) break
     }
+  }
+  private flushShared(directory: string, flush: FlushWaiter['flush']): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const waiter = { flush, resolve, reject }
+      const pending = this.flushing.get(directory)
+      if (pending) pending.push(waiter)
+      else {
+        this.flushing.set(directory, [waiter])
+        void this.drain(directory)
+      }
+    })
+  }
+  private async drain(directory: string): Promise<void> {
+    // Gather this turn's requests before starting their durability barrier.
+    await Promise.resolve()
+    const pending = this.flushing.get(directory)
+    while (pending.length) {
+      const cohort = pending.splice(0)
+      const generation = this.dirty.get(directory)
+      try {
+        await cohort[0].flush(directory)
+        if (this.dirty.get(directory) === generation) this.dirty.delete(directory)
+        for (const waiter of cohort) waiter.resolve()
+      } catch (error) {
+        // A later cohort retries; failed callers never receive an acknowledgement.
+        for (const waiter of cohort) waiter.reject(error)
+      }
+    }
+    this.flushing.delete(directory)
   }
 }
 
