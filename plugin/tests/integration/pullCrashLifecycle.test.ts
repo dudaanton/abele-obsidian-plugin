@@ -396,9 +396,9 @@ it.each(
       if (window !== 'published') return
       // Model a later ordinary reconciliation acknowledging the server's current binding.
       // Recovery must then retire its stale intent as metadata only, never move the local copy.
-      await result.state.transaction(async () => {
-        await result.state.delete(result.original.path)
-        await result.state.put({
+      await result.state.transaction(async (tx) => {
+        await tx.delete(result.original.path)
+        await tx.put({
           path: result.change.path,
           wirePath: result.change.path,
           fileId: result.change.file_id,
