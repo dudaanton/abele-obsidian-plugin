@@ -22,6 +22,11 @@ observations; null means no such observation occurred before the next interrupti
 The pause boundary is the renderer's actual invocation time, with in-flight requests
 reconstructed from timestamped starts/finishes/closures. Controller invocation time and CLI
 latency are retained separately. No timing budget is relaxed for that latency.
+Before creating a server scope or generating payload, the runner checks the server's
+advertised file-size limit against the unchanged generated plan. An insufficient or missing
+limit fails preflight; no large file is silently excluded and the interruption target is not
+replaced by a smaller file. Advertised quota is recorded, but available remaining quota is
+not inferred from that limit.
 
 ## Inputs
 

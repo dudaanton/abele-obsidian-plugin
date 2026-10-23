@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
-import { generate, inventory, shapes } from './generate.mjs'
+import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
 import { validateBuildReceipt } from './build.mjs'
 import {
@@ -16,6 +16,7 @@ import {
   saveCheckpoint,
   activeRequestIds,
   recoveryTimings,
+  requireServerCapacity,
 } from './progress.mjs'
 import {
   compareInventory,
@@ -350,6 +351,8 @@ export async function run(config) {
     owner = AccessClient.fromToken(encoded, { fetch: globalThis.fetch })
     if (new URL(owner.token.address).origin !== new URL(config.server).origin)
       throw new Error('Token endpoint does not match configured server')
+    report.serverLimits = (await owner.connection()).limits
+    report.serverCapacity = requireServerCapacity(planVault(options), report.serverLimits)
     const prefix = `Scale-${randomUUID()}`
     report.scope = prefix
     const client = new V2EngineClient(encoded, { fetch: globalThis.fetch })
@@ -588,7 +591,7 @@ export async function run(config) {
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.failure =
-      /^(Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
+      /^(Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )
         ? error.message

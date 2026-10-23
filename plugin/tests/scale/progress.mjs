@@ -1,6 +1,16 @@
 import { writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 
+export function requireServerCapacity(plan, limits) {
+  const requiredFileBytes = plan.reduce((largest, file) => Math.max(largest, file.size), 0)
+  const serverFileBytes = limits?.max_file_bytes
+  if (!Number.isSafeInteger(serverFileBytes) || serverFileBytes <= 0)
+    throw new Error('Server file limit unavailable')
+  if (serverFileBytes < requiredFileBytes)
+    throw new Error(`Server file limit ${serverFileBytes} is below required ${requiredFileBytes}`)
+  return { requiredFileBytes, serverFileBytes, quotaBytes: limits.quota_bytes }
+}
+
 export function activeRequestIds(events, at) {
   const active = new Set()
   for (const event of events) {

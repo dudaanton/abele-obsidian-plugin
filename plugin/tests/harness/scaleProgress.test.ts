@@ -8,7 +8,19 @@ import {
   requireTime,
   activeRequestIds,
   recoveryTimings,
+  requireServerCapacity,
 } from '../scale/progress.mjs'
+
+it('rejects an undersized server without excluding or trimming the required files', () => {
+  const plan = [{ path: 'Attachments/sample.pdf', size: 256 * 1024 ** 2 }]
+  expect(() =>
+    requireServerCapacity(plan, { max_file_bytes: 200 * 1024 ** 2, quota_bytes: null })
+  ).toThrow('Server file limit 209715200 is below required 268435456')
+  expect(
+    requireServerCapacity(plan, { max_file_bytes: 256 * 1024 ** 2, quota_bytes: null })
+  ).toMatchObject({ requiredFileBytes: 268435456, serverFileBytes: 268435456 })
+  expect(plan).toEqual([{ path: 'Attachments/sample.pdf', size: 268435456 }])
+})
 
 it('keeps recovery observations within their interruption and does not invent an idle observation', () => {
   const interruptions = [
