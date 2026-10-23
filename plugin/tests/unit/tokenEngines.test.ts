@@ -619,7 +619,10 @@ it('delivers a completed report when a newer status overtakes its path lookup', 
         ],
       },
       secondPull: null,
-      collisions: [],
+      collisions: [
+        { path: 'Notes/a.md', wirePath: 'Notes/a.md', with: 'Notes/A.md' },
+        { path: 'Notes/b.md', wirePath: 'Notes/b.md', with: 'Notes/B.md' },
+      ],
       deferred: 0,
       joined: false,
     }
@@ -633,7 +636,7 @@ it('delivers a completed report when a newer status overtakes its path lookup', 
     expect(TokenSettingsPort.forConnection(f.ui, id, f.app as never).log.value).toContain(
       'sync: done (pushed 1)'
     )
-    expect(f.ui.activity.value[id]).toMatchObject({ completed: 1, waiting: 1 })
+    expect(f.ui.activity.value[id]).toMatchObject({ completed: 1, waiting: 1, pending: 2 })
   } finally {
     await f.host.close()
   }

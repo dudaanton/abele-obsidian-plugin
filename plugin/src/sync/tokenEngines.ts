@@ -1496,7 +1496,9 @@ export class TokenEngines {
           if (!refused.some((one) => one.path === item.path)) refused.push(item)
         this.ui.publish(id, {
           completed: activity.completed,
-          total: (activity.completed ?? 0) + (current?.pending ?? 0),
+          pending: Math.max(current?.pending ?? 0, report.collisions.length),
+          total:
+            (activity.completed ?? 0) + Math.max(current?.pending ?? 0, report.collisions.length),
           conflicts: activity.conflicts,
           refused,
           ...(activity.lastSync === undefined ? {} : { lastSync: activity.lastSync }),
