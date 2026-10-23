@@ -226,9 +226,16 @@ async function inspectRuns(label: string) {
         stops: number
       }
       expect(report.overflow).toBe(false)
-      expect(report.stateLines).toBe(1)
-      expect(report.dot).toBe(true)
-      expect(report.stateText).not.toContain('(restart)')
+      // Approval cards carry their own prompt state, without a second generic status row.
+      if (state === 'pending_approval') {
+        expect(report.stateLines).toBe(0)
+        expect(report.dot).toBe(false)
+        expect(report.stateText).toBeUndefined()
+      } else {
+        expect(report.stateLines).toBe(1)
+        expect(report.dot).toBe(true)
+        expect(report.stateText).not.toContain('(restart)')
+      }
       expect(report.approval).toBe(state === 'pending_approval')
       expect(report.stops).toBe(['pending_approval', 'running'].includes(state) ? 1 : 0)
       if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')

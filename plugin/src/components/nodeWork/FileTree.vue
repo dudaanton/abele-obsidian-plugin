@@ -639,6 +639,7 @@ const found = computed(() => matches.value.slice(0, 50))
   flex: 1 1 auto;
 }
 .abele-file-tree .abele-tree-item__text {
+  flex: 1 1 auto;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
