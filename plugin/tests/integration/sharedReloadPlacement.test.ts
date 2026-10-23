@@ -38,13 +38,18 @@ it('makes a reloaded runtime wait for the old placement and then recover only it
   let owned = true
   const committing = deferred<void>(),
     release = deferred<void>(),
-    put = state.put.bind(state)
-  state.put = async (entry) => {
-    committing.resolve()
-    await release.promise
-    if (!owned) throw new Error('old runtime lost')
-    await put(entry)
-  }
+    transaction = state.transaction.bind(state)
+  state.transaction = (fn) =>
+    transaction(async (tx) => {
+      const put = tx.put.bind(tx)
+      tx.put = async (entry) => {
+        committing.resolve()
+        await release.promise
+        if (!owned) throw new Error('old runtime lost')
+        await put(entry)
+      }
+      return fn(tx)
+    })
   const placer = (fs: typeof disk) =>
     new PullPlacer(
       { getBlob: async () => bytes('received') },
@@ -70,7 +75,7 @@ it('makes a reloaded runtime wait for the old placement and then recover only it
   release.resolve()
   await rejected
   await next
-  state.put = put
+  state.transaction = transaction
   expect((await state.get(base.path))?.versionId).toBe('base')
   expect(await placer(nextFs).adopt(change, base)).toBe(true)
   expect((await state.get(base.path))?.versionId).toBe('received')

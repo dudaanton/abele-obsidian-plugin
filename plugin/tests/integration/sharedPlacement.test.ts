@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore, ExpectedWrites, sha256 } from '@abele/sync-sdk/core'
+import {
+  MemoryFileSystem,
+  MemoryStateStore,
+  ExpectedWrites,
+  sha256,
+  type StateStore,
+} from '@abele/sync-sdk/core'
 import { PullPlacer } from '../../node_modules/@abele/sync-sdk/dist/internal/core/pullPlace.js'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
@@ -42,12 +48,17 @@ it('keeps ownership through the durable ledger update of competing pulls', async
   await b.put(base)
   const gate = deferred<void>(),
     placed = deferred<void>()
-  const original = a.put.bind(a)
-  a.put = async (entry) => {
-    placed.resolve()
-    await gate.promise
-    await original(entry)
-  }
+  const transaction = a.transaction.bind(a)
+  a.transaction = (fn) =>
+    transaction(async (tx) => {
+      const put = tx.put.bind(tx)
+      tx.put = async (entry) => {
+        placed.resolve()
+        await gate.promise
+        await put(entry)
+      }
+      return fn(tx)
+    })
   const one = await change('first', 'one'),
     two = await change('second', 'two')
   const placer = (state: MemoryStateStore, item: ChangeItem, text: string) =>
@@ -153,14 +164,26 @@ it('captures each destination before a settled fast-server merge replaces the su
   }
   // Scoped settlement presents the immutable submitted base while its durable ledger
   // still names the prior server version.
-  const settledView = new Proxy(a, {
-    get(target, key) {
-      if (key === 'get')
-        return async (path: string) => (path === submitted.path ? submitted : target.get(path))
-      const value = Reflect.get(target, key)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
+  const submittedView = (state: StateStore): StateStore =>
+    new Proxy(state, {
+      get(target, key) {
+        if (key === 'get')
+          return async (path: string) => (path === submitted.path ? submitted : target.get(path))
+        if (key === 'pathCandidates')
+          return async function* (path: string, keyOf: (path: string) => string) {
+            if (keyOf(path) === keyOf(submitted.path)) yield submitted
+            else yield* target.pathCandidates?.(path, keyOf) ?? []
+          }
+        if (key === 'byFileId')
+          return async (id: string) => (id === submitted.fileId ? submitted : target.byFileId(id))
+        if (key === 'transaction')
+          return (fn: Parameters<StateStore['transaction']>[0]) =>
+            target.transaction((tx) => fn(submittedView(tx)))
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+  const settledView = submittedView(a)
   const remote = await change('merged result', 'merged')
   const placer = new PullPlacer(
     { getBlob: async () => encode('merged result') },
@@ -207,12 +230,17 @@ it('reserves both rename paths through commit before a competing delete can insp
   }
   const committing = deferred<void>(),
     committed = deferred<void>(),
-    original = a.put.bind(a)
-  a.put = async (entry) => {
-    committing.resolve()
-    await committed.promise
-    await original(entry)
-  }
+    transaction = a.transaction.bind(a)
+  a.transaction = (fn) =>
+    transaction(async (tx) => {
+      const put = tx.put.bind(tx)
+      tx.put = async (entry) => {
+        committing.resolve()
+        await committed.promise
+        await put(entry)
+      }
+      return fn(tx)
+    })
   const rename = create(a).place(remote, remote.sha!, base, new Map(), new Map())
   await committing.promise
   let deleted = false
