@@ -281,6 +281,11 @@ it.each(
           : (['partial', 'complete', 'published'] as const)
         ).flatMap((window) =>
           (['take', 'recover'] as const).map((entryPoint) => ({
+            dependency:
+              entryPoint === 'take' &&
+              ((!bounded && !small && window !== 'published') || (!sameBytes && (bounded || small)))
+                ? 'D-182: '
+                : '',
             bounded,
             entryPoint,
             small,
@@ -292,7 +297,7 @@ it.each(
     )
   )
 )(
-  'preserves a recreated move source with a missing destination (window=$window, bounded=$bounded, small=$small, sameBytes=$sameBytes, entry=$entryPoint)',
+  '$dependency preserves a recreated move source with a missing destination (window=$window, bounded=$bounded, small=$small, sameBytes=$sameBytes, entry=$entryPoint)',
   async ({ bounded, entryPoint, small, sameBytes, window }) => {
     const debug = vi.spyOn(console, 'debug')
     try {
@@ -404,6 +409,14 @@ const matrix = (
     [false, true].flatMap((bounded) =>
       [false, true].flatMap((edited) =>
         (['take', 'recover'] as const).map((entryPoint) => ({
+          dependency:
+            (window === 'partial' || window === 'complete') &&
+            operation === 'move' &&
+            !bounded &&
+            !edited &&
+            entryPoint === 'take'
+              ? 'D-182: '
+              : '',
           window,
           operation,
           bounded,
@@ -451,7 +464,7 @@ it.each(
 )
 
 it.each(matrix)(
-  'crash matrix: $window / $operation / bounded=$bounded / edited=$edited / $entryPoint',
+  '$dependency crash matrix: $window / $operation / bounded=$bounded / edited=$edited / $entryPoint',
   async ({ window, operation, bounded, edited, entryPoint }) => {
     const result = await scenario(operation, window, edited, entryPoint, false, bounded)
     const held =
