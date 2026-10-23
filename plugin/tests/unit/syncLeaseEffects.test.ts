@@ -272,3 +272,106 @@ it('does not issue recovery mkdir after a pending existence read outlives the le
     vi.useRealTimers()
   }
 })
+
+// BUG D-163: a captured foreign callable can submit an effect after its lease expires.
+it.fails.each(
+  [false, true].flatMap((native) =>
+    (['rename', 'write', 'remove', 'mkdir', 'publish'] as const).map((operation) => ({
+      native,
+      operation,
+    }))
+  )
+)(
+  'refuses a pre-submission wrapper continuation: $operation (native=$native)',
+  async ({ native, operation }) => {
+    vi.useFakeTimers()
+    const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fixture = native ? virtualNativeVault() : undefined
+    const app = fixture?.app ?? buildFakeVault([])
+    if (fixture) desktopFsPort(fixture.native)
+    const adapter = app.vault.adapter
+    const initial = new TextEncoder().encode('before').buffer
+    const saved = new TextEncoder().encode('user save after expiry').buffer
+    await adapter.writeBinary('sample.bin', initial)
+    await adapter.writeBinary('incoming.tmp', payload.buffer)
+    const entered = deferred(),
+      resume = deferred()
+    const target = fixture?.native ?? adapter
+    const method = native
+      ? { rename: 'rename', write: 'open', remove: 'unlink', mkdir: 'mkdir', publish: 'link' }[
+          operation
+        ]
+      : {
+          rename: 'rename',
+          write: 'writeBinary',
+          remove: 'remove',
+          mkdir: 'mkdir',
+          publish: 'rename',
+        }[operation]
+    const original = Reflect.get(target, method) as (...args: unknown[]) => Promise<unknown>
+    let first = true,
+      revoked = false,
+      lateSubmissions = 0
+    // Installed BEFORE our gate, retaining the original receiver and callable in a closure.
+    Reflect.set(target, method, async (...args: unknown[]) => {
+      if (first) {
+        first = false
+        entered.resolve()
+        await resume.promise
+        if (revoked) lateSubmissions++
+      }
+      return original.apply(target, args)
+    })
+    const port = checkedVaultPort(app.vault as never, adapter as never, {
+      ready() {},
+      effect: (work) => work(),
+    })
+    const lease = await port.acquire(['sample.bin', 'incoming.tmp', 'moved.bin', 'new-folder'])
+    const checked = mutationCheckedAdapter(adapter as never, () => lease.check())
+    const nativePort = Reflect.get(checked, 'fsPromises')
+    const invoke = () => {
+      if (native) {
+        const full = (name: string) => 'sample-vault/' + name
+        if (operation === 'rename') return nativePort.rename(full('sample.bin'), full('moved.bin'))
+        if (operation === 'write')
+          return nativePort.open(full('sample.bin'), constants.O_WRONLY | constants.O_TRUNC)
+        if (operation === 'remove') return nativePort.unlink(full('sample.bin'))
+        if (operation === 'mkdir') return nativePort.mkdir(full('new-folder'))
+        return nativePort.link(full('incoming.tmp'), full('published.bin'))
+      }
+      const guarded = guardedVaultAdapter(checked)
+      if (operation === 'rename') return guarded.rename('sample.bin', 'moved.bin')
+      if (operation === 'write') return guarded.writeBinary('sample.bin', payload.buffer)
+      if (operation === 'remove') return guarded.remove('sample.bin')
+      if (operation === 'mkdir') return guarded.mkdir('new-folder')
+      return guarded.rename('incoming.tmp', 'published.bin')
+    }
+    const work = Promise.resolve(invoke()).then(async (answer: unknown) => {
+      if (answer && typeof answer === 'object' && 'close' in answer)
+        await (answer as { close(): Promise<void> }).close()
+    })
+    const settled = work.catch(() => {})
+    const result = lease.wait(work).catch((error: unknown) => error)
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      await entered.promise
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(await result).toMatchObject({ leaseExpired: true })
+      revoked = true
+      await adapter.writeBinary('sample.bin', saved)
+      resume.resolve()
+      await settled
+      expect.soft(lateSubmissions).toBe(0)
+      const remaining = (await adapter.exists('sample.bin'))
+        ? await adapter.readBinary('sample.bin')
+        : null
+      expect.soft(remaining).toEqual(saved)
+    } finally {
+      resume.resolve()
+      await settled
+      lease()
+      loud.mockRestore()
+      vi.useRealTimers()
+    }
+  }
+)
