@@ -1,10 +1,12 @@
 import type { NodeLspDocument, LspLocation } from './NodeLspDocument'
 import type { CodeNav } from '@/github/search/navAddon'
+import { beginCodeSurface } from '@/github/search/codeSurface'
 
 export interface LspContext {
   document: NodeLspDocument
   text?: () => string
   navigate(locations: LspLocation[]): void
+  closeNavigation?(): void
 }
 const contexts = new WeakMap<Element, LspContext>()
 export function provideLsp(root: HTMLElement, context: LspContext): () => void {
@@ -29,8 +31,9 @@ export function lspNavigation(el: Element, fallback: CodeNav | null): CodeNav | 
     path: string,
     position?: { line: number; character: number }
   ) => {
+    const current = beginCodeSurface(el.ownerDocument, () => context.closeNavigation?.())
     const hits = position ? await context.document.query(kind, position, context.text?.()) : []
-    if (lspFor(el) !== context) return
+    if (!current() || lspFor(el) !== context) return
     if (hits.length) context.navigate(hits)
     else if (kind === 'definition') await fallback?.goToDefinition(name, path, position)
     else fallback?.findReferences(name, position)

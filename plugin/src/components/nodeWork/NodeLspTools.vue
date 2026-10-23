@@ -258,7 +258,12 @@ watch(
     }
     doc.listeners.add(listener)
     removeListener = () => doc.listeners.delete(listener)
-    removeContext = provideLsp(props.root, { document: doc, text: () => props.text, navigate })
+    removeContext = provideLsp(props.root, {
+      document: doc,
+      text: () => props.text,
+      navigate,
+      closeNavigation: () => picker?.close(),
+    })
     let stopped = false
     cleanup(() => {
       stopped = true

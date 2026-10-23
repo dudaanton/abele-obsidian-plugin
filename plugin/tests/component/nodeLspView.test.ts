@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { Text } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { lspOffset } from '@/node/lspExtension'
 import { lspFor, lspNavigation } from '@/node/lspContext'
 import NodeLspFixture from '@/testing/NodeLspFixture.vue'
@@ -19,6 +20,133 @@ enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('node language diagnostics in the shared file viewer', () => {
+  it('consumes the macOS contextmenu event after Ctrl-click navigation', async () => {
+    const _fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+    await flushPromises()
+    const content = document.querySelector<HTMLElement>('.cm-content')!
+    const editor = EditorView.findFromDOM(content)!
+    vi.spyOn(editor, 'posAtCoords').mockReturnValue(15)
+    const context = lspFor(content)!
+    const navigate = vi.spyOn(context, 'navigate').mockImplementation(() => {})
+    vi.spyOn(context.document, 'query').mockResolvedValue([
+      {
+        path: 'first.d.ts',
+        range: { start: { line: 1, character: 0 }, end: { line: 1, character: 6 } },
+      },
+      {
+        path: 'second.d.ts',
+        range: { start: { line: 2, character: 0 }, end: { line: 2, character: 6 } },
+      },
+    ])
+    const menu = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    content
+      .querySelector('.cm-line')!
+      .dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ctrlKey: true })
+      )
+    content
+      .querySelector('.cm-line')!
+      .dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 0, ctrlKey: true })
+      )
+    await flushPromises()
+    expect(navigate).toHaveBeenCalledOnce()
+    expect(menu).not.toHaveBeenCalled()
+  })
+  it('shows only a menu for right-click, including Ctrl-right-click, and replaces existing surfaces', async () => {
+    const _fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
+    await flushPromises()
+    const content = document.querySelector<HTMLElement>('.cm-content')!
+    vi.spyOn(EditorView.findFromDOM(content)!, 'posAtCoords').mockReturnValue(15)
+    const context = lspFor(content)!
+    const navigate = vi.spyOn(context, 'navigate').mockImplementation(() => {})
+    const closeNavigation = vi.fn()
+    context.closeNavigation = closeNavigation
+    const menu = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const hide = vi.spyOn(Menu.prototype, 'hide')
+    const gesture = (button: number, ctrlKey: boolean, metaKey = false) => {
+      for (const type of button === 2 ? ['mousedown', 'contextmenu'] : ['mousedown'])
+        content
+          .querySelector('.cm-line')!
+          .dispatchEvent(
+            new MouseEvent(type, { bubbles: true, cancelable: true, button, ctrlKey, metaKey })
+          )
+    }
+    gesture(2, true)
+    await flushPromises()
+    expect(navigate).not.toHaveBeenCalled()
+    expect(menu).toHaveBeenCalledOnce()
+    gesture(0, false, true)
+    await flushPromises()
+    expect(hide).toHaveBeenCalledOnce()
+    expect(navigate).toHaveBeenCalledOnce()
+    gesture(2, false)
+    await flushPromises()
+    expect(closeNavigation).toHaveBeenCalledOnce()
+    expect(menu).toHaveBeenCalledTimes(2)
+    expect(navigate).toHaveBeenCalledOnce()
+  })
+  it.each(['menu', 'navigation'] as const)(
+    'discards a pending %s after the other gesture',
+    async (pending) => {
+      const _fixture = mount(NodeLspFixture, {
+        props: { state: 'errors' },
+        attachTo: document.body,
+      })
+      await flushPromises()
+      const content = document.querySelector<HTMLElement>('.cm-content')!
+      vi.spyOn(EditorView.findFromDOM(content)!, 'posAtCoords').mockReturnValue(15)
+      const context = lspFor(content)!
+      const navigate = vi.spyOn(context, 'navigate').mockImplementation(() => {})
+      const menu = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+      let finish!: () => void
+      const delayed = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      if (pending === 'menu')
+        vi.spyOn(context.document, 'hover').mockImplementation(async () => {
+          await delayed
+          return 'const sample: string'
+        })
+      else
+        vi.spyOn(context.document, 'query').mockImplementation(async () => {
+          await delayed
+          return [
+            {
+              path: 'sample.d.ts',
+              range: { start: { line: 1, character: 0 }, end: { line: 1, character: 6 } },
+            },
+          ]
+        })
+      const navigateGesture = () =>
+        content.querySelector('.cm-line')!.dispatchEvent(
+          new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            metaKey: true,
+          })
+        )
+      const menuGesture = () =>
+        content
+          .querySelector('.cm-line')!
+          .dispatchEvent(
+            new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+          )
+      if (pending === 'menu') {
+        menuGesture()
+        navigateGesture()
+      } else {
+        navigateGesture()
+        menuGesture()
+      }
+      await flushPromises()
+      finish()
+      await flushPromises()
+      expect(menu).toHaveBeenCalledTimes(pending === 'menu' ? 0 : 1)
+      expect(navigate).toHaveBeenCalledTimes(pending === 'menu' ? 1 : 0)
+    }
+  )
   it('uses reader text for navigation alongside an unsaved editor and restores it on editor close', async () => {
     const fixture = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
     await flushPromises()

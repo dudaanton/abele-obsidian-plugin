@@ -19,6 +19,7 @@ import { Menu } from 'obsidian'
 import { isIdentifier } from './definitions'
 import { lspFor, lspNavigation } from '@/node/lspContext'
 import { lspHoverMenuLabel } from '@/node/lspMenu'
+import { beginCodeSurface } from './codeSurface'
 
 export interface CodeNav {
   /** The path of the file a viewer inside the tab shows. */
@@ -124,13 +125,17 @@ function positionAt(view: EditorView, offset: number) {
   return { line: line.number - 1, character: offset - line.from }
 }
 function definition(nav: CodeNav, view: EditorView, name: string, offset: number) {
+  if (!lspFor(view.dom)?.document.supported) beginCodeSurface(view.dom.ownerDocument, () => {})
   return lspFor(view.dom)?.document.supported
     ? nav.goToDefinition(name, nav.pathOf(view.dom), positionAt(view, offset))
     : nav.goToDefinition(name, nav.pathOf(view.dom))
 }
 function references(nav: CodeNav, view: EditorView, name: string, offset: number) {
   if (lspFor(view.dom)?.document.supported) nav.findReferences(name, positionAt(view, offset))
-  else nav.findReferences(name)
+  else {
+    beginCodeSurface(view.dom.ownerDocument, () => {})
+    nav.findReferences(name)
+  }
 }
 function navMenu(nav: CodeNav, view: EditorView, name: string, offset: number): Menu {
   const menu = new Menu()
@@ -169,16 +174,29 @@ function showNavMenu(
   offset: number,
   show: (menu: Menu) => void
 ) {
+  let shown: Menu | undefined
+  const current = beginCodeSurface(view.dom.ownerDocument, () => shown?.hide())
+  const display = (menu: Menu) => {
+    if (!current()) return
+    shown = menu
+    show(menu)
+  }
   const context = lspFor(view.dom)
   if (!context?.document.supported) {
-    show(navMenu(nav, view, name, offset))
+    display(navMenu(nav, view, name, offset))
     return
   }
   const text = view.state.doc
   void context.document
     .hover(positionAt(view, offset), view.state.doc.toString())
     .then((message) => {
-      if (!view.dom.isConnected || lspFor(view.dom) !== context || view.state.doc !== text) return
+      if (
+        !current() ||
+        !view.dom.isConnected ||
+        lspFor(view.dom) !== context ||
+        view.state.doc !== text
+      )
+        return
       const menu = navMenu(nav, view, name, offset)
       if (message) {
         menu.setUseNativeMenu(false)
@@ -187,21 +205,24 @@ function showNavMenu(
           item.setTitle(lspHoverMenuLabel(view.dom.ownerDocument, message)).setDisabled(true)
         )
       }
-      show(menu)
+      display(menu)
     })
 }
 
 /** What every GitHub code viewer carries; inert outside a tab that provides navigation. */
 export function codeNavAddon(): Extension {
+  const navigated = new WeakSet<EditorView>()
   return [
     linkField,
     EditorView.domEventHandlers({
       mousedown(e, view) {
+        navigated.delete(view)
         if (!isMod(e) || e.button !== 0) return false
         const nav = navFor(view.dom)
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
+        navigated.add(view)
         clearLink(view)
         void definition(nav, view, word.text, word.from)
         return true
@@ -222,6 +243,12 @@ export function codeNavAddon(): Extension {
         return false
       },
       contextmenu(e, view) {
+        // A modifier-left-click can also emit a native contextmenu on macOS.
+        if (navigated.has(view) && isMod(e)) {
+          navigated.delete(view)
+          e.preventDefault()
+          return true
+        }
         // The long press already opened the menu; the phone's own menu event after it is the same ask.
         if (justPressed()) {
           e.preventDefault()

@@ -89,12 +89,19 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               p.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,view:window,touches:[],targetTouches:[],changedTouches:[finger]}));
               await shot('long-press');
               [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Go to definition')).closest('.menu-item').click();
-            } else p.target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,metaKey:true,clientX:p.x,clientY:p.y}));
+            } else {
+              p.target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,ctrlKey:true,clientX:p.x,clientY:p.y}));
+              p.target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:0,ctrlKey:true,clientX:p.x,clientY:p.y}));
+            }
             phase = 'definition';
             await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'node_modules/sample-types/index.d.ts:3');
             await until(() => document.querySelector('[data-lsp-dependency] .cm-content')?.textContent.includes('export declare const sample'));
             if (document.querySelector('[data-lsp-dependency] .cm-content').getAttribute('contenteditable') !== 'false') throw Error('Dependency definition is editable');
             if (document.querySelector('[data-lsp-destination]').getBoundingClientRect().height !== 0) throw Error('Duplicate destination label is visible');
+            if (!${mobile}) {
+              await wait(200);
+              if ([...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Go to definition'))) throw Error('Navigation also opened a symbol menu');
+            }
             await shot('definition');
             if (${mobile}) await wait(1100);
             phase = 'references';
