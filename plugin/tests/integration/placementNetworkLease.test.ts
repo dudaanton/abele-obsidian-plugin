@@ -195,9 +195,16 @@ it.each([
         if (interrupted) throw new EngineError('offline', 'Sample interrupted transfer')
       },
     }))
-    const wholeRead = vi
-      .spyOn(app.vault.adapter, 'readBinary')
-      .mockRejectedValue(new Error('Whole local read forbidden'))
+    const wholeRead = vi.fn(async (_path: string): Promise<ArrayBuffer> => {
+      throw new Error('Whole local read forbidden')
+    })
+    vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation((path) => {
+      // Conditional recovery records replace the former local-storage journal.
+      // This exception covers metadata only, never captured or incoming payloads.
+      if (path.startsWith('.obsidian/plugins/abele/sync-conditional/') && path.endsWith('.json'))
+        return nativeRead(path)
+      return wholeRead(path)
+    })
     const placer = () =>
       new PullPlacer(
         { getBlob, openVersion },
@@ -273,8 +280,20 @@ it.each([
       return
     }
     if (outcome.startsWith('published-restart')) {
-      vi.spyOn(state, 'transaction').mockRejectedValueOnce(
-        new Error('Sample process killed after publication')
+      const transaction = state.transaction.bind(state)
+      let cut = true
+      vi.spyOn(state, 'transaction').mockImplementation((work) =>
+        transaction(async (tx) => {
+          const put = tx.put.bind(tx)
+          tx.put = async (entry) => {
+            if (cut && entry.versionId === change.version_id) {
+              cut = false
+              throw new Error('Sample process killed after publication')
+            }
+            return put(entry)
+          }
+          return work(tx)
+        })
       )
       await expect(placer().place(change, sha, null, new Map(), new Map())).rejects.toThrow(
         'killed'

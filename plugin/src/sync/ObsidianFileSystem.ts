@@ -1081,11 +1081,14 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('io', 'exclusive directory restoration is unavailable')
         return this.native.restoreDirectoryExclusive(from, to)
       },
-      install: (from, to) => {
-        if (!this.native) return this.disk.rename(from, to)
-        if (!this.native.installExclusive)
-          throw new EngineError('io', 'exclusive native installation is unavailable')
-        return this.native.installExclusive(from, to)
+      install: async (from, to) => {
+        if (!this.native) await this.disk.rename(from, to)
+        else {
+          if (!this.native.installExclusive)
+            throw new EngineError('io', 'exclusive native installation is unavailable')
+          await this.native.installExclusive(from, to)
+        }
+        await this.io.adoptReceipt(from, to)
       },
       flush: async (path, parentsOnly) => {
         if (!this.native) return // Mobile adapter acknowledgement is the host durability boundary.
@@ -1157,11 +1160,14 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('io', 'exclusive directory restoration is unavailable')
         return native.restoreDirectoryExclusive(from, to)
       },
-      install: (from, to) => {
-        if (!native) return disk.rename(from, to)
-        if (!native.installExclusive)
-          throw new EngineError('io', 'exclusive native installation is unavailable')
-        return native.installExclusive(from, to)
+      install: async (from, to) => {
+        if (!native) await disk.rename(from, to)
+        else {
+          if (!native.installExclusive)
+            throw new EngineError('io', 'exclusive native installation is unavailable')
+          await native.installExclusive(from, to)
+        }
+        await io.adoptReceipt(from, to)
       },
       flush: async (path, parentsOnly) => {
         if (!native) return
@@ -2378,14 +2384,26 @@ export class ObsidianFileSystem implements FileSystem {
           // the target. Preserve a save made since the interrupted download.
           // A distinct move source remains the core's recreation decision.
           const current = await this.rawStat(target)
-          if (
-            current &&
-            (from === null || this.pathKey(from) === this.pathKey(target)) &&
-            (expectedBase === null ||
+          let retain = false
+          if (current && (from === null || this.pathKey(from) === this.pathKey(target))) {
+            retain =
+              expectedBase === null ||
               current.size !== expectedBase.size ||
-              current.mtime !== expectedBase.mtime ||
-              (await this.io.fingerprint(target, undefined, true, true)).sha !== expectedBase.sha)
-          ) {
+              current.mtime !== expectedBase.mtime
+            if (!retain && expectedBase !== null) {
+              try {
+                retain =
+                  (await this.io.fingerprint(target, undefined, true, true)).sha !==
+                  expectedBase.sha
+              } catch (error) {
+                if (!(error instanceof EngineError) || error.code !== 'conflict' || error.cause)
+                  throw error
+                // Inability to verify authorizes preservation, never equality or removal.
+                retain = true
+              }
+            }
+          }
+          if (retain) {
             const retained: JournalEntry = {
               ...previous,
               streaming: { ...previous.streaming, base: null, retainBase: true },
