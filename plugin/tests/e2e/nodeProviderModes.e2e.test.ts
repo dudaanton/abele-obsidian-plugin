@@ -76,18 +76,19 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
         }
         if(state==='node-opt-in'){
           const meta=card.querySelector('.abele-node-delegation__meta');
-          const glyph=meta.querySelector('[aria-label="Without asking"]');
+          const glyph=meta.querySelector('[aria-label="Tool permission mode: Without asking"]');
           const walker=document.createTreeWalker(meta,NodeFilter.SHOW_TEXT);let textNode;
-          while(walker.nextNode())if(walker.currentNode.textContent.includes('Failed'))textNode=walker.currentNode;
-          const range=document.createRange();range.setStart(textNode,textNode.textContent.indexOf('Failed'));range.setEnd(textNode,textNode.textContent.indexOf('Failed')+6);
+          while(walker.nextNode())if(walker.currentNode.textContent.includes('Refused'))textNode=walker.currentNode;
+          if(!textNode||!glyph)throw Error('Refusal status or permission mode missing');
+          const range=document.createRange();range.setStart(textNode,textNode.textContent.indexOf('Refused'));range.setEnd(textNode,textNode.textContent.indexOf('Refused')+7);
           const line=range.getBoundingClientRect(), mark=glyph.getBoundingClientRect();
           if(mark.top>=line.bottom || mark.bottom<=line.top)throw Error('Mode glyph detached from final metadata line');
         }
         if(card.querySelector('details'))throw Error('Delegation details bypass the shared Disclosure');
         const text=card.textContent;
-        states[state]=state==='refused' ? text.includes('cannot ask before each action') && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))
+        states[state]=state==='refused' ? text.includes("can't ask before each action") && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Open agent settings'))
           : state==='node-opt-in' ? text.includes('On the node, allow running without asking:')
-          : state==='running' ? !!card.querySelector('[aria-label="Without asking"]') : !card.querySelector('[aria-label="Without asking"],[aria-label="Ask"]');
+          : state==='running' ? !!card.querySelector('[aria-label="Tool permission mode: Without asking"]') : !card.querySelector('[aria-label="Tool permission mode: Without asking"],[aria-label="Tool permission mode: Ask"]');
         await shot('delegation-'+state);
         if(state==='node-opt-in'){
           card.querySelector('.abele-disclosure__control').click();await until(()=>card.querySelector('textarea'));

@@ -45,7 +45,15 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
           return Math.abs(a.top-b.top)<2&&b.left>=a.right&&b.width>30&&b.right<=r.right+1&&el.title===path
         })
         const geometry=singleGeometry()
-        const clipped=()=>links().filter(el=>!el.closest('.abele-chat-run__inline-file')&&el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
+        const clipped=()=>links().filter(el=>{
+          if(el.closest('.abele-chat-run__inline-file'))return false
+          if(node&&el.closest('.abele-chat-tool-files_inline')){
+            const style=getComputedStyle(el)
+            if(!el.title||el.title!==el.textContent||style.textOverflow!=='ellipsis'||style.whiteSpace!=='nowrap'||style.overflow!=='hidden')throw Error('Compact path lost its full tooltip or ellipsis')
+            return el.clientWidth<30
+          }
+          return el.scrollWidth>el.clientWidth+1
+        }).map(el=>el.textContent)
         const foldedClipped=clipped()
         await shot('folded-long-missing')
         links()[0].scrollIntoView({block:'start'});await shot('folded-single-actions')
@@ -60,7 +68,8 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
           const line=el.closest('.abele-chat-msg__tool-line'), name=line.querySelector('.abele-chat-msg__tool-name')
           if(node&&name)throw Error('Compact file call repeats its action name')
           if(!node&&!name)throw Error('File call action name missing')
-          return (name&&name.scrollWidth>name.clientWidth+1)||el.closest('.abele-chat-tool-files').getBoundingClientRect().width<line.getBoundingClientRect().width-1
+          const files=el.closest('.abele-chat-tool-files').getBoundingClientRect(),row=line.getBoundingClientRect()
+          return (name&&name.scrollWidth>name.clientWidth+1)||(node ? files.left<row.left-1||files.right>row.right+1 : files.width<row.width-1)
         }).map(el=>el.textContent)
         const cutNames=[...root().querySelectorAll('.abele-chat-msg__tool-name')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
         await shot('expanded-long-missing')

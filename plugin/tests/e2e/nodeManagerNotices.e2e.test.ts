@@ -59,11 +59,18 @@ async function inspectEscalation(label: string) {
       await evalLong(`(async()=>{
       for(let i=0;i<100&&!document.querySelector('[data-manager-command]');i++)await new Promise(r=>setTimeout(r,50));
       const root=document.querySelector('.abele-tool-approval');
-      return JSON.stringify({text:root?.textContent,overflow:root?.scrollWidth>root?.clientWidth+1});
+      const folder=root?.querySelector('[data-command-folder] .abele-command-folder');
+      if(!folder)throw Error('Command folder missing');
+      const short=folder.textContent,full=folder.title,text=root.textContent;
+      root.querySelector('[data-manager-evidence] .abele-disclosure__control').click();
+      await new Promise(r=>setTimeout(r,100));
+      return JSON.stringify({text,short,full,evidence:root.querySelector('[data-manager-evidence] pre')?.textContent,overflow:root?.scrollWidth>root?.clientWidth+1});
     })()`)
-    ) as { text: string; overflow: boolean }
+    ) as { text: string; short: string; full: string; evidence: string; overflow: boolean }
     expect(report.text).toContain("npm test -- 'sample case'")
-    expect(report.text).toContain('/workspace/sample-project')
+    expect(report.short).toBe('sample-project')
+    expect(report.full).toBe('/workspace/sample-project')
+    expect(report.evidence).toContain('/workspace/sample-project')
     expect(report.text).toContain('Run the sample checks')
     expect(report.text).not.toContain('sample-hidden-thread')
     expect(report.overflow).toBe(false)
