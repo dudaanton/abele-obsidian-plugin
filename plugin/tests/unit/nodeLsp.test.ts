@@ -43,6 +43,30 @@ function fixture(capabilities = ['lsp_v1']) {
   }
 }
 describe('node LSP document', () => {
+  it('recovers Retry after failed status, hover, and an edit with another admission failure', async () => {
+    const f = fixture()
+    f.lsp.status.mockRejectedValue(new Error('Sample status unavailable'))
+    f.lsp.hover.mockResolvedValue({ text: 'sample hover' })
+    await f.doc.open('initial sample')
+    expect(f.doc.supported).toBe(true)
+    const hover = await f.doc.hover({ line: 0, character: 2 })
+    await f.doc.open('edited sample')
+    f.lsp.status.mockResolvedValue([])
+    // The Retry action refreshes availability before reopening the current text.
+    await f.doc.refreshStatus()
+    await f.doc.open('edited sample')
+    try {
+      expect(f.doc.error).toBe('')
+      expect(hover).toBe('')
+      expect(f.lsp.hover).not.toHaveBeenCalled()
+      expect(f.lsp.open).toHaveBeenCalledOnce()
+      expect(f.client.describe).toHaveBeenCalledTimes(3)
+      expect(f.client.subscribe).toHaveBeenCalledOnce()
+      expect(await f.doc.hover({ line: 0, character: 2 })).toBe('sample hover')
+    } finally {
+      await f.doc.close()
+    }
+  })
   it('queries each visible text atomically and restores the surviving view on release', async () => {
     const f = fixture()
     const root = { workspace_id: 'sample-workspace' }

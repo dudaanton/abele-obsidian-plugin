@@ -25,6 +25,7 @@ export class NodeLspDocument {
   private pushes = 0
   private abort = new AbortController()
   private admission?: Promise<void>
+  private admitted = false
   private pending: Promise<void> = Promise.resolve()
   private opening: Promise<unknown> = Promise.resolve()
   private hoverRequests = new Map<string, Promise<string>>()
@@ -103,6 +104,17 @@ export class NodeLspDocument {
       this.changed()
     })
     await this.client.subscribe('catalog')
+    if (!this.stopped) this.admitted = true
+  }
+  private ensureAdmission(): Promise<void> {
+    return (this.admission ??= this.admit().catch((error) => {
+      // A failed admission must be retryable regardless of any prior buffer opens.
+      this.admission = undefined
+      this.admitted = false
+      this.unsubscribe?.()
+      this.unsubscribe = undefined
+      throw error
+    }))
   }
   open(text: string): Promise<void> {
     this.text = text
@@ -120,10 +132,9 @@ export class NodeLspDocument {
       this.error = ''
       this.changed()
       try {
-        if (this.admission !== undefined && this.supported && !this.opens)
-          this.status = await this.client.lsp.status(this.root)
-        await (this.admission ??= this.admit())
-        if (!this.supported || this.stopped) return
+        if (this.admitted && !this.opens) this.status = await this.client.lsp.status(this.root)
+        await this.ensureAdmission()
+        if (!this.admitted || this.stopped) return
         if (this.unavailable) {
           this.diagnostics = []
           console.debug('[node] Language analysis waiting for available trusted servers', this.path)
@@ -148,11 +159,6 @@ export class NodeLspDocument {
         if (!this.stopped && pushes === this.pushes) this.diagnostics = diagnostics
       } catch (error) {
         if (!this.stopped) {
-          if (!this.opens) {
-            this.admission = undefined
-            this.unsubscribe?.()
-            this.unsubscribe = undefined
-          }
           console.debug('[node] Language analysis unavailable', error)
           this.error = error instanceof Error ? error.message : String(error)
         }
@@ -176,7 +182,7 @@ export class NodeLspDocument {
     run: () => Promise<T>
   ): Promise<T> {
     const work = this.pending.then(async () => {
-      if (!this.supported || this.stopped || this.unavailable) return fallback
+      if (!this.admitted || this.stopped || this.unavailable) return fallback
       try {
         ++this.opens
         await (this.opening = this.client.lsp.open(
