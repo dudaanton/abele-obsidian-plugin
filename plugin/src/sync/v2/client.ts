@@ -137,7 +137,10 @@ export class V2Client {
     const headers = new Headers(init.headers)
     headers.set(V2_CAPABILITIES_HEADER, V2_READ_ONLY_CAPABILITY)
     headers.set('Authorization', 'Bearer ' + this.token.key)
-    if (this.item) headers.set('abele-scope-item', this.item)
+    // Primary deletion uses the key's original scope and key-level receipt route.
+    // Explicit additional selectors still require item deletion authority.
+    if (this.item && !(route === 'connection/delete' && this.item.startsWith('primary:')))
+      headers.set('abele-scope-item', this.item)
     if (init.body !== undefined && !headers.has('Content-Type'))
       headers.set('Content-Type', 'application/json')
     let response: Response

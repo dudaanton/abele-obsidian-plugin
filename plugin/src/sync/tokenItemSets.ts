@@ -359,6 +359,7 @@ export class TokenItemSets implements ShareSetSource {
     try {
       inventory = await client.items()
     } catch (error) {
+      if ((error as { code?: string }).code === 'scope_deleted') await this.ui.scopeDeleted(id)
       if ((error as { status?: number }).status === 404) {
         this.capabilities.set(id, false)
         this.changed()

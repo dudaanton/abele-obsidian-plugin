@@ -921,18 +921,9 @@ export class TokenUi {
       !!this.registry.records().find((one) => one.id === id)?.state[
         'abele-sync-token-state:server-delete'
       ]
-    const work = (async () => {
-      const resumeOthers = await this.protectLocalFilesForItemDeletion(id, [id])
-      let completed = false
-      try {
-        await this.performServerDeletion(id, () => {
-          requested = true
-        })
-        completed = true
-      } finally {
-        await resumeOthers(completed)
-      }
-    })()
+    const work = this.performServerDeletion(id, () => {
+      requested = true
+    })
       .catch((error: unknown) => {
         throw Object.assign(error instanceof Error ? error : new Error('Server deletion failed'), {
           deletionOutcome: requested ? 'unknown' : 'not-deleted',
@@ -1134,28 +1125,35 @@ export class TokenUi {
     })
     await this.stopForDeletion(id)
     assertCurrent()
-    let checking = this.deletionGuards.get(id)
-    if (checking === undefined) {
-      checking = Promise.resolve()
-        .then(() => this.connectionChangeGuard(id, assertCurrent))
-        .finally(() => this.deletionGuards.delete(id))
-      this.deletionGuards.set(id, checking)
-    }
-    await this.waitForDeletion(checking, 'safety')
-    assertCurrent()
-    if (!attempt.result) {
-      requesting()
-      attempt.result = await client.deleteScope(attempt.key)
+    const resumeOthers = await this.protectLocalFilesForItemDeletion(id, [id])
+    let completed = false
+    try {
+      let checking = this.deletionGuards.get(id)
+      if (checking === undefined) {
+        checking = Promise.resolve()
+          .then(() => this.connectionChangeGuard(id, assertCurrent))
+          .finally(() => this.deletionGuards.delete(id))
+        this.deletionGuards.set(id, checking)
+      }
+      await this.waitForDeletion(checking, 'safety')
       assertCurrent()
-      storage.saveLocalStorage(slot, attempt)
+      if (!attempt.result) {
+        requesting()
+        attempt.result = await client.deleteScope(attempt.key)
+        assertCurrent()
+        storage.saveLocalStorage(slot, attempt)
+      }
+      this.recordEvent(id, t('streamC.eb5f15550a0803de'))
+      assertCurrent()
+      const finishing = Promise.resolve()
+        .then(() => this.disconnect(id))
+        .finally(() => this.deletionDisconnects.delete(id))
+      this.deletionDisconnects.set(id, finishing)
+      await this.waitForDeletion(finishing, 'disconnect')
+      completed = true
+    } finally {
+      await resumeOthers(completed)
     }
-    this.recordEvent(id, t('streamC.eb5f15550a0803de'))
-    assertCurrent()
-    const finishing = Promise.resolve()
-      .then(() => this.disconnect(id))
-      .finally(() => this.deletionDisconnects.delete(id))
-    this.deletionDisconnects.set(id, finishing)
-    await this.waitForDeletion(finishing, 'disconnect')
   }
   /**
    * Stop and await settlement before server deletion. The saved
@@ -1203,7 +1201,27 @@ export class TokenUi {
       window.clearTimeout(timer)
     }
   }
+  async scopeDeleted(id: string): Promise<void> {
+    const ids = this.itemSets.store
+      .get(id)
+      ?.items.flatMap((item) => (item.recordId ? [item.recordId] : [])) ?? [id]
+    for (const recordId of ids) {
+      this.registry.storage(recordId).saveLocalStorage('abele-sync-token-state:scope-deleted', true)
+    }
+    await this.registry.flush()
+    for (const recordId of ids) {
+      await this.stopRuntime(recordId)
+      this.registry.setStatus(recordId, 'scope_unavailable')
+      this.publish(recordId, { error: SCOPE_DELETED })
+    }
+  }
   async sync(id: string): Promise<void> {
+    if (
+      this.registry.records().find((one) => one.id === id)?.state[
+        'abele-sync-token-state:scope-deleted'
+      ]
+    )
+      throw new Error(SCOPE_DELETED)
     if (this.itemSets.store.get(id)) {
       if (await this.itemSets.refresh(id)) await this.connectionsChanged()
       const failures: unknown[] = []
@@ -1248,18 +1266,18 @@ export class TokenUi {
     this.refresh()
   }
   async pause(id: string, paused: boolean): Promise<void> {
-    const set = this.itemSets.store.get(id)
-    if (set) {
-      for (const item of set.items)
-        if (!item.detached) await this.itemSets.pauseItem(id, item.id, paused)
-      return
-    }
     const state = this.registry.records().find((one) => one.id === id)?.state
     if (
       state?.['abele-sync-token-state:scope-deleted'] ||
       state?.['abele-sync-token-state:server-delete']
     )
       throw new Error('This connection is stopped. Disconnect or finish the server deletion.')
+    const set = this.itemSets.store.get(id)
+    if (set) {
+      for (const item of set.items)
+        if (!item.detached) await this.itemSets.pauseItem(id, item.id, paused)
+      return
+    }
     this.registry.setPaused(id, paused)
     await this.registry.flush()
     this.refresh()
