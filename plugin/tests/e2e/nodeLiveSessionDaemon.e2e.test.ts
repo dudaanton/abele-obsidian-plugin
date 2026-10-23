@@ -121,6 +121,10 @@ it('renames the session everywhere it is named', async () => {
 })
 
 it('shows a message another session wrote to it under that session, opening its chat', async () => {
+  // Earlier cases change the receiver mode and stop its process. This scenario needs two
+  // fresh chats with the same ordinary permission mode, rather than inheriting that policy.
+  const receiver = await node.session('Sample receiver session', undefined, await node.worktree())
+  tab = await node.open(receiver, 'Sample receiver session')
   const other = await node.session('Sample sender session', undefined, await node.worktree())
   const r = JSON.parse(
     await run(`
@@ -129,6 +133,9 @@ it('shows a message another session wrote to it under that session, opening its 
     await chats.openNodeSession({...first,sessionId:${JSON.stringify(other)},title:'Sample sender session'});
     const sender=chats.getNodeSession('node:'+first.registrationId+':'+${JSON.stringify(other)});
     await sender.send('mcp node_session_send '+JSON.stringify({session_id:first.sessionId,text:'Sample result from the sender'}));
+    await until(()=>sender.messages.value.some(m=>m.role==='assistant'),'The messaging tool result',30000);
+    const result=sender.messages.value.filter(m=>m.role==='assistant').at(-1)?.content;
+    if(!result?.includes('input_id'))throw Error('Session message was not admitted: '+result);
     await chats.openNodeSession(first);
     const from=await until(()=>chat().querySelector('.abele-chat-msg__from'),'The sender line',90000);
     const text=from.textContent.trim();
