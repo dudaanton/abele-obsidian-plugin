@@ -699,3 +699,40 @@ describe('scale harness independent guarantees', () => {
     }
   })
 })
+
+it('holds even a small upload body until the rebuild click releases it', async () => {
+  let received = 0
+  const upstream = createServer((req, res) => {
+    req.on('data', (chunk) => {
+      received += chunk.length
+    })
+    req.on('end', () => res.end('ok'))
+  })
+  upstream.listen(0, '127.0.0.1')
+  await once(upstream, 'listening')
+  const address = upstream.address() as any
+  const proxy = new WireProxy(`http://127.0.0.1:${address.port}`, '0')
+  const url = await proxy.start()
+  proxy.breakpoint = 'reindex-upload'
+  const started = once(proxy, 'wire')
+  const transfer = fetch(url + '/v2/uploads/' + 'a'.repeat(64) + '/sample/0', {
+    method: 'PUT',
+    body: 'data',
+  })
+  try {
+    await started
+    expect(
+      proxy.events.some((row) => row.event === 'trigger' && row.kind === 'reindex-upload')
+    ).toBe(true)
+    expect(received).toBe(0)
+    proxy.release()
+    expect(await (await transfer).text()).toBe('ok')
+    expect(received).toBe(4)
+  } finally {
+    proxy.release()
+    await transfer.catch(() => {})
+    await proxy.close()
+    upstream.closeAllConnections()
+    await new Promise<void>((resolve) => upstream.close(() => resolve()))
+  }
+})

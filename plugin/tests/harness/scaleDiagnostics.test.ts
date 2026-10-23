@@ -377,3 +377,27 @@ it('arms continuous sampling before renderer work and rotates without waiting fo
   await profiler.close(60200)
   expect(calls.at(-1)).toBe('Profiler.stop')
 })
+
+it('attributes observer work separately from the plugin frame that called it', async () => {
+  const tasks = [{ event: 'long-task', device: '0', startedAt: 0, durationMs: 100 }]
+  const captures = [
+    {
+      event: 'cpu-profile',
+      device: '0',
+      startedAt: 0,
+      endedAt: 100,
+      path: 'sample',
+      continuous: true,
+    },
+  ]
+  const [result] = await profileSummary(tasks, captures, async () => ({
+    nodes: [
+      { id: 1, callFrame: { url: '/fixture/scale-observer/reindex.cjs', functionName: 'emit' } },
+      { id: 2, children: [1], callFrame: { url: 'plugin:abele', functionName: 'digest' } },
+    ],
+    samples: [1],
+    timeDeltas: [50000],
+  }))
+  expect(result.samplesBySource).toEqual({ harness: 1 })
+  expect(result.coverage).toContain('Continuous')
+})

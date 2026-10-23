@@ -102,6 +102,7 @@ exports.createStallProfiler = function ({
     const path = await save(result.profile)
     emit({
       event: 'cpu-profile',
+      continuous,
       clock,
       startedAt: start,
       startAcknowledgedAt,
@@ -202,6 +203,26 @@ exports.watch = async function (id, serializedConfig) {
     emit({ event: 'cpu-profile-unavailable', reason: 'debugger clock unavailable' })
     return channel
   }
+  const hashBreakpoints = new Set()
+  const debuggerMessage = (_event, method, params) => {
+    if (method === 'Debugger.breakpointResolved' && hashBreakpoints.has(params.breakpointId))
+      emit({ event: 'javascript-hash-observer-ready', location: params.location })
+  }
+  if (config.javascriptHashTracepoints?.length) {
+    transport.on('message', debuggerMessage)
+    await transport.sendCommand('Debugger.enable')
+    for (const lineNumber of config.javascriptHashTracepoints) {
+      const binding = await transport.sendCommand('Debugger.setBreakpointByUrl', {
+        url: 'plugin:abele',
+        lineNumber,
+        condition:
+          '(()=>{try{globalThis.__scaleObserveIncrementalHash?.(this)}catch{}return false})()',
+      })
+      hashBreakpoints.add(binding.breakpointId)
+      for (const location of binding.locations ?? [])
+        emit({ event: 'javascript-hash-observer-ready', location })
+    }
+  }
   const profiler = exports.createStallProfiler({
     clock,
     continuous: config.continuousCpu === true,
@@ -232,6 +253,14 @@ exports.watch = async function (id, serializedConfig) {
     }
   }
   const beginCoverage = async (id) => {
+    if (config.preciseHashCoverage === false) {
+      emit({
+        event: 'reindex-js-coverage-skipped',
+        id,
+        reason: 'Actual digest observation enabled; full function counters disabled',
+      })
+      return false
+    }
     if (coverageId) await endCoverage()
     try {
       await transport.sendCommand('Profiler.startPreciseCoverage', {
@@ -256,6 +285,8 @@ exports.watch = async function (id, serializedConfig) {
     closing = (async () => {
       watches.delete(channel)
       coverageWatches.delete(channel)
+      if (config.javascriptHashTracepoints?.length)
+        transport.removeListener('message', debuggerMessage)
       wc.removeListener('destroyed', destroyed)
       wc.removeListener('did-start-navigation', navigating)
       clearInterval(timer)

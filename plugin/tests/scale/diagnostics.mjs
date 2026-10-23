@@ -104,11 +104,18 @@ export async function profileSummary(tasks, captures, load) {
               if (node.callFrame?.url) stack.push(node.callFrame)
               node = nodes.get(parents.get(node.id))
             }
-            const source = stack.length
-              ? diagnostics.classifyOrigin(
-                  stack.map((f) => `    at ${f.functionName} (${f.url}:1:1)`).join('\n')
-                )
-              : 'unknown'
+            const observerFrame = stack.findIndex((f) =>
+              /scale-observer|reindex\.cjs|diagnostics\.cjs/.test(f.url)
+            )
+            const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url))
+            const source =
+              observerFrame >= 0 && (pluginFrame < 0 || observerFrame < pluginFrame)
+                ? 'harness'
+                : stack.length
+                  ? diagnostics.classifyOrigin(
+                      stack.map((f) => `    at ${f.functionName} (${f.url}:1:1)`).join('\n')
+                    )
+                  : 'unknown'
             counts[source] = (counts[source] ?? 0) + 1
             if (frames.length < 20 && stack.length) frames.push({ source, stack })
           }
@@ -119,8 +126,9 @@ export async function profileSummary(tasks, captures, load) {
           samplesBySource: counts,
           source: Object.keys(counts).length ? 'sampled' : 'unknown',
           frames,
-          coverage:
-            'Tail samples only; the watchdog threshold and debugger command latency precede capture. Mixed stacks remain mixed, missing samples remain unknown.',
+          coverage: matches.some((capture) => capture.continuous)
+            ? 'Continuous low-rate samples were armed before product load. Missing/censored segments and mixed stacks remain unknown.'
+            : 'Tail samples only; the watchdog threshold and debugger command latency precede capture. Mixed stacks remain mixed, missing samples remain unknown.',
         }
       })
   )

@@ -6,7 +6,13 @@ import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { declaredInterruptions, reindexEvidence, javascriptHashEvidence } from './reindex.mjs'
+import {
+  declaredInterruptions,
+  reindexEvidence,
+  javascriptHashEvidence,
+  hashTracepoints,
+  digestCoverage,
+} from './reindex.mjs'
 import { openServer, verifyServerLimits } from './local-server.mjs'
 import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
@@ -236,6 +242,10 @@ async function setupVault(config, root, device) {
       diagnostics: join(observer, 'diagnostics.cjs'),
       profileDirectory: join(config.output, 'profiles'),
       continuousCpu: config.continuousCpu === true,
+      preciseHashCoverage: config.preciseHashCoverage !== false,
+      javascriptHashTracepoints: hashTracepoints(
+        await readFile(join(config.buildDir, 'main.js'), 'utf8')
+      ),
     })
   )
 }
@@ -504,7 +514,9 @@ export async function run(config) {
     const reindex = async (id, device, proxy) => {
       const declared = report.declaredInterruptions.find((one) => one.id === id)
       if (!declared) return
-      await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
+      if (id === 'reindex-primary-upload')
+        await triggered(proxy, 'reindex-upload', () => device.sync())
+      else await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
       const allowed = new Set(expected.map((file) => file.path))
       for (const file of expected) {
         const parts = file.path.split('/')
@@ -548,7 +560,8 @@ export async function run(config) {
       const operation = {
         ...declared,
         at: clicked.at,
-        triggered: activeRequestIds(proxy.events, clicked.at).size > 0,
+        triggered: activeRequestIds(proxy.events, clicked.at - 1).size > 0,
+        activeClockResolutionMs: 1,
       }
       proxy.release()
       report.interruptions.push(operation)
@@ -667,8 +680,15 @@ export async function run(config) {
       )
     )
     mark('pause mid-pull')
-    await b.paused(false)
-    await b.sync()
+    if (config.reindex === true || config.shape === 'scale') {
+      await triggered(q, 'pull', async () => {
+        await b.paused(false)
+        await b.sync()
+      })
+    } else {
+      await b.paused(false)
+      await b.sync()
+    }
     await reindex('reindex-peer-download', b, q)
     report.peerPullSettled = await settle(b, 'second device pull')
     await endReindex('reindex-peer-download', b)
@@ -788,6 +808,9 @@ export async function run(config) {
       )
         ? error.message
         : 'Harness operation failed; private details suppressed'
+    report.harnessFailureFrames = String(error.stack ?? '')
+      .split('\n')
+      .slice(1, 6)
     report.lastSnapshots = await Promise.all(
       devices.map((device) => device.snapshot().catch(() => null))
     )
@@ -841,8 +864,9 @@ export async function run(config) {
         const uploads = during.filter(
           (row) =>
             row.event === 'start' &&
-            row.method === 'POST' &&
-            /\/uploads\/[a-f0-9]{64}\/begin$/.test(row.route ?? '')
+            row.method === 'PUT' &&
+            row.sent > 0 &&
+            /^\/v2\/uploads\/[a-f0-9]{64}\/[^/]+\/\d+$/.test(row.route ?? '')
         )
         const unknown = reads.some((row) => !proxy.versions.has(row.version))
         const hashes = entries.filter(
@@ -859,11 +883,23 @@ export async function run(config) {
             row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
             row.event === 'hash-observer-ready'
         )
+        const rendererStartedAt = Math.max(
+          0,
+          ...entries
+            .filter(
+              (row) =>
+                row.device === saved.operation.device &&
+                row.event === 'renderer-start' &&
+                row.at <= saved.operation.at
+            )
+            .map((row) => row.at)
+        )
         const previouslyHashed = new Set(
           entries
             .filter(
               (row) =>
                 row.device === saved.operation.device &&
+                row.at >= rendererStartedAt &&
                 row.at < saved.operation.at &&
                 row.event === 'renderer-hash' &&
                 row.source === 'abele'
@@ -887,6 +923,12 @@ export async function run(config) {
         const jsHashes = await javascriptHashEvidence(saved.operation, entries, async (path) =>
           JSON.parse(await readFile(path, 'utf8'))
         )
+        const digestProof = digestCoverage(
+          saved.operation,
+          entries,
+          saved.settledAt ?? end?.at ?? Infinity
+        )
+        const redundantUploads = uploads.filter((row) => knownServer.has(row.route.split('/')[3]))
         const result = reindexEvidence(saved.operation, entries, proxy.events, {
           before: saved.before,
           after: saved.after,
@@ -902,14 +944,12 @@ export async function run(config) {
                 row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
                 row.event === 'vault-delete'
             ).length,
-          extraUploads: uploads.filter((row) => knownServer.has(row.route.split('/')[3])).length,
+          extraUploads: new Set(redundantUploads.map((row) => row.route.split('/')[3])).size,
           extraDownloads: unknown
             ? undefined
             : reads.filter((row) => knownLocal.has(proxy.versions.get(row.version))).length,
           extraRendererHashes:
-            coverage && !hashUnknown && jsHashes.complete && jsHashes.calls === 0
-              ? extraHashes.length
-              : undefined,
+            coverage && !hashUnknown && digestProof.complete ? extraHashes.length : undefined,
         })
         result.settledAt = saved.settledAt ?? null
         result.afterIndexUntilSettle = {
@@ -932,6 +972,15 @@ export async function run(config) {
           ),
         }
         result.javascriptHashCoverage = jsHashes
+        result.javascriptDigestCoverage = digestProof
+        result.extraUploadRequests = redundantUploads
+        result.extraUploadBytes = redundantUploads.reduce((sum, row) => sum + row.sent, 0)
+        result.extraRendererHashEvidence = extraHashes.map((row) => ({
+          ...row,
+          paths: [...expected, ...saved.before]
+            .filter((file) => file.sha === row.sha)
+            .map((file) => file.path),
+        }))
         report.reindexes[report.reindexes.findIndex((row) => row.id === result.id)] = result
       }
       report.noticeCounts = noticeSummary(entries)

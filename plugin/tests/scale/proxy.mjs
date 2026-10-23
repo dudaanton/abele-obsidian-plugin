@@ -207,7 +207,17 @@ export class WireProxy extends EventEmitter {
     res.on('close', () => {
       if (!res.writableFinished) upstream.destroy()
     })
-    req.pipe(upstream)
+    if (this.breakpoint === 'reindex-upload' && uploadSha && req.method === 'PUT') {
+      this.breakpoint = null
+      req.pause()
+      this.held = () => {
+        if (!req.destroyed) {
+          req.pipe(upstream)
+          req.resume()
+        }
+      }
+      this.record({ event: 'trigger', kind: 'reindex-upload', id })
+    } else req.pipe(upstream)
     // Record the requested immutable version, including interrupted GETs.
     if (/\/files\/[^/]+\/content$/.test(url.pathname))
       entry.version = url.searchParams.get('version_id') ?? url.searchParams.get('version')

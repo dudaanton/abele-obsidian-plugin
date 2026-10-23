@@ -78,6 +78,9 @@ export function reindexEvidence(operation, renderer, wire, evidence) {
     deletions,
     serverDeletions,
     rendererHashes,
+    hostRendererHashes: rows.filter(
+      (row) => row.event === 'renderer-hash' && row.source === 'host'
+    ),
     notices: rows.filter((row) => row.event === 'notice'),
     longTasks: rows.filter((row) => row.event === 'long-task'),
     inventoryChanges,
@@ -138,4 +141,54 @@ export async function javascriptHashEvidence(operation, rows, load) {
     segments,
     calls: complete ? segments.reduce((sum, one) => sum + one.calls, 0) : null,
   }
+}
+
+export function hashTracepoints(source) {
+  const points = []
+  const classes = [...source.matchAll(/class HashMD(?:\$\d+)? extends [\w$]+\s*\{/g)]
+  for (const match of classes) {
+    const afterSuper = source.indexOf('super();', match.index)
+    if (afterSuper < 0 || afterSuper - match.index > 400) continue
+    const line = source.slice(0, afterSuper + 'super();'.length).split('\n').length
+    for (let offset = 0; offset < 3; offset++) points.push(line + offset)
+  }
+  return points
+}
+
+export function digestCoverage(operation, entries, endAt) {
+  const device = (row) => row.device === operation.device
+  const startedAt = Math.max(
+    0,
+    ...entries
+      .filter((row) => device(row) && row.event === 'renderer-start' && row.at <= operation.at)
+      .map((row) => row.at)
+  )
+  const reloadAt = entries.find(
+    (row) => device(row) && row.event === 'reindex-reloaded' && row.id === operation.id
+  )?.at
+  const observedBefore = entries.some(
+    (row) =>
+      device(row) &&
+      row.implementation === 'javascript' &&
+      row.at >= startedAt &&
+      row.at <= operation.at
+  )
+  const observedAfter = entries.some(
+    (row) =>
+      device(row) &&
+      row.implementation === 'javascript' &&
+      row.at > (reloadAt ?? Infinity) &&
+      row.at <= endAt
+  )
+  const bindings = entries.filter(
+    (row) => device(row) && row.event === 'javascript-hash-observer-ready'
+  )
+  // Main-process binding acknowledgements and renderer digest receipts use different
+  // queues. Actual observed digests prove activation; do not require the ack first.
+  const complete =
+    observedBefore &&
+    observedAfter &&
+    bindings.some((row) => row.at >= startedAt && row.at <= operation.at) &&
+    bindings.some((row) => row.at > operation.at && row.at <= endAt)
+  return { complete, startedAt, reloadAt, observedBefore, observedAfter }
 }

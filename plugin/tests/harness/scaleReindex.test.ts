@@ -69,9 +69,20 @@ it('clicks the real setting once, persists actual click time, and observes host 
     Buffer,
   })
   const api = module.exports as any
-  let completed
+  let completed,
+    opened = false
   const app = {
-    setting: { open: () => calls.push('open'), openTabById: (id) => calls.push(id) },
+    setting: {
+      open: async () => {
+        calls.push('open')
+        await Promise.resolve()
+        opened = true
+      },
+      openTabById: (id) => {
+        expect(opened).toBe(true)
+        calls.push(id)
+      },
+    },
     workspace: { onLayoutReady: (fn) => fn() },
     metadataCache: {
       onCleanCache: (fn) => {
@@ -211,4 +222,81 @@ it('never infers zero JavaScript hashing from native counters or missing reload 
       ],
     }))
   ).toMatchObject({ complete: true, calls: 4 })
+})
+
+it('observes incremental JavaScript digests without hashing again or changing results', async () => {
+  const { default: observer } = await import('../scale/reindex.cjs')
+  const rows = []
+  let calls = 0
+  const hash = {
+    length: 0,
+    update(bytes) {
+      this.length += bytes.byteLength
+      return this
+    },
+    digestInto(out) {
+      calls++
+      out.set([1, 2])
+      return out
+    },
+    digest() {
+      return this.digestInto(new Uint8Array(2))
+    },
+  }
+  observer.observeIncrementalHash(hash, (row) => rows.push(row))
+  observer.observeIncrementalHash(hash, (row) => rows.push(row))
+  expect(hash.update(new Uint8Array(12))).toBe(hash)
+  expect([...hash.digest()]).toEqual([1, 2])
+  expect(calls).toBe(1)
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ implementation: 'javascript', bytes: 12, sha: '0102' })
+})
+
+it('proves digest coverage from both renderer generations despite delayed main-process acknowledgements', async () => {
+  const { digestCoverage } = await import('../scale/reindex.mjs')
+  const operation = { id: 'sample', device: '0', at: 100 }
+  const rows = [
+    { device: '0', event: 'renderer-start', at: 1 },
+    { device: '0', event: 'javascript-hash-observer-ready', at: 10 },
+    { device: '0', implementation: 'javascript', at: 20 },
+    { device: '0', event: 'reindex-reloaded', id: 'sample', at: 110 },
+    { device: '0', implementation: 'javascript', at: 120 },
+    { device: '0', event: 'javascript-hash-observer-ready', at: 130 },
+  ]
+  expect(digestCoverage(operation, rows, 200).complete).toBe(true)
+  expect(
+    digestCoverage(
+      operation,
+      rows.filter((row) => row.at !== 120),
+      200
+    ).complete
+  ).toBe(false)
+  expect(
+    digestCoverage(
+      operation,
+      rows.filter((row) => row.at !== 130),
+      200
+    ).complete
+  ).toBe(false)
+})
+
+it('separates host cache hashes by their actual stack, including intrinsic Promise frames', async () => {
+  const { default: observer } = await import('../scale/reindex.cjs')
+  const { default: diagnostics } = await import('../scale/diagnostics.cjs')
+  const prefix = 'Error\n at observe (/fixture/scale-observer/reindex.cjs:1:1)\n'
+  expect(
+    observer.classifyHashOrigin(
+      prefix + ' at index (app://obsidian.md/app.js:1:1)\n at new Promise (<anonymous>)',
+      diagnostics.classifyOrigin
+    )
+  ).toBe('host')
+  expect(
+    observer.classifyHashOrigin(prefix + ' at index (plugin:abele:1:1)', diagnostics.classifyOrigin)
+  ).toBe('abele')
+  expect(
+    observer.classifyHashOrigin(
+      prefix + ' at index (https://example.invalid/app.js:1:1)',
+      diagnostics.classifyOrigin
+    )
+  ).toBe('unknown')
 })

@@ -5,16 +5,45 @@ const path = require('node:path')
 
 // Drive only the visible host setting. Never clear caches or reload via an internal API.
 exports.clickRebuild = async function (app, document, receipt, pendingFile) {
-  app.setting.open()
-  app.setting.openTabById('file')
-  const rows = [...document.querySelectorAll('.modal .setting-item')].filter((row) =>
+  await app.setting.open()
+  await app.setting.openTabById('file')
+  const root = app.setting.modalEl ?? document
+  for (
+    let attempt = 0;
+    attempt < 100 && root.querySelectorAll('.setting-item-name').length === 0;
+    attempt++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  const rows = [...root.querySelectorAll('.setting-item')].filter((row) =>
     /^Rebuild vault cache$/i.test(
       row.querySelector('.setting-item-name')?.textContent?.trim() ?? ''
     )
   )
   const buttons = rows.flatMap((row) => [...row.querySelectorAll('button')])
-  if (rows.length !== 1 || buttons.length !== 1)
+  if (rows.length !== 1 || buttons.length !== 1) {
+    const evidence = pendingFile.slice(
+      0,
+      pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')
+    )
+    fs.appendFileSync(
+      evidence,
+      JSON.stringify({
+        event: 'reindex-setting-unavailable',
+        id: receipt.id,
+        device: receipt.device,
+        at: Date.now(),
+        rowCount: rows.length,
+        buttonCount: buttons.length,
+        settingKeys: Object.keys(app.setting),
+        rootClass: root.className,
+        documentClass: document.body?.className,
+        labels: [...root.querySelectorAll('.setting-item-name')].map((row) =>
+          row.textContent?.trim()
+        ),
+      }) + '\n'
+    )
     throw new Error('Rebuild setting unavailable or ambiguous')
+  }
   if (typeof globalThis.__scaleReindexCoverage?.begin === 'function')
     await globalThis.__scaleReindexCoverage.begin(receipt.id)
   const operation = { ...receipt, scheduledAt: Date.now() }
@@ -60,9 +89,9 @@ exports.observeRebuild = function (app, config, emit, register) {
 }
 exports.pendingFile = (evidence, device) => path.resolve(evidence + '.' + device + '.reindex.json')
 
-exports.observeHashes = function (crypto, subtle, emit) {
+exports.observeHashes = function (crypto, subtle, emit, classify) {
   const restore = []
-  const source = (stack) => (/plugin:abele(?::|\/)/.test(stack) ? 'abele' : 'unknown')
+  const source = (stack) => exports.classifyHashOrigin(stack, classify)
   const bytes = (value) =>
     typeof value === 'string' ? Buffer.byteLength(value) : (value?.byteLength ?? 0)
   const install = (object, key, wrap) => {
@@ -143,3 +172,55 @@ exports.observeHashes = function (crypto, subtle, emit) {
     for (const undo of restore.reverse()) undo()
   }
 }
+
+const observedHashes = new WeakSet()
+exports.observeIncrementalHash = function (hash, emit) {
+  if (
+    !hash ||
+    typeof hash.update !== 'function' ||
+    typeof hash.digest !== 'function' ||
+    observedHashes.has(hash)
+  )
+    return
+  observedHashes.add(hash)
+  let bytes = 0,
+    depth = 0
+  const update = hash.update
+  hash.update = function (data, ...args) {
+    bytes += typeof data === 'string' ? Buffer.byteLength(data) : (data?.byteLength ?? 0)
+    return update.call(this, data, ...args)
+  }
+  for (const key of ['digest', 'digestInto']) {
+    const original = hash[key]
+    if (typeof original !== 'function') continue
+    hash[key] = function (...args) {
+      const size = Number.isFinite(this.length) ? this.length : bytes
+      const stack = new Error().stack
+      depth++
+      let result
+      try {
+        result = original.apply(this, args)
+        return result
+      } finally {
+        depth--
+        const output = key === 'digestInto' ? args[0] : result
+        if (depth === 0 && output?.byteLength)
+          emit({
+            event: 'renderer-hash',
+            implementation: 'javascript',
+            source: 'abele',
+            sha: Buffer.from(output).toString('hex'),
+            bytes: size,
+            stack,
+          })
+      }
+    }
+  }
+}
+
+exports.classifyHashOrigin = (stack, classify) =>
+  classify
+    ? classify(stack.replace(/^\s+at new Promise \(<anonymous>\)\s*$/gm, ''))
+    : /plugin:abele(?::|\/)/.test(stack)
+      ? 'abele'
+      : 'unknown'

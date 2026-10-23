@@ -23,7 +23,16 @@ module.exports = class extends Plugin {
     const reindexObserver = require(config.reindexObserver)
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
     const nativeCrypto = require('node:crypto')
-    this.register(reindexObserver.observeHashes(nativeCrypto, globalThis.crypto?.subtle, emit))
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Reuse stack provenance for hash observations.
+    const classifyHash = require(config.diagnostics).classifyOrigin
+    globalThis.__scaleObserveIncrementalHash = (hash) =>
+      reindexObserver.observeIncrementalHash(hash, emit)
+    this.register(() => {
+      delete globalThis.__scaleObserveIncrementalHash
+    })
+    this.register(
+      reindexObserver.observeHashes(nativeCrypto, globalThis.crypto?.subtle, emit, classifyHash)
+    )
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
     const { observeWrites } = require(config.writeObserver)
     this.register(observeWrites(this.app.vault.adapter, emit))
