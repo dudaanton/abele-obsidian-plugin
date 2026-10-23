@@ -288,6 +288,35 @@ async function scenario(
   }
 }
 
+async function expectRetainedLocal(result: Awaited<ReturnType<typeof scenario>>) {
+  const adapter = result.app.vault.adapter
+  const legacy = (result.app.loadLocalStorage(RECOVERED_WRITES_KEY) ?? []) as { backup: string }[]
+  const candidates = legacy.map((entry) => entry.backup)
+  const root = '.obsidian/plugins/abele/sync-conditional'
+  if (await adapter.exists(root + '/retained')) {
+    for (const record of (await adapter.list(root + '/retained')).files) {
+      // Inspect evidence through the fixture's raw reader, outside product I/O counters.
+      const owner = JSON.parse(new TextDecoder().decode(await result.rawRead(record)))
+      expect(Number.isFinite(owner.at)).toBe(true)
+      expect([result.original.path, result.change.path]).toContain(owner.intent.path)
+      const id = record.slice(record.lastIndexOf('/') + 1, -'.json'.length)
+      const retained = `${root}/trash/${id}`
+      // The retention record owns a durable, completed capture, not an orphan found by name.
+      expect(JSON.parse(new TextDecoder().decode(await result.rawRead(retained + '/ready')))).toBe(
+        true
+      )
+      candidates.push(retained + '/victim')
+    }
+  }
+  expect(new Set(candidates).size).toBe(candidates.length)
+  const wanted = await sha256(result.local)
+  const matches: string[] = []
+  for (const path of candidates)
+    if ((await sha256(new Uint8Array(await result.rawRead(path)))) === wanted) matches.push(path)
+  // Prior base versions may also be retained; exactly one owned copy preserves this local save.
+  expect(matches).toHaveLength(1)
+}
+
 it.each(
   [false, true].flatMap((bounded) =>
     [false, true].flatMap((small) =>
@@ -409,11 +438,7 @@ it.each(['take', 'recover'] as const)(
     expect(result.error).toBeNull()
     expect((await result.state.byFileId('sample-file'))?.versionId).toBe('incoming')
     expect(await result.state.getMeta('pull-write:sample-file')).toBeNull()
-    const retained = result.app.loadLocalStorage(RECOVERED_WRITES_KEY) as { backup: string }[]
-    expect(retained).toHaveLength(1)
-    expect(await sha256(new Uint8Array(await result.rawRead(retained[0].backup)))).toBe(
-      await sha256(result.local)
-    )
+    await expectRetainedLocal(result)
     expect(await sha256(new Uint8Array(await result.rawRead(result.change.path)))).toBe(
       await sha256(result.incoming)
     )
@@ -465,11 +490,7 @@ it.each(
       await sha256(result.incoming)
     )
     if (edited) {
-      const retained = result.app.loadLocalStorage(RECOVERED_WRITES_KEY) as { backup: string }[]
-      expect(retained).toHaveLength(1)
-      expect(await sha256(new Uint8Array(await result.rawRead(retained[0].backup)))).toBe(
-        await sha256(result.local)
-      )
+      await expectRetainedLocal(result)
     }
     expect(new Set(result.ranges).size).toBe(result.ranges.length)
   }
@@ -511,11 +532,7 @@ it.each(matrix)(
         await sha256(window === 'ledger' && edited ? result.local : result.incoming)
       )
       if (edited && window !== 'ledger') {
-        const retained = result.app.loadLocalStorage(RECOVERED_WRITES_KEY) as { backup: string }[]
-        expect(retained).toHaveLength(1)
-        expect(await sha256(new Uint8Array(await result.rawRead(retained[0].backup)))).toBe(
-          await sha256(result.local)
-        )
+        await expectRetainedLocal(result)
       }
       expect(result.app.loadLocalStorage(JOURNAL_KEY) ?? []).toEqual([])
     }
