@@ -1,3 +1,5 @@
+import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
+import type { ConditionalFileHost } from './conditionalFiles'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
@@ -688,6 +690,7 @@ export class ObsidianFileSystem implements FileSystem {
     return this.placementStages
   }
   private readonly guardedAdapter: DataAdapter
+  private readonly mutationAdapter: (check: () => void) => DataAdapter
   readonly externalCoordination: ExternalFileCoordination
 
   constructor(
@@ -732,100 +735,112 @@ export class ObsidianFileSystem implements FileSystem {
         )
       : this.scopedAdapter
     this.diagnostic = options.diagnostic
-    const diagnosticNative = new WeakMap<object, object>()
-    const guardedMethods = new Map<
-      PropertyKey,
-      { source: unknown; wrapped: (...args: unknown[]) => unknown }
-    >()
-    this.guardedAdapter = new Proxy(runtimeAdapter, {
-      get: (target, key) => {
-        const source = Reflect.get(this.scopedAdapter, key)
-        const cached = guardedMethods.get(key)
-        if (cached && cached.source === source) return cached.wrapped
-        const value = Reflect.get(target, key)
-        if (key === 'fsPromises' && value && options.diagnostic) {
-          if (!diagnosticNative.has(value))
-            diagnosticNative.set(value, nativeDiagnostics(value, options.diagnostic))
-          return diagnosticNative.get(value)
-        }
-        if (typeof value !== 'function') return value
-        // Borrowed only during the synchronous diagnostic callback; no per-call path arrays.
-        const diagnosticPaths: string[] = []
-        const diagnosticLabel = 'adapter ' + String(key)
-        const bound =
-          options.diagnostic &&
-          [
-            'exists',
-            'stat',
-            'list',
-            'readBinary',
-            'writeBinary',
-            'write',
-            'appendBinary',
-            'rename',
-            'mkdir',
-            'remove',
-            'rmdir',
-            'copy',
-          ].includes(String(key))
-            ? async (...args: unknown[]) => {
-                const startedAt = Date.now()
-                let outcome = 'failed'
-                try {
-                  const result = await value.apply(target, args)
-                  outcome = 'complete'
-                  return result
-                } finally {
-                  diagnosticPaths.length = 0
-                  if (typeof args[0] === 'string') diagnosticPaths.push(args[0])
-                  if ((key === 'rename' || key === 'copy') && typeof args[1] === 'string')
-                    diagnosticPaths.push(args[1])
-                  options.diagnostic(diagnosticLabel, startedAt, outcome, diagnosticPaths)
+    const instrument = (runtimeAdapter: DataAdapter): DataAdapter => {
+      const diagnosticNative = new WeakMap<object, object>()
+      const guardedMethods = new Map<
+        PropertyKey,
+        { source: unknown; wrapped: (...args: unknown[]) => unknown }
+      >()
+      return new Proxy(runtimeAdapter, {
+        get: (target, key) => {
+          const source = Reflect.get(this.scopedAdapter, key)
+          const cached = guardedMethods.get(key)
+          if (cached && cached.source === source) return cached.wrapped
+          const value = Reflect.get(target, key)
+          if (key === 'fsPromises' && value && options.diagnostic) {
+            if (!diagnosticNative.has(value))
+              diagnosticNative.set(value, nativeDiagnostics(value, options.diagnostic))
+            return diagnosticNative.get(value)
+          }
+          if (typeof value !== 'function') return value
+          // Borrowed only during the synchronous diagnostic callback; no per-call path arrays.
+          const diagnosticPaths: string[] = []
+          const diagnosticLabel = 'adapter ' + String(key)
+          const bound =
+            options.diagnostic &&
+            [
+              'exists',
+              'stat',
+              'list',
+              'readBinary',
+              'writeBinary',
+              'write',
+              'appendBinary',
+              'rename',
+              'mkdir',
+              'remove',
+              'rmdir',
+              'copy',
+            ].includes(String(key))
+              ? async (...args: unknown[]) => {
+                  const startedAt = Date.now()
+                  let outcome = 'failed'
+                  try {
+                    const result = await value.apply(target, args)
+                    outcome = 'complete'
+                    return result
+                  } finally {
+                    diagnosticPaths.length = 0
+                    if (typeof args[0] === 'string') diagnosticPaths.push(args[0])
+                    if ((key === 'rename' || key === 'copy') && typeof args[1] === 'string')
+                      diagnosticPaths.push(args[1])
+                    options.diagnostic(diagnosticLabel, startedAt, outcome, diagnosticPaths)
+                  }
                 }
+              : value.bind(target)
+          if (
+            ![
+              'write',
+              'writeBinary',
+              'appendBinary',
+              'append',
+              'process',
+              'mkdir',
+              'rename',
+              'remove',
+              'rmdir',
+              'copy',
+            ].includes(String(key))
+          ) {
+            guardedMethods.set(key, { source, wrapped: bound })
+            return bound
+          }
+          const wrapped = (...args: unknown[]) => {
+            const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
+            for (const path of paths) this.inventory?.mutations.add(path)
+            if (key === 'rmdir' || key === 'rename' || key === 'remove')
+              for (const path of paths)
+                for (const parent of this.inventory?.parentFolders ?? [])
+                  if (parent === path || parent.startsWith(path + '/'))
+                    this.inventory?.parentFolders?.delete(parent)
+            this.externalCoordination.assertEnginePaths(paths)
+            const result = bound(...args)
+            if (key !== 'rename') return result
+            return Promise.resolve(result).then(async (answer) => {
+              const reconcile = Reflect.get(this.scopedAdapter, 'reconcileInternalFile')
+              if (typeof reconcile === 'function') {
+                this.runtimeFence?.assertOwned()
+                await reconcile.call(this.scopedAdapter, paths[1])
+                this.runtimeFence?.assertOwned()
               }
-            : value.bind(target)
-        if (
-          ![
-            'write',
-            'writeBinary',
-            'appendBinary',
-            'append',
-            'process',
-            'mkdir',
-            'rename',
-            'remove',
-            'rmdir',
-            'copy',
-          ].includes(String(key))
-        ) {
-          guardedMethods.set(key, { source, wrapped: bound })
-          return bound
-        }
-        const wrapped = (...args: unknown[]) => {
-          const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
-          for (const path of paths) this.inventory?.mutations.add(path)
-          if (key === 'rmdir' || key === 'rename' || key === 'remove')
-            for (const path of paths)
-              for (const parent of this.inventory?.parentFolders ?? [])
-                if (parent === path || parent.startsWith(path + '/'))
-                  this.inventory?.parentFolders?.delete(parent)
-          this.externalCoordination.assertEnginePaths(paths)
-          const result = bound(...args)
-          if (key !== 'rename') return result
-          return Promise.resolve(result).then(async (answer) => {
-            const reconcile = Reflect.get(this.scopedAdapter, 'reconcileInternalFile')
-            if (typeof reconcile === 'function') {
-              this.runtimeFence?.assertOwned()
-              await reconcile.call(this.scopedAdapter, paths[1])
-              this.runtimeFence?.assertOwned()
-            }
-            return answer
+              return answer
+            })
+          }
+          guardedMethods.set(key, { source, wrapped })
+          return wrapped
+        },
+      })
+    }
+    this.guardedAdapter = instrument(runtimeAdapter)
+    this.mutationAdapter = (check) =>
+      instrument(
+        guardedVaultAdapter(
+          mutationCheckedAdapter(this.scopedAdapter, () => {
+            check()
+            this.runtimeFence?.assertOwned()
           })
-        }
-        guardedMethods.set(key, { source, wrapped })
-        return wrapped
-      },
-    })
+        )
+      )
     this.directories = new VaultDirectories(
       this.guardedAdapter,
       storageOf(app),
@@ -883,7 +898,7 @@ export class ObsidianFileSystem implements FileSystem {
               try {
                 this.runtimeFence?.assertReady()
                 release.check()
-                await release.wait(this.guardedAdapter.rename(temp, path))
+                await release.wait(this.mutationAdapter(() => release.check()).rename(temp, path))
                 release.check()
               } catch (error) {
                 if (
@@ -937,7 +952,7 @@ export class ObsidianFileSystem implements FileSystem {
       caches.get(conditionalRoot) ??
       new MemoryRetention()
     caches.set(conditionalRoot, retention)
-    this.conditional = new ConditionalFiles({
+    const conditionalHost: ConditionalFileHost = {
       retention,
       ...(!this.native
         ? {
@@ -1016,7 +1031,78 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('conflict', 'conditional metadata folder is not empty')
         await this.disk.rmdir(path, true)
       },
-    })
+    }
+    conditionalHost.withMutationCheck = (check) =>
+      this.leasedConditionalHost(conditionalHost, check)
+    this.conditional = new ConditionalFiles(conditionalHost)
+  }
+
+  private leasedConditionalHost(base: ConditionalFileHost, check: () => void): ConditionalFileHost {
+    const disk = this.mutationAdapter(check)
+    const native = nativeOf(
+      disk,
+      (paths = []) => {
+        check()
+        this.externalCoordination.assertEnginePaths(paths)
+      },
+      this.privateRoot ? this.privateRoot + '/recovery' : undefined,
+      this.diagnostic
+    )
+    const io = new BoundedVaultIo(
+      disk,
+      () => {
+        check()
+        this.runtimeFence?.assertReady()
+      },
+      (work) => {
+        check()
+        return this.runtimeFence ? this.runtimeFence.effect(work) : work()
+      },
+      this.scopedAdapter,
+      this.configDir,
+      this.privateRoot
+    )
+    return {
+      ...base,
+      withMutationCheck: undefined,
+      stat: (path) => disk.stat(path),
+      fingerprint: (path, signal) => io.fingerprint(path, signal, true),
+      read: async (path) => new Uint8Array(await disk.readBinary(path)),
+      create: async (path, bytes, mtime) => {
+        await io.create(path, mtime)
+        for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
+          await io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+      },
+      mkdir: (path) => makeParents(disk, path + '/placeholder'),
+      list: (path) => disk.list(path),
+      capture: (from, to) => (native ? native.rename(from, to) : disk.rename(from, to)),
+      restoreDirectory: (from, to) => {
+        if (!native) return disk.rename(from, to)
+        if (!native.restoreDirectoryExclusive)
+          throw new EngineError('io', 'exclusive directory restoration is unavailable')
+        return native.restoreDirectoryExclusive(from, to)
+      },
+      install: (from, to) => {
+        if (!native) return disk.rename(from, to)
+        if (!native.installExclusive)
+          throw new EngineError('io', 'exclusive native installation is unavailable')
+        return native.installExclusive(from, to)
+      },
+      flush: async (path, parentsOnly) => {
+        if (!native) return
+        if (!native.syncPath) throw new EngineError('io', 'native durability is unavailable')
+        await native.syncPath(path, parentsOnly)
+      },
+      ...(native?.sameObject ? { sameObject: (a, b) => native.sameObject(a, b) } : {}),
+      remove: (path) => disk.remove(path),
+      rmdir: async (path) => {
+        if (native) return native.rmdirEmpty(path)
+        const entries = await disk.list(path)
+        if (entries.files.length || entries.folders.length)
+          throw new EngineError('conflict', 'conditional metadata folder is not empty')
+        await disk.rmdir(path, true)
+      },
+    }
   }
 
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {

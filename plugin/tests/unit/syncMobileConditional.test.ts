@@ -22,19 +22,20 @@ it('stops real incoming recovery after its mkdir acknowledgement outlives the le
       if (args[1] === 'sample.bin') throw Object.assign(new Error('occupied'), { code: 'EEXIST' })
       await rename.apply(this, args)
     }
+    const mkdir = app.vault.adapter.mkdir
+    app.vault.adapter.mkdir = async (path: string) => {
+      await mkdir(path)
+      if (path.includes('/objects/')) {
+        entered.resolve()
+        await stalled.promise
+        resumed.resolve()
+      }
+    }
+    const capture = vi.spyOn(app.vault.adapter, 'rename')
+    const create = vi.spyOn(app.vault.adapter, 'writeBinary')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
     const disk = new ObsidianFileSystem(app as never)
     const conditional = Reflect.get(disk, 'conditional')
-    const host = Reflect.get(conditional, 'host')
-    const mkdir = host.mkdir.bind(host)
-    host.mkdir = async (path: string) => {
-      await mkdir(path)
-      entered.resolve()
-      await stalled.promise
-      resumed.resolve()
-    }
-    const capture = vi.spyOn(host, 'capture')
-    const create = vi.spyOn(host, 'create')
-    const remove = vi.spyOn(host, 'remove')
     const recovery = vi.spyOn(conditional, 'recoverIncoming')
     const operation = disk.conditionalFile({
       path: 'sample.bin',
@@ -46,6 +47,11 @@ it('stops real incoming recovery after its mkdir acknowledgement outlives the le
     expect(recovery).toHaveBeenCalledOnce()
     const recovered = recovery.mock.results[0].value as Promise<void>
     const settled = recovered.catch((error: unknown) => error)
+    const before = {
+      capture: capture.mock.calls.length,
+      create: create.mock.calls.length,
+      remove: remove.mock.calls.length,
+    }
     const evidence = await Reflect.get(disk, 'journal').currentEntries()
     expect(evidence).toHaveLength(1)
     const saving = app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer)
@@ -55,9 +61,9 @@ it('stops real incoming recovery after its mkdir acknowledgement outlives the le
     stalled.resolve()
     await resumed.promise
     await settled
-    expect(capture).not.toHaveBeenCalled()
-    expect(create).not.toHaveBeenCalled()
-    expect(remove).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalledTimes(before.capture)
+    expect(create).toHaveBeenCalledTimes(before.create + 1) // the ordinary save
+    expect(remove).toHaveBeenCalledTimes(before.remove)
     expect(await Reflect.get(disk, 'journal').currentEntries()).toEqual(evidence)
     expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
     expect((await app.vault.adapter.list('')).files).toEqual(['sample.bin'])

@@ -113,6 +113,71 @@ const GUARDED = Symbol('sync guarded filesystem')
 const adapterOrigins = new WeakMap<DataAdapter, DataAdapter>()
 const nativeOrigins = new WeakMap<object, object>()
 const adapters = new WeakMap<DataAdapter, DataAdapter>()
+const mutationRebuilders = new WeakMap<DataAdapter, (check: () => void) => DataAdapter>()
+
+/** The sole issue boundary for an operation-owned mutation, including native handles. */
+function issueMutation<T>(check: () => void, invoke: () => T): T {
+  check()
+  return invoke()
+}
+
+/** Rebuild validation above a checked leaf; never share an ambient lease with user saves. */
+export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void): DataAdapter {
+  const rebuild = mutationRebuilders.get(adapter)
+  if (rebuild) return rebuild(check)
+  const native = Reflect.get(adapter, 'fsPromises')
+  const methods = new Map<PropertyKey, unknown>()
+  const handles = (handle: object) =>
+    new Proxy(handle, {
+      get(target, key) {
+        const value = Reflect.get(target, key)
+        if (typeof value !== 'function') return value
+        return /^(?:write.*|append.*|truncate|utimes|chmod|chown|sync|datasync)$/.test(String(key))
+          ? (...args: unknown[]) => issueMutation(check, () => value.apply(target, args))
+          : value.bind(target)
+      },
+    })
+  const checkedNative =
+    native &&
+    new Proxy(native, {
+      get(target, key) {
+        const value = Reflect.get(target, key)
+        if (typeof value !== 'function') return value
+        if (key === 'open')
+          return async (...args: unknown[]) => {
+            // Numeric opens include no-follow flags; even a read handle can flush or mutate later.
+            const writable =
+              typeof args[1] === 'number' || (typeof args[1] === 'string' && /[wa+]/.test(args[1]))
+            const handle = await (writable
+              ? issueMutation(check, () => value.apply(target, args))
+              : value.apply(target, args))
+            return handles(handle)
+          }
+        return /^(?:write.*|append.*|mkdir|rename|copy.*|unlink|rm|rmdir|link|symlink|truncate|utimes|chmod|chown)$/.test(
+          String(key)
+        )
+          ? (...args: unknown[]) => issueMutation(check, () => value.apply(target, args))
+          : value.bind(target)
+      },
+    })
+  return new Proxy(adapter, {
+    get(target, key) {
+      if (key === 'fsPromises') return checkedNative
+      if (methods.has(key)) return methods.get(key)
+      const value = Reflect.get(target, key)
+      if (typeof value !== 'function') return value
+      const wrapped = mutator.test(String(key))
+        ? (...args: unknown[]) =>
+            issueMutation(check, () =>
+              engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+            )
+        : value.bind(target)
+      methods.set(key, wrapped)
+      return wrapped
+    },
+  })
+}
+
 /** Share the boundary with inspection, streaming and attachment effects. */
 export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
   if (
@@ -126,6 +191,9 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
   const full = (adapter as DataAdapter & LinkAdapter).getFullPath?.bind(adapter)
   if (!full || !native) {
     const proxy = mobileGuard(adapter)
+    mutationRebuilders.set(proxy, (check) =>
+      guardedVaultAdapter(mutationCheckedAdapter(adapter, check))
+    )
     adapterOrigins.set(proxy, adapterOrigins.get(adapter) ?? adapter)
     adapters.set(adapter, proxy)
     return proxy
@@ -291,6 +359,9 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
       }
     },
   })
+  mutationRebuilders.set(guarded, (check) =>
+    guardedVaultAdapter(mutationCheckedAdapter(adapter, check))
+  )
   adapterOrigins.set(guarded, adapterOrigins.get(adapter) ?? adapter)
   adapters.set(adapter, guarded)
   adapters.set(guarded, guarded)
@@ -445,10 +516,7 @@ async function openNoFollow(
     if (stat.isSymbolicLink()) throw new EngineError('io', 'Native parent contains a symbolic link')
     parents.push({ path: parent, dev: stat.dev, ino: stat.ino })
   }
-  const handle = await desktop.promises.open(
-    path,
-    (mode & ~constants.O_TRUNC) | constants.O_NOFOLLOW
-  )
+  const handle = await fs.open(path, (mode & ~constants.O_TRUNC) | constants.O_NOFOLLOW)
   try {
     const opened = await handle.stat()
     const linked = await fs.lstat(path)
@@ -1544,7 +1612,7 @@ export function connectionAdapter(
         })
       : undefined
   const overrides = new Map<PropertyKey, unknown>()
-  return new Proxy(Object.create(null) as DataAdapter, {
+  const port = new Proxy(Object.create(null) as DataAdapter, {
     set(_target, key, value) {
       overrides.set(key, value)
       return true
@@ -1618,6 +1686,10 @@ export function connectionAdapter(
       }
     },
   })
+  mutationRebuilders.set(port, (check) =>
+    connectionAdapter(mutationCheckedAdapter(adapter, check), rootInput, privateRoot)
+  )
+  return port
 }
 
 /** Inspections keep storage on the original host and receive only the scoped file port. */

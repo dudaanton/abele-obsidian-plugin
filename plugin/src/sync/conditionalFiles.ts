@@ -37,6 +37,7 @@ interface CheckedLease {
   wait?<T>(work: Promise<T>): Promise<T>
 }
 export interface ConditionalFileHost {
+  withMutationCheck?(check: () => void): ConditionalFileHost
   checked?: {
     maxBytes: number
     wait(path: string): Promise<void>
@@ -83,7 +84,8 @@ function leasedHost(
   host: ConditionalFileHost,
   current: () => CheckedLease | undefined
 ): ConditionalFileHost {
-  return new Proxy(host, {
+  const checked = host.withMutationCheck?.(() => current()?.check?.()) ?? host
+  return new Proxy(checked, {
     get(target, key) {
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
