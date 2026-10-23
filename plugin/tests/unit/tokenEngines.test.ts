@@ -293,21 +293,47 @@ it.each(['ledger', 'exclusions', 'resume'] as const)(
           mtime: 1,
         })
       }
+      // Pending work must still translate normally when Resume bypasses the safety check.
+      await state.setJournal({
+        batchId: 'pending-batch',
+        idempotencyKey: 'pending-create',
+        startedAt: new Date().toISOString(),
+        ops: [
+          {
+            op: 'create',
+            path: 'Notes/pending.md',
+            sha: 'b'.repeat(64),
+            size: 1,
+            mtime: 1,
+          },
+        ],
+      })
       state.close()
       if (where === 'resume') f.ui.startupApprovals.add(id)
-      // Fail the safety translation once; later journal translations remain valid.
-      mapping = vi.spyOn(LocalFolderPlacement.prototype, 'toLocal').mockImplementationOnce(() => {
-        throw new Error('sample mapping failure')
-      })
+      // Fail only a safety translation; Resume skips it and must not poison journal mapping.
+      const toLocal = LocalFolderPlacement.prototype.toLocal
+      const safetyPath = where === 'ledger' ? 'Notes/sample-0.md' : 'Notes/Archive'
+      let mappingFailed = false
+      mapping = vi
+        .spyOn(LocalFolderPlacement.prototype, 'toLocal')
+        .mockImplementation(function (path) {
+          if (path === safetyPath && !mappingFailed) {
+            mappingFailed = true
+            throw new Error('sample mapping failure')
+          }
+          return toLocal.call(this, path)
+        })
       recover = vi
         .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
         .mockRejectedValue(new Error('preflight complete'))
       restarted = f.makeHost()
-      restarted.start()
-      await vi.waitFor(() => expect(recover).toHaveBeenCalled())
+      // Await the engine's startup outcome, including failure, before checking the handshake.
+      await f.ui.connectionsChanged()
+      expect(recover).toHaveBeenCalled()
       expect(f.registry.records()[0].paused).toBe(false)
       expect(f.registry.records()[0].state[STARTUP_STOP]).toBeFalsy()
       expect(f.ui.startupApprovals.has(id)).toBe(false)
+      expect(mappingFailed).toBe(where !== 'resume')
       const cannotJudge = [...(f.ui.activity.value[id]?.events ?? [])].some((event) =>
         event.text.includes('cannot judge')
       )
