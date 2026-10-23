@@ -1,10 +1,38 @@
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem } from '@abele/sync-sdk/core'
+import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
 import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacement'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
+
+it('maps candidate names and the supplied host key through scoped state handles', async () => {
+  const store = new MemoryStateStore()
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const row = {
+    path: 'Shared/A.md',
+    wirePath: 'Shared/A.md',
+    fileId: 'sample',
+    versionId: 'v1',
+    sha: 'a'.repeat(64),
+    size: 1,
+    mtime: 1,
+  }
+  await store.put(row)
+  const local = placement.localState(store)
+  const key = (path: string) => path.toLowerCase()
+  expect(await Array.fromAsync(local.pathCandidates!('Moved/a.md', key))).toEqual([
+    { ...row, path: 'Moved/A.md' },
+  ])
+  await local.transaction(async (tx) => {
+    await tx.delete('Moved/A.md')
+    await tx.put({ ...row, path: 'Moved/B.md', fileId: 'other', wirePath: 'Shared/B.md' })
+    expect(await Array.fromAsync(tx.pathCandidates!('Moved/a.md', key))).toEqual([])
+    expect(await Array.fromAsync(tx.pathCandidates!('Moved/b.md', key))).toEqual([
+      { ...row, path: 'Moved/B.md', fileId: 'other', wirePath: 'Shared/B.md' },
+    ])
+  })
+})
 
 it.each(['Private/secret.md', 'Shared-other/secret.md', 'Shared/../Private/secret.md'])(
   'refuses paths outside the server scope before touching the filesystem: %s',

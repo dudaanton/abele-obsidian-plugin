@@ -101,8 +101,9 @@ export class LocalFolderPlacement {
     }).fileSystem(fs)
   }
   localState(store: StateStore): StateStore {
+    const toLocal = (path: string) => this.toLocal(path)
     const local = (entry: StateEntry | null) =>
-      entry ? { ...entry, path: this.toLocal(entry.path) } : null
+      entry ? { ...entry, path: toLocal(entry.path) } : null
     const toServer = (path: string) => this.toServer(path)
     const placed = (tx: StateStore) => this.localState(tx)
     return new Proxy(store, {
@@ -120,6 +121,14 @@ export class LocalFolderPlacement {
           return (entry: StateEntry) => target.put({ ...entry, path: toServer(entry.path) })
         if (key === 'delete') return (path: string) => target.delete(toServer(path))
         const value = Reflect.get(target, key)
+        if (key === 'pathCandidates' && typeof value === 'function')
+          return async function* (path: string, nameKey?: (path: string) => string) {
+            const mappedKey = nameKey
+              ? (candidate: string) => nameKey(toLocal(candidate))
+              : undefined
+            for await (const entry of value.call(target, toServer(path), mappedKey))
+              yield local(entry)
+          }
         return typeof value === 'function' ? value.bind(target) : value
       },
     })
