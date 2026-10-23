@@ -305,15 +305,23 @@ These snapshots read fixture bytes outside the renderer and their preparation co
 in phase timing. Final byte verification and sync settle are still required. Every declared
 kind/occurrence must trigger; repeating another occurrence cannot replace one.
 
-Native hash observation preserves hash inputs/results. Bundled JavaScript hashing is separately
-observed with precise debugger call counts spanning the old and new renderer contexts, only
-for the rebuild/recovery window. Raw coverage files accompany CPU profiles. Missing segments,
-unrecognized hash functions, and ambiguous positive JavaScript hash counts remain unproven
-and fail the rebuild oracle; native zero counters alone never prove zero renderer hashing.
-Call counts can include setup/normal sync work and are not themselves a claim that indexing
-caused a redundant file hash. This additional observation has overhead and requires live
-qualification before interpreting a timing comparison. Owned debugger sessions are disposed
-on navigation and replacement; a debugger belonging to another tool is never detached.
+Native hash observation preserves hash inputs/results and records stack provenance separately
+for host, plugin and unknown calls. Debugger tracepoints in recognized bundled incremental
+hash constructors attach digest observers without rehashing content or changing digest results.
+Receipts retain the actual SHA, byte count and stack. Activation must be proved by bindings
+and observed JavaScript digests in both renderer generations; missing proof fails the oracle.
+The observer correlates digests with fixture file SHAs and prior observations, retaining raw
+calls and matching paths. Upload redundancy uses actual PUT body bytes for SHAs already in
+the server snapshot, rather than counting upload-session begin requests.
+
+Precise debugger call counts remain available across old and new renderer contexts;
+`preciseHashCoverage: false` disables those counters when actual digest observation is used.
+Raw coverage files accompany CPU profiles when enabled. Native zero counters alone never
+prove zero JavaScript hashing. The recovery window includes normal sync work, so positive
+counters and digest matches do not by themselves prove that rebuilding caused each hash.
+Observation has overhead and requires live qualification before interpreting timing comparisons.
+Owned debugger sessions are disposed on navigation and replacement; a debugger belonging to
+another tool is never detached.
 
 If the driver exits from a signal the worker did not send, do **not** restart a live run.
 Copy the last checkpoint/observer/CPU/memory evidence, let the supervisor clean up, verify
