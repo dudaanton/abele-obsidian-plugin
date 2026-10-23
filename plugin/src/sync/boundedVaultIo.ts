@@ -618,11 +618,11 @@ export class BoundedVaultIo {
     if (this.raw.open && this.raw.fullPath) {
       const handle = await this.effect(() => this.raw.open(this.raw.fullPath(path), 'wx'))
       try {
+        await this.date(path, mtime)
         if (durability === 'acknowledged') await this.effect(() => handle.sync())
       } finally {
         await handle.close()
       }
-      await this.date(path, mtime)
     } else {
       this.receipts.delete(path)
       await this.disk.writeBinary(path, new ArrayBuffer(0), { mtime })
@@ -657,11 +657,11 @@ export class BoundedVaultIo {
           if (!result.bytesWritten) throw new EngineError('io', 'short staging write')
           written += result.bytesWritten
         }
+        await this.date(path, mtime)
         if (durability === 'acknowledged') await this.effect(() => handle.sync())
       } finally {
         await handle.close()
       }
-      await this.date(path, mtime)
     } else {
       const before = stampOf(await this.stat(path))
       let receipt = this.receipts.get(path)

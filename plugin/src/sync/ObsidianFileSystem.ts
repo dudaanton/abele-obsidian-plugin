@@ -2240,6 +2240,7 @@ export class ObsidianFileSystem implements FileSystem {
       await this.journal.persist(() => this.journal.add(entry))
       this.stages.set(temp, entry)
       await this.io.create(temp, mtime)
+      if (this.native) await this.native.syncPath(temp, true)
       const stage = await this.reopenStage(temp)
       ready = true
       return stage
@@ -2262,6 +2263,7 @@ export class ObsidianFileSystem implements FileSystem {
           throw new EngineError('io', 'cannot discard an unowned stage')
         await this.disk.remove(id)
       }
+      if (this.native) await this.native.syncPath(id, true)
       if (entry) await this.journal.persist(() => this.journal.drop(entry))
       this.stages.delete(id)
       releaseSourceStage(id)
@@ -2410,6 +2412,7 @@ export class ObsidianFileSystem implements FileSystem {
           ? this.discardStage(id)
           : exclusive(async () => {
               if ((await this.rawStat(id)) !== null) await this.disk.remove(id)
+              if (this.native) await this.native.syncPath(id, true)
               await this.journal.persist(() => this.journal.drop(entry))
               this.stages.delete(id)
               finished = true
