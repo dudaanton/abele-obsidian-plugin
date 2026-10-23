@@ -1168,8 +1168,9 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
         }
       const wrapped = wrap(original as Method)
       // Preserve the receiver-scoped entry when instrumentation precedes the path gate.
-      Reflect.set(wrapped, UNGATED_ADAPTER, wrap(ungatedAdapterMethod(original as Method)))
-      setGatedAdapterMethod(adapter, key, wrapped)
+      if (Reflect.get(original, UNGATED_ADAPTER))
+        Reflect.set(wrapped, UNGATED_ADAPTER, wrap(ungatedAdapterMethod(original as Method)))
+      Object.defineProperty(adapter, key, { configurable: true, writable: true, value: wrapped })
     }
   }
   if (!roots.has(root)) roots.set(root, 0)
