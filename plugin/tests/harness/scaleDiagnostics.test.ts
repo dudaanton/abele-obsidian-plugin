@@ -138,109 +138,112 @@ it('disables backend CPU sampling after a failed capture instead of leaving a pr
   await profiler.close(220)
 })
 
-it('waits for main-process profiling setup before finishing observer load and keeps long-task start times', async () => {
-  const { readFile } = await import('node:fs/promises')
-  const { runInNewContext } = await import('node:vm')
-  const source = await readFile(new URL('../scale/observer.cjs', import.meta.url), 'utf8')
-  const events = [],
-    observers = [],
-    cleanup = [],
-    sent = []
-  let release,
-    closed = false
-  const ready = new Promise((resolve) => {
-    release = resolve
-  })
-  const config = {
-    device: '0',
-    evidence: 'sample',
-    writeObserver: '/sample/writes.cjs',
-    reindexObserver: '/sample/reindex.cjs',
-    diagnostics: '/sample/diagnostics.cjs',
+it.each([true, false])(
+  'waits for main-process profiling setup and scopes read observation: %s',
+  async (observeContentReads) => {
+    const { readFile } = await import('node:fs/promises')
+    const { runInNewContext } = await import('node:vm')
+    const source = await readFile(new URL('../scale/observer.cjs', import.meta.url), 'utf8')
+    const events = [],
+      observers = [],
+      cleanup = [],
+      sent = []
+    let release,
+      closed = false
+    const ready = new Promise((resolve) => {
+      release = resolve
+    })
+    const config = {
+      device: '0',
+      evidence: 'sample',
+      observeContentReads,
+      writeObserver: '/sample/writes.cjs',
+      reindexObserver: '/sample/reindex.cjs',
+      diagnostics: '/sample/diagnostics.cjs',
+    }
+    const module = { exports: null }
+    runInNewContext(source, {
+      module,
+      console: { debug() {} },
+      performance: { timeOrigin: 1000 },
+      setInterval: () => 1,
+      clearInterval() {},
+      document: { body: {}, querySelectorAll: () => [] },
+      MutationObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+      PerformanceObserver: class {
+        constructor(callback) {
+          observers.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+      },
+      require: (name) => {
+        if (name === 'obsidian')
+          return {
+            Plugin: class {
+              app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+              register(fn) {
+                cleanup.push(fn)
+              }
+            },
+          }
+        if (name === 'fs')
+          return {
+            existsSync: () => false,
+            readFileSync: () => JSON.stringify(config),
+            appendFileSync: (_p, line) => events.push(JSON.parse(line)),
+          }
+        if (name === 'node:crypto') return {}
+        if (name === 'path') return { join: (...p) => p.join('/') }
+        if (name === config.reindexObserver)
+          return { observeRebuild: () => {}, observeHashes: () => () => {} }
+        if (name === config.writeObserver)
+          return {
+            observeWrites: () => () => events.push({ event: 'cleanup-write' }),
+            observeReads: () => () => events.push({ event: 'cleanup-read' }),
+          }
+        if (name === config.diagnostics) return diagnostics
+        if (name === 'electron') return { ipcRenderer: { send: (channel) => sent.push(channel) } }
+        if (name === '@electron/remote')
+          return {
+            getCurrentWebContents: () => ({ id: 7 }),
+            require: () => ({
+              watch: async (id, serialized) => {
+                expect(JSON.parse(serialized).device).toBe('0')
+                expect(id).toBe(7)
+                await ready
+                return 'sample-heartbeat'
+              },
+              unwatch: () => {
+                closed = true
+              },
+            }),
+          }
+        throw new Error('Unexpected fixture module')
+      },
+    })
+    let finished = false
+    const pending = new module.exports().onload().then(() => {
+      finished = true
+    })
+    expect(finished).toBe(false)
+    release()
+    await pending
+    expect(sent).toEqual(['sample-heartbeat'])
+    observers.at(-1)({ getEntries: () => [{ startTime: 50, duration: 7061, attribution: [] }] })
+    expect(events).toContainEqual(
+      expect.objectContaining({ event: 'long-task', startedAt: 1050, durationMs: 7061 })
+    )
+    cleanup.forEach((fn) => fn())
+    expect(events.filter((e) => e.event.startsWith('cleanup-')).map((e) => e.event)).toEqual(
+      observeContentReads ? ['cleanup-read', 'cleanup-write'] : ['cleanup-write']
+    )
+    expect(closed).toBe(true)
   }
-  const module = { exports: null }
-  runInNewContext(source, {
-    module,
-    console: { debug() {} },
-    performance: { timeOrigin: 1000 },
-    setInterval: () => 1,
-    clearInterval() {},
-    document: { body: {}, querySelectorAll: () => [] },
-    MutationObserver: class {
-      observe() {}
-      disconnect() {}
-    },
-    PerformanceObserver: class {
-      constructor(callback) {
-        observers.push(callback)
-      }
-      observe() {}
-      disconnect() {}
-    },
-    require: (name) => {
-      if (name === 'obsidian')
-        return {
-          Plugin: class {
-            app = { vault: { adapter: { getBasePath: () => '/sample' } } }
-            register(fn) {
-              cleanup.push(fn)
-            }
-          },
-        }
-      if (name === 'fs')
-        return {
-          existsSync: () => false,
-          readFileSync: () => JSON.stringify(config),
-          appendFileSync: (_p, line) => events.push(JSON.parse(line)),
-        }
-      if (name === 'node:crypto') return {}
-      if (name === 'path') return { join: (...p) => p.join('/') }
-      if (name === config.reindexObserver)
-        return { observeRebuild: () => {}, observeHashes: () => () => {} }
-      if (name === config.writeObserver)
-        return {
-          observeWrites: () => () => events.push({ event: 'cleanup-write' }),
-          observeReads: () => () => events.push({ event: 'cleanup-read' }),
-        }
-      if (name === config.diagnostics) return diagnostics
-      if (name === 'electron') return { ipcRenderer: { send: (channel) => sent.push(channel) } }
-      if (name === '@electron/remote')
-        return {
-          getCurrentWebContents: () => ({ id: 7 }),
-          require: () => ({
-            watch: async (id, serialized) => {
-              expect(JSON.parse(serialized).device).toBe('0')
-              expect(id).toBe(7)
-              await ready
-              return 'sample-heartbeat'
-            },
-            unwatch: () => {
-              closed = true
-            },
-          }),
-        }
-      throw new Error('Unexpected fixture module')
-    },
-  })
-  let finished = false
-  const pending = new module.exports().onload().then(() => {
-    finished = true
-  })
-  expect(finished).toBe(false)
-  release()
-  await pending
-  expect(sent).toEqual(['sample-heartbeat'])
-  observers.at(-1)({ getEntries: () => [{ startTime: 50, duration: 7061, attribution: [] }] })
-  expect(events).toContainEqual(
-    expect.objectContaining({ event: 'long-task', startedAt: 1050, durationMs: 7061 })
-  )
-  cleanup.forEach((fn) => fn())
-  expect(events.filter((e) => e.event.startsWith('cleanup-')).map((e) => e.event)).toEqual([
-    'cleanup-read',
-    'cleanup-write',
-  ])
-  expect(closed).toBe(true)
-})
+)
 
 it('does not pass a run whose phase checkpoint failed', () => {
   expect(

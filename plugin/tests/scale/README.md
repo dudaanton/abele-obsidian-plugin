@@ -384,6 +384,14 @@ port wrappers are restored together in reverse installation order on observer un
 
 Renderer JSONL receipts are read as a stream, so evidence can exceed the runtime single-string limit. In-memory payload-read operations are retained only for the synced-restart window; the raw receipts remain complete. Corrupt completed receipts fail analysis; only a live scan may defer an incomplete final receipt.
 
+Payload-read instrumentation is disabled during initial upload/pull and edits: synchronous
+per-read receipt writes can materially perturb a large scan. After the app stops, the driver
+enables it in both vault configurations before timing the synced restart. Its zero-content-read
+oracle still requires readiness in every restart renderer generation and fails on missing
+coverage or unknown/incomplete sync reads. Write observation, pause attribution and all hash
+and rebuild oracles remain active throughout. Reports declare this measurement window;
+comparisons with recordings that observed every initial read must retain that distinction.
+
 Growing JSON checkpoints/final reports and Markdown details are written incrementally to
 atomic temporary files. This includes nested restart read evidence; a large row is not
 serialized as one string. Snapshot copies use structured cloning, not JSON round trips.
@@ -391,7 +399,8 @@ JSONL rows have a 4 MiB limit, enforced before line concatenation. Individual JS
 (rotated CPU/coverage segments, small rebuild receipts and baseline comparison input) have
 a 64 MiB read limit; a corrupt/unrotated segment fails evidence analysis explicitly.
 Supply a compact baseline summary if its full report exceeds that limit. Main-process
-profiles rotate every ten seconds; profile analysis loads sequentially with four cached
+profiles rotate every 60 seconds in continuous mode (10 seconds for stall captures);
+profile analysis loads sequentially with four cached
 segments rather than loading a whole recording concurrently. Build assets, configuration,
 tokens and single rebuild-control receipts are not accumulated log readers.
 

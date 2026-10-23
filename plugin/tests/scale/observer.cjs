@@ -36,12 +36,15 @@ module.exports = class extends Plugin {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
     const { observeWrites, observeReads } = require(config.writeObserver)
     const undoWrites = observeWrites(this.app.vault.adapter, emit, fs.promises ? [fs.promises] : [])
-    const undoReads = observeReads?.(
-      this.app.vault.adapter,
-      emit,
-      fs.promises ? [fs.promises] : [],
-      config.contentPrefix
-    )
+    const undoReads =
+      config.observeContentReads === false
+        ? undefined
+        : observeReads?.(
+            this.app.vault.adapter,
+            emit,
+            fs.promises ? [fs.promises] : [],
+            config.contentPrefix
+          )
     this.register(() => {
       undoReads?.()
       undoWrites()

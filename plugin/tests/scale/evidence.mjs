@@ -3,8 +3,19 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
+import { join } from 'node:path'
 
-// Profiles rotate every ten seconds. Bounded individual JSON inputs fail explicitly,
+export async function enableRestartReadEvidence(vaults) {
+  await Promise.all(
+    vaults.map(async (root) => {
+      const path = join(root, '.scale-observer.json')
+      const config = await readEvidenceJson(path)
+      await writeEvidenceJson(path, { ...config, observeContentReads: true })
+    })
+  )
+}
+
+// Profiles rotate every minute at most. Bounded individual JSON inputs fail explicitly,
 // rather than exhausting the runtime while reading a damaged or unrotated receipt.
 export async function readEvidenceJson(path, limit = 64 * 1024 ** 2) {
   const chunks = []

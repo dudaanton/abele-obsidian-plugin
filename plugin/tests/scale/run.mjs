@@ -11,6 +11,7 @@ import {
   readEvidenceJson,
   writeEvidenceJson,
   writeEvidenceChunks,
+  enableRestartReadEvidence,
 } from './evidence.mjs'
 import {
   declaredInterruptions,
@@ -250,6 +251,7 @@ async function setupVault(config, root, device) {
       evidence: join(config.output, 'renderer.jsonl'),
       device,
       contentPrefix: config.contentPrefix,
+      observeContentReads: false,
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
@@ -290,6 +292,7 @@ export async function run(config) {
     phase: 'preflight',
     phases: [{ name: 'preflight', at: Date.now() }],
     restartContentReadRequired: true,
+    contentReadObservationWindow: 'synced restart; write and hash observers cover every phase',
     caseRefusals: [],
     primaryActivity: [],
   }
@@ -738,6 +741,7 @@ export async function run(config) {
     }
     await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
     await stop(false)
+    await enableRestartReadEvidence(devices.map((device) => device.root))
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt

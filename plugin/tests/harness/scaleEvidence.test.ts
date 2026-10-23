@@ -2,8 +2,12 @@
 import { expect, it } from 'vitest'
 import { Readable } from 'node:stream'
 import { rendererEntries } from '../scale/evidence.mjs'
-import { readEvidenceJson, writeEvidenceJson } from '../scale/evidence.mjs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  readEvidenceJson,
+  writeEvidenceJson,
+  enableRestartReadEvidence,
+} from '../scale/evidence.mjs'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { profileSummary } from '../scale/diagnostics.mjs'
 import { markdownChunks } from '../scale/oracles.mjs'
@@ -106,4 +110,28 @@ it('streams Markdown details even when one restart evidence row contains many re
   ]
   expect(Math.max(...chunks.map((chunk) => chunk.length))).toBeLessThan(16384)
   expect(chunks.join('')).toContain('sample\\|frame')
+})
+
+it('enables strict payload-read observation in every vault before the synced restart', async () => {
+  const root = await mkdtemp(join(process.cwd(), '.scale-read-window-'))
+  try {
+    const vaults = [join(root, 'a'), join(root, 'b')]
+    for (const [device, vault] of vaults.entries()) {
+      await mkdir(vault)
+      await writeEvidenceJson(join(vault, '.scale-observer.json'), {
+        observeContentReads: false,
+        evidence: 'sample.jsonl',
+        device: String(device),
+      })
+    }
+    await enableRestartReadEvidence(vaults)
+    for (const [device, vault] of vaults.entries())
+      expect(await readEvidenceJson(join(vault, '.scale-observer.json'))).toEqual({
+        observeContentReads: true,
+        evidence: 'sample.jsonl',
+        device: String(device),
+      })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
