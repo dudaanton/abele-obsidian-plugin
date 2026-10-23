@@ -749,7 +749,7 @@ export class ConditionalFiles {
           const removed = op.effect.kind === 'remove' && (await h.stat(op.path)) === null
           if (removed) await this.record(folder + '/complete', true)
           await this.archive(folder, id, removed)
-          if (removed) await this.discard(id)
+          if (removed) await this.discardOwned(id)
           return removed
         }
         await h.flush(victim)
@@ -794,7 +794,7 @@ export class ConditionalFiles {
       await this.record(folder + '/complete', true)
       await this.retireVictim(folder, intent)
       await this.archive(folder, id, true)
-      if (!intent.receipt) await this.discard(id)
+      if (!intent.receipt) await this.discardOwned(id)
       if (op.effect.kind === 'move') {
         h.changed([op.path], null)
         h.changed([op.effect.to], 'file')
@@ -896,7 +896,7 @@ export class ConditionalFiles {
         // No public mutation was attempted; this intent owns no retained user bytes.
         await operation.record(folder + '/complete', true)
         await operation.archive(folder, id, true)
-        await operation.discard(id)
+        await operation.discardOwned(id)
         return false
       }
       h.check()
@@ -932,7 +932,7 @@ export class ConditionalFiles {
           // may remove only this operation's metadata, never either recovered copy.
           await operation.record(folder + '/complete', true)
           await operation.archive(folder, id, false)
-          if (!intent.receipt) await operation.discard(id)
+          if (!intent.receipt) await operation.discardOwned(id)
           console.debug('[abele-sync] publication occupied; incoming bytes recovered', op.path)
           return false
         }
@@ -946,7 +946,7 @@ export class ConditionalFiles {
       await operation.record(folder + '/complete', true)
       await operation.retireVictim(folder, intent)
       await operation.archive(folder, id, true)
-      if (!intent.receipt) await operation.discard(id)
+      if (!intent.receipt) await operation.discardOwned(id)
       h.changed([op.path], op.effect.kind === 'remove' || op.effect.kind === 'move' ? null : 'file')
       if (op.effect.kind === 'move') h.changed([destination], 'file')
       return true
@@ -1022,7 +1022,7 @@ export class ConditionalFiles {
       await operation.restore(intent.data, path, true)
       await operation.record(folder + '/complete', true)
       await operation.archive(folder, id, false)
-      await operation.discard(id)
+      await operation.discardOwned(id)
       console.debug('[abele-sync] publication occupied; incoming bytes recovered', path)
     } catch (error) {
       if (recorded && Reflect.get(Object(error), 'leaseExpired') === true) {
@@ -1070,7 +1070,7 @@ export class ConditionalFiles {
             await h.flush(intent.destination ?? intent.path, true)
             await this.retireVictim(folder, intent)
             await this.archive(folder, id, true)
-            if (!intent.receipt) await this.discard(id)
+            if (!intent.receipt) await this.discardOwned(id)
             continue
           }
           if ((await h.stat(folder + '/intent.json')) === null) {
@@ -1113,6 +1113,17 @@ export class ConditionalFiles {
     return false
   }
   async discard(receipt: string): Promise<void> {
+    const key = this.host.root + '/' + idOf(receipt)
+    if (this.host.active.has(key))
+      throw new EngineError('conflict', 'conditional entry is active; retry cleanup later')
+    this.host.active.add(key)
+    try {
+      await this.discardOwned(receipt)
+    } finally {
+      this.host.active.delete(key)
+    }
+  }
+  private async discardOwned(receipt: string): Promise<void> {
     const h = this.host,
       id = idOf(receipt),
       folder = h.root + '/objects/' + id

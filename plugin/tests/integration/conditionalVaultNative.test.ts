@@ -717,6 +717,57 @@ it('retains a captured inode for saves through a handle opened before removal', 
 }, 30_000)
 
 // Native durability work can exceed the default 5s on a busy volume.
+// BUG D-163: a pre-capture public descriptor bypasses private-entry ownership.
+it.fails('preserves a public descriptor write inside a delayed retention unlink', async () => {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+  let injected = false
+  const { root, disk } = await setup({
+    open: async (...args: Parameters<typeof fs.open>) => {
+      const file = await fs.open(...args)
+      return new Proxy(file, {
+        get(target, key) {
+          if (key === 'sync') return async () => {}
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    },
+    unlink: async (path) => {
+      if (String(path).endsWith('/dying') && !injected) {
+        await handle!.write(new TextEncoder().encode('sample B'), 0, 8, 0)
+        injected = true
+      }
+      await fs.unlink(path)
+    },
+  })
+  const path = join(root, 'sample.bin')
+  await fs.writeFile(path, 'sample A')
+  await fs.utimes(path, 1, 1)
+  handle = await fs.open(path, 'r+')
+  const conditional = Reflect.get(disk(), 'conditional')
+  try {
+    await conditional.apply({
+      path: 'sample.bin',
+      expected: { sha: await sha256(new TextEncoder().encode('sample A')), size: 8, mtime: 1000 },
+      effect: { kind: 'remove' },
+    })
+    Reflect.set(conditional, 'retentionBytes', 1)
+    await conditional.maintenanceStep()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 3600000 + 1000)
+    try {
+      for (let i = 0; i < 3; i++) await conditional.maintenanceStep()
+    } finally {
+      clock.mockRestore()
+    }
+    expect(injected).toBe(true)
+    const visible = (await fs.readdir(root)).filter((name) => name.includes('Recovered copy'))
+    const contents = await Promise.all(visible.map((name) => fs.readFile(join(root, name), 'utf8')))
+    expect(contents).toContain('sample B')
+  } finally {
+    await handle.close()
+  }
+})
+
 it.each(['rename', 'fingerprint', 'lost-rename'] as const)(
   'preserves a descriptor write during retained eviction at %s',
   async (boundary) => {

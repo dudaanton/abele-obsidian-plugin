@@ -294,6 +294,14 @@ source is occupied. The original active intent also covers a crash before the la
 record; failed repair remains pending for restart. A late acknowledgement never certifies
 success. This recovery requires retained bytes: a raw overwrite or unlink without a retained
 preimage cannot be repaired from a hash alone.
+The checked mutation port accepts private staging and conditional-object roots explicitly.
+It rejects public raw writes, writable opens/handle mutations, unlink/remove, copy and
+public-to-public rename before invoking adapter wrappers. Public effects use quarantine
+capture or publication from private evidence (exclusive native link or mobile no-overwrite
+rename). Config files outside those exact private roots remain public for this policy.
+Receipt cleanup shares entry ownership with capture, recovery and retention eviction;
+cleanup of an active entry refuses with a retryable conflict. This cannot exclude writes
+through an external descriptor opened before the file was captured into retention.
 Receipt cleanup first persists `retiring/<id>.json` outside the object directory. That marker
 survives deletion of installation metadata and pointers and is removed last; recovery resumes
 each idempotent step before inspecting ordinary captures. Retained-copy restoration has its

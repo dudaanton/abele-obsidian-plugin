@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { deferred } from '../helpers/deferred'
 
 const root = '.obsidian/plugins/abele/sync-conditional'
 const data = (value: string) => new TextEncoder().encode(value)
@@ -30,6 +31,34 @@ async function fixture(legacy = false) {
 async function sweep(disk: ObsidianFileSystem) {
   for (let i = 0; i < 8; i++) await Reflect.get(disk, 'conditional').maintenanceStep()
 }
+it('refuses receipt cleanup while eviction owns the same retained entry', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
+  const { disk } = await fixture()
+  clock.mockReturnValue(100000 + week)
+  const conditional = Reflect.get(disk, 'conditional')
+  const host = Reflect.get(conditional, 'host')
+  const remove = host.remove
+  const entered = deferred(),
+    resume = deferred()
+  host.remove = async (path: string) => {
+    if (path.endsWith('/dying')) {
+      entered.resolve()
+      await resume.promise
+    }
+    return remove(path)
+  }
+  const eviction = sweep(disk)
+  try {
+    await entered.promise
+    await expect(disk.discardInstallation('sample-retained')).rejects.toMatchObject({
+      code: 'conflict',
+    })
+  } finally {
+    resume.resolve()
+    await eviction
+  }
+  await disk.discardInstallation('sample-retained')
+})
 it('retains displaced bytes independently of receipt cleanup for seven days', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
   const { app, disk } = await fixture()
