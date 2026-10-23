@@ -30,7 +30,8 @@ export class VaultDirectories {
     private readonly symlink: (path: string) => Promise<boolean> = async () => false,
     private readonly removeEmpty: (path: string) => Promise<void> = (path) =>
       disk.rmdir(path, false),
-    private readonly scope: (() => string | undefined) | readonly string[] = () => undefined
+    private readonly scope: (() => string | undefined) | readonly string[] = () => undefined,
+    private readonly indexedHidden: (path: string) => boolean = () => false
   ) {}
   private includes(path: string): boolean {
     const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
@@ -200,8 +201,12 @@ export class VaultDirectories {
       for (const record of this.records()) {
         if (!this.includes(record.path) || listed.has(record.path) || outsidePaths.has(record.path))
           continue
-        // Only ordinary vault folders lag the index; a hidden one was never in this inventory.
-        if (record.path.split('/').some((part) => part.startsWith('.'))) continue
+        // The host may also inventory configuration directories outside its file index.
+        if (
+          record.path.split('/').some((part) => part.startsWith('.')) &&
+          !this.indexedHidden(record.path)
+        )
+          continue
         if (await this.linked(record.path, seen)) continue
         const stat = await this.disk.stat(record.path)
         if (stat?.type === 'folder' && stat.ctime === record.birth) {

@@ -526,3 +526,22 @@ it.each([{ roots: ['Shared'] }, { roots: [] }])(
     expect(await app.vault.adapter.stat('Outside/Empty')).toBeNull()
   }
 )
+
+it('keeps a created configuration directory visible with a startup file inventory across reopen', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}' }])
+  const options = { startupInventory: () => new Map() }
+  const fs = new ObsidianFileSystem(app as never, options)
+  await fs.mkdir('.obsidian/plugins/sample-tool')
+  for (const disk of [fs, new ObsidianFileSystem(app as never, options)]) {
+    const children = await disk.listChildren('.obsidian/plugins')
+    const directories = []
+    for await (const dir of disk.listDirectories()) directories.push(dir)
+    expect(directories.find((dir) => dir.path === '.obsidian/plugins/sample-tool')?.identity).toBe(
+      children.find((dir) => dir.path === '.obsidian/plugins/sample-tool')?.identity
+    )
+    expect(directories.map((dir) => dir.path)).toContain('.obsidian/plugins/sample-tool')
+    expect(directories.some((dir) => dir.path.includes('/abele/sync-'))).toBe(false)
+  }
+})

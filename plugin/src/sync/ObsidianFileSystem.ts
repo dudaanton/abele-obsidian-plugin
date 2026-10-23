@@ -892,7 +892,10 @@ export class ObsidianFileSystem implements FileSystem {
             directories.filter((one) => one.path !== path && !one.path.startsWith(path + '/'))
           )
       },
-      this.discovery?.roots ?? (() => this.scopedRoot())
+      this.discovery?.roots ?? (() => this.scopedRoot()),
+      (path) =>
+        (path === this.configDir || path.startsWith(this.configDir + '/')) &&
+        !isDeviceLocalPluginState(path, this.configDir)
     )
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
