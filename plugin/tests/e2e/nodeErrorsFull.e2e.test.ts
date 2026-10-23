@@ -113,6 +113,7 @@ const probe = (device: string) =>
       await until(()=>document.querySelector('.abele-node-manager-run .abele-state-line'),'Command state missing');
       const card=document.querySelector('.abele-node-manager-run');
       if(card.textContent.includes(error))throw Error('Command exposes the raw code outside Original action');
+      if([...card.querySelectorAll('.abele-fold-heading')].filter(fold=>fold.textContent.trim()==='Original action').length!==1)throw Error('Command has duplicate evidence folds');
       await capture(name);
       card.closest('.modal-container').querySelector('.modal-header-button, .modal-close-button').click();
       await until(()=>!document.querySelector('.abele-node-manager-run'),'Command fixture did not close');

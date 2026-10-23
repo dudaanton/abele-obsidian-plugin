@@ -31,6 +31,7 @@
             }}</span>
           </template>
         </div>
+        <slot name="evidence" />
         <div class="abele-state-line__links">
           <a v-if="log" class="abele-state-line__link" href="#" @click.prevent="emit('log')">{{
             t('node.log.title')

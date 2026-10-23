@@ -178,7 +178,7 @@ it('keeps a local refusal reason readable without a second generic error wrapper
     expect(view.text()).toContain('Update the node to 0.4.47')
     expect(view.text()).not.toContain('command_context_v1')
     expect(view.text()).not.toContain('The node could not complete the request.')
-    await view.get('.abele-disclosure__control').trigger('click')
+    await view.get('.abele-state-line__fold').trigger('click')
     expect(view.text()).toContain('command_context_v1')
   } finally {
     view.unmount()

@@ -13,7 +13,9 @@
     @action="act"
     @copy="copy"
     @log="openLog"
-  />
+  >
+    <template v-if="$slots.evidence" #evidence><slot name="evidence" /></template>
+  </StateLine>
 </template>
 <script setup lang="ts">
 import { computed, inject, onUnmounted, ref, watch } from 'vue'

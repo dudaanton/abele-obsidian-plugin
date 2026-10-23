@@ -40,7 +40,11 @@
       :disabled="disabled"
       :refresh="refresh"
       :retry="retry"
-    />
+    >
+      <template v-if="failed" #evidence>
+        <pre>{{ originalEvidence }}</pre>
+      </template>
+    </NodeErrorLine>
     <div
       v-else-if="card.run.state !== 'pending_approval' || card.run.reason"
       class="abele-node-manager-run__status"
@@ -61,20 +65,12 @@
       />
       <MetaLine :facts="[{ key: '0', value: resultLabel }]" />
     </div>
-    <Disclosure v-if="failed" v-model="originalOpen" :label="t('streamB.originalAction.67ccdf')">
-      <pre>{{
-        JSON.stringify(
-          {
-            command: card.command,
-            argv: card.argv,
-            folder: card.folder,
-            reason: card.run.reason,
-            required_capability: oldNode ? 'command_context_v1' : undefined,
-          },
-          null,
-          2
-        )
-      }}</pre>
+    <Disclosure
+      v-if="failed && !failure"
+      v-model="originalOpen"
+      :label="t('streamB.originalAction.67ccdf')"
+    >
+      <pre>{{ originalEvidence }}</pre>
     </Disclosure>
     <AiToolApproval
       v-for="prompt in card.prompts"
@@ -161,6 +157,19 @@ const oldNode = computed(
   () =>
     props.card.run.reason === t('node.manager.contextUpdate') ||
     props.card.run.reason?.includes('command_context_v1')
+)
+const originalEvidence = computed(() =>
+  JSON.stringify(
+    {
+      command: props.card.command,
+      argv: props.card.argv,
+      folder: props.card.folder,
+      reason: props.card.run.reason,
+      required_capability: oldNode.value ? 'command_context_v1' : undefined,
+    },
+    null,
+    2
+  )
 )
 const failed = computed(
   () =>
