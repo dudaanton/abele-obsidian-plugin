@@ -715,7 +715,7 @@ it('holds even a small upload body until the rebuild click releases it', async (
   const url = await proxy.start()
   proxy.breakpoint = 'reindex-upload'
   const started = once(proxy, 'wire')
-  const transfer = fetch(url + '/v2/uploads/' + 'a'.repeat(64) + '/sample/0', {
+  const transfer = globalThis.fetch(url + '/v2/uploads/' + 'a'.repeat(64) + '/sample/0', {
     method: 'PUT',
     body: 'data',
   })
