@@ -1,6 +1,47 @@
 import { expect, it, vi } from 'vitest'
 import { NodeLogModel } from '@/node/NodeLogModel'
 import { NodeLogSnapshots } from '@/node/NodeLogSnapshots'
+import { nodeLogAvailable } from '@/node/nodeLogCapability'
+
+it('remembers log support only within the same authorization and replaces it on a new welcome', () => {
+  const connection = { authorizationGeneration: 1, client: { channel: undefined as unknown } }
+  expect(nodeLogAvailable(connection)).toBe(false)
+  connection.client.channel = { channel: { welcome: { methods: ['node.log.v1.tail'] } } }
+  expect(nodeLogAvailable(connection)).toBe(true)
+  connection.client.channel = undefined
+  expect(nodeLogAvailable(connection)).toBe(true)
+  connection.authorizationGeneration++
+  expect(nodeLogAvailable(connection)).toBe(false)
+  connection.client.channel = { channel: { welcome: { methods: [] } } }
+  expect(nodeLogAvailable(connection)).toBe(false)
+})
+
+it('rejects a late disconnected read and allows a fresh reconnect read', async () => {
+  let answer!: (value: unknown) => void
+  const read = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    .mockResolvedValue({ lines: [], truncated: false, files: [] })
+  const model = new NodeLogModel({ online: () => true, read })
+  const oldRead = model.refresh()
+  model.connectionChanged(false)
+  model.connectionChanged(true)
+  await Promise.resolve()
+  answer({
+    lines: [{ time: null, level: 'info', text: 'Stale transport entry', source: 'stdout' }],
+    truncated: false,
+    files: [],
+  })
+  await oldRead
+  expect(read).toHaveBeenCalledTimes(2)
+  expect(model.lines.value).toEqual([])
+  model.destroy()
+})
 
 it('keeps offline snapshots separate across nodes and authorization generations', () => {
   const snapshots = new NodeLogSnapshots(),

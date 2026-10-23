@@ -23,6 +23,7 @@ import { nodeErrorState, nodeErrorActionLabel } from '@/node/errorState'
 import { recoverNodeError } from '@/node/errorRecovery'
 import { NodeService } from '@/node/NodeService'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+import { nodeLogAvailable } from '@/node/nodeLogCapability'
 import type { PathTarget } from '@/node/NodePathModel'
 import { t } from '@/i18n'
 
@@ -118,7 +119,7 @@ const facts = computed(() => {
 })
 const logAvailable = computed(() => {
   void connection.value?.state.value
-  return nodeAdvertisesMethod(connection.value?.client, 'node.log.v1.tail')
+  return nodeLogAvailable(connection.value)
 })
 async function act() {
   if (busy.value || !actionLabel.value || !state.value.action) return

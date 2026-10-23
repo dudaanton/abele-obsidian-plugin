@@ -40,6 +40,7 @@ import type { FolderSummary } from '@/components/nodeWork/types'
 import { nodePathMenuPosition as position } from './nodePathMenuPosition'
 import { nodeTreeAction, type TreeAction } from './nodeTreeActions'
 import { nodeAdvertisesMethod } from './advertisedMethods'
+import { nodeLogAvailable } from './nodeLogCapability'
 import { disconnectNodeDevice } from './disconnectNodeDevice'
 import { worktreeBusy } from './worktreeBusy'
 import { codexProjectNetwork } from './codexNetwork'
@@ -528,7 +529,7 @@ async function nodeItems(
     )
   const node = service.nodes.value.find((n) => n.id === model.registrationId)
   if (node) {
-    if (nodeAdvertisesMethod(service.connection(model.registrationId).client, 'node.log.v1.tail'))
+    if (nodeLogAvailable(service.connection(model.registrationId)))
       menu.addItem((item) =>
         item
           .setTitle(t('node.log.title'))

@@ -7,6 +7,25 @@ import { recoverNodeError } from '@/node/errorRecovery'
 vi.mock('@/node/errorRecovery', () => ({ recoverNodeError: vi.fn(async () => {}) }))
 afterEach(() => vi.restoreAllMocks())
 
+it('keeps the log link after a disconnect clears the channel', async () => {
+  const connection = {
+    authorizationGeneration: 1,
+    state: ref('connected'),
+    client: { channel: { channel: { welcome: { methods: ['node.log.v1.tail'] } } } as unknown },
+  }
+  vi.spyOn(NodeService, 'peekConnection').mockReturnValue(connection as never)
+  const view = mount(NodeErrorLine, {
+    props: { error: 'git_timeout', registrationId: 'sample-node' },
+  })
+  await view.get('.abele-fold-heading').trigger('click')
+  expect(view.findAll('a').map((link) => link.text())).toContain('Node log')
+  connection.client.channel = undefined
+  connection.state.value = 'offline'
+  await view.setProps({ offline: true })
+  expect(view.findAll('a').map((link) => link.text())).toContain('Node log')
+  view.unmount()
+})
+
 it('refreshes an unknown outcome, preserves the code in Original action, and never retries it', async () => {
   const refresh = vi.fn(),
     retry = vi.fn()

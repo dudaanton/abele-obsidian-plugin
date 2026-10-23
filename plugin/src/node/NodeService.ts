@@ -21,6 +21,7 @@ import { ensureNodeAgents } from './nodeAgentTools'
 import { nodeScopeEntries } from '@/ai/nodeScope'
 import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
 import { NodeRequestActivity } from './NodeRequestActivity'
+import { nodeLogAvailable } from './nodeLogCapability'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
@@ -287,6 +288,7 @@ export class NodeConnection {
           this.recordVersion(description)
           await this.obsidian?.connectionChanged(description)
         }
+        nodeLogAvailable(this)
         this.state.value = 'connected'
         uiField(this.error, 'value', uiErrorMessage(''))
         ++this.healthEpoch.value
@@ -324,6 +326,7 @@ export class NodeConnection {
         this.delegation.connectionChanged()
         this.manager.connectionChanged()
         uiField(this.error, 'value', uiErrorMessage(''))
+        nodeLogAvailable(this)
         this.state.value = 'connected'
         console.debug('[Abele node] connected')
       })

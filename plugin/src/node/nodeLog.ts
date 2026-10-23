@@ -1,7 +1,7 @@
-import { h } from 'vue'
+import { h, watch } from 'vue'
 import { NodeService } from './NodeService'
 import { NodeLogModel } from './NodeLogModel'
-import { nodeAdvertisesMethod } from './advertisedMethods'
+import { nodeLogAvailable } from './nodeLogCapability'
 import { mountKit } from '@/components/obsidian/mount'
 import Modal from '@/components/obsidian/Modal.vue'
 import LogWindow from '@/components/nodeWork/LogWindow.vue'
@@ -16,7 +16,7 @@ export function openNodeLog(registrationId: string, at?: number): void {
   const node = service.nodes.value.find((node) => node.id === registrationId)
   if (!node) return
   const connection = service.connection(registrationId)
-  if (!nodeAdvertisesMethod(connection.client, 'node.log.v1.tail')) return
+  if (!nodeLogAvailable(connection)) return
   const model = new NodeLogModel(
     {
       online: () => connection.state.value === 'connected',
@@ -33,6 +33,7 @@ export function openNodeLog(registrationId: string, at?: number): void {
   }
   const host = GlobalStore.getInstance().app.workspace.containerEl.ownerDocument.body.createDiv()
   const close = () => {
+    stopConnectionWatch()
     if (connection.authorizationGeneration === authority)
       snapshots.remember(connection, authority, model.lines.value, model.version.value)
     model.destroy()
@@ -63,5 +64,9 @@ export function openNodeLog(registrationId: string, at?: number): void {
     null,
     { remove: true }
   )
-  void model.refresh()
+  const stopConnectionWatch = watch(
+    connection.state,
+    (state) => model.connectionChanged(state === 'connected'),
+    { immediate: true, flush: 'sync' }
+  )
 }

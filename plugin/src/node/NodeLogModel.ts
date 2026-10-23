@@ -87,6 +87,15 @@ export class NodeLogModel {
       if (generation === this.generation) this.busy.value = false
     }
   }
+  connectionChanged(online: boolean): void {
+    if (this.closed) return
+    if (online) void this.refresh()
+    else {
+      // A late response from the old transport must not replace the retained evidence.
+      ++this.generation
+      this.busy.value = false
+    }
+  }
   copyText(): string {
     return this.shown.value
       .map((line) => `${line.time ?? ''} ${line.level} ${line.text}`)
