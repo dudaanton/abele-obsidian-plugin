@@ -24,7 +24,7 @@
         @click="step(-1)"
       />
       <Icon icon="arrow-down" :tooltip="t('chat.nextMatch')" :disabled="!count" @click="step(1)" />
-      <Icon icon="x" :tooltip="t('chat.closeFind')" @click="emit('close')" />
+      <Icon data-find-close icon="x" :tooltip="t('chat.closeFind')" @click="emit('close')" />
     </div>
   </div>
 </template>

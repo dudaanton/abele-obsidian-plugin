@@ -470,6 +470,41 @@ it('turns the file tab’s header into save, discard and stop while editing, and
   await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
 })
 
+it('lets Escape close file search before leaving a clean editor', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  view.app = { workspace: {} } as any
+  views.push(view)
+  const stop = vi.fn()
+  ;(view as any).editing = {
+    active: shallowRef(true),
+    dirty: shallowRef(false),
+    stop,
+    destroy() {},
+  }
+  await view.onOpen()
+  const search = document.createElement('div')
+  search.setAttribute('role', 'search')
+  const button = document.createElement('button')
+  button.setAttribute('data-find-close', '')
+  const close = vi.fn()
+  button.addEventListener('click', close)
+  search.appendChild(button)
+  view.contentEl.appendChild(search)
+  const answer = (view as any).scope.handleKey(new KeyboardEvent('keydown', { key: 'Escape' }), {
+    modifiers: '',
+    key: 'Escape',
+  })
+  expect(answer).toBe(false)
+  expect(close).toHaveBeenCalledOnce()
+  expect(stop).not.toHaveBeenCalled()
+  search.remove()
+  ;(view as any).scope.handleKey(new KeyboardEvent('keydown', { key: 'Escape' }), {
+    modifiers: '',
+    key: 'Escape',
+  })
+  expect(stop).toHaveBeenCalledOnce()
+})
+
 it('reopens an editor tab of an earlier version as the file tab, editing, once it is admitted', async () => {
   vi.useFakeTimers()
   try {

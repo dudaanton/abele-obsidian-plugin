@@ -147,6 +147,11 @@ export class NodePathMainView extends ItemView {
     // ⌘ S saves while editing, as Obsidian's own save command does in a note.
     this.scope = new Scope((this.app as { scope?: Scope }).scope)
     this.scope.register([], 'Escape', () => {
+      const findClose = this.contentEl.querySelector<HTMLElement>('[data-find-close]')
+      if (findClose) {
+        findClose.click()
+        return false
+      }
       if (!this.editing?.active.value || this.editing.dirty.value) return true
       this.fileTab.stop()
       return false
