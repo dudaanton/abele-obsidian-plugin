@@ -416,6 +416,23 @@ for (const platform of ['phone', 'desktop'] as const) {
 }
 
 describe('ObsidianFileSystem writes on the desktop', () => {
+  it('keeps a scan valid when another connection recovers no conditional effects', async () => {
+    const app = buildFakeVault(VAULT)
+    withDesktopFs(app)
+    const reader = new ObsidianFileSystem(app as unknown as App)
+    const other = new ObsidianFileSystem(app as unknown as App)
+    const listing = reader.list()[Symbol.asyncIterator]()
+    const first = await listing.next()
+    expect(first.done).toBe(false)
+    await other.recover()
+    const paths = [first.value!.path]
+    for (;;) {
+      const next = await listing.next()
+      if (next.done) break
+      paths.push(next.value.path)
+    }
+    expect(paths.sort()).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+  })
   it('rejects a partial scan when a conditional replacement completes between its yields', async () => {
     const app = buildFakeVault(VAULT)
     withDesktopFs(app)

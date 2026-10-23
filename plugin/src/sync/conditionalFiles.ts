@@ -1113,14 +1113,6 @@ export class ConditionalFiles {
   }
   async recover(): Promise<void> {
     const revision = revisionOf(this.host.active)
-    revision.value++
-    try {
-      await this.recoverOwned()
-    } finally {
-      revision.value++
-    }
-  }
-  private async recoverOwned(): Promise<void> {
     const h = this.host
     let failed: unknown
     const retiring = h.root + '/retiring'
@@ -1145,6 +1137,7 @@ export class ConditionalFiles {
         const activeKey = h.root + '/' + candidate
         if (h.active.has(activeKey)) continue
         h.active.add(activeKey)
+        revision.value++
         try {
           const id = idOf(candidate)
           const folder = h.root + '/objects/' + id
@@ -1171,6 +1164,7 @@ export class ConditionalFiles {
           console.debug('[abele-sync] conditional recovery remains pending', pointer, error)
         } finally {
           h.active.delete(activeKey)
+          revision.value++
         }
       }
     }

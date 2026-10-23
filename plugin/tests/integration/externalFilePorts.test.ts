@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { constants } from 'node:fs'
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -664,14 +665,35 @@ describe('external-file host coordination and filesystem effects', () => {
       artifact = await s.artifact()
     await s.fake.vault.adapter.remove(source)
     const raw = s.fake.vault.adapter as typeof s.fake.vault.adapter & {
-      fsPromises: { link(from: string, to: string): Promise<void> }
+      fsPromises: {
+        link(from: string, to: string): Promise<void>
+        open(
+          path: string,
+          flags: number
+        ): Promise<{
+          write(
+            bytes: Uint8Array,
+            offset: number,
+            length: number,
+            position: number
+          ): Promise<unknown>
+          close(): Promise<void>
+        }>
+      }
     }
     const link = raw.fsPromises.link.bind(raw.fsPromises)
     raw.fsPromises.link = async (from, to) => {
-      await s.fake.vault.adapter.writeBinary(
-        source,
-        bytes('sample late occupant').buffer as ArrayBuffer
+      // This occupant is an independent native writer, outside the save queue.
+      const handle = await raw.fsPromises.open(
+        to,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
       )
+      try {
+        const occupant = bytes('sample late occupant')
+        await handle.write(occupant, 0, occupant.length, 0)
+      } finally {
+        await handle.close()
+      }
       await link(from, to)
     }
     await s.run(async (op) => {
