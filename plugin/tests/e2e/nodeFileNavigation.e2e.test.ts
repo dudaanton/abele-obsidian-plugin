@@ -13,7 +13,8 @@ it('returns through native history after language definition and reference jumps
     await evalLong(`(async () => {
     ${NODE_PANEL_FIXTURE}
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const until = async fn => { for(let i=0;i<160;i++){if(fn())return;await wait(50)} throw Error('Language history did not settle') };
+    let phase='open';
+    const until = async fn => { for(let i=0;i<160;i++){if(fn())return;await wait(50)} throw Error('Language history did not settle: '+phase+' '+fn+' state='+JSON.stringify(leaf?.view.getState())+' text='+leaf?.view.contentEl.textContent) };
     let leaf;
     try {
       await nodePanel.open('root');
@@ -32,9 +33,10 @@ it('returns through native history after language definition and reference jumps
       await leaf.loadIfDeferred?.();await app.workspace.revealLeaf(leaf);
       const pane=leaf.view.contentEl;
       const editor=()=>{const el=pane.querySelector('.cm-editor');return el&&window.__abeleTest.codeView(el)};
-      const at=async(path,line)=>{await until(()=>leaf.view.getState().path===path&&leaf.view.getState().line===line&&pane.querySelector('.abele-github-code__line_target'));await wait(150)};
+      const at=async(path,line)=>{phase='at '+path+':'+line;await until(()=>leaf.view.getState().path===path&&leaf.view.getState().line===line&&pane.querySelector('.abele-github-code__line_target'));await wait(150)};
       await at('src/source.ts',4);
       const menuJump=async(title,line)=>{
+        phase=title+' from '+line;
         await until(()=>pane.querySelector('.abele-lsp-root'));
         const cm=editor();const pos=cm.state.doc.line(line).from+14;
         cm.dispatch({selection:{anchor:pos}});
