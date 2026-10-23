@@ -27,18 +27,22 @@ describe('Word prepared bytes in agent rewind', () => {
     const edited = sampleDocx(paragraph('Edited sample'))
     const competing = sampleDocx(paragraph('Competing sample'))
     const file = await app.vault.createBinary('sample.docx', original.buffer as ArrayBuffer)
-    const rawModify = app.vault.modifyBinary.bind(app.vault)
+    const rawModify = app.vault.modifyBinary
     const rawRead = app.vault.readBinary.bind(app.vault)
     let written = false
     let reads = 0
-    vi.spyOn(app.vault, 'modifyBinary').mockImplementation(async (target, bytes) => {
+    vi.spyOn(app.vault, 'modifyBinary').mockImplementation(async function (
+      this: App['vault'],
+      target,
+      bytes
+    ) {
       written = true
-      await rawModify(target, bytes)
+      await rawModify.call(this, target, bytes)
     })
     vi.spyOn(app.vault, 'readBinary').mockImplementation(async (target) => {
       // A normal tracker snapshot after the final check would see this intervening version.
       if (target.path === file.path && !written && ++reads > 1)
-        await rawModify(target, competing.buffer as ArrayBuffer)
+        await rawModify.call(app.vault, target, competing.buffer as ArrayBuffer)
       return rawRead(target)
     })
     tracker = ChangeTracker.install(app)

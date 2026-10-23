@@ -19,9 +19,33 @@ export interface DesktopCalls {
   rmdirs: string[]
 }
 
-export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}): DesktopCalls {
+export function withDesktopFs(
+  app: FakeApp,
+  options: { fenced?: boolean; maxBufferBytes?: number } = {}
+): DesktopCalls {
   const adapter = app.vault.adapter
   const write = adapter.writeBinary.bind(adapter)
+  const read = adapter.readBinary.bind(adapter)
+  const rename = adapter.rename.bind(adapter)
+  const remove = adapter.remove.bind(adapter)
+  const identities = new Map<string, number>()
+  let serial = 1
+  const key = (path: string) => path.normalize('NFC').toLowerCase()
+  const inode = (path: string) => {
+    const name = key(path)
+    if (!identities.has(name)) identities.set(name, serial++)
+    return identities.get(name)!
+  }
+  adapter.rename = async (from, to) => {
+    const identity = inode(from)
+    await rename(from, to)
+    identities.delete(key(from))
+    identities.set(key(to), identity)
+  }
+  adapter.remove = async (path) => {
+    await remove(path)
+    identities.delete(key(path))
+  }
   let tail: Promise<unknown> = Promise.resolve()
   const queue = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = tail.then(operation)
@@ -47,12 +71,13 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
         if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
         return {
           dev: 1,
-          ino: [...path.normalize('NFC').toLowerCase()].reduce(
-            (id, char) => (id * 31 + char.charCodeAt(0)) >>> 0,
-            1
-          ),
+          ino: inode(path),
+          size: 'size' in stat ? stat.size : 0,
+          mtimeMs: 'mtime' in stat ? stat.mtime : 0,
+          ctimeMs: 'ctime' in stat ? stat.ctime : 0,
           isSymbolicLink: () => false,
           isDirectory: () => stat.type === 'folder',
+          isFile: () => stat.type === 'file',
         }
       },
       async open(full: string, flags: number) {
@@ -65,18 +90,25 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
         if (!before || flags & constants.O_TRUNC) await write(path, new ArrayBuffer(0))
         const identity = await this.lstat(full)
         return {
-          stat: async () => identity,
-          readFile: async () => new Uint8Array(await adapter.readBinary(path)),
+          stat: async () => ({ ...(await this.lstat(full)), ino: identity.ino }),
+          readFile: async () => new Uint8Array(await read(path)),
           read: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
-            const bytes = new Uint8Array(await adapter.readBinary(path)).subarray(
-              position,
-              position + length
+            if (
+              options.maxBufferBytes !== undefined &&
+              buffer.buffer.byteLength > options.maxBufferBytes
             )
+              throw new Error('Native read buffer exceeds the fixture bound')
+            const bytes = new Uint8Array(await read(path)).subarray(position, position + length)
             buffer.set(bytes, offset)
             return { bytesRead: bytes.length }
           },
           write: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
-            const old = new Uint8Array(await adapter.readBinary(path))
+            if (
+              options.maxBufferBytes !== undefined &&
+              buffer.buffer.byteLength > options.maxBufferBytes
+            )
+              throw new Error('Native write buffer exceeds the fixture bound')
+            const old = new Uint8Array(await read(path))
             const bytes = new Uint8Array(Math.max(old.length, position + length))
             bytes.set(old)
             bytes.set(buffer.subarray(offset, offset + length), position)
@@ -84,24 +116,32 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
             return { bytesWritten: length }
           },
           truncate: async (length: number) => {
-            const old = new Uint8Array(await adapter.readBinary(path))
+            const old = new Uint8Array(await read(path))
             const bytes = new Uint8Array(length)
             bytes.set(old.subarray(0, length))
             await write(path, bytes.buffer)
           },
           sync: async () => {},
+          utimes: async (_atime: number, mtime: number) =>
+            write(path, await read(path), { mtime: mtime * 1000 }),
           close: async () => {},
         }
       },
       async readFile(path: string): Promise<Uint8Array> {
-        return new Uint8Array(await adapter.readBinary(vaultPath(path)))
+        return new Uint8Array(await read(vaultPath(path)))
       },
       async link(fullFrom: string, fullTo: string): Promise<void> {
         const from = vaultPath(fullFrom),
           to = vaultPath(fullTo)
         if (await adapter.exists(to))
           throw Object.assign(new Error(`EEXIST: ${to}`), { code: 'EEXIST' })
-        await write(to, await adapter.readBinary(from))
+        const stat = await adapter.stat(from)
+        await write(
+          to,
+          await read(from),
+          stat ? { mtime: stat.mtime, ctime: stat.ctime } : undefined
+        )
+        identities.set(key(to), inode(from))
       },
       async rename(fullFrom: string, fullTo: string): Promise<void> {
         const from = vaultPath(fullFrom)
@@ -123,9 +163,18 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
         calls.rmdirs.push(folder)
         const listed = await adapter.list(folder)
         if (listed.files.length > 0 || listed.folders.length > 0) {
-          throw new Error(`ENOTEMPTY: directory not empty, rmdir '${full}'`)
+          throw Object.assign(new Error(`ENOTEMPTY: directory not empty, rmdir '${full}'`), {
+            code: 'ENOTEMPTY',
+          })
         }
         await adapter.rmdir(folder, true)
+      },
+      async stat(full: string) {
+        return this.lstat(full)
+      },
+      async utimes(full: string, _atime: number, mtime: number) {
+        const path = vaultPath(full)
+        await write(path, await read(path), { mtime: mtime * 1000 })
       },
     },
   })

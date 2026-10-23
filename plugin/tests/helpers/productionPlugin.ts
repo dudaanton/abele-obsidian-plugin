@@ -62,6 +62,7 @@ export async function productionPluginCode(): Promise<string> {
 
 export async function bootProductionPlugin(code: string) {
   const app = buildFakeVault([]) as any
+  app.appId = 'sample-' + crypto.randomUUID()
   const ready: Array<() => void> = []
   Object.assign(app.workspace, {
     onLayoutReady: (fn: () => void) => ready.push(fn),

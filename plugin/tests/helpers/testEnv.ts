@@ -10,10 +10,15 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Journal, type JournalDTO } from '@/entities/Journal'
 import { buildFakeVault, type FakeApp, type FakeFileSpec } from './fakeVault'
+import { SerialQueue } from '@/sync/queue'
 
 /** Installs a fake vault as the app every plugin singleton reads from. */
 export function useVault(specs: FakeFileSpec[]): FakeApp {
   const app = buildFakeVault(specs)
+  // Application-level fixtures model a desktop save queue. Raw/mobile fixtures
+  // still use buildFakeVault directly and may deliberately omit this capability.
+  const saves = new SerialQueue()
+  Object.assign(app.vault.adapter, { queue: <T>(work: () => Promise<T>) => saves.run(work) })
   ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = app
   return app
 }

@@ -25,7 +25,7 @@ afterEach(async () => {
 async function device() {
   const native = await bootProductionPlugin(code)
   hosts.push(native)
-  await expect.poll(() => native.plugin.tokenEngines, { timeout: 10000 }).toBeDefined()
+  await expect.poll(() => native.plugin.tokenEngines, { timeout: 10000 }).toBeTruthy()
   const host = native.plugin.tokenEngines as TokenEngines,
     ui = (host as unknown as { ui: TokenUi }).ui
   return { ...native, host, ui }
