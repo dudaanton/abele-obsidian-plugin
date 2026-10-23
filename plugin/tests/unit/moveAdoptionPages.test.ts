@@ -21,11 +21,6 @@ it('rechecks an equal untracked move target after an earlier page observed an ab
   Object.assign(fs, {
     beginAtomicWrite: stage,
     reopenStage: stage,
-    conditionalFile: async (op: { path: string; expected: { sha: string } }) => {
-      if ((await sha256(await fs.read(op.path))) !== op.expected.sha) return false
-      await fs.remove(op.path)
-      return true
-    },
     openRead: async (path: string) => ({
       size: (await fs.stat(path))!.size,
       read: async (offset: number, length: number) =>

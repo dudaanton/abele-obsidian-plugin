@@ -72,6 +72,8 @@ async function scenario(
   const expected = new ExpectedWrites()
   const engineClient = client as unknown as EngineClient
   const opts = () => ({
+    // These cuts target stage allocation/append/seal; select the explicit streamed lane.
+    prefetchBytes: 0,
     dirty: new Set<string>(),
     expected,
     filter: { excluded: () => false },

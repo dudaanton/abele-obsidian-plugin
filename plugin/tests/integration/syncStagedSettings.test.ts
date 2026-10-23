@@ -3,7 +3,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
 import { V2EngineClient } from '@abele/sync-sdk/core'
-import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { ConditionalFiles } from '@/sync/conditionalFiles'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
@@ -287,16 +286,13 @@ describe('settings changed on another device', () => {
     await modify(HOTKEYS, '{"there":true}')
     await service.syncNow()
     await waitFor('both settings staged', () => service.status.value.deferred === 2)
-    const append = BoundedVaultIo.prototype.append
+    const apply = ConditionalFiles.prototype.apply
     const failure = vi
-      .spyOn(BoundedVaultIo.prototype, 'append')
-      .mockImplementation(async function (path, offset, bytes, mtime) {
-        if (
-          (path.endsWith('/data') || path.endsWith('.tmp')) &&
-          new TextDecoder().decode(bytes).includes('"there"')
-        )
+      .spyOn(ConditionalFiles.prototype, 'apply')
+      .mockImplementation(async function (op, retainUnknown) {
+        if (op.path === HOTKEYS && (op.effect.kind === 'write' || op.effect.kind === 'install'))
           throw new Error('write unavailable')
-        return append.call(this, path, offset, bytes, mtime)
+        return apply.call(this, op, retainUnknown)
       })
     const outcome = await service
       .applySettingsAndReload(shown())
