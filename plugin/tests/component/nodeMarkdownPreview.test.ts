@@ -9,7 +9,7 @@ import { REPOSITORY_SOURCE } from '@/repository/context'
 import { nodeRepositoryFixture, identity, HEAD } from '../helpers/nodeRepositoryFixture'
 import { useVault } from '../helpers/testEnv'
 import { NodePathTabSchema } from '@/node/nodePathNavigation'
-import { FILE_NAVIGATION } from '@/node/fileNavigation'
+import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION } from '@/node/fileNavigation'
 
 enableAutoUnmount(afterEach)
 beforeEach(() => useVault([]))
@@ -146,6 +146,7 @@ it('routes relative links through node navigation, keeps anchors local and web l
       '<a href="other.md">File</a><a href="#sample">Anchor</a><a href="https://example.test/guide">Web</a>'
   })
   const navigate = vi.fn(() => true)
+  const ordinaryNavigation = vi.fn(() => true)
   const view = mount(FileView, {
     props: {
       text: '# Sample',
@@ -154,7 +155,12 @@ it('routes relative links through node navigation, keeps anchors local and web l
       repository: repo,
       revision: HEAD,
     },
-    global: { provide: { [FILE_NAVIGATION as symbol]: navigate } },
+    global: {
+      provide: {
+        [FILE_NAVIGATION as symbol]: ordinaryNavigation,
+        [MARKDOWN_FILE_NAVIGATION as symbol]: navigate,
+      },
+    },
   })
   await flushPromises()
   const links = view.findAll('.abele-github-md__content a')
@@ -162,6 +168,7 @@ it('routes relative links through node navigation, keeps anchors local and web l
   expect(navigate).toHaveBeenCalledWith(repo.navigation.file(HEAD, 'docs/other.md'))
   await links[1].trigger('click')
   expect(navigate).toHaveBeenCalledTimes(1)
+  expect(ordinaryNavigation).not.toHaveBeenCalled()
   expect(links[2].attributes('href')).toBe('https://example.test/guide')
   repo.dispose()
 })

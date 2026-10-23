@@ -115,7 +115,7 @@ import { pinIntoView, LINE_CONTEXT } from '@/github/scrollTo'
 // comparison or in the file — gets a small bar over it to ask the agent about it or add it to the
 // chat or insert it into a note, on a phone as on a computer.
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
-import { FILE_NAVIGATION } from '@/node/fileNavigation'
+import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION } from '@/node/fileNavigation'
 import type { RepositorySource } from '@/repository/source'
 import { REPOSITORY_SOURCE } from '@/repository/context'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
@@ -229,7 +229,9 @@ const repositoryFile = computed(() => ({
   path: props.path,
 }))
 const fileNavigation = inject(FILE_NAVIGATION, undefined)
+const markdownNavigation = inject(MARKDOWN_FILE_NAVIGATION, undefined)
 function openRepositoryLink(url: string) {
+  if (markdownNavigation?.(url)) return
   if (fileNavigation?.(url)) return
   const target = parseNodeRepositoryLink(url)
   if (target) void openNodeRepositoryTarget(GlobalStore.getInstance().app, target, false)

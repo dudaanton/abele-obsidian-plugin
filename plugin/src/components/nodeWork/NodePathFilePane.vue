@@ -99,7 +99,7 @@ import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, provide, ref, watch } from 'vue'
-import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
+import { MARKDOWN_FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
 import type { NodePathTabState } from '@/node/nodePathNavigation'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { RepositorySource } from '@/repository/source'
@@ -149,7 +149,7 @@ watch(
       void retry()
   }
 )
-provide(FILE_NAVIGATION, (url) => {
+provide(MARKDOWN_FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false
   emit('navigate', state)
