@@ -87,6 +87,7 @@ exports.createStallProfiler = function ({
   stallMs = 75,
   maxCaptureMs = 10000,
   clock,
+  continuous = false,
 }) {
   let heartbeatAt,
     startedAt,
@@ -117,9 +118,12 @@ exports.createStallProfiler = function ({
       if (busy || disabled || heartbeatAt === undefined) return
       busy = true
       try {
-        if (startedAt !== undefined && (heartbeatAt >= startedAt || at - startedAt >= maxCaptureMs))
+        if (
+          startedAt !== undefined &&
+          ((!continuous && heartbeatAt >= startedAt) || at - startedAt >= maxCaptureMs)
+        )
           await finish(at)
-        else if (startedAt === undefined && at - heartbeatAt >= stallMs) {
+        if (startedAt === undefined && (continuous || at - heartbeatAt >= stallMs)) {
           await command('Profiler.start')
           startedAt = at
           startAcknowledgedAt = Date.now()
@@ -200,6 +204,8 @@ exports.watch = async function (id, serializedConfig) {
   }
   const profiler = exports.createStallProfiler({
     clock,
+    continuous: config.continuousCpu === true,
+    maxCaptureMs: config.continuousCpu ? 60000 : 10000,
     command: (name, params) => transport.sendCommand(name, params),
     emit,
     save: async (profile) => {
@@ -272,15 +278,24 @@ exports.watch = async function (id, serializedConfig) {
   }
   try {
     await transport.sendCommand('Profiler.enable')
-    await transport.sendCommand('Profiler.setSamplingInterval', { interval: 1000 })
+    await transport.sendCommand('Profiler.setSamplingInterval', {
+      interval: config.continuousCpu ? 10000 : 1000,
+    })
     ipcMain.on(channel, heartbeat)
     profiler.heartbeat(Date.now())
+    if (config.continuousCpu) await profiler.poll(Date.now())
     timer = setInterval(() => {
       void profiler.poll(Date.now())
     }, 25)
     wc.once('destroyed', destroyed)
     wc.on('did-start-navigation', navigating)
-    emit({ event: 'cpu-profile-ready', channel, stallMs: 75, sampleIntervalUs: 1000 })
+    emit({
+      event: 'cpu-profile-ready',
+      channel,
+      stallMs: 75,
+      sampleIntervalUs: config.continuousCpu ? 10000 : 1000,
+      continuous: config.continuousCpu === true,
+    })
     watches.set(channel, close)
     coverageWatches.set(channel, { begin: beginCoverage, end: endCoverage })
     ownedContents.set(id, close)

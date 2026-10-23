@@ -319,3 +319,11 @@ If the driver exits from a signal the worker did not send, do **not** restart a 
 Copy the last checkpoint/observer/CPU/memory evidence, let the supervisor clean up, verify
 resource release, and report the external stop. Partial phases remain unqualified. A new live
 attempt requires a new instruction authorizing it.
+
+For live qualification, `reindex: true` also enables all three rebuild occurrences in the
+smoke profile. `continuousCpu: true` arms CPU sampling before product load at a 10,000 μs
+interval, rotating raw profiles every minute, instead of waiting for a stalled heartbeat.
+This captures the beginning of long tasks during sustained heavy work. Abrupt app kills can
+still censor the current unsaved segment; that gap remains unqualified. Debugger coverage
+around rebuilds remains separate. The build receipt distinguishes the candidate's own
+verified `pinned-archive` SDK input from a registry pin or an explicit harness override.

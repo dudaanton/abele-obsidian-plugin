@@ -216,7 +216,12 @@ export async function buildCandidate(config, execute = loggedExec) {
     ])
     await run('npm', ['run', 'build:test'])
     const pin = await json(join(root, 'scripts/sync-sdk-inputs.json'))
-    sdk = { kind: 'registry', version: pin.version, integrity: pin.integrity }
+    sdk = {
+      kind: pin.source ? 'pinned-archive' : 'registry',
+      version: pin.version,
+      integrity: pin.integrity,
+      ...(pin.source ? { source: pin.source, sha256: pin.sha256 } : {}),
+    }
   }
   const changes = await git(['diff', '--name-only'])
   if (

@@ -235,6 +235,7 @@ async function setupVault(config, root, device) {
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
       profileDirectory: join(config.output, 'profiles'),
+      continuousCpu: config.continuousCpu === true,
     })
   )
 }
@@ -257,7 +258,9 @@ export async function run(config) {
     build: config.build,
     plannedDeadline: { ...plannedDeadline, effectiveScenarioDeadlineAt: deadline },
     ...options,
-    declaredInterruptions: declaredInterruptions(config.shape === 'scale'),
+    declaredInterruptions: declaredInterruptions(
+      config.reindex === true || config.shape === 'scale'
+    ),
     interruptions: [],
     reindexes: [],
     failures: [],
@@ -697,7 +700,7 @@ export async function run(config) {
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt
-    if (config.shape === 'scale') await triggered(p, 'comparison', start)
+    if (config.reindex === true || config.shape === 'scale') await triggered(p, 'comparison', start)
     else await start()
     await reindex('reindex-restart-comparison', a, p)
     await wait(

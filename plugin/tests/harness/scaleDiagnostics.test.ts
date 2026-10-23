@@ -353,3 +353,27 @@ it('replaces only its own debugger watch across a renderer reload', async () => 
   expect(detached).toBe(2)
   expect(rows.at(-1).event).toBe('cpu-profile-unavailable')
 })
+
+it('arms continuous sampling before renderer work and rotates without waiting for a stall', async () => {
+  const calls = []
+  const profiler = diagnostics.createStallProfiler({
+    command: async (name) => {
+      calls.push(name)
+      return { profile: { samples: [], nodes: [] } }
+    },
+    save: async () => 'sample.cpuprofile',
+    emit() {},
+    continuous: true,
+    maxCaptureMs: 60000,
+  })
+  profiler.heartbeat(100)
+  await profiler.poll(100)
+  expect(calls).toEqual(['Profiler.start'])
+  profiler.heartbeat(200)
+  await profiler.poll(201)
+  expect(calls).toEqual(['Profiler.start'])
+  await profiler.poll(60100)
+  expect(calls).toEqual(['Profiler.start', 'Profiler.stop', 'Profiler.start'])
+  await profiler.close(60200)
+  expect(calls.at(-1)).toBe('Profiler.stop')
+})
