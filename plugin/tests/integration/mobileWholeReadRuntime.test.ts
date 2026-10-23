@@ -127,7 +127,10 @@ it('scans and publishes a large whole-read source once before the normal path co
     expect(fs.openRead).not.toHaveBeenCalled()
     vi.mocked(fs.fingerprint).mockResolvedValueOnce({ size: 16, sha: 'b'.repeat(64), mtime: 1 })
     expect(await port.fingerprint('small.bin')).toMatchObject({ size: 16 })
-    expect(fs.fingerprint).toHaveBeenCalledWith('small.bin')
+    expect(fs.fingerprint).toHaveBeenCalledExactlyOnceWith(
+      'small.bin',
+      expect.objectContaining({ aborted: false })
+    )
     // A fully verified received version is already acknowledged by this server, too.
     const receivedSha = 'c'.repeat(64)
     const http = Reflect.get(one.client, 'http')
@@ -190,6 +193,7 @@ it('uses the upload-only reader when opening a journal or scan source through pl
     throw new Error('non-upload read must not run')
   })
   const source = { size: 51 * MiB, read: vi.fn(), assertUnchanged: vi.fn(), close: vi.fn() }
+  fs.stat = vi.fn(async (path) => ({ path, size: source.size, mtime: 1 }))
   const upload = vi.fn(async (_path: string) => source)
   Object.assign(fs, { [UPLOAD_READ]: upload })
   const scoped = scopedFileSystem(

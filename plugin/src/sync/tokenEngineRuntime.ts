@@ -1003,6 +1003,23 @@ export class TokenEngineRuntime
                 )
                 if (relevant.length) notify(relevant)
               })
+          if (name === 'conditionalFile' && target.conditionalFile)
+            return async (operation: Parameters<NonNullable<FileSystem['conditionalFile']>>[0]) => {
+              const applied = await this.trace.run(
+                'pull conditional ' + operation.effect.kind + ' ' + operation.path,
+                () => target.conditionalFile(operation),
+                true
+              )
+              if (
+                applied &&
+                (operation.effect.kind === 'write' || operation.effect.kind === 'install')
+              ) {
+                this.actions.written(operation.path)
+                this.pulled(operation.path)
+                this.trace.written(operation.path)
+              }
+              return applied
+            }
           if (name === 'writeAtomic')
             return async (path: string, bytes: Uint8Array, mtime: number) => {
               await this.trace.run(
@@ -1170,7 +1187,7 @@ export class TokenEngineRuntime
                 if (managed && this.compared.size === 0) comparing({ completed: 0, total })
                 const bytes =
                   name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
-                    ? ((managed && name === 'fingerprint' && this.largeUploadPaths.has(path)
+                    ? ((this.largeUploadPaths.has(path)
                         ? await this.fingerprintForUpload(target, path, signal)
                         : undefined) ?? (await invoke()))
                     : await connectStage(
@@ -2240,7 +2257,9 @@ export class TokenEngineRuntime
     if (!fingerprint) return undefined
     current()
     const pending = this.uploadFingerprints.get(path)
-    if (pending?.signal === signal && pending.run === run) return pending.work
+    // Scan and publication can supply distinct cancellation signals for the same
+    // active cycle. They share one pinned source; its owning call still cancels it.
+    if (pending?.run === run) return pending.work
     const work = this.transferBudget.run(() => {
       current()
       return fingerprint.call(
