@@ -42,7 +42,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           await until(()=>root().querySelector('.abele-session-settings')?.getAttribute('aria-label')?.includes('GPT-9.7'));
           if(root().querySelector('.abele-session-settings__model')?.textContent==='gpt-9.7-sol')throw Error('Raw model id replaced its display family');
           await shot('node-chat-model-label');
-          if(app.isMobile&&root().querySelector('.abele-ai-chat__header .abele-drawer-switch.is-shown'))throw Error('Phone drawer switch precedes the chat title');
+          if(app.isMobile&&!root().querySelector('.abele-ai-chat__header > .abele-drawer-switch.is-shown:first-child'))throw Error('Phone drawer switch is missing before the chat title');
           p.control.state.value.settings.model = priorModel;
           const scope={run_id:'sample-process',runtime_generation:1};
           const input=(id,text)=>append('input.accepted',{input_id:id,text});

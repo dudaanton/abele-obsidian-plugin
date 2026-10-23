@@ -58,7 +58,9 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         const cramped=links().filter(el=>el.textContent.length>80&&el.getBoundingClientRect().width<80).map(el=>el.textContent)
         const squeezed=links().filter(el=>{
           const line=el.closest('.abele-chat-msg__tool-line'), name=line.querySelector('.abele-chat-msg__tool-name')
-          return name.scrollWidth>name.clientWidth+1||el.closest('.abele-chat-tool-files').getBoundingClientRect().width<line.getBoundingClientRect().width-1
+          if(node&&name)throw Error('Compact file call repeats its action name')
+          if(!node&&!name)throw Error('File call action name missing')
+          return (name&&name.scrollWidth>name.clientWidth+1)||el.closest('.abele-chat-tool-files').getBoundingClientRect().width<line.getBoundingClientRect().width-1
         }).map(el=>el.textContent)
         const cutNames=[...root().querySelectorAll('.abele-chat-msg__tool-name')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
         await shot('expanded-long-missing')

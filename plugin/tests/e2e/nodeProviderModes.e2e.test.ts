@@ -72,7 +72,7 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
           const guidance=reason.querySelector('span[title]');
           if(getComputedStyle(guidance).whiteSpace!=='normal' || guidance.scrollHeight>guidance.clientHeight+2)throw Error('Refusal guidance is truncated');
           const dot=reason.querySelector('.abele-status-dot');
-          if(dot.getBoundingClientRect().top>guidance.getBoundingClientRect().top+parseFloat(getComputedStyle(guidance).lineHeight))throw Error('Refusal dot is below the first line');
+          if(dot)throw Error('Quiet delegation refusal repeats the status dot');
         }
         if(state==='node-opt-in'){
           const meta=card.querySelector('.abele-node-delegation__meta');

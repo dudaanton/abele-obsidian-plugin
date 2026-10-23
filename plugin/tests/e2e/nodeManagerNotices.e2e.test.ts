@@ -21,19 +21,16 @@ async function inspect(label: string) {
       await chats.revealSidebar({focus:false});
       const previous=session.messages.value.length;
       session.wakeDelegationResult('sample-hidden-id','Read node_command_status for sample-hidden-id');
-      for(let i=0;i<100;i++){
-        if(session.messages.value.length>previous&&[...document.querySelectorAll('.abele-ai-chat .abele-chat-msg')].at(-1)?.textContent.includes('Node activity update'))break;
-        await new Promise(r=>setTimeout(r,50));
-      }
-      const rows=[...document.querySelectorAll('.abele-ai-chat .abele-chat-msg')],row=rows.at(-1);
-      row?.scrollIntoView({block:'center'});
-      return JSON.stringify({system:row?.classList.contains('abele-chat-msg_system'),text:row?.textContent,overflow:row?.scrollWidth>row?.clientWidth+1});
+      for(let i=0;i<100&&session.messages.value.length===previous;i++)await new Promise(r=>setTimeout(r,50));
+      const notice=session.messages.value.at(-1);
+      if(notice?.role!=='system'||notice.sessionMark?.text!=='Node activity update')throw Error('Wake was not retained as a system notice');
+      await new Promise(r=>setTimeout(r,100));
+      const transcript=document.querySelector('.abele-ai-chat .abele-ai-chat__messages');
+      return JSON.stringify({text:transcript?.textContent,noticeRows:[...transcript.querySelectorAll('.abele-chat-msg_system')].filter(row=>row.textContent.includes('Node activity update')).length});
     })()`)
-    ) as { system: boolean; text: string; overflow: boolean }
-    expect(report.system).toBe(true)
+    ) as { text: string; noticeRows: number }
     expect(report.text).not.toContain('sample-hidden-id')
-    expect(report.text).toContain('Node activity update')
-    expect(report.overflow).toBe(false)
+    expect(report.noticeRows).toBe(0)
     columnShot(`${shots}/${label}-wake.png`)
     const queued = await evalLong(`(async()=>{
       const session=window.__abeleTest.ChatService.getInstance().activeSession.value;
@@ -78,7 +75,7 @@ async function inspectEscalation(label: string) {
   }
 }
 
-it('renders manager wakes as a quiet system row', async () => {
+it('retains delivered wakes without empty transcript rows and shows queued notices', async () => {
   await inspect(onPhone() ? 'phone' : 'desktop')
   await inspectEscalation(onPhone() ? 'phone' : 'desktop')
 }, 60000)

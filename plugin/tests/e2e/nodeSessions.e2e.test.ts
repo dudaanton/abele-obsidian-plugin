@@ -330,13 +330,12 @@ it('stops the whole session from ⋯ after saying what stops, and renames it', a
     root.querySelector('[aria-label="More chat actions"]').click();
     await until(() => document.querySelector('.menu'), 'The session menu');
     await pick('Rename…');
-    const rename = await until(() => document.querySelector('.modal'), 'The rename dialog');
-    const input = rename.querySelector('input');
-    input.value = 'Search by words and titles';
+    const input = await until(() => document.querySelector('.is-being-renamed [contenteditable]'), 'The tree rename field');
+    input.textContent = 'Search by words and titles';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await wait(200);
     await shot('node-sessions-rename');
-    [...rename.querySelectorAll('button')].find(b => b.textContent.trim() === 'Rename').click();
+    input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
     await wait(300);
     return JSON.stringify({ said, sent: window.__abeleTest.nodeSessionCalls.map(c => ({ method: c.method, params: c.params })) });`)
   expect(r.said).toContain('3 tasks running in the background')

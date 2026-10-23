@@ -110,9 +110,9 @@ it('renames the session everywhere it is named', async () => {
   const r = JSON.parse(
     await run(`
     chat().querySelector('[aria-label="More chat actions"]').click();await pick('Rename…');
-    const modal=await until(()=>document.querySelector('.modal'),'The rename dialog');
-    const input=modal.querySelector('input');input.value='Sample renamed session';input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);
-    button(modal,'Rename').click();
+    const input=await until(()=>document.querySelector('.is-being-renamed [contenteditable]'),'The tree rename field');
+    input.textContent='Sample renamed session';input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);
+    input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
     await until(()=>chat().dataset.sessionTitle==='Sample renamed session','The new title',30000);
     const client=nodes.connection(presenter().reference.registrationId).client;
     return JSON.stringify({node:(await client.getSession(presenter().reference.sessionId)).title})`)
