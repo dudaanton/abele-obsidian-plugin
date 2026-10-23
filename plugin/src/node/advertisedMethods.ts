@@ -8,7 +8,11 @@ const ClientWelcome = z.object({
   }),
 })
 
-export function nodeAdvertisesMethod(client: unknown, method: string): boolean {
+export function nodeAdvertisedMethods(client: unknown): readonly string[] | undefined {
   const parsed = ClientWelcome.safeParse(client)
-  return parsed.success && parsed.data.channel.channel.welcome.methods.includes(method)
+  return parsed.success ? parsed.data.channel.channel.welcome.methods : undefined
+}
+
+export function nodeAdvertisesMethod(client: unknown, method: string): boolean {
+  return nodeAdvertisedMethods(client)?.includes(method) ?? false
 }

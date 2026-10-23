@@ -10,6 +10,8 @@ it('remembers log support only within the same authorization and replaces it on 
   expect(nodeLogAvailable(connection)).toBe(true)
   connection.client.channel = undefined
   expect(nodeLogAvailable(connection)).toBe(true)
+  connection.client.channel = { channel: undefined }
+  expect(nodeLogAvailable(connection)).toBe(true)
   connection.authorizationGeneration++
   expect(nodeLogAvailable(connection)).toBe(false)
   connection.client.channel = { channel: { welcome: { methods: [] } } }

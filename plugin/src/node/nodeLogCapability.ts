@@ -1,4 +1,4 @@
-import { nodeAdvertisesMethod } from './advertisedMethods'
+import { nodeAdvertisedMethods } from './advertisedMethods'
 
 interface LogConnection {
   client: unknown
@@ -10,15 +10,11 @@ const remembered = new WeakMap<LogConnection, { authority: number; available: bo
 export function nodeLogAvailable(connection?: LogConnection): boolean {
   if (!connection) return false
   const authority = connection.authorizationGeneration
-  if (
-    connection.client &&
-    typeof connection.client === 'object' &&
-    'channel' in connection.client &&
-    connection.client.channel
-  ) {
+  const methods = nodeAdvertisedMethods(connection.client)
+  if (methods) {
     remembered.set(connection, {
       authority,
-      available: nodeAdvertisesMethod(connection.client, 'node.log.v1.tail'),
+      available: methods.includes('node.log.v1.tail'),
     })
   }
   const previous = remembered.get(connection)
