@@ -343,3 +343,12 @@ still fail. Adapter/native layers remain a conservative operation upper bound, n
 physical bytes. Native handle `sync`/`datasync` start/finish receipts include elapsed durations
 for phase analysis; these cover observed vault handles, not every filesystem flush by the
 app, database or operating system.
+
+Synced restarts additionally require zero plugin payload-content read bytes, measured at
+adapter reads, native promise readFile and native FileHandle read/readv/readFile ports.
+Only generated payload paths count; stat calls and private control files do not. Host
+indexing reads are retained separately by stack origin. Unknown callers, incomplete plugin
+reads, missing observer coverage in either renderer generation or observer errors fail
+closed. Raw read receipts remain in renderer.jsonl; overlapping API layers make positive
+byte counts a conservative upper bound rather than unique physical bytes. Read and write
+port wrappers are restored together in reverse installation order on observer unload.

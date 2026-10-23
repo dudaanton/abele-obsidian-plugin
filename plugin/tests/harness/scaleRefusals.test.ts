@@ -200,3 +200,49 @@ it('excludes proven host persistence during pause but retains sync writes to the
       .pauseWriteBytesAfterGrace
   ).toBe(4)
 })
+
+it('requires observed zero sync content bytes on restart and never exempts an unknown read', async () => {
+  const { restartReadMetrics } = await import('../scale/refusals.mjs')
+  const ready = { event: 'content-read-ready', device: '0', generation: 'sample', at: 101 }
+  const start = {
+    event: 'content-read-start',
+    device: '0',
+    generation: 'sample',
+    id: 1,
+    at: 102,
+    path: 'fixture/sample.md',
+    source: 'host',
+  }
+  const finish = {
+    event: 'content-read-finish',
+    device: '0',
+    generation: 'sample',
+    id: 1,
+    at: 103,
+    bytes: 4,
+  }
+  expect(restartReadMetrics([ready], '0', 100, 200)).toMatchObject({ complete: true, syncBytes: 0 })
+  expect(restartReadMetrics([ready, start, finish], '0', 100, 200)).toMatchObject({
+    complete: true,
+    syncBytes: 0,
+    hostBytes: 4,
+  })
+  expect(
+    restartReadMetrics([ready, { ...start, source: 'abele' }, finish], '0', 100, 200)
+  ).toMatchObject({ complete: true, syncBytes: 4 })
+  expect(
+    restartReadMetrics([ready, { ...start, source: 'unknown' }, finish], '0', 100, 200).complete
+  ).toBe(false)
+  expect(restartReadMetrics([ready, { ...start, source: 'abele' }], '0', 100, 200).complete).toBe(
+    false
+  )
+  expect(restartReadMetrics([ready, start], '0', 100, 200)).toMatchObject({
+    complete: true,
+    syncBytes: 0,
+  })
+  expect(restartReadMetrics([], '0', 100, 200).complete).toBe(false)
+  expect(
+    restartReadMetrics([ready, { event: 'renderer-start', device: '0', at: 150 }], '0', 100, 200)
+      .complete
+  ).toBe(false)
+})

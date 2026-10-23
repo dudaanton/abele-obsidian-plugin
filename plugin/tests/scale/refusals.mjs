@@ -127,3 +127,48 @@ export function pauseWriteMetrics(entries, device, pauseAt, endAt) {
       'Conservative API-operation upper bound; overlapping adapter/native layers may duplicate bytes. Unknown or in-flight operations fail closed.',
   }
 }
+
+export function restartReadMetrics(entries, device, startAt, endAt) {
+  const rows = entries.filter((e) => e.device === device && e.at >= startAt && e.at <= endAt)
+  const ready = rows.filter((e) => e.event === 'content-read-ready')
+  const finishes = new Map(
+    rows.filter((e) => e.event === 'content-read-finish').map((e) => [`${e.generation}:${e.id}`, e])
+  )
+  const reads = rows
+    .filter((e) => e.event === 'content-read-start')
+    .map((start) => ({
+      ...start,
+      finish: finishes.get(`${start.generation}:${start.id}`),
+    }))
+  const unknown = reads.filter(
+    (e) =>
+      e.source !== 'host' &&
+      (!['abele'].includes(e.source) ||
+        !e.finish ||
+        e.finish.failed ||
+        !Number.isFinite(e.finish.bytes))
+  )
+  const generations = rows.filter((e) => e.event === 'renderer-start').map((e) => e.at)
+  const coverage = generations.every((at, i) =>
+    ready.some((e) => e.at >= at && e.at < (generations[i + 1] ?? Infinity))
+  )
+  const complete =
+    Number.isFinite(endAt) &&
+    ready.length > 0 &&
+    coverage &&
+    !rows.some((e) => e.event === 'content-read-error') &&
+    unknown.length === 0
+  const sum = (source) =>
+    reads.filter((e) => e.source === source).reduce((n, e) => n + (e.finish?.bytes ?? 0), 0)
+  return {
+    device,
+    complete,
+    syncBytes: complete ? sum('abele') : undefined,
+    hostBytes: sum('host'),
+    unknown,
+    reads: reads.filter((e) => e.source !== 'host'),
+    hostReadOperations: reads.filter((e) => e.source === 'host').length,
+    hostIncomplete: reads.filter((e) => e.source === 'host' && !e.finish).length,
+    ready,
+  }
+}

@@ -197,7 +197,11 @@ it('waits for main-process profiling setup before finishing observer load and ke
       if (name === 'path') return { join: (...p) => p.join('/') }
       if (name === config.reindexObserver)
         return { observeRebuild: () => {}, observeHashes: () => () => {} }
-      if (name === config.writeObserver) return { observeWrites: () => () => {} }
+      if (name === config.writeObserver)
+        return {
+          observeWrites: () => () => events.push({ event: 'cleanup-write' }),
+          observeReads: () => () => events.push({ event: 'cleanup-read' }),
+        }
       if (name === config.diagnostics) return diagnostics
       if (name === 'electron') return { ipcRenderer: { send: (channel) => sent.push(channel) } }
       if (name === '@electron/remote')
@@ -231,6 +235,10 @@ it('waits for main-process profiling setup before finishing observer load and ke
     expect.objectContaining({ event: 'long-task', startedAt: 1050, durationMs: 7061 })
   )
   cleanup.forEach((fn) => fn())
+  expect(events.filter((e) => e.event.startsWith('cleanup-')).map((e) => e.event)).toEqual([
+    'cleanup-read',
+    'cleanup-write',
+  ])
   expect(closed).toBe(true)
 })
 

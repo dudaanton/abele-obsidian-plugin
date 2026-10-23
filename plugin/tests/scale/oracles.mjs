@@ -125,6 +125,16 @@ export function budgets(m) {
       60000
     ),
     timing('resume upload', m.resumeUploadMs, 30000),
+    ...(m.restartContentReadRequired
+      ? [
+          check(
+            'restart content reads',
+            m.restartContentReadBytes,
+            '0 sync content bytes',
+            m.restartContentReadBytes === 0
+          ),
+        ]
+      : []),
     timing('pause latency', m.pauseLatencyMs, 2000),
     check(
       'pause request grace',
@@ -252,6 +262,7 @@ export function markdown(report) {
       'Server provenance and advertised limits',
       report.serverReceipt ? [report.serverReceipt] : []
     ) +
+    details('Synced restart content read evidence', report.restartReadEvidence) +
     details('Renderer long-task sampled CPU attribution', report.longTaskAttribution) +
     details('Sampled peak app RSS', [
       {

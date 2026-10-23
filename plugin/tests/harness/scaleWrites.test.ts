@@ -108,3 +108,42 @@ it('observes direct native ports as well as the host adapter without double wrap
     undo()
   }
 })
+
+it('observes actual content read bytes and distinguishes host from sync callers without changing results', async () => {
+  const { observeReads } = require('../scale/writes.cjs')
+  const events = []
+  const handle = { read: async () => ({ bytesRead: 3 }), readFile: async () => Buffer.from('body') }
+  const native = { open: async () => handle, readFile: async () => Buffer.from('data') }
+  const adapter = { getBasePath: () => '/sample', fsPromises: native, read: async () => 'note' }
+  const undo = observeReads(adapter, (e) => events.push(e), [native], 'fixture')
+  try {
+    expect(await adapter.read('fixture/sample.md')).toBe('note')
+    const opened = await native.open('/sample/fixture/sample.md', 'r')
+    expect((await opened.read(Buffer.alloc(10), 0, 10, 0)).bytesRead).toBe(3)
+    expect(await native.readFile('/sample/.obsidian/workspace.json')).toEqual(Buffer.from('data'))
+    expect(events.filter((e) => e.event === 'content-read-finish').map((e) => e.bytes)).toEqual([
+      4, 3,
+    ])
+    expect(events.find((e) => e.event === 'content-read-start').stack).toContain(
+      'scaleWrites.test.ts'
+    )
+    expect(events.filter((e) => e.event === 'content-read-ready')).toHaveLength(1)
+  } finally {
+    undo()
+  }
+})
+
+it('retains an uninstrumentable read handle and marks coverage unavailable', async () => {
+  const { observeReads } = require('../scale/writes.cjs')
+  const handle = Object.freeze({ read: async () => ({ bytesRead: 3 }) })
+  const native = { open: async () => handle }
+  const adapter = { getBasePath: () => '/sample', fsPromises: native }
+  const events = []
+  const undo = observeReads(adapter, (e) => events.push(e), [], 'fixture')
+  try {
+    expect(await native.open('/sample/fixture/sample.md', 'r')).toBe(handle)
+    expect(events.some((e) => e.event === 'content-read-error')).toBe(true)
+  } finally {
+    undo()
+  }
+})

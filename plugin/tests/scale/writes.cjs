@@ -243,3 +243,102 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
     for (const undo of restore.reverse()) undo()
   }
 }
+
+// Observe only generated payload paths; metadata stats and private control files are not content reads.
+exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
+  const root = path.resolve(adapter.getBasePath())
+  const generation = `${Date.now()}-${Math.random()}`
+  const restore = [],
+    handles = new WeakSet()
+  let sequence = 0
+  const relative = (value) => {
+    if (typeof value !== 'string') return null
+    const full = path.resolve(value)
+    if (!full.startsWith(root + path.sep)) return null
+    const file = path.relative(root, full)
+    return prefix && file.startsWith(prefix + '/') ? file : null
+  }
+  const size = (value) => (typeof value === 'string' ? Buffer.byteLength(value) : value?.byteLength)
+  const wrap = (object, key, locate, count) => {
+    const original = object[key]
+    if (typeof original !== 'function') return
+    const wrapped = function (...args) {
+      const file = locate(args)
+      if (file == null) return original.apply(this, args)
+      const id = ++sequence,
+        stack = new Error().stack
+      emit({
+        event: 'content-read-start',
+        generation,
+        id,
+        path: file,
+        method: key,
+        stack,
+        source: exports.writeOrigin(stack),
+      })
+      let answer
+      try {
+        answer = original.apply(this, args)
+      } catch (error) {
+        emit({ event: 'content-read-finish', generation, id, failed: true })
+        throw error
+      }
+      return Promise.resolve(answer).then(
+        (value) => {
+          emit({ event: 'content-read-finish', generation, id, bytes: count(value) })
+          return value
+        },
+        (error) => {
+          emit({ event: 'content-read-finish', generation, id, failed: true })
+          throw error
+        }
+      )
+    }
+    object[key] = wrapped
+    if (object[key] !== wrapped) throw new Error('Read observer port unavailable')
+    restore.push(() => {
+      if (object[key] === wrapped) object[key] = original
+    })
+  }
+  try {
+    if (!prefix || !adapter.fsPromises) throw new Error('Read observer input unavailable')
+    for (const key of ['read', 'readBinary', 'readBinaryPrefix'])
+      wrap(adapter, key, (args) => relative(path.join(root, args[0])), size)
+    for (const native of new Set([adapter.fsPromises, ...nativePorts])) {
+      wrap(native, 'readFile', (args) => relative(args[0]), size)
+      const original = native.open
+      if (typeof original !== 'function') throw new Error('Read observer open unavailable')
+      const open = async function (...args) {
+        const handle = await original.apply(this, args),
+          file = relative(args[0])
+        if (file != null && !handles.has(handle)) {
+          handles.add(handle)
+          try {
+            for (const key of ['read', 'readv'])
+              wrap(
+                handle,
+                key,
+                () => file,
+                (value) => value?.bytesRead
+              )
+            wrap(handle, 'readFile', () => file, size)
+          } catch {
+            emit({ event: 'content-read-error', generation })
+          }
+        }
+        return handle
+      }
+      native.open = open
+      if (native.open !== open) throw new Error('Read observer open not writable')
+      restore.push(() => {
+        if (native.open === open) native.open = original
+      })
+    }
+    emit({ event: 'content-read-ready', generation, prefix })
+  } catch {
+    emit({ event: 'content-read-error', generation })
+  }
+  return () => {
+    for (const undo of restore.reverse()) undo()
+  }
+}

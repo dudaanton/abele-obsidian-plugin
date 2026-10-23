@@ -16,7 +16,12 @@ import {
 import { openServer, verifyServerLimits } from './local-server.mjs'
 import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
-import { fileExpectations, oversizedEvidence, pauseWriteMetrics } from './refusals.mjs'
+import {
+  fileExpectations,
+  oversizedEvidence,
+  pauseWriteMetrics,
+  restartReadMetrics,
+} from './refusals.mjs'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
@@ -237,6 +242,7 @@ async function setupVault(config, root, device) {
     JSON.stringify({
       evidence: join(config.output, 'renderer.jsonl'),
       device,
+      contentPrefix: config.contentPrefix,
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
@@ -276,6 +282,7 @@ export async function run(config) {
     failures: [],
     phase: 'preflight',
     phases: [{ name: 'preflight', at: Date.now() }],
+    restartContentReadRequired: true,
     caseRefusals: [],
     primaryActivity: [],
   }
@@ -460,7 +467,7 @@ export async function run(config) {
       await mkdir(device.root, { recursive: true })
       if ((await readdir(device.root)).length) throw new Error('Disposable vault must be empty')
       if (i === 0) report.expected = await generate(join(device.root, prefix), options)
-      await setupVault(config, device.root, String(i))
+      await setupVault({ ...config, contentPrefix: prefix }, device.root, String(i))
       const proxy = new WireProxy(config.server, String(i))
       proxies.push(proxy)
       const address = await proxy.start()
@@ -1037,6 +1044,12 @@ export async function run(config) {
             report.deviceRestartIdleAt?.[i]
           ),
         }))
+      report.restartReadEvidence = devices.map((_, i) =>
+        restartReadMetrics(entries, String(i), report.restartAt, report.deviceRestartIdleAt?.[i])
+      )
+      report.restartContentReadBytes = report.restartReadEvidence.every((e) => e.complete)
+        ? report.restartReadEvidence.reduce((n, e) => n + e.syncBytes, 0)
+        : undefined
       report.startupClock = 'plugin-load'
       const worst = (key) =>
         report.startupTiming?.length === devices.length &&

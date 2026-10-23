@@ -34,8 +34,18 @@ module.exports = class extends Plugin {
       reindexObserver.observeHashes(nativeCrypto, globalThis.crypto?.subtle, emit, classifyHash)
     )
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
-    const { observeWrites } = require(config.writeObserver)
-    this.register(observeWrites(this.app.vault.adapter, emit, fs.promises ? [fs.promises] : []))
+    const { observeWrites, observeReads } = require(config.writeObserver)
+    const undoWrites = observeWrites(this.app.vault.adapter, emit, fs.promises ? [fs.promises] : [])
+    const undoReads = observeReads?.(
+      this.app.vault.adapter,
+      emit,
+      fs.promises ? [fs.promises] : [],
+      config.contentPrefix
+    )
+    this.register(() => {
+      undoReads?.()
+      undoWrites()
+    })
     let previous = ''
     const seenActivity = new Set()
     const stateTimer = setInterval(() => {
