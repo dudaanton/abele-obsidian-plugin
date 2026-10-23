@@ -1930,7 +1930,7 @@ export function checkedVaultPort(
     ): void
   }
 ) {
-  // eslint-disable-next-line obsidianmd/no-global-this -- Lease clocks also run in headless hosts, independently of any UI window.
+  // Lease clocks also run in headless hosts, independently of any UI window.
   const timers = globalThis
   return {
     async acquire(paths: string[]) {
