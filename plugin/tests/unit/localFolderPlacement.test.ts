@@ -6,6 +6,36 @@ import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacem
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 
+it('projects 33000 directory paths once each and yields between bounded chunks', async () => {
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const disk = new MemoryFileSystem()
+  const rows = Array.from({ length: 33000 }, (_, index) => ({ path: `Moved/Folder${index}` }))
+  const inventory = Symbol.for('abele.sync.inventory-directories-v1')
+  Object.assign(disk, { [inventory]: async () => rows })
+  const project = vi.spyOn(placement, 'toServer')
+  let boundaries = 0
+  const previous = Object.getOwnPropertyDescriptor(window, 'scheduler')
+  Object.defineProperty(window, 'scheduler', {
+    configurable: true,
+    value: {
+      yield: async () => {
+        boundaries++
+      },
+    },
+  })
+  try {
+    const mapped = await Reflect.get(placement.fileSystem(disk), inventory)()
+    expect(mapped).toHaveLength(33000)
+    expect(mapped[32999].path).toBe('Shared/Folder32999')
+    // One prefix check and one validated projection per selected path, never a scope-list scan.
+    expect(project).toHaveBeenCalledTimes(33000)
+    expect(boundaries).toBeGreaterThanOrEqual(Math.floor(33000 / 256))
+  } finally {
+    if (previous) Object.defineProperty(window, 'scheduler', previous)
+    else Reflect.deleteProperty(window, 'scheduler')
+  }
+})
+
 it('maps candidate names and the supplied host key through scoped state handles', async () => {
   const store = new MemoryStateStore()
   const placement = new LocalFolderPlacement('Shared', 'Moved')

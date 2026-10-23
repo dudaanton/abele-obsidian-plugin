@@ -4,6 +4,7 @@ import { assertPhysicalPath } from './external/projection'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'
 import { PLACEMENT } from './pathCoordinator'
+import { SyncTaskBudget } from './syncTaskBudget'
 
 export { FolderScopeError } from './scopedFileSystem'
 import { FolderScopeError } from './scopedFileSystem'
@@ -191,13 +192,20 @@ export class LocalFolderPlacement {
         )
           return value.bind(target)
         if (key === Symbol.for('abele.sync.inventory-directories-v1'))
-          return async () =>
-            (await value.call(target))
-              .filter(
-                (item: { path: string }) =>
-                  item.path === placement.local || item.path.startsWith(placement.local + '/')
-              )
-              .map((item: { path: string }) => ({ ...item, path: placement.toServer(item.path) }))
+          return async () => {
+            // Capture the current scope once per scan. A subsequent scan observes a local follow.
+            const root = placement.local,
+              prefix = root + '/'
+            const budget = new SyncTaskBudget()
+            const projected = []
+            for (const item of await value.call(target)) {
+              if (item.path === root || item.path.startsWith(prefix))
+                projected.push({ ...item, path: placement.toServer(item.path) })
+              // At most 256 entries or 8 ms of projection before a renderer task boundary.
+              await budget.account(4096)
+            }
+            return projected
+          }
         if (
           [
             Symbol.for('abele.sync.fingerprint-fresh-v1'),
@@ -262,9 +270,13 @@ export class LocalFolderPlacement {
         if (policy === 'key') return (path: string) => value.call(target, placement.toLocal(path))
         if (policy === 'list')
           return async function* () {
+            const root = placement.local,
+              prefix = root + '/'
+            const budget = new SyncTaskBudget()
             for await (const item of value.call(target)) {
-              if (item.path === placement.local || item.path.startsWith(placement.local + '/'))
+              if (item.path === root || item.path.startsWith(prefix))
                 yield { ...item, path: placement.toServer(item.path) }
+              await budget.account(4096)
             }
           }
         if (policy === 'watch')
