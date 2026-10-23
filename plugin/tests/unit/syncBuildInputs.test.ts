@@ -26,7 +26,7 @@ describe('reproducible sync build inputs', () => {
   }
 
   it('accepts the selected archive, lockfile and installed payload', () => {
-    expect(verifySyncSdkInputs(plugin).version).toBe('0.3.3')
+    expect(verifySyncSdkInputs(plugin).version).toBe('0.3.4')
   })
 
   it('rejects a deliberately mismatched npm package integrity', () => {

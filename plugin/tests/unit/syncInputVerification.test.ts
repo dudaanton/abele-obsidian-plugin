@@ -40,8 +40,8 @@ afterEach(() => {
 describe('npm sync SDK input preflight', () => {
   it('verifies the audited npm version, integrity and installed package bytes', () => {
     const input = verifySyncSdkInputs()
-    expect(input.version).toBe('0.3.3')
-    expect(input.source).toBe('file:vendor/sync/abele-sync-sdk-0.3.3.tgz')
+    expect(input.version).toBe('0.3.4')
+    expect(input.source).toBe('file:vendor/sync/abele-sync-sdk-0.3.4.tgz')
     expect(input.sha256).toBe('13be6a732f0a3079bb1e991ffc4e652466287c4840a11731f574810b6c9ad67a')
     expect(input.integrity).toBe(
       'sha512-6rT/Ntipq3g8CPK6d0aGKV0/UU41ihUtOyY9dJRqE3zhYI1zSqUjlZb3tU0uFbRdgUBJATo081YS2hfA5yUGcQ=='
