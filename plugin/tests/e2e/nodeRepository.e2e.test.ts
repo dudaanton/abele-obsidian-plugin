@@ -207,6 +207,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       const row=path=>panel().querySelector('[data-path="'+path+'"]');
       const files=panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Files"]');files.click();
       await until(()=>row('README.md'));
+      const expand=async path=>{await until(()=>row(path));if(row(path).getAttribute('aria-expanded')==='false')row(path).click();await until(()=>row(path)?.getAttribute('aria-expanded')==='true')};
       const operate=async(path,label,value,preview=false)=>{
         row(path).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:100,clientY:200}));
         await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label));
@@ -225,7 +226,10 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
         await until(()=>row('sample-created'));
         return 'empty directory visible';
       }
+      // New folders start folded; open the parent before checking mutations inside it.
+      await expand('sample-created');
       await operate('README.md','New file…','sample-created/new-file.ts');
+      await until(()=>require('fs').existsSync(${JSON.stringify(projectPath)}+'/sample-created/new-file.ts'));
       await until(()=>row('sample-created/new-file.ts'));
       await operate('sample-created/new-file.ts','Rename…','renamed.ts');
       await until(()=>row('sample-created/renamed.ts')&&!row('sample-created/new-file.ts'));
@@ -248,6 +252,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
         await folderAction('sample-moved-folder','Delete…');
         await until(()=>!row('sample-moved-folder'));
         await operate('README.md','New folder…','sample-created');
+        await expand('sample-created');
         await operate('README.md','New file…','sample-created/renamed.ts');
         await until(()=>row('sample-created/renamed.ts'));
       }

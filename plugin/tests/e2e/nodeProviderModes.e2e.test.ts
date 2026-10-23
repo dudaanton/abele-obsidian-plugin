@@ -52,13 +52,14 @@ it('shows owner modes, exact settings and effective delegation policy on a real 
       await shot('agent-settings-inherited');await close();
       api.openDialog('node-agent-permissions');
       const settings=await until(()=>document.querySelector('.abele-agent-editor'));await until(()=>settings.querySelector('select'));await wait(150);
-      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes("in Ask it won't start") && !settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('Without asking: edits in its folder without asking; it stays inside that folder.');
+      states.settings=settings.textContent.includes('Without asking') && settings.textContent.includes("Codex can't ask before each action, so it won't start here. Choose Without asking.") && !settings.textContent.includes('--claude-allow-bypass') && settings.textContent.includes('Asks before each action.');
       await shot('agent-settings');
       const select=[...settings.querySelectorAll('select')].find(el=>[...el.options].some(option=>option.value==='confirm-all') && [...el.options].some(option=>option.value==='allow-all'));
       const configured=api.AgentRegistry.getInstance().list({includeUtility:true,includeNode:true}).find(agent=>agent.node?.id==='sample-permission-node');
       states.ownerChoice=select?.value==='confirm-all' && configured?.permissionMode==='confirm-all';
       select.value='allow-all';select.dispatchEvent(new Event('change',{bubbles:true}));await wait(150);
       states.ownerChoice=states.ownerChoice && configured.permissionMode==='allow-all';
+      states.settings=states.settings && settings.textContent.includes('Edits files in its folder without asking and stays inside it.') && !settings.textContent.includes("Codex can't ask before each action, so it won't start here. Choose Without asking.");
       await shot('agent-settings-without-asking');await close();
       for(const state of ['refused','node-opt-in','running','unknown']) {
         api.openDialog('node-delegation-card',{permissionState:state});
