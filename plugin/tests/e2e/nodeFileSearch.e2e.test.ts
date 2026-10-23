@@ -41,7 +41,7 @@ async function search(shell: string, entry: string) {
     await until(()=>file()?.querySelector('[role=search] input'),'Native find');
     const input=file().querySelector('[role=search] input');if(document.activeElement!==input)throw Error('Find did not focus its input');
     input.value='sampleMarkerIdentifier';input.dispatchEvent(new Event('input',{bubbles:true}));
-    await until(()=>file()?.querySelectorAll('.abele-github-find__match').length===2,'Both file matches');
+    await until(()=>file()?.querySelectorAll('.abele-github-find__match').length===2,'Both file matches').catch(async error=>{require('fs').writeFileSync(${JSON.stringify(resolve(shots, shell + '-' + entry + '-find-failure.png'))},(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());throw Error(String(error)+'; '+JSON.stringify({count:file()?.querySelector('.abele-github-find__count')?.textContent,editors:[...file().querySelectorAll('.cm-editor')].map(el=>({skip:el.hasAttribute('data-find-skip'),editable:el.querySelector('.cm-content')?.contentEditable,matches:el.querySelectorAll('.abele-github-find__match').length,text:el.textContent}))}))});
     if(document.body.classList.contains('is-phone')&&input.getBoundingClientRect().width<file().querySelector('[role=search]').getBoundingClientRect().width*.75)throw Error('Find input does not get the phone width');return 'matches'})()`)
   await capture(`${shell}-${entry}-search`)
   await evalLong(

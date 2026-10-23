@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-node-main">
+  <div class="abele-node-main abele-node-main_file">
     <div v-if="model.busy.value" role="status">{{ t('streamB.loadingFile.e937ad') }}</div>
     <div v-if="offline && !model.document.value" class="abele-node-file-state">
       <StateLine tone="faint" :text="t('node.file.waitingForNode')" />
@@ -267,9 +267,11 @@ body.is-phone .abele-node-content__chat {
     var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-2)
   );
 }
-.abele-node-main {
+.abele-node-main_file {
   display: flex;
   flex-direction: column;
+}
+.abele-node-main {
   padding: var(--size-4-4);
   min-width: 0;
   overflow: auto;
