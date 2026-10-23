@@ -1,8 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
-import { Platform, type App } from 'obsidian'
-import type { EngineClient } from '@abele/sync-sdk/core'
+import { Platform } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
@@ -12,7 +10,7 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
-import { blob, create, seed } from '@abele/sync-test-seed'
+import { blob, seed } from '@abele/sync-test-seed'
 import { decidedNotice } from '@/sync/heldDeletes'
 
 /**
@@ -24,15 +22,14 @@ import { decidedNotice } from '@/sync/heldDeletes'
  * in `syncJoin.test.ts`.
  */
 
-const EMAIL = 'device@test.io'
 const PATIENCE_MS = 10_000
 const NOTES = 100
+const CONTENTS = Array.from({ length: 10 }, (_, n) => `sample note ${n}`)
 
 let server: V2Server
 let app: FakeApp
 let service: Awaited<ReturnType<typeof nativeTokenFixture>>
 let other: V2EngineClient
-let vaultId: string
 /** Flipped by a test to make every request fail the way a lost network does. */
 let offline = false
 
@@ -76,7 +73,10 @@ beforeEach(async () => {
   // Delete decisions start from an already-present replica, rather than timing
   // a hundred unrelated first-download publications inside the setup deadline.
   app = buildFakeVault(
-    Array.from({ length: NOTES }, (_, n) => ({ path: note(n), content: `note ${n}` }))
+    Array.from({ length: NOTES }, (_, n) => ({
+      path: note(n),
+      content: CONTENTS[n % CONTENTS.length],
+    }))
   )
   setSecrets(createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin))
   const user = await createUser(
@@ -85,8 +85,17 @@ beforeEach(async () => {
     server.address
   )
   other = new V2EngineClient(user.token, { fetch: globalThis.fetch })
-  const ops = []
-  for (let n = 0; n < NOTES; n++) ops.push(await create(other, note(n), `note ${n}`))
+  // Delete decisions are per file identity, not per content hash. Keep a hundred
+  // independent files, but upload each shared fixture payload only once instead
+  // of spending the setup deadline on a hundred durable blob publications.
+  const contents = []
+  for (const content of CONTENTS) contents.push(await blob(other, content))
+  const ops = Array.from({ length: NOTES }, (_, n) => ({
+    op: 'create' as const,
+    path: note(n),
+    ...contents[n % contents.length],
+    mtime: 1,
+  }))
   await seed(other, ops)
 
   service = await nativeTokenFixture(app, user.token, (input, init) =>
