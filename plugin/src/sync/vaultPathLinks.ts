@@ -113,7 +113,10 @@ const GUARDED = Symbol('sync guarded filesystem')
 const adapterOrigins = new WeakMap<DataAdapter, DataAdapter>()
 const nativeOrigins = new WeakMap<object, object>()
 const adapters = new WeakMap<DataAdapter, DataAdapter>()
-const mutationRebuilders = new WeakMap<DataAdapter, (check: () => void) => DataAdapter>()
+const mutationRebuilders = new WeakMap<
+  DataAdapter,
+  (check: () => void, privateRoots: readonly string[]) => DataAdapter
+>()
 
 /** Check before host submission; a foreign callable's late acknowledgement requires repair. */
 function issueMutation<T>(check: () => void, invoke: () => T, method: string): T {
@@ -148,19 +151,72 @@ function issueMutation<T>(check: () => void, invoke: () => T, method: string): T
 }
 
 /** Rebuild validation above a checked leaf; never share an ambient lease with user saves. */
-export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void): DataAdapter {
+export function mutationCheckedAdapter(
+  adapter: DataAdapter,
+  check: () => void,
+  privateRoots: readonly string[] = []
+): DataAdapter {
   const rebuild = mutationRebuilders.get(adapter)
-  if (rebuild) return rebuild(check)
+  if (rebuild) return rebuild(check, privateRoots)
   const native = Reflect.get(adapter, 'fsPromises')
+  let writableMask: number | undefined
+  const writableOpen = (flags: unknown) => {
+    if (typeof flags !== 'number') return typeof flags === 'string' && /[wa+]/.test(flags)
+    if (writableMask === undefined) {
+      const constants = desktopNodeFs().constants
+      writableMask = constants.O_WRONLY | constants.O_RDWR | constants.O_CREAT | constants.O_TRUNC
+    }
+    return !!(flags & writableMask)
+  }
+  const full = Reflect.get(adapter, 'getFullPath')
+  const roots = new Set<string>(
+    typeof full === 'function'
+      ? [full.call(adapter, '').replace(/\\/g, '/').replace(/\/+$/, '')]
+      : []
+  )
+  const isPrivate = (value: unknown, nativePath = false) => {
+    if (typeof value !== 'string') return false
+    let path = value.replace(/\\/g, '/')
+    if (path.split('/').some((part) => part === '..' || part === '.')) return false
+    if (nativePath) {
+      const root = [...roots].find((root) => path.startsWith(root + '/'))
+      if (root === undefined) return false
+      path = path.slice(root.length + 1)
+    }
+    return privateRoots.some((root) => path === root || path.startsWith(root + '/'))
+  }
+  const authorize = (method: string, args: unknown[], nativePath = false) => {
+    if (method === 'mkdir' || method === 'sync' || method === 'datasync') return
+    const sourcePrivate = isPrivate(args[0], nativePath)
+    const targetPrivate = isPrivate(args[1], nativePath)
+    if (method === 'rename') {
+      // Capture to private evidence, or mobile no-overwrite publication from it.
+      if (targetPrivate || (!nativePath && sourcePrivate)) return
+    } else if (method === 'link') {
+      // Native link is exclusive even when the public destination was recreated.
+      if (sourcePrivate) return
+    } else if (sourcePrivate && (!/^(copy.*|symlink)$/.test(method) || targetPrivate)) return
+    throw Object.assign(
+      new EngineError('conflict', 'Raw public mutation refused by checked port'),
+      { rawPublicMutation: true }
+    )
+  }
   const methods = new Map<PropertyKey, unknown>()
-  const handles = (handle: object) =>
+  const handles = (handle: object, path: unknown) =>
     new Proxy(handle, {
       get(target, key) {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
         return /^(?:write.*|append.*|truncate|utimes|chmod|chown|sync|datasync)$/.test(String(key))
           ? (...args: unknown[]) =>
-              issueMutation(check, () => value.apply(target, args), String(key))
+              issueMutation(
+                check,
+                () => {
+                  authorize(String(key), [path], true)
+                  return value.apply(target, args)
+                },
+                String(key)
+              )
           : value.bind(target)
       },
     })
@@ -170,21 +226,45 @@ export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void):
       get(target, key) {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        if (key === 'realpath')
+          return async (...args: unknown[]) => {
+            const result = await value.apply(target, args)
+            if (
+              typeof args[0] === 'string' &&
+              roots.has(args[0].replace(/\\/g, '/').replace(/\/+$/, '')) &&
+              typeof result === 'string'
+            )
+              roots.add(result.replace(/\\/g, '/').replace(/\/+$/, ''))
+            return result
+          }
         if (key === 'open')
           return async (...args: unknown[]) => {
             // Numeric opens include no-follow flags; even a read handle can flush or mutate later.
-            const writable =
-              typeof args[1] === 'number' || (typeof args[1] === 'string' && /[wa+]/.test(args[1]))
+            const writable = writableOpen(args[1])
             const handle = await (writable
-              ? issueMutation(check, () => value.apply(target, args), 'open')
+              ? issueMutation(
+                  check,
+                  () => {
+                    authorize('open', args, true)
+                    return value.apply(target, args)
+                  },
+                  'open'
+                )
               : value.apply(target, args))
-            return handles(handle)
+            return handles(handle, args[0])
           }
         return /^(?:write.*|append.*|mkdir|rename|copy.*|unlink|rm|rmdir|link|symlink|truncate|utimes|chmod|chown)$/.test(
           String(key)
         )
           ? (...args: unknown[]) =>
-              issueMutation(check, () => value.apply(target, args), String(key))
+              issueMutation(
+                check,
+                () => {
+                  authorize(String(key), args, true)
+                  return value.apply(target, args)
+                },
+                String(key)
+              )
           : value.bind(target)
       },
     })
@@ -198,8 +278,13 @@ export function mutationCheckedAdapter(adapter: DataAdapter, check: () => void):
         ? (...args: unknown[]) =>
             issueMutation(
               check,
-              () =>
-                engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args),
+              () => {
+                authorize(String(key), args)
+                return engineAdapterMethod(target, key, value).apply(
+                  adapterEngineReceiver(target),
+                  args
+                )
+              },
               String(key)
             )
         : value.bind(target)
@@ -222,8 +307,8 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
   const full = (adapter as DataAdapter & LinkAdapter).getFullPath?.bind(adapter)
   if (!full || !native) {
     const proxy = mobileGuard(adapter)
-    mutationRebuilders.set(proxy, (check) =>
-      guardedVaultAdapter(mutationCheckedAdapter(adapter, check))
+    mutationRebuilders.set(proxy, (check, privateRoots) =>
+      guardedVaultAdapter(mutationCheckedAdapter(adapter, check, privateRoots))
     )
     adapterOrigins.set(proxy, adapterOrigins.get(adapter) ?? adapter)
     adapters.set(adapter, proxy)
@@ -390,8 +475,8 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
       }
     },
   })
-  mutationRebuilders.set(guarded, (check) =>
-    guardedVaultAdapter(mutationCheckedAdapter(adapter, check))
+  mutationRebuilders.set(guarded, (check, privateRoots) =>
+    guardedVaultAdapter(mutationCheckedAdapter(adapter, check, privateRoots))
   )
   adapterOrigins.set(guarded, adapterOrigins.get(adapter) ?? adapter)
   adapters.set(adapter, guarded)
@@ -1717,8 +1802,8 @@ export function connectionAdapter(
       }
     },
   })
-  mutationRebuilders.set(port, (check) =>
-    connectionAdapter(mutationCheckedAdapter(adapter, check), rootInput, privateRoot)
+  mutationRebuilders.set(port, (check, privateRoots) =>
+    connectionAdapter(mutationCheckedAdapter(adapter, check, privateRoots), rootInput, privateRoot)
   )
   return port
 }

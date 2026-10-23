@@ -26,6 +26,7 @@ it.each([false, true])(
     const fixture = native ? virtualNativeVault() : undefined
     const app = fixture?.app ?? buildFakeVault([])
     if (fixture) desktopFsPort(fixture.native)
+    await app.vault.adapter.mkdir('.obsidian/plugins/abele/sync-conditional')
     await app.vault.adapter.writeBinary('sample.bin', payload.buffer)
     const entered = deferred(),
       resume = deferred()
@@ -57,7 +58,10 @@ it.each([false, true])(
     const host = Reflect.get(Reflect.get(disk, 'conditional'), 'host').withMutationCheck(() =>
       lease.check()
     )
-    const work = host.capture('sample.bin', 'moved.bin') as Promise<void>
+    const work = host.capture(
+      'sample.bin',
+      '.obsidian/plugins/abele/sync-conditional/moved.bin'
+    ) as Promise<void>
     const result = lease.wait(work).catch((error: unknown) => error)
     try {
       await vi.advanceTimersByTimeAsync(0)
@@ -146,7 +150,9 @@ async function runCut(native: boolean, path: Path, cut?: number) {
     effect: (work) => work(),
   })
   const lease = await port.acquire(['scope/sample.bin', 'scope/published.bin', 'scope/moved.bin'])
-  const checked = guardedVaultAdapter(mutationCheckedAdapter(scoped, () => lease.check()))
+  const checked = guardedVaultAdapter(
+    mutationCheckedAdapter(scoped, () => lease.check(), ['.abele-sync'])
+  )
   watching = true
   const work =
     path === 'recovery'
@@ -158,8 +164,8 @@ async function runCut(native: boolean, path: Path, cut?: number) {
       : path === 'publish'
         ? checked.rename('.abele-sync/incoming.tmp', 'scope/published.bin')
         : path === 'rename'
-          ? checked.rename('scope/sample.bin', 'scope/moved.bin')
-          : checked.remove('scope/sample.bin')
+          ? checked.rename('scope/sample.bin', '.abele-sync/moved.bin')
+          : checked.remove('.abele-sync/incoming.tmp')
   const underlying = work.then(
     () => undefined,
     () => undefined
@@ -291,7 +297,7 @@ it('does not issue recovery mkdir after a pending existence read outlives the le
   }
 })
 
-// BUG D-163: raw overwrite/unlink and unjournalled capture have no repair evidence.
+// Raw public mutations must be refused before a foreign wrapper can retain them.
 ;[false, true]
   .flatMap((native) =>
     (['rename', 'write', 'remove', 'mkdir', 'publish'] as const).map((operation) => ({
@@ -300,8 +306,8 @@ it('does not issue recovery mkdir after a pending existence read outlives the le
     }))
   )
   .forEach(({ native, operation }) => {
-    const test = ['rename', 'write', 'remove'].includes(operation) ? it.fails : it
-    test(`preserves user bytes after a late ${operation} (native=${native})`, async () => {
+    const unsafe = ['rename', 'write', 'remove'].includes(operation)
+    it(`protects public bytes from raw ${operation} (native=${native})`, async () => {
       vi.useFakeTimers()
       const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
       const fixture = native ? virtualNativeVault() : undefined
@@ -344,7 +350,9 @@ it('does not issue recovery mkdir after a pending existence read outlives the le
         effect: (work) => work(),
       })
       const lease = await port.acquire(['sample.bin', 'incoming.tmp', 'moved.bin', 'new-folder'])
-      const checked = mutationCheckedAdapter(adapter as never, () => lease.check())
+      const checked = mutationCheckedAdapter(adapter as never, () => lease.check(), [
+        'incoming.tmp',
+      ])
       const nativePort = Reflect.get(checked, 'fsPromises')
       const invoke = () => {
         if (native) {
@@ -364,14 +372,25 @@ it('does not issue recovery mkdir after a pending existence read outlives the le
         if (operation === 'mkdir') return guarded.mkdir('new-folder')
         return guarded.rename('incoming.tmp', 'published.bin')
       }
-      const work = Promise.resolve(invoke()).then(async (answer: unknown) => {
-        if (answer && typeof answer === 'object' && 'close' in answer)
-          await (answer as { close(): Promise<void> }).close()
-      })
+      const work = Promise.resolve()
+        .then(invoke)
+        .then(async (answer: unknown) => {
+          if (answer && typeof answer === 'object' && 'close' in answer)
+            await (answer as { close(): Promise<void> }).close()
+        })
       const settled = work.catch(() => {})
       const result = lease.wait(work).catch((error: unknown) => error)
       try {
         await vi.advanceTimersByTimeAsync(0)
+        if (unsafe) {
+          await vi.advanceTimersByTimeAsync(2000)
+          expect(await result).toMatchObject({ rawPublicMutation: true })
+          expect(lateSubmissions).toBe(0)
+          expect([...new Uint8Array(await adapter.readBinary('sample.bin'))]).toEqual([
+            ...new Uint8Array(initial),
+          ])
+          return
+        }
         await entered.promise
         await vi.advanceTimersByTimeAsync(2000)
         expect(await result).toMatchObject({ leaseExpired: true })

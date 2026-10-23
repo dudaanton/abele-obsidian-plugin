@@ -838,10 +838,20 @@ export class ObsidianFileSystem implements FileSystem {
       instrument(
         runtimePort(
           guardedVaultAdapter(
-            mutationCheckedAdapter(this.scopedAdapter, () => {
-              check()
-              this.runtimeFence?.assertOwned()
-            })
+            mutationCheckedAdapter(
+              this.scopedAdapter,
+              () => {
+                check()
+                this.runtimeFence?.assertOwned()
+              },
+              [
+                stagingDirectory(this.configDir, this.privateRoot),
+                options.journalOwner || this.privateRoot
+                  ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) +
+                    '/conditional'
+                  : this.configDir + '/plugins/abele/sync-conditional',
+              ]
+            )
           )
         )
       )
