@@ -142,6 +142,11 @@ function physicalPath(root: string, path: string): string {
 
 /** Native calls used by sync must declare which arguments name vault paths. */
 export const nativePathMethods = {
+  mkdtempSync: 1,
+  writeFileSync: 1,
+  existsSync: 1,
+  unlinkSync: 1,
+  rmdirSync: 1,
   open: 1,
   utimes: 1,
   mkdir: 1,

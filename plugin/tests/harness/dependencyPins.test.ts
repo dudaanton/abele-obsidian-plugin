@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { SDK_INPUT, verifySyncSdkInputs } from '../../scripts/verify-sync-sdk.mjs'
 
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
 const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
@@ -11,7 +12,10 @@ const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8'))
   integrity: string
 }>
 const nodeExclusions = new Set(artifacts.map((artifact) => artifact.name))
-const registryExclusions = nodeExclusions
+const registryExclusions = new Set([
+  ...nodeExclusions,
+  ...(SDK_INPUT.source ? ['@abele/sync-sdk'] : []),
+])
 
 describe('reproducible dependency sources', () => {
   it('uses patched Zod for both node protocols without nested copies', () => {
@@ -58,7 +62,13 @@ describe('reproducible dependency sources', () => {
     })) {
       const installed = lock.packages[`node_modules/${name}`]
       const artifact = artifacts.find((a) => a.name === name)
-      if (artifact) {
+      if (name === '@abele/sync-sdk' && SDK_INPUT.source) {
+        expect(version).toBe(`file:vendor/sync/abele-sync-sdk-${SDK_INPUT.version}.tgz`)
+        expect(installed.resolved).toBe(version)
+        expect(installed.version).toBe(SDK_INPUT.version)
+        expect(installed.integrity).toBe(SDK_INPUT.integrity)
+        expect(verifySyncSdkInputs()).toBe(SDK_INPUT)
+      } else if (artifact) {
         const source = `file:vendor/node/${artifact.filename}`
         expect(version, name).toBe(source)
         expect(installed.resolved, name).toBe(source)

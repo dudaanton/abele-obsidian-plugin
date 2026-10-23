@@ -6,7 +6,7 @@ describe('reviewed v2 SDK input pin', () => {
     expect(SDK_INPUT.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(verifySyncSdkInputs().version).toBe(SDK_INPUT.version)
     expect(SDK_INPUT.files['dist/internal/core/v2Client.js']).toBe(
-      '5cddcc4341a51c4effc9161eeae060511e2d3a5ed519d6c132ff22814ed26469'
+      '3ef611194e8167e25afeda9cf0f22b7ebcf1cbe18b40112ca959e6f14ba0f1d8'
     )
   })
 })
