@@ -99,7 +99,7 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           await shot(theme+'-plain');
           document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true}));
           await until(()=>document.querySelector('.abele-lsp-message pre code'),'Modifier hover').catch(error=>{
-            const cm=require('@codemirror/view').EditorView.findFromDOM(document.querySelector('.abele-lsp-root .cm-content'));
+            const cm=api.codeView(document.querySelector('.abele-lsp-root .cm-content'));
             const modifiers=cm.plugins.map(p=>p.value).filter(p=>p && 'active' in p && 'revision' in p).map(p=>({active:p.active,revision:p.revision,pointer:!!p.pointer}));
             throw Error(error.message+' '+JSON.stringify({targetConnected:long.target.isConnected,modifiers}));
           });
