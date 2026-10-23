@@ -9,7 +9,7 @@ import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from
 import { connectionPrivateRoot, withinRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
-import { caseKey } from '@abele/sync-sdk/protocol'
+import { caseKey, ErrorCodeSchema } from '@abele/sync-sdk/protocol'
 import { retainedCopyCovered } from './retainedCopyCoverage'
 import {
   V2EngineClient,
@@ -1407,7 +1407,16 @@ export class TokenEngines {
     activity.pending = (activity.pending ?? 0) + publications.length
     activity.refused = [
       ...publications.map((one) => ({ path: one.path, reason: one.reason })),
-      ...(status.waitingFiles ?? []).map((one) => ({ path: one.path, reason: one.reason })),
+      ...(status.waitingFiles ?? []).map((one) => {
+        const code = ErrorCodeSchema.safeParse(one.reason.split(':', 1)[0])
+        return {
+          path: one.path,
+          reason:
+            one.phase === 'push' && !one.local && code.success
+              ? connectionError({ code: code.data })
+              : one.reason,
+        }
+      }),
     ]
     // Starting another attempt is not evidence that previously unsent bytes arrived.
     if (status.state === 'syncing' && !report) {

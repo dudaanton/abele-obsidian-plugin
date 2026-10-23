@@ -2202,7 +2202,11 @@ export class TokenEngineRuntime
     for (let attempt = 0; ; attempt++) {
       const since = this.reviewInterruptions
       try {
-        if (explicitRetry && attempt === 0 && (this.engine.status.waiting ?? 0) > 0)
+        if (
+          explicitRetry &&
+          attempt === 0 &&
+          this.engine.status.waitingFiles?.some((one) => one.local || one.phase === 'recovery')
+        )
           await this.engine.retryNow()
         else await this.engine.sync()
         return

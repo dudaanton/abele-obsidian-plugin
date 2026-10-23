@@ -37,6 +37,17 @@ it('uses explicit retry for waiting files only on a manual sync', async () => {
   vi.spyOn(one.runtime.engine, 'status', 'get').mockReturnValue({
     ...one.runtime.engine.status,
     waiting: 1,
+    waitingFiles: [
+      {
+        path: 'Notes/sample.md',
+        phase: 'pull',
+        attempts: 1,
+        nextAt: 1000,
+        reason: 'sample disk failure',
+        quarantined: false,
+        local: true,
+      },
+    ],
   })
   const retry = vi.spyOn(one.runtime.engine, 'retryNow').mockResolvedValue(null)
   const sync = vi.spyOn(one.runtime.engine, 'sync').mockResolvedValue(null)
