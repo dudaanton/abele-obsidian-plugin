@@ -23,7 +23,7 @@ import { assertPhysicalPath } from './external/projection'
 import { crossesSymlink } from './symlinkChain'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
-import { TFile, TFolder } from 'obsidian'
+import { TFile, TFolder, Platform } from 'obsidian'
 import {
   EngineError,
   MAX_CHUNK_BYTES,
@@ -1187,6 +1187,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (
         applied &&
         this.native &&
+        !Platform.isMobile &&
         !this.preserveEmptyDirectories &&
         (operation.effect.kind === 'move' || operation.effect.kind === 'remove') &&
         !operation.path.startsWith('.') &&

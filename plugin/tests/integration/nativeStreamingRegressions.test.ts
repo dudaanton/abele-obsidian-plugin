@@ -97,6 +97,8 @@ for (const mobile of [false, true])
             await disk.appendFile(join(f.root, path), new Uint8Array(bytes))
           },
         })
+      // Capability discovery belongs to construction, before any stage is allocated.
+      f.fs = new ObsidianFileSystem(f.app as unknown as App)
       await disk.mkdir(join(f.root, 'notes'))
       await disk.writeFile(join(f.root, 'notes/sample.bin'), 'original')
       const bytes = new TextEncoder().encode('replacement'),
@@ -116,6 +118,7 @@ for (const mobile of [false, true])
       await stage.append(0, bytes)
       await stage.seal({ size: bytes.length, sha })
       await stage.commit()
+      await stage.discard() // The caller has acknowledged publication; now retire stage evidence.
       expect(await disk.readdir(join(f.root, 'notes'))).toEqual(['sample.bin'])
       await f.fs.move('notes/sample.bin', 'moved/sample.bin')
       if (mobile) expect(await disk.readdir(join(f.root, 'notes'))).toEqual([])
@@ -220,24 +223,21 @@ it('recovers an archived native inode when its locator acknowledgement fails', a
     const bytes = new TextEncoder().encode('replacement')
     await stage.append(0, bytes)
     await stage.seal({ size: bytes.length, sha: await sha256(bytes) })
-    const save = f.app.saveLocalStorage.bind(f.app)
-    let fail = true
-    f.app.saveLocalStorage = (key, value) => {
-      if (
-        fail &&
-        Array.isArray(value) &&
-        value.some((entry) => typeof entry.backup === 'string' && entry.backup.startsWith('/'))
-      ) {
-        fail = false
-        throw new Error('locator acknowledgement lost')
-      }
-      save(key, value)
+    const conditional = Reflect.get(f.fs, 'conditional'),
+      host = Reflect.get(conditional, 'host')
+    const put = host.retention.put.bind(host.retention)
+    let writes = 0
+    host.retention.put = async (record: unknown) => {
+      if (++writes === 2) throw new Error('locator acknowledgement lost')
+      await put(record)
     }
-    await expect(stage.commit()).rejects.toThrow('neither file was discarded')
+    await expect(stage.commit()).rejects.toThrow('locator acknowledgement lost')
     await f.fs.recover()
-    const journal = new WriteJournal(f.app)
-    retained = journal.recovered()[0].backup
-    expect(journal.entries()).toEqual([])
+    const row = await host.retention.oldest()
+    expect(row).toBeDefined()
+    retained = join(f.root, host.root, 'trash', row.id, 'victim')
+    await stage.discard()
+    expect(new WriteJournal(f.app).entries()).toEqual([])
     expect(await disk.readFile(retained, 'utf8')).toBe('original')
     expect(await disk.readdir(f.root)).toEqual(['.obsidian', 'sample.bin'])
     expect(await disk.readdir(join(f.root, '.obsidian/plugins/abele/sync-staging'))).toEqual([])
@@ -282,11 +282,16 @@ it('keeps an unfenced displaced inode outside the vault after confirmed native p
     await stage.append(0, bytes)
     await stage.seal({ size: bytes.length, sha: await sha256(bytes) })
     await stage.commit()
-    retained = new WriteJournal(f.app as never).recovered()[0]?.backup
+    const host = Reflect.get(Reflect.get(f.fs, 'conditional'), 'host')
+    const row = await host.retention.oldest()
+    expect(row).toBeDefined()
+    retained = join(f.root, host.root, 'trash', row.id, 'victim')
+    await stage.discard()
     expect(await disk.readdir(f.root)).toEqual(['.obsidian', 'sample.bin'])
     expect(await disk.readdir(join(f.root, '.obsidian/plugins/abele/sync-staging'))).toEqual([])
-    expect(retained).toBeDefined()
-    expect(retained!.startsWith(f.root + '/')).toBe(false)
+    expect(
+      retained.startsWith(join(f.root, '.obsidian/plugins/abele/sync-conditional/trash/'))
+    ).toBe(true)
     await handle.write(new TextEncoder().encode('late edit'), 0, 9, 0)
     expect(await disk.readFile(retained!, 'utf8')).toBe('late edit')
     expect(await disk.readFile(join(f.root, 'sample.bin'), 'utf8')).toBe('replacement')

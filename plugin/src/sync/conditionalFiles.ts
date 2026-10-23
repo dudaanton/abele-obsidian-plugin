@@ -842,7 +842,9 @@ export class ConditionalFiles {
       return true
     } catch (error) {
       // Capture itself may have reached disk before its acknowledgement was lost.
-      if (recorded) await restore()
+      // Publication is already durable. Leave retirement in the active queue
+      // instead of archiving it through victim restoration after a later failure.
+      if (recorded && !(await h.stat(folder + '/complete'))) await restore()
       throw error
     } finally {
       h.active.delete(activeKey)
@@ -1013,6 +1015,7 @@ export class ConditionalFiles {
         return false
       }
       try {
+        if (recorded && (await h.stat(folder + '/complete'))) throw error
         // Error recovery owns both the captured victim and incoming data. Never
         // archive the shared intent after restoring only the victim.
         if (recorded) await operation.repairIntent(folder, id)
