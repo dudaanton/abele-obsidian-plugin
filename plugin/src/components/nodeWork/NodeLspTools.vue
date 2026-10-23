@@ -178,6 +178,12 @@ function populateAnalysis(menu: Menu) {
         )
         .setDisabled(true)
     )
+  // With no analyser status to carry it, the failure reason gets its own row.
+  const failure =
+    actionError.value ||
+    (document.value?.error ? t('node.lsp.error', { message: document.value.error }) : '')
+  if (!relevant.value.length && failure)
+    menu.addItem((item) => item.setTitle(failure).setDisabled(true))
   const restart =
     document.value?.supported &&
     (analysisState.value === 'failed' ||

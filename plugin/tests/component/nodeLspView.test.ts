@@ -252,8 +252,9 @@ describe('node language diagnostics in the shared file viewer', () => {
     await flushPromises()
     expect(close).toHaveBeenCalledOnce()
   })
-  it('shows the initial status error and recovers through the visible Retry action', async () => {
+  it('shows the initial status error in the analysis menu and recovers through Restart', async () => {
     const root = document.createElement('div')
+    const glyphHost = document.body.appendChild(document.createElement('div'))
     const client = {
       describe: async () => ({
         capabilities: { capabilities: { lsp_v1: { status: 'supported' } } },
@@ -273,6 +274,7 @@ describe('node language diagnostics in the shared file viewer', () => {
     const view = mount(NodeLspTools, {
       props: {
         root,
+        glyphHost,
         path: 'sample.ts',
         text: 'sample',
         target: {
@@ -286,14 +288,19 @@ describe('node language diagnostics in the shared file viewer', () => {
       global: { provide: { [LSP_CONNECTION as symbol]: { client, connect: async () => {} } } },
     })
     await flushPromises()
-    expect(view.get('[role="alert"]').text()).toContain('Sample status failure')
-    const retry = view.findAll('button').find((button) => button.text() === 'Retry')!
-    expect(retry.exists()).toBe(true)
-    await retry.trigger('click')
+    const glyph = glyphHost.querySelector('[data-lsp-analysis]')!
+    expect(glyph.getAttribute('data-state')).toBe('failed')
+    expect(root.querySelector('[role="alert"], .abele-lsp-status')).toBeNull()
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    glyph.querySelector<HTMLButtonElement>('button')!.click()
+    const items = show.mock.contexts.at(-1)!.items
+    expect(items.some((item) => item.title.includes('Sample status failure'))).toBe(true)
+    items.find((item) => item.title === 'Restart analysis')!.handler?.()
     await flushPromises()
-    expect(view.find('[role="alert"]').exists()).toBe(false)
+    expect(glyph.getAttribute('data-state')).not.toBe('failed')
     expect(client.lsp.open).toHaveBeenCalledOnce()
     view.unmount()
+    glyphHost.remove()
     await flushPromises()
   })
   it('keeps a shared document alive and detaches only the departing view listener', async () => {
@@ -540,7 +547,12 @@ describe('node language diagnostics in the shared file viewer', () => {
       for (const listener of context.document.listeners) listener()
       await nextTick()
       expect(document.body.textContent).not.toContain('Language server missing')
-      expect(document.body.textContent).toContain('TypeScript analysis remains available.')
+      const glyph = document.querySelector('[data-lsp-analysis]')!
+      expect(glyph.getAttribute('data-state')).toBe('degraded')
+      expect(glyph.querySelector('button')?.getAttribute('aria-label')).toContain(
+        'Code analysis: TypeScript only. ESLint isn’t set up.'
+      )
+      expect(document.querySelector('.abele-file-view .abele-lsp-status')).toBeNull()
       expect(document.querySelector('[data-lsp-diagnostics]')).not.toBeNull()
       view.unmount()
     }
