@@ -4,6 +4,7 @@ import {
   MemoryStateStore,
   scan,
   SyncEngine,
+  sha256,
   type EngineClient,
   type ChunkSource,
 } from '@abele/sync-sdk/core'
@@ -15,6 +16,169 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 afterEach(() => vi.restoreAllMocks())
+
+it('migrates an unchanged pre-normalization scan record without reading content', async () => {
+  const app = buildFakeVault([{ path: 'Sample.bin', content: 'before', mtime: 1000, ctime: 1000 }])
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  withDesktopFs(app)
+  const factory = new IDBFactory()
+  let host = await HostSyncStorage.open(factory, 'sample-vault', app)
+  try {
+    const fs = new ObsidianFileSystem(app as never)
+    await host.writeScanFingerprint('Sample.bin', {
+      identity: (await fs.fileIdentity!('Sample.bin'))!,
+      size: 6,
+      mtime: 1000,
+      ctime: 1000,
+      sha: await sha256(new TextEncoder().encode('before')),
+    })
+    host.close()
+    host = await HostSyncStorage.open(factory, 'sample-vault', app)
+    read.mockClear()
+    await new ObsidianFileSystem(app as never).fingerprint('Sample.bin')
+    expect(read).not.toHaveBeenCalled()
+    expect(await host.readScanFingerprint(fs.pathKey('Sample.bin'))).toBeDefined()
+    expect(await host.readScanFingerprint('Sample.bin')).toBeUndefined()
+  } finally {
+    host.close()
+  }
+})
+
+it('invalidates descendant scan records when sync moves a directory', async () => {
+  const app = buildFakeVault([{ path: 'Notes/sample.bin', content: 'before', mtime: 1000 }])
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  app.vault.adapter.rename = (from, to) =>
+    from === 'Notes'
+      ? app.vault.rename(app.vault.getAbstractFileByPath(from)!, to)
+      : rename(from, to)
+  withDesktopFs(app)
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+  try {
+    const fs = new ObsidianFileSystem(app as never)
+    await fs.fingerprint('Notes/sample.bin')
+    expect(await host.readScanFingerprint(fs.pathKey('Notes/sample.bin'))).toBeDefined()
+    await fs.moveDirectory('Notes', 'Moved')
+    expect(await host.readScanFingerprint(fs.pathKey('Notes/sample.bin'))).toBeUndefined()
+  } finally {
+    host.close()
+  }
+})
+
+it.each(['write', 'move', 'remove'] as const)(
+  'does not promote a persisted scan hint into the base for %s',
+  async (action) => {
+    const app = buildFakeVault([
+      { path: 'sample.bin', content: 'before', mtime: 1000, ctime: 1000 },
+    ])
+    withDesktopFs(app)
+    const factory = new IDBFactory()
+    let host = await HostSyncStorage.open(factory, 'sample-vault', app)
+    try {
+      await new ObsidianFileSystem(app as never).fingerprint('sample.bin')
+      host.close()
+      host = await HostSyncStorage.open(factory, 'sample-vault', app)
+      const fs = new ObsidianFileSystem(app as never)
+      const before = await app.vault.adapter.stat('sample.bin')
+      const identity = await fs.fileIdentity!('sample.bin')
+      await app.vault.adapter.writeBinary('sample.bin', new TextEncoder().encode('edited').buffer, {
+        mtime: 1000,
+        ctime: 1000,
+      })
+      expect(await app.vault.adapter.stat('sample.bin')).toEqual(before)
+      expect(await fs.fileIdentity!('sample.bin')).toBe(identity)
+      await fs.fingerprint('sample.bin') // Scan is permitted to reuse the metadata hint.
+      const publish = vi.spyOn(fs, 'conditionalFile')
+      const mutation =
+        action === 'write'
+          ? fs.writeAtomic('sample.bin', new TextEncoder().encode('remote'), 2000)
+          : action === 'move'
+            ? fs.move('sample.bin', 'moved.bin')
+            : fs.remove('sample.bin')
+      await expect(mutation).rejects.toMatchObject({ code: 'conflict' })
+      // Retrying the same byte decision must not silently adopt the changed local base.
+      const retry =
+        action === 'write'
+          ? fs.writeAtomic('sample.bin', new TextEncoder().encode('remote'), 2000)
+          : action === 'move'
+            ? fs.move('sample.bin', 'moved.bin')
+            : fs.remove('sample.bin')
+      await expect(retry).rejects.toMatchObject({ code: 'conflict' })
+      expect(publish).not.toHaveBeenCalled()
+      expect(await app.vault.adapter.read('sample.bin')).toBe('edited')
+    } finally {
+      host.close()
+    }
+  }
+)
+
+it('does not repopulate a record from a hash that overlapped a sync move', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000 }])
+  withDesktopFs(app)
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+  let release!: () => void, entered!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const original = BoundedVaultIo.prototype.fingerprint
+  vi.spyOn(BoundedVaultIo.prototype, 'fingerprint').mockImplementationOnce(async function (
+    ...args
+  ) {
+    const result = await original.apply(this, args)
+    entered()
+    await gate
+    return result
+  })
+  const hashing = new ObsidianFileSystem(app as never).fingerprint('sample.bin')
+  try {
+    await started
+    await new ObsidianFileSystem(app as never).move('sample.bin', 'moved.bin')
+    release()
+    await hashing
+    expect(await host.readScanFingerprint('sample.bin')).toBeUndefined()
+    expect(await host.readScanFingerprint('moved.bin')).toBeUndefined()
+  } finally {
+    release()
+    await hashing.catch(() => {})
+    host.close()
+  }
+})
+
+it.each(['write', 'move', 'remove'] as const)(
+  'drops the persisted scan record before sync %s',
+  async (action) => {
+    const app = buildFakeVault([{ path: 'Sample.bin', content: 'before', mtime: 1000 }])
+    withDesktopFs(app)
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+    try {
+      const fs = new ObsidianFileSystem(app as never)
+      await fs.fingerprint('Sample.bin')
+      expect(await host.readScanFingerprint(fs.pathKey('Sample.bin'))).toBeDefined()
+      const native = Reflect.get(app.vault.adapter, 'fsPromises')
+      const rename = native.rename.bind(native)
+      const capture = vi.spyOn(native, 'rename').mockImplementation(async (...args: unknown[]) => {
+        if (String(args[0]).endsWith('/Sample.bin')) {
+          expect(await host.readScanFingerprint(fs.pathKey('Sample.bin'))).toBeUndefined()
+          // A concurrent hash during the mutation cannot recreate the deleted record.
+          await new ObsidianFileSystem(app as never).fingerprint('Sample.bin')
+          expect(await host.readScanFingerprint(fs.pathKey('Sample.bin'))).toBeUndefined()
+        }
+        return rename(...args)
+      })
+      if (action === 'write')
+        await fs.writeAtomic('Sample.bin', new TextEncoder().encode('remote'), 2000)
+      else if (action === 'move') await fs.move('Sample.bin', 'Moved.bin')
+      else await fs.remove('Sample.bin')
+      expect(await host.readScanFingerprint(fs.pathKey('Sample.bin'))).toBeUndefined()
+      expect(await host.readScanFingerprint(fs.pathKey('Moved.bin'))).toBeUndefined()
+      expect(capture).toHaveBeenCalled()
+    } finally {
+      host.close()
+    }
+  }
+)
 
 it('replaces cached evidence when forced verification detects changed bytes with identical metadata', async () => {
   const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000, ctime: 1000 }])

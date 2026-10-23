@@ -918,7 +918,7 @@ export class ObsidianFileSystem implements FileSystem {
                   if (parent === path || parent.startsWith(path + '/'))
                     this.inventory?.parentFolders?.delete(parent)
             this.externalCoordination.assertEnginePaths(paths)
-            const result = bound(...args)
+            const result = this.withScanMutation(paths, () => bound(...args))
             if (key !== 'rename') return result
             return Promise.resolve(result).then(async (answer) => {
               const reconcile = Reflect.get(this.scopedAdapter, 'reconcileInternalFile')
@@ -1474,7 +1474,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private nativeFor(disk: DataAdapter): NativeFs | null {
-    const native = nativeOf(
+    const raw = nativeOf(
       disk,
       (paths = []) => {
         for (const path of paths) this.inventory?.mutations.add(path)
@@ -1484,6 +1484,32 @@ export class ObsidianFileSystem implements FileSystem {
       this.privateRoot ? this.privateRoot + '/recovery' : undefined,
       this.diagnostic
     )
+    const native =
+      raw &&
+      new Proxy(raw, {
+        get: (target, key) => {
+          const value = Reflect.get(target, key)
+          if (
+            typeof value !== 'function' ||
+            ![
+              'rename',
+              'replaceFenced',
+              'replaceFencedIdentity',
+              'installExclusive',
+              'restoreDirectoryExclusive',
+              'archiveBackup',
+              'rmdirEmpty',
+            ].includes(String(key))
+          )
+            return value
+          return (...args: unknown[]) => {
+            const count = key === 'archiveBackup' || key === 'rmdirEmpty' ? 1 : 2
+            return this.withScanMutation(args.slice(0, count) as string[], () =>
+              value.apply(target, args)
+            )
+          }
+        },
+      })
     return native && this.runtimeFence
       ? fencedPort(
           native,
@@ -1507,6 +1533,24 @@ export class ObsidianFileSystem implements FileSystem {
 
   private get disk(): DataAdapter {
     return this.guardedAdapter
+  }
+
+  private withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    const keys = paths
+      .filter((path) => this.cacheableScanPath(path))
+      // Retire a pre-normalization spelling as well as the current canonical key.
+      .flatMap((path) => [this.pathKey(path), path])
+    return host && keys.length ? host.withScanMutation(keys, work) : work()
+  }
+
+  private cacheableScanPath(path: string): boolean {
+    return (
+      !isDeviceLocalPluginState(path, this.configDir) &&
+      !(this.privateRoot && withinRoot(path, this.privateRoot)) &&
+      !withinRoot(path, stagingDirectory(this.configDir, this.privateRoot))
+    )
   }
 
   private async makeParents(path: string): Promise<void> {
@@ -2380,11 +2424,16 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
-    if (!host || !this.fileIdentity) return this.fingerprintFresh(path, signal)
+    if (!host || !this.fileIdentity || !this.cacheableScanPath(path))
+      return this.fingerprintFresh(path, signal)
+    const key = this.pathKey(path)
+    const revision = host.scanFingerprintRevision(key)
     const beforeIdentity = await this.fileIdentity(path)
     const before = await this.rawStat(path)
     if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
-    const saved = await host.readScanFingerprint(path)
+    let saved = await host.readScanFingerprint(key)
+    const legacyKey = !saved && key !== path ? path : undefined
+    if (legacyKey) saved = await host.readScanFingerprint(legacyKey)
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
     if (
@@ -2406,6 +2455,12 @@ export class ObsidianFileSystem implements FileSystem {
       ) {
         signal?.throwIfAborted()
         this.runtimeFence?.assertReady()
+        if (legacyKey) {
+          await host.writeScanFingerprint(key, saved, revision)
+          await host.withScanMutation([legacyKey], async () => {})
+          signal?.throwIfAborted()
+          this.runtimeFence?.assertReady()
+        }
         this.observedBases.set(this.pathKey(path), { sha: saved.sha })
         return {
           sha: saved.sha,
@@ -2428,13 +2483,17 @@ export class ObsidianFileSystem implements FileSystem {
       after.ctime === before.ctime &&
       afterIdentity === beforeIdentity
     )
-      await host.writeScanFingerprint(path, {
-        identity: beforeIdentity,
-        size: before.size,
-        mtime: before.mtime,
-        ctime: before.ctime,
-        sha: result.sha,
-      })
+      await host.writeScanFingerprint(
+        key,
+        {
+          identity: beforeIdentity,
+          size: before.size,
+          mtime: before.mtime,
+          ctime: before.ctime,
+          sha: result.sha,
+        },
+        revision
+      )
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
     return result
@@ -2887,9 +2946,12 @@ export class ObsidianFileSystem implements FileSystem {
     if (observed && 'absent' in observed) return null
     const standing = await this.onlyFileOrNothing(path)
     if (standing === null) return null
-    const have = await this.fingerprint(path)
-    if (observed && 'sha' in observed && observed.sha !== have.sha)
+    // Scan hints may survive a same-stat edit. Mutation authority requires bytes.
+    const have = await this.fingerprint(path, undefined, true)
+    if (observed && 'sha' in observed && observed.sha !== have.sha) {
+      this.observedBases.set(this.pathKey(path), observed)
       throw new EngineError('conflict', 'File changed since the engine byte decision')
+    }
     return { size: have.size, mtime: have.mtime, sha: have.sha }
   }
 

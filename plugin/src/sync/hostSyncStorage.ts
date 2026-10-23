@@ -105,6 +105,57 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
  * Only explicit record deltas are persisted, with their preconditions checked in IDB.
  */
 export class HostSyncStorage implements LocalStorage {
+  private readonly scanRevisions = new Map<string, number>()
+  private readonly scanMutations = new Map<string, number>()
+  scanFingerprintRevision(path: string): number {
+    let revision = 0
+    for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
+      revision += this.scanRevisions.get(key) ?? 0
+    return revision
+  }
+  private scanMutationActive(path: string): boolean {
+    for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
+      if (this.scanMutations.has(key)) return true
+    return false
+  }
+  async withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
+    const keys = [...new Set(paths)]
+    for (const key of keys) {
+      this.scanRevisions.set(key, (this.scanRevisions.get(key) ?? 0) + 1)
+      this.scanMutations.set(key, (this.scanMutations.get(key) ?? 0) + 1)
+    }
+    try {
+      const tx = this.db.transaction(STORE, 'readwrite')
+      const done = completion(tx, 'invalidate scan fingerprints')
+      for (const key of keys) {
+        tx.objectStore(STORE).delete([this.namespace, '!scan-fingerprint-v1:' + key])
+        // Seek just this subtree; directory moves never enumerate unrelated records.
+        const prefix = '!scan-fingerprint-v1:' + key + '/'
+        const request = tx.objectStore(STORE).openKeyCursor()
+        request.onsuccess = () => {
+          const cursor = request.result
+          if (!cursor) return
+          const [namespace, name] = cursor.key as [string, string]
+          if (namespace < this.namespace || (namespace === this.namespace && name < prefix)) {
+            cursor.continue([this.namespace, prefix])
+            return
+          }
+          if (namespace !== this.namespace || !name.startsWith(prefix)) return
+          tx.objectStore(STORE).delete(cursor.primaryKey)
+          cursor.continue()
+        }
+      }
+      await done
+      return await work()
+    } finally {
+      for (const key of keys) {
+        this.scanRevisions.set(key, (this.scanRevisions.get(key) ?? 0) + 1)
+        const remaining = (this.scanMutations.get(key) ?? 1) - 1
+        if (remaining) this.scanMutations.set(key, remaining)
+        else this.scanMutations.delete(key)
+      }
+    }
+  }
   async readScanFingerprint(path: string): Promise<ScanFingerprint | undefined> {
     const tx = this.db.transaction(STORE, 'readonly')
     const done = completion(tx, 'read scan fingerprint')
@@ -112,9 +163,14 @@ export class HostSyncStorage implements LocalStorage {
       tx.objectStore(STORE).get([this.namespace, '!scan-fingerprint-v1:' + path])
     )
     await done
-    return row?.value
+    return this.scanMutationActive(path) ? undefined : row?.value
   }
-  async writeScanFingerprint(path: string, value: ScanFingerprint): Promise<void> {
+  async writeScanFingerprint(
+    path: string,
+    value: ScanFingerprint,
+    revision = this.scanFingerprintRevision(path)
+  ): Promise<void> {
+    if (this.scanMutationActive(path) || revision !== this.scanFingerprintRevision(path)) return
     const tx = this.db.transaction(STORE, 'readwrite')
     const done = completion(tx, 'write scan fingerprint')
     tx.objectStore(STORE).put({

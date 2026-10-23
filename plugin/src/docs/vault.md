@@ -3182,6 +3182,12 @@ time and creation/change time. Matching current identity and stats permit reuse 
 interrupted upload or plugin reload, including files without a committed server head. A changed
 object or stat triggers a new hash; interrupted/inconsistent reads create no record. These
 records are observations, independent of SDK transactions and publication acknowledgements.
+Their keys use the vault's normalized path policy; unchanged older path spellings migrate
+lazily without content reads. Sync invalidates affected records durably
+before adapter/native writes, moves or removals, including recovery, and prevents overlapping
+hashes from recreating them during that mutation. These scan hints never replace fresh byte
+verification when the legacy write/move/delete bridge establishes its conflict base. Explicit
+identity-bearing conditional operations retain their paired-identity contract.
 Generation retirement clears the adapter's live receipts, including those shared by another
 filesystem instance. Ordinary pull verification
 can still use a live incremental receipt on append-only hosts. Fresh non-upload reads retain the
