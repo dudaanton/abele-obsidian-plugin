@@ -251,7 +251,9 @@ it.each(['delete', 'move'])(
     const app = buildFakeVault([{ path: 'Shared/from/sample.md', content: 'sample' }])
     const rmdir = app.vault.adapter.rmdir.bind(app.vault.adapter)
     app.vault.adapter.rmdir = async (path, recursive) => {
-      expect(recursive).toBe(false)
+      // This assertion protects public folder removal; private metadata cleanup
+      // has its own empty-folder precondition and adapter compatibility flag.
+      if (path.startsWith('Shared/')) expect(recursive).toBe(false)
       expect(await app.vault.adapter.list(path)).toEqual({ files: [], folders: [] })
       await rmdir(path, true) // Fake adapter models desktop rmdir(false) as EISDIR.
     }

@@ -1179,6 +1179,8 @@ export class ObsidianFileSystem implements FileSystem {
         return applied
       }
       const applied = await this.conditional.apply(operation)
+      if (applied && (operation.effect.kind === 'move' || operation.effect.kind === 'remove'))
+        await this.directories.removedChild(operation.path)
       if (
         applied &&
         this.native &&
@@ -2412,7 +2414,11 @@ export class ObsidianFileSystem implements FileSystem {
         (error instanceof Error && error.name === 'SyncCancelled')
       )
         throw error
-      throw new EngineError('io', `cannot write ${path}`, error)
+      throw new EngineError(
+        'io',
+        `cannot write ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        error
+      )
     } finally {
       release()
     }

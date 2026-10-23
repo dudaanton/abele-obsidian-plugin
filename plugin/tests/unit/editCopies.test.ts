@@ -13,8 +13,7 @@ it('validates retained history once for a batch and rechecks it once inside the 
   await copies.capture(fs, ['retained.md'])
   const paths = Array.from({ length: 8 }, (_, i) => 'changed-' + i + '.md')
   for (const path of paths) await fs.writeAtomic(path, new Uint8Array([2]), 20)
-  const read = vi.spyOn(store, 'getMeta'),
-    write = vi.spyOn(store, 'setMeta')
+  const { read, write } = observeMetadata(store)
   await copies.capture(fs, paths)
   expect(read.mock.calls.filter(([key]) => key === EDIT_COPIES_KEY)).toHaveLength(2)
   expect(write.mock.calls.filter(([key]) => key === EDIT_COPIES_KEY)).toHaveLength(1)
@@ -31,7 +30,7 @@ it('preserves a large placement batch without rewriting every accumulated byte f
   copies.register('connection', store, () => true)
   const paths = Array.from({ length: 4 }, (_, i) => 'plugin-' + i + '.js')
   for (const path of paths) await fs.writeAtomic(path, new Uint8Array(65536).fill(255), 10)
-  const write = vi.spyOn(store, 'setMeta')
+  const { write } = observeMetadata(store)
   await copies.capture(fs, paths)
   expect((await copies.list(store)).map((one) => one.path)).toEqual(paths)
   const written = write.mock.calls
@@ -145,3 +144,30 @@ it('permits offload of a large acknowledged mobile file without a fresh read or 
   await expect(copies.capture(fs, [path], receipt)).rejects.toThrow('Recorded file changed')
   expect(await store.get(path)).toEqual(base)
 })
+
+function observeMetadata(store: MemoryStateStore) {
+  const read = vi.fn(),
+    write = vi.fn()
+  const get = store.getMeta.bind(store),
+    set = store.setMeta.bind(store)
+  vi.spyOn(store, 'getMeta').mockImplementation(async (key) => {
+    read(key)
+    return get(key)
+  })
+  vi.spyOn(store, 'setMeta').mockImplementation(async (key, value) => {
+    write(key, value)
+    return set(key, value)
+  })
+  const transaction = store.transaction.bind(store)
+  vi.spyOn(store, 'transaction').mockImplementation((fn) =>
+    transaction(async (tx) => {
+      const set = tx.setMeta.bind(tx)
+      vi.spyOn(tx, 'setMeta').mockImplementation(async (key, value) => {
+        write(key, value)
+        return set(key, value)
+      })
+      return fn(tx)
+    })
+  )
+  return { read, write }
+}
