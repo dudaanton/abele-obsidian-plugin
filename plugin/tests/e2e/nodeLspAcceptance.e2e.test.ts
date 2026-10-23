@@ -113,6 +113,8 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
           });
           if(!inputTrace.some(e=>e.type==='keydown'&&e.key==='Alt'&&e.trusted))throw Error('Native Option keydown missing: '+JSON.stringify(inputTrace));
           inputChecks.push(theme+': trusted Option keydown over stationary symbol shows tooltip');
+          await until(()=>document.querySelector('.abele-github-code__definition')?.textContent==='register','Option definition underline');
+          await shot(theme+'-alt-underline');
           const popup=document.querySelector('.abele-lsp-message');
           if(popup.textContent.includes('\`\`\`') || !popup.querySelector('code span') || !popup.querySelector('.abele-lsp-documentation'))throw Error('Markdown hover not rendered');
           if(!popup.textContent.includes('overload'))throw Error('Overloaded signature missing');
@@ -172,6 +174,16 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
             press(false);move({x:1,y:1});await wait(50);
           }
         }} finally {other.remove();if(originalTabIndex===null)content.removeAttribute('tabindex');else content.setAttribute('tabindex',originalTabIndex)}
+        const symbol=point('sample',1);
+        move(symbol);alt(true);
+        await until(()=>document.querySelector('.abele-github-code__definition')?.textContent==='sample','Option click underline');
+        const cm=api.codeView(content),selection=cm.state.selection;
+        for(const type of ['mouseDown','mouseUp'])web.sendInputEvent({type,x:Math.round(symbol.x),y:Math.round(symbol.y),button:'left',clickCount:1,modifiers:['alt']});
+        alt(false);
+        await until(()=>Array.from(document.querySelectorAll('.cm-content')).some(el=>el.textContent.includes('export declare const sample')),'Option click definition');
+        if(cm.state.selection!==selection)throw Error('Option click changed source selection');
+        if(document.querySelector('.menu, .suggestion-container'))throw Error('Option click opened an extra menu');
+        inputChecks.push('trusted Option click opens the definition without changing source selection');
         } finally {
           alt(false);
           for(const type of ['keydown','keyup','mousemove'])document.removeEventListener(type,trace,true);

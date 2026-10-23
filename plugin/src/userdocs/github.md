@@ -298,5 +298,6 @@ Names and pictures are kept on this device for a week; **Kept names and pictures
 ## Node code tooltips
 
 In node code views, hold Ctrl, Cmd or Alt (Option) while pointing at a symbol to show its
-type and documentation. Releasing the key hides the tooltip. Cmd/Ctrl-click opens a
-definition; Alt-click keeps its usual behavior.
+type and documentation. Releasing the key hides the tooltip. Cmd/Ctrl-click or Alt-click
+opens a definition (or a chooser for several matches). Holding any of these modifiers
+underlines the symbol to follow.

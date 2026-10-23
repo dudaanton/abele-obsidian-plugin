@@ -85,7 +85,8 @@ const linkField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 })
 
-const isMod = (e: MouseEvent) => e.metaKey || e.ctrlKey
+const isMod = (e: MouseEvent, view: EditorView) =>
+  e.metaKey || e.ctrlKey || (e.altKey && !!lspFor(view.dom)?.document.supported)
 
 function wordUnder(view: EditorView, e: MouseEvent) {
   if (!(e.target instanceof Node) || !view.contentDOM.contains(e.target)) return null
@@ -217,7 +218,7 @@ export function codeNavAddon(): Extension {
     EditorView.domEventHandlers({
       mousedown(e, view) {
         navigated.delete(view)
-        if (!isMod(e) || e.button !== 0) return false
+        if (!isMod(e, view) || e.button !== 0) return false
         const nav = navFor(view.dom)
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
@@ -228,7 +229,7 @@ export function codeNavAddon(): Extension {
         return true
       },
       mousemove(e, view) {
-        const word = isMod(e) && navFor(view.dom) ? wordUnder(view, e) : null
+        const word = isMod(e, view) && navFor(view.dom) ? wordUnder(view, e) : null
         const now = view.state.field(linkField)
         let same = false
         now.between(0, view.state.doc.length, (from, to) => {
@@ -244,7 +245,7 @@ export function codeNavAddon(): Extension {
       },
       contextmenu(e, view) {
         // A modifier-left-click can also emit a native contextmenu on macOS.
-        if (navigated.has(view) && isMod(e)) {
+        if (navigated.has(view) && isMod(e, view)) {
           navigated.delete(view)
           e.preventDefault()
           return true

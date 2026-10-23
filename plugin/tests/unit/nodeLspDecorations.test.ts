@@ -375,45 +375,64 @@ it.each(['keydown', 'keyup'])(
   }
 )
 
-it('leaves Alt-click available to the host without navigating', async () => {
-  const root = document.body.appendChild(document.createElement('div'))
-  const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
-  doc.supported = true
-  const query = vi.spyOn(doc, 'query').mockResolvedValue([])
-  const navigate = vi.fn()
-  const hostMouseDown = vi.fn((event: MouseEvent) => {
-    expect(event.defaultPrevented).toBe(false)
-    return true
-  })
-  const remove = provideLsp(root, { document: doc, navigate })
-  const view = new EditorView({
-    parent: root,
-    doc: 'const sample = 1',
-    extensions: [
-      nodeLspExtension(),
-      codeNavAddon(),
-      // Stand in for host selection handling after navigation has declined the event.
-      EditorView.domEventHandlers({ mousedown: hostMouseDown }),
-    ],
-  })
-  try {
-    vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
-    for (const type of ['mousedown', 'click']) {
-      const event = new MouseEvent(type, { bubbles: true, cancelable: true, altKey: true })
-      view.contentDOM.querySelector('.cm-line')!.dispatchEvent(event)
+it.each(['Control', 'Meta', 'Alt'])(
+  'navigates once with %s without host selection',
+  async (key) => {
+    const root = document.body.appendChild(document.createElement('div'))
+    const doc = new NodeLspDocument({} as never, { workspace_id: 'sample-root' }, 'sample.ts')
+    doc.supported = true
+    const query = vi.spyOn(doc, 'query').mockResolvedValue([
+      {
+        path: 'definition.ts',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } },
+      },
+    ])
+    const navigate = vi.fn()
+    const hostMouseDown = vi.fn((event: MouseEvent) => {
+      expect(event.defaultPrevented).toBe(false)
+      return true
+    })
+    const remove = provideLsp(root, { document: doc, navigate })
+    const view = new EditorView({
+      parent: root,
+      doc: 'const sample = 1',
+      extensions: [
+        nodeLspExtension(),
+        codeNavAddon(),
+        // Stand in for host selection handling after navigation has declined the event.
+        EditorView.domEventHandlers({ mousedown: hostMouseDown }),
+      ],
+    })
+    try {
+      vi.spyOn(view, 'posAtCoords').mockReturnValue(8)
+      const modifiers = {
+        ctrlKey: key === 'Control',
+        metaKey: key === 'Meta',
+        altKey: key === 'Alt',
+      }
+      view.contentDOM
+        .querySelector('.cm-line')!
+        .dispatchEvent(new MouseEvent('mousemove', { bubbles: true, ...modifiers }))
+      expect(view.dom.querySelector('.abele-github-code__definition')?.textContent).toBe('sample')
+      const selection = view.state.selection
+      for (const type of ['mousedown', 'click', 'contextmenu']) {
+        const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...modifiers })
+        view.contentDOM.querySelector('.cm-line')!.dispatchEvent(event)
+      }
+      await Promise.resolve()
+      await vi.waitFor(() => expect(navigate).toHaveBeenCalledOnce())
+      expect(hostMouseDown).not.toHaveBeenCalled()
+      expect(query).toHaveBeenCalledOnce()
+      expect(view.state.selection).toBe(selection)
+    } finally {
+      view.destroy()
+      remove()
+      await doc.close()
+      root.remove()
+      vi.restoreAllMocks()
     }
-    await Promise.resolve()
-    expect(hostMouseDown).toHaveBeenCalledOnce()
-    expect(query).not.toHaveBeenCalled()
-    expect(navigate).not.toHaveBeenCalled()
-  } finally {
-    view.destroy()
-    remove()
-    await doc.close()
-    root.remove()
-    vi.restoreAllMocks()
   }
-})
+)
 
 it.each(['release', 'leave'])(
   'discards a pending type response after %s, even across view updates',
