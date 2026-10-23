@@ -196,9 +196,13 @@ export function rewriteRendered(root: HTMLElement, file: RepoFile): void {
         if (!file.host && action.url.startsWith('node-path:')) {
           a.dataset.abeleNodePath = action.url.slice('node-path:'.length)
           a.setAttribute('href', '#')
-        } else a.setAttribute('href', action.url)
+          a.classList.remove('external-link')
+          a.classList.add('internal-link')
+        } else {
+          a.setAttribute('href', action.url)
+          a.classList.add('external-link')
+        }
         a.dataset.abeleRepo = ''
-        a.classList.add('external-link')
         break
       case 'external':
         a.setAttribute('href', action.url)

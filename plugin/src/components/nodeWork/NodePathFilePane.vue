@@ -262,7 +262,8 @@ function debugSelection(action: 'ask' | 'add' | 'note', selected: Selected) {
   flex-direction: column;
   box-sizing: border-box;
 }
-body.is-phone .abele-node-content__chat {
+body.is-phone .abele-node-content__chat,
+body.is-phone .abele-node-main_file {
   padding-block-end: calc(
     var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-2)
   );
