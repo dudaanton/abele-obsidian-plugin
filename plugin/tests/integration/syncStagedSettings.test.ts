@@ -1,8 +1,10 @@
 // @vitest-environment node
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
 import { V2EngineClient } from '@abele/sync-sdk/core'
+import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { ConditionalFiles } from '@/sync/conditionalFiles'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
@@ -285,13 +287,17 @@ describe('settings changed on another device', () => {
     await modify(HOTKEYS, '{"there":true}')
     await service.syncNow()
     await waitFor('both settings staged', () => service.status.value.deferred === 2)
-    const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
-    app.vault.adapter.writeBinary = async (path, bytes, options) => {
-      if (path.endsWith('.tmp') && new TextDecoder().decode(bytes).includes('"there"'))
-        throw new Error('write unavailable')
-      return write(path, bytes, options)
-    }
-    const outcome = await service.applySettingsAndReload(shown())
+    const append = BoundedVaultIo.prototype.append
+    const failure = vi
+      .spyOn(BoundedVaultIo.prototype, 'append')
+      .mockImplementation(async function (path, offset, bytes, mtime) {
+        if (path.endsWith('/data') && new TextDecoder().decode(bytes).includes('"there"'))
+          throw new Error('write unavailable')
+        return append.call(this, path, offset, bytes, mtime)
+      })
+    const outcome = await service
+      .applySettingsAndReload(shown())
+      .finally(() => failure.mockRestore())
     expect(outcome?.applied).toEqual([APP])
     expect(outcome?.failed).toEqual([expect.objectContaining({ path: HOTKEYS })])
     expect(outcome?.reloaded).toBe(false)
@@ -307,22 +313,21 @@ describe('settings changed on another device', () => {
     await modify(APP, '{"a":2}')
     await service.syncNow()
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
-    const save = app.saveLocalStorage.bind(app)
-    app.saveLocalStorage = (key, value) => {
-      if (
-        key === 'abele-sync-writes' &&
-        Array.isArray(value) &&
-        value.some((entry) => entry.installed === true)
-      )
-        throw new Error('journal update unavailable')
-      save(key, value)
+    const prototype = ConditionalFiles.prototype as unknown as {
+      record(path: string, value: unknown): Promise<void>
     }
-    const outcome = await service.applySettingsAndReload(shown())
+    const record = prototype.record
+    const failure = vi.spyOn(prototype, 'record').mockImplementation(async function (path, value) {
+      await record.call(this, path, value)
+      if (path.endsWith('/complete')) throw new Error('journal update unavailable')
+    })
+    const outcome = await service
+      .applySettingsAndReload(shown())
+      .finally(() => failure.mockRestore())
     expect(outcome?.applied).toEqual([APP])
     expect(outcome?.failed).toEqual([expect.objectContaining({ path: APP })])
     expect(await read(APP)).toBe('{"a":2}')
     expect(service.settingsPrompt.appliedWaiting.value).toEqual([APP])
-    app.saveLocalStorage = save
   })
 
   it('are written by Reload now, which reloads Obsidian once', async () => {
