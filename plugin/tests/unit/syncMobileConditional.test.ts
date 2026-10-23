@@ -9,6 +9,65 @@ import { deferred } from '../helpers/deferred'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
 
+it('stops real incoming recovery after its mkdir acknowledgement outlives the lease', async () => {
+  vi.useFakeTimers()
+  const loud = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const stalled = deferred(),
+    entered = deferred(),
+    resumed = deferred()
+  try {
+    const app = buildFakeVault([])
+    const rename = app.vault.adapter.rename
+    app.vault.adapter.rename = async function (...args) {
+      if (args[1] === 'sample.bin') throw Object.assign(new Error('occupied'), { code: 'EEXIST' })
+      await rename.apply(this, args)
+    }
+    const disk = new ObsidianFileSystem(app as never)
+    const conditional = Reflect.get(disk, 'conditional')
+    const host = Reflect.get(conditional, 'host')
+    const mkdir = host.mkdir.bind(host)
+    host.mkdir = async (path: string) => {
+      await mkdir(path)
+      entered.resolve()
+      await stalled.promise
+      resumed.resolve()
+    }
+    const capture = vi.spyOn(host, 'capture')
+    const create = vi.spyOn(host, 'create')
+    const remove = vi.spyOn(host, 'remove')
+    const recovery = vi.spyOn(conditional, 'recoverIncoming')
+    const operation = disk.conditionalFile({
+      path: 'sample.bin',
+      expected: null,
+      effect: { kind: 'write', bytes: bytes('incoming'), mtime: 1000, receipt: 'occupied-real' },
+    })
+    await vi.advanceTimersByTimeAsync(1999)
+    await entered.promise
+    expect(recovery).toHaveBeenCalledOnce()
+    const recovered = recovery.mock.results[0].value as Promise<void>
+    const settled = recovered.catch((error: unknown) => error)
+    const evidence = await Reflect.get(disk, 'journal').currentEntries()
+    expect(evidence).toHaveLength(1)
+    const saving = app.vault.adapter.writeBinary('sample.bin', bytes('local save').buffer)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await operation).toBe(false)
+    await saving
+    stalled.resolve()
+    await resumed.promise
+    await settled
+    expect(capture).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(await Reflect.get(disk, 'journal').currentEntries()).toEqual(evidence)
+    expect(await app.vault.adapter.read('sample.bin')).toBe('local save')
+    expect((await app.vault.adapter.list('')).files).toEqual(['sample.bin'])
+  } finally {
+    stalled.resolve()
+    loud.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it('bounds buffered conflict recovery by the same checked lease', async () => {
   vi.useFakeTimers()
   const loud = vi.spyOn(console, 'error').mockImplementation(() => {})

@@ -892,7 +892,7 @@ export class ObsidianFileSystem implements FileSystem {
                     (error as Error)?.message ?? ''
                   )
                 )
-                  await release.wait(this.conditional.recoverIncoming(temp, path))
+                  await release.wait(this.conditional.recoverIncoming(temp, path, release))
                 throw error
               } finally {
                 release()

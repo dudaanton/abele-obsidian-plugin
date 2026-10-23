@@ -78,6 +78,33 @@ const missing = (error: unknown) =>
   (error as { code?: string })?.code === 'ENOENT' ||
   /^ENOENT\b/.test((error as { message?: string })?.message ?? '')
 
+/** Every continuation must revalidate its lease before starting another host effect. */
+function leasedHost(
+  host: ConditionalFileHost,
+  current: () => CheckedLease | undefined
+): ConditionalFileHost {
+  return new Proxy(host, {
+    get(target, key) {
+      const value = Reflect.get(target, key)
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        const lease = current()
+        lease?.check?.()
+        const result = value.apply(target, args)
+        if (result && typeof result.then === 'function')
+          return (lease?.wait ? lease.wait(Promise.resolve(result)) : result).then(
+            (answer: unknown) => {
+              lease?.check?.()
+              return answer
+            }
+          )
+        lease?.check?.()
+        return result
+      }
+    },
+  })
+}
+
 /** Quarantine is retained evidence, never disposable staging or an equality receipt. */
 export class ConditionalFiles {
   private readonly fallback = new MemoryRetention()
@@ -714,25 +741,7 @@ export class ConditionalFiles {
   }
   /** Content decision plus a pending-save/stat fence; no object-identity claim. */
   private async applyChecked(op: ConditionalFileOperation): Promise<boolean> {
-    const h = new Proxy(this.host, {
-        get(target, key) {
-          const value = Reflect.get(target, key)
-          if (typeof value !== 'function') return value
-          return (...args: unknown[]) => {
-            release?.check?.()
-            const result = value.apply(target, args)
-            if (result && typeof result.then === 'function')
-              return (release?.wait ? release.wait(Promise.resolve(result)) : result).then(
-                (answer: unknown) => {
-                  release?.check?.()
-                  return answer
-                }
-              )
-            release?.check?.()
-            return result
-          }
-        },
-      }),
+    const h = leasedHost(this.host, () => release),
       checked = h.checked
     const operation = new ConditionalFiles(h)
     const observe = async (path: string): Promise<FileVersion | null> => {
@@ -908,8 +917,9 @@ export class ConditionalFiles {
     }
   }
   /** Turn refused first publication into journalled visible conflict evidence. */
-  async recoverIncoming(from: string, path: string): Promise<void> {
-    const h = this.host,
+  async recoverIncoming(from: string, path: string, lease?: CheckedLease): Promise<void> {
+    const h = leasedHost(this.host, () => lease),
+      operation = new ConditionalFiles(h),
       id = crypto.randomUUID(),
       folder = h.root + '/objects/' + id
     const intent: Intent = {
@@ -925,14 +935,14 @@ export class ConditionalFiles {
     h.active.add(key)
     try {
       await h.mkdir(folder)
-      await this.record(folder + '/intent.json', intent)
+      await operation.record(folder + '/intent.json', intent)
       await h.mkdir(h.root + '/active')
-      await this.record(h.root + '/active/' + id + '.json', intent)
+      await operation.record(h.root + '/active/' + id + '.json', intent)
       await h.capture(from, intent.data)
-      await this.restore(intent.data, path, true)
-      await this.record(folder + '/complete', true)
-      await this.archive(folder, id, false)
-      await this.discard(id)
+      await operation.restore(intent.data, path, true)
+      await operation.record(folder + '/complete', true)
+      await operation.archive(folder, id, false)
+      await operation.discard(id)
       console.debug('[abele-sync] publication occupied; incoming bytes recovered', path)
     } finally {
       h.active.delete(key)
