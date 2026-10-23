@@ -256,7 +256,13 @@ Absence-only buffered writes use an owned installation-journal record with `cond
 until ledger completion. The record and private data are discarded only on explicit receipt
 retirement. Legacy buffered writes without an SDK receipt retain their intent until the
 committed ledger acknowledges them, using the existing publication evidence without an
-extra installed marker. Mobile publication uses a checked tier: fresh content must match the expected
+extra installed marker. Recovery preserves anonymous installation intents even when a
+native temporary hard link still exists. It may durably remove that alias only after
+confirming that it and the public path are the same inode; equal bytes are insufficient.
+The journal survives alias cleanup until a matching committed ledger row acknowledges
+publication. If that row already exists, the same recovery pass rechecks only the targets
+whose aliases it just settled. No additional installed-marker write is required.
+Mobile publication uses a checked tier: fresh content must match the expected
 hash and size, pending host saves drain, and the file's size/mtime must remain unchanged
 across that decision. An adapter path gate serializes in-process saves, directory mutations
 and both paths of a move from the final check through capture, publication or restoration.

@@ -9,8 +9,106 @@ import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { connectionAdapter, nativeOf } from '@/sync/vaultPathLinks'
+import { IDBFactory } from 'fake-indexeddb'
+import { HostSyncStorage } from '@/sync/hostSyncStorage'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { WriteJournal, JOURNAL_KEY } from '@/sync/writeJournal'
 
 const roots: string[] = []
+it.each(
+  ['install', 'public-flush', 'finish-entry', 'alias-remove', 'alias-flush', 'finish-complete']
+    .map((boundary) => ({ boundary, committed: false }))
+    .concat([{ boundary: 'install', committed: true }])
+)(
+  'retains anonymous evidence after a native publication crash at $boundary (committed=$committed)',
+  async ({ boundary, committed }) => {
+    const factory = new IDBFactory(),
+      values = new Map<string, unknown>()
+    const storage = {
+      loadLocalStorage: (key: string) => structuredClone(values.get(key) ?? null),
+      saveLocalStorage: (key: string, value: unknown) => {
+        values.set(key, structuredClone(value))
+      },
+    }
+    const crash = new Error('simulated process exit')
+    let crashed = false
+    const stop = () => {
+      crashed = true
+      throw crash
+    }
+    const { root, app } = await setup({
+      link: async (from, to) => {
+        await fs.link(from, to)
+        if (boundary === 'install' && to === join(root, 'sample.bin')) stop()
+      },
+      unlink: async (path) => {
+        await fs.unlink(path)
+        if (boundary === 'alias-remove' && String(path).includes('.abele-receipt-')) stop()
+      },
+    })
+    let host = await HostSyncStorage.open(factory, 'sample-host', storage)
+    const state = await IndexedDbStateStore.open(factory, 'sample-ledger')
+    try {
+      const port = new ObsidianFileSystem(app as never, { storage, ledger: state })
+      const writer = Reflect.get(port, 'writer')
+      const deps = Reflect.get(writer, 'deps')
+      const sync = deps.native.syncPath.bind(deps.native)
+      deps.native.syncPath = async (path: string, parentsOnly?: boolean) => {
+        await sync(path, parentsOnly)
+        if (
+          (boundary === 'public-flush' && path === 'sample.bin' && !parentsOnly) ||
+          (boundary === 'alias-flush' && path.includes('.abele-receipt-') && parentsOnly)
+        )
+          stop()
+      }
+      const finish = Reflect.get(writer, 'finishAnonymous').bind(writer)
+      Reflect.set(writer, 'finishAnonymous', async (...args: unknown[]) => {
+        if (boundary === 'finish-entry') stop()
+        await finish(...args)
+        if (boundary === 'finish-complete') stop()
+      })
+      const bytes = new TextEncoder().encode('sample incoming bytes')
+      const row = {
+        path: 'sample.bin',
+        wirePath: 'sample.bin',
+        fileId: 'sample-file',
+        versionId: 'sample-version',
+        sha: await sha256(bytes),
+        size: bytes.length,
+        mtime: 1000,
+      }
+      await expect(port.writeAtomic('sample.bin', bytes, 1000)).rejects.toThrow()
+      expect(crashed).toBe(true)
+      expect(await new WriteJournal(storage).currentEntries()).toHaveLength(1)
+      host.close()
+      values.clear()
+      const restarted = await setup({}, root)
+      host = await HostSyncStorage.open(factory, 'sample-host', storage)
+      const recovered = new ObsidianFileSystem(restarted.app as never, { storage, ledger: state })
+      if (committed) await state.put(row)
+      const changes = vi.spyOn(host, 'changeRecords')
+      await recovered.recover()
+      expect(await new WriteJournal(storage).currentEntries()).toHaveLength(committed ? 0 : 1)
+      await recovered.recover()
+      expect(await new WriteJournal(storage).currentEntries()).toHaveLength(committed ? 0 : 1)
+      expect(await fs.readFile(join(root, 'sample.bin'))).toEqual(Buffer.from(bytes))
+      state.observeCommittedEntries((entries) => recovered.acknowledgeWrites(entries))
+      await state.put(row)
+      await state.put(row)
+      await recovered.recover()
+      expect(await new WriteJournal(storage).currentEntries()).toEqual([])
+      expect(
+        changes.mock.calls
+          .flatMap(([batch]) => batch)
+          .filter((change) => change.key === JOURNAL_KEY && change.after === undefined)
+      ).toHaveLength(1)
+      expect(await fs.readFile(join(root, 'sample.bin'))).toEqual(Buffer.from(bytes))
+    } finally {
+      state.close()
+      host.close()
+    }
+  }
+)
 it('flushes the full directory ancestry without granting ancestor reads to a scoped adapter', async () => {
   const { root, app } = await setup()
   await fs.mkdir(join(root, 'Scoped/nested'), { recursive: true })

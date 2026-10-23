@@ -327,10 +327,10 @@ export class VaultWriter {
    * Put back whatever a crash left half done, from the journal: a file found only at its
    * backup name goes back under its own. A backup beside exact replacement bytes can go;
    * beside an independently edited target it is preserved with a durable locator instead.
-   * A stale installed flag cannot authorize deletion. Temps go, active intents complete, and
-   * scans resume. An entry an IO step fails on stays for retry; live writes are left alone.
+   * A stale installed flag cannot authorize deletion. Disposable temps go; anonymous
+   * publication evidence awaits the ledger. Failed IO stays for retry; live writes are left alone.
    */
-  async recover(): Promise<void> {
+  async recover(publishedTargets?: Set<string>): Promise<void> {
     if (this.deps.native?.archiveBackup) {
       for (const retained of await this.deps.journal.currentVaultRecovered()) {
         if (!(await this.deps.journal.currentProtects(retained.backup))) continue
@@ -365,6 +365,40 @@ export class VaultWriter {
             !(await this.there(entry.temp))))
       )
         continue
+      if (
+        this.deps.retainInstalled &&
+        !entry.backup &&
+        !entry.streaming &&
+        entry.replacementSha &&
+        entry.temp &&
+        entry.temp.slice(entry.temp.lastIndexOf('/') + 1).startsWith('.abele-receipt-')
+      ) {
+        // This pre-publication intent survives a lost install acknowledgement too.
+        // A native alias may be removed only with inode proof; neither an alias nor
+        // equal public bytes authorize retiring evidence before the ledger commits.
+        if (
+          !inFlight.has(entry.temp) &&
+          this.deps.native?.sameObject &&
+          this.deps.native.syncPath
+        ) {
+          try {
+            if (await this.deps.native.sameObject(entry.temp, entry.target)) {
+              await this.deps.native.syncPath(entry.target)
+              if (
+                (await this.deps.native.sameObject(entry.temp, entry.target)) &&
+                (await this.deps.journal.isCurrent(entry))
+              ) {
+                await this.finishAnonymous(entry)
+                publishedTargets?.add(entry.target)
+              }
+            }
+          } catch (cause) {
+            if ((cause as { code?: string })?.code !== 'ENOENT')
+              throw new EngineError('io', 'cannot settle anonymous publication alias', cause)
+          }
+        }
+        continue
+      }
       if (entry.streaming && !entry.backup) {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue

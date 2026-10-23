@@ -1407,7 +1407,12 @@ export class ObsidianFileSystem implements FileSystem {
         const release = this.externalCoordination.beginEngineMutation([''])
         try {
           this.runtimeFence?.assertOwned()
-          await this.writer.recover()
+          const publishedTargets = new Set<string>()
+          await this.writer.recover(publishedTargets)
+          if (publishedTargets.size && this.ledger?.readCommittedEntries)
+            await this.acknowledgeWrites(
+              await this.ledger.readCommittedEntries([...publishedTargets])
+            )
           this.runtimeFence?.assertOwned()
         } finally {
           release()
