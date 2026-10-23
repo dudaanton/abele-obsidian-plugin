@@ -151,7 +151,13 @@ export function budgets(m) {
       : []),
     check('own content downloads', m.ownDownloads, 0, m.ownDownloads === 0),
     check('unresolved content downloads', m.unresolvedDownloads, 0, m.unresolvedDownloads === 0),
+    ...(m.checkpointFailure !== undefined
+      ? [check('phase evidence', m.checkpointFailure, false, m.checkpointFailure === false)]
+      : []),
     check('notices', m.notices, 0, m.notices === 0),
+    ...(m.noticeCounts
+      ? [check('notice attribution', m.noticeCounts.unknown, 0, m.noticeCounts.unknown === 0)]
+      : []),
     check(
       'byte equality',
       m.mismatches?.length,
@@ -184,7 +190,23 @@ export function markdown(report) {
     (report.failure ? `\nStopped in ${report.phase}: ${report.failure}\n` : '') +
     details('Phase timings (ongoing means incomplete)', report.phaseTimings) +
     details('Interruption recovery observations (null means unobserved)', report.recoveryTimings) +
-    details('Notices (text, time, phase)', report.noticeDetails) +
+    details('Notices (text, time, phase, creation origin)', report.noticeDetails) +
+    details(
+      'Notice counts by source (only Abele notices enter the notice gate)',
+      report.noticeCounts ? [report.noticeCounts] : []
+    ) +
+    details(
+      'Server provenance and advertised limits',
+      report.serverReceipt ? [report.serverReceipt] : []
+    ) +
+    details('Renderer long-task sampled CPU attribution', report.longTaskAttribution) +
+    details('Sampled peak app RSS', [
+      {
+        bytes: report.peakAppRssBytes ?? null,
+        samples: report.memorySamples ?? 0,
+        coverage: report.memorySampling,
+      },
+    ]) +
     details('Excluded by settings', report.excludedBySettings) +
     details('Visible case refusals on primary', report.caseRefusals) +
     details('Oversized refusal evidence', report.oversizedEvidence) +

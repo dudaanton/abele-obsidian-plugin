@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Loaded directly by the desktop host as a CommonJS plugin. */
-const { Plugin } = require('obsidian')
+const { Plugin, Notice } = require('obsidian')
 const fs = require('fs')
 const path = require('path')
 /* eslint-enable @typescript-eslint/no-require-imports -- The host-only CommonJS imports end here. */
 
 // Installed first in a disposable vault. Evidence survives renderer/process termination.
 module.exports = class extends Plugin {
-  onload() {
+  async onload() {
     const config = JSON.parse(
       fs.readFileSync(
         path.join(this.app.vault.adapter.getBasePath(), '.scale-observer.json'),
@@ -91,6 +91,19 @@ module.exports = class extends Plugin {
     this.register(() => {
       if (console.debug === tracedDebug) console.debug = debug
     })
+    let noticeOrigins
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Absolute disposable fixture module.
+      const diagnostic = require(config.diagnostics)
+      noticeOrigins = diagnostic.observeNotices({
+        Notice,
+        Node: globalThis.Node,
+        Element: globalThis.Element,
+      })
+      this.register(() => noticeOrigins.close())
+    } catch {
+      emit({ event: 'notice-origin-unavailable' })
+    }
     const seen = new WeakSet()
     const observe = () => {
       for (const node of document.querySelectorAll('.notice')) {
@@ -98,7 +111,11 @@ module.exports = class extends Plugin {
         if (!node.textContent) continue
         seen.add(node)
         // Evidence stays in the disposable run directory, never in tracked fixtures.
-        emit({ event: 'notice', text: node.textContent ?? '' })
+        emit({
+          event: 'notice',
+          text: node.textContent ?? '',
+          ...(noticeOrigins?.origin(node) ?? { source: 'unknown', method: null, stack: null }),
+        })
       }
     }
     const observer = new MutationObserver(observe)
@@ -108,12 +125,40 @@ module.exports = class extends Plugin {
     try {
       const performanceObserver = new PerformanceObserver((list) => {
         for (const entry of list.getEntries())
-          emit({ event: 'long-task', durationMs: entry.duration })
+          emit({
+            event: 'long-task',
+            startedAt: Math.round(performance.timeOrigin + entry.startTime),
+            durationMs: entry.duration,
+            attribution: Array.from(entry.attribution ?? [], (a) => ({
+              name: a.name,
+              containerType: a.containerType,
+              containerSrc: a.containerSrc,
+            })),
+          })
       })
       performanceObserver.observe({ type: 'longtask', buffered: true })
       this.register(() => performanceObserver.disconnect())
     } catch {
       emit({ event: 'long-task-unavailable' })
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Desktop-only bridge; sampling lives outside the renderer.
+      const remote = require('@electron/remote')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Heartbeats carry no file content.
+      const { ipcRenderer } = require('electron')
+      const diagnostic = remote.require(config.diagnostics)
+      const watch = await diagnostic.watch(
+        remote.getCurrentWebContents().id,
+        JSON.stringify(config)
+      )
+      ipcRenderer.send(watch.channel)
+      const heartbeat = setInterval(() => ipcRenderer.send(watch.channel), 25)
+      this.register(() => {
+        clearInterval(heartbeat)
+        void watch.close()
+      })
+    } catch {
+      emit({ event: 'cpu-profile-unavailable' })
     }
   }
 }

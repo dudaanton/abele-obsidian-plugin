@@ -206,7 +206,7 @@ describe('scale harness independent guarantees', () => {
         disconnect() {}
       },
     })
-    new module.exports().onload()
+    await new module.exports().onload()
     expect(evidence.filter((row) => row.event === 'plugin-load')).toMatchObject([
       { at: 1250, device: '0', source: 'abele:onload-start' },
     ])
@@ -308,7 +308,7 @@ describe('scale harness independent guarantees', () => {
         disconnect() {}
       },
     })
-    new module.exports().onload()
+    await new module.exports().onload()
     node.textContent = 'Sample notice'
     observe()
     expect(evidence.filter((row) => row.event === 'notice')).toMatchObject([
