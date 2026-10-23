@@ -98,9 +98,11 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
-import { computed, provide, ref, watch } from 'vue'
-import { MARKDOWN_FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
-import type { NodePathTabState } from '@/node/nodePathNavigation'
+import { computed, inject, provide, ref, watch } from 'vue'
+import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
+import { openNodeFileDestination, type NodePathTabState } from '@/node/nodePathNavigation'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { Platform } from 'obsidian'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { RepositorySource } from '@/repository/source'
 const props = withDefaults(
@@ -149,6 +151,14 @@ watch(
       void retry()
   }
 )
+// Standalone file panes need the same code destination route as the main file view.
+if (!inject(FILE_NAVIGATION, undefined))
+  provide(FILE_NAVIGATION, (url) => {
+    const state = fileNavigation(props.model.target, url)
+    if (!state) return false
+    void openNodeFileDestination(GlobalStore.getInstance().app.workspace, state, Platform.isMobile)
+    return true
+  })
 provide(MARKDOWN_FILE_NAVIGATION, (url) => {
   const state = fileNavigation(props.model.target, url)
   if (!state) return false
