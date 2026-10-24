@@ -114,6 +114,7 @@ it.each([
     let wholeContentRequests = 0
     let retried = false
     let requests = 0
+    let probes = 0
     let uploaded = 0
     let committedContent = 0
     const runtime = new TokenEngineRuntime({
@@ -157,6 +158,10 @@ it.each([
             cursor: 100,
             next: uploading || url.searchParams.has('next') ? null : 'second',
           })
+        if (url.pathname.startsWith('/v2/uploads/') && init?.method === 'HEAD') {
+          probes++
+          return new Response(null, { status: 404 })
+        }
         if (url.pathname.startsWith('/v2/uploads/')) {
           uploaded++
           return new Response(null, { status: 204 })
@@ -227,7 +232,10 @@ it.each([
       expect(operations.read).toBe(0)
       expect(operations.stat).toBeLessThanOrEqual(fileCount * 2)
       expect(operations.store).toBe(0)
-      expect(requests).toBeLessThan(fileCount * 2 + 20)
+      // The transport now probes each upload before acquiring/sending its bytes.
+      // Keep the previous work bound and account for these probes independently.
+      expect(probes).toBe(uploading ? fileCount : 0)
+      expect(requests - probes).toBeLessThan(fileCount * 2 + 20)
       // Fixed setup plus at most 40 modeled I/O operations per transferred file.
       expect(modeledMs).toBeLessThan(30_000 + fileCount * 40 * 10)
       const elapsedMs = performance.now() - started

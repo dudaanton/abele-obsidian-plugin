@@ -27,6 +27,15 @@ import { emptyPullSummary, summarizePull } from '@/sync/pullOperationCounts'
 import { connectionAdapter } from '@/sync/connectionScope'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 
+// Native small-pull barriers                 steady   cold
+// Stage content                                  1      1
+// Stage parent after allocation                  1      1
+// Published content                              1      1
+// Destination parent after publication           1      1
+// Stage parent after retirement                  1      1
+// Newly-created private ancestor entries         0      4
+// Each barrier costs open + sync + close; link + two identity checks add 3.
+// Native-call ceilings: steady 18, cold 30. No content read or index wait is allowed.
 async function measure(
   desktop: boolean,
   baseline: boolean | 'chunk-stage',
@@ -373,7 +382,9 @@ async function measure(
       const operations: Record<string, number> = {}
       for (const event of timings.slice(eventStart))
         operations[event.operation] = (operations[event.operation] ?? 0) + 1
-      perFile.push(smallPullCounts(operations, counts.requests - requestStart))
+      const fileCounts = smallPullCounts(operations, counts.requests - requestStart)
+      if (!baseline && desktop && i > 0) expect(fileCounts.native).toBeLessThanOrEqual(18)
+      perFile.push(fileCounts)
       if (i === 0) firstFileCalls = timings.map((one) => one.operation)
       if (i === 1) steadyFileCalls = timings.slice(eventStart).map((one) => one.operation)
       if (i === 1) steadyNativeCalls = nativeCalls.slice(nativeStart)

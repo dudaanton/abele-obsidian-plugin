@@ -1,5 +1,5 @@
 import { localOnlyJournalState } from './localOnlyJournal'
-import { SyncTaskBudget } from './syncTaskBudget'
+import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
@@ -141,6 +141,7 @@ export interface TokenEngineOptions {
 export class TokenEngineRuntime
   implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
 {
+  pathCollisions: SyncReport['collisions'] = []
   readonly pushRefusals = new Map<string, SyncReport['push']['rejected'][number]>()
   pushRefusalRows(): SyncReport['push']['rejected'] {
     const rows = [...this.pushRefusals.values()]
@@ -152,7 +153,15 @@ export class TokenEngineRuntime
     const limit = row.limit ?? this.authority?.limits.max_file_bytes
     const bounds =
       row.code === 'too_large' && limit !== undefined ? ` (${size ?? '?'} B / ${limit} B)` : ''
-    const expected = 'sha' in row.op && typeof row.op.sha === 'string' && 'size' in row.op && typeof row.op.size === 'number' && 'mtime' in row.op && typeof row.op.mtime === 'number' ? { sha: row.op.sha, size: row.op.size, mtime: row.op.mtime } : undefined
+    const expected =
+      'sha' in row.op &&
+      typeof row.op.sha === 'string' &&
+      'size' in row.op &&
+      typeof row.op.size === 'number' &&
+      'mtime' in row.op &&
+      typeof row.op.mtime === 'number'
+        ? { sha: row.op.sha, size: row.op.size, mtime: row.op.mtime }
+        : undefined
     this.notSyncedState.recordRefusal(row.path, `${row.code}: ${row.message}${bounds}`, expected)
   }
   readonly trace = new ExchangeTrace()
@@ -184,13 +193,7 @@ export class TokenEngineRuntime
   }
   async retryNotSynced(paths: readonly string[]): Promise<void> {
     this.assertHeld()
-    const retry = Reflect.get(this.engine, Symbol.for('abele.sync.retry-paths-v1'))
-    if (typeof retry !== 'function')
-      throw new Error('Retry could not finish. Your files remain held.')
-    await retry.call(
-      this.engine,
-      paths.map((path) => this.placement?.toServer(path) ?? path)
-    )
+    await this.engine.retryPaths(paths.map((path) => this.placement?.toServer(path) ?? path))
   }
   private readonly quiet: UploadQuietPeriod
   private notifyLocal: ((paths: string[]) => void) | undefined
@@ -1037,7 +1040,9 @@ export class TokenEngineRuntime
     }
     // Refusals can be assembled inside a scoped ledger callback as well as at root.
     this.notSyncedState = new NotSyncedState(options.engineState ?? options.state, (path) =>
-      this.localExcluded(path, 0) || !this.client.includes(path) ? Promise.resolve(null) : this.options.fs.stat(path)
+      this.localExcluded(path, 0) || !this.client.includes(path)
+        ? Promise.resolve(null)
+        : this.options.fs.stat(path)
     )
     const refusalState = (state: StateStore): StateStore =>
       new Proxy(state, {
@@ -1109,9 +1114,14 @@ export class TokenEngineRuntime
       }
     }
     this.engine = new SyncEngine({
+      placementConcurrency: 16,
+      yieldTask: yieldSyncTask,
       transferBudget: this.transferBudget,
       client: new Proxy(engineClient, {
         get: (target, name) => {
+          // Whole-read uploads already own a server receipt. Consult it before
+          // the pusher opens another source just to reach the transport check.
+          if (name === 'checksBlobBeforeUpload' && this.uploadEntitlements.size) return false
           if (name === 'pathRefusal')
             return (path: string) =>
               target.pathRefusal?.(path) ??
@@ -1403,6 +1413,7 @@ export class TokenEngineRuntime
       },
       onSync: (report) => {
         this.notSyncedState.invalidate()
+        this.pathCollisions = this.placement?.localMetadata(report.collisions) ?? report.collisions
         this.notSyncedState.collisions(report.collisions)
         this.incomingQuietConflicts.clear()
         void this.quiet

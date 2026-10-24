@@ -27,26 +27,6 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
-let inventorySteps = 0;
-let inventorySince = performance.now();
-async function yieldInventory() {
-  if (++inventorySteps < 256 && performance.now() - inventorySince < 8) return;
-  inventorySteps = 0;
-  if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
-  else if (typeof MessageChannel !== 'undefined') await new Promise(resolve => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };
-    channel.port2.postMessage(null);
-  });
-  else await new Promise(resolve => setTimeout(resolve, 0));
-  inventorySince = performance.now();
-}
-async function* inventoryEntries(state) {
-  for await (const entry of state.all()) {
-    await yieldInventory();
-    yield entry;
-  }
-}
 async function pairedBaseline(fs, state, entry) {
   if (!fs.fileIdentity || !state.getMeta) return null;
   const raw = await state.getMeta('paired-file:' + entry.path);
@@ -127,26 +107,11 @@ export function syncPlacementPlugin() {
         }
         async cycleUnlocked() {`
         )
-      } else if (file.endsWith('/scope.js')) {
-        code = replaceOnce(
-          code,
-          'for (const entry of await this.entries()) {',
-          'for (const entry of await this.entries()) { await yieldInventory();'
-        )
-        const boundary = 'for (const entry of entries) {'
-        const count = code.split(boundary).length - 1
-        if (count !== 3) throw boundaryError(id, boundary, count, '3')
-        code = code.replaceAll(boundary, boundary + '\n await yieldInventory();')
-        code = replaceOnce(
-          code,
-          'for await (const entry of this.state.all())\n            entries.push(entry);',
-          'for await (const entry of this.state.all()) { await yieldInventory(); entries.push(entry); }'
-        )
       } else if (file.endsWith('/deleteGate.js')) {
         code = replaceOnce(
           code,
           'for await (const entry of this.ctx.state.all())',
-          'if (ops.length) for await (const entry of inventoryEntries(this.ctx.state))'
+          'if (ops.length) for await (const entry of this.ctx.state.all())'
         )
       } else if (file.endsWith('/pullRun.js')) {
         code = replaceOnce(code, 'const MANIFEST_PAGE = 1000;', 'const MANIFEST_PAGE = 5000;')
@@ -261,11 +226,6 @@ export function syncPlacementPlugin() {
           }`
         )
       } else if (file.endsWith('/reconciliation.js')) {
-        for (const boundary of [
-          'for await (const entry of basis.all()) {',
-          'for (const [path, info] of files) {',
-        ])
-          code = replaceOnce(code, boundary, boundary + '\n await yieldInventory();')
         code = replaceOnce(
           code,
           'const cached = !selected.has(path) ? await readScanHint(state, info, epoch) : null;',
@@ -291,31 +251,6 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
-          `const missing = [...entries.values()].filter((entry) => !inventory.blocked(entry.wirePath) &&
-        (!recreated.has(entry.wirePath) || classified.has(entry.wirePath)) &&
-        (!opts.retries || opts.retries.ready(entry.wirePath, 'scan')) &&
-        (!present.has(entry.wirePath) || classified.has(entry.wirePath)) &&
-        !filter.excluded(entry.wirePath, entry.size));`,
-          `const missing = [];
-          for (const entry of [...entries.values()]) {
-            await yieldInventory();
-            if (!inventory.blocked(entry.wirePath) &&
-              (!recreated.has(entry.wirePath) || classified.has(entry.wirePath)) &&
-              (!opts.retries || opts.retries.ready(entry.wirePath, 'scan')) &&
-              (!present.has(entry.wirePath) || classified.has(entry.wirePath)) &&
-              !filter.excluded(entry.wirePath, entry.size)) missing.push(entry);
-          }`
-        )
-        for (const boundary of [
-          'for await (const listed of fs.list()) {',
-          'for (const [wirePath, twins] of candidates) {',
-          'for await (const entry of state.all()) {',
-          'for (const entry of entries.values()) {',
-          'for (const [wirePath, info] of files) {',
-        ])
-          code = replaceOnce(code, boundary, boundary + '\n await yieldInventory();')
-        code = replaceOnce(
-          code,
           'const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);',
           `const beforeIdentity = await fs.fileIdentity?.(info.path);
             const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
@@ -337,6 +272,14 @@ export function syncPlacementPlugin() {
           'await inventoryChildren(fs, parent, path)'
         )
       } else if (file.endsWith('/pullPlace.js')) {
+        code = replaceOnce(
+          code,
+          'this.lying = shared?.lying ?? new Set();',
+          `this.lying = shared?.lying ?? new Set();
+          this.initialLocal = shared?.initialLocal;
+          this.adoptionCandidates = shared?.adoptionCandidates;`
+        )
+
         code = replaceOnce(
           code,
           'const identity = { sha, size: change.size };',
@@ -436,6 +379,17 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
+          `beforeFrom !== null &&
+                (!pending.sourceIdentity || (await this.fs.fileIdentity?.(from)) !== pending.sourceIdentity)`,
+          `beforeFrom !== null &&
+                // Same physical name uses host recovery, which retains uncertain bytes.
+                // A distinct source still requires the original durable identity.
+                !(this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+                  this.fs.pathKey && this.fs.pathKey(from) === this.fs.pathKey(target)) &&
+                (!pending.sourceIdentity || (await this.fs.fileIdentity?.(from)) !== pending.sourceIdentity)`
+        )
+        code = replaceOnce(
+          code,
           `if (entry !== null && (await this.edited(entry, target)))
             return false;
         const movedBase =`,
@@ -452,23 +406,45 @@ export function syncPlacementPlugin() {
           code,
           `if (!pending?.stageId)
             await this.pending.prepare(change, entry, target, from, undefined, undefined, sourceIdentity);
-        const stage = pending?.stageId !== undefined
-            ? await this.fs.reopenStage(pending.stageId)
-            : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, (id) => this.pending.prepare(change, entry, target, from, id, undefined, sourceIdentity));
-        if (!pending?.stageId)
+        const allocate = () => this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, (id) => this.pending.prepare(change, entry, target, from, id, undefined, sourceIdentity));
+        let stage;
+        if (pending?.stageId !== undefined) {
+            try {
+                stage = await this.fs.reopenStage(pending.stageId);
+            }
+            catch (error) {
+                if (!stageMissing(error))
+                    throw error;
+                // Intent is durable before allocation. Another participant can crash in
+                // that interval, leaving an id with no stage. Reallocate under the same
+                // exact version/base/source authority, never adopt public bytes or switch
+                // to a buffered write. Conditional commit still checks the original base.
+                stage = await allocate();
+            }
+        }
+        else
+            stage = await allocate();
+        if (stage.id !== pending?.stageId)
             await this.pending.prepare(change, entry, target, from, stage.id, undefined, sourceIdentity);`,
           `const recoverHost = pending && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')];
         const ownStage = (id) => this.pending.prepare(change, entry, target, from, id, pending?.receiptId, sourceIdentity);
         if (!pending?.stageId && !recoverHost)
             await this.pending.prepare(change, entry, target, from, undefined, undefined, sourceIdentity);
-        const stage = recoverHost
-            ? await recoverHost.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from, ownStage, base, pending.receiptId)
-            : pending?.stageId !== undefined
-              ? await (this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')]
-                  ? this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')](pending.stageId)
-                  : this.fs.reopenStage(pending.stageId))
-              : await this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, ownStage);
-        if (!pending?.stageId || recoverHost) await ownStage(stage.id);
+        const allocate = () => this.fs.beginAtomicWrite(target, change.mtime ?? 0, base, ownStage);
+        let stage;
+        if (recoverHost)
+          stage = await recoverHost.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from, ownStage, base, pending.receiptId);
+        else if (pending?.stageId !== undefined) {
+          try {
+            stage = await (this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')]
+              ? this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')](pending.stageId)
+              : this.fs.reopenStage(pending.stageId));
+          } catch (error) {
+            if (!stageMissing(error)) throw error;
+            stage = await allocate();
+          }
+        } else stage = await allocate();
+        if (stage.id !== pending?.stageId || recoverHost) await ownStage(stage.id);
         if (recoverHost) pending.stageId = stage.id;`
         )
         code = replaceOnce(
@@ -911,15 +887,15 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'async receive(item) {',
-          `async receive(item) {
+          'async receive(item, seq) {',
+          `async receive(item, seq) {
           if (!this.includes(item.path)) return;
           const previous = (await this.read()).directories.find(one => one.file_id === item.file_id);
           // mkdir refuses an occupied file and never rewrites descendants. Keep the lease,
           // but do not recursively archive a directory that this receipt cannot overwrite.
-          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.localPath ?? previous.path] : [])], () => this.receiveUnlocked(item), false);
+          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.localPath ?? previous.path] : [])], () => this.receiveUnlocked(item, seq), false);
         }
-        async receiveUnlocked(item) {`
+        async receiveUnlocked(item, seq) {`
         )
         code = replaceOnce(
           code,
@@ -940,47 +916,6 @@ export function syncPlacementPlugin() {
           'const path = `/v2/uploads/${expected.sha}`;',
           '}\n            const path = `/v2/uploads/${expected.sha}`;'
         )
-        code = replaceOnce(
-          code,
-          `this.departed.delete(item.path);
-        if (this.ports)
-            await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));`,
-          `if (this.departed.delete(item.path) && this.ports) {
-            if (this.manifestDepartures) this.manifestDepartures.changed = true;
-            else await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));
-          }`
-        )
-        code = replaceOnce(
-          code,
-          `for (const item of page.items) {
-            signal?.throwIfAborted();
-            const file = await this.fileItem(item, page.cursor);
-            if (file)
-                items.push(file);
-        }`,
-          `const departures = this.manifestDepartures = { changed: false };
-        try {
-          for (const item of page.items) {
-            signal?.throwIfAborted();
-            const file = await this.fileItem(item, page.cursor);
-            if (file) items.push(file);
-          }
-        } finally {
-          this.manifestDepartures = null;
-          if (departures.changed && this.ports)
-            await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));
-        }`
-        )
-        code = replaceOnce(
-          code,
-          "if (event.type === 'removal') {",
-          "if (event.type === 'removal') { await coordinatePlacement(this.ports.fs, [event.path], async () => {"
-        )
-        code = replaceOnce(
-          code,
-          'continue;\n                }\n                if (!entry)',
-          '}); continue;\n                }\n                if (!entry)'
-        )
       } else if (file.endsWith('/pushRefusal.js')) {
         code = replaceOnce(code, '    return {', '    const row = {')
         code = replaceOnce(
@@ -991,11 +926,7 @@ export function syncPlacementPlugin() {
     return row;
 }`
         )
-      } else if (!code.includes('of state.all())') && !code.includes('of this.state.all())'))
-        return null
-      code = code
-        .replaceAll('of state.all())', 'of inventoryEntries(state))')
-        .replaceAll('of this.state.all())', 'of inventoryEntries(this.state))')
+      } else return null
       const body = helper + code
       return { code: `${marker}${relative}:${digest(body)}\n${body}`, map: null }
     },

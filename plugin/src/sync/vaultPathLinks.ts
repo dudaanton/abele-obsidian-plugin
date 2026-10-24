@@ -20,7 +20,14 @@ export function vaultPathKey(vault: Vault): (path: string) => string {
   const cached = namePolicies.get(adapter)
   if (cached) return cached
   let key: (path: string) => string
-  if (!Platform.isDesktopApp) {
+  if (Platform.isWin) {
+    key = (path) =>
+      path
+        .normalize('NFC')
+        .split('/')
+        .map((part) => part.replace(/[. ]+$/, '').toLowerCase())
+        .join('/')
+  } else if (!Platform.isDesktopApp) {
     // iOS APFS distinguishes case, but canonical Unicode spellings alias. Android
     // app storage distinguishes both. No Node filesystem is loaded on mobile.
     key = Platform.isIosApp ? (path) => path.normalize('NFC') : (path) => path
@@ -834,7 +841,9 @@ export function nativeOf(
     reconcileInternalFile?: (path: string) => Promise<void>
     queue?: <T>(operation: () => Promise<T>) => Promise<T>
   }
-  const fsp = raw.fsPromises,
+  const nativeSource = raw.fsPromises
+  const fsp =
+      nativeSource && diagnostic ? nativeDiagnostics(nativeSource, diagnostic) : nativeSource,
     full = raw.getFullPath
   if (
     typeof full !== 'function' ||
@@ -897,10 +906,15 @@ export function nativeOf(
     }
   if (fsp.open)
     native.syncPath = async (path, parentsOnly = false) => {
+      const fs = diagnostic
+        ? nativeDiagnostics(nativeSource, (operation, startedAt, outcome) =>
+            diagnostic(operation, startedAt, outcome, [path])
+          )
+        : fsp
       const flush = async (part: string) => {
         await assertVaultPath(adapter, part)
         assertEffect([part])
-        const handle = await fsp.open(at(part), 'r')
+        const handle = await fs.open(at(part), 'r')
         try {
           if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
           await handle.sync()
@@ -1907,7 +1921,13 @@ export function connectionAdapter(
           await assertVaultPath(adapter, path)
           const parentSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
           if (typeof parentSync === 'function') return parentSync(path, parentsOnly, diagnostic)
-          const fs = diagnostic ? nativeDiagnostics(native, diagnostic) : native
+          // Ancestor barriers belong to the file whose namespace mutation requires
+          // them. Retain that attribution through delayed shared-folder flushes.
+          const fs = diagnostic
+            ? nativeDiagnostics(native, (operation, startedAt, outcome) =>
+                diagnostic(operation, startedAt, outcome, [path])
+              )
+            : native
           const flush = async (part: string) => {
             const handle = await fs.open(full.call(adapter, part), 'r')
             try {

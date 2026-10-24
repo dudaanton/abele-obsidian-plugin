@@ -182,7 +182,8 @@ it.each(
 )
 it('flushes only dirty directory ancestry without granting ancestor reads to a scoped adapter', async () => {
   const { root, app } = await setup()
-  await fs.mkdir(join(root, 'Scoped/nested'), { recursive: true })
+  const canonicalRoot = await fs.realpath(root)
+  await fs.mkdir(join(canonicalRoot, 'Scoped/nested'), { recursive: true })
   await fs.writeFile(join(root, 'Scoped/nested/sample.md'), 'sample')
   const adapter = connectionAdapter(
     app.vault.adapter as never,
@@ -190,12 +191,19 @@ it('flushes only dirty directory ancestry without granting ancestor reads to a s
     '.abele-sync/connections/sample'
   )
   const opened: string[] = []
+  const attributed: string[] = []
+  const raw = Reflect.get(app.vault.adapter, 'fsPromises')
+  const open = raw.open.bind(raw)
+  vi.spyOn(raw, 'open').mockImplementation((path, ...args) => {
+    opened.push(String(path))
+    return open(path, ...args)
+  })
   const port = nativeOf(
     adapter,
     () => {},
     '.abele-sync/connections/sample/recovery',
     (operation, _started, _outcome, paths) => {
-      if (operation === 'native open r') opened.push(...(paths ?? []))
+      if (operation === 'native open r') attributed.push(...(paths ?? []))
     }
   )!
   await adapter.mkdir('Scoped/nested/created')
@@ -204,10 +212,11 @@ it('flushes only dirty directory ancestry without granting ancestor reads to a s
   await native.link(full('Scoped/nested/sample.md'), full('Scoped/nested/created/linked.md'))
   await port.syncPath!('Scoped/nested/created/linked.md')
   expect(opened).toEqual([
-    join(root, 'Scoped/nested/created/linked.md'),
-    join(root, 'Scoped/nested/created'),
-    join(root, 'Scoped/nested'),
+    join(canonicalRoot, 'Scoped/nested/created/linked.md'),
+    join(canonicalRoot, 'Scoped/nested/created'),
+    join(canonicalRoot, 'Scoped/nested'),
   ])
+  expect(attributed).toEqual(Array(3).fill('Scoped/nested/created/linked.md'))
   expect(() =>
     (adapter as unknown as { getFullPath(path: string): string }).getFullPath('')
   ).toThrow('outside this connection')

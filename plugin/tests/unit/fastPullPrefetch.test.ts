@@ -50,6 +50,7 @@ it('persists restored departures once per manifest page', async () => {
   const state = new MemoryStateStore()
   const write = vi.spyOn(state, 'setMeta')
   Reflect.set(client, 'ports', { state })
+  Reflect.set(client, 'connectionInfo', { token_id: 'sample-token' })
   const items = Array.from({ length: 32 }, (_, i) => ({
     path: `notes/sample-${i}.md`,
     file_id: `sample-${i}`,
@@ -58,8 +59,20 @@ it('persists restored departures once per manifest page', async () => {
   }))
   for (const item of items) Reflect.get(client, 'departed').add(item.path)
   vi.spyOn(Reflect.get(client, 'http'), 'json').mockResolvedValue({ items, cursor: 32, next: null })
-  await client.manifest(null, 5000)
-  expect(write.mock.calls).toEqual([['v2-departures', '[]']])
+  const page = await client.manifest(null, 5000)
+  // Fetching a page is not a durable acceptance. Publish its membership together
+  // with the owning manifest transaction, using per-path overrides of legacy state.
+  expect(write).not.toHaveBeenCalled()
+  const transaction = vi.spyOn(state, 'transaction')
+  await state.transaction(async (tx) => {
+    await Reflect.get(client, 'publishManifestMembership').call(client, tx, page.items)
+  })
+  expect(transaction).toHaveBeenCalledTimes(1)
+  for (const item of items) {
+    const mark = await state.getMeta('v2-departure-path:p:' + encodeURIComponent(item.path))
+    expect(JSON.parse(mark!)).toMatchObject({ present: false })
+  }
+  expect(write.mock.calls.filter(([key]) => key === 'v2-departures')).toHaveLength(0)
 })
 
 it('requests the maximum manifest page without changing feed pages', async () => {
@@ -90,6 +103,7 @@ it('does not rewrite departure metadata for every new manifest file', async () =
   const state = new MemoryStateStore()
   const write = vi.spyOn(state, 'setMeta')
   Reflect.set(client, 'ports', { state })
+  Reflect.set(client, 'connectionInfo', { token_id: 'sample-token' })
   for (let i = 0; i < 32; i++)
     await Reflect.get(client, 'fileItem').call(
       client,

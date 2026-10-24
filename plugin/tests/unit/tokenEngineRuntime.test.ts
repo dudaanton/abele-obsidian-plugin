@@ -2710,7 +2710,7 @@ it('replaces an empty server download with comparison, then real upload counts',
   wire.fetch.mockImplementation(async (input, init) => {
     const route = new URL(String(input)).pathname
     if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
-    if (route.startsWith('/v2/uploads/')) duringUpload.push(transfer)
+    if (route.startsWith('/v2/uploads/') && init?.method === 'PUT') duringUpload.push(transfer)
     if (route === '/v2/commit') duringCommit.push(transfer)
     if (route === '/v2/connection') duringHandshake.push(transfer)
     return send(input, init)
@@ -2764,7 +2764,7 @@ it('does not present a resumed journal batch as the whole remaining upload', asy
   wire.fetch.mockImplementation(async (input, init) => {
     const route = new URL(String(input)).pathname
     if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
-    if (route.startsWith('/v2/uploads/')) {
+    if (route.startsWith('/v2/uploads/') && init?.method === 'PUT') {
       if (resumed) observed.push(current && { ...current })
       if (++uploads > 2 && !resumed) throw new EngineError('offline', 'sample interrupted transfer')
     }
@@ -2834,6 +2834,8 @@ it('shows checking rather than uploading when all journal contents are already a
     engineClient: (client) =>
       new Proxy(client, {
         get(target, key) {
+          // This fixture replaces the engine-level existence check, not the bound transport.
+          if (key === 'checksBlobBeforeUpload') return false
           if (key === 'hasBlob') return async () => true
           const value = Reflect.get(target, key)
           return typeof value === 'function' ? value.bind(target) : value
@@ -2860,7 +2862,11 @@ it.each([true, false])(
     const wire = await server('Notes/remote.md', 'remote')
     const send = wire.fetch.getMockImplementation()!
     wire.fetch.mockImplementation(async (input, init) => {
-      if (!acknowledged && new URL(String(input)).pathname.startsWith('/v2/uploads/'))
+      if (
+        !acknowledged &&
+        init?.method === 'PUT' &&
+        new URL(String(input)).pathname.startsWith('/v2/uploads/')
+      )
         throw new EngineError('offline', 'sample interruption')
       return send(input, init)
     })

@@ -3200,6 +3200,12 @@ can still use a live incremental receipt on append-only hosts. Fresh non-upload 
 50 MiB whole-file fallback ceiling; larger files require bounded readers. Uploads alone may use
 the explicit 200 MiB whole-file ceiling. A persisted digest
 never substitutes for current bytes during explicit verification or placement.
+Incoming name refusals retain their exact file/version or directory event and sequence in the
+ledger before advancing the feed cursor. Windows and Android apply local name admission; other
+platforms keep the wire naming policy. A selected-path retry resets only the selected retry
+eligibility, preserving incoming ownership and unrelated schedules. Directory refusal records
+may include `incomingSeq` and a `host` marker; older SDKs with strict metadata parsing cannot
+safely read those newer records.
 
 Startup external recovery inspects exact paths named by pending recovery operations. Ordinary
 files are recognized lazily by the representation guards before scanning, upload reads or

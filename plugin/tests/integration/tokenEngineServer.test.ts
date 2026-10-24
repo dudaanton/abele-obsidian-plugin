@@ -299,6 +299,13 @@ it('shows normalization collisions as pending refusals while unrelated files syn
         expect.objectContaining({ reason: expect.stringMatching(/normalization collision.*U\+/i) }),
       ])
     )
+    const runtime = Reflect.get(fixture.host, 'live').get(fixture.id)
+    const changed = Reflect.get(fixture.host, 'changed').bind(fixture.host)
+    for (const state of ['syncing', 'syncing', 'idle']) {
+      await changed(fixture.id, { ...runtime.engine.status, state })
+      expect(fixture.ui.activity.value[fixture.id].pending).toBe(activity.pending)
+      expect(fixture.ui.activity.value[fixture.id].refused).toEqual(activity.refused)
+    }
     expect(await app.vault.adapter.read(path)).toBe('composed bytes')
     expect(await app.vault.adapter.read(path.normalize('NFD'))).toBe('decomposed bytes')
     expect(

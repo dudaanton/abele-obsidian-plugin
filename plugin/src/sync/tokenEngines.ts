@@ -1537,26 +1537,29 @@ export class TokenEngines {
         ...activity.refused.filter((one) => !refused.some((row) => row.path === one.path)),
         ...refused,
       ]
-      const points = (path: string) =>
-        Array.from(path)
-          .map((char) => 'U+' + char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'))
-          .join(' ')
-      for (const collision of report.collisions) {
-        const kind =
-          collision.path.normalize('NFC') === collision.with.normalize('NFC')
-            ? 'Normalization'
-            : 'Case'
-        activity.refused.push({
-          path: collision.path,
-          reason: `${kind} collision: ${collision.path} (${points(collision.path)}); ${collision.with} (${points(collision.with)})`,
-        })
-      }
-      activity.pending += report.collisions.length
-      activity.total += report.collisions.length
       activity.conflicts = results.flatMap((one) =>
         one.status === 'conflict' ? [one.conflict_path] : []
       )
     }
+    // Collision evidence survives status-only notifications until the next scan.
+    const collisions = report?.collisions ?? runtime?.pathCollisions ?? []
+    const points = (path: string) =>
+      Array.from(path)
+        .map((char) => 'U+' + char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'))
+        .join(' ')
+    for (const collision of collisions) {
+      const kind =
+        collision.path.normalize('NFC') === collision.with.normalize('NFC')
+          ? 'Normalization'
+          : 'Case'
+      const reason = `${kind} collision: ${collision.path} (${points(collision.path)}); ${collision.with} (${points(collision.with)})`
+      if (!activity.refused.some((row) => row.path === collision.path && row.reason === reason))
+        activity.refused.push({ path: collision.path, reason })
+    }
+    if (status.state === 'syncing' && !report)
+      activity.pending = Math.max(activity.pending, collisions.length)
+    else activity.pending += collisions.length
+    if (activity.total !== undefined) activity.total += collisions.length
     if (this.activityEpoch.get(id) !== epoch) {
       if (
         report &&

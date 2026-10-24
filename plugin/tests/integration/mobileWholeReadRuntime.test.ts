@@ -55,6 +55,8 @@ it('scans and publishes a large whole-read source once before the normal path co
     },
     fetch: async (input, init) => {
       const path = new URL(String(input)).pathname
+      if (path.startsWith('/v2/uploads/') && init?.method === 'HEAD')
+        return new Response(null, { status: 404 })
       if (path === '/v2/connection')
         return Response.json({
           protocol: 2,
@@ -242,6 +244,8 @@ it('spends an own upload acknowledgement on the commit that used it, but keeps i
     },
     fetch: async (input, init) => {
       const path = new URL(String(input)).pathname
+      if (path.startsWith('/v2/uploads/') && init?.method === 'HEAD')
+        return new Response(null, { status: 404 })
       if (path !== '/v2/commit') throw new Error('Unexpected route: ' + path)
       if (failNext) throw new TypeError('sample network loss')
       const ops = JSON.parse(String(init?.body)).ops as { sha: string; path: string }[]

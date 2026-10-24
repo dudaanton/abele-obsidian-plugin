@@ -1,7 +1,7 @@
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
+import { MemoryFileSystem, MemoryStateStore, pathAdmission } from '@abele/sync-sdk/core'
 import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacement'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
@@ -151,7 +151,11 @@ it('assigns a placement policy to every filesystem interface method', () => {
         : []
     )
   })
-  expect(Object.keys(placementMethods).sort()).toEqual([...methods, 'readPrefix'].sort())
+  expect(
+    Reflect.ownKeys(placementMethods)
+      .map((key) => (key === pathAdmission ? '[pathAdmission]' : key))
+      .sort()
+  ).toEqual([...methods, 'readPrefix'].sort())
   const disk = Object.assign(new MemoryFileSystem(), { futureRead: async () => new Uint8Array() })
   const fs = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
   expect(() => Reflect.get(fs, 'futureRead')).toThrow(/no placement policy/)
@@ -217,4 +221,21 @@ it('keeps physical Unicode spellings while refusing a normalized root sibling', 
   expect(placement.toServer(local + '/Cafe\u0301.md')).toBe('Shared/Cafe\u0301.md')
   expect(() => placement.toServer('Café/Café.md')).toThrow()
   expect(await placement.fileSystem(fs).read('Shared/Cafe\u0301.md')).toEqual(bytes)
+})
+
+it('maps host path admission synchronously with its receiver and all local parent names', () => {
+  const disk = new MemoryFileSystem()
+  const admission = vi.fn(function (this: MemoryFileSystem, path: string) {
+    expect(this).toBe(disk)
+    return path.includes(':')
+      ? { allowed: false as const, reason: 'unsupported-host-name: :' }
+      : { allowed: true as const }
+  })
+  Object.assign(disk, { [pathAdmission]: admission })
+  const fs = new LocalFolderPlacement('Shared', 'Moved:folder').fileSystem(disk)
+  expect(fs[pathAdmission]!('Shared/sample.md')).toEqual({
+    allowed: false,
+    reason: 'unsupported-host-name: :',
+  })
+  expect(admission).toHaveBeenCalledExactlyOnceWith('Moved:folder/sample.md')
 })

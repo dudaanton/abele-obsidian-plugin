@@ -111,12 +111,13 @@ export class NotSyncedState {
     const budget = new SyncTaskBudget()
     const add = (path: unknown, reason: string, direction: 'in' | 'out', local = false) => {
       if (typeof path !== 'string') throw new Error('Invalid not-synced path')
+      reason = reason.replace(/^invalid_path: (?=unsupported-host-name:)/, '')
       if (reason.includes('Waiting for the local upload quiet period')) return
       const next = {
         path,
         kind: kind(reason, local),
         direction,
-        fact: reason.replace(/^[a-z_]+: /, ''),
+        fact: reason.replace(/^[a-z_-]+: /, ''),
         since: dates.get(path) ?? now,
       }
       // Specific retry evidence replaces the generic incoming-hold explanation.
@@ -178,7 +179,12 @@ export class NotSyncedState {
           )
         } else {
           const change = object(row.change)
-          add(change.path, 'Held for safety', 'in', true)
+          add(
+            change.path,
+            typeof row.reason === 'string' ? row.reason : 'Held for safety',
+            'in',
+            true
+          )
         }
         await budget.account(8192)
       }

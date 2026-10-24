@@ -44,7 +44,6 @@ import {
 } from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from './boundedVaultIo'
 import { ConditionalFiles, type ConditionalFileOperation } from './conditionalFiles'
-import { nativeDiagnostics } from './nativeDiagnostics'
 import type { JournalEntry } from './writeJournal'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
@@ -841,7 +840,6 @@ export class ObsidianFileSystem implements FileSystem {
     const runtimeAdapter = runtimePort(this.scopedAdapter)
     this.diagnostic = options.diagnostic
     const instrument = (runtimeAdapter: DataAdapter): DataAdapter => {
-      const diagnosticNative = new WeakMap<object, object>()
       const guardedMethods = new Map<
         PropertyKey,
         { source: unknown; wrapped: (...args: unknown[]) => unknown }
@@ -852,11 +850,6 @@ export class ObsidianFileSystem implements FileSystem {
           const cached = guardedMethods.get(key)
           if (cached && cached.source === source) return cached.wrapped
           const value = Reflect.get(target, key)
-          if (key === 'fsPromises' && value && options.diagnostic) {
-            if (!diagnosticNative.has(value))
-              diagnosticNative.set(value, nativeDiagnostics(value, options.diagnostic))
-            return diagnosticNative.get(value)
-          }
           if (typeof value !== 'function') return value
           // Borrowed only during the synchronous diagnostic callback; no per-call path arrays.
           const diagnosticPaths: string[] = []

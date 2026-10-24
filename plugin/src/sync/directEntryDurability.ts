@@ -1,3 +1,4 @@
+import { yieldSyncTask } from './syncTaskBudget'
 const SHARED = Symbol.for('abele.sync.direct-entry-durability-v1')
 const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/')))
 interface DirectoryNode {
@@ -78,8 +79,9 @@ export class DirectEntryDurability {
     })
   }
   private async drain(directory: string): Promise<void> {
-    // Gather this turn's requests before starting their durability barrier.
-    await Promise.resolve()
+    // Placements cross independent async metadata and save queues. Gather their
+    // namespace changes for one host task before issuing a shared barrier.
+    await yieldSyncTask()
     const pending = this.flushing.get(directory)
     while (pending.length) {
       const cohort = pending.splice(0)

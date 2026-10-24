@@ -177,7 +177,8 @@ describe('external recovery before ordinary engine activation', () => {
     const s = await fixture()
     s.store.close()
     let built: Awaited<ReturnType<typeof s.build>>
-    s.fetcher.mockImplementation(async (input: any) => {
+    s.fetcher.mockImplementation(async (input: any, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 })
       if (String(input).endsWith('/begin'))
         return new Response(
           JSON.stringify({ upload_id: 'sample-upload', part_size: 8 * 1024 * 1024, parts: 2 })
@@ -189,7 +190,12 @@ describe('external recovery before ordinary engine activation', () => {
     await expect(
       built.vault.putBlob('a'.repeat(64), new Uint8Array(9 * 1024 * 1024))
     ).rejects.toThrow()
-    expect(s.fetcher).toHaveBeenCalledTimes(2)
+    expect(s.fetcher).toHaveBeenCalledTimes(3)
+    expect(s.fetcher.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/v2/uploads/' + 'a'.repeat(64),
+      '/v2/uploads/' + 'a'.repeat(64) + '/begin',
+      '/v2/uploads/' + 'a'.repeat(64) + '/sample-upload/0',
+    ])
   })
 
   it('holds an unreadable publication journal before constructor scope changes', async () => {

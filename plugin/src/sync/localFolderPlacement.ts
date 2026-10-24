@@ -1,3 +1,4 @@
+import { pathAdmission } from '@abele/sync-sdk/core'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
 import { assertPhysicalPath } from './external/projection'
@@ -18,6 +19,7 @@ type PlacementFileSystem = FileSystem & {
 }
 // Adding a filesystem operation requires an explicit path/identity policy.
 export const placementMethods = {
+  [pathAdmission]: 'key',
   pathKey: 'key',
   list: 'list',
   listDirectories: 'list',
@@ -39,6 +41,7 @@ export const placementMethods = {
   reopenStage: 'identity',
   discardStage: 'opaque',
   conditionalFile: 'opaque',
+  conditionalOwnership: 'opaque',
   installedFile: 'opaque',
   discardInstallation: 'opaque',
   recoverConditionalFiles: 'opaque',

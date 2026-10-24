@@ -646,3 +646,60 @@ describe('IndexedDbStateStore', () => {
     })
   })
 })
+
+it('acknowledges nested work only once after outer durability, including retry by the same owner', async () => {
+  const acknowledge = vi.fn()
+  const register = async (tx: StateStore) => {
+    await tx.transaction(async (nested) => {
+      await nested.setMeta!('sample-owner', 'pending')
+      nested.afterCommit!(acknowledge)
+    })
+    expect(acknowledge).not.toHaveBeenCalled()
+  }
+  await expect(
+    store.transaction(async (tx) => {
+      await register(tx)
+      throw new Error('sample outer abort')
+    })
+  ).rejects.toThrow('sample outer abort')
+  expect(acknowledge).not.toHaveBeenCalled()
+  expect(await store.getMeta('sample-owner')).toBeNull()
+  await store.transaction(register)
+  expect(await store.getMeta('sample-owner')).toBe('pending')
+  expect(acknowledge).toHaveBeenCalledTimes(1)
+})
+
+it('acknowledges only after the native complete event, never request success or abort', async () => {
+  const transaction = FakeIDBDatabase.prototype.transaction
+  let complete = false
+  let abort = true
+  const acknowledge = vi.fn(() => expect(complete).toBe(true))
+  vi.spyOn(FakeIDBDatabase.prototype, 'transaction').mockImplementation(function (...args) {
+    const tx = transaction.apply(this, args)
+    if (args[1] === 'readwrite') {
+      tx.addEventListener('complete', () => {
+        complete = true
+      })
+      tx.objectStore('meta')
+        .get('revision')
+        .addEventListener('success', () => {
+          expect(acknowledge).not.toHaveBeenCalled()
+          if (abort) tx.abort()
+        })
+    }
+    return tx
+  })
+  try {
+    const work = async (tx: StateStore) => {
+      await tx.setMeta!('sample-owner', 'pending')
+      tx.afterCommit!(acknowledge)
+    }
+    await expect(store.transaction(work)).rejects.toThrow()
+    expect(acknowledge).not.toHaveBeenCalled()
+    abort = false
+    await store.transaction(work)
+    expect(acknowledge).toHaveBeenCalledTimes(1)
+  } finally {
+    vi.restoreAllMocks()
+  }
+})

@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem } from '@abele/sync-sdk/core'
+import { MemoryFileSystem, pathAdmission } from '@abele/sync-sdk/core'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
@@ -143,4 +143,20 @@ it('keeps trusted staging separate from paths supplied by the server', async () 
   await expect(stages.writeAtomic('Private/secret.md', new Uint8Array(), 0)).rejects.toThrow()
   await stages.remove(path)
   expect(await disk.stat(path)).toBeNull()
+})
+
+it('preserves synchronous scoped path admission and its receiver', () => {
+  const disk = new MemoryFileSystem()
+  const admission = vi.fn(function (this: MemoryFileSystem, path: string) {
+    expect(this).toBe(disk)
+    return { allowed: false as const, reason: 'unsupported-host-name: ' + path }
+  })
+  Object.assign(disk, { [pathAdmission]: admission })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  expect(fs[pathAdmission]!('Shared/sample:part.md')).toEqual({
+    allowed: false,
+    reason: 'unsupported-host-name: Shared/sample:part.md',
+  })
+  expect(() => fs[pathAdmission]!('Private/sample.md')).toThrow('outside scope')
+  expect(admission).toHaveBeenCalledTimes(1)
 })

@@ -253,3 +253,14 @@ it.each(['adapter mkdir', 'native mkdir'])(
     expect(pulls.otherFileIo[key]).toBe(2)
   }
 )
+
+it('retains every completion at the SDK placement limit and marks shared attribution as overlapping', () => {
+  const trace = new ExchangeTrace()
+  const finishes = Array.from({ length: 32 }, (_, i) => trace.beginPull(3, `Notes/sample-${i}.md`))
+  for (const finish of finishes) finish(true)
+  const evidence = trace.snapshot().firstSync.pulls
+  expect(evidence.failed).toBe(0)
+  expect(evidence.small.count).toBe(32)
+  // Shared journal/barrier events cannot be claimed as exact per-file measurements.
+  expect(evidence.overlap).toBe(true)
+})

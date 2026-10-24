@@ -56,7 +56,9 @@ export function assertSmallPullBounds(counts: ReturnType<typeof smallPullCounts>
     publications: 1,
     journal: 2,
     bridge: 15,
-    native: 16,
+    // Five required barriers (open/sync/close), two identity checks and one link.
+    // Cold staging creates four additional parent entries: 18 + 4 * 3.
+    native: 30,
     preparationBridge: 2,
     preparationNative: 0,
   }

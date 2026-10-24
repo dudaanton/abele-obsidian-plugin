@@ -70,7 +70,7 @@ export class ExchangeTrace {
     this.pulling = false
   }
 
-  private readonly scopes: PullScope[] = Array.from({ length: 4 }, () => {
+  private readonly scopes: PullScope[] = Array.from({ length: 32 }, () => {
     const scope: PullScope = { active: false, size: 0, counts: emptyPullCounts(), finish: noPull }
     scope.finish = (complete) => this.endPull(scope, complete)
     return scope

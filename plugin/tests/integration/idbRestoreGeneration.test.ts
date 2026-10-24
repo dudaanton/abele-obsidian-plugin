@@ -19,10 +19,10 @@ it('lists plugin metadata keys by prefix, including uncommitted transaction writ
     await store.setMeta('pull-write:committed', '{}')
     await store.setMeta('pull-write:removed', '{}')
     await store.setMeta('other', 'value')
-    await store.transaction(async () => {
-      await store.setMeta('pull-write:pending', '{}')
-      await store.setMeta('pull-write:removed', null)
-      expect((await store.metadataKeys('pull-write:')).sort()).toEqual([
+    await store.transaction(async (tx) => {
+      await tx.setMeta('pull-write:pending', '{}')
+      await tx.setMeta('pull-write:removed', null)
+      expect((await tx.metadataKeys('pull-write:')).sort()).toEqual([
         'pull-write:committed',
         'pull-write:pending',
       ])

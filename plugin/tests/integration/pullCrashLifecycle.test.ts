@@ -407,7 +407,9 @@ it.each(
         expect(result.report?.held).toEqual([result.change])
         expect(result.log).toHaveBeenCalledWith(
           JSON.parse(result.intentBeforeRecovery!).stageId
-            ? `pull: holding ${result.change.path}: pending stage lacks source publication authority`
+            ? !bounded && !small && window === 'complete'
+              ? `pull: holding ${result.change.path}: Existing bytes require bounded local verification; file kept`
+              : `pull: holding ${result.change.path}: pending stage lacks source publication authority`
             : expect.stringContaining('source may have been recreated')
         )
       }

@@ -197,39 +197,35 @@ it('retains the list when the production ledger closes and a new runtime opens i
   }
 })
 
-// BUG: R31 — the pinned core has only a global retry, which would reset unrelated files.
-it.fails(
-  'BUG: R31 retries only the selected path and retains the other retry schedule',
-  async () => {
-    const fixture = await tokenBuildFixture()
-    try {
-      const waiting = (path: string) => ({
-        path,
-        phase: 'push',
-        reason: 'quota_exceeded: quota',
-        attempts: 2,
-        nextAt: Date.now() + 1000000,
-        quarantined: true,
-      })
-      const first = waiting('first.md'),
-        second = waiting('second.md')
-      await fixture.store.setMeta('file-retry:first.md', JSON.stringify(first))
-      await fixture.store.setMeta('file-retry:second.md', JSON.stringify(second))
-      fixture.store.close()
-      const built = await fixture.build()
-      const retry = Reflect.get(built.engine, Symbol.for('abele.sync.retry-paths-v1'))
-      expect(typeof retry).toBe('function')
-      // The fixture intentionally has no network; scheduling must persist before the attempt.
-      await retry.call(built.engine, ['first.md']).catch(() => {})
-      expect(JSON.parse((await built.store.getMeta('file-retry:first.md'))!)).toMatchObject({
-        path: 'first.md',
-        nextAt: 0,
-        quarantined: false,
-      })
-      expect(JSON.parse((await built.store.getMeta('file-retry:second.md'))!)).toEqual(second)
-    } finally {
-      await fixture.close()
-      vi.restoreAllMocks()
-    }
+it('R31 retries only the selected path and retains the other retry schedule', async () => {
+  const fixture = await tokenBuildFixture()
+  try {
+    const waiting = (path: string) => ({
+      path,
+      phase: 'push',
+      reason: 'quota_exceeded: quota',
+      attempts: 2,
+      nextAt: Date.now() + 1000000,
+      quarantined: true,
+    })
+    const first = waiting('first.md'),
+      second = waiting('second.md')
+    await fixture.store.setMeta('file-retry:first.md', JSON.stringify(first))
+    await fixture.store.setMeta('file-retry:second.md', JSON.stringify(second))
+    fixture.store.close()
+    const built = await fixture.build()
+    const retry = Reflect.get(built.engine, Symbol.for('abele.sync.retry-paths-v1'))
+    expect(typeof retry).toBe('function')
+    // The fixture intentionally has no network; scheduling must persist before the attempt.
+    await built.runtime.retryNotSynced(['first.md']).catch(() => {})
+    expect(JSON.parse((await built.store.getMeta('file-retry:first.md'))!)).toMatchObject({
+      path: 'first.md',
+      nextAt: 0,
+      quarantined: false,
+    })
+    expect(JSON.parse((await built.store.getMeta('file-retry:second.md'))!)).toEqual(second)
+  } finally {
+    await fixture.close()
+    vi.restoreAllMocks()
   }
-)
+})

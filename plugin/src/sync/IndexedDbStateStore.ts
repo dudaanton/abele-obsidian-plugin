@@ -507,8 +507,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       const rows = await Promise.all(paths.map((path) => this.get(path)))
       return rows.filter((row): row is StateEntry => row !== null)
     })
+    // Keep acknowledgements separate so caller handles expire before any flush awaits.
+    const acknowledgements = new StateTransaction(this)
     try {
       const result = await fn(scoped)
+      scoped.acknowledgeThrough(acknowledgements)
       scoped.close()
       const overlay = newOverlay()
       for (const mutation of scoped.mutations) {
@@ -532,19 +535,20 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         }
       }
       await this.flush(overlay, revision)
+      acknowledgements.acknowledgeCommit()
       await this.committedEntryObserver?.(
         [...overlay.entries.values()].filter((entry): entry is StateEntry => entry !== null)
       )
       return result
     } finally {
       scoped.close()
+      acknowledgements.close()
       this.normalizationCache?.clear()
     }
   }
 
   /** The overlay, in one readwrite transaction over both stores. */
   private async flush(overlay: Overlay, revision: unknown): Promise<void> {
-    if (overlay.entries.size === 0 && overlay.meta.size === 0) return
     await this.write('cannot commit the state transaction', [ENTRIES, META], async (tx) => {
       const entries = tx.objectStore(ENTRIES)
       const meta = tx.objectStore(META)

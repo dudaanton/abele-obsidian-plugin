@@ -4,7 +4,7 @@ import { TokenEngines } from '@/sync/tokenEngines'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { openDeviceReviews } from '@/sync/openDeviceReviews'
 import { expect, it, vi } from 'vitest'
-import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
+import { MemoryStateStore, SyncEngine, sha256 } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import type { App } from 'obsidian'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
@@ -22,14 +22,31 @@ const snapshotFiles = 1003
 const directoryScanCounts: number[] = []
 
 it.each([
-  { host: false, reconnect: false, count: snapshotFiles, native: false },
-  { host: true, reconnect: false, count: snapshotFiles, native: false },
+  { host: false, reconnect: false, count: snapshotFiles, native: false, diagnostics: true },
+  { host: true, reconnect: false, count: snapshotFiles, native: false, diagnostics: true },
+  { host: false, reconnect: false, count: 32, native: false, diagnostics: false },
+  { host: true, reconnect: false, count: 32, native: false, diagnostics: false },
   { host: true, reconnect: true, count: 3, native: false },
   { host: true, reconnect: false, count: 128, native: true },
   { host: true, reconnect: false, count: 1, native: true },
 ])(
-  'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect, native=$native)',
-  async ({ host, reconnect, count, native }) => {
+  'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect, native=$native, diagnostics=$diagnostics)',
+  async ({ host, reconnect, count, native, diagnostics }) => {
+    if (diagnostics) {
+      // Exact per-file trace windows require isolated placements; preserve all
+      // existing call bounds here. Separate cases exercise ordinary concurrency.
+      const sync = SyncEngine.prototype.sync
+      const observed = new WeakSet<SyncEngine>()
+      vi.spyOn(SyncEngine.prototype, 'sync').mockImplementation(function (this: SyncEngine) {
+        const options = Reflect.get(this, 'opts')
+        if (!observed.has(this)) {
+          expect(options.placementConcurrency).toBe(16)
+          observed.add(this)
+          options.placementConcurrency = 1
+        }
+        return sync.call(this)
+      })
+    }
     const events: { operation: string; paths?: readonly string[] }[] = []
     let capturing = false
     let captured = false
@@ -360,7 +377,7 @@ it.each([
         console.log('[cold native host pull]', JSON.stringify({ firstPull, events }))
         assertSmallPullBounds(firstPull!.small.max)
       }
-      if (host && !reconnect && !native) {
+      if (host && diagnostics) {
         console.log('[cold token-host pull calls]', JSON.stringify(events))
 
         expect(firstPull!.small.count).toBe(1)
@@ -404,7 +421,7 @@ it.each([
         ).toBeLessThanOrEqual(count)
         expect(fixture!.ui.registry.records()[0].status).toBe('idle')
       }
-      if (!host) {
+      if (!host && diagnostics) {
         const evidence = runtime.trace.snapshot().firstSync.pulls
         expect(evidence.small.count).toBe(count)
         // The executable review downloads one candidate outside ordinary placement.
@@ -447,7 +464,10 @@ it.each([
         ).toBe(true)
         expect(
           transfers.some(
-            (one) => one.stage === 'Downloading' && (one.total ?? 0) > 0 && !one.totalKnown
+            (one) =>
+              one.stage === 'Downloading' &&
+              (one.total ?? 0) > 0 &&
+              one.totalKnown === count <= 1000
           )
         ).toBe(true)
         expect(
@@ -504,7 +524,7 @@ it.each([
 )
 
 it('keeps the initial and reconnected token pull within two directory scans', () => {
-  expect(directoryScanCounts).toHaveLength(6)
+  expect(directoryScanCounts).toHaveLength(8)
   for (const count of directoryScanCounts) expect(count).toBeLessThanOrEqual(2)
 })
 
