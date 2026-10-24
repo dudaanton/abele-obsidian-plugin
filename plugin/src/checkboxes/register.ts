@@ -1,8 +1,8 @@
 import { t } from '@/i18n'
 import { ensureSyntaxTree } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
-import { Menu, Notice, TFile, type Editor, type Plugin } from 'obsidian'
-import { parseTaskLine } from '@/helpers/tasksUtils'
+import { editorInfoField, Menu, Notice, TFile, type Editor, type Plugin } from 'obsidian'
+import { taskLinkOnLine } from '@/helpers/taskLinkDecision'
 import { bindCheckboxMenu } from './gestures'
 import { checkboxOnLine, changeCheckbox } from './markdown'
 import { installCheckboxIcons } from './presentation'
@@ -14,10 +14,11 @@ interface Target {
 }
 
 /** Do not turn examples in code, comments or YAML into actual checklist edits. */
-function editorTarget(view: EditorView, number: number): Target | null {
+function editorTarget(view: EditorView, number: number, plugin: Plugin): Target | null {
   const line = view.state.doc.line(number)
   const box = checkboxOnLine(line.text)
-  if (!box || parseTaskLine(line.text)) return null
+  const path = view.state.field(editorInfoField, false)?.file?.path ?? ''
+  if (!box || taskLinkOnLine(line.text, path, plugin.app.metadataCache)) return null
   const tree = ensureSyntaxTree(view.state, line.to, 50)
   if (!tree) return null
   for (let node = tree.resolveInner(line.from + box.from, 1); node; node = node.parent!) {
@@ -67,7 +68,12 @@ export function registerCheckboxes(plugin: Plugin): void {
         const expected = info.text.split('\n')[line]
         const box = checkboxOnLine(expected ?? '')
         const file = plugin.app.vault.getAbstractFileByPath(ctx.sourcePath)
-        if (!box || parseTaskLine(expected) || !(file instanceof TFile)) return null
+        if (
+          !box ||
+          taskLinkOnLine(expected, ctx.sourcePath, plugin.app.metadataCache) ||
+          !(file instanceof TFile)
+        )
+          return null
         return {
           marker: box.state.marker,
           async set(marker) {
@@ -86,7 +92,7 @@ export function registerCheckboxes(plugin: Plugin): void {
       const view = EditorView.findFromDOM(input.closest('.cm-editor'))
       const line = input.closest('.cm-line')
       if (view && line)
-        target = editorTarget(view, view.state.doc.lineAt(view.posAtDOM(line)).number)
+        target = editorTarget(view, view.state.doc.lineAt(view.posAtDOM(line)).number, plugin)
     }
     if (!target) return false
     const selected = target

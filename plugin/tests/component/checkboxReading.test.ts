@@ -15,9 +15,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function fixture() {
+function fixture(label = 'Nested item') {
   let text =
     'Sample checklist\n\n- [/] Parent\n  - [?] Nested item\n\n> Quote paragraph\n>\n> - [>] Quoted item\n'
+  if (label !== 'Nested item') text = text.replace('  - [?] Nested item', '- [ ] ' + label)
   const original = text
   const file = new TFile()
   file.path = 'sample-checklist.md'
@@ -29,6 +30,10 @@ function fixture() {
   const plugin = {
     app: {
       vault: { getAbstractFileByPath: () => file, process },
+      metadataCache: {
+        getFirstLinkpathDest: () => file,
+        getFileCache: () => ({ frontmatter: { type: 'note' } }),
+      },
       workspace: { on: vi.fn() },
     },
     register: (cleanup: () => void) => cleanups.push(cleanup),
@@ -75,14 +80,16 @@ function fixture() {
         el.append(parentList)
       }
       root.append(el)
+      const markup = el.innerHTML
       processMarkdown(el, {
         sourcePath: file.path,
         getSectionInfo: () => ({ text, lineStart, lineEnd }),
       } as Parameters<MarkdownPostProcessor>[1])
+      expect(el.innerHTML).toBe(markup)
       return input
     }
     return {
-      nested: section(2, 3, 1, 'Nested item', false),
+      nested: section(2, 3, 1, label, false),
       quoted: section(5, 7, 2, 'Quoted item', true),
     }
   }
@@ -101,6 +108,14 @@ function fixture() {
 }
 
 describe('reading-view checkbox source mapping', () => {
+  it('leaves a normal note link checkbox intact and editable', async () => {
+    const f = fixture('[[Sample]]')
+    const input = f.render().nested
+    expect(input.isConnected).toBe(true)
+    expect(input.type).toBe('checkbox')
+    await f.schedule(input)
+    expect(f.process).toHaveBeenCalledOnce()
+  })
   it.each(['nested', 'quoted'] as const)(
     'maps the %s section-relative data-line into the full source',
     async (row) => {

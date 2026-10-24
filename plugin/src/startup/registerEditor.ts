@@ -1,7 +1,7 @@
 import type { EventRef } from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { taskStateField } from '@/editor/TaskPlugin'
+import { taskStateField, taskMetadataExtension } from '@/editor/TaskPlugin'
 import { galleryExtensions } from '@/editor/GalleryPlugin'
 import { galleryPostProcessor } from '@/editor/galleryPostProcessor'
 import { recordSignatures, SIGNATURE_PROCESSOR_ORDER } from '@/components/obsidian/markdownParts'
@@ -30,7 +30,7 @@ export function registerEditor(plugin: Plugin) {
   installUntrustedGuard()
   registerCheckboxes(plugin)
   registerColumns(plugin)
-  plugin.registerEditorExtension(taskStateField)
+  plugin.registerEditorExtension([taskStateField, taskMetadataExtension])
   plugin.registerEditorExtension(galleryExtensions)
   plugin.registerEditorExtension(createHeaderExtension((cleanup) => plugin.register(cleanup)))
   plugin.registerEditorExtension(footnoteExtensions)

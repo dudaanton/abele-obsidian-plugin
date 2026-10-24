@@ -5,6 +5,7 @@ import { HeaderWidget } from './HeaderWidget'
 import { TaskHeaderWidget } from './TaskHeaderWidget'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { isNestedEditor } from '@/helpers/editorHelpers'
+import { isTaskType } from '@/helpers/taskType'
 
 export function createHeaderExtension(registerCleanup?: (cleanup: () => void) => void): Extension {
   const instances = new Set<{ destroy(): void }>()
@@ -47,7 +48,7 @@ export function createHeaderExtension(registerCleanup?: (cleanup: () => void) =>
       private createWidget() {
         if (!this.file) return
 
-        if (this.noteType === 'task') {
+        if (isTaskType(this.noteType)) {
           this.wiget = new TaskHeaderWidget(this.file.path)
         } else {
           this.wiget = new HeaderWidget(this.file.path)

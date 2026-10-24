@@ -3,7 +3,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { cleanNoteName, escapeRegExp, pathToWikilink, resolvePath } from './pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 
-export const taskLineRegex = /^-\s\[\s\]\s(\[\[.*?\]\])$/
+export const taskLineRegex = /^-\s\[\s\]\s(\[\[[^[\]\r\n]*\]\])$/
 
 /**
  * Parses a task line to extract the task file wikilink.
