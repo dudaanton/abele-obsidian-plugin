@@ -161,3 +161,87 @@ it.each([
   )
   expect(sensitive).toHaveBeenCalledOnce()
 })
+
+it('retries a sensitive conflict from refreshed source without creating another stored key', async () => {
+  const { FileCollections } = await import('@/requests/FileCollections')
+  const target = {
+    url: 'ws://127.0.0.1:7777/channel',
+    profile: 'local-token-v1' as const,
+    token: 'a'.repeat(64),
+  }
+  const durable = new NodeClient(target, new MemoryClientStore())
+  durable.repository.worktrees = vi.fn(async () => ({
+    entries: [{ kind: 'root', worktree_id: 'sample-copy' }],
+    cursor: null,
+  })) as typeof durable.repository.worktrees
+  const memory = new MemoryClientStore()
+  const transient = new NodeClient(target, memory)
+  transient.connect = vi.fn(async () => {})
+  transient.disconnect = vi.fn(async () => {})
+  Object.defineProperty(transient, 'connected', { get: () => true })
+  let current = { ...base }
+  let first = true
+  const writes: { expected_content_id: string | null; text: string }[] = []
+  transient.repository.write = vi.fn(async (params, operation_id) => {
+    writes.push(params)
+    if (first) {
+      current = {
+        contentId: 'b'.repeat(64),
+        text: JSON.stringify({
+          dev: {
+            token: 'sample-token',
+            password: 'sample-password',
+            base: 'https://example.test/changed',
+          },
+        }),
+      }
+      first = false
+    }
+    const state = params.expected_content_id === current.contentId ? 'saved' : 'conflict'
+    const predecessor = current.contentId
+    if (state === 'saved') current = { text: params.text, contentId: 'c'.repeat(64) }
+    await memory.transaction((store) => {
+      store.results[operation_id!] = {
+        result: {
+          operation_id,
+          worktree_id: 'sample-copy',
+          path,
+          state,
+          expected_content_id: params.expected_content_id,
+          predecessor_content_id: predecessor,
+          content_id: current.contentId,
+          recovery_path: null,
+        },
+      }
+    })
+    return { operation_id: operation_id! }
+  })
+  const port = new NodeRequestFiles(
+    durable,
+    identity,
+    async () => {},
+    undefined,
+    () => transient
+  )
+  port.list = async () => ['sample.http', path]
+  port.read = async (file) =>
+    file === path ? { ...current } : { contentId: 'd'.repeat(64), text: 'GET https://example.test' }
+  const files = new FileCollections(port)
+  const put = vi.fn(async () => 'sample-key')
+  await files.refresh()
+  const id = files.environments[0].id
+  await expect(files.moveSecret(id, 'token', put)).rejects.toThrow(/conflicted/)
+  await files.moveSecret(id, 'token', put)
+  expect(put).toHaveBeenCalledOnce()
+  expect(writes).toHaveLength(2)
+  expect(writes[1].expected_content_id).toBe('b'.repeat(64))
+  expect(JSON.parse(current.text).dev).toEqual({
+    token: '${abele_key:sample-key}',
+    password: 'sample-password',
+    base: 'https://example.test/changed',
+  })
+  expect(await durable.store.transaction((state) => JSON.stringify(state))).not.toContain(
+    'sample-token'
+  )
+  expect(transient.disconnect).toHaveBeenCalledTimes(2)
+})

@@ -215,6 +215,16 @@ export function replaceRequestBlock(text: string, request: FileRequest, doc: Req
           .join(newline)
       )
     }
+    if (
+      doc.body?.format === 'form' &&
+      JSON.stringify(doc.body) !== JSON.stringify(request.doc.body)
+    ) {
+      const expected = [...new URLSearchParams(doc.body.text)]
+      const body = importBruno(next, { source: true }).requests[0].doc.body
+      const actual = body?.format === 'form' ? [...new URLSearchParams(body.text)] : []
+      if (JSON.stringify(actual) !== JSON.stringify(expected))
+        throw new Error(t('requests.file.formUnsupported'))
+    }
     return next
   }
   const lines = text.split(/\r\n|\n|\r/)

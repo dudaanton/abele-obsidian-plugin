@@ -3271,7 +3271,10 @@ conditionally replaces its source value with `${abele_key:name}`. Secret-bearing
 with memory-only drafts, outbox and receipts; their original and replacement text never enter
 IndexedDB. A failed or uncertain secret move keeps the stored key, and retains its operation
 identity only for the current session. An explicit retry checks the retained operation
-before another write; nothing is replayed automatically after a restart. Ordinary request conflicts
+before another write; nothing is replayed automatically after a restart. An explicit retry discards
+a settled memory-only conflict and uses the refreshed source baseline. Secret moves reuse the key
+already stored for the same source field and literal value during the current session, including
+after a failed conditional write. Ordinary request conflicts
 release their retained edit baseline after an explicit source-editor save or discard.
 
 Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;

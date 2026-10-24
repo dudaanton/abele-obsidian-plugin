@@ -50,6 +50,7 @@ export class FileCollections {
     entries: {},
     environments: [],
   })
+  private secretKeys = new Map<string, { value: string; name: Promise<string> }>()
   private resolvedEdits = new Set<string>()
   takeResolvedEdits() {
     const ids = [...this.resolvedEdits]
@@ -374,9 +375,22 @@ export class FileCollections {
     const current = await this.port.read(path)
     if (current.contentId !== base.contentId || current.text !== base.text)
       throw new Error('The environment file changed; open it to review the conflict')
-    const name = await put(key, value)
-    data[environment.name][key] = '${abele_key:' + name + '}'
     if (!this.port.writeSensitive) throw new Error(t('requests.file.sensitiveUnavailable'))
+    const slot = JSON.stringify([path, environment.name, key])
+    let stored = this.secretKeys.get(slot)
+    if (!stored || stored.value !== value) {
+      stored = { value, name: Promise.resolve().then(() => put(key, value)) }
+      this.secretKeys.set(slot, stored)
+    }
+    let name: string
+    try {
+      name = await stored.name
+    } catch (error) {
+      if (this.secretKeys.get(slot) === stored) this.secretKeys.delete(slot)
+      throw error
+    }
+    data[environment.name][key] = '${abele_key:' + name + '}'
+
     try {
       await this.port.writeSensitive(path, base, JSON.stringify(data, null, 2) + '\n')
     } finally {

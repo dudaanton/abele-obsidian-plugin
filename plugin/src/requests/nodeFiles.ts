@@ -199,10 +199,16 @@ export class NodeRequestFiles implements RequestFilePort {
       ))
       try {
         await client.connect()
-        const previous = await source.draft(path)
+        let previous = await source.draft(path)
         if (previous?.pending) {
           await source.check(path)
           throw new Error(t('requests.file.secretChecked'))
+        }
+        // An explicit retry replaces a settled local attempt with the freshly read baseline.
+        // Unknown operations above retain their identity and are checked before any new edit.
+        if (previous && previous.status !== 'saved') {
+          await source.discard(path, previous.revision)
+          previous = undefined
         }
         const draft = await source.edit(
           path,
@@ -218,6 +224,7 @@ export class NodeRequestFiles implements RequestFilePort {
         )
         const saved = await source.save(path, draft)
         if (saved?.status !== 'saved') throw new Error(t('requests.file.secretPending'))
+        this.conflicts.delete(path)
       } catch (error) {
         const pending = await source.draft(path)
         if (pending && pending.status !== 'saved')

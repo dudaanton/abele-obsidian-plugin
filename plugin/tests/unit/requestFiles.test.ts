@@ -533,3 +533,50 @@ it('adopts a source-editor resolution instead of replaying a queued request edit
     model.destroy()
   }
 })
+
+it.each([
+  'label=hello%20',
+  '~enabled=yes&qty=2',
+  '=value&qty=2',
+  '%20label=value',
+  'label=value%09',
+])('refuses a Bruno form payload it cannot preserve: %s', (payload) => {
+  const text =
+    'post {\n  url: https://example.test\n  body: form-urlencoded\n}\nbody:form-urlencoded {\n  qty: 1\n}\n'
+  const request = parseRequestFile('sample.bru', text).requests[0]
+  expect(() =>
+    replaceRequestBlock(text, request, { ...request.doc, body: { format: 'form', text: payload } })
+  ).toThrow(/cannot be represented/)
+})
+
+it('keeps an unrepresentable Bruno form unsaved and exposes the save error', async () => {
+  const { RequestsModel } = await import('@/requests/RequestsModel')
+  const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+  const text =
+    'post {\n  url: https://example.test\n  body: form-urlencoded\n}\nbody:form-urlencoded {\n  qty: 1\n}\n'
+  const write = vi.fn(async () => {})
+  const model = new RequestsModel(
+    fakeNode().rpc,
+    'project-1',
+    ports({
+      files: {
+        list: async () => ['bruno.json', 'sample.bru'],
+        read: async () => ({ text, contentId: 'sample-version' }),
+        write,
+        watch: async () => () => {},
+      },
+    })
+  )
+  try {
+    await model.load()
+    const id = model.files!.collections[0].requests[0].id
+    await model.open(id)
+    model.change(id, { ...model.entry(id).doc!, body: { format: 'form', text: 'label=hello%20' } })
+    await expect(model.flush(id)).rejects.toThrow(/cannot be represented/)
+    expect(model.entry(id).error).toMatch(/Not saved:.*cannot be represented/)
+    expect(model.entry(id).doc!.body!.text).toBe('label=hello%20')
+    expect(write).not.toHaveBeenCalled()
+  } finally {
+    model.destroy()
+  }
+})
