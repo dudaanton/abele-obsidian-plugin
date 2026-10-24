@@ -351,3 +351,19 @@ it('reads source credentials and body comments without applying clipboard import
   ])
   expect(parsed.requests[0].doc.body?.text).toBe('# literal body text')
 })
+
+it('does not block the producer on an unused file variable that reads its own answer', async () => {
+  const text =
+    '@itemId = {{create.response.body.$.id}}\n### Create\n# @name create\nPOST https://example.test/items\n\n{}\n### Read\nGET https://example.test/items/{{itemId}}'
+  const files = new FileCollections({
+    list: async () => ['sample.http'],
+    read: async () => ({ text, contentId: 'v1' }),
+    write: async () => {},
+    watch: async () => () => {},
+  })
+  await files.refresh()
+  const [create, read] = files.collections[0].requests
+  expect(files.captures(create.id)).toEqual([])
+  files.capture(create.id, { status: 201, headers: [], body: '{"id":"sample-id"}' })
+  expect(files.values(read.id).itemId).toBe('sample-id')
+})

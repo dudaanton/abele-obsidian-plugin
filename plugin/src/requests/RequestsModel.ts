@@ -594,6 +594,7 @@ export class RequestsModel {
             ...Object.values(this.secrets()).filter(Boolean),
             ...(file
               ? [
+                  ...(this.files?.secretValues(id) ?? []),
                   ...(this.state.env?.vars ?? [])
                     .filter(
                       (v) => SECRET_NAME.test(v.key) && v.value && !v.value.includes('${abele_key:')

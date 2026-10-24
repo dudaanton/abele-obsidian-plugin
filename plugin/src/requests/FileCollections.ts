@@ -193,6 +193,14 @@ export class FileCollections {
     }
     this.state.environments = environments
   }
+  secretValues(id: string) {
+    const vars = this.fileVars.get(this.get(id)?.origin.file ?? '') ?? {}
+    return Object.entries(vars)
+      .filter(
+        ([name, value]) => SECRET_NAME.test(name) && value && !/\{\{|\$\{abele_key:/.test(value)
+      )
+      .map(([, value]) => value)
+  }
   forget(id: string) {
     this.answers.delete(id)
   }
@@ -203,14 +211,20 @@ export class FileCollections {
     const request = this.get(id)
     if (!request) return []
     const collection = this.collections.find((c) => c.requests.some((r) => r.id === id))
+    const vars = this.fileVars.get(request.origin.file) ?? {}
+    const texts = [JSON.stringify(request.doc)]
+    const visited = new Set<string>()
+    for (let at = 0; at < texts.length; at++) {
+      for (const match of texts[at].matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)) {
+        const name = match[1]
+        if (Object.hasOwn(vars, name) && !visited.has(name)) {
+          visited.add(name)
+          texts.push(vars[name])
+        }
+      }
+    }
     const expressions = [
-      ...new Set(
-        [
-          ...JSON.stringify([request.doc, this.fileVars.get(request.origin.file)]).matchAll(
-            CAPTURE
-          ),
-        ].map((m) => m[1])
-      ),
+      ...new Set(texts.flatMap((text) => [...text.matchAll(CAPTURE)].map((m) => m[1]))),
     ]
     return expressions.map((expression) => {
       const match = /^(.*?)\.response\.(body|headers)\.(.*)$/.exec(expression)
