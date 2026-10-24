@@ -29,6 +29,7 @@ import {
   GENERATION_KEY,
   readReconciliation,
   fenceRestoredJournal,
+  recoverPendingPullWrites,
   type FileSystem,
   type ChunkSource,
   type StateStore,
@@ -2589,6 +2590,26 @@ export class TokenEngineRuntime
     this.ignore = null
     if (failures.length === 1) throw failures[0]
     if (failures.length) throw new AggregateError(failures, 'Sync runtime cleanup failed')
+  }
+  /** Root cleanup only: a departed connection may retain no runnable installation
+   * while still owning a committed cleanup chain. Drain it before authority leaves.
+   */
+  async prepareConnectionChange(): Promise<void> {
+    if (!this.active) this.assertHeld()
+    this.options.assertHeld?.()
+    // A stopped/renamed public root does not prevent leaving when no private
+    // cleanup owner exists. No filesystem access is needed for this check.
+    if (!(await (this.options.engineState ?? this.options.state).getMeta?.('pull-cleanup-head')))
+      return
+    this.assertHeld()
+    await this.engine.runExclusive(async () => {
+      this.assertHeld()
+      const state = this.options.engineState ?? this.options.state
+      await recoverPendingPullWrites(this.options.fs, state, [])
+      if (await state.getMeta?.('pull-cleanup-head'))
+        throw new EngineError('io', 'Connection cleanup requires recovery')
+      this.assertHeld()
+    })
   }
   async disconnect(): Promise<void> {
     this.invalidate()

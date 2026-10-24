@@ -1,3 +1,4 @@
+import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { pathAdmission } from '@abele/sync-sdk/core'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
@@ -42,6 +43,7 @@ export const placementMethods = {
   discardStage: 'opaque',
   conditionalFile: 'opaque',
   conditionalOwnership: 'opaque',
+  conditionalCapture: 'opaque',
   installedFile: 'opaque',
   discardInstallation: 'opaque',
   recoverConditionalFiles: 'opaque',
@@ -163,6 +165,15 @@ export class LocalFolderPlacement {
     return new Proxy(fs, {
       get(target, key) {
         if (key === PRIVATE_PLACEMENT_STAGES) return stages
+        if (key === PRIVATE_REMOVAL_FILES) {
+          const port = Reflect.get(target, key)
+          return (toLocal: (path: string) => string = (path) => path) =>
+            typeof port === 'function'
+              ? port.call(target, (path: string) => placement.toLocal(toLocal(path)))
+              : privateRemovalFileSystem(target, undefined, (path) =>
+                  placement.toLocal(toLocal(path))
+                )
+        }
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
         if (key === 'conditionalFile' || key === Symbol.for('abele.sync.stream-move-source-v1'))
@@ -173,7 +184,12 @@ export class LocalFolderPlacement {
               effect:
                 operation.effect.kind === 'move'
                   ? { ...operation.effect, to: placement.toLocal(operation.effect.to) }
-                  : operation.effect,
+                  : operation.effect.kind === 'remove' && operation.effect.retainAt !== undefined
+                    ? {
+                        ...operation.effect,
+                        retainAt: placement.toLocal(operation.effect.retainAt),
+                      }
+                    : operation.effect,
             })
         if (key === 'installedFile')
           return (receipt: string, path: string, sha: string) =>

@@ -17,7 +17,9 @@ export function nestedZodCopies(pluginRoot) {
 }
 
 export function singleZodV3Plugin(pluginRoot) {
-  const copies = nestedZodCopies(pluginRoot)
+  const copies = nestedZodCopies(pluginRoot).filter((dir) =>
+    JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version.startsWith('3.')
+  )
   const versions = new Set(
     copies.map((dir) => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version)
   )

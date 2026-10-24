@@ -160,3 +160,21 @@ it('preserves synchronous scoped path admission and its receiver', () => {
   expect(() => fs[pathAdmission]!('Private/sample.md')).toThrow('outside scope')
   expect(admission).toHaveBeenCalledTimes(1)
 })
+
+it('refuses a conditional capture whose private destination escapes the connection', async () => {
+  const conditionalFile = vi.fn(async () => true)
+  const disk = Object.assign(new MemoryFileSystem(), {
+    conditionalCapture: true as const,
+    conditionalFile,
+  })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  expect(fs.conditionalCapture).toBe(true)
+  await expect(async () =>
+    fs.conditionalFile!({
+      path: 'Shared/sample.md',
+      expected: null,
+      effect: { kind: 'remove', retainAt: 'Private/capture' },
+    })
+  ).rejects.toThrow('outside scope')
+  expect(conditionalFile).not.toHaveBeenCalled()
+})

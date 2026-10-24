@@ -101,3 +101,12 @@ it('refuses transitive Node imports reached through an SDK dependency', () => {
     }))
   ).toThrow(/SDK browser bundle/)
 })
+
+it('rejects a legacy Zod dependency reached from the SDK browser graph', () => {
+  const legacy = resolve('node_modules/@abele/node-protocol/node_modules/zod/index.js')
+  expect(() =>
+    assertSdkBrowserBundle(bundle(sdk + 'internal/core/index.js'), (id) => ({
+      importedIds: id.startsWith(sdk) ? [legacy] : [],
+    }))
+  ).toThrow(/SDK.*[Zz]od/)
+})

@@ -18,7 +18,7 @@ export interface ConditionalFileOperation {
   path: string
   expected: FileVersion | null
   effect:
-    | { kind: 'remove' }
+    | { kind: 'remove'; retainAt?: string }
     | { kind: 'move'; to: string }
     | { kind: 'write'; bytes: Uint8Array; mtime: number; receipt?: string }
     | { kind: 'install'; stageId: string }

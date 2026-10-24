@@ -239,3 +239,23 @@ it('maps host path admission synchronously with its receiver and all local paren
   })
   expect(admission).toHaveBeenCalledExactlyOnceWith('Moved:folder/sample.md')
 })
+
+it('maps exclusive removal retention destinations and preserves the capture capability', async () => {
+  const conditionalFile = vi.fn(async () => true)
+  const disk = Object.assign(new MemoryFileSystem(), {
+    conditionalCapture: true as const,
+    conditionalFile,
+  })
+  const fs = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
+  expect(fs.conditionalCapture).toBe(true)
+  await fs.conditionalFile!({
+    path: 'Shared/sample.md',
+    expected: null,
+    effect: { kind: 'remove', retainAt: 'Shared/private/sample' },
+  })
+  expect(conditionalFile).toHaveBeenCalledExactlyOnceWith({
+    path: 'Moved/sample.md',
+    expected: null,
+    effect: { kind: 'remove', retainAt: 'Moved/private/sample' },
+  })
+})

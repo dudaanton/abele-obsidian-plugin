@@ -1,3 +1,4 @@
+import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
@@ -778,7 +779,61 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
   private readonly runtimeFence: RuntimeFence | null
   private readonly privateRoot?: string
-  private readonly scopedAdapter: DataAdapter
+  private readonly privateRemovalRoot?: string
+  private readonly scopedAdapter: DataAdapter;
+  [PRIVATE_REMOVAL_FILES](toLocal?: (path: string) => string): FileSystem {
+    const owned = (this.privateRemovalRoot ?? '.abele-sync') + '/retained-removals'
+    const host = new Proxy(this, {
+      get: (target, key) => {
+        if (key === 'stat')
+          return async (path: string) =>
+            !withinRoot(path, owned) && (await this.retainedParentUnavailable(path))
+              ? null
+              : this.stat(path)
+        if (key === 'conditionalFile')
+          return async (operation: ConditionalFileOperation) => {
+            if (
+              withinRoot(operation.path, owned) &&
+              operation.effect.kind === 'move' &&
+              !withinRoot(operation.effect.to, owned) &&
+              (await this.retainedParentUnavailable(operation.effect.to))
+            ) {
+              const root = this.scopedRoot() ?? ''
+              if (
+                root &&
+                ((await crossesSymlink(root, (path) => this.isSymlink(path))) ||
+                  (await this.disk.stat(root))?.type !== 'folder')
+              )
+                throw new EngineError('io', 'Retained removal root is unavailable; bytes preserved')
+              const to =
+                (root ? root + '/' : '') +
+                'Recovered removal ' +
+                crypto.randomUUID() +
+                (operation.effect.to.endsWith('.md') ? '.md' : '.bin')
+              const restored = await this.conditionalFile({
+                ...operation,
+                effect: { kind: 'move', to },
+              })
+              if (restored)
+                console.debug('[abele-sync] retained removal restored at root conflict', to)
+              return restored
+            }
+            return this.conditionalFile(operation)
+          }
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    return privateRemovalFileSystem(host, this.privateRemovalRoot, toLocal)
+  }
+  private async retainedParentUnavailable(path: string): Promise<boolean> {
+    const parent = path.slice(0, Math.max(0, path.lastIndexOf('/')))
+    return (
+      !!parent &&
+      ((await crossesSymlink(parent, (part) => this.isSymlink(part))) ||
+        (await this.disk.stat(parent))?.type !== 'folder')
+    )
+  }
   private readonly placementStages: ReturnType<typeof privatePlacementStages>
   get [PRIVATE_PLACEMENT_STAGES]() {
     return this.placementStages
@@ -806,6 +861,8 @@ export class ObsidianFileSystem implements FileSystem {
     this.privateRoot = options.connectionId
       ? connectionPrivateRoot(options.connectionId)
       : undefined
+    const removalOwner = options.connectionId ?? options.journalOwner
+    this.privateRemovalRoot = removalOwner ? connectionPrivateRoot(removalOwner) : undefined
     this.stageOperations = stageOperations.get(app.vault) ?? new Set<string>()
     stageOperations.set(app.vault, this.stageOperations)
     this.configRevision = adapterConfigRevision(this.scopedAdapter, app.vault.configDir)
@@ -1112,6 +1169,8 @@ export class ObsidianFileSystem implements FileSystem {
       validate: (path, recovery = false) => {
         const privatePath =
           (this.privateRoot && withinRoot(path, this.privateRoot)) ||
+          (this.privateRemovalRoot &&
+            withinRoot(path, this.privateRemovalRoot + '/retained-removals')) ||
           withinRoot(path, stagingDirectory(this.configDir, this.privateRoot)) ||
           withinRoot(path, conditionalRoot) ||
           this.legacyRecoveryPaths.has(path)
@@ -1710,6 +1769,24 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   async removeDirectory(path: string, expectedIdentity?: string): Promise<void> {
+    const retainedRoot = this.privateRemovalRoot && this.privateRemovalRoot + '/retained-removals'
+    if (
+      retainedRoot &&
+      expectedIdentity === undefined &&
+      (path === retainedRoot ||
+        (path.startsWith(retainedRoot + '/') &&
+          /^[a-f0-9-]{36}$/.test(path.slice(retainedRoot.length + 1))))
+    ) {
+      this.runtimeFence?.assertReady()
+      if (this.native) await this.native.rmdirEmpty(path)
+      else {
+        const rows = await this.disk.list(path)
+        if (rows.files.length || rows.folders.length)
+          throw new EngineError('conflict', 'Retained removal directory is not empty')
+        await this.disk.rmdir(path, false)
+      }
+      return
+    }
     this.invalidateRootChain([path])
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])

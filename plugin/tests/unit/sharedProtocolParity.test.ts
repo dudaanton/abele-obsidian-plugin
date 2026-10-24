@@ -112,7 +112,7 @@ describe('shared protocol compatibility', () => {
     }
   })
 
-  it.fails('BUG: shared file-operation integers must retain the safe-integer bound', () => {
+  it('shared file-operation integers retain the safe-integer bound', () => {
     expect(
       files.CommitOpSchema.safeParse({
         op: 'create',
@@ -124,7 +124,7 @@ describe('shared protocol compatibility', () => {
     ).toBe(false)
   })
 
-  it.fails('BUG: shared upload integers must retain the safe-integer bound', () => {
+  it('shared upload integers retain the safe-integer bound', () => {
     expect(UploadBeginRequestSchema.safeParse({ size: Number.MAX_SAFE_INTEGER + 1 }).success).toBe(
       false
     )

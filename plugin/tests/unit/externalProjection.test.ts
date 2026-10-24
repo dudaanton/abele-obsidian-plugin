@@ -243,3 +243,12 @@ describe('external projection schema and local ownership', () => {
     expect(validateProjectionPlacement(projection, 'Media/other.jpg.abele-ref')).toBe(false)
   })
 })
+
+it('accepts an ordinary ledger owner with omitted optional projection fields', () => {
+  expect(
+    inspectProjection(new TextEncoder().encode('ordinary note'), 'Notes/sample.md', {
+      vaultId: 'sample-vault',
+      owned: [{ fileId: 'ordinary-file' }],
+    })
+  ).toEqual({ kind: 'ordinary' })
+})

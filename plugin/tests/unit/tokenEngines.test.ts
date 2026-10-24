@@ -1665,6 +1665,7 @@ it.each(['folder', 'group'] as const)(
         conditional + '/completed',
         conditional + '/retiring',
         conditional + '/retained',
+        connectionPrivateRoot(id) + '/retained-removals/summary.json',
       ])
       for (const [calls, metadata] of [
         [list.mock.calls, true],

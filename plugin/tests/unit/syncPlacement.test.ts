@@ -46,6 +46,9 @@ function sample(installedVersion = version, module = 'cycle.js') {
 it.each([
   'cycle.js',
   'scanner.js',
+  'reconciliation.js',
+  'pushSources.js',
+  'removalRetention.js',
   'localPaths.js',
   'pullRun.js',
   'pullPlace.js',

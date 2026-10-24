@@ -237,8 +237,8 @@ export function validateProjectionPlacement(projection: Projection, physicalPath
 
 export interface ProjectionOwner {
   fileId: string
-  projectionPath: string | null
-  projectionSha: string | null
+  projectionPath?: string | null
+  projectionSha?: string | null
 }
 export type ProjectionInspection =
   | { kind: 'ordinary' }
@@ -253,7 +253,8 @@ export function inspectProjection(
 ): ProjectionInspection {
   const atPath = context.owned.find(
     (owner) =>
-      owner.projectionPath !== null && caseKey(owner.projectionPath) === caseKey(physicalPath)
+      typeof owner.projectionPath === 'string' &&
+      caseKey(owner.projectionPath) === caseKey(physicalPath)
   )
   if (!atPath && !recognizeProjection(bytes)) return { kind: 'ordinary' }
   let projection: Projection

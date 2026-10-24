@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { builtinModules } from 'node:module'
 
@@ -50,6 +51,16 @@ export function assertSdkBrowserBundle(bundle, moduleInfo) {
   function checkDependencies(id) {
     if (visited.has(id)) return
     visited.add(id)
+    const file = clean(id)
+    const zod = file.lastIndexOf('/node_modules/zod/')
+    if (zod >= 0) {
+      const manifest = file.slice(0, zod + '/node_modules/zod'.length) + '/package.json'
+      if (
+        existsSync(manifest) &&
+        !JSON.parse(readFileSync(manifest, 'utf8')).version.startsWith('4.')
+      )
+        throw new Error(`Invalid SDK browser bundle: Zod 3 dependency ${file}`)
+    }
     const info = moduleInfo(id)
     for (const dependency of [
       ...(info?.importedIds ?? []),

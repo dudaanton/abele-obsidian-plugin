@@ -16,6 +16,7 @@ import {
   GENERATION_KEY,
   reconcileGeneration,
   fenceRestoredJournal,
+  recoverPendingPullWrites,
   type EngineStatus,
   type SyncReport,
 } from '@abele/sync-sdk/core'
@@ -296,8 +297,11 @@ export class TokenEngines {
             )
           : connectionJournalApp(this.app, id)
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
-      if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
       const deleting = !!record?.state?.['abele-sync-token-state:server-delete']
+      if (id) {
+        if (!deleting) await this.live.get(id)?.prepareConnectionChange()
+        await this.offloadPorts.get(id)?.prepareDisconnect()
+      }
       if (deleting) {
         const stopped = () => {
           assertCurrent()
@@ -312,6 +316,28 @@ export class TokenEngines {
             )
         }
         stopped()
+        if (record) {
+          const store = await openTokenLedger(
+            factoryOf(this.deps),
+            this.ui.registry,
+            record,
+            stopped
+          )
+          try {
+            if (await store.getMeta('pull-cleanup-head')) {
+              const files = new ObsidianFileSystem(scopedApp, {
+                connectionId: id,
+                journalOwner: id,
+                beforeEngineMutation: async () => stopped(),
+              })
+              await recoverPendingPullWrites(files, store, [])
+              if (await store.getMeta('pull-cleanup-head'))
+                throw new Error('Connection cleanup requires recovery')
+            }
+          } finally {
+            store.close()
+          }
+        }
         await settleStoppedInstallationsForDeletion(scopedApp, stopped)
       }
       await requireExternalLifecycleSafety(

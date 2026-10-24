@@ -14,6 +14,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { selectiveFrom } from '@/sync/connection'
+import { yieldSyncTask } from '@/sync/syncTaskBudget'
 import { ScopeMarks } from '../../node_modules/@abele/sync-sdk/dist/internal/core/scope.js'
 import { buildFakeVault } from '../helpers/fakeVault'
 
@@ -156,7 +157,7 @@ it('profiles native resume phases and reaches upload within five seconds with 33
       selective: selectiveFrom(undefined),
       yieldTask: async () => {
         const at = performance.now()
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        await yieldSyncTask()
         scheduledMs += performance.now() - at
         checkpoints++
       },

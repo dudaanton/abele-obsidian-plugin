@@ -244,3 +244,42 @@ it('keeps ambiguous ancestors blocked and refreshes directory spelling on the ne
   expect((await state.byFileId('one.md'))?.path).toBe('é/one.md')
   expect((await state.byFileId('two.md'))?.path).toBe('é/two.md')
 })
+
+it('propagates cancellation through additive replay ledger collection before directory reads', async () => {
+  const { refreshLocalPaths } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
+  )
+  const state = new MemoryStateStore(),
+    controller = new AbortController()
+  for (let i = 0; i < 1000; i++) {
+    const path = `Notes/sample-${i}.md`
+    await state.put({
+      path,
+      wirePath: path,
+      fileId: path,
+      versionId: 'v1',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    })
+  }
+  await state.setJournal({
+    batchId: 'sample',
+    idempotencyKey: 'sample',
+    startedAt: new Date().toISOString(),
+    ops: [{ op: 'create', path: 'pending.md', sha: 'b'.repeat(64), size: 1, mtime: 1 }],
+  })
+  const listChildren = vi.fn(async () => [])
+  const fs = Object.assign(new MemoryFileSystem(), { listChildren })
+  const transaction = vi.spyOn(state, 'transaction')
+  const yieldTask = vi.fn(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    controller.abort()
+  })
+  await expect(
+    refreshLocalPaths(fs, state, { signal: controller.signal, yieldTask })
+  ).rejects.toThrow()
+  expect(yieldTask).toHaveBeenCalledOnce()
+  expect(listChildren).not.toHaveBeenCalled()
+  expect(transaction).not.toHaveBeenCalled()
+})

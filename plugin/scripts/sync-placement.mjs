@@ -29,7 +29,7 @@ function replaceBoundary(code, before, after, id) {
 const helper = `
 // An additive replay needs tracked restore evidence, not discovery of unrelated new files.
 // Destructive, restored and review-pending work retains the complete inventory path.
-async function additiveReplayEntries(fs, state) {
+async function additiveReplayEntries(fs, state, scheduling = {}) {
   if (!fs.listChildren || !state.getMeta) return null;
   const journal = await state.getJournal();
   if (!journal?.ops.length || journal.ops.some(op =>
@@ -38,7 +38,7 @@ async function additiveReplayEntries(fs, state) {
   const raw = await state.getMeta('content-reconciliation');
   if (raw && JSON.parse(raw).phase !== 'complete') return null;
   const entries = [];
-  const work = new ScanWork();
+  const work = new ScanWork(scheduling);
   for await (const entry of state.all()) {
     entries.push(entry);
     await work.step();
@@ -243,11 +243,28 @@ export function syncPlacementPlugin() {
             return fetched;
           }`
         )
+      } else if (file.endsWith('/removalRetention.js')) {
+        for (const declaration of [
+          'export async function retentionSnapshot(fs) {',
+          'export async function retainRemoval(fs, op, options = {}) {',
+          'export async function captureRemoval(fs, state, base, authorize, now, capturedIdentity, expected = base, signal) {',
+          'export async function retainPublishedVictim(fs, source, path, expected, publication) {',
+          'export async function acknowledgePublication(fs, publication) {',
+          'export async function recoverRemovals(fs, state, policy = {}, onlyPath) {',
+        ])
+          code = replaceOnce(
+            code,
+            declaration,
+            declaration +
+              `
+          if (!fs[Symbol.for('abele.sync.private-removal-view-v1')])
+            fs = fs[Symbol.for('abele.sync.private-removal-files-v1')]?.() ?? fs;`
+          )
       } else if (file.endsWith('/reconciliation.js')) {
         code = replaceOnce(
           code,
           'for await (const info of fs.list()) {\n        await work.step();\n        disk.set(info.path, info);\n    }',
-          `const replayEntries = retiredEntries ? null : await additiveReplayEntries(fs, state);
+          `const replayEntries = retiredEntries ? null : await additiveReplayEntries(fs, state, scheduling);
     if (replayEntries === null) {
       for await (const info of fs.list()) {
         await work.step();
@@ -316,18 +333,13 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
           code,
-          'const known = await rememberedCollisions(state);\n    for await (const entry of state.all()) {',
-          'const known = await rememberedCollisions(state);\n    const refreshWork = new ScanWork();\n    for await (const entry of state.all()) {\n        await refreshWork.step();'
-        )
-        code = replaceOnce(
-          code,
-          'const inventory = await LocalPaths.read(fs, state);\n    await inventory.rememberDirectories(state);',
-          `const replayEntries = await additiveReplayEntries(fs, state);
-    const inventory = replayEntries === null ? await LocalPaths.read(fs, state) : new LocalPaths();
-    if (replayEntries === null) await inventory.rememberDirectories(state);
+          'const inventory = await LocalPaths.read(fs, state, opts);\n    await inventory.rememberDirectories(state, opts);',
+          `const replayEntries = await additiveReplayEntries(fs, state, opts);
+    const inventory = replayEntries === null ? await LocalPaths.read(fs, state, opts) : new LocalPaths();
+    if (replayEntries === null) await inventory.rememberDirectories(state, opts);
     else {
       const read = new Set();
-      const work = new ScanWork();
+      const work = new ScanWork(opts);
       for (const entry of replayEntries) {
         await work.step();
         const segments = wirePath(entry.wirePath).split('/');
@@ -348,7 +360,7 @@ export function syncPlacementPlugin() {
           parent = matches[0].path;
         }
       }
-      await inventory.loadDirectoryHolds(state);
+      await inventory.loadDirectoryHolds(state, opts);
     }`
         )
 
@@ -359,8 +371,8 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'for (const child of await fs.listChildren(parent))\n                result.add(child);',
-          'for (const child of await inventoryChildren(fs, parent, path))\n                result.add(child);'
+          'for (const child of await fs.listChildren(parent)) {\n                await work.step();\n                result.add(child);',
+          'for (const child of await inventoryChildren(fs, parent, path)) {\n                await work.step();\n                result.add(child);'
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = replaceOnce(
@@ -779,9 +791,7 @@ export function syncPlacementPlugin() {
 `
         )
       } else if (file.endsWith('/pullRecovery.js')) {
-        code =
-          `import { PendingPullWrites } from './pullWrite.js';\nimport { EngineError } from './errors.js';\n` +
-          code
+        code = `import { EngineError } from './errors.js';\n` + code
         code = replaceOnce(
           code,
           'checkCancellation(opts.signal);\n            if (!opts.retries',
@@ -832,13 +842,17 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           `const inventory = await LocalPaths.read(fs, state);
-    for (const [sha, local] of paths)
+    for (const [sha, local] of paths) {
+        await work.step();
         paths.set(sha, await resolveLocalFile(fs, state, local.normalize('NFC'), local, inventory));
+    }
     return sourcesAt(fs, paths);`,
           `if (!fs.listChildren) {
       const inventory = await LocalPaths.read(fs, state);
-      for (const [sha, local] of paths)
+      for (const [sha, local] of paths) {
+        await work.step();
         paths.set(sha, await resolveLocalFile(fs, state, local.normalize('NFC'), local, inventory));
+      }
       return sourcesAt(fs, paths);
     }
     return sourcesAt(fs, paths, local => resolveLocalFile(fs, state, local.normalize('NFC'), local));`

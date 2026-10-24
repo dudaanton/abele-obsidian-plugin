@@ -1,3 +1,4 @@
+import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import { pathAdmission, EngineError, type FileSystem, type AtomicStage } from '@abele/sync-sdk/core'
 import { PLACEMENT } from './pathCoordinator'
@@ -46,6 +47,18 @@ export function scopedFileSystem(
   return new Proxy(fs, {
     get(target, key) {
       if (key === PRIVATE_PLACEMENT_STAGES) return stages
+      if (key === PRIVATE_REMOVAL_FILES) {
+        const port = Reflect.get(target, key)
+        return () => {
+          const local = (path: string) => {
+            assertPath(path)
+            return path
+          }
+          return typeof port === 'function'
+            ? port.call(target, local)
+            : privateRemovalFileSystem(target, privateRoot, local)
+        }
+      }
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
       // Comparing names is pure; it does not grant access to the named objects.
@@ -163,6 +176,8 @@ export function scopedFileSystem(
         return (operation: import('./conditionalFiles').ConditionalFileOperation) => {
           assertPath(operation.path)
           if (operation.effect.kind === 'move') assertPath(operation.effect.to)
+          if (operation.effect.kind === 'remove' && operation.effect.retainAt !== undefined)
+            assertPath(operation.effect.retainAt)
           if (operation.effect.kind === 'install') assertStage(operation.effect.stageId)
           return value.call(target, operation)
         }

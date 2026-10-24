@@ -3896,3 +3896,51 @@ it('exposes a fatal directory error and retries it on the next explicit sync', a
     await one.runtime.close()
   }
 })
+
+it('drains committed cleanup owners before connection departure without a sync request', async () => {
+  const wire = await server('Notes/sample.md', 'sample')
+  const discardStage = vi.fn(async () => {})
+  const fs = Object.assign(new MemoryFileSystem(), { discardStage })
+  const state = new MemoryStateStore()
+  const pending = {
+    fileId: 'sample-file',
+    versionId: 'sample-version',
+    wirePath: 'Notes/sample.md',
+    target: 'Notes/sample.md',
+    from: null,
+    base: null,
+    sha: 'a'.repeat(64),
+    size: 1,
+    mtime: 1,
+    seq: 1,
+    stageId: 'Notes/sample-stage',
+    retiring: true,
+  }
+  await state.transaction(async (tx) => {
+    await tx.put({
+      path: pending.target,
+      wirePath: pending.wirePath,
+      fileId: pending.fileId,
+      versionId: pending.versionId,
+      sha: pending.sha,
+      size: 1,
+      mtime: 1,
+    })
+    await tx.setMeta('pull-cleanup-head', 'pull-cleanup:11111111-1111-4111-8111-111111111111')
+    await tx.setMeta(
+      'pull-cleanup:11111111-1111-4111-8111-111111111111',
+      JSON.stringify({ pending, next: null })
+    )
+    await tx.setMeta('pull-write:sample-file', JSON.stringify(pending))
+  })
+  const one = runtime(wire, fs, state)
+  try {
+    await one.runtime.prepareConnectionChange()
+    expect(discardStage).toHaveBeenCalledExactlyOnceWith('Notes/sample-stage')
+    expect(await state.getMeta('pull-cleanup-head')).toBeNull()
+    expect(await state.getMeta('pull-write:sample-file')).toBeNull()
+    expect(wire.fetch).not.toHaveBeenCalled()
+  } finally {
+    await one.runtime.close()
+  }
+})

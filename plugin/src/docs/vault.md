@@ -3756,6 +3756,13 @@ answers awaiting local settlement (`push-receipt:*`), including their original o
 result and ledger base. Settlement retires the owning answer and retry schedule in one
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
+Pull cleanup owners and retained stage aliases commit with the exact ledger update;
+private bytes wait for durable acknowledgement. Cleanup retires owners in a final batch,
+and connection departure drains committed cleanup before dropping its authority.
+Captured removals use a connection-local retained-object summary. Victims remain private
+for at least 24 hours; changed retained bytes restore exclusively or appear as a root
+conflict file if their former parent is unavailable. Unknown recovery artifacts are kept.
+
 
 Repeated local uploads have a per-file quiet period measured from the last completed
 local upload of that file: 10 seconds through 10 KiB, 20 seconds through 100 KiB, and 30 seconds

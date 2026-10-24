@@ -76,3 +76,17 @@ describe('single zod 3 for SDK and node packages', () => {
     }
   })
 })
+
+it('leaves a Zod 4 SDK import outside legacy package deduplication', async () => {
+  fakeRoot({ 'node-protocol': '3.25.76' })
+  const sdk = join(root, 'node_modules/@abele/sync-sdk')
+  mkdirSync(sdk, { recursive: true })
+  writeFileSync(join(sdk, 'package.json'), JSON.stringify({ dependencies: { zod: '4.6.6' } }))
+  const { result, calls } = resolveWith(
+    singleZodV3Plugin(root),
+    'zod',
+    join(sdk, 'dist/internal/core/index.js')
+  )
+  expect(await result).toBeNull()
+  expect(calls).toEqual([])
+})

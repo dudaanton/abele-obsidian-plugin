@@ -1,3 +1,4 @@
+import { assertDiscardableSyncLedger } from '../sync/privateRemovalFileSystem'
 import { preservePrivateArtifacts } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
@@ -129,6 +130,7 @@ async function performResetSyncTokenState(
         const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
         for (const name of ownedDatabases) {
           const found = await inspectExistingLedger(window.indexedDB, name)
+          if (found) assertDiscardableSyncLedger(found.metadata)
           const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
           if (raw == null) continue
           if (typeof raw !== 'string') throw new Error('Pool external journal requires recovery')
