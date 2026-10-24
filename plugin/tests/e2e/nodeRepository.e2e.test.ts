@@ -126,7 +126,9 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
   writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 3\n')
   writeFileSync(resolve(projectPath, 'new.txt'), 'Untracked sample\n')
   let child: ChildProcess | undefined,
-    registration = ''
+    registration = '',
+    output = '',
+    errors = ''
   const env = { ...process.env, ABELE_CLAUDE_PATH: resolve('tests/fixtures/nodeClaude.mjs') }
   try {
     const enrolled = JSON.parse(
@@ -142,8 +144,6 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    let output = '',
-      errors = ''
     child.stdout!.on('data', (data) => {
       output += data
     })
@@ -155,6 +155,12 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       await pause(20)
     }
     const ready = JSON.parse(output.split('\n').find((line) => line.includes('"listening"'))!)
+    await evalLong(`(()=>{
+      const original=console.debug,rows=[];
+      window.__sampleRepositoryTrace={rows,original};
+      console.debug=(...args)=>{original(...args);if(String(args[0]).startsWith('[Abele] node repository:')){rows.push(JSON.parse(JSON.stringify([Date.now(),...args])));if(rows.length>1000)rows.shift()}};
+      return 'trace started';
+    })()`)
     registration = await evalLong(`(async()=>{${prelude}
       const node=await nodes.add('Sample repository node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleRepositoryNode=node.id;
@@ -297,6 +303,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       )
     )
     writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 4\n')
+    console.log('[repository external edit]', { at: Date.now(), value: 4 })
     await evalLong(
       `(async()=>{${prelude}await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 4'));return 'refreshed'})()`
     )
@@ -312,6 +319,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       window.__sampleRepositoryCursor=editor.state.selection.main.anchor;return 'draft retained';
     })()`)
     writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 6\n')
+    console.log('[repository external edit]', { at: Date.now(), value: 6 })
     await evalLong(`(async()=>{${prelude}
       await until(()=>document.querySelector('.abele-node-save__state')?.textContent.includes('Changed on disk'));
       const code=document.querySelector('.abele-github-blob > .abele-github-code .cm-content'),editor=api.codeView(code);
@@ -400,6 +408,10 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 2'));
       return 'compared';
     })()`)
+    console.log(
+      '[repository refresh trace]',
+      evalRaw('JSON.stringify(window.__sampleRepositoryTrace?.rows)')
+    )
     await withEmulatedPhone(() =>
       evalLong(`(async()=>{${prelude}${homeFills}
         await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:{kind:'home'}});
@@ -416,8 +428,21 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
         return 'phone home fills';
       })()`)
     )
+  } catch (error) {
+    console.log('[repository daemon output]', { output, errors })
+    throw error
   } finally {
     try {
+      try {
+        console.log(
+          '[repository refresh trace]',
+          evalRaw(
+            `(()=>{const trace=window.__sampleRepositoryTrace;if(!trace)return 'trace unavailable after reload';console.debug=trace.original;delete window.__sampleRepositoryTrace;return JSON.stringify(trace.rows)})()`
+          )
+        )
+      } catch (error) {
+        console.log('[repository refresh trace unavailable]', String(error))
+      }
       await evalLong(
         `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if((leaf.view.model?.sourceTarget??leaf.getViewState().state?.sourceTarget)?.source?.node===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.getViewState().state?.target?.registrationId===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
       )

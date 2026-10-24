@@ -66,6 +66,12 @@ export function useLiveItemRefresh(options: LiveRefreshOptions) {
             return
           }
           const location = props.sourceLocation
+          console.debug('[Abele] node repository: view notified', {
+            change,
+            location,
+            pinned: !!projectPin.value,
+            refreshRunning,
+          })
           if (
             projectPin.value ||
             !location ||
@@ -119,7 +125,15 @@ export function useLiveItemRefresh(options: LiveRefreshOptions) {
             try {
               do {
                 refreshAgain = false
+                console.debug('[Abele] node repository: view reread requested', { location })
                 await reload()
+                console.debug('[Abele] node repository: view reread settled', {
+                  location,
+                  error: main.error.value,
+                  hasData: !!main.data.value,
+                  current: current === source.value,
+                  sameLocation: loadKey.value === refreshKey,
+                })
               } while (
                 refreshAgain &&
                 isActive() &&
@@ -127,6 +141,13 @@ export function useLiveItemRefresh(options: LiveRefreshOptions) {
                 current === source.value
               )
               await nextTick()
+              console.debug('[Abele] node repository: view updated', {
+                location,
+                current: current === source.value,
+                sameLocation: loadKey.value === refreshKey,
+                active: isActive(),
+                error: main.error.value,
+              })
               preserveScroll()
             } finally {
               for (const gesture of gestures)

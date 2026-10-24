@@ -540,6 +540,12 @@ export class NodeRepositorySource implements RepositorySource {
     return this.blob(ref, path, contentId, true)
   }
   async blob(ref: string, path: string, contentId?: string, larger = false): Promise<BlobData> {
+    console.debug('[Abele] node repository: file read requested', {
+      workspace: this.identity.workspace,
+      ref,
+      path,
+      retained: !!contentId,
+    })
     const limit = (larger ? 16 : 1) * 1024 * 1024
     if (contentId) {
       const first = await this.read(() =>
@@ -567,6 +573,12 @@ export class NodeRepositorySource implements RepositorySource {
     const blob = await this.read(() =>
       this.client.repository.blob({ ...this.target, revision, path, larger })
     )
+    console.debug('[Abele] node repository: file read answered', {
+      workspace: this.identity.workspace,
+      path,
+      ref: sha,
+      contentId: blob.content_id,
+    })
     if (blob.content_id) this.rememberContent(sha, path, blob.content_id)
     const note = blob.binary
       ? 'Binary file · no text preview.'
@@ -1124,6 +1136,12 @@ export class NodeRepositorySource implements RepositorySource {
     }
   }
   private emit(event: RepositoryChange) {
+    console.debug('[Abele] node repository: notify views', {
+      workspace: this.identity.workspace,
+      subscription: this.subscription,
+      ...event,
+      listeners: this.listeners.size,
+    })
     for (const listener of this.listeners) listener(event)
   }
   async startWatching(mutable = true) {
@@ -1171,6 +1189,16 @@ export class NodeRepositorySource implements RepositorySource {
       }
       if (event.type === 'repository.changed') {
         const batch = RepositoryChangeBatchSchema.safeParse(event.data)
+        if (
+          data?.project_id === this.identity.project &&
+          data.worktree_id === this.identity.workspace
+        )
+          console.debug('[Abele] node repository: batch delivered', {
+            workspace: this.identity.workspace,
+            valid: batch.success,
+            streaming: this.streaming,
+            cursor: this.cursor,
+          })
         if (
           batch.success &&
           // Before the first lease answers, batches are kept until it says where the stream is.
@@ -1261,6 +1289,10 @@ export class NodeRepositorySource implements RepositorySource {
     this.liveTrees.clear()
   }
   stopWatching() {
+    console.debug('[Abele] node repository: watch stopped', {
+      workspace: this.identity.workspace,
+      subscription: this.subscription,
+    })
     this.mutableWatch = false
     window.clearTimeout(this.timer)
     this.timer = undefined
@@ -1301,6 +1333,14 @@ export class NodeRepositorySource implements RepositorySource {
     this.emit({ kind: 'workspace' })
   }
   private changed(batch: RepositoryChangeBatch) {
+    console.debug('[Abele] node repository: batch received', {
+      workspace: this.identity.workspace,
+      subscription: this.subscription,
+      cursor: this.cursor,
+      stream: batch.stream_id,
+      revision: batch.revision,
+      complete: batch.complete,
+    })
     if (!this.cursor) {
       // The lease has not said yet where the stream stands; keep it until it does.
       if (this.early.length < 64) this.early.push(batch)
@@ -1351,6 +1391,12 @@ export class NodeRepositorySource implements RepositorySource {
     try {
       if (this.client.connected) {
         const streaming = await this.supportsChanges()
+        console.debug('[Abele] node repository: watch requested', {
+          workspace: this.identity.workspace,
+          previous,
+          streaming,
+          cursor: this.cursor,
+        })
         const lease = await this.read(() =>
           this.client.repository.watch({
             ...this.target,
@@ -1364,6 +1410,10 @@ export class NodeRepositorySource implements RepositorySource {
             .catch(() => {})
           return
         }
+        console.debug('[Abele] node repository: watch acquired', {
+          workspace: this.identity.workspace,
+          ...lease,
+        })
         const firstLease = !this.subscription
         this.subscription = lease.subscription_id
         if (previous && previous !== lease.subscription_id)
@@ -1383,6 +1433,11 @@ export class NodeRepositorySource implements RepositorySource {
         }
       }
     } catch (error) {
+      console.debug('[Abele] node repository: watch failed', {
+        workspace: this.identity.workspace,
+        previous,
+        code: (error as { code?: unknown })?.code,
+      })
       // An expired or lost lease cannot be renewed; acquire a fresh one on the next retry.
       if (
         this.watchRenewal &&
