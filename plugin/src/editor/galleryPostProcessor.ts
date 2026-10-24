@@ -69,7 +69,7 @@ export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessor
       info && blocks
         ? blocks.find((b) => b.headerLine >= info.lineStart && b.headerLine <= info.lineEnd)
         : undefined
-    const embeds = takeEmbeds(paragraph, marker, !block)
+    const embeds = takeEmbeds(paragraph, marker, !block, el)
     const images = block ? block.images : embeds.map(entryOf).filter((e) => e !== null)
     marker.remove()
     mount(paragraph, ctx, options, images)
@@ -83,8 +83,19 @@ function markers(el: HTMLElement): Array<{ paragraph: HTMLElement; marker: Text 
   for (const paragraph of paragraphs) {
     for (const node of Array.from(paragraph.childNodes)) {
       if (node.nodeType !== Node.TEXT_NODE) continue
-      if (parseGalleryHeader(node.textContent ?? '')) {
-        found.push({ paragraph, marker: node as Text })
+      const text = node as Text
+      let offset = 0
+      const line = text.data.split('\n').find((line) => {
+        if (parseGalleryHeader(line)) return true
+        offset += line.length + 1
+        return false
+      })
+      if (line !== undefined) {
+        // Soft line breaks can leave prose and the marker in one renderer text node.
+        // Isolate only the marker so its surrounding text survives replacement.
+        const marker = offset ? text.splitText(offset) : text
+        if (marker.length > line.length) marker.splitText(line.length)
+        found.push({ paragraph, marker })
         break
       }
     }
@@ -104,7 +115,12 @@ const isEmbed = (n: Node) =>
  * following paragraph that holds nothing but embeds. Breaks and whitespace between them go
  * too, and so does the break that put the marker on a line of its own.
  */
-function takeEmbeds(paragraph: HTMLElement, marker: Text, siblings: boolean): Element[] {
+function takeEmbeds(
+  paragraph: HTMLElement,
+  marker: Text,
+  siblings: boolean,
+  root: HTMLElement
+): Element[] {
   const embeds: Element[] = []
   const before = marker.previousSibling
   if (before && isBreak(before)) before.remove()
@@ -118,7 +134,18 @@ function takeEmbeds(paragraph: HTMLElement, marker: Text, siblings: boolean): El
   }
 
   if (siblings) {
-    let sibling = paragraph.nextElementSibling
+    // A soft continuation after a checkbox can put the marker in the final list item,
+    // while blank-line-separated images are rendered after the list itself.
+    let anchor: Element = paragraph
+    while (
+      anchor !== root &&
+      !anchor.nextElementSibling &&
+      anchor.parentElement &&
+      anchor.parentElement !== root
+    ) {
+      anchor = anchor.parentElement
+    }
+    let sibling = anchor.nextElementSibling
     while (sibling && sibling.tagName === 'P' && embedsOnly(sibling)) {
       const next = sibling.nextElementSibling
       embeds.push(

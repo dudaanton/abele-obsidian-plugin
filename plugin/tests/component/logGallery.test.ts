@@ -64,8 +64,9 @@ it.each([
     .mockImplementation(async (_app, md, el, sourcePath, owner) => {
       if (!md.includes('::abele-gallery::')) return
       const p = el.createEl('p')
-      p.append('::abele-gallery::')
-      p.createEl('br')
+      p.append('Sample ')
+      p.createEl('a', { text: 'Overview' })
+      p.append('.\n::abele-gallery::\n')
       const entry = md.split('\n').map(parseImageLine).find(Boolean)
       if (entry) p.createSpan({ cls: 'internal-embed', attr: { src: entry.path } })
       galleryPostProcessor(el, {

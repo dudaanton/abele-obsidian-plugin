@@ -53,6 +53,40 @@ beforeEach(() => {
 })
 
 describe('a whole document, as MarkdownRenderer hands it over', () => {
+  it('does not climb out of the rendered root looking for picture paragraphs', () => {
+    const el = render(`<section><p>::abele-gallery::</p></section><p>${EMBED('outside.png')}</p>`)
+
+    galleryPostProcessor(el.querySelector('p')!, context())
+
+    expect(galleries()[0].images).toHaveLength(0)
+    expect(el.querySelector('.internal-embed')).not.toBeNull()
+  })
+
+  it('collects image paragraphs after a marker rendered at the end of a list item', () => {
+    const el = render(
+      `<ul><li><p>Sample task.\n::abele-gallery::</p></li></ul><p>${EMBED('sample.png')}</p><p>After.</p>`
+    )
+
+    galleryPostProcessor(el, context())
+
+    expect(galleries()).toHaveLength(1)
+    expect(galleries()[0].images.map((image) => image.path)).toEqual(['sample.png'])
+    expect(el.textContent).toContain('Sample task.')
+    expect(el.textContent).toContain('After.')
+    expect(el.querySelector('.internal-embed')).toBeNull()
+  })
+
+  it('finds a gallery line after prose in the same text node and preserves the prose', () => {
+    const el = render(`<p>About <a>Sample</a>.\n::abele-gallery::\n${EMBED('sample.png')}</p>`)
+
+    galleryPostProcessor(el, context())
+
+    expect(galleries()).toHaveLength(1)
+    expect(galleries()[0].images.map((image) => image.path)).toEqual(['sample.png'])
+    expect(el.querySelector('p')?.textContent?.trim()).toBe('About Sample.')
+    expect(el.textContent).not.toContain('::abele-gallery::')
+  })
+
   it('replaces the marker and its embeds with one gallery, and leaves the prose alone', () => {
     const el = render(
       `<p>::abele-gallery{height=340}::<br>\n${EMBED('a.jpg')}</p>` +
