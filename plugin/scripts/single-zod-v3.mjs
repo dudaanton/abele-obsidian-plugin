@@ -1,11 +1,11 @@
 /**
- * The SDK and vendored `@abele/*` packages pin zod 3 and npm nests one copy per package, because
- * the plugin's own zod 4 holds the top-level slot. Rollup keeps modules apart by path, so four
- * byte-identical copies would ship. Resolve every `@abele/*` import of zod to one of them.
+ * Packages still using zod 3 have nested copies because zod 4 holds the top-level slot.
+ * Rollup keeps modules apart by path, so resolve those packages to one shared copy.
+ * Packages using the top-level zod 4 keep their normal resolution.
  * The lockfile and the archives stay as they are; the build refuses copies that differ.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 export function nestedZodCopies(pluginRoot) {
   const scope = join(pluginRoot, 'node_modules/@abele')
@@ -24,13 +24,14 @@ export function singleZodV3Plugin(pluginRoot) {
   if (versions.size > 1)
     throw new Error(`Nested @abele zod copies differ: ${[...versions].join(', ')}`)
   const canonical = copies[0]
+  const packageRoots = copies.map((dir) => dirname(dirname(dir)) + '/')
   return {
     name: 'abele-single-zod-v3',
     enforce: 'pre',
     async resolveId(source, importer, options) {
       if (!canonical || !importer || (source !== 'zod' && !source.startsWith('zod/'))) return null
       const from = importer.replace(/^\0/, '').split('?')[0]
-      if (!from.includes('/node_modules/@abele/')) return null
+      if (!packageRoots.some((root) => from.startsWith(root))) return null
       // Resolve as if imported from inside the canonical copy, so its own exports map decides.
       return this.resolve(source, join(canonical, 'package.json'), { ...options, skipSelf: true })
     },

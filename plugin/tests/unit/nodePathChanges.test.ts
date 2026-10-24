@@ -148,6 +148,7 @@ describe('the path sidebar port on the change stream', () => {
   it('hands in-order batches over and rereads only after a gap or an incomplete batch', async () => {
     const { batch, calls, notify, changed, event, stop } = await start()
     expect(calls.find((c) => c.method === 'repository.v1.watch')!.params).toEqual({
+      explicit_renewal: true,
       worktree_id: identity.workspace,
       changes: null,
     })
@@ -207,10 +208,11 @@ describe('the path sidebar port on the change stream', () => {
     try {
       await vi.advanceTimersByTimeAsync(45000)
       expect(calls.filter((c) => c.method === 'repository.v1.watch').map((c) => c.params)).toEqual([
-        { worktree_id: identity.workspace, changes: null },
+        { worktree_id: identity.workspace, changes: null, explicit_renewal: true },
         {
           worktree_id: identity.workspace,
           subscription_id: 'sidebar-lease-1',
+          explicit_renewal: true,
           changes: { stream_id: 'stream-fixture', revision: 0 },
         },
       ])
@@ -300,6 +302,7 @@ describe('the path sidebar port on the change stream', () => {
   it('keeps the legacy lease and its rereads on a node without the stream', async () => {
     const { calls, notify, changed, stop } = await start(false)
     expect(calls.find((c) => c.method === 'repository.v1.watch')!.params).toEqual({
+      explicit_renewal: true,
       worktree_id: identity.workspace,
     })
     await vi.advanceTimersByTimeAsync(45000)

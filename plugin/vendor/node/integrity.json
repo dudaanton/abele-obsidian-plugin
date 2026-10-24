@@ -3,15 +3,15 @@
     "id": "@abele/channel-protocol@0.0.0",
     "name": "@abele/channel-protocol",
     "version": "0.0.0",
-    "size": 8867,
-    "unpackedSize": 70096,
-    "shasum": "48f1838139b0a9a28c01403b32f0fe418490566d",
-    "integrity": "sha512-MTyLt+ByjEeb9Kyhx28gnH+HwnaZ0fnqaCQMKrd3trFIjMq/PM4k9/scdZsEqzh2bxIJnKTFYAW7L2HdSjWBhw==",
+    "size": 8544,
+    "unpackedSize": 40703,
+    "shasum": "22ea38804356eba18d2ac4e0bfd2306213c1abcb",
+    "integrity": "sha512-d/lqwzOysYb++73RuVIqiPksSlp+J2uMBcMG/atIyLMNLh7sNtONddXMK/KM/vErXoHxzW0UC2V8ejIYZm09Mw==",
     "filename": "abele-channel-protocol-0.0.0.tgz",
     "files": [
       {
         "path": "dist/discovery.d.ts",
-        "size": 359,
+        "size": 351,
         "mode": 420
       },
       {
@@ -26,51 +26,66 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 30249,
+        "size": 9048,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 4471,
+        "size": 4745,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 5082,
+        "size": 5328,
         "mode": 420
       },
       {
         "path": "dist/paired.d.ts",
-        "size": 16303,
+        "size": 5570,
         "mode": 420
       },
       {
         "path": "dist/paired.js",
-        "size": 5894,
+        "size": 6131,
         "mode": 420
       },
       {
         "path": "dist/paired.js.map",
-        "size": 6587,
+        "size": 6839,
+        "mode": 420
+      },
+      {
+        "path": "dist/timestamp.d.ts",
+        "size": 141,
+        "mode": 420
+      },
+      {
+        "path": "dist/timestamp.js",
+        "size": 778,
+        "mode": 420
+      },
+      {
+        "path": "dist/timestamp.js.map",
+        "size": 623,
         "mode": 420
       },
       {
         "path": "package.json",
-        "size": 284,
+        "size": 282,
         "mode": 420
       }
     ],
-    "entryCount": 10,
+    "entryCount": 13,
     "bundled": []
   },
   {
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 142764,
-    "unpackedSize": 1561228,
-    "shasum": "e6b8f9b4e99e7da39c1f32fdad145bf7892bfb98",
-    "integrity": "sha512-XtuPwjFKGr8QTk03VYTAI1CjsqH4EyjCRSaZg5NkLnc+rCDzrnCwl9+tKBjY+BL0ESJl7u4kO4sUWHuHEQ9ang==",
+    "size": 114239,
+    "unpackedSize": 851182,
+    "shasum": "c18b9c426d7096e879f476f7b322eb8711a1710b",
+    "integrity": "sha512-QuZSNG6PXESSW4Ozd+BV4DIGJUfUiDS3gRW73ssBjINR0P+kH1dH3arKIE0hL7l180uWsjHCk7qFCw8tZ1N3ew==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -90,17 +105,17 @@
       },
       {
         "path": "dist/chat.d.ts",
-        "size": 5937,
+        "size": 2215,
         "mode": 420
       },
       {
         "path": "dist/chat.js",
-        "size": 1736,
+        "size": 2096,
         "mode": 420
       },
       {
         "path": "dist/chat.js.map",
-        "size": 2229,
+        "size": 2555,
         "mode": 420
       },
       {
@@ -135,77 +150,77 @@
       },
       {
         "path": "dist/debugger-control.d.ts",
-        "size": 60457,
+        "size": 23319,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js",
-        "size": 9911,
+        "size": 9980,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js.map",
-        "size": 9341,
+        "size": 9368,
         "mode": 420
       },
       {
         "path": "dist/debugger.d.ts",
-        "size": 295312,
+        "size": 76374,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 19067,
+        "size": 19223,
         "mode": 420
       },
       {
         "path": "dist/debugger.js.map",
-        "size": 21175,
+        "size": 21188,
         "mode": 420
       },
       {
         "path": "dist/delegation.d.ts",
-        "size": 26692,
+        "size": 11421,
         "mode": 420
       },
       {
         "path": "dist/delegation.js",
-        "size": 5280,
+        "size": 5359,
         "mode": 420
       },
       {
         "path": "dist/delegation.js.map",
-        "size": 5586,
+        "size": 5600,
         "mode": 420
       },
       {
         "path": "dist/files.d.ts",
-        "size": 25135,
+        "size": 9645,
         "mode": 420
       },
       {
         "path": "dist/files.js",
-        "size": 9320,
+        "size": 9675,
         "mode": 420
       },
       {
         "path": "dist/files.js.map",
-        "size": 11452,
+        "size": 11825,
         "mode": 420
       },
       {
         "path": "dist/http.d.ts",
-        "size": 39527,
+        "size": 13731,
         "mode": 420
       },
       {
         "path": "dist/http.js",
-        "size": 8997,
+        "size": 9922,
         "mode": 420
       },
       {
         "path": "dist/http.js.map",
-        "size": 9395,
+        "size": 10597,
         "mode": 420
       },
       {
@@ -225,97 +240,97 @@
       },
       {
         "path": "dist/live.d.ts",
-        "size": 26851,
+        "size": 10887,
         "mode": 420
       },
       {
         "path": "dist/live.js",
-        "size": 7607,
+        "size": 7930,
         "mode": 420
       },
       {
         "path": "dist/live.js.map",
-        "size": 7954,
+        "size": 8449,
         "mode": 420
       },
       {
         "path": "dist/lsp.d.ts",
-        "size": 25505,
+        "size": 7652,
         "mode": 420
       },
       {
         "path": "dist/lsp.js",
-        "size": 3522,
+        "size": 3978,
         "mode": 420
       },
       {
         "path": "dist/lsp.js.map",
-        "size": 4946,
+        "size": 5421,
         "mode": 420
       },
       {
         "path": "dist/manager.d.ts",
-        "size": 21182,
+        "size": 8918,
         "mode": 420
       },
       {
         "path": "dist/manager.js",
-        "size": 5490,
+        "size": 5797,
         "mode": 420
       },
       {
         "path": "dist/manager.js.map",
-        "size": 5786,
+        "size": 6239,
         "mode": 420
       },
       {
         "path": "dist/node-log.d.ts",
-        "size": 2908,
+        "size": 1519,
         "mode": 420
       },
       {
         "path": "dist/node-log.js",
-        "size": 1100,
+        "size": 1198,
         "mode": 420
       },
       {
         "path": "dist/node-log.js.map",
-        "size": 1480,
+        "size": 1496,
         "mode": 420
       },
       {
         "path": "dist/node-path.d.ts",
-        "size": 41027,
+        "size": 16834,
         "mode": 420
       },
       {
         "path": "dist/node-path.js",
-        "size": 7780,
+        "size": 8024,
         "mode": 420
       },
       {
         "path": "dist/node-path.js.map",
-        "size": 8617,
+        "size": 8871,
         "mode": 420
       },
       {
         "path": "dist/obsidian-tools.d.ts",
-        "size": 21575,
+        "size": 7245,
         "mode": 420
       },
       {
         "path": "dist/obsidian-tools.js",
-        "size": 3957,
+        "size": 4118,
         "mode": 420
       },
       {
         "path": "dist/obsidian-tools.js.map",
-        "size": 4838,
+        "size": 5036,
         "mode": 420
       },
       {
         "path": "dist/pairing-code.d.ts",
-        "size": 1637,
+        "size": 787,
         "mode": 420
       },
       {
@@ -330,17 +345,17 @@
       },
       {
         "path": "dist/pairing.d.ts",
-        "size": 2401,
+        "size": 1925,
         "mode": 420
       },
       {
         "path": "dist/pairing.js",
-        "size": 1312,
+        "size": 1320,
         "mode": 420
       },
       {
         "path": "dist/pairing.js.map",
-        "size": 1218,
+        "size": 1228,
         "mode": 420
       },
       {
@@ -360,7 +375,7 @@
       },
       {
         "path": "dist/questionnaire.d.ts",
-        "size": 1919,
+        "size": 1004,
         "mode": 420
       },
       {
@@ -375,7 +390,7 @@
       },
       {
         "path": "dist/refs.d.ts",
-        "size": 182,
+        "size": 152,
         "mode": 420
       },
       {
@@ -390,62 +405,62 @@
       },
       {
         "path": "dist/repository-git.d.ts",
-        "size": 70640,
+        "size": 42326,
         "mode": 420
       },
       {
         "path": "dist/repository-git.js",
-        "size": 11979,
+        "size": 12668,
         "mode": 420
       },
       {
         "path": "dist/repository-git.js.map",
-        "size": 10320,
+        "size": 11379,
         "mode": 420
       },
       {
         "path": "dist/repository.d.ts",
-        "size": 73277,
+        "size": 28162,
         "mode": 420
       },
       {
         "path": "dist/repository.js",
-        "size": 12649,
+        "size": 13633,
         "mode": 420
       },
       {
         "path": "dist/repository.js.map",
-        "size": 14193,
+        "size": 15264,
         "mode": 420
       },
       {
         "path": "dist/resources.d.ts",
-        "size": 10840,
+        "size": 5556,
         "mode": 420
       },
       {
         "path": "dist/resources.js",
-        "size": 4369,
+        "size": 4597,
         "mode": 420
       },
       {
         "path": "dist/resources.js.map",
-        "size": 5190,
+        "size": 5409,
         "mode": 420
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 155842,
+        "size": 60569,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 15189,
+        "size": 15704,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 14481,
+        "size": 14923,
         "mode": 420
       },
       {
@@ -465,37 +480,37 @@
       },
       {
         "path": "dist/session-update.d.ts",
-        "size": 190786,
+        "size": 69014,
         "mode": 420
       },
       {
         "path": "dist/session-update.js",
-        "size": 8050,
+        "size": 8121,
         "mode": 420
       },
       {
         "path": "dist/session-update.js.map",
-        "size": 8494,
+        "size": 8594,
         "mode": 420
       },
       {
         "path": "dist/trace.d.ts",
-        "size": 37502,
+        "size": 14186,
         "mode": 420
       },
       {
         "path": "dist/trace.js",
-        "size": 8412,
+        "size": 10577,
         "mode": 420
       },
       {
         "path": "dist/trace.js.map",
-        "size": 10664,
+        "size": 13562,
         "mode": 420
       },
       {
         "path": "dist/turn.d.ts",
-        "size": 7106,
+        "size": 2917,
         "mode": 420
       },
       {
@@ -510,7 +525,7 @@
       },
       {
         "path": "package.json",
-        "size": 389,
+        "size": 387,
         "mode": 420
       }
     ],
@@ -555,10 +570,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 51995,
-    "unpackedSize": 297443,
-    "shasum": "26f3ee452941fde58d22930c6fe9fd1f463ffa17",
-    "integrity": "sha512-aAoHG80L5a41GA/Faz3zsRZJ9kLsChj8PC7RggXDzAF6wyd9CwjY35OMTDjNPc4WbVm9RgHZy+dopZ63eqb5DA==",
+    "size": 52020,
+    "unpackedSize": 297431,
+    "shasum": "c3e2d997e698073199838af579b40f96dafc7f46",
+    "integrity": "sha512-KSYH2zRwrIR9MlHB4V/9s1rP3GDyy61bxJchgKow5vgEK7BrmS/yUWZB3/pxqpH4EZS0uLoB0g/9HlnFvMcgPw==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -653,7 +668,7 @@
       },
       {
         "path": "dist/paired.d.ts",
-        "size": 3201,
+        "size": 3100,
         "mode": 420
       },
       {
@@ -703,12 +718,12 @@
       },
       {
         "path": "dist/repository.js",
-        "size": 4904,
+        "size": 4935,
         "mode": 420
       },
       {
         "path": "dist/repository.js.map",
-        "size": 4400,
+        "size": 4438,
         "mode": 420
       },
       {
@@ -728,7 +743,7 @@
       },
       {
         "path": "package.json",
-        "size": 372,
+        "size": 392,
         "mode": 420
       }
     ],

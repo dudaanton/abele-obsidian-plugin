@@ -14,6 +14,12 @@ const nodeExclusions = new Set(artifacts.map((artifact) => artifact.name))
 const registryExclusions = nodeExclusions
 
 describe('reproducible dependency sources', () => {
+  it('uses patched Zod for both node protocols without nested copies', () => {
+    for (const name of ['node-protocol', 'channel-protocol']) {
+      expect(lock.packages[`node_modules/@abele/${name}`].dependencies.zod).toBe('4.6.6')
+      expect(lock.packages[`node_modules/@abele/${name}/node_modules/zod`]).toBeUndefined()
+    }
+  })
   it('excludes exactly the vendored node dependency set from registry checks', () => {
     const vendoredDependencies = Object.entries(manifest.dependencies)
       .filter(([, source]) => typeof source === 'string' && source.startsWith('file:vendor/node/'))

@@ -6,7 +6,7 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 ## Current browser payloads
 
 All four packages are built from the clean AbeleNode archive at
-`ee659bb067681404bf0a33fdd4a839c447012e71` (the v0.4.60 watch renewal change),
+`309d59315ed1c2b935a7afa1fdf56452353e0e73` (v0.4.62, using patched Zod 4.6.6),
 including `repository_watch_renewal_v1` and the optional `subscription_id` on repository watch requests.
 The plugin sends this id only when the node advertises explicit renewal.
 The provider-independent `command_context_v1` and `integration_context_v1` contracts remain included.
@@ -82,7 +82,8 @@ TypeScript 5.9.3, ES2022 and ES modules. Declarations are unchanged.
 Grant-free delegation is included upstream; the local delegation compatibility patch is no longer applied. Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
-Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
+The current protocol packages share the plugin's Zod 4.6.6; only the sync SDK retains
+a nested Zod 3 dependency.
 
 The payloads were built from a clean archive of that revision, with `npm ci --ignore-scripts`
 and `tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client`.

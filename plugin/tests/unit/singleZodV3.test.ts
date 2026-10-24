@@ -65,6 +65,7 @@ describe('single zod 3 for SDK and node packages', () => {
     const plugin = singleZodV3Plugin(root)
     for (const [source, importer] of [
       ['zod', join(root, 'src/comments/model.ts')],
+      ['zod', join(root, 'node_modules/@abele/node-protocol/dist/index.js')],
       ['zod-extra', join(root, 'node_modules/@abele/sync-sdk/dist/internal/core/index.js')],
       ['yaml', join(root, 'node_modules/@abele/sync-sdk/dist/internal/core/index.js')],
       ['zod', undefined],

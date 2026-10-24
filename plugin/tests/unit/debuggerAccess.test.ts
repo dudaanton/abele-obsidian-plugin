@@ -75,6 +75,7 @@ it('does not offer deletion for a different issuer or paired key', () => {
     false
   )
   expect(mayDeleteGrant({ owner_authority: owner }, undefined)).toBe(false)
+  expect(mayDeleteGrant({}, owner)).toBe(false)
 })
 it('does not mark malformed Allow responses as a grant', async () => {
   const model = new DebuggerAccess(async (method) =>

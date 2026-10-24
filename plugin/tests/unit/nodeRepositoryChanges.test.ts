@@ -94,6 +94,7 @@ describe('node repository source on the change stream', () => {
   it('patches the open tree in place and rereads nothing for an ordinary batch', async () => {
     const { source, events, batch, calls, change } = await start()
     expect(calls.find((c) => c.method === 'repository.v1.watch')!.params).toEqual({
+      explicit_renewal: true,
       worktree_id: identity.workspace,
       changes: null,
     })
@@ -378,6 +379,7 @@ describe('node repository source on the change stream', () => {
   it('keeps the legacy lease and its rereads on a node without the stream', async () => {
     const { source, events, calls, change } = await start(false)
     expect(calls.find((c) => c.method === 'repository.v1.watch')!.params).toEqual({
+      explicit_renewal: true,
       worktree_id: identity.workspace,
     })
     events.mockClear()

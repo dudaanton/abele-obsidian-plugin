@@ -16,10 +16,11 @@ export type DebuggerAccessRequest = z.infer<typeof Request>
 export type DebuggerGrant = ReturnType<typeof DebuggerGrantSchema.parse>
 type Rpc = (method: string, params: Record<string, unknown>) => Promise<unknown>
 type Authority = { installation_id: string; profile: string; device_key?: unknown }
-export function mayDeleteGrant(grant: { owner_authority: Authority }, owner?: Authority) {
+export function mayDeleteGrant(grant: { owner_authority?: Authority }, owner?: Authority) {
   const issuer = grant.owner_authority
   return (
     !!owner &&
+    !!issuer &&
     issuer.installation_id === owner.installation_id &&
     issuer.profile === owner.profile &&
     (owner.profile !== 'paired-wss-v1' ||
