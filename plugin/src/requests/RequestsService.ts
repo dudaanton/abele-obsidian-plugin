@@ -270,15 +270,17 @@ export class RequestsService {
       const app = GlobalStore.getInstance().app
       const prefix = `abele-requests:${c.registrationId}:${c.projectId}:`
       model = new RequestsModel(rpcFor(c.registrationId).rpc, c.projectId, {
-        files: new NodeRequestFiles(
-          NodeService.getInstance().connection(c.registrationId).client,
-          {
-            nodeId: NodeService.getInstance().nodes.value.find((n) => n.id === c.registrationId)
-              .expectedNodeId,
-            ...c,
-          },
-          () => NodeService.getInstance().connection(c.registrationId).connect()
-        ),
+        files: nodeKnown(c.registrationId)
+          ? new NodeRequestFiles(
+              NodeService.getInstance().connection(c.registrationId).client,
+              {
+                nodeId: NodeService.getInstance().nodes.value.find((n) => n.id === c.registrationId)
+                  .expectedNodeId,
+                ...c,
+              },
+              () => NodeService.getInstance().connection(c.registrationId).connect()
+            )
+          : undefined,
         keys: keyPort,
         scripts: scriptPort,
         recording: (url) => destinationRecording(c, url),
