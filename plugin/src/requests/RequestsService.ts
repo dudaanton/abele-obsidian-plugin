@@ -24,6 +24,7 @@ import { originOf } from './shapes'
 export const RequestsContextSchema = z.object({
   registrationId: z.string().min(1),
   projectId: z.string().min(1),
+  worktreeId: z.string().min(1).optional(),
   /** The project's folder name, to say which it is. */
   label: z.string().optional(),
   node: z.string().optional(),
@@ -32,8 +33,8 @@ export type RequestsContext = z.infer<typeof RequestsContextSchema>
 
 const CONTEXT_KEY = 'abele-requests-context'
 
-const key = (c: Pick<RequestsContext, 'registrationId' | 'projectId'>) =>
-  JSON.stringify([c.registrationId, c.projectId])
+const key = (c: Pick<RequestsContext, 'registrationId' | 'projectId' | 'worktreeId'>) =>
+  JSON.stringify([c.registrationId, c.projectId, c.worktreeId ?? null])
 
 /** The node's requests over its connection, looked up only when a request is made: a node
  * removed since says so then, instead of breaking whatever holds the model. */
@@ -213,7 +214,12 @@ export class RequestsService {
     }
   >()
   /** The request whose tab was looked at last: the view marks it, a new request goes beside it. */
-  readonly openRequest = shallowRef<{ registrationId: string; projectId: string; id: string }>()
+  readonly openRequest = shallowRef<{
+    registrationId: string
+    projectId: string
+    worktreeId?: string
+    id: string
+  }>()
   private readonly chosen = shallowRef<RequestsContext | undefined>(this.remembered())
   /** Requests the view should bring into sight next: revealed from a tab, or just imported. */
   readonly reveal = shallowRef<{ collection: string; ids: string[]; at: number }>()
@@ -253,22 +259,26 @@ export class RequestsService {
         .then((contexts) => {
           if (
             this.chosen.value?.registrationId !== c.registrationId ||
-            this.chosen.value.projectId !== c.projectId
+            this.chosen.value.projectId !== c.projectId ||
+            this.chosen.value.worktreeId !== c.worktreeId
           )
             return
-          const named = contexts.find((p) => key(p) === key(c))
-          if (named) this.choose(named)
+          const named = contexts.find(
+            (p) => p.registrationId === c.registrationId && p.projectId === c.projectId
+          )
+          if (named)
+            this.choose({ ...named, ...(c.worktreeId ? { worktreeId: c.worktreeId } : {}) })
         })
         .catch((e) => console.debug('[requests] Project name unavailable', e))
     }
   }
 
-  model(c: Pick<RequestsContext, 'registrationId' | 'projectId'>): RequestsModel {
+  model(c: Pick<RequestsContext, 'registrationId' | 'projectId' | 'worktreeId'>): RequestsModel {
     const k = key(c)
     let model = this.models.get(k)
     if (!model) {
       const app = GlobalStore.getInstance().app
-      const prefix = `abele-requests:${c.registrationId}:${c.projectId}:`
+      const prefix = `abele-requests:${c.registrationId}:${c.projectId}:${c.worktreeId ? c.worktreeId + ':' : ''}`
       model = new RequestsModel(rpcFor(c.registrationId).rpc, c.projectId, {
         files: nodeKnown(c.registrationId)
           ? new NodeRequestFiles(
@@ -278,7 +288,8 @@ export class RequestsService {
                   .expectedNodeId,
                 ...c,
               },
-              () => NodeService.getInstance().connection(c.registrationId).connect()
+              () => NodeService.getInstance().connection(c.registrationId).connect(),
+              c.worktreeId
             )
           : undefined,
         keys: keyPort,

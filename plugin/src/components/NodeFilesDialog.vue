@@ -52,6 +52,17 @@
             @click="act(() => model.list(model.directory.value, false, lifetime.signal))"
           />
           <span class="abele-node-files__path">{{ model.directory.value || '/' }}</span>
+          <Icon
+            v-if="fileRequests.available.value"
+            icon="list-video"
+            :tooltip="t('requests.file.openPanel')"
+            @click="
+              act(async () => {
+                await fileRequests.open()
+                close()
+              })
+            "
+          />
         </div>
         <div :aria-label="t('streamB.workspaceFiles.bb2e2d')" class="abele-node-files__listing">
           <button
@@ -354,6 +365,10 @@ import type {
   CodeLineRange,
 } from '@/node/NodeFilesModel'
 import type { NodeConnection } from '@/node/NodeService'
+import { useFileRequests } from '@/requests/useFileRequests'
+import { WORKING_TREE } from '@/repository/node'
+import type { NodeRepositoryTarget } from '@/repository/nodeLinks'
+import type { RepositoryIdentity } from '@/repository/source'
 import Modal from './obsidian/Modal.vue'
 import NodeFileSaveState from './NodeFileSaveState.vue'
 import Button from './obsidian/Button.vue'
@@ -364,6 +379,7 @@ import GithubCode from './github/GithubCode.vue'
 import GithubDiffFile from './github/GithubDiffFile.vue'
 const props = defineProps<{
   model: NodeFilesModel
+  registrationId?: string
   onRepository?: () => Promise<unknown>
   subscribeChanges?: (listener: () => void) => () => void
   connection: Pick<NodeConnection, 'state'>
@@ -373,6 +389,34 @@ const props = defineProps<{
   initialRange?: CodeLineRange
 }>()
 const emit = defineEmits<{ close: [] }>()
+const requestPlace = shallowRef<Extract<RepositoryIdentity, { provider: 'node' }>>()
+const requestTarget = computed<NodeRepositoryTarget | null>(() =>
+  requestPlace.value && props.model.filePath.value
+    ? {
+        provider: 'node',
+        source: requestPlace.value,
+        location: { kind: 'file', ref: WORKING_TREE, path: props.model.filePath.value },
+      }
+    : null
+)
+const fileRequests = useFileRequests(requestTarget, () => close())
+onMounted(() => {
+  const client = props.model.client
+  const registrationId = props.registrationId
+  if (!registrationId || !client?.getWorkspace || !client.store) return
+  void (async () => {
+    const workspace = await client.getWorkspace(props.model.workspaceId)
+    const installation = await client.store.transaction((state) => state.installation_id)
+    if (!installation || lifetime.signal.aborted) return
+    requestPlace.value = {
+      provider: 'node',
+      installation,
+      node: registrationId,
+      project: workspace.project_id,
+      workspace: workspace.workspace_id,
+    }
+  })().catch((error) => console.debug('[requests] File dialog context unavailable', error))
+})
 const changedOnDisk = ref(false)
 let stopChanges = () => {}
 onMounted(() => {

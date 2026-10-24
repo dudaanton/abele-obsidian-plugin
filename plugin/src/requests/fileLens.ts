@@ -17,6 +17,8 @@ export interface FileLensRequest {
 }
 
 export interface FileLens {
+  /** Glyphs describe this saved source; an unsaved buffer must not send a different block. */
+  text?: string
   requests: FileLensRequest[]
   send(line: number): void
   /** The request's tab, with its answer. */

@@ -3,11 +3,31 @@ import type { RequestsContext } from './RequestsService'
 /** A tab's project takes precedence over a device's remembered requests project. */
 export function projectOfTab(state: unknown): RequestsContext | undefined {
   if (!state || typeof state !== 'object') return undefined
+  const sourceTarget = (
+    state as {
+      sourceTarget?: {
+        provider?: string
+        source?: { provider?: string; node?: unknown; project?: unknown; workspace?: unknown }
+      }
+    }
+  ).sourceTarget
+  const source = sourceTarget?.provider === 'node' ? sourceTarget.source : undefined
+  if (
+    source?.provider === 'node' &&
+    typeof source.node === 'string' &&
+    typeof source.project === 'string' &&
+    typeof source.workspace === 'string'
+  )
+    return { registrationId: source.node, projectId: source.project, worktreeId: source.workspace }
   const target = (state as { target?: unknown }).target
   const value = target && typeof target === 'object' ? target : state
   const c = value as Partial<RequestsContext>
   return typeof c.registrationId === 'string' && typeof c.projectId === 'string'
-    ? { registrationId: c.registrationId, projectId: c.projectId }
+    ? {
+        registrationId: c.registrationId,
+        projectId: c.projectId,
+        ...(typeof c.worktreeId === 'string' ? { worktreeId: c.worktreeId } : {}),
+      }
     : undefined
 }
 

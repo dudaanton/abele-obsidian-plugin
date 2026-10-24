@@ -6,13 +6,19 @@ import { NodeRequestFiles } from './nodeFiles'
 import { FILE_LENS } from './fileLens'
 import { openRequestTab, say, sendFromView } from './actions'
 
-/** Only current project-root files get run glyphs; historical versions never send live code. */
-export function useFileRequests(target: ComputedRef<NodeRepositoryTarget | null>) {
+/** Current files keep their exact worktree; historical versions never send live code. */
+export function useFileRequests(
+  target: ComputedRef<NodeRepositoryTarget | null>,
+  onOpenRequest?: () => void
+) {
   const context = computed(() => {
     const identity = target.value?.source
-    return identity?.provider === 'node'
-      ? { registrationId: identity.node, projectId: identity.project }
-      : undefined
+    if (identity?.provider !== 'node') return undefined
+    const base = { registrationId: identity.node, projectId: identity.project }
+    const root = RequestsService.instance().model(base).files?.port
+    return root instanceof NodeRequestFiles && root.matches(identity.workspace)
+      ? base
+      : { ...base, worktreeId: identity.workspace }
   })
   const model = computed(() =>
     context.value ? RequestsService.instance().model(context.value) : undefined
@@ -46,6 +52,7 @@ export function useFileRequests(target: ComputedRef<NodeRepositoryTarget | null>
       const requests =
         m.files?.collections.flatMap((c) => c.requests).filter((r) => r.origin.file === path) ?? []
       return {
+        text: m.files?.text(path),
         requests: requests.map((r) => {
           const outcome = m.entry(r.id).outcome
           return {
@@ -65,7 +72,10 @@ export function useFileRequests(target: ComputedRef<NodeRepositoryTarget | null>
         },
         open: (line) => {
           const r = requests.find((r) => r.origin.line === line)
-          if (r) void openRequestTab(c, r.id).catch(say)
+          if (r)
+            void openRequestTab(c, r.id)
+              .then(() => onOpenRequest?.())
+              .catch(say)
         },
       }
     })
@@ -83,7 +93,7 @@ export function useFileRequests(target: ComputedRef<NodeRepositoryTarget | null>
         at = target.value
       if (!c || !at || at.location.kind !== 'file') return
       const service = RequestsService.instance()
-      service.choose(c)
+      service.chooseOpenProject(c)
       const { openRequestsView } = await import('./views')
       await openRequestsView(undefined, false)
       const filePath = at.location.path

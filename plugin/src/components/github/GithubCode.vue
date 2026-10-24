@@ -81,9 +81,10 @@ watch(() => props.blame, applyBlame)
 const lensFor = inject(FILE_LENS, null)
 const lens = computed(() => lensFor?.(props.path)?.value ?? null)
 const applyLens = () => {
-  viewer?.requests(props.editable ? null : lens.value)
+  const source = lens.value
+  viewer?.requests(source?.text !== undefined && source.text !== props.text ? null : source)
 }
-if (lens.value) watch(lens, applyLens)
+watch([lens, () => props.text], applyLens)
 
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)

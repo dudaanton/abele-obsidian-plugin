@@ -22,11 +22,19 @@ export const app = () => GlobalStore.getInstance().app
 
 export async function openRequestTab(context: RequestsContext, id: string) {
   const { workspace } = app()
-  const state = { registrationId: context.registrationId, projectId: context.projectId, id }
+  const state = {
+    registrationId: context.registrationId,
+    projectId: context.projectId,
+    ...(context.worktreeId ? { worktreeId: context.worktreeId } : {}),
+    id,
+  }
   const existing = workspace.getLeavesOfType(REQUEST_TAB_VIEW).find((l) => {
     const s = (l.view as { getState(): Record<string, unknown> }).getState()
     return (
-      s.registrationId === state.registrationId && s.projectId === state.projectId && s.id === id
+      s.registrationId === state.registrationId &&
+      s.projectId === state.projectId &&
+      s.worktreeId === state.worktreeId &&
+      s.id === id
     )
   })
   const leaf = existing ?? workspace.getLeaf('tab')
@@ -320,8 +328,16 @@ export async function newCollection(context: RequestsContext) {
 export async function revealRequest(context: RequestsContext, id: string) {
   const service = RequestsService.instance()
   const shown = service.context.value
-  if (shown?.registrationId !== context.registrationId || shown.projectId !== context.projectId)
-    service.choose({ registrationId: context.registrationId, projectId: context.projectId })
+  if (
+    shown?.registrationId !== context.registrationId ||
+    shown.projectId !== context.projectId ||
+    shown.worktreeId !== context.worktreeId
+  )
+    service.choose({
+      registrationId: context.registrationId,
+      projectId: context.projectId,
+      ...(context.worktreeId ? { worktreeId: context.worktreeId } : {}),
+    })
   service.openRequest.value = { ...context, id }
   const { openRequestsView } = await import('./views')
   await openRequestsView(app(), false)

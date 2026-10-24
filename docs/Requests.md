@@ -106,7 +106,8 @@ editing checks from the tab (they are lines in the request's file).
 
 Project `.http` and `.rest` files appear directly below saved collections. A folder containing
 `bruno.json` groups its `.bru` files as a Bruno collection. These are live sources, not imported
-copies. Open a request's source line from its tab, or send it from the gutter of the current
+copies. A collection opened from a node file stays bound to that file's worktree or plain
+project folder. Open a request's source line from its tab, or send it from the gutter of the current
 node file. Editing a request updates its original block with a conditional file write; if the
 source changed meanwhile, open the file to review the retained conflict. The row menu can save
 an independent copy to saved requests.

@@ -207,7 +207,10 @@ const Sidebar = defineComponent({
         notice,
         project: c ? (c.label ?? c.projectId) : '',
         node: c?.node,
-        open: open && c && open.projectId === c.projectId ? open.id : undefined,
+        open:
+          open && c && open.projectId === c.projectId && open.worktreeId === c.worktreeId
+            ? open.id
+            : undefined,
         sending: m?.state.sending.at(-1),
         recording: recording.value?.name,
         onRefresh: load,
@@ -274,7 +277,11 @@ export class RequestsView extends ItemView {
 
 // ── A request's tab ──
 
-const TabState = RequestsContextSchema.pick({ registrationId: true, projectId: true }).extend({
+const TabState = RequestsContextSchema.pick({
+  registrationId: true,
+  projectId: true,
+  worktreeId: true,
+}).extend({
   id: z.string().min(1),
 })
 type TabState = z.infer<typeof TabState>
@@ -350,7 +357,12 @@ export class RequestTab extends ItemView {
     if (parsed.success) {
       const was = this.current.value
       this.current.value = parsed.data
-      if (was?.id !== parsed.data.id || was.projectId !== parsed.data.projectId) this.read()
+      if (
+        was?.id !== parsed.data.id ||
+        was.projectId !== parsed.data.projectId ||
+        was.worktreeId !== parsed.data.worktreeId
+      )
+        this.read()
     }
     await super.setState(raw, result)
   }

@@ -57,6 +57,9 @@ export class FileCollections {
   get environments() {
     return this.state.environments
   }
+  text(path: string) {
+    return this.sources.get(path)?.text
+  }
   isEditing(id: string) {
     return this.edits.has(id)
   }

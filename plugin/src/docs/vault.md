@@ -3261,7 +3261,8 @@ preferences do not change the project's request files.
 
 Project request collections are also read live from node `.http`/`.rest` files and Bruno folders
 with `bruno.json`. They are not copied into `.abele/requests/`. Source coordinates and parsed
-requests are held in memory. Edits use the node document source's existing conditional writes
+requests are held in memory. The selected file worktree/folder is retained in the device-local
+request context and tab state, so another copy of the same project cannot replace its source. Edits use the node document source's existing conditional writes
 and durable conflict drafts; review happens in the ordinary node file editor. Named response
 captures and their values live only in the collection's current client session. Embedded source
 scripts are displayed, not executed. Adjacent public/private HTTP environment files stay in the

@@ -13,40 +13,96 @@ export class NodeRequestFiles implements RequestFilePort {
   constructor(
     private readonly client: NodeClient,
     private readonly identity: { nodeId: string; registrationId: string; projectId: string },
-    private readonly connect: () => Promise<void>
+    private readonly connect: () => Promise<void>,
+    private readonly worktreeId?: string
   ) {
     this.path = new NodePathClientPort(client, identity)
   }
   matches(worktree: string) {
-    return this.target.value?.id === worktree
+    return (
+      this.target.value?.id === worktree || (!!this.target.value && this.worktreeId === worktree)
+    )
   }
   async ready() {
     await this.connect()
     if (this.target.value) return this.target.value
     let cursor: string | undefined
-    do {
-      const page = await this.client.repository.worktrees({
-        project_id: this.identity.projectId,
-        cursor,
-      })
-      const root = page.entries.find((entry) => entry.kind === 'root')
-      if (root) {
-        this.target.value = { ...this.identity, kind: 'worktree', id: root.worktree_id }
-        this.source = new NodeDocumentSource(this.client, root.worktree_id, true)
-        return this.target.value
+    try {
+      do {
+        const page = await this.client.repository.worktrees({
+          project_id: this.identity.projectId,
+          cursor,
+        })
+        const root = page.entries.find((entry) =>
+          this.worktreeId
+            ? entry.worktree_id === this.worktreeId || entry.workspace_id === this.worktreeId
+            : entry.kind === 'root'
+        )
+        if (root) {
+          this.target.value = { ...this.identity, kind: 'worktree', id: root.worktree_id }
+          this.source = new NodeDocumentSource(this.client, root.worktree_id, true)
+          return this.target.value
+        }
+        cursor = page.cursor ?? undefined
+      } while (cursor)
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== 'object' ||
+        !('code' in error) ||
+        error.code !== 'git_required'
+      )
+        throw error
+      let after: string | undefined
+      for (;;) {
+        const page = await this.client.listWorkspaces(this.identity.projectId, after)
+        const root = page.find(
+          (entry) =>
+            entry.state === 'ready' &&
+            (this.worktreeId ? entry.workspace_id === this.worktreeId : entry.kind === 'root')
+        )
+        if (root) {
+          this.target.value = { ...this.identity, kind: 'workspace', id: root.workspace_id }
+          this.source = new NodeDocumentSource(this.client, root.workspace_id)
+          return this.target.value
+        }
+        if (page.length < 100) break
+        const next = page.at(-1)?.workspace_id
+        if (!next || next === after) break
+        after = next
       }
-      cursor = page.cursor ?? undefined
-    } while (cursor)
+    }
     throw new Error('The project root is unavailable')
+  }
+  private async fresh<T>(read: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await read()
+      } catch (error) {
+        if (
+          attempt >= 2 ||
+          !error ||
+          typeof error !== 'object' ||
+          !('code' in error) ||
+          error.code !== 'stale_revision'
+        )
+          throw error
+      }
+    }
   }
   async list() {
     const target = await this.ready()
+    return this.fresh(() => this.readTree(target))
+  }
+  private async readTree(target: PathTarget) {
     const out: string[] = []
     const folders = ['']
     for (let at = 0; at < folders.length; at++) {
       let cursor: string | undefined
+      let revision: import('@abele/node-protocol').RepositoryRevision | undefined
       do {
-        const page = await this.path.tree(target, folders[at], cursor)
+        const page = await this.path.tree(target, folders[at], cursor, revision)
+        revision = page.revision
         for (const entry of page.entries) {
           if (entry.kind === 'folder') {
             if (!/(^|\/)(\.git|node_modules|\.abele)(\/|$)/.test(entry.path))
@@ -60,7 +116,7 @@ export class NodeRequestFiles implements RequestFilePort {
   }
   async read(path: string) {
     await this.ready()
-    const doc = await this.source.read(path)
+    const doc = await this.fresh(() => this.source.read(path))
     if (doc.text === undefined) throw new Error(`Cannot read ${path} as text`)
     return { text: doc.text, contentId: doc.contentId }
   }
@@ -97,6 +153,18 @@ export class NodeRequestFiles implements RequestFilePort {
   }
   async open(path: string, line = 1) {
     const target = await this.ready()
+    if (target.kind === 'workspace') {
+      const { NodeFilesModel } = await import('@/node/NodeFilesModel')
+      const { NodeService } = await import('@/node/NodeService')
+      const { openNodeFiles } = await import('@/node/openFiles')
+      openNodeFiles(
+        new NodeFilesModel(this.client, this.identity.nodeId, target.id),
+        NodeService.getInstance().connection(this.identity.registrationId),
+        path,
+        { start: line, end: line }
+      )
+      return
+    }
     const { openNodeRepository } = await import('@/node/openRepository')
     await openNodeRepository(this.identity.registrationId, this.identity.projectId, target.id, {
       path,

@@ -18,6 +18,9 @@ export function openNodeFiles(
     NodeFilesDialog,
     {
       model,
+      registrationId: NodeService.getInstance().nodes.value.find(
+        (node) => node.expectedNodeId === model.nodeId
+      )?.id,
       connection,
       initialPath,
       initialRange,

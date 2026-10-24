@@ -66,3 +66,21 @@ it('offers the last local server address printed by the program', () => {
   expect(serverAddress('Listening on a port')).toBeUndefined()
   expect(serverAddress('http://localhost:99999/')).toBeUndefined()
 })
+
+it('keeps the exact worktree of a current node repository file', () => {
+  expect(
+    projectOfTab({
+      sourceTarget: {
+        provider: 'node',
+        source: {
+          provider: 'node',
+          installation: 'sample-installation',
+          node: 'node-1',
+          project: 'project-1',
+          workspace: 'sample-copy',
+        },
+        location: { kind: 'file', ref: 'Working tree', path: 'sample.http' },
+      },
+    })
+  ).toEqual({ registrationId: 'node-1', projectId: 'project-1', worktreeId: 'sample-copy' })
+})

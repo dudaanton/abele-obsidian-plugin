@@ -9,7 +9,11 @@ vi.mock('@/requests/RequestsService', async () => {
   const { z } = await import('zod')
   return {
     keyPort: { has: () => true },
-    RequestsContextSchema: z.object({ registrationId: z.string(), projectId: z.string() }),
+    RequestsContextSchema: z.object({
+      registrationId: z.string(),
+      projectId: z.string(),
+      worktreeId: z.string().optional(),
+    }),
     RequestsService: {
       instance: () => ({
         model: () => host.model,
