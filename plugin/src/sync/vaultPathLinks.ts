@@ -511,6 +511,20 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
       if (typeof value !== 'function') return value
       if (!paths[String(key)]) return value.bind(target)
       return async (...args: unknown[]) => {
+        if (rootPin && (key === 'stat' || key === 'exists')) {
+          // Metadata has no mutation effects. Check its complete path inside the
+          // host queue once, instead of repeating the outer and inner preflights.
+          const work = async () => {
+            const stat = await nativeMetadata(
+              nativeOrigins.get(native) ?? native,
+              rootPin,
+              pathArgument(args[0])
+            )
+            return key === 'exists' ? stat !== null : stat
+          }
+          const queue = Reflect.get(target, 'queue')
+          return typeof queue === 'function' ? queue.call(target, work) : work()
+        }
         for (const path of args.slice(0, paths[String(key)]))
           await assertVaultPath(adapter, pathArgument(path))
         const pinned = await rootPin?.verify()
@@ -1398,6 +1412,34 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
   roots.set(logical, pin)
   return pin
 }
+/** Fresh read-only metadata: one no-link walk, with the root pinned at both ends. */
+async function nativeMetadata(native: object, pin: RootPin, path: string) {
+  const io = native as typeof import('node:fs/promises')
+  const root = await pin.verify()
+  let leaf: import('node:fs').Stats | null = null
+  await assertNoLinkedAncestors(path, async (part) => {
+    try {
+      leaf = await io.lstat(physicalPath(root.path, part))
+      return leaf.isSymbolicLink()
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'ENOENT') throw error
+      leaf = null
+      return false
+    }
+  })
+  if (!path.split('/').filter(Boolean).length) leaf = await io.lstat(root.path)
+  await pin.verify()
+  const stat = leaf
+  return stat === null
+    ? null
+    : {
+        type: stat.isDirectory() ? ('folder' as const) : ('file' as const),
+        ctime: stat.birthtimeMs,
+        mtime: stat.mtimeMs,
+        size: stat.size,
+      }
+}
+
 async function desktopOperation(
   key: string,
   args: unknown[],
