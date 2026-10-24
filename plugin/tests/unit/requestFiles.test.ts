@@ -396,3 +396,25 @@ it('never turns a deleted file environment into a saved environment', async () =
   await expect(model.saveEnvironment(edit)).rejects.toThrow(/gone/)
   expect(save).not.toHaveBeenCalled()
 })
+
+it('resolves response headers case-insensitively and JSON array paths', async () => {
+  const text =
+    '# @name create\nPOST https://example.test/items\n\n{}\n### Next\nGET https://example.test/items/{{create.response.body.$.items[0].id}}\nX-Location: {{create.response.headers.Location}}'
+  const files = new FileCollections({
+    list: async () => ['sample.http'],
+    read: async () => ({ text, contentId: 'v1' }),
+    write: async () => {},
+    watch: async () => () => {},
+  })
+  await files.refresh()
+  const [create, next] = files.collections[0].requests
+  files.capture(create.id, {
+    status: 201,
+    headers: [{ key: 'location', value: 'https://example.test/items/sample-id' }],
+    body: '{"items":[{"id":"sample-id"}]}',
+  })
+  expect(files.values(next.id)).toMatchObject({
+    'create.response.body.$.items[0].id': 'sample-id',
+    'create.response.headers.Location': 'https://example.test/items/sample-id',
+  })
+})
