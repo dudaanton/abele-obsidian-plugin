@@ -37,7 +37,7 @@ describe('parallel CI verification gates', () => {
     expect(step('guard', 'Repository guard').run).toContain('repo-guard.mjs --all')
     expect(step('guard', 'Repository guard').run).toContain('repo-guard.mjs --range')
     expect(step('dependencies', 'Audit shipped dependencies').run).toBe(
-      'npm audit --omit=dev --audit-level=moderate'
+      'node scripts/audit-dependencies.mjs'
     )
     expect(step('dependencies', 'Dead-code inventory').run).toBe('node scripts/dead-code.mjs')
     expect(step('lint', 'Lint').run).toBe('npm run lint:ci')
