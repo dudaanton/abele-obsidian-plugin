@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { RepositoryMethodSchemas } from '@abele/node-protocol'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { applyTreeChanges } from '@/repository/nodeTreeChanges'
 import type { TreeNode } from '@/repository/model'
@@ -158,6 +159,66 @@ describe('node repository source on the change stream', () => {
     })
     expect(events).not.toHaveBeenCalled()
     source.dispose()
+  })
+  it('renews its own lease and releases the replaced id on capable nodes', async () => {
+    const f = nodeRepositoryFixture({ changes: true })
+    f.client.describe = async () => ({
+      capabilities: {
+        capabilities: {
+          repository_changes_v1: { status: 'supported' },
+          repository_watch_renewal_v1: { status: 'supported' },
+        },
+      },
+    })
+    const original = f.client.repository.watch.bind(f.client.repository)
+    let id = 0
+    const watch = vi.spyOn(f.client.repository, 'watch').mockImplementation(async (params) => ({
+      ...(await original(params)),
+      subscription_id: `lease-${++id}`,
+    }))
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
+    await source.startWatching()
+    f.batch(1, { complete: true, entries: [], git: null })
+    try {
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      expect(watch.mock.calls.map(([params]) => params)).toEqual([
+        { worktree_id: identity.workspace, changes: null },
+        {
+          worktree_id: identity.workspace,
+          subscription_id: 'lease-1',
+          changes: { stream_id: 'stream-fixture', revision: 1 },
+        },
+        {
+          worktree_id: identity.workspace,
+          subscription_id: 'lease-2',
+          changes: { stream_id: 'stream-fixture', revision: 1 },
+        },
+      ])
+      for (const [params] of watch.mock.calls)
+        expect(RepositoryMethodSchemas['repository.v1.watch'].parse(params)).toEqual(params)
+      expect(
+        f.calls
+          .filter((c) => c.method === 'repository.v1.unwatch')
+          .map((c) => c.params.subscription_id)
+      ).toEqual(['lease-1', 'lease-2'])
+      watch.mockRejectedValueOnce({ code: 'unauthorized' })
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      expect(watch.mock.calls.at(-1)![0]).toEqual({
+        worktree_id: identity.workspace,
+        changes: { stream_id: 'stream-fixture', revision: 1 },
+      })
+      watch.mockRejectedValueOnce({ code: 'disconnected' })
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+      expect(watch.mock.calls.at(-1)![0].subscription_id).toBe('lease-4')
+    } finally {
+      source.dispose()
+    }
   })
   /** A promise the test lets go of, for a node answer that is late. */
   const later = () => {

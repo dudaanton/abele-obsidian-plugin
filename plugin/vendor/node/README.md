@@ -5,8 +5,11 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 
 ## Current browser payloads
 
-All four packages are built from the clean released AbeleNode v0.4.49 archive,
-including the provider-independent `command_context_v1` and `integration_context_v1` contracts.
+All four packages are built from the clean AbeleNode archive at
+`ee659bb067681404bf0a33fdd4a839c447012e71` (the v0.4.60 watch renewal change),
+including `repository_watch_renewal_v1` and the optional `subscription_id` on repository watch requests.
+The plugin sends this id only when the node advertises explicit renewal.
+The provider-independent `command_context_v1` and `integration_context_v1` contracts remain included.
 The clean release archive is built for the four browser packages only.
 Apply paired-welcome.patch, lsp-install-deadline.patch (updated for HTTP long polling),
 execution-policy-admission.patch, repository-deadline.patch and command-context-errors.patch before compiling and packaging. The admission patch adds

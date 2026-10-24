@@ -90,8 +90,16 @@ describe('the path sidebar port on the change stream', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
-  const start = async (changes = true) => {
+  const start = async (changes = true, renewal = false) => {
     const f = nodeRepositoryFixture({ changes })
+    if (renewal) {
+      const original = f.client.repository.watch.bind(f.client.repository)
+      let id = 0
+      vi.spyOn(f.client.repository, 'watch').mockImplementation(async (params) => ({
+        ...(await original(params)),
+        subscription_id: `sidebar-lease-${++id}`,
+      }))
+    }
     const client = {
       ...f.client,
       store: new MemoryClientStore(),
@@ -101,6 +109,7 @@ describe('the path sidebar port on the change stream', () => {
               capabilities: {
                 capabilities: {
                   repository_changes_v1: { status: 'supported' },
+                  ...(renewal ? { repository_watch_renewal_v1: { status: 'supported' } } : {}),
                   workspace_changes_v1: { status: 'supported' },
                   node_path_v2: { status: 'supported' },
                 },
@@ -192,6 +201,41 @@ describe('the path sidebar port on the change stream', () => {
     })
     expect(notify).not.toHaveBeenCalled()
     stop()
+  })
+  it('renews the sidebar watch with its own lease id on capable nodes', async () => {
+    const { calls, client, stop } = await start(true, true)
+    try {
+      await vi.advanceTimersByTimeAsync(45000)
+      expect(calls.filter((c) => c.method === 'repository.v1.watch').map((c) => c.params)).toEqual([
+        { worktree_id: identity.workspace, changes: null },
+        {
+          worktree_id: identity.workspace,
+          subscription_id: 'sidebar-lease-1',
+          changes: { stream_id: 'stream-fixture', revision: 0 },
+        },
+      ])
+      const watch = vi
+        .spyOn(client.repository, 'watch')
+        .mockRejectedValueOnce({ code: 'unauthorized' })
+      await vi.advanceTimersByTimeAsync(90000)
+      expect(watch.mock.calls.at(-1)![0]).toEqual({
+        worktree_id: identity.workspace,
+        changes: { stream_id: 'stream-fixture', revision: 0 },
+      })
+      expect(
+        calls
+          .filter((c) => c.method === 'repository.v1.unwatch')
+          .map((c) => c.params.subscription_id)
+      ).toEqual(['sidebar-lease-1'])
+      watch.mockRejectedValueOnce({ code: 'disconnected' })
+      await vi.advanceTimersByTimeAsync(90000)
+      expect(watch.mock.calls.at(-1)![0].subscription_id).toBe('sidebar-lease-3')
+    } finally {
+      stop()
+    }
+    expect(
+      calls.filter((c) => c.method === 'repository.v1.unwatch').at(-1)!.params.subscription_id
+    ).toBe('sidebar-lease-4')
   })
   it('reads the folder list again for a batch only when git state moved', async () => {
     const { port, batch, stop } = await start()

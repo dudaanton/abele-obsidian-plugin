@@ -1204,6 +1204,7 @@ export class NodePathClientPort implements NodePathPort {
     let cursor: RepositoryChangesCursor | undefined
     /** Batches that arrived before the lease said where the stream stands. */
     const early: (RepositoryChangeBatch | WorkspaceChangeBatch)[] = []
+    let lease: Awaited<ReturnType<NodeClient['repository']['watch']>> | undefined
     const acquire = () =>
       target.kind === 'workspace'
         ? this.client.nodePath.watch(
@@ -1211,11 +1212,13 @@ export class NodePathClientPort implements NodePathPort {
               ? { workspace_id: target.id, changes: cursor ?? null }
               : { workspace_id: target.id }
           )
-        : this.client.repository.watch(
-            streaming
-              ? { worktree_id: target.id, changes: cursor ?? null }
-              : { worktree_id: target.id }
-          )
+        : this.client.repository.watch({
+            worktree_id: target.id,
+            ...(streaming ? { changes: cursor ?? null } : {}),
+            ...(this.capabilities.includes('repository_watch_renewal_v1') && lease
+              ? { subscription_id: lease.subscription_id }
+              : {}),
+          })
     const release = (subscription_id: string) =>
       target.kind === 'workspace'
         ? this.client.nodePath.unwatch({ workspace_id: target.id, subscription_id })
@@ -1309,7 +1312,6 @@ export class NodePathClientPort implements NodePathPort {
       )
         notify()
     })
-    let lease: Awaited<ReturnType<typeof acquire>>
     try {
       lease = await acquire()
     } catch (error) {
@@ -1318,18 +1320,26 @@ export class NodePathClientPort implements NodePathPort {
     }
     adopt(lease)
     const renew = async () => {
+      const previous = lease
       try {
         const next = await acquire()
         if (stopped) {
           await release(next.subscription_id)
           return
         }
-        const previous = lease
         lease = next
-        if (previous.subscription_id !== next.subscription_id)
+        if (previous && previous.subscription_id !== next.subscription_id)
           await release(previous.subscription_id)
         if (!adopt(next)) notify()
-      } catch {
+      } catch (error) {
+        // Reacquire after the node has forgotten an expired lease, keeping the stream cursor.
+        if (
+          target.kind === 'worktree' &&
+          this.capabilities.includes('repository_watch_renewal_v1') &&
+          lease === previous &&
+          (error as { code?: unknown })?.code === 'unauthorized'
+        )
+          lease = undefined
         notify()
       }
       if (!stopped)
@@ -1344,7 +1354,7 @@ export class NodePathClientPort implements NodePathPort {
       stopped = true
       window.clearTimeout(timer)
       stop()
-      void release(lease.subscription_id).catch(() => {})
+      if (lease) void release(lease.subscription_id).catch(() => {})
     }
   }
 }

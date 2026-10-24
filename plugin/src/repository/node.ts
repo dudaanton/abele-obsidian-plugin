@@ -123,6 +123,7 @@ export class NodeRepositorySource implements RepositorySource {
   private mutableWatch = false
   /** Set once the node is known to send change batches; null until asked. */
   private changeStream: Promise<boolean> | null = null
+  private watchRenewal = false
   private streaming = false
   private cursor?: RepositoryChangesCursor
   /** Batches that arrived before the lease said where the stream stands. */
@@ -1280,6 +1281,9 @@ export class NodeRepositorySource implements RepositorySource {
               description as { capabilities?: { capabilities?: Record<string, unknown> } }
             )?.capabilities?.capabilities
             const stream = capabilities?.repository_changes_v1 as { status?: unknown } | undefined
+            this.watchRenewal =
+              (capabilities?.repository_watch_renewal_v1 as { status?: unknown } | undefined)
+                ?.status === 'supported'
             return stream?.status === 'supported'
           })
           .catch(() => {
@@ -1343,13 +1347,16 @@ export class NodeRepositorySource implements RepositorySource {
   }
   private async renewWatch() {
     if (this.disposed || this.retired || !this.mutableWatch) return
+    const previous = this.subscription
     try {
       if (this.client.connected) {
         const streaming = await this.supportsChanges()
         const lease = await this.read(() =>
-          this.client.repository.watch(
-            streaming ? { ...this.target, changes: this.cursor ?? null } : this.target
-          )
+          this.client.repository.watch({
+            ...this.target,
+            ...(streaming ? { changes: this.cursor ?? null } : {}),
+            ...(this.watchRenewal && previous ? { subscription_id: previous } : {}),
+          })
         )
         if (!this.mutableWatch || this.disposed || this.retired) {
           void this.client.repository
@@ -1359,6 +1366,10 @@ export class NodeRepositorySource implements RepositorySource {
         }
         const firstLease = !this.subscription
         this.subscription = lease.subscription_id
+        if (previous && previous !== lease.subscription_id)
+          void this.client.repository
+            .unwatch({ ...this.target, subscription_id: previous })
+            .catch(() => {})
         if (streaming && lease.changes) {
           this.streaming = true
           const early = this.early.splice(0)
@@ -1371,7 +1382,14 @@ export class NodeRepositorySource implements RepositorySource {
           this.emit({ kind: 'workspace' })
         }
       }
-    } catch {
+    } catch (error) {
+      // An expired or lost lease cannot be renewed; acquire a fresh one on the next retry.
+      if (
+        this.watchRenewal &&
+        previous === this.subscription &&
+        (error as { code?: unknown })?.code === 'unauthorized'
+      )
+        this.subscription = undefined
       /* Reconnection polling will retry the bounded lease. */
     }
     if (!this.disposed && !this.retired && this.mutableWatch)
