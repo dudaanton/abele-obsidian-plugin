@@ -1,6 +1,12 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import {
+  enterPhone,
+  evalLong,
+  hasTestApi,
+  isObsidianRunning,
+  restoreDesktopWindow,
+} from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
@@ -63,5 +69,40 @@ describe.runIf(isObsidianRunning() && hasTestApi())('linked checklist target typ
       )
     )
     expect(report).toEqual({ cards: true, ordinary: true, changed: true, reading: true })
+    if (!onPhone()) {
+      try {
+        await enterPhone(390, 844)
+        const phone = JSON.parse(
+          await evalLong(
+            `(async () => {
+          const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+          const leaf = app.workspace.getLeaf(false)
+          await leaf.setViewState({ type: 'markdown', state: {
+            file: ${JSON.stringify(folder + '/Sample source.md')}, mode: 'source', source: false
+          }, active: true })
+          leaf.view.editor.setCursor({ line: 3, ch: 0 })
+          for (let i = 0; i < 100 && leaf.view.containerEl.querySelectorAll('.abele-task-widget-container').length !== 1; i++) await wait(100)
+          const cards = leaf.view.containerEl.querySelectorAll('.abele-task-widget-container').length
+          const native = [...leaf.view.containerEl.querySelectorAll('.HyperMD-task-line')].some(el => el.textContent.includes('Sample note'))
+          const win = require('@electron/remote').getCurrentWindow()
+          const [w, h] = win.getContentSize()
+          win.setContentSize(w + 2, h + 2)
+          await wait(300)
+          win.setContentSize(w, h)
+          await wait(600)
+          require('fs').writeFileSync(${JSON.stringify(shots + '/phone-links.png')}, (await win.webContents.capturePage()).toPNG())
+          await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(folder + '/Sample source.md')}, mode: 'preview' } })
+          await wait(600)
+          require('fs').writeFileSync(${JSON.stringify(shots + '/phone-reading.png')}, (await win.webContents.capturePage()).toPNG())
+          return JSON.stringify({ cards, native, mobile: !!app.isMobile })
+        })()`,
+            120_000
+          )
+        )
+        expect(phone).toEqual({ cards: 1, native: true, mobile: true })
+      } finally {
+        await restoreDesktopWindow()
+      }
+    }
   }, 240_000)
 })
