@@ -68,7 +68,7 @@ function buildTaskDecorations(state: EditorState): DecorationSet {
     const wikilink = taskLinkOnLine(
       line.text,
       currentFile.path,
-      GlobalStore.getInstance().app.metadataCache
+      GlobalStore.getInstance().app?.metadataCache
     )
     if (wikilink) {
       if (
@@ -140,7 +140,8 @@ export const taskStateField = StateField.define<DecorationSet>({
     if (paths.length && tr.state.field(editorLivePreviewField)) {
       const file = tr.state.field(editorInfoField)?.file
       if (!file) return decorations
-      const cache = GlobalStore.getInstance().app.metadataCache
+      const cache = GlobalStore.getInstance().app?.metadataCache
+      if (!cache) return decorations
       // Only matching checklist lines are resolved. Keep every unrelated decoration intact,
       // including the footer, and let CodeMirror redraw just the changed ranges.
       for (let i = 1; i <= tr.state.doc.lines; i++) {
@@ -183,7 +184,7 @@ export const taskStateField = StateField.define<DecorationSet>({
 /** Each editor owns its listener, including embedded editors, and releases it on close. */
 export const taskMetadataExtension = ViewPlugin.fromClass(
   class {
-    private readonly cache = GlobalStore.getInstance().app.metadataCache
+    private readonly cache = GlobalStore.getInstance().app?.metadataCache
     private readonly event
     private links: string[] = []
     private index(state: EditorState) {
@@ -195,13 +196,13 @@ export const taskMetadataExtension = ViewPlugin.fromClass(
     }
     constructor(view: EditorView) {
       this.index(view.state)
-      this.event = this.cache.on('changed', (file) => {
+      this.event = this.cache?.on('changed', (file) => {
         const source = view.state.field(editorInfoField, false)?.file?.path
         if (
           source &&
           view.state.field(editorLivePreviewField, false) &&
           this.links.some(
-            (link) => this.cache.getFirstLinkpathDest(link, source)?.path === file.path
+            (link) => this.cache?.getFirstLinkpathDest(link, source)?.path === file.path
           )
         )
           view.dispatch({ effects: refreshTaskTarget.of(file.path) })
@@ -211,7 +212,7 @@ export const taskMetadataExtension = ViewPlugin.fromClass(
       if (update.docChanged) this.index(update.state)
     }
     destroy() {
-      this.cache.offref(this.event)
+      if (this.event) this.cache?.offref(this.event)
     }
   }
 )

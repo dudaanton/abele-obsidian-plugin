@@ -2,6 +2,11 @@ import { expect, it, vi } from 'vitest'
 import type { MetadataCache, TFile } from 'obsidian'
 import { taskLinkOnLine } from '@/helpers/taskLinkDecision'
 
+it.each([undefined, null])('preserves shape-only behavior when metadata is %s', (cache) => {
+  expect(taskLinkOnLine('- [ ] [[Sample]]', 'Source.md', cache)).toBe('[[Sample]]')
+  expect(taskLinkOnLine('- [ ] ordinary text', 'Source.md', cache)).toBeNull()
+})
+
 it.each(['task', 'note', undefined, ['task']])('uses the indexed exact type %s', (type) => {
   const file = { path: 'Folder/Sample.md' } as TFile
   const cache = {

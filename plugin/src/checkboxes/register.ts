@@ -18,7 +18,7 @@ function editorTarget(view: EditorView, number: number, plugin: Plugin): Target 
   const line = view.state.doc.line(number)
   const box = checkboxOnLine(line.text)
   const path = view.state.field(editorInfoField, false)?.file?.path ?? ''
-  if (!box || taskLinkOnLine(line.text, path, plugin.app.metadataCache)) return null
+  if (!box || taskLinkOnLine(line.text, path, plugin.app?.metadataCache)) return null
   const tree = ensureSyntaxTree(view.state, line.to, 50)
   if (!tree) return null
   for (let node = tree.resolveInner(line.from + box.from, 1); node; node = node.parent!) {
@@ -70,7 +70,7 @@ export function registerCheckboxes(plugin: Plugin): void {
         const file = plugin.app.vault.getAbstractFileByPath(ctx.sourcePath)
         if (
           !box ||
-          taskLinkOnLine(expected, ctx.sourcePath, plugin.app.metadataCache) ||
+          taskLinkOnLine(expected, ctx.sourcePath, plugin.app?.metadataCache) ||
           !(file instanceof TFile)
         )
           return null

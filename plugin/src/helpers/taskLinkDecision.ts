@@ -9,10 +9,11 @@ export function taskLinkPath(wikilink: string): string {
 export function taskLinkOnLine(
   line: string,
   sourcePath: string,
-  cache: MetadataCache
+  cache: MetadataCache | null | undefined
 ): string | null {
   const link = parseTaskLine(line)
   if (!link) return null
+  if (!cache) return link
   const file = cache.getFirstLinkpathDest(taskLinkPath(link), sourcePath)
   return !file || isTaskType(cache.getFileCache(file)?.frontmatter?.type) ? link : null
 }
