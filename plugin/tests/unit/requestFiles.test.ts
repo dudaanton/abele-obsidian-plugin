@@ -118,6 +118,7 @@ it('reads merged file environments and moves an exposed secret only on an explic
     list: async () => Object.keys(contents),
     read: async (path) => ({ text: contents[path], contentId: contents[path] }),
     write,
+    writeSensitive: write,
     watch: async () => () => {},
   })
   await files.refresh()
@@ -417,4 +418,118 @@ it('resolves response headers case-insensitively and JSON array paths', async ()
     'create.response.body.$.items[0].id': 'sample-id',
     'create.response.headers.Location': 'https://example.test/items/sample-id',
   })
+})
+
+it.each([{ headers: [] }, { headers: [{ key: 'X-Sample', value: 'new' }] }])(
+  'replaces unterminated HTTP headers with %j',
+  ({ headers }) => {
+    const text = 'GET https://example.test\nX-Sample: old'
+    const request = parseRequestFile('sample.http', text).requests[0]
+    const changed = replaceRequestBlock(text, request, { ...request.doc, headers })
+    expect(parseRequestFile('sample.http', changed).requests[0].doc.headers).toEqual(headers)
+  }
+)
+
+it('round trips edited Bruno form fields, including repeated and escaped values', () => {
+  const text =
+    'meta {\n  name: Form\n}\npost {\n  url: https://example.test\n  body: form-urlencoded\n}\nbody:form-urlencoded {\n  qty: 1\n}\n'
+  const request = parseRequestFile('sample.bru', text).requests[0]
+  const body = { format: 'form' as const, text: 'qty=2&label=a%2Bb%3Ac&qty=3' }
+  const changed = replaceRequestBlock(text, request, { ...request.doc, body })
+  expect(parseRequestFile('sample.bru', changed).requests[0].doc.body).toEqual(body)
+})
+
+it('releases a conflicted edit only after explicit source resolution', async () => {
+  let text = source
+  let resolved = false
+  const files = new FileCollections({
+    list: async () => ['sample.http'],
+    read: async () => ({ text, contentId: text }),
+    write: async (_path, _base, next) => {
+      text = next
+    },
+    conflict: async () => {},
+    resolved: async () => resolved,
+    watch: async () => () => {},
+  })
+  await files.refresh()
+  const request = files.collections[0].requests[0]
+  files.beginEdit(request.id)
+  text += '# external\n'
+  await expect(
+    files.save(request.id, { ...request.doc, url: 'https://example.test/new' })
+  ).rejects.toThrow(/changed/)
+  await files.refresh()
+  expect(files.isEditing(request.id)).toBe(true)
+  resolved = true
+  await files.refresh()
+  expect(files.isEditing(request.id)).toBe(false)
+  files.beginEdit(request.id)
+  await files.save(request.id, {
+    ...files.get(request.id)!.doc,
+    url: 'https://example.test/resolved',
+  })
+  expect(text).toContain('https://example.test/resolved')
+})
+
+it('never routes secret migration through durable file drafts, even with other literals present', async () => {
+  const text = JSON.stringify({ dev: { token: 'sample-token', password: 'sample-password' } })
+  const write = vi.fn(async () => {})
+  const writeSensitive = vi.fn(async () => {
+    throw new Error('interrupted')
+  })
+  const files = new FileCollections({
+    list: async () => ['sample.http', 'http-client.env.json'],
+    read: async (path) => ({ text: path.endsWith('.json') ? text : source, contentId: path }),
+    write,
+    writeSensitive,
+    watch: async () => () => {},
+  })
+  await files.refresh()
+  await expect(
+    files.moveSecret(files.environments[0].id, 'token', async () => 'sample-key')
+  ).rejects.toThrow('interrupted')
+  expect(write).not.toHaveBeenCalled()
+  expect(writeSensitive).toHaveBeenCalledOnce()
+})
+
+it('adopts a source-editor resolution instead of replaying a queued request edit', async () => {
+  const { RequestsModel } = await import('@/requests/RequestsModel')
+  const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+  let text = 'GET https://example.test/original'
+  let resolved = false
+  const model = new RequestsModel(
+    fakeNode().rpc,
+    'project-1',
+    ports({
+      files: {
+        list: async () => ['sample.http'],
+        read: async () => ({ text, contentId: text }),
+        write: async (_path, _base, next) => {
+          text = next
+        },
+        conflict: async () => {},
+        resolved: async () => resolved,
+        watch: async () => () => {},
+      },
+    })
+  )
+  try {
+    await model.load()
+    const id = model.files!.collections[0].requests[0].id
+    await model.open(id)
+    model.change(id, { ...model.entry(id).doc!, url: 'https://example.test/local' })
+    text = 'GET https://example.test/external'
+    await expect(model.flush(id)).rejects.toThrow(/changed/)
+    model.change(id, { ...model.entry(id).doc!, url: 'https://example.test/queued' })
+    text = 'GET https://example.test/resolved'
+    resolved = true
+    await model.refreshFiles()
+    expect(model.entry(id).doc!.url).toBe('https://example.test/resolved')
+    await model.flush(id)
+    expect(text).toBe('GET https://example.test/resolved')
+    expect(model.entry(id).error).toBeUndefined()
+  } finally {
+    model.destroy()
+  }
 })

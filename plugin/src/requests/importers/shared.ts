@@ -38,6 +38,11 @@ export function credential(key: string, value: string) {
   return rest.length > 0
 }
 
+/** Literal portions of a secret remain sensitive even when mixed with key or variable references. */
+export function literalSecretParts(value: string): string[] {
+  return value.split(/\$\{abele_key:[^}]+\}|\{\{[^}]+\}\}/g).filter(Boolean)
+}
+
 /** A query or body field whose name says it holds a secret. */
 export const SECRET_FIELD =
   /^(.*[_-])?(token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pass|sig|signature|auth|session|sid)$/i

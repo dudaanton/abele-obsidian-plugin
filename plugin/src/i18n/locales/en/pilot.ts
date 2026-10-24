@@ -1,4 +1,11 @@
 export const en = {
+  'requests.file.formUnsupported': 'This form field cannot be represented in a Bruno file',
+  'requests.file.secretPending':
+    'The environment save conflicted or its outcome is pending; refresh before retrying',
+  'requests.file.secretChecked':
+    'The previous secret move was checked; review the refreshed environment before retrying',
+  'requests.file.sensitiveUnavailable': 'Sensitive file writes are unavailable',
+  'requests.file.pendingEdit': 'Review the pending file edit first',
   'requests.file.methodProblem': 'Expected an HTTP method and address',
   'requests.file.headerProblem': 'Expected a header name and colon',
 

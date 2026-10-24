@@ -3267,9 +3267,12 @@ and durable conflict drafts; review happens in the ordinary node file editor. Na
 captures and their values live only in the collection's current client session. Embedded source
 scripts are displayed, not executed. Adjacent public/private HTTP environment files stay in the
 project; explicitly moving a secret first saves it in the plugin key store/settings and then
-conditionally replaces its source value with `${abele_key:name}`. A failed or uncertain file save keeps the
-stored key and the ordinary node save evidence for review; it does not start another write
-automatically.
+conditionally replaces its source value with `${abele_key:name}`. Secret-bearing request files and environment writes use a separate authenticated connection
+with memory-only drafts, outbox and receipts; their original and replacement text never enter
+IndexedDB. A failed or uncertain secret move keeps the stored key, and retains its operation
+identity only for the current session. An explicit retry checks the retained operation
+before another write; nothing is replayed automatically after a restart. Ordinary request conflicts
+release their retained edit baseline after an explicit source-editor save or discard.
 
 Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;
 2, 5, 10 or 30 minutes). AI general settings transfer carries it between devices.

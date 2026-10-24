@@ -1,5 +1,13 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'requests.file.formUnsupported':
+    'Dieses Formularfeld kann nicht in einer Bruno-Datei dargestellt werden',
+  'requests.file.secretPending':
+    'Beim Speichern der Umgebung gab es einen Konflikt oder das Ergebnis steht aus; aktualisiere vor einem erneuten Versuch',
+  'requests.file.secretChecked':
+    'Die vorherige Geheimnisübertragung wurde geprüft; prüfe vor einem erneuten Versuch die aktualisierte Umgebung',
+  'requests.file.sensitiveUnavailable': 'Das Schreiben sensibler Dateien ist nicht verfügbar',
+  'requests.file.pendingEdit': 'Prüfe zuerst die ausstehende Dateiänderung',
   'requests.file.methodProblem': 'HTTP-Methode und Adresse erwartet',
   'requests.file.headerProblem': 'Headername und Doppelpunkt erwartet',
 

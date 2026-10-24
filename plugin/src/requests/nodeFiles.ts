@@ -1,21 +1,29 @@
+import { t } from '@/i18n'
 import { shallowRef } from 'vue'
 import type { NodeClient } from '@abele/node-client'
 import { NodeDocumentSource } from '@/node/NodeFilesModel'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
 import type { PathTarget } from '@/node/NodePathModel'
 import type { RequestFilePort } from './FileCollections'
+import { parseRequestFile } from './files'
+import { credential, SECRET_NAME, scrubSecrets } from './importers/shared'
 
 /** Reuses the node's independent watch leases and durable conditional document writes. */
 export class NodeRequestFiles implements RequestFilePort {
   private target = shallowRef<PathTarget>()
   private source?: NodeDocumentSource
   private preparing?: Promise<PathTarget>
+  private sensitiveClient?: NodeClient
+  private sensitiveSource?: NodeDocumentSource
+  private sensitiveWork: Promise<void> = Promise.resolve()
+  private conflicts = new Map<string, string | null>()
   private readonly path: NodePathClientPort
   constructor(
     private readonly client: NodeClient,
     private readonly identity: { nodeId: string; registrationId: string; projectId: string },
     private readonly connect: () => Promise<void>,
-    private readonly worktreeId?: string
+    private readonly worktreeId?: string,
+    private readonly transientClient?: () => NodeClient
   ) {
     this.path = new NodePathClientPort(client, identity)
   }
@@ -128,10 +136,14 @@ export class NodeRequestFiles implements RequestFilePort {
     return { text: doc.text, contentId: doc.contentId }
   }
   async write(path: string, base: { text: string; contentId: string | null }, text: string) {
+    if (this.sensitiveText(path, base.text) || this.sensitiveText(path, text))
+      return this.writeSensitive(path, base, text)
     await this.ready()
     const previous = await this.source.draft(path)
-    if (previous && previous.status !== 'saved')
+    if (previous && previous.status !== 'saved') {
+      this.conflicts.set(path, previous.revision)
       throw new Error('Open the file to review its pending edit')
+    }
     const draft = await this.source.edit(
       path,
       {
@@ -144,14 +156,96 @@ export class NodeRequestFiles implements RequestFilePort {
       text,
       previous?.revision ?? null
     )
-    const saved = await this.source.save(path, draft)
-    if (saved?.status !== 'saved')
-      throw new Error('Open the file to review its save conflict or pending outcome')
+    try {
+      const saved = await this.source.save(path, draft)
+      if (saved?.status !== 'saved')
+        throw new Error('Open the file to review its save conflict or pending outcome')
+    } catch (error) {
+      const retained = await this.source.draft(path)
+      if (retained && retained.status !== 'saved') this.conflicts.set(path, retained.revision)
+      throw error
+    }
+  }
+  private sensitiveText(path: string, text: string) {
+    if (/(^|\/)http-client(?:\.private)?\.env\.json$/i.test(path)) return true
+    const parsed = parseRequestFile(path, text)
+    if (
+      parsed.vars.some(
+        (v) => SECRET_NAME.test(v.key) && v.value && !/^\$\{abele_key:[^}]+\}$/.test(v.value)
+      )
+    )
+      return true
+    return parsed.requests.some(
+      ({ doc }) =>
+        doc.headers.some((h) => credential(h.key, h.value)) ||
+        JSON.stringify(
+          scrubSecrets({ collection: '', requests: [{ doc }], vars: [], leftOut: [] }).requests[0]
+            .doc
+        ) !== JSON.stringify(doc)
+    )
+  }
+  /** The SDK's normal CAS/receipt flow, isolated from the persistent installation store. */
+  writeSensitive(path: string, base: { text: string; contentId: string | null }, text: string) {
+    const work = this.sensitiveWork.then(async () => {
+      const target = await this.ready()
+      const durable = await this.source.draft(path)
+      if (durable && durable.status !== 'saved') throw new Error(t('requests.file.pendingEdit'))
+      if (!this.transientClient) throw new Error(t('requests.file.sensitiveUnavailable'))
+      const client = (this.sensitiveClient ??= this.transientClient())
+      const source = (this.sensitiveSource ??= new NodeDocumentSource(
+        client,
+        target.id,
+        target.kind === 'worktree'
+      ))
+      try {
+        await client.connect()
+        const previous = await source.draft(path)
+        if (previous?.pending) {
+          await source.check(path)
+          throw new Error(t('requests.file.secretChecked'))
+        }
+        const draft = await source.edit(
+          path,
+          {
+            ...base,
+            size: new TextEncoder().encode(base.text).length,
+            binary: false,
+            large: false,
+            tooLarge: false,
+          },
+          text,
+          previous?.revision ?? null
+        )
+        const saved = await source.save(path, draft)
+        if (saved?.status !== 'saved') throw new Error(t('requests.file.secretPending'))
+      } catch (error) {
+        const pending = await source.draft(path)
+        if (pending && pending.status !== 'saved')
+          this.conflicts.set(path, durable?.revision ?? null)
+        throw error
+      } finally {
+        await client.disconnect()
+      }
+    })
+    this.sensitiveWork = work.catch(() => {})
+    return work
+  }
+  async resolved(path: string) {
+    const revision = this.conflicts.get(path)
+    if (!this.conflicts.has(path)) return false
+    const draft = await this.source.draft(path)
+    const resolved = draft
+      ? draft.status === 'saved' && draft.revision !== revision
+      : revision !== null
+    if (resolved) this.conflicts.delete(path)
+    return resolved
   }
   async conflict(path: string, base: { text: string; contentId: string | null }, text: string) {
     try {
       await this.write(path, base, text)
     } finally {
+      const draft = await this.source.draft(path)
+      if (draft && draft.status !== 'saved') this.conflicts.set(path, draft.revision)
       await this.open(path)
     }
   }

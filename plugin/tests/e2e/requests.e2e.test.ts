@@ -755,6 +755,23 @@ it('reads a project request file, sends its chain and writes an edit back on bot
         [...environmentDialog.querySelectorAll('button')].find(button=>button.textContent.trim()==='Cancel').click();
         await until(()=>!document.querySelector('.abele-http-env__exposed'),'environment dialog closed');
         await api.requests.openTab(c,read.id);
+        stage='saved request secret preview';
+        const saved=await m.create('Samples','File environment preview',{url:'{{base}}/samples/{{token}}'});
+        try {
+          await api.requests.openTab(c,saved);
+          shown=app.workspace.getLeavesOfType('abele-request').find(l=>l.view.getState().id===saved);
+          const preview=await until(()=>tab()?.querySelector('.abele-http-request__resolved'),'saved request preview');
+          if(preview.textContent.includes('fixture-secret'))throw Error('File environment secret leaked into saved request preview');
+          if(!preview.textContent.includes('••••'))throw Error('Secret preview is not masked');
+          await shot('file-environment-saved-preview-${device}');
+        } finally { await m.remove(saved); }
+        await api.requests.openTab(c,read.id);
+        shown=app.workspace.getLeavesOfType('abele-request').find(l=>l.view.getState().id===read.id);
+        stage='move secret without persistent drafts';
+        await m.files.moveSecret(m.files.environments.find(e=>e.name==='sample').id,'token',async()=> 'fixture-file-key');
+        if(fs.readFileSync(${JSON.stringify(env)},'utf8').includes('fixture-secret'))throw Error('Secret move did not update source');
+        const leaked=await nodes.connection(c.registrationId).client.store.transaction(state=>JSON.stringify(state).includes('fixture-secret'));
+        if(leaked)throw Error('Secret move persisted plaintext in the node store');
         stage='remove source';
         fs.unlinkSync(${JSON.stringify(path)});
         await m.refreshFiles();

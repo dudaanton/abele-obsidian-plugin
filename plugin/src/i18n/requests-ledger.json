@@ -208,5 +208,55 @@
       "es",
       "de"
     ]
+  },
+  "requests.file.pendingEdit": {
+    "englishHash": "dfebf444d2443e478421295f56715a8a3b10819da5dc862c8e0c30517bbdc1af",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.sensitiveUnavailable": {
+    "englishHash": "8597662dbdf4f14eab3be628ccc1cc5b8c068f636a5602bdd98015119e2eb5d9",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.secretChecked": {
+    "englishHash": "b1ded98aebf243da50e3e3aa341014d59faefa6b6633bc1a88f4690b444ffba9",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.secretPending": {
+    "englishHash": "95aa4da80689c5b9baabcc82a8964c4ebb26f66190414838b5d4ccab06ba86c0",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.formUnsupported": {
+    "englishHash": "f2f348a8b878cc7bcfb528e4598c8c13df76429780c5e764262a21bf391944c1",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

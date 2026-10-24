@@ -109,3 +109,41 @@ it('shows file variables in the request tab while masking file environment secre
   expect(JSON.stringify(values)).not.toContain('sample-private-value')
   expect(values.find((v) => v.key === 'token')?.secret).toBe(true)
 })
+
+it.each(['sample-private-value', 'sample-private-value${abele_key:sample-key}'])(
+  'masks and redacts file environment secret %s for saved requests too',
+  async (secret) => {
+    const { shownVars } = await import('@/requests/views')
+    const node = fakeNode()
+    const id = 'Samples/Create sample.http'
+    node.files.set(
+      id,
+      doc({ url: 'https://example.test/{{token}}', headers: [], params: [], body: undefined })
+    )
+    const model = new RequestsModel(
+      node.rpc,
+      'project-1',
+      ports({
+        files: {
+          list: async () => ['sample.http', 'http-client.env.json'],
+          read: async (path) => ({
+            text: path.endsWith('.json')
+              ? JSON.stringify({ dev: { token: secret } })
+              : 'GET https://example.test',
+            contentId: path,
+          }),
+          write: async () => {},
+          watch: async () => () => {},
+        },
+      })
+    )
+    await model.load()
+    await model.selectEnvironment(model.files!.environments[0].id)
+    await model.open(id)
+    expect(JSON.stringify(shownVars(model, model.entry(id).doc!))).not.toContain(
+      'sample-private-value'
+    )
+    await model.send(id, { interactive: true })
+    expect(node.sent[0].secrets).toContain('sample-private-value')
+  }
+)

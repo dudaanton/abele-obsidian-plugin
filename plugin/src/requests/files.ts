@@ -178,7 +178,16 @@ export function replaceRequestBlock(text: string, request: FileRequest, doc: Req
         next = replace(
           next,
           `body:${doc.body.format === 'form' ? 'form-urlencoded' : doc.body.format}`,
-          doc.body.text
+          (doc.body.format === 'form'
+            ? [...new URLSearchParams(doc.body.text)]
+                .map(([key, value]) => {
+                  if (/[\r\n:]/.test(key) || /[\r\n]/.test(value))
+                    throw new Error(t('requests.file.formUnsupported'))
+                  return `${key}: ${value}`
+                })
+                .join('\n')
+            : doc.body.text
+          )
             .split('\n')
             .map((l) => `  ${l}`)
             .join(newline)
@@ -219,8 +228,9 @@ export function replaceRequestBlock(text: string, request: FileRequest, doc: Req
   )
     block[method] = `${doc.method} ${addressOf(doc, {})}`
   const blank = block.findIndex((line, index) => index > method && !line.trim())
-  const bodyAt = blank < 0 ? block.length : blank + 1
   const scriptAt = block.findIndex((line) => /^\s*>\s*\{%/.test(line))
+  const headerEnd = blank < 0 ? (scriptAt < 0 ? block.length : scriptAt) : blank
+  const bodyAt = blank < 0 ? block.length : blank + 1
   if (JSON.stringify(doc.body) !== JSON.stringify(original.body)) {
     const end = scriptAt < 0 ? block.length : scriptAt
     block.splice(
@@ -232,7 +242,7 @@ export function replaceRequestBlock(text: string, request: FileRequest, doc: Req
     if (blank < 0 && doc.body) block.splice(bodyAt, 0, '')
   }
   if (JSON.stringify(doc.headers) !== JSON.stringify(original.headers)) {
-    const end = blank < 0 ? method + 1 : blank
+    const end = headerEnd
     const comments = block.slice(method + 1, end).filter((line) => /^\s*(#|\/\/)/.test(line))
     block.splice(
       method + 1,

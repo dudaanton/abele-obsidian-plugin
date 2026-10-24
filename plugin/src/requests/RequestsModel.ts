@@ -7,7 +7,7 @@
 // sends and is followed until the answer is in, then the script after reads the answer and the
 // checks are read. Secrets of the environment (a token from an answer) live only in memory here.
 import { reactive } from 'vue'
-import { credential, SECRET_NAME, scrubSecrets } from './importers/shared'
+import { credential, SECRET_NAME, scrubSecrets, literalSecretParts } from './importers/shared'
 import { FileCollections } from './FileCollections'
 import type { HttpOutcome, HttpSend } from '@/components/debugger/http/types'
 import {
@@ -326,6 +326,13 @@ export class RequestsModel {
     if (!this.files) return
     const previousEnvironments = new Set(this.files.environments.map((e) => e.id))
     await this.files.refresh()
+    for (const id of this.files.takeResolvedEdits()) {
+      const pending = this.saves.get(id)
+      if (pending && pending.work === undefined) {
+        window.clearTimeout(pending.timer)
+        this.saves.delete(id)
+      }
+    }
     this.state.environments = [
       ...this.state.environments.filter((name) => !previousEnvironments.has(name)),
       ...this.files.environments.map((e) => e.id),
@@ -334,8 +341,10 @@ export class RequestsModel {
       this.state.env = this.files.environments.find((e) => e.id === this.state.environment)?.doc
     for (const file of Object.values(this.files.state.entries)) {
       const entry = this.state.entries[file.id]
-      if (entry && !this.saves.has(file.id) && !this.files.isEditing(file.id) && !file.gone)
+      if (entry && !this.saves.has(file.id) && !this.files.isEditing(file.id) && !file.gone) {
         entry.doc = file.doc
+        entry.error = undefined
+      }
     }
   }
 
@@ -592,14 +601,14 @@ export class RequestsModel {
           ...new Set([
             ...keyed.secrets,
             ...Object.values(this.secrets()).filter(Boolean),
+            ...(this.files?.wasEnvironment(this.state.environment)
+              ? (this.state.env?.vars ?? [])
+                  .filter((v) => SECRET_NAME.test(v.key) && v.value)
+                  .flatMap((v) => literalSecretParts(v.value!))
+              : []),
             ...(file
               ? [
                   ...(this.files?.secretValues(id) ?? []),
-                  ...(this.state.env?.vars ?? [])
-                    .filter(
-                      (v) => SECRET_NAME.test(v.key) && v.value && !v.value.includes('${abele_key:')
-                    )
-                    .map((v) => v.value!),
                   ...doc.headers
                     .filter((h) => credential(h.key, h.value))
                     .map((h) => h.value.replace(/^(Bearer|Basic|Token)\s+/i, '')),

@@ -2,7 +2,7 @@ import { uiField, uiMessage, uiErrorMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { ref, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
-import { NodeClient } from '@abele/node-client'
+import { NodeClient, MemoryClientStore } from '@abele/node-client'
 import { NodePairingConnector } from './NodePairingConnector'
 import { RequestChannel } from '@abele/channel-client'
 import { mobileBackground } from '@/ai/mobileBackground'
@@ -722,6 +722,28 @@ export class NodeService {
     this.connections.set(id, connection)
     connection.start()
     return connection
+  }
+
+  /** A short-lived connection whose sensitive drafts, requests and receipts stay in memory. */
+  transientClient(id: string): NodeClient {
+    const target = this.connection(id).client.target
+    return new NodeClient(
+      { ...target },
+      new MemoryClientStore(),
+      target.profile === 'paired-wss-v1'
+        ? {
+            connect: async () => {
+              const current = await this.pairedConnector.target(target.expected_node_id)
+              if (
+                current.profile !== 'paired-wss-v1' ||
+                current.installation_id !== target.installation_id
+              )
+                throw new Error('installation_identity_mismatch')
+              return this.pairedConnector.connect(current)
+            },
+          }
+        : undefined
+    )
   }
 
   /** Cached child sessions only; navigation never opens a connection to discover them. */

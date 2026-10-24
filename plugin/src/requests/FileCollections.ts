@@ -1,6 +1,7 @@
+import { t } from '@/i18n'
 import { reactive } from 'vue'
 import type { HttpCapture } from '@/components/debugger/http/types'
-import { SECRET_NAME } from './importers/shared'
+import { SECRET_NAME, literalSecretParts } from './importers/shared'
 import type { EnvironmentDoc, RequestDoc, WireResponse } from './wire'
 import { parseRequestFile, replaceRequestBlock, type FileRequest, type FileProblem } from './files'
 
@@ -8,6 +9,13 @@ export interface RequestFilePort {
   list(): Promise<string[]>
   read(path: string): Promise<{ text: string; contentId: string | null }>
   write(path: string, base: { text: string; contentId: string | null }, text: string): Promise<void>
+  /** Sensitive payloads and their baselines must stay out of persistent drafts and outboxes. */
+  writeSensitive?(
+    path: string,
+    base: { text: string; contentId: string | null },
+    text: string
+  ): Promise<void>
+  resolved?(path: string): Promise<boolean>
   conflict?(
     path: string,
     base: { text: string; contentId: string | null },
@@ -42,6 +50,12 @@ export class FileCollections {
     entries: {},
     environments: [],
   })
+  private resolvedEdits = new Set<string>()
+  takeResolvedEdits() {
+    const ids = [...this.resolvedEdits]
+    this.resolvedEdits.clear()
+    return ids
+  }
   private readonly environmentIds = new Set<string>()
   private readonly fileVars = new Map<string, Record<string, string>>()
   private readonly sources = new Map<string, { text: string; contentId: string | null }>()
@@ -50,7 +64,7 @@ export class FileCollections {
   )
   private readonly edits = new Map<
     string,
-    { request: FileRequest; base: { text: string; contentId: string | null } }
+    { request: FileRequest; base: { text: string; contentId: string | null }; conflicted?: boolean }
   >()
   private refreshing?: Promise<void>
   private refreshAgain = false
@@ -94,6 +108,16 @@ export class FileCollections {
   }
   private async read() {
     const paths = await this.port.list()
+    const resolutions = new Map<string, boolean>()
+    for (const [id, edit] of this.edits) {
+      if (!edit.conflicted) continue
+      const path = edit.request.origin.file
+      if (!resolutions.has(path)) resolutions.set(path, !!(await this.port.resolved?.(path)))
+      if (resolutions.get(path)) {
+        this.edits.delete(id)
+        this.resolvedEdits.add(id)
+      }
+    }
     const roots = paths.filter((p) => /(^|\/)bruno\.json$/.test(p)).map(folderOf)
     const found: FileCollection[] = []
     const entries: FileRequest[] = []
@@ -204,10 +228,8 @@ export class FileCollections {
   secretValues(id: string) {
     const vars = this.fileVars.get(this.get(id)?.origin.file ?? '') ?? {}
     return Object.entries(vars)
-      .filter(
-        ([name, value]) => SECRET_NAME.test(name) && value && !/\{\{|\$\{abele_key:/.test(value)
-      )
-      .map(([, value]) => value)
+      .filter(([name, value]) => SECRET_NAME.test(name) && value)
+      .flatMap(([, value]) => literalSecretParts(value))
   }
   forget(id: string) {
     this.answers.delete(id)
@@ -290,10 +312,16 @@ export class FileCollections {
     const current = await this.port.read(request.origin.file)
     const text = replaceRequestBlock(base.text, request, doc)
     if (current.contentId !== base.contentId || current.text !== base.text) {
+      if (edit) edit.conflicted = true
       await this.port.conflict?.(request.origin.file, base, text)
       throw new Error('The request file changed; open the file to review the conflict')
     }
-    await this.port.write(request.origin.file, base, text)
+    try {
+      await this.port.write(request.origin.file, base, text)
+    } catch (error) {
+      if (edit) edit.conflicted = true
+      throw error
+    }
     this.edits.delete(id)
     await this.refresh()
   }
@@ -348,7 +376,11 @@ export class FileCollections {
       throw new Error('The environment file changed; open it to review the conflict')
     const name = await put(key, value)
     data[environment.name][key] = '${abele_key:' + name + '}'
-    await this.port.write(path, base, JSON.stringify(data, null, 2) + '\n')
-    await this.refresh()
+    if (!this.port.writeSensitive) throw new Error(t('requests.file.sensitiveUnavailable'))
+    try {
+      await this.port.writeSensitive(path, base, JSON.stringify(data, null, 2) + '\n')
+    } finally {
+      await this.refresh()
+    }
   }
 }

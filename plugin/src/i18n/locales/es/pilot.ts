@@ -1,5 +1,13 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'requests.file.formUnsupported':
+    'Este campo de formulario no se puede representar en un archivo Bruno',
+  'requests.file.secretPending':
+    'El guardado del entorno tuvo un conflicto o su resultado está pendiente; actualiza antes de reintentar',
+  'requests.file.secretChecked':
+    'Se comprobó el traslado anterior del secreto; revisa el entorno actualizado antes de reintentar',
+  'requests.file.sensitiveUnavailable': 'La escritura de archivos sensibles no está disponible',
+  'requests.file.pendingEdit': 'Revisa primero la edición pendiente del archivo',
   'requests.file.methodProblem': 'Se esperaba un método HTTP y una dirección',
   'requests.file.headerProblem': 'Se esperaba un nombre de cabecera y dos puntos',
 

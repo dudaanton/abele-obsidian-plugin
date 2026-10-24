@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'requests.file.formUnsupported': 'Šo formas lauku nevar attēlot Bruno failā',
+  'requests.file.secretPending':
+    'Vides saglabāšanā radās konflikts vai rezultāts vēl nav zināms; pirms atkārtošanas atsvaidziniet',
+  'requests.file.secretChecked':
+    'Iepriekšējā noslēpuma pārvietošana ir pārbaudīta; pirms atkārtošanas pārskatiet atjaunināto vidi',
+  'requests.file.sensitiveUnavailable': 'Sensitīvu failu ierakstīšana nav pieejama',
+  'requests.file.pendingEdit': 'Vispirms pārskatiet gaidošo faila labojumu',
   'requests.file.methodProblem': 'Jānorāda HTTP metode un adrese',
   'requests.file.headerProblem': 'Jānorāda galvenes nosaukums un kols',
 

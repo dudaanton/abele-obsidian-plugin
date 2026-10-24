@@ -289,7 +289,8 @@ export class RequestsService {
                 ...c,
               },
               () => NodeService.getInstance().connection(c.registrationId).connect(),
-              c.worktreeId
+              c.worktreeId,
+              () => NodeService.getInstance().transientClient(c.registrationId)
             )
           : undefined,
         keys: keyPort,

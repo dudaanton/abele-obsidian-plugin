@@ -99,13 +99,15 @@ export function shownVars(model: RequestsModel, doc: RequestDoc): HttpPair[] {
     ([id, entry]) => entry.doc === doc && !!model.files?.get(id)
   )
   return Object.entries(model.vars(doc, true)).map(([key, value]) => {
-    const namedKey = /\$\{abele_key:[^}]+\}/.test(value)
+    const hasKey = /\$\{abele_key:[^}]+\}/.test(value)
+    const namedKey = /^\$\{abele_key:[^}]+\}$/.test(value)
     const secret =
-      !!model.state.env?.vars.find((v) => v.key === key)?.secret || (file && SECRET_NAME.test(key))
+      !!model.state.env?.vars.find((v) => v.key === key)?.secret ||
+      ((file || !!model.files?.wasEnvironment(model.state.environment)) && SECRET_NAME.test(key))
     return {
       key,
       value: secret && !namedKey ? '••••' : value,
-      ...(secret || namedKey ? { secret: true } : {}),
+      ...(secret || hasKey ? { secret: true } : {}),
     }
   })
 }

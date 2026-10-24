@@ -1,5 +1,12 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'requests.file.formUnsupported': 'Это поле формы нельзя записать в файл Bruno',
+  'requests.file.secretPending':
+    'При сохранении окружения возник конфликт или результат ещё неизвестен; обновите перед повтором',
+  'requests.file.secretChecked':
+    'Предыдущий перенос секрета проверен; проверьте обновлённое окружение перед повтором',
+  'requests.file.sensitiveUnavailable': 'Защищённая запись файла недоступна',
+  'requests.file.pendingEdit': 'Сначала разберите несохранённое изменение файла',
   'requests.file.methodProblem': 'Ожидаются HTTP-метод и адрес',
   'requests.file.headerProblem': 'Ожидаются имя заголовка и двоеточие',
 
