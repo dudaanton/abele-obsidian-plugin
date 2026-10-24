@@ -9,6 +9,7 @@ import type { RequestFilePort } from './FileCollections'
 export class NodeRequestFiles implements RequestFilePort {
   private target = shallowRef<PathTarget>()
   private source?: NodeDocumentSource
+  private preparing?: Promise<PathTarget>
   private readonly path: NodePathClientPort
   constructor(
     private readonly client: NodeClient,
@@ -23,7 +24,13 @@ export class NodeRequestFiles implements RequestFilePort {
       this.target.value?.id === worktree || (!!this.target.value && this.worktreeId === worktree)
     )
   }
-  async ready() {
+  ready(): Promise<PathTarget> {
+    if (this.target.value && this.client.connected) return Promise.resolve(this.target.value)
+    return (this.preparing ??= this.prepare().finally(() => {
+      this.preparing = undefined
+    }))
+  }
+  private async prepare() {
     await this.connect()
     if (this.target.value) return this.target.value
     let cursor: string | undefined

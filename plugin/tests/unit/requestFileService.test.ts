@@ -120,3 +120,25 @@ it('re-observes a source read when the repository revision changes in flight', a
   expect((await files.read('sample.http')).text).toBe('test')
   expect(blob).toHaveBeenCalledTimes(2)
 })
+
+it('connects once for a live collection instead of repeating connection recovery for every read', async () => {
+  const { NodeRequestFiles } = await import('@/requests/nodeFiles')
+  const connect = vi.fn(async () => {})
+  const client = {
+    connected: true,
+    repository: {
+      worktrees: async () => ({
+        entries: [{ kind: 'root', worktree_id: 'root-copy' }],
+        cursor: null,
+      }),
+    },
+  }
+  const files = new NodeRequestFiles(
+    client as unknown as import('@abele/node-client').NodeClient,
+    { nodeId: 'sample-node', registrationId: 'sample-registration', projectId: 'sample-project' },
+    connect
+  )
+  await Promise.all([files.ready(), files.ready()])
+  await files.ready()
+  expect(connect).toHaveBeenCalledOnce()
+})
