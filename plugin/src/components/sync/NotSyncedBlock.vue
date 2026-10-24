@@ -80,7 +80,16 @@
             />
           </template>
           <template #meta>
-            <span class="abele-not-synced__meta">{{ meta(item) }}</span>
+            <span class="abele-not-synced__meta">
+              <template v-for="(part, index) in meta(item)" :key="index">
+                <span v-if="index">{{ ' · ' }}</span>
+                <span
+                  class="abele-not-synced__part"
+                  :class="{ 'abele-not-synced__folder': part.folder }"
+                  >{{ part.text }}</span
+                >
+              </template>
+            </span>
           </template>
         </EntryRow>
         <ScrollMore
@@ -146,8 +155,8 @@ const meta = (item: NotSyncedItem) =>
     item.devices?.length ? t('sync.notSynced.on', { devices: item.devices.join(', ') }) : '',
     since(item.since),
   ]
-    .filter(Boolean)
-    .join(' · ')
+    .map((text, index) => ({ text, folder: index === 0 }))
+    .filter((part) => part.text)
 
 const ICONS: [RegExp, string][] = [
   [/\.(png|jpe?g|gif|webp|heic|svg)$/i, 'image'],
@@ -185,7 +194,12 @@ const fileIcon = (path: string) => ICONS.find(([re]) => re.test(path))?.[1] ?? '
 .abele-not-synced__name {
   overflow-wrap: anywhere;
 }
-.abele-not-synced__meta {
+.abele-not-synced__part {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.abele-not-synced__folder {
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 .abele-not-synced__error {

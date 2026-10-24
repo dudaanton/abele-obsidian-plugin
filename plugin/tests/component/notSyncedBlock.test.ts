@@ -71,6 +71,12 @@ it('shows folder and fact in one plain metadata line on phone', () => {
       'Projects/Research/Collected material/Long working folder · changed while it was being placed · since Jan 1'
     )
     expect(view.findComponent(PathLabel).exists()).toBe(false)
+    expect(view.findAll('.abele-not-synced__part').map((part) => part.text())).toEqual([
+      'Projects/Research/Collected material/Long working folder',
+      'changed while it was being placed',
+      'since Jan 1',
+    ])
+    expect(view.findAll('.abele-not-synced__folder')).toHaveLength(1)
   } finally {
     view.unmount()
     Reflect.set(Platform, 'isMobile', saved)
