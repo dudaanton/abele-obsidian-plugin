@@ -20,10 +20,21 @@ export async function sendPreview(
   if (!c || !id) return undefined
   const m = c.model
   const name = environment ?? m.state.environment
+  const fileEnvironment = m.files?.environments.find((e) => e.id === name)
+  if (name && m.files?.wasEnvironment(name) && !fileEnvironment)
+    throw new Error('The environment file is gone')
   const env =
-    name && name !== m.state.environment ? await m.rpc.environment(m.projectId, name) : m.state.env
+    fileEnvironment?.doc ??
+    (name && name !== m.state.environment
+      ? await m.rpc.environment(m.projectId, name)
+      : m.state.env)
   const doc = m.entry(id).doc ?? (await m.rpc.get(m.projectId, id))
-  const out = outgoing(doc, varsOf(env, {}))
+  const vars = varsOf(env, {})
+  if (fileEnvironment)
+    for (const exposed of fileEnvironment.exposed) {
+      if (fileEnvironment.locations[exposed.key] === exposed.file) delete vars[exposed.key]
+    }
+  const out = outgoing(doc, vars)
   const plain = (t: string) => t.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, ' ')
   const scripts = [
     doc.scripts.before

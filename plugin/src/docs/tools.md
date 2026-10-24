@@ -1074,8 +1074,11 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 `http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`,
 `http_import`.
 
-The project's saved HTTP requests, the ones the Requests view shows: files in the project on the
-node, in collections, with environments. They stand with the recorded-run tools: a send may go
+The project's saved HTTP requests: files on the node, in collections, with environments.
+The Requests view also offers live project file collections; the tools below continue to list
+saved collections. Their environment choices may include adjacent project environment files,
+labelled by file and environment, such as `http-client.env.json · dev`. Selecting one reads its
+values from the source file without importing it; exposed secret values stay out of send previews. They stand with the recorded-run tools: a send may go
 into the recording of a program running under the debugger, and its run is then read with
 `trace_timeline` and the rest. Reading runs on its own by default; `http_request_save` and
 `http_send` ask first, and the send's card shows exactly what goes.
