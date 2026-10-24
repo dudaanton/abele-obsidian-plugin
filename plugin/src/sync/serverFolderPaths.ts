@@ -29,7 +29,7 @@ export class ServerFolderPaths {
           typeof item === 'string'
             ? incoming
               ? incomingPath(item)
-              : placement.toServer(item)
+              : placement.toServer(item, 'ServerFolderPaths.map.' + key)
             : visit(item),
         ])
       )

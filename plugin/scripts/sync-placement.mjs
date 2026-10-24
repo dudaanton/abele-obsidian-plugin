@@ -321,6 +321,26 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
+          'export async function scan(fs, state, filter, opts = {}) {',
+          `export async function scan(fs, state, filter, opts = {}) {
+    try { return await scanWithUploads(fs, state, filter, opts); }
+    finally { await fs[Symbol.for('abele.sync.finish-scan-uploads-v1')]?.(); }
+}
+async function scanWithUploads(fs, state, filter, opts = {}) {`
+        )
+        code = replaceOnce(
+          code,
+          `if (!entry) {
+            fresh.push(wirePath);`,
+          `if (!entry) {
+            // Namespace discovery and collision checks have finished; immutable blobs
+            // can travel now. Rename pairing and all commits still wait for the scan.
+            if (!opts.readOnly)
+                await fs[Symbol.for('abele.sync.prepare-scan-upload-v1')]?.(info.path, { sha, size: info.size }, opts.signal);
+            fresh.push(wirePath);`
+        )
+        code = replaceOnce(
+          code,
           'const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);',
           `const beforeIdentity = await fs.fileIdentity?.(info.path);
             const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
@@ -881,6 +901,19 @@ export function syncPlacementPlugin() {
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
+        code = `import { ScanWork, scanScheduling } from './scanWork.js';\n` + code
+        code = replaceOnce(
+          code,
+          `async sendable(ops, checkPaths = true) {
+        const kept = [];
+        for (const op of ops) {`,
+          `async sendable(ops, checkPaths = true) {
+        const scheduling = scanScheduling(this.state);
+        const work = new ScanWork({ ...scheduling, signal: this.opts.signal ?? scheduling.signal });
+        const kept = [];
+        for (const op of ops) {
+            await work.step();`
+        )
         code = replaceOnce(
           code,
           'await this.uploadOne(sha, sources);',

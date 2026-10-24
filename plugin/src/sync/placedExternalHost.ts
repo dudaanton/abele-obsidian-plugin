@@ -33,7 +33,9 @@ export function placedExternalHost(
   const local = (value: unknown) =>
     map(value, (path) => (privatePath(path) ? path : placement.toLocal(path)))
   const server = (value: unknown) =>
-    map(value, (path) => (privatePath(path) ? path : placement.toServer(path)))
+    map(value, (path) =>
+      privatePath(path) ? path : placement.toServer(path, 'placedExternalHost')
+    )
   return new Proxy(host, {
     get(target, key) {
       if (key === 'run')

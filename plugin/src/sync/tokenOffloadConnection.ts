@@ -61,7 +61,8 @@ export async function tokenOffloadConnection(input: {
       ? path
       : toLocal(path)
   }
-  const toServer = (path: string) => input.placement?.toServer(path) ?? path
+  const toServer = (path: string) =>
+    input.placement?.toServer(path, 'tokenOffloadConnection') ?? path
   const representation = await pluginRepresentation({
     ...input,
     fs: input.placement?.fileSystem(input.fs) ?? input.fs,

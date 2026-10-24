@@ -60,7 +60,13 @@ export class LocalFolderPlacement {
     public server: string,
     public local: string
   ) {}
-  private replace(path: string, from: string, to: string, incoming: boolean): string {
+  private replace(
+    path: string,
+    from: string,
+    to: string,
+    incoming: boolean,
+    caller: string
+  ): string {
     const normalized = path,
       root = from
     try {
@@ -74,13 +80,19 @@ export class LocalFolderPlacement {
       throw new FolderScopeError(
         `The server returned a path outside this connection; sync stopped: ${path}`
       )
-    throw new LocalPlacementError('The local path is outside this connection; sync stopped')
+    // Keep vault-relative names useful for diagnosis without leaking an absolute host path.
+    const rejected = /^(?:\/|\\|[a-z]:)/i.test(path)
+      ? 'absolute path: ' + path.split(/[\\/]/).at(-1)
+      : path
+    throw new LocalPlacementError(
+      `The local path is outside this connection; sync stopped (${caller}): ${JSON.stringify(rejected)}`
+    )
   }
   toLocal(path: string): string {
-    return this.replace(path, this.server, this.local, true)
+    return this.replace(path, this.server, this.local, true, 'toLocal')
   }
-  toServer(path: string): string {
-    return this.replace(path, this.local, this.server, false)
+  toServer(path: string, caller = 'toServer'): string {
+    return this.replace(path, this.local, this.server, false, caller)
   }
   localMetadata<T>(value: T): T {
     if (Array.isArray(value)) return value.map((item) => this.localMetadata(item)) as T
@@ -111,7 +123,7 @@ export class LocalFolderPlacement {
     const toLocal = (path: string) => this.toLocal(path)
     const local = (entry: StateEntry | null) =>
       entry ? { ...entry, path: toLocal(entry.path) } : null
-    const toServer = (path: string) => this.toServer(path)
+    const toServer = (path: string) => this.toServer(path, 'localState')
     const placed = (tx: StateStore) => this.localState(tx)
     return new Proxy(store, {
       get(target, key) {
@@ -219,7 +231,10 @@ export class LocalFolderPlacement {
             const projected = []
             for (const item of await value.call(target)) {
               if (item.path === root || item.path.startsWith(prefix))
-                projected.push({ ...item, path: placement.toServer(item.path) })
+                projected.push({
+                  ...item,
+                  path: placement.toServer(item.path, String(key) + '.result'),
+                })
               // At most 256 entries or 8 ms of projection before a renderer task boundary.
               await budget.account(4096)
             }
@@ -278,7 +293,10 @@ export class LocalFolderPlacement {
               return root ? [{ ...root, path, kind: 'directory' }] : []
             }
             return (await value.call(target, placement.toLocal(parent), ...args)).map(
-              (item: { path: string }) => ({ ...item, path: placement.toServer(item.path) })
+              (item: { path: string }) => ({
+                ...item,
+                path: placement.toServer(item.path, String(key) + '.result'),
+              })
             )
           }
         const policy =
@@ -295,7 +313,7 @@ export class LocalFolderPlacement {
             const budget = new SyncTaskBudget()
             for await (const item of value.call(target)) {
               if (item.path === root || item.path.startsWith(prefix))
-                yield { ...item, path: placement.toServer(item.path) }
+                yield { ...item, path: placement.toServer(item.path, String(key) + '.result') }
               await budget.account(4096)
             }
           }
@@ -310,7 +328,9 @@ export class LocalFolderPlacement {
               )
               if (included.length)
                 notify(
-                  included.map((path) => (path === IGNORE_FILE ? path : placement.toServer(path)))
+                  included.map((path) =>
+                    path === IGNORE_FILE ? path : placement.toServer(path, 'watch.result')
+                  )
                 )
             })
         if (key === PLACEMENT)
@@ -340,7 +360,7 @@ export class LocalFolderPlacement {
             )
             if (key === 'beginAtomicWrite') return retainedStage(result)
             return key === 'stat' && result && !handle
-              ? { ...result, path: placement.toServer(result.path) }
+              ? { ...result, path: placement.toServer(result.path, 'stat.result') }
               : result
           }
         // Opaque stage locators never pass through server-to-local path mapping.

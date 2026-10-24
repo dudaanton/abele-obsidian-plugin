@@ -2490,6 +2490,10 @@ export class ObsidianFileSystem implements FileSystem {
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
   }
+  get [Symbol.for('abele.sync.scan-upload-source-v1')](): boolean {
+    const native = nativeChunkPort(this.disk)
+    return !!(native.open && native.fullPath)
+  }
   async fingerprint(path: string, signal?: AbortSignal, fresh = false) {
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()

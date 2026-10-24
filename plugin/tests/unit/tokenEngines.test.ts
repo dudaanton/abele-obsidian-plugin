@@ -588,6 +588,117 @@ import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('resumes a folder upload after a multipart interruption with already acknowledged siblings', async () => {
+  const text = 'x'.repeat(2 * 1024 * 1024)
+  const f = inspectionFixture(false, 'Notes', [
+    { path: 'Notes/Attachments/Batch 1/Sample.bin', content: text },
+    ...Array.from({ length: 146 }, (_, i) => ({
+      path: `Notes/Attachments/Batch 0/Sample ${i}.bin`,
+      content: `sample attachment ${i}`,
+    })),
+    ...Array.from({ length: 1000 }, (_, i) => ({
+      path: `Notes/Section ${i % 31}/层 ${i % 7}/Nested ${i % 13}/Sample ${i}.md`,
+      content: `sample ${i}`,
+    })),
+  ])
+  let restarted: TokenEngines | undefined
+  const send = f.transport.getMockImplementation()!
+  let offline = false,
+    interrupted = false,
+    resumed = false
+  const items = new Map<string, Record<string, unknown>>()
+  f.transport.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (offline) throw new TypeError('sample interrupted connection')
+    if (route === '/v2/connection') {
+      const body = await (await send(input, init)).json()
+      return Response.json({
+        ...body,
+        limits: { max_file_bytes: 200 * 1024 * 1024, quota_bytes: null },
+      })
+    }
+    if (route.endsWith('/begin'))
+      return Response.json({
+        upload_id: 'sample-upload',
+        part_size: 1024 * 1024,
+        parts: 2,
+        received: [],
+      })
+    if (route.startsWith('/v2/uploads/') && init?.method === 'HEAD')
+      return new Response(null, { status: 404 })
+    if (
+      route.startsWith('/v2/uploads/') &&
+      init?.method === 'PUT' &&
+      route.endsWith('/1') &&
+      !resumed
+    ) {
+      interrupted = offline = true
+      throw new TypeError('sample interrupted multipart')
+    }
+    if (route.endsWith('/complete')) return new Response(null, { status: 204 })
+    if (route === '/v2/commit') {
+      const response = await send(input, init)
+      const body = await response.json()
+      for (const result of body.results)
+        if (result.status === 'applied')
+          items.set(result.file_id, {
+            cursor: result.seq,
+            file_id: result.file_id,
+            path: result.path,
+            type: 'content',
+            at: new Date().toISOString(),
+            prev_path: null,
+            item: {
+              file_id: result.file_id,
+              version_id: result.version_id,
+              path: result.path,
+              mtime: result.mtime,
+              ...(result.sha
+                ? { sha: result.sha, size: result.size, kind: 'attachment' }
+                : { kind: 'directory' }),
+            },
+          })
+      return Response.json(body)
+    }
+    if (resumed && (route === '/v2/changes' || route === '/v2/manifest')) {
+      const since = Number(new URL(String(input)).searchParams.get('since') ?? 0)
+      return Response.json({
+        items:
+          route === '/v2/manifest'
+            ? [...items.values()].map((one) => one.item)
+            : [...items.values()].filter((one) => Number(one.cursor) > since),
+        cursor: items.size + 1,
+        next: null,
+      })
+    }
+    return send(input, init)
+  })
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(interrupted).toBe(true), { timeout: 20000 })
+    expect([...items.values()].some((one) => (one.item as { sha?: string }).sha)).toBe(true)
+    await f.host.close()
+    offline = false
+    resumed = true
+    restarted = f.makeHost()
+    restarted.start()
+    await vi.waitFor(
+      () => expect(f.ui.runtimes.has(id) || f.registry.records()[0].status === 'error').toBe(true),
+      { timeout: 20000 }
+    )
+    await f.ui.sync(id)
+    expect(f.ui.activity.value[id]?.error).toBeUndefined()
+    expect(await f.app.vault.adapter.read('Notes/Attachments/Batch 1/Sample.bin')).toBe(text)
+  } finally {
+    f.release()
+    await restarted?.close()
+    await f.host.close()
+    f.probe.mockRestore()
+  }
+}, 60000)
+
 it('publishes progress while the not-synced metadata read is blocked', async () => {
   const f = inspectionFixture()
   f.release()

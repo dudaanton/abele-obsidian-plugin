@@ -194,7 +194,9 @@ export class TokenEngineRuntime
   }
   async retryNotSynced(paths: readonly string[]): Promise<void> {
     this.assertHeld()
-    await this.engine.retryPaths(paths.map((path) => this.placement?.toServer(path) ?? path))
+    await this.engine.retryPaths(
+      paths.map((path) => this.placement?.toServer(path, 'TokenEngineRuntime') ?? path)
+    )
   }
   private readonly quiet: UploadQuietPeriod
   private notifyLocal: ((paths: string[]) => void) | undefined
@@ -294,6 +296,10 @@ export class TokenEngineRuntime
   private readonly uploadProgress: TransferProgress
   private activeUploads = 0
   private journalActive = false
+  private readonly scanUploads = new Set<Promise<void>>()
+  private readonly scanUploadHashes = new Map<string, Promise<void>>()
+  private scanUploadFailure: unknown
+  private scanUploadPrimed = false
   private readonly sentUploadHashes = new Set<string>()
   private readonly folderProgress: TransferProgress
   private readonly pendingFolders = new Set<string>()
@@ -848,10 +854,10 @@ export class TokenEngineRuntime
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     const hasBlob = this.client.hasBlob.bind(this.client)
-    this.client.hasBlob = async (sha) => {
+    this.client.hasBlob = async (sha, signal) => {
       if (!this.activeUploads && this.uploadProgress.stage)
         this.uploadProgress.phase('Checking the vault')
-      return this.uploadEntitlements.has(sha) || (await hasBlob(sha))
+      return this.uploadEntitlements.has(sha) || (await hasBlob(sha, signal))
     }
     const prepare = this.client.prepare.bind(this.client)
     const inventoryFs = (fs: FileSystem): FileSystem =>
@@ -1150,6 +1156,109 @@ export class TokenEngineRuntime
       }),
       fs: new Proxy(options.fs, {
         get: (target, name) => {
+          if (name === Symbol.for('abele.sync.prepare-scan-upload-v1'))
+            return async (
+              path: string,
+              identity: { sha: string; size: number },
+              signal?: AbortSignal
+            ) => {
+              if (
+                !Reflect.get(target, Symbol.for('abele.sync.scan-upload-source-v1')) ||
+                !target.openRead ||
+                !this.authority ||
+                identity.size > this.authority.limits.max_file_bytes ||
+                this.client.pathRefusal?.(path)
+              )
+                return
+              const matching = this.scanUploadHashes.get(identity.sha)
+              if (matching !== undefined) await matching
+              if (this.scanUploads.size >= 2) await Promise.race(this.scanUploads)
+              if (this.scanUploadFailure) throw this.scanUploadFailure
+              signal?.throwIfAborted()
+              this.assertHeld()
+              const task = this.transferBudget
+                .run(async () => {
+                  signal?.throwIfAborted()
+                  this.assertHeld()
+                  if (await this.client.hasBlob(identity.sha, signal)) {
+                    this.scanUploadPrimed = true
+                    return
+                  }
+                  signal?.throwIfAborted()
+                  this.assertHeld()
+                  const source = await target.openRead(path)
+                  let sourceChanged = false
+                  const checkedSource = new Proxy(source, {
+                    get(target, key) {
+                      const value = Reflect.get(target, key)
+                      if (key === 'assertUnchanged')
+                        return async () => {
+                          try {
+                            await target.assertUnchanged()
+                          } catch (error) {
+                            if (error instanceof EngineError && error.code === 'conflict')
+                              sourceChanged = true
+                            throw error
+                          }
+                        }
+                      return typeof value === 'function' ? value.bind(target) : value
+                    },
+                  })
+                  try {
+                    if (source.size !== identity.size) return
+                    this.uploadNames.set(identity.sha, path)
+                    await this.client.putBlobSource(
+                      identity,
+                      checkedSource,
+                      signal,
+                      this.transferBudget.maxChunkBytes
+                    )
+                    await checkedSource.assertUnchanged()
+                    this.wholeReadUploads.add(identity.sha)
+                    this.uploadEntitlements.add(identity.sha)
+                    this.scanUploadPrimed = true
+                  } catch (error) {
+                    // Changed sources and policy refusals belong to the ordinary push report.
+                    if (sourceChanged) {
+                      console.debug(
+                        '[abele-sync] local source changed; retaining ordinary push verdict'
+                      )
+                      return
+                    }
+                    if (
+                      !(error instanceof AbeleError) ||
+                      !['too_large', 'quota_exceeded', 'hash_mismatch'].includes(error.code)
+                    )
+                      throw error
+                    console.debug(
+                      '[abele-sync] early blob refused; retaining ordinary push verdict',
+                      error.code
+                    )
+                  } finally {
+                    await source.close()
+                  }
+                }, signal)
+                .catch((error: unknown) => {
+                  this.scanUploadFailure ??= error
+                })
+              this.scanUploads.add(task)
+              this.scanUploadHashes.set(identity.sha, task)
+              void task.then(() => {
+                this.scanUploads.delete(task)
+                if (this.scanUploadHashes.get(identity.sha) === task)
+                  this.scanUploadHashes.delete(identity.sha)
+              })
+              // Confirm the first useful transfer before spending the rest of the scan's I/O.
+              if (!this.scanUploadPrimed) await task
+            }
+          if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
+            return async () => {
+              await Promise.all(this.scanUploads)
+              const error = this.scanUploadFailure
+              this.scanUploadFailure = undefined
+              this.scanUploadPrimed = false
+              if (error) throw error
+            }
           if (name === Symbol.for('abele.sync.upload-owner-v1'))
             return (path: string) => options.uploadAllowed?.(path) ?? true
           if (name === 'watch' && target.watch)
@@ -1789,7 +1898,7 @@ export class TokenEngineRuntime
     this.nameCandidates(paths.map((path) => destination + path.slice(source.length)))
   }
   written(path: string): void {
-    this.actions.written(this.placement?.toServer(path) ?? path)
+    this.actions.written(this.placement?.toServer(path, 'TokenEngineRuntime') ?? path)
   }
   private publishAssetSource(
     one: { path: string; sha: string; mtime: number; key: string },
@@ -2506,7 +2615,7 @@ export class TokenEngineRuntime
         async (identity: { size: number; sha: string }, source: ChunkSource) => {
           current()
           this.assertHeld()
-          const present = await this.client.hasBlob(identity.sha)
+          const present = await this.client.hasBlob(identity.sha, signal)
           current()
           if (present) return
           this.assertHeld()
@@ -2655,12 +2764,15 @@ export class TokenEngineRuntime
       (!this.placement ||
         path === this.placement.local ||
         path.startsWith(this.placement.local + '/')) &&
-      this.client.includes(this.placement?.toServer(path) ?? path) &&
+      this.client.includes(this.placement?.toServer(path, 'TokenEngineRuntime') ?? path) &&
       !(!this.isRoot() && configurationPath(path, this.options.paths))
     )
   }
   acceptsLocal(path: string, size: number): boolean {
-    return this.covers(path) && !this.localExcluded(this.placement?.toServer(path) ?? path, size)
+    return (
+      this.covers(path) &&
+      !this.localExcluded(this.placement?.toServer(path, 'TokenEngineRuntime') ?? path, size)
+    )
   }
   private localExcluded(path: string, size: number): boolean {
     if (this.options.localOnly?.(path) || this.outsideScope(path)) return true
@@ -2676,7 +2788,7 @@ export class TokenEngineRuntime
     return path ? (this.placement?.toLocal(path) ?? path) : null
   }
   async entryFor(path: string) {
-    path = this.placement?.toServer(path) ?? path
+    path = this.placement?.toServer(path, 'TokenEngineRuntime') ?? path
     const exact = await this.options.state.get(path)
     if (exact) return this.placement?.localMetadata(exact) ?? exact
     const key = path.normalize('NFC')
@@ -2721,7 +2833,7 @@ export class TokenEngineRuntime
   }
   keepLocal(paths: string[] | undefined, ids: readonly string[]) {
     return this.engine.keepLocal(
-      paths?.map((path) => this.placement?.toServer(path) ?? path),
+      paths?.map((path) => this.placement?.toServer(path, 'TokenEngineRuntime') ?? path),
       ids
     )
   }

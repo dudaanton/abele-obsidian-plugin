@@ -6,6 +6,21 @@ import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacem
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 
+it('reports the outbound caller and relative rejected name without absolute host paths', async () => {
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const disk = new MemoryFileSystem()
+  vi.spyOn(disk, 'stat').mockResolvedValue({ path: 'Private/sample.bin', size: 1, mtime: 1 })
+  await expect(placement.fileSystem(disk).stat('Shared/sample.bin')).rejects.toThrow(
+    /stat.result.*Private\/sample.bin/
+  )
+  expect(() => placement.toServer('/host/private/sample.bin')).toThrow(/absolute path.*sample.bin/)
+  try {
+    placement.toServer('/host/private/sample.bin')
+  } catch (error) {
+    expect(String(error)).not.toContain('/host/private')
+  }
+})
+
 it('projects 33000 directory paths once each and yields between bounded chunks', async () => {
   const placement = new LocalFolderPlacement('Shared', 'Moved')
   const disk = new MemoryFileSystem()

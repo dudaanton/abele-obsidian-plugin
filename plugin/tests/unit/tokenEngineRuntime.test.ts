@@ -31,6 +31,149 @@ import Button from '@/components/obsidian/Button.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
+import { deferred } from '../helpers/deferred'
+
+it('aborts an early blob probe on pause before opening an upload source', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const send = wire.fetch.getMockImplementation()!
+  const fs = new MemoryFileSystem()
+  const openRead = vi.fn(async () => {
+    throw new Error('source must stay unopened')
+  })
+  Object.assign(fs, {
+    [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+    openRead,
+    fingerprint: async (path: string) => {
+      const bytes = await fs.read(path)
+      return { sha: await sha256(bytes), size: bytes.length }
+    },
+  })
+  await fs.writeAtomic('Notes/sample.md', new TextEncoder().encode('sample bytes'), 2000)
+  const blocked = deferred<Response>()
+  let probe: AbortSignal | undefined
+  wire.fetch.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
+    if (route.startsWith('/v2/uploads/') && init?.method === 'HEAD') {
+      probe = init.signal ?? undefined
+      return blocked.promise
+    }
+    return send(input, init)
+  })
+  const one = runtime(wire, fs)
+  const syncing = one.runtime.sync().catch(() => {})
+  try {
+    await vi.waitFor(() => expect(probe).toBeDefined())
+    await one.runtime.pause(true)
+    expect(probe!.aborted).toBe(true)
+    expect(openRead).not.toHaveBeenCalled()
+  } finally {
+    blocked.resolve(new Response(null, { status: 404 }))
+    await syncing
+    await one.runtime.close()
+    expect(openRead).not.toHaveBeenCalled()
+  }
+})
+
+it.each(['ordinary', 'lost-response', 'changed-source', 'changed-stat', 'duplicates'] as const)(
+  'starts native fresh-file payloads before the remaining tree (%s)',
+  async (mode) => {
+    const wire = await server('Notes/unused.md', '')
+    const send = wire.fetch.getMockImplementation()!
+    const fs = new MemoryFileSystem()
+    let sources = 0,
+      changed = false
+    Object.assign(fs, {
+      [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+      openRead: async (path: string) => {
+        const bytes = await fs.read(path)
+        const changedStat = mode === 'changed-stat' && !changed
+        if (changedStat) changed = true
+        if (mode === 'changed-source' && !changed) {
+          changed = true
+          bytes[0] ^= 1
+          await fs.writeAtomic(path, bytes, 2000)
+        }
+        sources++
+        let closed = false
+        return {
+          size: bytes.length,
+          read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
+          assertUnchanged: async () => {
+            if (changedStat) throw new EngineError('conflict', 'sample changed source stamp')
+          },
+          close: async () => {
+            if (!closed) {
+              closed = true
+              sources--
+            }
+          },
+        }
+      },
+    })
+    const duplicateSha = await sha256(new TextEncoder().encode('duplicate'))
+    for (let i = 0; i < 4; i++)
+      await fs.writeAtomic(
+        `Notes/层/Sample ${i}.md`,
+        new TextEncoder().encode(
+          mode === 'duplicates' && (i === 1 || i === 2) ? 'duplicate' : `sample ${i}`
+        ),
+        2000
+      )
+    let fingerprinted = 0
+    Object.assign(fs, {
+      fingerprint: async (path: string) => {
+        fingerprinted++
+        const bytes = await fs.read(path)
+        return { sha: await sha256(bytes), size: bytes.length }
+      },
+    })
+    const atUpload: number[] = []
+    const known = new Set<string>(),
+      bodies = new Map<string, number>()
+    let offline = false,
+      interrupt = mode === 'lost-response'
+    wire.fetch.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (offline) throw new TypeError('sample lost response')
+      if (route === '/v2/manifest') return Response.json({ items: [], cursor: 1, next: null })
+      if (route.startsWith('/v2/uploads/') && init?.method === 'HEAD')
+        return new Response(null, { status: known.has(route) ? 200 : 404 })
+      if (route.startsWith('/v2/uploads/') && init?.method === 'PUT') {
+        atUpload.push(fingerprinted)
+        bodies.set(route, (bodies.get(route) ?? 0) + 1)
+        if (mode === 'duplicates' && route.endsWith('/' + duplicateSha))
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        known.add(route)
+        if (interrupt) {
+          offline = true
+          throw new TypeError('sample lost response')
+        }
+      }
+      return send(input, init)
+    })
+    const state = new MemoryStateStore()
+    let one = runtime(wire, fs, state)
+    try {
+      if (mode === 'lost-response') {
+        await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+        expect(sources).toBe(0)
+        await one.runtime.close()
+        offline = false
+        interrupt = false
+        // The first blob is already on the server; an ordinary restart must only probe it.
+        one = runtime(wire, fs, state)
+      }
+      await one.runtime.sync()
+      expect(atUpload.length).toBeGreaterThan(0)
+      expect(atUpload[0]).toBeLessThanOrEqual(2)
+      expect(sources).toBe(0)
+      expect([...bodies.values()].every((count) => count === 1)).toBe(true)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
 
 it('keeps incoming changes outside local upload pacing without bridge calls or redundant status publication', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
