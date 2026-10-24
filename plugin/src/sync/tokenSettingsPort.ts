@@ -61,6 +61,9 @@ export class TokenSettingsPort {
           pending: ui.activity.value[id]?.pending ?? 0,
           heldDeletes: ui.activity.value[id]?.heldDeletes ?? 0,
           deferred: ui.activity.value[id]?.deferred ?? 0,
+          notSynced: ui.activity.value[id]?.notSynced?.length ?? 0,
+          notSyncedError: ui.activity.value[id]?.notSyncedError,
+          notSyncedLoading: ui.activity.value[id]?.notSyncedLoading,
         }) as typeof DISCONNECTED_STATUS
     )
     const runtime = () => ui.runtimes.get(id)

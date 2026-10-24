@@ -30,6 +30,7 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
     row.status === 'scope_updating' ||
     !!activity?.startup ||
     !!activity?.inspection ||
+    !!activity?.notSyncedLoading ||
     !!activity?.comparison ||
     !!activity?.transfer ||
     !!activity?.pull ||
@@ -51,7 +52,9 @@ export function connectionTone(row: Row, activity?: ConnectionActivity): Connect
     activity?.conflicts?.length ||
     activity?.refused?.length ||
     activity?.backgroundAttention ||
-    activity?.sharedAttention
+    activity?.sharedAttention ||
+    activity?.notSynced?.length ||
+    activity?.notSyncedError
   )
     return 'orange'
   return 'green'
@@ -104,12 +107,20 @@ export function connectionLine(
       { count: activity.conflicts.length },
       '{count} conflict copy'
     )
+  if (activity?.notSynced?.length)
+    return text(
+      '{count} files not synced',
+      { count: activity.notSynced.length },
+      '{count} file not synced'
+    )
+  if (activity?.notSyncedError) return text('Could not check which files are not synced')
   if (activity?.refused?.length)
     return text(
       '{count} files not sent',
       { count: activity.refused.length },
       '{count} file not sent'
     )
+  if (activity?.notSyncedLoading) return text('Checking the vault')
   if (activity?.lastSync)
     return text('Synced {when}', { when: when(new Date(activity.lastSync).toISOString()) })
   return text('Not synced yet')

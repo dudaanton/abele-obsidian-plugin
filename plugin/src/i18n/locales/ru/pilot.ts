@@ -3909,4 +3909,46 @@ export const ru = {
   'node.manager.integrationContextUpdate':
     'Обновите ноду до версии 0.4.49 или новее, чтобы интегрировать из этого чата без сессии менеджера.',
   'settings.metadata.checkDiagram': 'Проверить диаграмму',
+  'sync.status.notSynced': {
+    one: '{count} file not synced',
+    other: '{count} files not synced',
+    few: '{count} files not synced',
+    many: '{count} files not synced',
+  },
+  'sync.status.notSyncedLine': {
+    one: "{count} file isn't synced: see the connection",
+    other: "{count} files aren't synced: see the connection",
+    few: "{count} files aren't synced: see the connection",
+    many: "{count} files aren't synced: see the connection",
+  },
+  'sync.notSynced.title': 'Not synced · {count}',
+  'sync.notSynced.titleBare': 'Not synced',
+  'sync.notSynced.unreadable': "Couldn't read the list of files that aren't synced.",
+  'sync.notSynced.out': 'On this device, not sent',
+  'sync.notSynced.in': 'On your other devices, not placed here',
+  'sync.notSynced.reveal': 'Show in system explorer',
+  'sync.notSynced.retry': 'Retry',
+  'sync.notSynced.retryAll': 'Retry all',
+  'sync.notSynced.more': '{count} more',
+  'sync.notSynced.on': 'on {devices}',
+  'sync.notSynced.since': 'since {when}',
+  'sync.notSynced.retryFailed': 'Retry could not finish. Your files remain held.',
+  'sync.notSynced.heldTitle': 'Held for safety',
+  'sync.notSynced.heldDesc':
+    'Sync was not sure what happened to these. Put things back as they were, then retry.',
+  'sync.notSynced.serverTitle': 'Refused by the server',
+  'sync.notSynced.serverDesc': 'The server would not take these. Retry once the reason is gone.',
+  'sync.notSynced.largeTitle': 'Too large for the server',
+  'sync.notSynced.largeDesc':
+    'These exceed the server limit for one file. They stay on this device.',
+  'sync.notSynced.nameTitle': 'Names this device cannot use',
+  'sync.notSynced.nameDesc':
+    'These are on your other devices but cannot be placed here. Rename them there and they arrive.',
+  'settings.sync.presentation.notSynced': {
+    one: '{count} file not synced',
+    other: '{count} files not synced',
+    few: '{count} files not synced',
+    many: '{count} files not synced',
+  },
+  'settings.sync.presentation.notSyncedUnreadable': 'Could not check which files are not synced',
 } satisfies TranslationCatalog

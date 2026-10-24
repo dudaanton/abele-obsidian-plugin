@@ -51,6 +51,10 @@ export interface SyncStatus {
   deferred: number
   /** Conflict copies saved beside the files they came from, still in the vault; 0 when none. */
   conflicts?: number
+  /** Files sync deliberately does not move (too large, a name, held, refused); 0 when none. */
+  notSynced?: number
+  notSyncedError?: boolean
+  notSyncedLoading?: boolean
   /** Incoming code and private files waiting for the person's decision; 0 when none. */
   review?: number
 }
@@ -118,16 +122,27 @@ const leadsWithHeld = (status: SyncStatus): boolean =>
 const leadsWithConflicts = (status: SyncStatus): boolean =>
   !leadsWithHeld(status) && (status.conflicts ?? 0) > 0 && status.state === 'idle'
 
+/** A settled sync that holds files back says how many, never «synced». */
+const leadsWithNotSynced = (status: SyncStatus): boolean =>
+  !leadsWithHeld(status) &&
+  !leadsWithConflicts(status) &&
+  (status.notSynced ?? 0) > 0 &&
+  status.state === 'idle'
+
 /** A settled sync with something to decide leads with how much waits. */
 const leadsWithReview = (status: SyncStatus): boolean =>
   !leadsWithHeld(status) &&
   !leadsWithConflicts(status) &&
+  !leadsWithNotSynced(status) &&
   (status.review ?? 0) > 0 &&
   status.state === 'idle'
 
 /** Whether the status bar wears the warning colour. */
 export const statusWarns = (status: SyncStatus): boolean =>
-  leadsWithHeld(status) || leadsWithConflicts(status)
+  leadsWithHeld(status) ||
+  leadsWithConflicts(status) ||
+  leadsWithNotSynced(status) ||
+  !!status.notSyncedError
 
 /** The tooltip's line for held deletions: how many, and where they are decided. */
 export function heldLine(count: number): string {
@@ -140,9 +155,13 @@ export function heldLine(count: number): string {
  * synced*. Nothing is being sent at that moment, and saying it is all through would be a lie.
  */
 export function statusLabel(status: SyncStatus): string {
+  if (status.state === 'idle' && status.notSyncedLoading) return t('sync.status.waiting')
+  if (status.state === 'idle' && status.notSyncedError) return t('sync.notSynced.unreadable')
   if (leadsWithHeld(status)) return t('sync.status.held')
   if (leadsWithConflicts(status))
     return t('sync.status.conflicts', { count: status.conflicts ?? 0 })
+  if (leadsWithNotSynced(status))
+    return t('sync.status.notSynced', { count: status.notSynced ?? 0 })
   if (leadsWithReview(status)) return t('sync.status.review')
   if (status.state === 'idle' && status.pending > 0) return t('sync.status.waiting')
   return t(`sync.status.${status.state}`)
@@ -158,7 +177,7 @@ export function statusText(status: SyncStatus): string {
   if (status.state === 'syncing' && status.progressText) return status.progressText
   const label = statusLabel(status)
   if (leadsWithHeld(status)) return `${label} (${status.heldDeletes})`
-  if (leadsWithConflicts(status)) return label
+  if (leadsWithConflicts(status) || leadsWithNotSynced(status)) return label
   if (leadsWithReview(status)) return `${label} (${status.review})`
   return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
 }
@@ -188,6 +207,8 @@ export function statusTooltip(status: SyncStatus): string {
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
   if ((status.conflicts ?? 0) > 0)
     lines.push(t('sync.status.copies', { count: status.conflicts ?? 0 }))
+  if ((status.notSynced ?? 0) > 0)
+    lines.push(t('sync.status.notSyncedLine', { count: status.notSynced ?? 0 }))
   if ((status.review ?? 0) > 0) lines.push(t('sync.status.decision', { count: status.review ?? 0 }))
   if (status.deferred > 0) lines.push(stagedLine(status.deferred))
   if (status.state === 'joining') lines.push(t('sync.status.connecting'))

@@ -27,6 +27,7 @@ import { crossesSymlink } from './symlinkChain'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import { TFile, TFolder, Platform } from 'obsidian'
+import { unsupportedSyncName } from './platformSyncNames'
 import {
   EngineError,
   MAX_CHUNK_BYTES,
@@ -2497,6 +2498,21 @@ export class ObsidianFileSystem implements FileSystem {
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
     return result
+  }
+  [Symbol.for('abele.sync.path-admission-v1')](path: string) {
+    const platform = Platform.isWin
+      ? 'windows'
+      : Platform.isAndroidApp
+        ? 'android'
+        : Platform.isIosApp
+          ? 'ios'
+          : Platform.isMacOS
+            ? 'macos'
+            : 'linux'
+    const reason = unsupportedSyncName(path, platform)
+    return reason
+      ? { allowed: false, reason: 'unsupported-host-name: ' + reason }
+      : { allowed: true }
   }
   private async fingerprintFresh(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)

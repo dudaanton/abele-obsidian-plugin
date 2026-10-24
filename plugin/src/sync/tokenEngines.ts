@@ -78,6 +78,7 @@ export class TokenEngines {
   private readonly startupCancels = new Map<string, () => void>()
   private readonly activityEpoch = new Map<string, number>()
   private readonly activityReports = new Map<string, number>()
+  private readonly notSyncedReads = new Map<string, Promise<void>>()
   private readonly offloadPorts = new Map<
     string,
     Awaited<ReturnType<typeof tokenOffloadConnection>>
@@ -1171,6 +1172,7 @@ export class TokenEngines {
           scanSnapshot: () => runtime.trace.snapshot(),
           assertCurrent: () => fence.assertReady(),
           sync: () => runtime.sync(),
+          retryNotSynced: (paths) => runtime.retryNotSynced(paths),
           reconcile: () => runtime.reconcile(),
           restoreRoot: () => runtime.restoreRoot(),
           followRoot: () => runtime.followRoot(),
@@ -1391,6 +1393,39 @@ export class TokenEngines {
     await manager.prepare([original])
     if (!(await vaultDisk(this.app.vault).exists(original))) throw new Error('unavailable')
   }
+  private refreshNotSynced(id: string, runtime: TokenEngineRuntime): void {
+    if (this.notSyncedReads.has(id)) return
+    if (runtime.notSyncedDirty) this.ui.publish(id, { notSyncedLoading: true })
+    let failed = false
+    const current = () =>
+      !this.closed &&
+      this.live.get(id) === runtime &&
+      this.ui.registry.records().some((row) => row.id === id)
+    const read: Promise<void> = runtime
+      .notSynced()
+      .then((rows) => {
+        if (current())
+          this.ui.publish(id, { notSynced: rows, notSyncedError: false, notSyncedLoading: false })
+      })
+      .catch((error) => {
+        failed = true
+        console.debug('[abele-sync] cannot read files held from sync', error)
+        if (current())
+          this.ui.publish(id, {
+            notSynced: undefined,
+            notSyncedError: true,
+            notSyncedLoading: false,
+          })
+      })
+      .then(() => {
+        if (this.notSyncedReads.get(id) !== read) return
+        this.notSyncedReads.delete(id)
+        const next = this.live.get(id)
+        if (!this.closed && next && (next !== runtime || (!failed && runtime.notSyncedDirty)))
+          this.refreshNotSynced(id, next)
+      })
+    this.notSyncedReads.set(id, read)
+  }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     if (report)
@@ -1429,6 +1464,7 @@ export class TokenEngines {
       deferred: status.deferred ?? 0,
       reconciliation: status.reconciliation,
     }
+    if (runtime) this.refreshNotSynced(id, runtime)
     const unsent = status.state === 'offline' ? await runtime?.pendingLocalDetails() : undefined
     if (unsent) activity.pending = unsent.count
     const publications = this.live.get(id)?.publications() ?? []

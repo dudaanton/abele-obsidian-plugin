@@ -588,6 +588,29 @@ import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('publishes progress while the not-synced metadata read is blocked', async () => {
+  const f = inspectionFixture()
+  f.release()
+  const gate = deferred<import('@/sync/notSynced').NotSyncedItem[]>()
+  let publishing: Promise<void> | undefined
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    vi.spyOn(runtime, 'notSynced').mockReturnValue(gate.promise)
+    publishing = Reflect.get(f.host, 'changed').call(f.host, id, {
+      ...runtime.engine.status,
+      pending: 17,
+    })
+    await vi.waitFor(() => expect(f.ui.activity.value[id]?.pending).toBe(17))
+  } finally {
+    gate.resolve([])
+    await publishing
+    await f.host.close()
+  }
+})
+
 it.each(['background', 'unload'])(
   'flushes active uploads before revoking runtime ownership on %s',
   async (exit) => {
@@ -830,6 +853,14 @@ it('surfaces a server size refusal by path and reason, keeps bytes pending and a
       path: 'oversized.bin',
       reason: 'This file is too large for the server. It stays on this device.',
     })
+    await vi.waitFor(() =>
+      expect(ui.activity.value[id].notSynced).toContainEqual(
+        expect.objectContaining({ path: 'oversized.bin', kind: 'too-large', direction: 'out' })
+      )
+    )
+    expect(
+      ui.activity.value[id].notSynced?.find((row) => row.path === 'oversized.bin')?.fact
+    ).toContain('4 B')
     expect(ui.activity.value[id].pending).toBeGreaterThan(0)
     expect(await app.vault.adapter.read('oversized.bin')).toBe('too many bytes')
     const uploads = () =>
@@ -849,6 +880,41 @@ it('surfaces a server size refusal by path and reason, keeps bytes pending and a
     expect(
       transport.mock.calls.some(([input]) => new URL(String(input)).pathname === '/v2/commit')
     ).toBe(false)
+    // A changed file that now fits is ordinary new work; its durable refusal clears itself.
+    const previousTransport = transport.getMockImplementation()!
+    let cursor = 0
+    transport.mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname
+      if (path.startsWith('/v2/uploads/')) return new Response(null, { status: 201 })
+      if (path === '/v2/manifest' || path === '/v2/changes')
+        return Response.json({ items: [], cursor, next: null })
+      if (path === '/v2/commit') {
+        const { ops } = JSON.parse(String(init?.body)) as {
+          ops: Array<{ sha: string; size: number; mtime: number }>
+        }
+        return Response.json({
+          cursor: ++cursor,
+          results: ops.map((op) => ({
+            status: 'applied',
+            file_id: 'sample-small-file',
+            version_id: 'sample-small-version',
+            seq: cursor,
+            path: 'oversized.bin',
+            sha: op.sha,
+            size: op.size,
+            mtime: op.mtime,
+          })),
+        })
+      }
+      return previousTransport(input, init)
+    })
+    await app.vault.adapter.write('oversized.bin', 'tiny')
+    await ui.sync(id)
+    await vi.waitFor(() =>
+      expect(ui.activity.value[id].notSynced?.some((row) => row.path === 'oversized.bin')).toBe(
+        false
+      )
+    )
   } finally {
     await host.close()
   }

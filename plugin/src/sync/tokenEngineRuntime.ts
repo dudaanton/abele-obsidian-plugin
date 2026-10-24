@@ -4,6 +4,7 @@ import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
+import { NotSyncedState, notSyncedMetadata } from './notSyncedState'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { withinSyncPath } from './scope'
 import { LocalPaths } from '@abele/sync-sdk/core'
@@ -145,7 +146,52 @@ export class TokenEngineRuntime
     const rows = [...this.pushRefusals.values()]
     return this.placement?.localMetadata(rows) ?? rows
   }
+  private recordNotSyncedRefusal(row: SyncReport['push']['rejected'][number]): void {
+    if (row.path === undefined) return
+    const size = row.size ?? ('size' in row.op ? row.op.size : undefined)
+    const limit = row.limit ?? this.authority?.limits.max_file_bytes
+    const bounds =
+      row.code === 'too_large' && limit !== undefined ? ` (${size ?? '?'} B / ${limit} B)` : ''
+    const expected = 'sha' in row.op && typeof row.op.sha === 'string' && 'size' in row.op && typeof row.op.size === 'number' && 'mtime' in row.op && typeof row.op.mtime === 'number' ? { sha: row.op.sha, size: row.op.size, mtime: row.op.mtime } : undefined
+    this.notSyncedState.recordRefusal(row.path, `${row.code}: ${row.message}${bounds}`, expected)
+  }
   readonly trace = new ExchangeTrace()
+  private readonly notSyncedState: NotSyncedState
+  private notSyncedLocal?: {
+    source: import('./notSynced').NotSyncedItem[]
+    root: string
+    rows: import('./notSynced').NotSyncedItem[]
+  }
+  get notSyncedDirty(): boolean {
+    return this.notSyncedState.dirty
+  }
+  async notSynced() {
+    const rows = await this.notSyncedState.snapshot()
+    const root = `${this.placement?.local ?? ''}/${this.placement?.server ?? ''}`
+    if (this.notSyncedLocal?.source === rows && this.notSyncedLocal.root === root)
+      return this.notSyncedLocal.rows
+    const included = rows.filter(
+      (row) =>
+        !this.outsideScope(row.path) &&
+        !this.options.localOnly?.(row.path) &&
+        this.client.includes(row.path) &&
+        !this.ignore?.ignores(this.placement?.toLocal(row.path) ?? row.path) &&
+        !isExcluded(row.path, 0, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
+    )
+    const local = this.placement?.localMetadata(included) ?? included
+    this.notSyncedLocal = { source: rows, root, rows: local }
+    return local
+  }
+  async retryNotSynced(paths: readonly string[]): Promise<void> {
+    this.assertHeld()
+    const retry = Reflect.get(this.engine, Symbol.for('abele.sync.retry-paths-v1'))
+    if (typeof retry !== 'function')
+      throw new Error('Retry could not finish. Your files remain held.')
+    await retry.call(
+      this.engine,
+      paths.map((path) => this.placement?.toServer(path) ?? path)
+    )
+  }
   private readonly quiet: UploadQuietPeriod
   private notifyLocal: ((paths: string[]) => void) | undefined
   private readonly incomingQuietConflicts = new Set<string>()
@@ -990,6 +1036,9 @@ export class TokenEngineRuntime
       }
     }
     // Refusals can be assembled inside a scoped ledger callback as well as at root.
+    this.notSyncedState = new NotSyncedState(options.engineState ?? options.state, (path) =>
+      this.localExcluded(path, 0) || !this.client.includes(path) ? Promise.resolve(null) : this.options.fs.stat(path)
+    )
     const refusalState = (state: StateStore): StateStore =>
       new Proxy(state, {
         get: (target, name) => {
@@ -1003,12 +1052,14 @@ export class TokenEngineRuntime
                 UploadQuietPeriod.isQuiet({ code: 'rate_limited', message: value })
               )
                 return target.setMeta(key, null)
+              if (notSyncedMetadata(key)) this.notSyncedState.invalidate()
               return target.setMeta(key, value)
             }
           if (name === Symbol.for('abele.sync.push-refusal-v1'))
             return (row: SyncReport['push']['rejected'][number]) => {
               if (!this.active || row.path === undefined || UploadQuietPeriod.isQuiet(row)) return
               this.pushRefusals.set(row.path, row)
+              this.recordNotSyncedRefusal(row)
               options.changed(this.engine.status)
             }
           if (name === 'transaction')
@@ -1329,6 +1380,8 @@ export class TokenEngineRuntime
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onApplied: async (change) => {
+        await this.notSyncedState.resolved(change.path)
+        if (change.kind === 'move' && change.from) await this.notSyncedState.resolved(change.from)
         if (change.kind === 'delete') this.quiet.forget(change.path)
         if (change.kind === 'move' && change.from) this.quiet.forget(change.from)
         if (change.origin === 'remote') this.quiet.forget(change.path)
@@ -1349,6 +1402,8 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        this.notSyncedState.invalidate()
+        this.notSyncedState.collisions(report.collisions)
         this.incomingQuietConflicts.clear()
         void this.quiet
           .settle(
@@ -1371,7 +1426,10 @@ export class TokenEngineRuntime
         }
         this.pushRefusals.clear()
         for (const row of report.push.rejected)
-          if (row.path !== undefined) this.pushRefusals.set(row.path, row)
+          if (row.path !== undefined) {
+            this.pushRefusals.set(row.path, row)
+            this.recordNotSyncedRefusal(row)
+          }
         // An empty scan has no push journal, but still completed its metadata checks.
         activityLog.finishComparison(this.inventoryTotal)
         this.serverAvailable = true
@@ -1388,6 +1446,7 @@ export class TokenEngineRuntime
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.notSyncedState.invalidate()
         this.incomingQuietConflicts.clear()
         this.wholeReadUploads.clear()
         this.uploadEntitlements.clear()

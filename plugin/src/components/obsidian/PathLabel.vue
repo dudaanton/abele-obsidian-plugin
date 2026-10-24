@@ -65,6 +65,8 @@ const props = withDefaults(
     copyable?: boolean
     revealable?: boolean
     expandable?: boolean
+    /** Bound the compact path while the disclosure retains the complete path. */
+    maxLength?: number
   }>(),
   { mode: 'context', expandable: true }
 )
@@ -78,11 +80,22 @@ const folder = computed(() =>
 const filename = computed(() => props.path.slice(folder.value.length))
 const compact = computed(() => {
   const index = Math.max(props.path.lastIndexOf('/'), props.path.lastIndexOf('\\'))
-  return props.mode === 'basename'
-    ? props.path.slice(index + 1) || props.path
-    : index < 0
-      ? t('kit.vaultRoot')
-      : props.path.slice(0, index) || props.path.slice(0, 1)
+  const text =
+    props.mode === 'basename'
+      ? props.path.slice(index + 1) || props.path
+      : index < 0
+        ? t('kit.vaultRoot')
+        : props.path.slice(0, index) || props.path.slice(0, 1)
+  const points = Array.from(text)
+  const limit = props.maxLength
+  if (limit === undefined || points.length <= limit) return text
+  const kept = Math.max(0, limit - 1),
+    left = Math.ceil(kept / 2)
+  return (
+    points.slice(0, left).join('') +
+    '…' +
+    (kept > left ? points.slice(-(kept - left)).join('') : '')
+  )
 })
 </script>
 <style>

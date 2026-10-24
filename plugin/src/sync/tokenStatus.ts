@@ -22,6 +22,7 @@ export function tokenStatus(
       one.status === 'joining' ||
       !!activity[one.id]?.transfer ||
       !!activity[one.id]?.startup ||
+      !!activity[one.id]?.notSyncedLoading ||
       !!activity[one.id]?.inspection)
   status.state = rows.some(isBusy)
     ? 'syncing'
@@ -40,6 +41,9 @@ export function tokenStatus(
   status.heldDeletes = rows.reduce((sum, one) => sum + (activity[one.id]?.heldDeletes ?? 0), 0)
   status.deferred = rows.reduce((sum, one) => sum + (activity[one.id]?.deferred ?? 0), 0)
   status.conflicts = rows.reduce((sum, one) => sum + (activity[one.id]?.conflicts?.length ?? 0), 0)
+  status.notSynced = rows.reduce((sum, one) => sum + (activity[one.id]?.notSynced?.length ?? 0), 0)
+  status.notSyncedError = rows.some((one) => activity[one.id]?.notSyncedError)
+  status.notSyncedLoading = rows.some((one) => activity[one.id]?.notSyncedLoading)
   status.review = ui.candidates.value.length + ui.questions.value.length
   status.lastError =
     rows

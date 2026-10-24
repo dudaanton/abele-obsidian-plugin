@@ -230,6 +230,11 @@ export interface ConnectionActivity {
   completed?: number
   total?: number
   refused?: { path: string; reason: string }[]
+  /** Every file sync deliberately does not move, by reason; see `notSynced.ts`. */
+  notSynced?: import('./notSynced').NotSyncedItem[]
+  /** The list could not be read; the window says so in one line. */
+  notSyncedError?: boolean
+  notSyncedLoading?: boolean
   conflicts?: string[]
   error?: string
   /** The last few things that happened to the connection, oldest first, in the person's words. */
@@ -290,6 +295,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   scanSnapshot?(): ReturnType<import('./exchangeTrace').ExchangeTrace['snapshot']>
   assertCurrent?(): void
   sync(): Promise<void>
+  retryNotSynced?(paths: readonly string[]): Promise<void>
   reconcile?(): Promise<void>
   restoreRoot?(): Promise<void>
   followRoot?(): Promise<void>
@@ -1226,7 +1232,28 @@ export class TokenUi {
     )
       throw new Error(SCOPE_DELETED)
     if (this.itemSets.store.get(id)) {
-      if (await this.itemSets.refresh(id)) await this.connectionsChanged()
+      try {
+        if (await this.itemSets.refresh(id)) await this.connectionsChanged()
+      } catch (error) {
+        const code = (error as { code?: string })?.code
+        // Discovery can fail before an engine has a chance to report offline.
+        if (code === 'offline' || code === 'unreachable') {
+          const affected = new Set([
+            id,
+            ...(this.itemSets.store
+              .get(id)
+              ?.items.flatMap((item) => (item.recordId && !item.detached ? [item.recordId] : [])) ??
+              []),
+          ])
+          for (const record of this.registry.records()) {
+            if (!affected.has(record.id) || record.paused || record.status === 'needs-token')
+              continue
+            this.registry.setStatus(record.id, 'offline')
+            this.publish(record.id, { error: connectionError(error) })
+          }
+        }
+        throw error
+      }
       const failures: unknown[] = []
       for (const item of this.itemSets.store.get(id).items) {
         if (!item.recordId || item.detached) continue

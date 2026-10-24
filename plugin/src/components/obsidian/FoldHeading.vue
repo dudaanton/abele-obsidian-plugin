@@ -24,13 +24,16 @@
     <span class="abele-fold-heading__text"
       ><slot name="text">{{ text }}</slot></span
     >
-    <span v-if="count !== undefined" class="abele-fold-heading__count">{{ count }}</span>
+    <span v-if="count !== undefined" class="abele-fold-heading__count">{{
+      formatCount(count, currentLocale().format, {})
+    }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { setIcon } from 'obsidian'
+import { currentLocale, formatNumber as formatCount } from '@/i18n'
 
 /**
  * The title of a list that can be folded away: Obsidian's own fold arrow — the one on headings,

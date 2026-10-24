@@ -22,6 +22,23 @@ it('keeps the cause text when a shared-item manual sync fails', async () => {
   await expect(ui.sync('sample-set')).rejects.toThrow('sample locked ignore file')
 })
 
+it('publishes offline when shared-item discovery fails before the engine starts', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  registry.setStatus(id, 'idle')
+  ui.refresh()
+  vi.spyOn(ui.itemSets.store, 'get').mockReturnValue({
+    items: [{ recordId: id, detached: false }],
+  } as never)
+  vi.spyOn(ui.itemSets, 'refresh').mockRejectedValue(
+    Object.assign(new Error('sample disconnected'), { code: 'offline' })
+  )
+  await expect(ui.sync(id)).rejects.toThrow('sample disconnected')
+  expect(registry.records().find((row) => row.id === id)?.status).toBe('offline')
+  expect(ui.activity.value[id]?.error).toBeTruthy()
+})
+
 it('refuses explicit sync while paused without starting or sending work', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)

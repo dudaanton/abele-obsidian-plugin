@@ -1,6 +1,6 @@
 <template>
   <Modal :title="name" size="tall" phone-sheet @close="emit('close')">
-    <div class="abele-sync-window">
+    <div ref="windowEl" class="abele-sync-window">
       <!-- What the connection is doing, as the row says it, and a bar while it runs. -->
       <div class="abele-sync-window__state">
         <div class="abele-sync-window__status">
@@ -39,7 +39,16 @@
         @remove-copy="openCopyPreview"
       />
 
-      <Section v-if="refused.length" :title="t('sync.window.notSent')">
+      <NotSyncedBlock
+        :items="activity?.notSynced ?? []"
+        :error="activity?.notSyncedError"
+        @reveal="(path) => emit('reveal', path)"
+        @retry="retryNotSynced"
+      />
+      <Section
+        v-if="refused.length && !activity?.notSynced && !activity?.notSyncedError"
+        :title="t('sync.window.notSent')"
+      >
         <Setting v-for="item in refused" :key="item.path" :name="item.path" :desc="item.reason" />
       </Section>
 
@@ -118,6 +127,8 @@
  * that happened. Sharing and disconnecting are at the foot, the dangerous one apart.
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { Notice } from 'obsidian'
+import NotSyncedBlock from './NotSyncedBlock.vue'
 import Modal from '../obsidian/Modal.vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -147,6 +158,15 @@ import { settingsSyncText, settingsSyncWhen } from '@/i18n/settingsSync'
 const { t } = useI18n()
 
 const props = defineProps<{ ui: TokenUi; connectionId: string; error?: string }>()
+async function retryNotSynced(paths: string[]) {
+  try {
+    const runtime = props.ui.runtimes.get(props.connectionId)
+    if (!runtime?.retryNotSynced) throw new Error(t('sync.notSynced.retryFailed'))
+    await runtime.retryNotSynced(paths)
+  } catch {
+    new Notice(t('sync.notSynced.retryFailed'))
+  }
+}
 const emit = defineEmits<{
   close: []
   share: []
@@ -231,23 +251,27 @@ watch(liveActivity, (next) => {
 onBeforeUnmount(() => window.clearTimeout(redraw))
 const name = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() =>
-  setItems.value?.[0]?.state.kind === 'detached'
-    ? setLine(
-        setItems.value,
-        setItems.value.every((item) => item.state.kind === 'detached')
-          ? 'No longer shared · your copy stays'
-          : 'Synced'
-      )
-    : row.value
-      ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen)
-      : ''
+  row.value && (activity.value?.notSynced?.length || activity.value?.notSyncedError)
+    ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen)
+    : setItems.value?.[0]?.state.kind === 'detached'
+      ? setLine(
+          setItems.value,
+          setItems.value.every((item) => item.state.kind === 'detached')
+            ? 'No longer shared · your copy stays'
+            : 'Synced'
+        )
+      : row.value
+        ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen)
+        : ''
 )
 const tone = computed(() =>
-  setItems.value
-    ? setTone(setItems.value)
-    : row.value
-      ? connectionTone(row.value, activity.value)
-      : 'faint'
+  row.value && (activity.value?.notSynced?.length || activity.value?.notSyncedError)
+    ? connectionTone(row.value, activity.value)
+    : setItems.value
+      ? setTone(setItems.value)
+      : row.value
+        ? connectionTone(row.value, activity.value)
+        : 'faint'
 )
 const progress = computed(() => connectionProgress(activity.value))
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
@@ -259,7 +283,15 @@ const port = shallowRef<TokenSettingsPort>()
 const held = shallowRef<HeldDelete[]>([])
 const changes = ref<ChangeItem[]>([])
 
+// The dialog puts the cursor in its first field, which sits halfway down here, under the list of
+// files that are not synced: the window opens at its top and nothing is focused instead.
+const windowEl = ref<HTMLElement>()
 onMounted(async () => {
+  window.requestAnimationFrame(() => {
+    const focused = windowEl.value?.ownerDocument.activeElement
+    if (focused?.instanceOf(HTMLElement) && windowEl.value?.contains(focused)) focused.blur()
+    windowEl.value?.closest('.modal-content')?.scrollTo({ top: 0 })
+  })
   historyConnection.value = props.connectionId
   try {
     port.value = TokenSettingsPort.forConnection(props.ui, props.connectionId)

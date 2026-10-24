@@ -28738,5 +28738,125 @@
       "es",
       "de"
     ]
+  },
+  "sync.status.notSynced": {
+    "englishHash": "a548e51b4d367a233e34cdd483586e1a569493951721ba31610178eaadd4f39d",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.status.notSyncedLine": {
+    "englishHash": "63a87e71c156cd25d5a7325a4a0b98f6552f4a380e61cf8486ca8f206b83f392",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.title": {
+    "englishHash": "7db910b00977a2a0fc102ff09e299a88545d3434d20f9c175f16fcc6970cbd9c",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.titleBare": {
+    "englishHash": "b4c32b7509b38fc08afb3b16f0760ee3abd6d86d903567bb4d224802f6cce45d",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.unreadable": {
+    "englishHash": "1c50c05a27cb63cfc9060bb7b8659386ce13e0fb7fc106b81989a03de7270f96",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.out": {
+    "englishHash": "ca3794973df82cb69df7482e0901015a37390f6cf5a59c06d061fc4b00a6e64c",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.in": {
+    "englishHash": "3aa54a1a408a7828293e9e5779e89ba47f25e282cf3611cf9746701557561050",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.reveal": {
+    "englishHash": "11bf5f7c4e9b83d45c4e9be88fc4d0d8231ab70b787ac3953ae9bb0e85728e9f",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.retry": {
+    "englishHash": "986142cbeebbf68ea11c46025af7a1c5cc7e491d5c2f50967cf92ab2759f924d",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.retryAll": {
+    "englishHash": "1f088e80b513c6b150bf71d8e424da7571b2bec39ca53bd9578a1f4b42584541",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.more": {
+    "englishHash": "325fd75fe0c5f4673d5b91792d1dfe75fcf43b4abc763f01de5277f472a22627",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.on": {
+    "englishHash": "be79e40e633d6e908425dc48865637d51155425641307dfc43468f811d01c3e6",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.since": {
+    "englishHash": "7c87cc6d79f4731b55553efca1d8ffe88378fe433b9a0ecb1cd1d9cb5da26087",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.retryFailed": {
+    "englishHash": "59df65acb7fdfd0871e09704e053227baf6261505204612b3340a56cf77b6362",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.heldTitle": {
+    "englishHash": "d6c22410e59a9e234875b2fe08f2333a2549cef38df8f9aa8c80d629cc08636e",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.heldDesc": {
+    "englishHash": "e913b49deb2809c7418dfd59de90f92e161ccbde6f752b489c50a8901dc5ed48",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.serverTitle": {
+    "englishHash": "f491cc1342d233816d0be0a37f97e0119c2af5e9897e2ea974702cb3b22ef4cb",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.serverDesc": {
+    "englishHash": "73803fa4eaf6c7d7d1d97e8a087c8f4fadc8d51685e884bf2b411fd542a5c484",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.largeTitle": {
+    "englishHash": "6c719cc06739aabcdfd92d95d7962619c08f707b017f3adfc03495c9d607b678",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.largeDesc": {
+    "englishHash": "52c1c28faf12aa90c31caa5c8e71d49c6be4474fd14f61604a4e9a4740965ba8",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.nameTitle": {
+    "englishHash": "e4b57a1975de82e9c713bd2e4ff14dbeb48e43f41dc6eb4a1ef72275ad601e3f",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.nameDesc": {
+    "englishHash": "79924df928cb68100245cfd04a6db8ba445e0d43a7bc3edb0f2c2921b4822605",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "settings.sync.presentation.notSynced": {
+    "englishHash": "cca2320fddb192d730caddfcea13ab934356555a6f56f6aefc1dd6e856dbfc31",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "settings.sync.presentation.notSyncedUnreadable": {
+    "englishHash": "38bb8e1d95a56099fbc97219fb1060f6113fca1b3e62edaacb2cd9581dd83c15",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
   }
 }

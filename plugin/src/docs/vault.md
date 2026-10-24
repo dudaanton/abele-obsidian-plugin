@@ -3182,6 +3182,12 @@ time and creation/change time. Matching current identity and stats permit reuse 
 interrupted upload or plugin reload, including files without a committed server head. A changed
 object or stat triggers a new hash; interrupted/inconsistent reads create no record. These
 records are observations, independent of SDK transactions and publication acknowledgements.
+The connection's not-synced list is a metadata projection of file retry schedules, incoming
+held/refused obligations, directory refusals, held deletions and held publication work. Device-local
+`not-synced-v1` preserves first-seen dates; `not-synced-outgoing:` retains push refusals until their
+publication succeeds, and `not-synced-collisions` records unresolved path collisions. These records
+never acknowledge installation or authorize publication. The UI reads a cached projection; a
+metadata read failure is shown explicitly. Resolving an obligation removes its row automatically.
 Their keys use the vault's normalized path policy; unchanged older path spellings migrate
 lazily without content reads. Sync invalidates affected records durably
 before adapter/native writes, moves or removals, including recovery, and prevents overlapping
