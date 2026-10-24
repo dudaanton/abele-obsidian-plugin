@@ -7,7 +7,16 @@ const today = '2026-10-24'
 
 describe('shipped dependency audit', () => {
   it('honours the advisory only at the recorded nested paths', () => {
+    expect(exceptions[0].paths).toEqual(['node_modules/@abele/sync-sdk/node_modules/zod'])
     expect(evaluateAudit(fixture, exceptions, today)).toEqual([])
+  })
+  it.each(['node-protocol', 'channel-protocol'])('does not exempt nested %s Zod', (name) => {
+    const audit = structuredClone(fixture)
+    const path = `node_modules/@abele/${name}/node_modules/zod`
+    audit.vulnerabilities.zod.nodes.push(path)
+    expect(evaluateAudit(audit, exceptions, today)).toEqual([
+      `Unexcepted advisory: GHSA-mrhx-c7xc-m3w5 ${path} (high)`,
+    ])
   })
   it('fails after the exception expires', () => {
     expect(evaluateAudit(fixture, exceptions, '2026-11-08').join('\n')).toMatch(/expired/)
@@ -41,7 +50,7 @@ describe('shipped dependency audit', () => {
   })
   it('fails when even one recorded path is no longer affected', () => {
     const audit = structuredClone(fixture)
-    audit.vulnerabilities.zod.nodes.pop()
+    audit.vulnerabilities.zod.nodes.splice(0, 1, 'node_modules/zod')
     expect(evaluateAudit(audit, exceptions, today).join('\n')).toMatch(/unused/)
   })
   it('rejects malformed audit responses', () => {

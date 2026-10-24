@@ -1,10 +1,10 @@
 {
   "auditReportVersion": 2,
   "vulnerabilities": {
-    "@abele/node-protocol": {
+    "@abele/sync-sdk": {
       "severity": "high",
       "via": ["zod"],
-      "nodes": ["node_modules/@abele/node-protocol"]
+      "nodes": ["node_modules/@abele/sync-sdk"]
     },
     "zod": {
       "severity": "high",
@@ -17,8 +17,6 @@
         }
       ],
       "nodes": [
-        "node_modules/@abele/node-protocol/node_modules/zod",
-        "node_modules/@abele/channel-protocol/node_modules/zod",
         "node_modules/@abele/sync-sdk/node_modules/zod"
       ]
     }
