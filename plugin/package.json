@@ -111,7 +111,7 @@
     "perfect-freehand": "1.2.0",
     "qrcode-generator": "2.0.4",
     "vue": "3.5.43",
-    "zod": "4.6.5",
+    "zod": "4.6.6",
     "zxing-wasm": "3.1.5"
   },
   "overrides": {
