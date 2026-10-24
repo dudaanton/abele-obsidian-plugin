@@ -1,0 +1,12 @@
+[
+  {
+    "advisory": "GHSA-mrhx-c7xc-m3w5",
+    "paths": [
+      "node_modules/@abele/node-protocol/node_modules/zod",
+      "node_modules/@abele/channel-protocol/node_modules/zod",
+      "node_modules/@abele/sync-sdk/node_modules/zod"
+    ],
+    "reason": "Validated data comes from the user's own node and sync server; migration to patched Zod is pending.",
+    "expires": "2026-11-07"
+  }
+]

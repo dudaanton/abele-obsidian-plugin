@@ -1,0 +1,26 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@abele/node-protocol": {
+      "severity": "high",
+      "via": ["zod"],
+      "nodes": ["node_modules/@abele/node-protocol"]
+    },
+    "zod": {
+      "severity": "high",
+      "via": [
+        {
+          "source": 112233,
+          "name": "zod",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5"
+        }
+      ],
+      "nodes": [
+        "node_modules/@abele/node-protocol/node_modules/zod",
+        "node_modules/@abele/channel-protocol/node_modules/zod",
+        "node_modules/@abele/sync-sdk/node_modules/zod"
+      ]
+    }
+  }
+}

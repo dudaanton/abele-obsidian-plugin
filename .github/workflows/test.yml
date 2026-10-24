@@ -97,7 +97,7 @@ jobs:
 
       - name: Audit shipped dependencies
         working-directory: plugin
-        run: npm audit --omit=dev --audit-level=moderate
+        run: node scripts/audit-dependencies.mjs
 
       # Advisory only: dynamic registration and script APIs must be reviewed before deletion.
       - name: Dead-code inventory
