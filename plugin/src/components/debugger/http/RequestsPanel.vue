@@ -69,16 +69,38 @@
       >
         <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
       </TreeItem>
+      <!-- Saved collections are folders; a file of requests the project has is its file, read
+           where it lies, with what could not be read in it marked and its folder faint. -->
       <TreeItem
         v-for="c in collections"
-        :key="c.name"
-        icon="folder"
+        :key="c.file?.path ?? c.name"
+        :class="{ 'abele-requests-panel__file': c.file }"
+        :icon="c.file ? (c.file.kind === 'http' ? 'file-code' : 'folder-code') : 'folder'"
         :text="c.name"
+        :where="c.file?.folder"
         :flair="String(c.requests.length)"
         collapsible
         :collapsed="folded.has(c.name)"
         @click="toggle(c.name)"
       >
+        <template v-if="c.file?.problem" #end>
+          <StatusDot tone="orange" :label="t('requests.file.problem')" />
+        </template>
+        <template v-if="c.file" #actions>
+          <Icon
+            icon="list-video"
+            size="xs"
+            :tooltip="t('requests.file.sendAll')"
+            :disabled="!!sending || !c.requests.length"
+            @click.stop="emit('send-all', c.name)"
+          />
+          <Icon
+            icon="file-symlink"
+            size="xs"
+            :tooltip="t('requests.file.open')"
+            @click.stop="emit('open-file', c.file.path, 1)"
+          />
+        </template>
         <TreeItem
           v-for="r in c.requests"
           :key="r.id"
@@ -121,6 +143,14 @@
             />
           </template>
         </TreeItem>
+        <TreeItem
+          v-if="c.file?.problem"
+          class="abele-requests-panel__problem"
+          icon="file-warning"
+          :text="t('requests.file.line', { line: c.file.problem.line, text: c.file.problem.text })"
+          :label="t('requests.file.openLine', { line: c.file.problem.line })"
+          @click="emit('open-file', c.file.path, c.file.problem.line)"
+        />
       </TreeItem>
       <div v-if="!collections.length" class="abele-requests-panel__empty">
         {{ t('streamC.7297662ec94fa9de') }}
@@ -191,6 +221,10 @@ const emit = defineEmits<{
   (e: 'show-recording'): void
   /** The projects to pick from, a menu at the row. */
   (e: 'project-menu', event: MouseEvent): void
+  /** A file's requests one after another, in its order, stopping at the first that fails. */
+  (e: 'send-all', collection: string): void
+  /** A file of requests, opened at a line of it. */
+  (e: 'open-file', path: string, line: number): void
 }>()
 
 const folded = reactive(new Set<string>())
@@ -229,6 +263,17 @@ const toggle = (name: string) => (folded.has(name) ? folded.delete(name) : folde
 }
 .abele-requests-panel__last_error {
   color: var(--text-error);
+}
+
+// A file's count and the dot that says part of it could not be read, apart as two codes.
+.abele-requests-panel__file > .tree-item-self .abele-tree-item__end {
+  margin-inline-start: var(--size-4-1);
+}
+
+// What could not be read in a file: a quiet line in its place, that opens the file there.
+.abele-requests-panel__problem .abele-tree-item__text {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-requests-panel__environment .abele-obsidian-icon,

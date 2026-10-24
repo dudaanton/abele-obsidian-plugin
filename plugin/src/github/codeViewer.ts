@@ -36,6 +36,7 @@ import { lineSelection, type SelectionHooks } from './lineSelection'
 import { scrollParent } from './scrollTo'
 import { codeNavAddon } from './search/navAddon'
 import { blameGutter, type BlameGutter } from './blameGutter'
+import { fileLens, type FileLens } from '@/requests/fileLens'
 import { nodeLspExtension } from '@/node/lspExtension'
 
 export interface Viewer {
@@ -64,6 +65,8 @@ export interface CodeViewer extends Viewer {
   /** Marks `range` instead, and makes its first line the one `targetTop` finds. */
   mark(range: LineRange): void
   blame(options: BlameGutter | null): void
+  /** A file of requests: a send glyph at each method line, its last answer at the line's end. */
+  requests(options: FileLens | null): void
   setText(text: string): void
 }
 
@@ -358,6 +361,7 @@ export function mountCode(
   const selection = lineSelection({ ...hooks, initial: lines(range) })
   const blame = new Compartment()
   const match = new Compartment()
+  const lens = new Compartment()
 
   const viewer = mount(
     parent,
@@ -366,6 +370,7 @@ export function mountCode(
       blame.of([]),
       match.of([]),
       lineNumbers({ domEventHandlers: selection.gutterHandlers }),
+      lens.of([]),
       selection.extension,
       ...languageFor(path),
       codeSyntax(path),
@@ -405,6 +410,9 @@ export function mountCode(
     },
     blame(options) {
       viewer.view.dispatch({ effects: blame.reconfigure(options ? blameGutter(options) : []) })
+    },
+    requests(options) {
+      viewer.view.dispatch({ effects: lens.reconfigure(options ? fileLens(options) : []) })
     },
     mark(next) {
       markMatch(next)

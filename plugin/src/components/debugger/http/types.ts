@@ -60,12 +60,41 @@ export interface HttpRequest {
   checks: HttpCheck[]
   /** The last time it was sent: its status, or that it did not get through. */
   last?: { status?: number; failed?: boolean }
+  /** Read from a file of the project, not saved here: where in it, so an edit goes back there. */
+  origin?: { file: string; line: number }
 }
 
-/** A folder of `.abele/requests/`. */
+/**
+ * A value an earlier answer gives this request, `{{createOrder.response.body.id}}`: what it came
+ * to, or that the request it comes from was not sent yet.
+ */
+export interface HttpCapture {
+  /** As written in the request. */
+  expression: string
+  /** The short name it reads as, `id`. */
+  name: string
+  /** The request it comes from, by its name, and its id to send it first. */
+  from: { id: string; name: string }
+  value?: string
+  /** When that answer came, `05:12`, and its status. */
+  at?: string
+  status?: number
+}
+
+/** A folder of `.abele/requests/`, or a file of requests the project already has. */
 export interface HttpCollection {
   name: string
   requests: HttpRequest[]
+  /**
+   * A `.http` file or a Bruno collection of the project, read where it is each time: not saved
+   * here. Its folder, and what could not be read in it.
+   */
+  file?: {
+    kind: 'http' | 'bruno'
+    path: string
+    folder?: string
+    problem?: { line: number; text: string }
+  }
 }
 
 export interface HttpEnvironment {

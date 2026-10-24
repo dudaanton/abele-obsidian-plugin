@@ -9,7 +9,8 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { FILE_LENS } from '@/requests/fileLens'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type CodeViewer, type CodeComparison } from '@/github/codeViewer'
@@ -76,6 +77,12 @@ const applyBlame = () =>
       : null
   )
 watch(() => props.blame, applyBlame)
+// A file of requests, read only: its send glyphs, from whoever shows requests here.
+const lens = inject(FILE_LENS, null)?.(props.path) ?? null
+const applyLens = () => {
+  if (lens && !props.editable) viewer?.requests(lens.value)
+}
+if (lens) watch(lens, applyLens)
 
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)
@@ -115,6 +122,7 @@ const draw = async (focus: { line: number; context: number } | null) => {
   )
   viewer = drawn
   applyBlame()
+  applyLens()
   if (focus) {
     unpin = pinIntoView(editorEl.value, () => drawn.lineTop(focus.line), {
       context: focus.context,
@@ -190,5 +198,53 @@ defineExpose({
 }
 .abele-github-code .cm-merge-a {
   color: var(--text-muted);
+}
+</style>
+
+<style lang="scss">
+// A request's send glyph between the line numbers and the code, as an IDE's run glyph: Obsidian's
+// own clickable icon, a step smaller than the text, lit on hover. Its last answer is faint words at
+// the end of the method line, red when it failed.
+// On the request's first line, however far a narrow pane wraps it.
+.abele-file-lens {
+  .cm-gutterElement {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+}
+.abele-file-lens__send {
+  height: calc(var(--line-height-normal) * 1em);
+  padding: 0 var(--size-2-1);
+  color: var(--text-faint);
+  --icon-size: var(--icon-xs);
+
+  &:hover {
+    color: var(--text-accent);
+  }
+  &.is-sending {
+    color: var(--text-accent);
+    cursor: default;
+  }
+}
+.abele-file-lens__outcome {
+  margin-inline-start: var(--size-4-3);
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  cursor: var(--cursor);
+
+  &:hover {
+    color: var(--text-muted);
+    text-decoration: underline;
+  }
+  &.is-error {
+    color: var(--text-error);
+  }
+}
+// A finger's width on a phone; its height is the code line's, as the line numbers' are.
+body.is-phone .abele-file-lens__send {
+  min-width: var(--size-4-9);
 }
 </style>

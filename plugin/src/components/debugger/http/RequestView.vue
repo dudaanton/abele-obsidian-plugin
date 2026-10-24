@@ -98,6 +98,21 @@
             >{{ resolved }}</code
           >
         </div>
+        <!-- Read from a file of the project: where, as a way back to it; an edit goes there. -->
+        <div v-if="request.origin" class="abele-http-request__resolved abele-http-request__origin">
+          <Icon icon="file-code" size="xs" no-hover />
+          <span v-if="gone" class="abele-http-request__gone">{{
+            t('requests.file.gone', { file: request.origin.file })
+          }}</span>
+          <a
+            v-else
+            href="#"
+            class="abele-http-request__origin-link"
+            :aria-label="t('requests.file.openLine', { line: request.origin.line })"
+            @click.prevent="emit('open-origin')"
+            >{{ t('requests.file.at', { file: request.origin.file, line: request.origin.line }) }}</a
+          >
+        </div>
       </div>
 
       <div class="abele-http-request__parts">
@@ -136,6 +151,45 @@
               "
               @submit="send"
             />
+            <!-- What earlier answers give it: each value as it came, under it the request and
+                 when; one not sent yet is red with a glyph that sends that request first. -->
+            <div
+              v-else-if="part.id === 'answers'"
+              class="abele-http-request__captures"
+              role="table"
+              :aria-label="part.label"
+            >
+              <div
+                v-for="c in captures"
+                :key="c.expression"
+                class="abele-http-pairs__row abele-http-request__capture"
+                :class="{ 'abele-http-request__capture_missing': c.value === undefined }"
+                role="row"
+                :aria-label="c.expression"
+              >
+                <Icon icon="corner-down-right" size="xs" no-hover />
+                <span class="abele-http-pairs__key abele-http-request__capture-name">{{
+                  c.name
+                }}</span>
+                <span class="abele-http-request__capture-value">
+                  <template v-if="c.value !== undefined"
+                    ><code>{{ c.value }}</code>
+                    <span class="abele-http-request__capture-from">{{
+                      [c.from.name, c.status, c.at].filter(Boolean).join(' · ')
+                    }}</span></template
+                  >
+                  <span v-else>{{ t('requests.capture.notSent', { name: c.from.name }) }}</span>
+                </span>
+                <Icon
+                  v-if="c.value === undefined"
+                  icon="send-horizontal"
+                  size="xs"
+                  :tooltip="t('requests.capture.sendFirst', { name: c.from.name })"
+                  @click="emit('send-first', c.from.id)"
+                />
+                <span v-else />
+              </div>
+            </div>
             <!-- A script named runs from here: its row opens it, the glyphs change it or take it
                  off. With none, the row is the way to pick one, as Obsidian's own empty slots
                  are: a plus and what it is for. -->
@@ -379,13 +433,19 @@
           class="abele-http-request__notice abele-http-request__notice_error"
           role="status"
         >
-          <Icon icon="key-round" size="xs" no-hover />
+          <Icon :icon="unsent ? 'corner-down-right' : 'key-round'" size="xs" no-hover />
           <span class="abele-http-request__why">{{ blocked }}</span>
           <Button
             v-if="missingKey"
             class="abele-http-request__open-keys"
             :text="t('streamC.20ddc5d1000b3b31')"
             @click="emit('open-keys')"
+          />
+          <Button
+            v-else-if="unsent"
+            class="abele-http-request__open-keys"
+            :text="t('requests.capture.sendFirst', { name: unsent.from.name })"
+            @click="emit('send-first', unsent.from.id)"
           />
         </div>
         <EmptyState v-else :text="t('streamC.21e20af8ac700aae')" />
@@ -428,6 +488,7 @@ import type {
   HttpPair,
   HttpRequest,
   HttpSend,
+  HttpCapture,
 } from './types'
 
 const props = withDefaults(
@@ -453,6 +514,10 @@ const props = withDefaults(
     pausedAt?: string
     /** Why a named script cannot run, when it cannot: gone, or not made to run around requests. */
     scriptProblems?: { before?: string; after?: string }
+    /** Values earlier answers give it, for a request read from a file of the project. */
+    captures?: HttpCapture[]
+    /** The file it was read from is no longer there; its last answer is still shown. */
+    gone?: boolean
   }>(),
   {
     vars: () => [],
@@ -467,6 +532,8 @@ const props = withDefaults(
     paused: false,
     pausedAt: undefined,
     scriptProblems: () => ({}),
+    captures: () => [],
+    gone: false,
   }
 )
 const emit = defineEmits<{
@@ -484,6 +551,10 @@ const emit = defineEmits<{
   (e: 'compare', id: string | undefined): void
   /** The settings where this device's keys are kept. */
   (e: 'open-keys'): void
+  /** The file it was read from, at its line. */
+  (e: 'open-origin'): void
+  /** The request an earlier answer is wanted from, sent first. */
+  (e: 'send-first', id: string): void
 }>()
 
 const phone = Platform.isPhone
@@ -524,6 +595,9 @@ const parts = computed(() => [
   ...(props.request.method === 'GET' || props.request.method === 'HEAD'
     ? []
     : [{ id: 'body', label: t('streamC.6ccaa6415b5ee449'), count: undefined }]),
+  ...(props.captures.length
+    ? [{ id: 'answers', label: t('requests.capture.title'), count: props.captures.length }]
+    : []),
   {
     id: 'scripts',
     label: t('settings.tabs.scripts'),
@@ -555,12 +629,16 @@ const unknownVar = computed(() =>
     .map((m) => m[1])
     .find((name) => !props.vars.some((v) => v.key === name))
 )
+/** An earlier answer it takes a value from, when that request was not sent yet. */
+const unsent = computed(() => props.captures.find((c) => c.value === undefined))
 /** Why it cannot go as it is, in words for the tooltip. */
 const blocked = computed(() => {
   const missing = [...props.request.params, ...props.request.headers].find(
     (p) => !p.off && p.missing
   )
   if (missing) return missing.missing
+  if (unsent.value) return t('requests.capture.blocked', { name: unsent.value.from.name })
+  if (props.gone) return t('requests.file.gone', { file: props.request.origin?.file ?? '' })
   return unknownVar.value
     ? t('streamC.c63d84f2d189cdf0', { v1: String(unknownVar.value), v2: String(props.environment) })
     : undefined
@@ -579,8 +657,11 @@ const resolved = computed(() => {
     .map((p) => `${p.key}=${p.value}`)
     .join('&')
   const url = props.request.url.replace(
-    /\{\{(\w+)\}\}/g,
-    (whole, name: string) => props.vars.find((v) => v.key === name)?.value ?? whole
+    /\{\{([\w.$-]+)\}\}/g,
+    (whole, name: string) =>
+      props.vars.find((v) => v.key === name)?.value ??
+      props.captures.find((c) => c.expression === name)?.value ??
+      whole
   )
   return query ? `${url}?${query}` : url
 })
@@ -820,6 +901,58 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
     padding: 0;
     color: inherit;
   }
+}
+
+.abele-http-request__origin {
+  margin-top: var(--size-2-2);
+}
+.abele-http-request__origin-link {
+  color: var(--text-muted);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--text-accent);
+    text-decoration: underline;
+  }
+}
+.abele-http-request__gone {
+  color: var(--text-faint);
+}
+// What earlier answers give: the pairs' own columns, the name muted, the value as it came and
+// faint after it the request and when; red where that request was not sent yet.
+.abele-http-request__capture {
+  .abele-obsidian-icon:first-child {
+    height: auto;
+    padding: 0;
+    color: var(--text-faint);
+  }
+}
+.abele-http-request__capture-name {
+  padding: var(--size-2-1) var(--size-2-2);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+}
+.abele-http-request__capture-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--size-4-2);
+  min-width: 0;
+  padding: var(--size-2-1) var(--size-2-2);
+  font-size: var(--font-ui-small);
+
+  code {
+    font-family: var(--font-monospace);
+    color: var(--text-normal);
+    overflow-wrap: anywhere;
+  }
+}
+.abele-http-request__capture-from {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+.abele-http-request__capture_missing .abele-http-request__capture-value {
+  color: var(--text-error);
 }
 
 .abele-http-request__env {
