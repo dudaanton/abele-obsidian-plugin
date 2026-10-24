@@ -751,7 +751,9 @@ it('reads a project request file, sends its chain and writes an edit back on bot
         await until(()=>document.querySelector('.abele-http-env__exposed'),'file secret warning');
         if(document.querySelector('.abele-http-env__exposed').textContent.includes('fixture-secret'))throw Error('Secret is visible');
         await shot('file-requests-06-environment-${device}');
-        document.querySelector('.modal .modal-close-button')?.click();
+        const environmentDialog=document.querySelector('.abele-http-env__exposed').closest('.modal');
+        [...environmentDialog.querySelectorAll('button')].find(button=>button.textContent.trim()==='Cancel').click();
+        await until(()=>!document.querySelector('.abele-http-env__exposed'),'environment dialog closed');
         await api.requests.openTab(c,read.id);
         stage='remove source';
         fs.unlinkSync(${JSON.stringify(path)});
