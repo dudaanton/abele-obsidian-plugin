@@ -28348,5 +28348,195 @@
       "es",
       "de"
     ]
+  },
+  "requests.file.problem": {
+    "englishHash": "10921a08a7ae29bc91d67128d9d267f555a164b7933047510fe22bfd89a62e7f",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.sendAll": {
+    "englishHash": "6968c378dc7540b4db6d92e5d42b6fa63cfb23ae34fd16e470d9ad4642b7ff1e",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.open": {
+    "englishHash": "bd5f6b1d9360a8910a94a2fa49d563ca33e46b67bc8a52c49a3a373a30784288",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.line": {
+    "englishHash": "0e3dce949d3619cad50fab76fea82104dcc976af85fcb7d5117d30d01a99165f",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.openLine": {
+    "englishHash": "c6b1f36fb7fe5964d8aaad60608b62ae51771846bc5ff584a1ff3863734f404b",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.at": {
+    "englishHash": "8a32540566498efaffc4694c70f3844b7c0a4f105dfb3c8dadb2d5ecf9274b42",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.gone": {
+    "englishHash": "5e146c70642882c24ca9dc8e8e3f042aa7c2d45fa301b7d999c27da8ffdc1b91",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.capture.title": {
+    "englishHash": "d61a49b61fe56d82825d29a20183d247b53ad5d6cc60d57c60ab157b5054e908",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.env.exposed": {
+    "englishHash": "4baa1ff7baa3736d718eef8e70e5f29402450904b78935cef1403ecd1c7ab9f5",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.env.toKeys": {
+    "englishHash": "a3c7064f94e96c8bc256d551fd09e4d7a9670d0f18b119d1492209fa4fc32d14",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.capture.notSent": {
+    "englishHash": "92f47e0c7293074499adb7a025efe31c9464f9c995a6c836930379090508b3fc",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.capture.sendFirst": {
+    "englishHash": "0770bb52e200a0e0a8f6b33d7082fdb16f04b521a71f3404f4cc927d76d57a31",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.capture.blocked": {
+    "englishHash": "3566133cda63811b31666c36144d1eaba3a3f0f013d0b1adaa818988bef2d95e",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.saveCopy": {
+    "englishHash": "88eb30ff3ff352be5c012a59aa53547e1792011ac880752e665b187183ec0fcf",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.openPanel": {
+    "englishHash": "24c97b5031d37337b15e9cbd30156c764fe14e9a41e84503811b2e481f090127",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.scriptShown": {
+    "englishHash": "b1e03487022f4af72a1708cddc68e75d9143e64ddb6b1e1ed8ce6de166261805",
+    "context": "Project request files, answer captures and file environments",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.sending": {
+    "englishHash": "65ea0981f88b97770dd2db6ae4ef86b32f1b87c301cd7697eb1f0826bb2712c6",
+    "context": "Request file gutter actions and send status",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.notSent": {
+    "englishHash": "8513a9ecd7d7a0c923eab8806a3aa925e96bc0eede616c680a4d49a7be219e49",
+    "context": "Request file gutter actions and send status",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.openAnswer": {
+    "englishHash": "f01c7aa72ae7de966a99afd12b704859e6931151fe3ebb890dd0a1d660a17668",
+    "context": "Request file gutter actions and send status",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

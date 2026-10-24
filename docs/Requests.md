@@ -103,3 +103,23 @@ lists what was skipped and why; an import screen needs the designer first.
 
 Client certificates (the owner said not now), sending from the device rather than the node, and
 editing checks from the tab (they are lines in the request's file).
+
+Project `.http` and `.rest` files appear directly below saved collections. A folder containing
+`bruno.json` groups its `.bru` files as a Bruno collection. These are live sources, not imported
+copies. Open a request's source line from its tab, or send it from the gutter of the current
+node file. Editing a request updates its original block with a conditional file write; if the
+source changed meanwhile, open the file to review the retained conflict. The row menu can save
+an independent copy to saved requests.
+
+Named REST Client requests can supply JSON body fields and response headers to later requests,
+including `{{create.response.body.$.id}}` and `{{create.response.headers.Location}}`. Answers are
+held per collection for this session. A dependent request waits for its prerequisite; sending
+a collection in order stops on the first failed send, error status or failed check. Embedded
+response scripts are displayed as source and never executed.
+
+`http-client.env.json` and `http-client.private.env.json` beside a request file provide selectable
+environments, with private values overriding public values. Secret-looking values are hidden in
+the environment dialog. **Move to keys** stores a value in the key store before replacing that
+value with a named key reference in its source file. Ordinary environment saves refuse literal
+secrets. Deleting or moving a source removes its collection, while an open tab retains its last
+answer and reports that its source is gone.

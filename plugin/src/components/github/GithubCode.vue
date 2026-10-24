@@ -9,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { FILE_LENS } from '@/requests/fileLens'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
@@ -78,11 +78,12 @@ const applyBlame = () =>
   )
 watch(() => props.blame, applyBlame)
 // A file of requests, read only: its send glyphs, from whoever shows requests here.
-const lens = inject(FILE_LENS, null)?.(props.path) ?? null
+const lensFor = inject(FILE_LENS, null)
+const lens = computed(() => lensFor?.(props.path)?.value ?? null)
 const applyLens = () => {
-  if (lens && !props.editable) viewer?.requests(lens.value)
+  viewer?.requests(props.editable ? null : lens.value)
 }
-if (lens) watch(lens, applyLens)
+if (lens.value) watch(lens, applyLens)
 
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)

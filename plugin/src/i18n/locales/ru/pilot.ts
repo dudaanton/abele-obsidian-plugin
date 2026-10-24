@@ -1,5 +1,26 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'requests.file.sending': 'отправляется…',
+  'requests.file.notSent': 'не отправлено',
+  'requests.file.openAnswer': 'Открыть {name} с ответом',
+
+  'requests.file.problem': 'Часть файла не удалось прочитать',
+  'requests.file.sendAll': 'Отправить всё по порядку',
+  'requests.file.open': 'Открыть файл',
+  'requests.file.line': 'Строка {line}: {text}',
+  'requests.file.openLine': 'Открыть файл на строке {line}',
+  'requests.file.at': '{file} · строка {line}',
+  'requests.file.gone': '{file} больше нет',
+  'requests.capture.title': 'Из ответов',
+  'requests.env.exposed': 'секрет записан в {file}',
+  'requests.env.toKeys': 'Перенести в ключи',
+  'requests.capture.notSent': '{name} ещё не отправлялся',
+  'requests.capture.sendFirst': 'Отправить {name}',
+  'requests.capture.blocked': 'Сначала отправьте {name}: запрос использует его ответ',
+  'requests.file.saveCopy': 'Сохранить копию в запросы',
+  'requests.file.openPanel': 'Открыть в запросах',
+  'requests.file.scriptShown': 'Скрипт показан как исходный текст и не выполняется.',
+
   'settings.ai.apiMode': 'API',
   'settings.ai.apiModeDescription':
     'API этого провайдера. Существующие подключения используют Chat Completions.',

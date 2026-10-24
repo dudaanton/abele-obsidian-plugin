@@ -48,7 +48,9 @@ import type { Pair, RequestDoc } from './wire'
 import { ScriptService } from '@/scripting/ScriptService'
 import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPicker'
 import { assignRequestScript, requestScriptProblems, type ScriptMoment } from './scripts'
-import { collectionOf, originOf } from './shapes'
+import { SECRET_NAME } from './importers/shared'
+import { NodeRequestFiles } from './nodeFiles'
+import { collectionOf, originOf, sentAtWords } from './shapes'
 import { DebuggerService } from '@/debugger/DebuggerService'
 
 export const REQUESTS_VIEW = 'abele-requests'
@@ -92,17 +94,20 @@ function docOf(r: HttpRequest): RequestDoc {
 }
 
 /** The environment's values as the tab shows what the address comes to: a secret blanked. */
-function shownVars(model: RequestsModel): HttpPair[] {
-  const secrets = model.secrets()
-  return (model.state.env?.vars ?? []).flatMap((v) =>
-    v.off
-      ? []
-      : v.secret
-        ? secrets[v.key] !== undefined
-          ? [{ key: v.key, value: '••••', secret: true }]
-          : []
-        : [{ key: v.key, value: v.value ?? '' }]
+export function shownVars(model: RequestsModel, doc: RequestDoc): HttpPair[] {
+  const file = Object.entries(model.state.entries).some(
+    ([id, entry]) => entry.doc === doc && !!model.files?.get(id)
   )
+  return Object.entries(model.vars(doc, true)).map(([key, value]) => {
+    const namedKey = /\$\{abele_key:[^}]+\}/.test(value)
+    const secret =
+      !!model.state.env?.vars.find((v) => v.key === key)?.secret || (file && SECRET_NAME.test(key))
+    return {
+      key,
+      value: secret && !namedKey ? '••••' : value,
+      ...(secret || namedKey ? { secret: true } : {}),
+    }
+  })
 }
 
 // ── The sidebar view ──
@@ -173,6 +178,27 @@ const Sidebar = defineComponent({
             : {}),
         })),
       }))
+      for (const collection of m?.files?.collections ?? [])
+        collections.push({
+          name: collection.name,
+          file: collection.file,
+          requests: collection.requests.map((r) => ({
+            ...viewRequest(r.id, m?.state.entries[r.id]?.doc ?? r.doc),
+            origin: r.origin,
+            ...(m?.entry(r.id).outcome?.kind === 'answered'
+              ? {
+                  last: {
+                    status: (
+                      m.entry(r.id).outcome as Extract<
+                        import('@/components/debugger/http/types').HttpOutcome,
+                        { kind: 'answered' }
+                      >
+                    ).response.status,
+                  },
+                }
+              : {}),
+          })),
+        })
       const open = service.openRequest.value
       return h(RequestsPanel, {
         collections,
@@ -185,6 +211,13 @@ const Sidebar = defineComponent({
         sending: m?.state.sending.at(-1),
         recording: recording.value?.name,
         onRefresh: load,
+        onSendAll: (path: string): void => {
+          void m?.sendAll(path, { interactive: true }).catch(say)
+        },
+        onOpenFile: (path: string, line: number): void => {
+          if (m?.files?.port instanceof NodeRequestFiles)
+            void m.files.port.open(path, line).catch(say)
+        },
         reveal: service.reveal.value,
         onOpenRequest: (id: string): void => {
           if (c) void openRequestTab(c, id).catch(say)
@@ -273,7 +306,7 @@ export class RequestTab extends ItemView {
   }
   onPaneMenu(menu: Menu, source: string) {
     const s = this.current.value
-    if (s) {
+    if (s && !s.id.startsWith('file:')) {
       menu.addItem((i) =>
         i
           .setTitle('Rename')
@@ -323,6 +356,15 @@ export class RequestTab extends ItemView {
   }
   async onOpen() {
     this.draw()
+    this.register(
+      watch(
+        this.current,
+        (s, _was, cleanup) => {
+          if (s) cleanup(RequestsService.instance().model(s).followFiles())
+        },
+        { immediate: true }
+      )
+    )
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         if (leaf === this.leaf && this.current.value)
@@ -370,7 +412,7 @@ export class RequestTab extends ItemView {
             const entry = model.entry(s.id)
             const doc = entry.doc
             if (!doc) return h(EmptyState, { text: entry.error ?? 'Reading the request…' })
-            const recording = service.recording(s, originOf(addressOf(doc, model.vars()))).value
+            const recording = service.recording(s, originOf(addressOf(doc, model.vars(doc)))).value
             const binding = DebuggerService.instance.active.value
             if (binding) void binding.revision.value
             const session =
@@ -388,10 +430,26 @@ export class RequestTab extends ItemView {
             const outcome = entry.outcome
             const checks = outcome?.kind === 'answered' ? outcome.response.checks : undefined
             return h(RequestView, {
-              request: viewRequest(s.id, doc, checks),
+              request: {
+                ...viewRequest(s.id, doc, checks),
+                ...(model.files?.get(s.id) ? { origin: model.files.get(s.id)!.origin } : {}),
+              },
+              saveError: entry.error,
+              gone: model.files?.get(s.id)?.gone,
+              sourceScript: model.files?.get(s.id)?.script,
+              captures: (model.files?.captures(s.id) ?? []).map((c) => ({
+                ...c,
+                ...(c.at ? { at: sentAtWords(c.at) } : {}),
+              })),
+              onSendFirst: (id: string): void => sendFromView(s, id),
+              onOpenOrigin: (): void => {
+                const file = model.files?.get(s.id)
+                if (file && model.files?.port instanceof NodeRequestFiles)
+                  void model.files.port.open(file.origin.file, file.origin.line).catch(say)
+              },
               environment: model.state.environment ?? 'no environment',
               collection: collectionOf(s.id),
-              vars: shownVars(model),
+              vars: shownVars(model, doc),
               outcome,
               recorded: entry.runs.has(entry.shown ?? entry.history[0]?.id ?? ''),
               history: entry.history,

@@ -679,3 +679,88 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
     expect(seen.controlSelection.every((s) => s === 'none')).toBe(true)
   })
 }, 180000)
+
+it('reads a project request file, sends its chain and writes an edit back on both layouts', async () => {
+  const check = (device: string) => {
+    connect()
+    const path = join(repo, 'sample-chain.http')
+    const env = join(repo, 'http-client.env.json')
+    writeFileSync(
+      path,
+      `# @name create\nPOST ${base}/samples\nContent-Type: application/json\n\n{"qty":2}\n### Read created sample\nGET ${base}/samples/{{create.response.body.$.id}}\n### Broken sample\nnot an address\n`
+    )
+    writeFileSync(env, JSON.stringify({ sample: { base, token: 'fixture-secret' } }))
+    try {
+      const result = evalAsync<{
+        url: string
+        edited: boolean
+        gone: boolean
+      }>(`(async()=>{${prelude}
+        ${CHOOSE(() => project, 'repo')}
+        const c={registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)}},m=requests.model(c);
+        await m.load();
+        const collection=await until(()=>m.files?.collections.find(c=>c.file.path==='sample-chain.http'),'source collection');
+        const [create,read]=collection.requests;
+        requests.reveal.value={collection:'sample-chain.http',ids:collection.requests.map(r=>r.id),at:Date.now()};
+        await wait(400);
+        await shot('file-requests-01-collection-${device}');
+        await shot('file-requests-07-partial-${device}');
+        await api.requests.openTab(c,read.id);
+        shown=app.workspace.getLeavesOfType('abele-request').find(l=>l.view.getState().id===read.id);
+        await until(()=>tab()?.querySelector('.abele-http-request__why')?.textContent.includes('create'),'blocked dependency');
+        if(!tab().querySelector('.abele-http-request__send').disabled)throw Error('Dependent Send is enabled');
+        await shot('file-requests-03-blocked-${device}');
+        await m.sendAll('sample-chain.http',{interactive:true});
+        await until(()=>tab()?.querySelector('.abele-http-request__facts')?.textContent.includes('200'),'chain answer');
+        const url=m.entry(read.id).outcome.response.body;
+        if(!JSON.parse(url).url.startsWith('/samples/sample-'))throw Error('Capture was not substituted: '+url);
+        await shot('file-requests-02-request-${device}');
+        const answers=[...tab().querySelectorAll('.abele-fold-heading')].find(el=>el.textContent.includes('From answers'));
+        if(!tab().querySelector('.abele-http-request__capture'))answers?.click();
+        await shot('file-requests-04-answers-${device}');
+        const address=tab().querySelector('.abele-http-request__url');
+        address.value=${JSON.stringify(base)}+'/samples/edited';
+        address.dispatchEvent(new Event('change',{bubbles:true}));
+        await m.flush(read.id);
+        const fs=require('fs');
+        const edited=fs.readFileSync(${JSON.stringify(path)},'utf8').includes('/samples/edited');
+        if(!edited)throw Error('Edit was not written back');
+        await m.send(read.id,{interactive:true});
+        await shot('file-requests-08-edited-${device}');
+        tab().querySelector('.abele-http-request__origin-link').click();
+        await until(()=>document.querySelector('.abele-file-lens__send'),'file send glyphs');
+        const history=m.entry(read.id).history.length;
+        (await until(()=>[...document.querySelectorAll('.abele-file-lens__send')].find(el=>el.getAttribute('aria-label')==='Send Read created sample'),'source send glyph')).click();
+        await until(()=>m.entry(read.id).history.length>history,'glyph send finished');
+        await shot('file-requests-05-glyphs-${device}');
+        (await until(()=>document.querySelector('[aria-label="Open in Requests"]'),'open in requests action')).click();
+        await until(()=>panel(),'requests panel from file');
+        await m.selectEnvironment(m.files.environments.find(e=>e.name==='sample').id);
+        panel().querySelector('.abele-requests-panel__environment .tree-item-self')?.click();
+        (await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>/Edit.*environment/i.test(el.textContent)),'edit environment menu')).click();
+        await until(()=>document.querySelector('.abele-http-env__exposed'),'file secret warning');
+        if(document.querySelector('.abele-http-env__exposed').textContent.includes('fixture-secret'))throw Error('Secret is visible');
+        await shot('file-requests-06-environment-${device}');
+        document.querySelector('.modal .modal-close-button')?.click();
+        await api.requests.openTab(c,read.id);
+        fs.unlinkSync(${JSON.stringify(path)});
+        await m.refreshFiles();
+        const gone=!!m.files.get(read.id).gone;
+        await until(()=>tab()?.textContent.includes('sample-chain.http is gone'),'deleted file warning');
+        if(!m.entry(read.id).outcome)throw Error('Deleting source lost the last answer');
+        await shot('file-requests-09-gone-${device}');
+        return {url,edited,gone};
+      })()`)
+      expect(result.edited).toBe(true)
+      expect(result.gone).toBe(true)
+    } finally {
+      rmSync(path, { force: true })
+      rmSync(env, { force: true })
+      evalRaw(
+        `(()=>{for(const t of ['abele-request','abele-requests','abele-github'])for(const l of app.workspace.getLeavesOfType(t))l.detach();return true})()`
+      )
+    }
+  }
+  check('desktop')
+  await withEmulatedPhone(async () => check('phone'))
+}, 180000)

@@ -3259,6 +3259,17 @@ answers and history. Request tabs remember their answer timeout per node, projec
 in device-local storage (`abele-requests:…:timeout:…`), defaulting to 300 seconds. These timeout
 preferences do not change the project's request files.
 
+Project request collections are also read live from node `.http`/`.rest` files and Bruno folders
+with `bruno.json`. They are not copied into `.abele/requests/`. Source coordinates and parsed
+requests are held in memory. Edits use the node document source's existing conditional writes
+and durable conflict drafts; review happens in the ordinary node file editor. Named response
+captures and their values live only in the collection's current client session. Embedded source
+scripts are displayed, not executed. Adjacent public/private HTTP environment files stay in the
+project; explicitly moving a secret first saves it in the plugin key store/settings and then
+conditionally replaces its source value with `${abele_key:name}`. A failed or uncertain file save keeps the
+stored key and the ordinary node save evidence for review; it does not start another write
+automatically.
+
 Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;
 2, 5, 10 or 30 minutes). AI general settings transfer carries it between devices.
 

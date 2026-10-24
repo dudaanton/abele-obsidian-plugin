@@ -75,3 +75,33 @@ it('loads the remembered project when revealing an already restored Requests vie
   expect(model.state.collections[0]?.requests[0]?.id).toBe('Samples/Create sample.http')
   expect(model.state.environment).toBe('local')
 })
+
+it('shows file variables in the request tab while masking file environment secrets', async () => {
+  const { shownVars } = await import('@/requests/views')
+  const { RequestsModel } = await import('@/requests/RequestsModel')
+  const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+  const contents: Record<string, string> = {
+    'sample.http': '@base = https://example.test\nGET {{base}}/samples?token={{token}}',
+    'http-client.env.json': '{"dev":{"token":"sample-private-value"}}',
+  }
+  const model = new RequestsModel(
+    fakeNode().rpc,
+    'sample-project',
+    ports({
+      files: {
+        list: async () => Object.keys(contents),
+        read: async (path) => ({ text: contents[path], contentId: path }),
+        write: async () => {},
+        watch: async () => () => {},
+      },
+    })
+  )
+  await model.load()
+  await model.selectEnvironment(model.files!.environments[0].id)
+  const id = model.files!.collections[0].requests[0].id
+  await model.open(id)
+  const values = shownVars(model, model.entry(id).doc!)
+  expect(values).toContainEqual({ key: 'base', value: 'https://example.test' })
+  expect(JSON.stringify(values)).not.toContain('sample-private-value')
+  expect(values.find((v) => v.key === 'token')?.secret).toBe(true)
+})

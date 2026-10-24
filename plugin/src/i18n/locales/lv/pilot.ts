@@ -1,5 +1,26 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'requests.file.sending': 'sūta…',
+  'requests.file.notSent': 'nav nosūtīts',
+  'requests.file.openAnswer': 'Atvērt {name} ar atbildi',
+
+  'requests.file.problem': 'Daļu faila neizdevās nolasīt',
+  'requests.file.sendAll': 'Sūtīt visus pēc kārtas',
+  'requests.file.open': 'Atvērt failu',
+  'requests.file.line': '{line}. rinda: {text}',
+  'requests.file.openLine': 'Atvērt failu {line}. rindā',
+  'requests.file.at': '{file} · {line}. rinda',
+  'requests.file.gone': '{file} vairs nav',
+  'requests.capture.title': 'No atbildēm',
+  'requests.env.exposed': 'noslēpums ierakstīts failā {file}',
+  'requests.env.toKeys': 'Pārvietot uz atslēgām',
+  'requests.capture.notSent': '{name} vēl nav nosūtīts',
+  'requests.capture.sendFirst': 'Sūtīt {name}',
+  'requests.capture.blocked': 'Vispirms sūtiet {name}: šis pieprasījums izmanto tā atbildi',
+  'requests.file.saveCopy': 'Saglabāt kopiju pieprasījumos',
+  'requests.file.openPanel': 'Atvērt pieprasījumos',
+  'requests.file.scriptShown': 'Skripts ir parādīts kā pirmkods un netiek izpildīts.',
+
   'settings.ai.apiMode': 'API',
   'settings.ai.apiModeDescription':
     'Šī pakalpojumu sniedzēja API. Esošie savienojumi izmanto Chat Completions.',

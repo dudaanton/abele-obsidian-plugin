@@ -1,5 +1,26 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'requests.file.sending': 'enviando…',
+  'requests.file.notSent': 'no enviado',
+  'requests.file.openAnswer': 'Abrir {name} con su respuesta',
+
+  'requests.file.problem': 'No se pudo leer parte del archivo',
+  'requests.file.sendAll': 'Enviar todos en orden',
+  'requests.file.open': 'Abrir el archivo',
+  'requests.file.line': 'Línea {line}: {text}',
+  'requests.file.openLine': 'Abrir el archivo en la línea {line}',
+  'requests.file.at': '{file} · línea {line}',
+  'requests.file.gone': '{file} ya no existe',
+  'requests.capture.title': 'De las respuestas',
+  'requests.env.exposed': 'un secreto escrito en {file}',
+  'requests.env.toKeys': 'Mover a claves',
+  'requests.capture.notSent': '{name} aún no se ha enviado',
+  'requests.capture.sendFirst': 'Enviar {name}',
+  'requests.capture.blocked': 'Envía primero {name}: esta solicitud usa su respuesta',
+  'requests.file.saveCopy': 'Guardar una copia en solicitudes',
+  'requests.file.openPanel': 'Abrir en Solicitudes',
+  'requests.file.scriptShown': 'Este script se muestra como código fuente y no se ejecuta.',
+
   'settings.ai.apiMode': 'API',
   'settings.ai.apiModeDescription':
     'API de este proveedor. Las conexiones existentes usan Chat Completions.',

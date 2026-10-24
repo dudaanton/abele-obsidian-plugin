@@ -93,7 +93,7 @@ export interface HttpCollection {
     kind: 'http' | 'bruno'
     path: string
     folder?: string
-    problem?: { line: number; text: string }
+    problem?: { line: number; text: string; file?: string }
   }
 }
 

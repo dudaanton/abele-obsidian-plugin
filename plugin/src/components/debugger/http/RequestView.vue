@@ -98,6 +98,7 @@
             >{{ resolved }}</code
           >
         </div>
+        <GithubNotice v-if="saveError" :text="saveError" :retry="false" />
         <!-- Read from a file of the project: where, as a way back to it; an edit goes there. -->
         <div v-if="request.origin" class="abele-http-request__resolved abele-http-request__origin">
           <Icon icon="file-code" size="xs" no-hover />
@@ -110,7 +111,9 @@
             class="abele-http-request__origin-link"
             :aria-label="t('requests.file.openLine', { line: request.origin.line })"
             @click.prevent="emit('open-origin')"
-            >{{ t('requests.file.at', { file: request.origin.file, line: request.origin.line }) }}</a
+            >{{
+              t('requests.file.at', { file: request.origin.file, line: request.origin.line })
+            }}</a
           >
         </div>
       </div>
@@ -194,7 +197,15 @@
                  off. With none, the row is the way to pick one, as Obsidian's own empty slots
                  are: a plus and what it is for. -->
             <div v-else-if="part.id === 'scripts'" class="abele-http-request__rows">
-              <template v-for="when in ['before', 'after'] as const" :key="when">
+              <template v-if="sourceScript">
+                <span class="setting-item-description">{{ t('requests.file.scriptShown') }}</span>
+                <GithubCode :text="sourceScript" path="response.js" />
+              </template>
+              <template
+                v-for="when in ['before', 'after'] as const"
+                :key="when"
+                v-if="!request.origin"
+              >
                 <TreeItem
                   v-if="request.scripts[when]"
                   flush
@@ -466,6 +477,8 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import Button from '../../obsidian/Button.vue'
 import Checkbox from '../../obsidian/Checkbox.vue'
+import GithubNotice from '../../github/GithubNotice.vue'
+import GithubCode from '../../github/GithubCode.vue'
 import CodeField from '../../obsidian/CodeField.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
@@ -515,11 +528,15 @@ const props = withDefaults(
     /** Why a named script cannot run, when it cannot: gone, or not made to run around requests. */
     scriptProblems?: { before?: string; after?: string }
     /** Values earlier answers give it, for a request read from a file of the project. */
+    saveError?: string
+    sourceScript?: string
     captures?: HttpCapture[]
     /** The file it was read from is no longer there; its last answer is still shown. */
     gone?: boolean
   }>(),
   {
+    saveError: undefined,
+    sourceScript: undefined,
     vars: () => [],
     collection: undefined,
     outcome: undefined,
@@ -601,7 +618,9 @@ const parts = computed(() => [
   {
     id: 'scripts',
     label: t('settings.tabs.scripts'),
-    count: [props.request.scripts.before, props.request.scripts.after].filter(Boolean).length,
+    count: [props.request.scripts.before, props.request.scripts.after, props.sourceScript].filter(
+      Boolean
+    ).length,
   },
   {
     id: 'checks',
@@ -633,6 +652,7 @@ const unknownVar = computed(() =>
 const unsent = computed(() => props.captures.find((c) => c.value === undefined))
 /** Why it cannot go as it is, in words for the tooltip. */
 const blocked = computed(() => {
+  if (props.saveError) return props.saveError
   const missing = [...props.request.params, ...props.request.headers].find(
     (p) => !p.off && p.missing
   )

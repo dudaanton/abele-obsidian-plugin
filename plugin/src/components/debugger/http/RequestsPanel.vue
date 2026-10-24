@@ -80,8 +80,8 @@
         :where="c.file?.folder"
         :flair="String(c.requests.length)"
         collapsible
-        :collapsed="folded.has(c.name)"
-        @click="toggle(c.name)"
+        :collapsed="folded.has(c.file?.path ?? c.name)"
+        @click="toggle(c.file?.path ?? c.name)"
       >
         <template v-if="c.file?.problem" #end>
           <StatusDot tone="orange" :label="t('requests.file.problem')" />
@@ -92,7 +92,7 @@
             size="xs"
             :tooltip="t('requests.file.sendAll')"
             :disabled="!!sending || !c.requests.length"
-            @click.stop="emit('send-all', c.name)"
+            @click.stop="emit('send-all', c.file.path)"
           />
           <Icon
             icon="file-symlink"
@@ -149,7 +149,7 @@
           icon="file-warning"
           :text="t('requests.file.line', { line: c.file.problem.line, text: c.file.problem.text })"
           :label="t('requests.file.openLine', { line: c.file.problem.line })"
-          @click="emit('open-file', c.file.path, c.file.problem.line)"
+          @click="emit('open-file', c.file.problem.file ?? c.file.path, c.file.problem.line)"
         />
       </TreeItem>
       <div v-if="!collections.length" class="abele-requests-panel__empty">

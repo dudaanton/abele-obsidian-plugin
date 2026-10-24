@@ -17,14 +17,17 @@
            the key instead. -->
       <div
         v-for="pair in exposed"
-        :key="pair.key"
+        :key="`${pair.file ?? file}:${pair.key}`"
         class="abele-http-env__exposed"
         role="alert"
       >
-        <StatusDot tone="orange" :label="t('requests.env.exposed', { file: file ?? '' })" />
+        <StatusDot
+          tone="orange"
+          :label="t('requests.env.exposed', { file: pair.file ?? file ?? '' })"
+        />
         <code>{{ pair.key }}</code>
         <span class="abele-http-env__exposed-why">{{
-          t('requests.env.exposed', { file: file ?? '' })
+          t('requests.env.exposed', { file: pair.file ?? file ?? '' })
         }}</span>
         <Button :text="t('requests.env.toKeys')" @click="toKeys(pair)" />
       </div>
@@ -37,7 +40,11 @@
         @add="(p) => plain.push(p)"
       />
     </Section>
-    <Section :title="t('streamC.d45a7bc8fc3980d1')" :desc="t('streamC.34151736952f73f8')">
+    <Section
+      v-if="!file"
+      :title="t('streamC.d45a7bc8fc3980d1')"
+      :desc="t('streamC.34151736952f73f8')"
+    >
       <div class="abele-http-env__secrets" role="table" :aria-label="t('streamC.d45a7bc8fc3980d1')">
         <div v-for="(s, i) in secret" :key="i" class="abele-http-env__secret" role="row">
           <input
@@ -72,13 +79,13 @@
         />
       </div>
     </Section>
-    <Section :title="t('streamC.80e8dd1a5a05f707')">
+    <Section v-if="!file" :title="t('streamC.80e8dd1a5a05f707')">
       <Setting :name="t('streamC.5cd3eca6c2dabe8c')" :desc="t('streamC.9e218b3fae23df71')">
         <Checkbox :is-enabled="stepHeader" @toggle="stepHeader = !stepHeader" />
       </Setting>
     </Section>
     <template #footer>
-      <Button warning :text="t('kit.delete')" @click="emit('remove')" />
+      <Button v-if="!file" warning :text="t('kit.delete')" @click="emit('remove')" />
       <span class="abele-http-env__gap" />
       <Button :text="t('kit.cancel')" @click="emit('close')" />
       <Button accent :text="t('settings.GithubConnectionEditor.save.1509f561')" @click="save" />
@@ -108,8 +115,10 @@ const props = defineProps<{
   secrets: Record<string, string>
   /** The project's environment file it comes from, `http-client.env.json`, when it does. */
   file?: string
+  fileSecrets?: { key: string; file: string }[]
 }>()
 const emit = defineEmits<{
+  (e: 'move-key', key: string, file?: string): void
   (e: 'save', environment: EnvironmentEdit): void
   (e: 'remove'): void
   (e: 'close'): void
@@ -119,7 +128,12 @@ const name = props.environment.name
 const plain = reactive<HttpPair[]>(
   props.environment.vars
     .filter((v) => !v.secret)
-    .map((v) => ({ key: v.key, value: v.value ?? '', ...(v.off ? { off: true } : {}) }))
+    .map((v) => ({
+      key: v.key,
+      value: v.value ?? '',
+      ...(/\$\{abele_key:[^}]+\}/.test(v.value ?? '') ? { secret: true } : {}),
+      ...(v.off ? { off: true } : {}),
+    }))
 )
 const secret = reactive(
   props.environment.vars
@@ -130,14 +144,26 @@ const stepHeader = ref(!!props.environment.stepHeader)
 
 /** A value in the file under a name that holds secrets: a token, a password, a key. */
 const SECRET_NAME = /token|secret|password|passwd|api[-_]?key|auth/i
-const exposed = computed(() =>
-  props.file ? plain.filter((p) => SECRET_NAME.test(p.key) && p.value) : []
+const exposed = computed(
+  () =>
+    props.fileSecrets ??
+    (props.file
+      ? plain
+          .filter(
+            (p) => SECRET_NAME.test(p.key) && p.value && !/^\$\{abele_key:[^}]+\}$/.test(p.value)
+          )
+          .map((p) => ({ key: p.key, file: props.file }))
+      : [])
 )
-const shown = computed(() => plain.filter((p) => !exposed.value.includes(p)))
-/** Into this device's keys; saved, the file names the key instead of holding the value. */
-function toKeys(pair: HttpPair) {
-  plain.splice(plain.indexOf(pair), 1)
-  secret.push({ key: pair.key, value: pair.value })
+const shown = computed(() =>
+  plain.filter(
+    (p) =>
+      !props.file || !SECRET_NAME.test(p.key) || !p.value || /^\$\{abele_key:[^}]+\}$/.test(p.value)
+  )
+)
+/** The explicit action names its source, including shadowed public values. */
+function toKeys(pair: { key: string; file?: string }) {
+  emit('move-key', pair.key, pair.file)
 }
 
 function save() {

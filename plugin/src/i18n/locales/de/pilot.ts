@@ -1,5 +1,26 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'requests.file.sending': 'wird gesendet…',
+  'requests.file.notSent': 'nicht gesendet',
+  'requests.file.openAnswer': '{name} mit Antwort öffnen',
+
+  'requests.file.problem': 'Ein Teil der Datei konnte nicht gelesen werden',
+  'requests.file.sendAll': 'Alle der Reihe nach senden',
+  'requests.file.open': 'Datei öffnen',
+  'requests.file.line': 'Zeile {line}: {text}',
+  'requests.file.openLine': 'Datei in Zeile {line} öffnen',
+  'requests.file.at': '{file} · Zeile {line}',
+  'requests.file.gone': '{file} ist nicht mehr vorhanden',
+  'requests.capture.title': 'Aus Antworten',
+  'requests.env.exposed': 'ein Geheimnis in {file}',
+  'requests.env.toKeys': 'Zu Schlüsseln verschieben',
+  'requests.capture.notSent': '{name} wurde noch nicht gesendet',
+  'requests.capture.sendFirst': '{name} senden',
+  'requests.capture.blocked': 'Zuerst {name} senden: Diese Anfrage verwendet dessen Antwort',
+  'requests.file.saveCopy': 'Kopie in Anfragen speichern',
+  'requests.file.openPanel': 'In Anfragen öffnen',
+  'requests.file.scriptShown': 'Dieses Skript wird als Quelltext angezeigt und nicht ausgeführt.',
+
   'settings.ai.apiMode': 'API',
   'settings.ai.apiModeDescription':
     'API dieses Anbieters. Bestehende Verbindungen verwenden Chat Completions.',

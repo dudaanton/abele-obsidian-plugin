@@ -26,6 +26,12 @@
     <template #repository-controls="{ file, version: shownRef }">
       <div class="abele-node-repository__controls">
         <Icon
+          v-if="fileRequests.available.value"
+          icon="list-video"
+          :tooltip="t('requests.file.openPanel')"
+          @click="fileRequests.open"
+        />
+        <Icon
           class="clickable-icon abele-node-repository__picker"
           role="button"
           tabindex="0"
@@ -105,6 +111,7 @@
   </GithubItem>
 </template>
 <script setup lang="ts">
+import { useFileRequests } from '@/requests/useFileRequests'
 import { nodeErrorNotice } from '@/node/errorNotice'
 import { nodeErrorWords } from '@/node/errorWords'
 import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
@@ -205,8 +212,9 @@ const error = ref('')
 const target = computed(() =>
   props.model.sourceTarget?.provider === 'node' ? props.model.sourceTarget : null
 )
+const fileRequests = useFileRequests(target)
 const location = computed<RepositoryLocation>(() => {
-  const at = target.value!.location,
+  const at = target.value.location,
     revision = target.value?.revision
   // A node has no home page of its own (its places are the node panel's): an old link to one
   // shows the folder's top level.
@@ -457,10 +465,10 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
         // and drop a base an earlier version of this menu pinned out of sight.
         const app = GlobalStore.getInstance().app,
           repo = presentation.target
-        new BasePicker(app, source.value!, repo, (pin) => {
-          basePins(app).unpin(repo, source.value!.identity)
+        new BasePicker(app, source.value, repo, (pin) => {
+          basePins(app).unpin(repo, source.value.identity)
           open(
-            source.value!.navigation.comparison(pin.baseSha, head, true, undefined, pin.enteredRef)
+            source.value.navigation.comparison(pin.baseSha, head, true, undefined, pin.enteredRef)
           )
         }).open()
       })
@@ -486,7 +494,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
       item
         .setTitle(t('streamB.swapVersions.b4c982'))
         .setIcon('arrow-left-right')
-        .onClick(() => open(source.value!.navigation.comparison(at.head, at.base!, true)))
+        .onClick(() => open(source.value.navigation.comparison(at.head, at.base, true)))
     )
   }
   const pins = basePins(GlobalStore.getInstance().app)
@@ -495,7 +503,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
       item
         .setTitle(t('streamB.stopComparingFiles.20cf7a'))
         .setIcon('pin-off')
-        .onClick(() => pins.unpin(presentation.target!, source.value!.identity))
+        .onClick(() => pins.unpin(presentation.target, source.value.identity))
     )
   if (presentation.target?.kind === 'blob')
     menu.addItem((item) =>
@@ -540,7 +548,7 @@ const showHistory = async (ref: string, path: string) => {
   historyOpen.value = true
   historyError.value = ''
   try {
-    history.value = await source.value!.commits(ref, path)
+    history.value = await source.value.commits(ref, path)
   } catch (error) {
     historyError.value = presentUiError(error)
   }
@@ -583,7 +591,7 @@ watch(live, (isLive) => {
 watch(
   () => NodeService.getInstance().nodes.value,
   (nodes) => {
-    if (!target.value || nodes.some((node) => node.id === target.value!.source.node)) return
+    if (!target.value || nodes.some((node) => node.id === target.value.source.node)) return
     detachTools()
     source.value?.dispose()
     source.value = undefined

@@ -1,5 +1,6 @@
 // What the Requests view and a request's tab do on a click: open, send, the menus of a row, the
 // environment's dialog, new requests and collections. Obsidian's menus and dialogs over the model.
+import { t } from '@/i18n'
 import { Menu, Notice, Platform } from 'obsidian'
 import type { HttpEnvironmentEdit as EnvironmentEdit } from '@/components/debugger/http/types'
 import { openComponentDialog } from '@/modal/componentDialog'
@@ -93,7 +94,7 @@ export function requestMenu(context: RequestsContext, id: string, event: MouseEv
   )
   menu.addItem((i) =>
     i
-      .setTitle('Duplicate')
+      .setTitle(model.files?.get(id) ? t('requests.file.saveCopy') : 'Duplicate')
       .setIcon('copy-plus')
       .onClick(() => {
         void model
@@ -102,26 +103,29 @@ export function requestMenu(context: RequestsContext, id: string, event: MouseEv
           .catch(say)
       })
   )
-  menu.addItem((i) =>
-    i
-      .setTitle('Rename')
-      .setIcon('pencil')
-      .onClick(() => void rename(context, id).catch(say))
-  )
+  if (!model.files?.get(id))
+    menu.addItem((i) =>
+      i
+        .setTitle('Rename')
+        .setIcon('pencil')
+        .onClick(() => void rename(context, id).catch(say))
+    )
   menu.addItem((i) =>
     i
       .setTitle('Copy as curl')
       .setIcon('terminal')
       .onClick(() => void copyCurl(model, id).catch(say))
   )
-  menu.addSeparator()
-  menu.addItem((i) =>
-    i
-      .setTitle('Delete')
-      .setIcon('trash-2')
-      .setWarning(true)
-      .onClick(() => void remove(context, id).catch(say))
-  )
+  if (!model.files?.get(id)) {
+    menu.addSeparator()
+    menu.addItem((i) =>
+      i
+        .setTitle('Delete')
+        .setIcon('trash-2')
+        .setWarning(true)
+        .onClick(() => void remove(context, id).catch(say))
+    )
+  }
   menu.showAtMouseEvent(event)
 }
 
@@ -137,6 +141,35 @@ export function editEnvironment(model: RequestsModel) {
         stepHeader: !!env.step_header,
       } satisfies EnvironmentEdit,
       secrets: model.secrets(),
+      file: model.files?.environments.find((e) => e.id === env.name)?.file,
+      fileSecrets: model.files?.environments.find((e) => e.id === env.name)?.exposed,
+      onMoveKey: (key: string, sourcePath?: string) => {
+        void model.files
+          ?.moveSecret(
+            env.name,
+            key,
+            async (name, value) => {
+              const { AbeleConfig } = await import('@/services/AbeleConfig')
+              const { secrets } = await import('@/secrets/SecretStore')
+              const config = AbeleConfig.getInstance()
+              const unique = `${name}-${crypto.randomUUID().slice(0, 8)}`
+              const keyId = `abele-secret-${crypto.randomUUID()}`
+              secrets().set(keyId, value)
+              await secrets().flush()
+              config.ai.secrets ??= []
+              config.ai.secrets.push({ id: crypto.randomUUID(), name: unique, keyId })
+              await config.saveSettings()
+              return unique
+            },
+            sourcePath
+          )
+          .then(async () => {
+            await model.selectEnvironment(env.name)
+            dialog.close()
+            editEnvironment(model)
+          })
+          .catch(say)
+      },
       onSave: (edit: EnvironmentEdit) => {
         void model
           .saveEnvironment({
@@ -160,13 +193,27 @@ export function editEnvironment(model: RequestsModel) {
 
 export function environmentMenu(model: RequestsModel, event: MouseEvent) {
   const menu = new Menu()
-  for (const name of model.state.environments)
+  const fileEnvironments = model.files?.environments ?? []
+  for (const name of model.state.environments.filter(
+    (name) => !fileEnvironments.some((e) => e.id === name)
+  ))
     menu.addItem((i) =>
       i
         .setTitle(name)
         .setChecked(name === model.state.environment)
         .onClick(() => void model.selectEnvironment(name).catch(say))
     )
+  for (const file of new Set(fileEnvironments.map((e) => e.file))) {
+    menu.addSeparator()
+    menu.addItem((item) => item.setTitle(file).setDisabled(true))
+    for (const environment of fileEnvironments.filter((e) => e.file === file))
+      menu.addItem((item) =>
+        item
+          .setTitle(environment.name)
+          .setChecked(environment.id === model.state.environment)
+          .onClick(() => void model.selectEnvironment(environment.id).catch(say))
+      )
+  }
   if (model.state.environments.length) menu.addSeparator()
   menu.addItem((i) =>
     i
@@ -279,7 +326,9 @@ export async function revealRequest(context: RequestsContext, id: string) {
   const { openRequestsView } = await import('./views')
   await openRequestsView(app(), false)
   service.reveal.value = {
-    collection: id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : 'Requests',
+    collection:
+      service.model(context).files?.collections.find((c) => c.requests.some((r) => r.id === id))
+        ?.file.path ?? (id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : 'Requests'),
     ids: [id],
     at: Date.now(),
   }

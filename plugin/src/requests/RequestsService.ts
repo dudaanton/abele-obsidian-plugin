@@ -1,6 +1,7 @@
 // Where the saved requests meet Obsidian: which project of which node the Requests view shows, the
 // key store, the scripts, the recording going on and the choices remembered on this device. One
 // model per project, shared by the view and every request tab of it, and by the agent's tools.
+import { NodeRequestFiles } from './nodeFiles'
 import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
@@ -197,6 +198,7 @@ export class RequestsService {
     return (this.current ??= new RequestsService())
   }
   static destroy() {
+    for (const model of this.current?.models.values() ?? []) model.destroy()
     this.current = undefined
     forgetRequestSecrets()
   }
@@ -268,6 +270,15 @@ export class RequestsService {
       const app = GlobalStore.getInstance().app
       const prefix = `abele-requests:${c.registrationId}:${c.projectId}:`
       model = new RequestsModel(rpcFor(c.registrationId).rpc, c.projectId, {
+        files: new NodeRequestFiles(
+          NodeService.getInstance().connection(c.registrationId).client,
+          {
+            nodeId: NodeService.getInstance().nodes.value.find((n) => n.id === c.registrationId)
+              .expectedNodeId,
+            ...c,
+          },
+          () => NodeService.getInstance().connection(c.registrationId).connect()
+        ),
         keys: keyPort,
         scripts: scriptPort,
         recording: (url) => destinationRecording(c, url),
