@@ -42,6 +42,7 @@ export class FileCollections {
     entries: {},
     environments: [],
   })
+  private readonly environmentIds = new Set<string>()
   private readonly fileVars = new Map<string, Record<string, string>>()
   private readonly sources = new Map<string, { text: string; contentId: string | null }>()
   private readonly answers = reactive(
@@ -54,6 +55,9 @@ export class FileCollections {
   private refreshing?: Promise<void>
   private refreshAgain = false
   constructor(readonly port: RequestFilePort) {}
+  wasEnvironment(id: string) {
+    return this.environmentIds.has(id)
+  }
   get environments() {
     return this.state.environments
   }
@@ -194,6 +198,7 @@ export class FileCollections {
       }
       environments.push(...values.values())
     }
+    for (const environment of environments) this.environmentIds.add(environment.id)
     this.state.environments = environments
   }
   secretValues(id: string) {

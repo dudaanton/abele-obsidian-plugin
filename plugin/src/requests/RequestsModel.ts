@@ -164,7 +164,7 @@ export class RequestsModel {
   }
 
   async saveEnvironment(env: EnvironmentDoc) {
-    if (this.files?.environments.some((e) => e.id === env.name)) {
+    if (this.files?.wasEnvironment(env.name)) {
       const saved = await this.files.saveEnvironment(env)
       if (env.name === this.state.environment) this.state.env = saved
       return saved
@@ -696,7 +696,7 @@ export class RequestsModel {
         changed = true
       }
     }
-    if (changed) this.state.env = await this.rpc.saveEnvironment(this.projectId, { ...env, vars })
+    if (changed) this.state.env = await this.saveEnvironment({ ...env, vars })
   }
 
   // ── History ──

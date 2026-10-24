@@ -367,3 +367,32 @@ it('does not block the producer on an unused file variable that reads its own an
   files.capture(create.id, { status: 201, headers: [], body: '{"id":"sample-id"}' })
   expect(files.values(read.id).itemId).toBe('sample-id')
 })
+
+it('never turns a deleted file environment into a saved environment', async () => {
+  const { RequestsModel } = await import('@/requests/RequestsModel')
+  const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+  const node = fakeNode()
+  let paths = ['sample.http', 'http-client.env.json']
+  const model = new RequestsModel(
+    node.rpc,
+    'sample-project',
+    ports({
+      files: {
+        list: async () => paths,
+        read: async (path) => ({
+          text: path.endsWith('.json') ? '{"dev":{"token":"sample-private-value"}}' : source,
+          contentId: path,
+        }),
+        write: async () => {},
+        watch: async () => () => {},
+      },
+    })
+  )
+  await model.load()
+  const edit = model.files!.environments[0].doc
+  paths = ['sample.http']
+  await model.refreshFiles()
+  const save = vi.spyOn(node.rpc, 'saveEnvironment')
+  await expect(model.saveEnvironment(edit)).rejects.toThrow(/gone/)
+  expect(save).not.toHaveBeenCalled()
+})
