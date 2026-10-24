@@ -123,3 +123,7 @@ export async function saveFailureCheckpoint(output, report, proxies, stage, at =
     .map((phase) => ({ phase, status: 'not run' }))
   await saveCheckpoint(output, report, proxies, at, true)
 }
+export function requireHealthySnapshot(snapshot) {
+  if (snapshot?.rows?.some((row) => row.status === 'error'))
+    throw new Error('Fatal sync state; see retained snapshot')
+}

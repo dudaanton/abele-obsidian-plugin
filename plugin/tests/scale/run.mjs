@@ -41,6 +41,7 @@ import {
   saveFailureCheckpoint,
   activeRequestIds,
   recoveryTimings,
+  requireHealthySnapshot,
 } from './progress.mjs'
 import {
   compareInventory,
@@ -352,6 +353,7 @@ export async function run(config) {
         ? error.message
         : 'Device state unavailable'
       report.failures.push({ step, reason, snapshot: await device.snapshot().catch(() => null) })
+      requireHealthySnapshot(report.failures.at(-1).snapshot)
       await device.invalidateJob().catch(() => {})
       return false
     } finally {
@@ -828,7 +830,7 @@ export async function run(config) {
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.failure =
-      /^(Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
+      /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )
         ? error.message

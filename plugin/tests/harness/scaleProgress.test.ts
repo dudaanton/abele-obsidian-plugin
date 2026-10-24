@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { requireHealthySnapshot } from '../scale/progress.mjs'
 import {
   phaseTimings,
   saveCheckpoint,
@@ -11,6 +12,14 @@ import {
   requireServerCapacity,
   saveFailureCheckpoint,
 } from '../scale/progress.mjs'
+
+it('stops on fatal sync state while retaining its diagnostic snapshot', () => {
+  const snapshot = { rows: [{ status: 'error' }], engines: [{ lastError: 'invalid path' }] }
+  expect(() => requireHealthySnapshot(snapshot)).toThrow('Fatal sync state')
+  expect(snapshot.engines[0].lastError).toBe('invalid path')
+  expect(() => requireHealthySnapshot({ rows: [{ status: 'idle' }] })).not.toThrow()
+  expect(() => requireHealthySnapshot(null)).not.toThrow()
+})
 
 it('persists the failed phase and explicitly marks remaining evidence unrun', async () => {
   const root = await mkdtemp(join(process.cwd(), '.scale-failure-'))
