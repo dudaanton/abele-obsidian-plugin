@@ -37,6 +37,58 @@ const commitDetails = (commit: string) => ({
   message: 'Sample change',
 })
 describe('node repository source through the validated client contract', () => {
+  it('rereads a live file with a fresh observation when its cached observation expires', async () => {
+    let rejectBlob = false
+    const f = nodeRepositoryFixture({
+      hold: (method) => {
+        if (method === 'repository.v1.blob' && rejectBlob) {
+          rejectBlob = false
+          return Promise.reject(new ChannelError('stale_revision'))
+        }
+      },
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
+    try {
+      const before = await source.blob(WORKING_TREE, 'app.ts')
+      f.change()
+      // The observation can expire before the watch delivers the next batch.
+      rejectBlob = true
+      const after = await source.blob(WORKING_TREE, 'app.ts')
+      expect(after.ref).not.toBe(before.ref)
+      expect(after.text).toContain('84')
+      expect(f.calls.filter((c) => c.method.endsWith('.observe'))).toHaveLength(2)
+    } finally {
+      source.dispose()
+    }
+  })
+  it('bounds stale live-file recovery and never retargets an explicit revision', async () => {
+    const f = nodeRepositoryFixture({
+      hold: (method) =>
+        method === 'repository.v1.blob'
+          ? Promise.reject(new ChannelError('stale_revision'))
+          : undefined,
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
+    const blob = vi.spyOn(f.client.repository, 'blob')
+    try {
+      const frozen = await source.resolve(WORKING_TREE)
+      await expect(source.blob(frozen, 'app.ts')).rejects.toMatchObject({ code: 'stale_revision' })
+      expect(f.calls.filter((c) => c.method.endsWith('.observe'))).toHaveLength(1)
+      await expect(source.blob(WORKING_TREE, 'app.ts')).rejects.toMatchObject({
+        code: 'stale_revision',
+      })
+      expect(f.calls.filter((c) => c.method.endsWith('.observe'))).toHaveLength(2)
+      expect(blob).toHaveBeenCalledTimes(3)
+    } finally {
+      source.dispose()
+    }
+  })
   it('shares at most two blame commit lookups across tabs of the same client', async () => {
     const { source, client } = fixture()
     const other = new NodeRepositorySource(client, identity, { node: 'Sample node', project: '' })

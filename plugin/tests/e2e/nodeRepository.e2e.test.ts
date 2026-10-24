@@ -158,7 +158,7 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
     await evalLong(`(()=>{
       const original=console.debug,rows=[];
       window.__sampleRepositoryTrace={rows,original};
-      console.debug=(...args)=>{original(...args);if(String(args[0]).startsWith('[Abele] node repository:')){rows.push(JSON.parse(JSON.stringify([Date.now(),...args])));if(rows.length>1000)rows.shift()}};
+      console.debug=(...args)=>{original(...args);if(String(args[0]).startsWith('[Abele] node repository:')||String(args[0]).startsWith('[Abele] node comparison:')||String(args[0]).includes('request failed')){rows.push(JSON.parse(JSON.stringify([Date.now(),...args],(_key,value)=>value instanceof Error?{message:value.message,code:value.code,stack:value.stack}:value)));if(rows.length>1000)rows.shift()}};
       return 'trace started';
     })()`)
     registration = await evalLong(`(async()=>{${prelude}
@@ -430,6 +430,12 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
     )
   } catch (error) {
     console.log('[repository daemon output]', { output, errors })
+    console.log(
+      '[repository failure view]',
+      evalRaw(
+        `JSON.stringify([...document.querySelectorAll('.abele-github-compare,.abele-github-notice')].map(el=>({visible:!!el.getBoundingClientRect().width,text:el.textContent})))`
+      )
+    )
     throw error
   } finally {
     try {

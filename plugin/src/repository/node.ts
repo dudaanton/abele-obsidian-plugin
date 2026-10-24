@@ -540,6 +540,23 @@ export class NodeRepositorySource implements RepositorySource {
     return this.blob(ref, path, contentId, true)
   }
   async blob(ref: string, path: string, contentId?: string, larger = false): Promise<BlobData> {
+    try {
+      return await this.readBlob(ref, path, contentId, larger)
+    } catch (error) {
+      if (ref !== WORKING_TREE || contentId || !isStale(error)) throw error
+      // A cached observation can expire before the change stream reaches this view.
+      // Only the live alias may move; retained bytes and explicit revisions stay fixed.
+      console.debug('[Abele] node repository: stale live file; observing again', { path })
+      this.aliases.delete(WORKING_TREE)
+      return this.readBlob(ref, path, undefined, larger)
+    }
+  }
+  private async readBlob(
+    ref: string,
+    path: string,
+    contentId?: string,
+    larger = false
+  ): Promise<BlobData> {
     console.debug('[Abele] node repository: file read requested', {
       workspace: this.identity.workspace,
       ref,
