@@ -12,7 +12,7 @@ import {
   type Imported,
 } from './shared'
 
-export function importHttp(text: string): Imported {
+export function importHttp(text: string, options: { source?: boolean } = {}): Imported {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   const vars: EnvVar[] = []
   const leftOut: string[] = []
@@ -64,12 +64,12 @@ export function importHttp(text: string): Imported {
       if (colon <= 0) continue
       const key = h.slice(0, colon).trim()
       const value = h.slice(colon + 1).trim()
-      if (credential(key, value)) leave(leftOut, key)
+      if (!options.source && credential(key, value)) leave(leftOut, key)
       else headers.push({ key, value })
     }
     const body = b.lines
       .slice(at + 1)
-      .filter((l) => !/^\s*(#|\/\/)/.test(l))
+      .filter((l) => options.source || !/^\s*(#|\/\/)/.test(l))
       .join('\n')
       .trim()
     return [
@@ -80,6 +80,14 @@ export function importHttp(text: string): Imported {
           url,
           params,
           headers,
+          ...(options.source
+            ? {
+                checks: b.lines.flatMap((l): string[] => {
+                  const check = /^(?:#|\/\/)\s*@check\s+(.+)$/.exec(l.trim())?.[1]
+                  return check ? [check] : []
+                }),
+              }
+            : {}),
           ...(body ? { body: { format: bodyFormat(headers, body), text: body } } : {}),
         }),
       },

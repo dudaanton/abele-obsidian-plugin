@@ -4,7 +4,7 @@
 import type { HttpCheck, HttpPair } from '@/components/debugger/http/types'
 import type { EnvironmentDoc, Method, Pair, RequestDoc } from './wire'
 
-const VAR = /\{\{\s*([\w.-]+)\s*\}\}/g
+const VAR = /\{\{\s*([\w.$[\]-]+)\s*\}\}/g
 const KEY = /\$\{abele_key:([^}]+)\}/g
 
 /** What the request goes out with: the environment's values that are on, secrets from memory. */

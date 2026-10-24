@@ -22,6 +22,7 @@ export interface RequestScriptResult {
 }
 
 export interface RequestsPorts {
+  files?: import('./FileCollections').RequestFilePort
   keys: {
     /** Whether the key store has a key by this name, without reading it. */
     has(name: string): boolean

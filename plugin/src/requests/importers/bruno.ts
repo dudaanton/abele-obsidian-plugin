@@ -33,7 +33,7 @@ const OPS: Record<string, string> = {
   contains: 'contains',
 }
 
-export function importBruno(text: string): Imported {
+export function importBruno(text: string, options: { source?: boolean } = {}): Imported {
   const b = blocks(text)
   const leftOut: string[] = []
   const verb = [...b.keys()].find((k) => isMethod(k.toUpperCase()))
@@ -42,13 +42,14 @@ export function importBruno(text: string): Imported {
   const field = (k: string) => http.find((p) => p.key === k)?.value.trim() ?? ''
   const headers: Pair[] = []
   for (const h of pairs(b.get('headers')))
-    if (credential(h.key, h.value)) leave(leftOut, h.key)
+    if (!options.source && credential(h.key, h.value)) leave(leftOut, h.key)
     else headers.push(h)
   const bearer = pairs(b.get('auth:bearer'))
     .find((p) => p.key === 'token')
     ?.value.trim()
   if (bearer)
-    if (/\{\{/.test(bearer)) headers.push({ key: 'Authorization', value: `Bearer ${bearer}` })
+    if (options.source || /\{\{/.test(bearer))
+      headers.push({ key: 'Authorization', value: `Bearer ${bearer}` })
     else leave(leftOut, 'the token of auth:bearer')
   const kind = field('body')
   const raw = b.get(`body:${kind}`) ?? b.get('body:json') ?? b.get('body:text')

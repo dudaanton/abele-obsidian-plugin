@@ -7,6 +7,8 @@
 // sends and is followed until the answer is in, then the script after reads the answer and the
 // checks are read. Secrets of the environment (a token from an answer) live only in memory here.
 import { reactive } from 'vue'
+import { credential, SECRET_NAME, scrubSecrets } from './importers/shared'
+import { FileCollections } from './FileCollections'
 import type { HttpOutcome, HttpSend } from '@/components/debugger/http/types'
 import {
   evaluateChecks,
@@ -47,6 +49,10 @@ export interface RequestEntry {
 
 const SAVE_AFTER_MS = 400
 export class RequestsModel {
+  readonly files?: FileCollections
+  private stopFiles?: () => void
+  private fileFollowers = 0
+  private fileWatchEpoch = 0
   readonly state = reactive<{
     loading: boolean
     error: string
@@ -85,6 +91,7 @@ export class RequestsModel {
   ) {
     this.wait = ports.wait ?? ((ms) => new Promise((r) => window.setTimeout(r, ms)))
     this.held = new HeldSecrets(projectId)
+    if (ports.files) this.files = new FileCollections(ports.files)
   }
 
   entry(id: string): RequestEntry {
@@ -108,18 +115,22 @@ export class RequestsModel {
   async load() {
     this.state.loading = true
     try {
+      await this.refreshFiles()
       const list = await this.rpc.list(this.projectId)
       this.state.folder = list.folder
       this.state.collections = this.collectionsWithEdits(list.collections)
-      this.state.environments = list.environments
+      this.state.environments = [
+        ...list.environments,
+        ...(this.files?.environments.map((e) => e.id) ?? []),
+      ]
       this.state.error = ''
       const remembered = this.ports.prefs.get('environment')
       const pick =
-        this.state.environment && list.environments.includes(this.state.environment)
+        this.state.environment && this.state.environments.includes(this.state.environment)
           ? this.state.environment
-          : remembered && list.environments.includes(remembered)
+          : remembered && this.state.environments.includes(remembered)
             ? remembered
-            : list.environments[0]
+            : this.state.environments[0]
       if (pick !== this.state.environment || !this.state.env) await this.readEnvironment(pick)
     } catch (e) {
       console.debug('[requests] List unavailable', e)
@@ -132,7 +143,10 @@ export class RequestsModel {
 
   private async readEnvironment(name: string | undefined) {
     this.state.environment = name
-    this.state.env = name ? await this.rpc.environment(this.projectId, name) : undefined
+    this.state.env = name
+      ? (this.files?.environments.find((e) => e.id === name)?.doc ??
+        (await this.rpc.environment(this.projectId, name)))
+      : undefined
   }
 
   async selectEnvironment(name: string) {
@@ -150,6 +164,11 @@ export class RequestsModel {
   }
 
   async saveEnvironment(env: EnvironmentDoc) {
+    if (this.files?.environments.some((e) => e.id === env.name)) {
+      const saved = await this.files.saveEnvironment(env)
+      if (env.name === this.state.environment) this.state.env = saved
+      return saved
+    }
     // A secret's value never leaves memory: what was typed for it is kept here, not written.
     this.held.remember(env)
     const saved = await this.rpc.saveEnvironment(this.projectId, {
@@ -185,9 +204,16 @@ export class RequestsModel {
   /** The values the environment in use puts into this request: a secret only for its origin,
    * see `HeldSecrets`. Without a request, none of the secrets. */
   vars(doc?: RequestDoc, person = false): Record<string, string> {
-    if (!doc || !this.state.environment) return varsOf(this.state.env, {})
+    const id = doc
+      ? Object.keys(this.state.entries).find((id) => this.entry(id).doc === doc)
+      : undefined
+    const captures = id ? (this.files?.values(id) ?? {}) : {}
+    if (!doc || !this.state.environment) return { ...varsOf(this.state.env, {}), ...captures }
     const to = this.targetOf(doc)
-    return varsOf(this.state.env, this.held.forTarget(this.state.environment, to, person))
+    return {
+      ...varsOf(this.state.env, this.held.forTarget(this.state.environment, to, person)),
+      ...captures,
+    }
   }
 
   // ── A request ──
@@ -195,6 +221,13 @@ export class RequestsModel {
   async open(id: string) {
     const entry = this.entry(id)
     try {
+      if (id.startsWith('file:')) {
+        await this.refreshFiles()
+        const file = this.files?.get(id)
+        if (!file) throw new Error('The request file is gone')
+        entry.doc = file.doc
+        return
+      }
       entry.doc = await this.rpc.get(this.projectId, id)
       entry.error = undefined
       await this.readHistory(id)
@@ -237,6 +270,8 @@ export class RequestsModel {
       entry.shown = undefined
       entry.compare = undefined
     }
+    this.files?.beginEdit(id)
+    entry.error = undefined
     entry.doc = doc
     for (const collection of this.state.collections) {
       const row = collection.requests.find((r) => r.id === id)
@@ -246,8 +281,7 @@ export class RequestsModel {
     if (pending) window.clearTimeout(pending.timer)
     const save = { timer: 0 } as { timer: number; work?: Promise<void> }
     save.timer = window.setTimeout(() => {
-      save.work = this.rpc
-        .save(this.projectId, id, doc)
+      save.work = this.saveDoc(id, doc)
         .catch((e) => {
           console.debug('[requests] Request not written', e)
           this.entry(id).error = `Not saved: ${reasonOf(e)}`
@@ -262,25 +296,110 @@ export class RequestsModel {
   /** Writes an edit still waiting, now. */
   async flush(id: string) {
     const pending = this.saves.get(id)
-    if (!pending) return
+    if (!pending) {
+      if (id.startsWith('file:') && this.entry(id).error) throw new Error(this.entry(id).error)
+      return
+    }
     if (pending.work === undefined) {
       window.clearTimeout(pending.timer)
       this.saves.delete(id)
       const doc = this.entry(id).doc
-      if (doc) await this.rpc.save(this.projectId, id, doc)
+      if (doc) await this.saveDoc(id, doc)
       return
     }
     await pending.work
+    if (id.startsWith('file:') && this.entry(id).error) throw new Error(this.entry(id).error)
+  }
+
+  private async saveDoc(id: string, doc: RequestDoc) {
+    try {
+      if (id.startsWith('file:') && this.files) await this.files.save(id, doc)
+      else await this.rpc.save(this.projectId, id, doc)
+      this.entry(id).error = undefined
+    } catch (error) {
+      this.entry(id).error = `Not saved: ${reasonOf(error)}`
+      throw error
+    }
+  }
+
+  async refreshFiles() {
+    if (!this.files) return
+    const previousEnvironments = new Set(this.files.environments.map((e) => e.id))
+    await this.files.refresh()
+    this.state.environments = [
+      ...this.state.environments.filter((name) => !previousEnvironments.has(name)),
+      ...this.files.environments.map((e) => e.id),
+    ]
+    if (this.state.environment && previousEnvironments.has(this.state.environment))
+      this.state.env = this.files.environments.find((e) => e.id === this.state.environment)?.doc
+    for (const file of Object.values(this.files.state.entries)) {
+      const entry = this.state.entries[file.id]
+      if (entry && !this.saves.has(file.id) && !this.files.isEditing(file.id) && !file.gone)
+        entry.doc = file.doc
+    }
+  }
+
+  followFiles(): () => void {
+    this.fileFollowers++
+    if (this.fileFollowers === 1 && this.files) {
+      const epoch = ++this.fileWatchEpoch
+      void this.files.port
+        .watch(() => {
+          void this.refreshFiles().catch((e) => console.debug('[requests] Files unavailable', e))
+        })
+        .then((stop) => {
+          if (this.fileFollowers && epoch === this.fileWatchEpoch) this.stopFiles = stop
+          else stop()
+        })
+        .catch((e) => console.debug('[requests] File watch unavailable', e))
+    }
+    let stopped = false
+    return () => {
+      if (stopped) return
+      stopped = true
+      this.fileFollowers = Math.max(0, this.fileFollowers - 1)
+      if (this.fileFollowers === 0) {
+        this.fileWatchEpoch++
+        this.stopFiles?.()
+        this.stopFiles = undefined
+      }
+    }
+  }
+
+  destroy() {
+    this.fileFollowers = 0
+    this.fileWatchEpoch++
+    this.stopFiles?.()
+    this.stopFiles = undefined
+    for (const save of this.saves.values()) window.clearTimeout(save.timer)
+  }
+
+  async sendAll(path: string, options: SendOptions) {
+    const collection = this.files?.collections.find((c) => c.file.path === path)
+    for (const request of collection?.requests ?? []) {
+      if (options.signal?.aborted) break
+      const outcome = await this.send(request.id, options)
+      if (
+        outcome.kind !== 'answered' ||
+        outcome.response.status >= 400 ||
+        outcome.response.checks?.some((c) => c.passed === false)
+      )
+        break
+    }
   }
 
   private async refreshList() {
     const list = await this.rpc.list(this.projectId)
     this.state.collections = this.collectionsWithEdits(list.collections)
-    this.state.environments = list.environments
+    this.state.environments = [
+      ...list.environments,
+      ...(this.files?.environments.map((e) => e.id) ?? []),
+    ]
   }
 
   /** Files can arrive from outside this client; follow only while the Requests view is open. */
   followList(online: () => boolean): () => void {
+    const stopFiles = this.followFiles()
     let stopped = false
     let timer: number | undefined
     const schedule = (): void => {
@@ -298,6 +417,7 @@ export class RequestsModel {
     schedule()
     return () => {
       stopped = true
+      stopFiles()
       window.clearTimeout(timer)
     }
   }
@@ -340,12 +460,28 @@ export class RequestsModel {
 
   async duplicate(id: string) {
     await this.flush(id)
-    const doc = this.entry(id).doc ?? (await this.rpc.get(this.projectId, id))
+    if (id.startsWith('file:') && !this.entry(id).doc) await this.open(id)
+    const original = this.entry(id).doc ?? (await this.rpc.get(this.projectId, id))
+    const doc = id.startsWith('file:')
+      ? scrubSecrets({
+          collection: '',
+          requests: [
+            {
+              doc: {
+                ...original,
+                headers: original.headers.filter((h) => !credential(h.key, h.value)),
+              },
+            },
+          ],
+          vars: [],
+          leftOut: [],
+        }).requests[0].doc
+      : original
     const taken = new Set(this.state.collections.flatMap((c) => c.requests.map((r) => r.id)))
     let name = `${doc.name} copy`
-    for (let n = 2; taken.has(requestIdFor(collectionOf(id), name)); n++)
-      name = `${doc.name} copy ${n}`
-    return this.create(collectionOf(id), name, { ...doc, name })
+    const destination = id.startsWith('file:') ? '' : collectionOf(id)
+    for (let n = 2; taken.has(requestIdFor(destination, name)); n++) name = `${doc.name} copy ${n}`
+    return this.create(destination, name, { ...doc, name })
   }
 
   async rename(id: string, name: string) {
@@ -373,8 +509,9 @@ export class RequestsModel {
   /** The request as it would go now, keys and secrets by name: for the curl line and the
    * agent's card, so neither puts a value anywhere. */
   async prepared(id: string): Promise<Outgoing> {
+    if (!this.entry(id).doc && id.startsWith('file:')) await this.open(id)
     const doc = this.entry(id).doc ?? (await this.rpc.get(this.projectId, id))
-    return outgoing(doc, this.vars())
+    return outgoing(doc, this.vars(doc))
   }
 
   /** Why it cannot go as it is, in words; nothing when it can. */
@@ -399,7 +536,12 @@ export class RequestsModel {
   async send(id: string, options: SendOptions): Promise<HttpOutcome> {
     await this.flush(id)
     const entry = this.entry(id)
+    if (!entry.doc && id.startsWith('file:')) await this.open(id)
     const doc = (entry.doc ??= await this.rpc.get(this.projectId, id))
+    const file = this.files?.get(id)
+    if (file?.gone) throw new Error('The request file is gone')
+    const missingCapture = this.files?.captures(id).find((c) => c.value === undefined)
+    if (missingCapture) throw new Error(`Send ${missingCapture.from.name} first`)
     const why = this.blocked(doc, options.interactive)
     if (why) throw new Error(why)
     const environment = this.state.environment ?? ''
@@ -437,15 +579,33 @@ export class RequestsModel {
           ? await this.ports.recording(originOf(keyed.out.url))
           : undefined
       const into = recording
+      if (file) this.files?.forget(id)
       const started = await this.rpc.send(this.projectId, {
-        requestId: id,
+        ...(!file ? { requestId: id } : {}),
         ...(environment ? { environment } : {}),
         method: keyed.out.method,
         timeoutMs: this.timeout(id),
         url: keyed.out.url,
         headers: Object.entries(keyed.out.headers).map(([key, value]) => ({ key, value })),
         ...(keyed.out.body !== undefined ? { body: keyed.out.body } : {}),
-        secrets: [...new Set([...keyed.secrets, ...Object.values(this.secrets()).filter(Boolean)])],
+        secrets: [
+          ...new Set([
+            ...keyed.secrets,
+            ...Object.values(this.secrets()).filter(Boolean),
+            ...(file
+              ? [
+                  ...(this.state.env?.vars ?? [])
+                    .filter(
+                      (v) => SECRET_NAME.test(v.key) && v.value && !v.value.includes('${abele_key:')
+                    )
+                    .map((v) => v.value!),
+                  ...doc.headers
+                    .filter((h) => credential(h.key, h.value))
+                    .map((h) => h.value.replace(/^(Bearer|Basic|Token)\s+/i, '')),
+                ]
+              : []),
+          ]),
+        ],
         ...(into
           ? {
               ...(recording.routeByDestination
@@ -465,6 +625,7 @@ export class RequestsModel {
       let outcome = outcomeOf(status.outcome, status.code_steps)
       if (status.outcome.state === 'answered') {
         const response = status.outcome.response
+        if (file) this.files?.capture(id, response)
         if (doc.scripts.after) {
           const r = await this.ports.scripts
             .run(
@@ -500,10 +661,12 @@ export class RequestsModel {
           runId: status.send.run.run_id,
           step: status.send.run.step,
         })
+      if (file) entry.history.unshift(this.sendView(id, status.send))
       entry.outcome = JSON.stringify(entry.doc) === JSON.stringify(doc) ? outcome : undefined
-      await Promise.all([this.readHistory(id, false), this.refreshList()]).catch((e) =>
-        console.debug('[requests] History not read again', e)
-      )
+      if (!file)
+        await Promise.all([this.readHistory(id, false), this.refreshList()]).catch((e) =>
+          console.debug('[requests] History not read again', e)
+        )
       return outcome
     } catch (e) {
       entry.outcome = undefined
