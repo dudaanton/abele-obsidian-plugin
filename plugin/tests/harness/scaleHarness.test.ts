@@ -493,6 +493,43 @@ describe('scale harness independent guarantees', () => {
       lastError: 'Sample directory recovery failed',
     })
   })
+  it('retains a visible fatal reason after the engine clears its transient error', async () => {
+    const vault = new RealVault({}, '/sample-vault')
+    const app = {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              ui: {
+                rows: { value: [{ id: 'sample', status: 'error', paused: false }] },
+                activity: {
+                  value: {
+                    sample: {
+                      error: 'Sample local recovery failed',
+                      failure: { code: 'local-placement', reason: 'Sample local recovery failed' },
+                    },
+                  },
+                },
+              },
+              live: new Map([
+                [
+                  'sample',
+                  { engine: { status: { state: 'paused', lastSyncAt: null, lastError: null } } },
+                ],
+              ]),
+            },
+          },
+        },
+      },
+    }
+    vault.evaluate = async (body) => runInNewContext(`(async()=>{${body}})()`, { app, window: {} })
+    const snapshot = await vault.snapshot()
+    expect(snapshot.engines[0].lastError).toBe(null)
+    expect(snapshot.activity[0]).toMatchObject({
+      error: 'Sample local recovery failed',
+      failure: { code: 'local-placement', reason: 'Sample local recovery failed' },
+    })
+  })
   it('cuts a content batch after the server applied it and before its acknowledgement reaches the client', async () => {
     let applied = false
     const upstream = createServer(async (req, res) => {
