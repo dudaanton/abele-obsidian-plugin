@@ -21,6 +21,11 @@ import { openTraceRun, openTraceValue } from '@/debugger/trace/TraceTabs'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { openDebuggerMenuFixture, closeDebuggerMenuFixture } from './debuggerMenuScreen'
 import {
+  openDebuggerReconnectFixture,
+  closeDebuggerReconnectFixture,
+  debuggerReconnectFixtureState,
+} from './debuggerReconnectScreen'
+import {
   openDebuggerAccessFixture,
   closeDebuggerAccessFixture,
   retryDebuggerAccessFixture,
@@ -306,6 +311,9 @@ interface AbeleTestApi {
   DebuggerService: typeof DebuggerService
   openDebuggerMenuFixture: typeof openDebuggerMenuFixture
   closeDebuggerMenuFixture: typeof closeDebuggerMenuFixture
+  openDebuggerReconnectFixture: typeof openDebuggerReconnectFixture
+  closeDebuggerReconnectFixture: typeof closeDebuggerReconnectFixture
+  debuggerReconnectFixtureState: typeof debuggerReconnectFixtureState
   openDebuggerAccessFixture: typeof openDebuggerAccessFixture
   closeDebuggerAccessFixture: typeof closeDebuggerAccessFixture
   retryDebuggerAccessFixture: typeof retryDebuggerAccessFixture
@@ -984,6 +992,9 @@ export function exposeTestApi(plugin: Plugin): void {
     DebuggerService,
     openDebuggerMenuFixture,
     closeDebuggerMenuFixture,
+    openDebuggerReconnectFixture,
+    closeDebuggerReconnectFixture,
+    debuggerReconnectFixtureState,
     openDebuggerAccessFixture,
     closeDebuggerAccessFixture,
     retryDebuggerAccessFixture,

@@ -8,6 +8,73 @@ import type { NodeConnection } from '@/node/NodeService'
 import { debuggerStatus } from '../fixtures/debugger'
 import { useVault } from '../helpers/testEnv'
 
+it.each([
+  { outcome: 'survived', observed: false },
+  { outcome: 'gone', observed: false },
+  { outcome: 'survived', observed: true },
+  { outcome: 'gone', observed: true },
+])(
+  'the stale timestamp refresh recovers $outcome, retained snapshot: $observed, on an already connected node',
+  async ({ outcome, observed }) => {
+    useVault([])
+    DebuggerService.instance.destroy()
+    let reads = 0
+    const rpc = vi.fn(async (method: string) => {
+      if (method === 'debugger.v1.status') {
+        if (++reads === 1 && !observed)
+          throw new Error('Sample connection interrupted before the status reply')
+        if (reads > 1 && outcome === 'gone')
+          throw Object.assign(new Error('not_found'), { code: 'not_found' })
+        return debuggerStatus()
+      }
+      if (method === 'debugger.v1.wait') return new Promise(() => {})
+      if (method === 'debugger.v1.cancelWait') return { cancelled: true }
+      throw new Error('Unexpected sample RPC')
+    })
+    const connect = vi.fn(async () => {})
+    const binding = new DebuggerBinding(
+      {
+        state: ref('connected'),
+        connect,
+        client: { request: rpc, debugger: new DebuggerClient(rpc) },
+      } as unknown as NodeConnection,
+      'sample-chat',
+      'sample-node'
+    )
+    vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+    DebuggerService.instance.select(binding)
+    const view = mount(DebuggerView)
+    try {
+      await binding.open('sample-debug')
+      // A restored panel can have a pending identity without a successful current snapshot.
+      // The node is back already, so connect deliberately makes no state transition.
+      expect(!!binding.sessionId).toBe(observed)
+      binding.controller.disconnected()
+      binding.controller.session.program = 'sample.js · pid 1234'
+      binding.controller.session.seen = 'Today, 10:00'
+      ++binding.revision.value
+      await nextTick()
+      expect(view.text()).toContain('Today, 10:00')
+      await view.get('.abele-debug-panel__notice [aria-label="Try to reconnect"]').trigger('click')
+      await flushPromises()
+      expect(connect).toHaveBeenCalledTimes(1)
+      expect(reads).toBe(2)
+      expect(view.find('.abele-debug-panel_lost').exists()).toBe(false)
+      if (outcome === 'survived') {
+        expect(binding.controller.current).toBe(true)
+        expect(view.find('.abele-debug-panel_paused').exists()).toBe(true)
+      } else {
+        expect(view.text()).toContain('Debug session ended. Start a new run.')
+        expect(view.find('[aria-label="Start a new run"]').exists()).toBe(true)
+      }
+    } finally {
+      view.unmount()
+      binding.destroy()
+      DebuggerService.instance.destroy()
+    }
+  }
+)
+
 it.each(['survived', 'request-failed', 'adapter-ended', 'missing'] as const)(
   'recovers a stopped observer on a healthy channel: %s',
   async (outcome) => {

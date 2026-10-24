@@ -259,11 +259,17 @@ function breakpoint(file: string, line: number) {
 }
 function retry() {
   const b = binding.value
-  console.debug('[debugger] Reconnect requested', b?.sessionId)
-  if (b?.sessionId)
+  const sessionId = b?.observationId
+  console.debug('[debugger] Reconnect requested', sessionId)
+  if (b && !sessionId) {
+    b.controller.session.unavailable = true
+    b.controller.session.status = 'exited'
+    b.controller.error = ''
+    ++b.revision.value
+  } else if (b && sessionId)
     void b.connection
       .connect()
-      .then(() => b.open(b.sessionId))
+      .then(() => b.open(sessionId))
       .catch((e) => b.fail(e))
 }
 </script>
