@@ -144,3 +144,103 @@ it.each(['additive', 'destructive', 'restoring'] as const)(
     })
   }
 )
+
+it.each([false, true])(
+  'bounds fresh replay stats and drains reads before returning (failure=%s)',
+  async (fail) => {
+    const { reconciliationScan } = await import(
+      '../../node_modules/@abele/sync-sdk/dist/internal/core/reconciliation.js'
+    )
+    const state = new MemoryStateStore()
+    for (let i = 0; i < 70; i++) {
+      const path = `Notes/sample-${i}.md`
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: path,
+        versionId: 'v1',
+        sha: 'a'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    }
+    await state.setJournal({
+      batchId: 'sample',
+      idempotencyKey: 'sample',
+      startedAt: new Date().toISOString(),
+      ops: [{ op: 'create', path: 'pending.md', sha: 'b'.repeat(64), size: 1, mtime: 1 }],
+    })
+    let active = 0,
+      peak = 0,
+      completed = 0
+    const stat = vi.fn(async (path: string) => {
+      active++
+      peak = Math.max(peak, active)
+      try {
+        if (fail && path.endsWith('sample-0.md')) throw new Error('sample stat failure')
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        return { path, size: 1, mtime: 1 }
+      } finally {
+        active--
+        completed++
+      }
+    })
+    const fs = Object.assign(new MemoryFileSystem(), { listChildren: async () => [], stat })
+    const run = reconciliationScan(fs, state, { excluded: () => false }, 1)
+    if (fail) await expect(run).rejects.toThrow('sample stat failure')
+    else await run
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(32)
+    expect(active).toBe(0)
+    expect(completed).toBe(stat.mock.calls.length)
+    expect(completed).toBe(fail ? 32 : 70)
+  }
+)
+
+it('keeps ambiguous ancestors blocked and refreshes directory spelling on the next replay pass', async () => {
+  const { refreshLocalPaths } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
+  )
+  const state = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  for (const name of ['one.md', 'two.md']) {
+    const path = `é/${name}`
+    await state.put({
+      path,
+      wirePath: path.normalize('NFC'),
+      fileId: name,
+      versionId: 'v1',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    })
+    await fs.writeAtomic(`é/${name}`, new Uint8Array([1]), 1)
+  }
+  await state.setJournal({
+    batchId: 'sample',
+    idempotencyKey: 'sample',
+    startedAt: new Date().toISOString(),
+    ops: [{ op: 'create', path: 'pending.md', sha: 'b'.repeat(64), size: 1, mtime: 1 }],
+  })
+  let ambiguous = true
+  const reads: string[] = []
+  Object.assign(fs, {
+    listChildren: async (parent: string) => {
+      reads.push(parent)
+      return parent === ''
+        ? [
+            { path: 'é', kind: 'directory', identity: 'first' },
+            ...(ambiguous ? [{ path: 'é', kind: 'directory', identity: 'second' }] : []),
+          ]
+        : ['one.md', 'two.md'].map((name) => ({ path: `é/${name}`, kind: 'file' }))
+    },
+  })
+  await refreshLocalPaths(fs, state)
+  expect(reads).toEqual([''])
+  expect((await state.byFileId('one.md'))?.path).toBe('é/one.md')
+  ambiguous = false
+  await refreshLocalPaths(fs, state)
+  expect(reads).toEqual(['', '', 'é'])
+  expect((await state.byFileId('one.md'))?.path).toBe('é/one.md')
+  expect((await state.byFileId('two.md'))?.path).toBe('é/two.md')
+})

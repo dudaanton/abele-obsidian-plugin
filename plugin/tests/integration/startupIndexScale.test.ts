@@ -134,9 +134,7 @@ it('starts a synced 33k indexed vault without content reads or a per-file disk w
   }
 }, 120000)
 
-// BUG: SDK refreshLocalPaths still iterates the whole baseline without a task
-// checkpoint. Keep byte/read bounds green independently of this unresolved gap.
-it.fails('BUG: startup local-path refresh yields and keeps every task below 50 ms', () => {
+it('startup local-path refresh yields and keeps every task below 50 ms', () => {
   expect(longestStartupGap).toBeLessThan(50)
   expect(localPathsYielded).toBe(true)
 })

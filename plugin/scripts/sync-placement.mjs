@@ -38,7 +38,11 @@ async function additiveReplayEntries(fs, state) {
   const raw = await state.getMeta('content-reconciliation');
   if (raw && JSON.parse(raw).phase !== 'complete') return null;
   const entries = [];
-  for await (const entry of state.all()) entries.push(entry);
+  const work = new ScanWork();
+  for await (const entry of state.all()) {
+    entries.push(entry);
+    await work.step();
+  }
   return entries;
 }
 async function pairedBaseline(fs, state, entry) {
@@ -250,12 +254,28 @@ export function syncPlacementPlugin() {
         disk.set(info.path, info);
       }
     } else {
-      for (const entry of replayEntries) {
-        await work.step();
-        if (isEngineOwn(entry.wirePath) || filter.excluded(entry.wirePath, entry.size)) continue;
-        const info = await fs.stat(entry.path);
-        if (info) disk.set(entry.path, { ...info, path: entry.path });
-      }
+      let next = 0;
+      let failed = false;
+      let failure;
+      // Fixed workers overlap fresh guarded reads without waiting for an entire
+      // batch's slowest read. Every worker drains before a failure is propagated.
+      const readTracked = async () => {
+        try {
+          while (!failed && next < replayEntries.length) {
+            const entry = replayEntries[next++];
+            await work.step();
+            if (failed) break;
+            if (isEngineOwn(entry.wirePath) || filter.excluded(entry.wirePath, entry.size)) continue;
+            const info = await fs.stat(entry.path);
+            if (info) disk.set(entry.path, { ...info, path: entry.path });
+          }
+        } catch (error) {
+          if (!failed) failure = error;
+          failed = true;
+        }
+      };
+      await Promise.all(Array.from({ length: 32 }, readTracked));
+      if (failed) throw failure;
     }`
         )
 
@@ -296,16 +316,39 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
           code,
+          'const known = await rememberedCollisions(state);\n    for await (const entry of state.all()) {',
+          'const known = await rememberedCollisions(state);\n    const refreshWork = new ScanWork();\n    for await (const entry of state.all()) {\n        await refreshWork.step();'
+        )
+        code = replaceOnce(
+          code,
           'const inventory = await LocalPaths.read(fs, state);\n    await inventory.rememberDirectories(state);',
           `const replayEntries = await additiveReplayEntries(fs, state);
     const inventory = replayEntries === null ? await LocalPaths.read(fs, state) : new LocalPaths();
     if (replayEntries === null) await inventory.rememberDirectories(state);
     else {
+      const read = new Set();
+      const work = new ScanWork();
       for (const entry of replayEntries) {
-        const local = await LocalPaths.forPath(fs, entry.wirePath, state);
-        for (const candidates of local.entries.values()) for (const candidate of candidates) inventory.add(candidate);
-        inventory.heldDirectories.push(...local.heldDirectories);
+        await work.step();
+        const segments = wirePath(entry.wirePath).split('/');
+        let parent = '';
+        for (let n = 0; n < segments.length; n++) {
+          if (!read.has(parent)) {
+            // This inventory is shared by the pass; each physical sibling is added once.
+            // Read complete directories, never a target-filtered host inventory.
+            for (const child of await fs.listChildren(parent)) {
+              inventory.add(child);
+              await work.step();
+            }
+            read.add(parent);
+          }
+          const prefix = segments.slice(0, n + 1).join('/');
+          const matches = inventory.entries.get(prefix) ?? [];
+          if (matches.length !== 1 || matches[0].kind !== 'directory') break;
+          parent = matches[0].path;
+        }
       }
+      await inventory.loadDirectoryHolds(state);
     }`
         )
 
@@ -316,8 +359,8 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'await fs.listChildren(parent)',
-          'await inventoryChildren(fs, parent, path)'
+          'for (const child of await fs.listChildren(parent))\n                result.add(child);',
+          'for (const child of await inventoryChildren(fs, parent, path))\n                result.add(child);'
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = replaceOnce(
