@@ -704,6 +704,7 @@ it('reads a project request file, sends its chain and writes an edit back on bot
         requests.reveal.value={collection:'sample-chain.http',ids:collection.requests.map(r=>r.id),at:Date.now()};
         await wait(400);
         await shot('file-requests-01-collection-${device}');
+        (await until(()=>panel().querySelector('.abele-requests-panel__problem'),'partial read diagnostic')).scrollIntoView({block:'nearest'});
         await shot('file-requests-07-partial-${device}');
         await api.requests.openTab(c,read.id);
         shown=app.workspace.getLeavesOfType('abele-request').find(l=>l.view.getState().id===read.id);
