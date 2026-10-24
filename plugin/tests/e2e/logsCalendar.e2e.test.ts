@@ -56,6 +56,13 @@ const probe = (label: string) => String.raw`(async () => {
     config.rememberNotePlaces = false
     store.applySettings()
     await app.vault.createFolder(folder)
+    await app.vault.createFolder(folder + '/Media')
+    const canvas = document.createElement('canvas')
+    canvas.width = 120; canvas.height = 80
+    const paint = canvas.getContext('2d')
+    paint.fillStyle = '#668899'; paint.fillRect(0, 0, 120, 80)
+    const bytes = Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]), ch => ch.charCodeAt(0))
+    await app.vault.createBinary(folder + '/Media/sample-picture.png', bytes.buffer)
     const note = await create('Sample practice', 'A sample practice with dated entries.\n')
     const today = new Date()
     const date = day => today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(day).padStart(2,'0')
@@ -64,9 +71,10 @@ const probe = (label: string) => String.raw`(async () => {
     const files = []
     for (let day = 1; day <= Math.max(28, today.getDate()); day++) {
       if (day % 5 === 0 && day !== today.getDate() && day !== longDay) continue
-      const content = day === longDay
+      let content = day === longDay
         ? Array.from({length: 14}, (_, i) => 'Sample line ' + (i+1) + ' about [[' + note.path + ']].').join('\n')
         : (day % 3 === 0 ? '- [ ] ' : day % 3 === 1 ? '- [x] ' : '') + 'Sample entry for [[' + note.path + ']].'
+      if (day === today.getDate()) content += '\n::abele-gallery{height=160}::\n\n![[sample-picture.png]]\n\n![[Media/sample-picture.png]]\n\n![Sample](Media/sample-picture.png)'
       const file = await create(date(day), '---\ntype: log\ncreated: ' + date(day) + '\n---\n' + content + '\n')
       files.push(file)
     }
@@ -99,6 +107,16 @@ const probe = (label: string) => String.raw`(async () => {
     report.daySizes = [...calendar.querySelectorAll('.abele-calendar__day')].map(el => { const b=el.getBoundingClientRect(); return [b.width,b.height] })
     await shoot('today')
     await shoot('busy-month')
+    const gallery = await until(() => calendar.querySelector('.abele-gallery'), 'entry gallery')
+    gallery.scrollIntoView({ block: 'center' })
+    await until(() => {
+      const pictures = [...gallery.querySelectorAll('img')]
+      return pictures.length === 3 && pictures.every(img => img.complete && img.naturalWidth > 0)
+    }, 'entry gallery pictures')
+    report.galleryPictures = gallery.querySelectorAll('img').length
+    report.gallerySource = store.galleriesContainers.value.some(g => g.filePath === folder + '/' + todayKey + '.md' && g.images.length === 3)
+    report.galleryEmpty = gallery.textContent.includes('No pictures yet')
+    await shoot('gallery-entry')
     const title = calendar.querySelector('.abele-calendar__header-month-year')
     title.click()
     await until(() => calendar.querySelector('.abele-calendar-year'), 'footer year')
@@ -216,6 +234,9 @@ async function check(label: string) {
   expect(report.focusPaint).toBe(true)
   expect(report.saved).toBe(true)
   expect(report.list).toBe(true)
+  expect(report.galleryPictures).toBe(3)
+  expect(report.gallerySource).toBe(true)
+  expect(report.galleryEmpty).toBe(false)
 }
 
 describe.skipIf(!available)('logs calendar in the live note footer', () => {

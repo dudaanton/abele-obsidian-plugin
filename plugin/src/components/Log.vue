@@ -17,6 +17,7 @@
           class="abele-log__file-content"
           :class="{ 'abele-log__file-content--collapsed': isCollapsible && !isExpanded }"
           :text="log.content"
+          :file-path="log.filePath"
         />
         <div
           v-if="isCollapsible"

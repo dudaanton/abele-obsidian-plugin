@@ -5,6 +5,7 @@ import { getNameFromPath, isWikilink, normalizePath, wikilinkToPath } from '@/he
 import { getOutgoingLinksByPath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { findGalleryBlocks } from '@/helpers/galleryUtils'
 import dayjs from '@/helpers/dateLibrary'
 import { debounce, TFile } from 'obsidian'
 
@@ -117,7 +118,22 @@ export class Log {
    * search reads, so a word elsewhere in a daily note does not surface it under every group.
    */
   relatedText(body: string): string {
-    let paragraphs = body.split('\n\n').map((p) => p.trim())
+    const lines = body.split('\n')
+    const blocks = findGalleryBlocks(lines)
+    let paragraphs: string[] = []
+    let start = 0
+    let blockIndex = 0
+    // A gallery is one excerpt even when its image lines are separated by blank lines.
+    // Splitting there can keep a linked header while silently discarding its pictures.
+    for (let i = 1; i < lines.length - 1; i++) {
+      while (blockIndex < blocks.length && blocks[blockIndex].lastLine < i) blockIndex++
+      const block = blocks[blockIndex]
+      if (lines[i] !== '' || (block && i > block.headerLine && i <= block.lastLine)) continue
+      paragraphs.push(lines.slice(start, i).join('\n').trim())
+      start = i + 1
+      i++ // The separator consumes both newlines, as split('\n\n') does.
+    }
+    paragraphs.push(lines.slice(start).join('\n').trim())
 
     // find paragraphs containing one of wikilink type to targetFilePath (full path or name only)
     if (this.targetFilePath) {

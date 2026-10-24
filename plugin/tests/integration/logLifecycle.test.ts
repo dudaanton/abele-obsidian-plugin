@@ -170,6 +170,24 @@ describe('Log relatedText and content', () => {
     expect(log(PATH, TARGET).relatedText('A [[ORCHARD]].\n\nNot about it.')).toBe('A [[ORCHARD]].')
   })
 
+  it('keeps all pictures of a selected gallery without pulling in another gallery or prose', () => {
+    const selected = 'About [[Orchard]].\n::abele-gallery::\n\n![[sample.png]]\n\n![[other.png]]'
+    const body = selected + '\n\nOther prose.\n\n::abele-gallery::\n\n![[unrelated.png]]'
+    expect(log(PATH, TARGET).relatedText(body)).toBe(selected)
+  })
+
+  it.each(['', '\n', '\n\n', 'a\nb', 'a\n\nb', 'a\n\n\nb', 'a\n\n\n\nb'])(
+    'preserves ordinary paragraph spacing for %j',
+    (body) => {
+      expect(log().relatedText(body)).toBe(
+        body
+          .split('\n\n')
+          .map((part) => part.trim())
+          .join('\n\n')
+      )
+    }
+  )
+
   it('trims paragraphs, preserves single newlines and duplicates, and supports empty/large bodies', () => {
     const item = log()
     expect(item.relatedText('')).toBe('')
