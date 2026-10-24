@@ -23,7 +23,7 @@ vi.mock('@/node/nodePathNavigation', async (original) => ({
 }))
 vi.mock('@/node/openRepository', () => ({ openNodeRepositoryTarget: vi.fn(async () => {}) }))
 vi.mock('@/github/codeViewer', () => ({
-  mountCode: vi.fn(() => ({ destroy: vi.fn(), blame: vi.fn() })),
+  mountCode: vi.fn(() => ({ destroy: vi.fn(), blame: vi.fn(), requests: vi.fn() })),
 }))
 const views: ReturnType<typeof mount>[] = []
 it('bounds linked ranges to the current document before expanding line decorations', async () => {
@@ -231,6 +231,7 @@ describe('node file repository tools', () => {
     } as never)
     await flushPromises()
     expect(blame).toHaveBeenCalledWith('working-updated', 'sample.ts')
+    expect(vi.mocked(mountCode).mock.results.at(-1)!.value.requests).toHaveBeenCalledWith(null)
     expect(view.get('[aria-label="Toggle line blame"]').attributes('aria-pressed')).toBe('true')
   })
   it('routes rendered working-file links through the ordinary file navigation binding', async () => {

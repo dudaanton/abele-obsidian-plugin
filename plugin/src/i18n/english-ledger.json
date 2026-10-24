@@ -28350,7 +28350,7 @@
     ]
   },
   "requests.file.problem": {
-    "englishHash": "10921a08a7ae29bc91d67128d9d267f555a164b7933047510fe22bfd89a62e7f",
+    "englishHash": "66bf92d08b0762bcc56bf04fc9d75cdd43579b3f09bb43f027459189d5c0c334",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28360,7 +28360,7 @@
     ]
   },
   "requests.file.sendAll": {
-    "englishHash": "6968c378dc7540b4db6d92e5d42b6fa63cfb23ae34fd16e470d9ad4642b7ff1e",
+    "englishHash": "3b1651237c3cc34cf5944d4ed5a3dca3581f9e96e8bc89ddca38cdc48e284795",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28370,7 +28370,7 @@
     ]
   },
   "requests.file.open": {
-    "englishHash": "bd5f6b1d9360a8910a94a2fa49d563ca33e46b67bc8a52c49a3a373a30784288",
+    "englishHash": "80778a3b5bf0f77a2f146ff3f7fdd37d1cff8c0f25d673f7bfef0f0138047dce",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28380,7 +28380,7 @@
     ]
   },
   "requests.file.line": {
-    "englishHash": "0e3dce949d3619cad50fab76fea82104dcc976af85fcb7d5117d30d01a99165f",
+    "englishHash": "fa73ab0ef2feb893add0213d03a409c3ece8443d7d813a1be668d0acd0cda62c",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28390,7 +28390,7 @@
     ]
   },
   "requests.file.openLine": {
-    "englishHash": "c6b1f36fb7fe5964d8aaad60608b62ae51771846bc5ff584a1ff3863734f404b",
+    "englishHash": "a7145254d9e75a3083dd598f7eb08a1f2101bff12217d211f6618069cb867e36",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28400,7 +28400,7 @@
     ]
   },
   "requests.file.at": {
-    "englishHash": "8a32540566498efaffc4694c70f3844b7c0a4f105dfb3c8dadb2d5ecf9274b42",
+    "englishHash": "b66d6ae1a06cc19e0916e916f0833720ba409dd043cef548507582f1d6e4288c",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28410,7 +28410,7 @@
     ]
   },
   "requests.file.gone": {
-    "englishHash": "5e146c70642882c24ca9dc8e8e3f042aa7c2d45fa301b7d999c27da8ffdc1b91",
+    "englishHash": "2a3ca1ff77c3b12d4e1ca0cfd9278dcd3251e10b0349edf3808ee198e240a1ab",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28420,7 +28420,7 @@
     ]
   },
   "requests.capture.title": {
-    "englishHash": "d61a49b61fe56d82825d29a20183d247b53ad5d6cc60d57c60ab157b5054e908",
+    "englishHash": "63328755492606cab1e98449f47791d543e5ecb384e7946c018754bcfc247e58",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28430,7 +28430,7 @@
     ]
   },
   "requests.env.exposed": {
-    "englishHash": "4baa1ff7baa3736d718eef8e70e5f29402450904b78935cef1403ecd1c7ab9f5",
+    "englishHash": "0b7e6833ce2c5698d6715fea642f5fba3b363b230d48fdaedadcb910e9e76b98",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28440,7 +28440,7 @@
     ]
   },
   "requests.env.toKeys": {
-    "englishHash": "a3c7064f94e96c8bc256d551fd09e4d7a9670d0f18b119d1492209fa4fc32d14",
+    "englishHash": "b6b658a9c65e2f608f86cbd98ddc87f31c3b6861d0d346da3835554029c90bce",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28450,7 +28450,7 @@
     ]
   },
   "requests.capture.notSent": {
-    "englishHash": "92f47e0c7293074499adb7a025efe31c9464f9c995a6c836930379090508b3fc",
+    "englishHash": "c8c464d60822733866337800f3d0ceefeed8cf01a509faf8e57375c79cf62312",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28460,7 +28460,7 @@
     ]
   },
   "requests.capture.sendFirst": {
-    "englishHash": "0770bb52e200a0e0a8f6b33d7082fdb16f04b521a71f3404f4cc927d76d57a31",
+    "englishHash": "b5c76f21baf1f542731bcc71c6b8f1b97d6f7b0c970cb15931781e7d1e50b417",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28470,7 +28470,7 @@
     ]
   },
   "requests.capture.blocked": {
-    "englishHash": "3566133cda63811b31666c36144d1eaba3a3f0f013d0b1adaa818988bef2d95e",
+    "englishHash": "ba47a7082ad665af08932f07f106bde544ec87488474ed5b1d72dc4d9442d516",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28480,7 +28480,7 @@
     ]
   },
   "requests.file.saveCopy": {
-    "englishHash": "88eb30ff3ff352be5c012a59aa53547e1792011ac880752e665b187183ec0fcf",
+    "englishHash": "53538699be986e65581e01fa75632fb3f7aebd12561a1225b35a80ee6a1e64d2",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28490,7 +28490,7 @@
     ]
   },
   "requests.file.openPanel": {
-    "englishHash": "24c97b5031d37337b15e9cbd30156c764fe14e9a41e84503811b2e481f090127",
+    "englishHash": "6a39947edbda25a3037abe645c664229fb2e7ad10559c123aa2d86d3e4ecfc38",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28500,7 +28500,7 @@
     ]
   },
   "requests.file.scriptShown": {
-    "englishHash": "b1e03487022f4af72a1708cddc68e75d9143e64ddb6b1e1ed8ce6de166261805",
+    "englishHash": "c234cfbe03a297ac5da358c2fe297da166c16a62df4c35d40c71626e2a01ea78",
     "context": "Project request files, answer captures and file environments",
     "reviewedLocales": [
       "ru",
@@ -28510,7 +28510,7 @@
     ]
   },
   "requests.file.sending": {
-    "englishHash": "65ea0981f88b97770dd2db6ae4ef86b32f1b87c301cd7697eb1f0826bb2712c6",
+    "englishHash": "226ad77a7b7ece280abedf5bd8121edc10dabc0b4b004fe84b15872ef405713c",
     "context": "Request file gutter actions and send status",
     "reviewedLocales": [
       "ru",
@@ -28520,7 +28520,7 @@
     ]
   },
   "requests.file.notSent": {
-    "englishHash": "8513a9ecd7d7a0c923eab8806a3aa925e96bc0eede616c680a4d49a7be219e49",
+    "englishHash": "355d9bf38711a1083cc18eb7efe4201d41e41ceaee2b658122c5ace45fd91053",
     "context": "Request file gutter actions and send status",
     "reviewedLocales": [
       "ru",
@@ -28530,7 +28530,7 @@
     ]
   },
   "requests.file.openAnswer": {
-    "englishHash": "f01c7aa72ae7de966a99afd12b704859e6931151fe3ebb890dd0a1d660a17668",
+    "englishHash": "82863fb87884096f1039854fab385df858f3e1576493b779929cf7bc27169319",
     "context": "Request file gutter actions and send status",
     "reviewedLocales": [
       "ru",
@@ -28540,7 +28540,7 @@
     ]
   },
   "requests.file.methodProblem": {
-    "englishHash": "69db107901583f70fcaa84e0887e0b96ed22906a1a71c2c6461194490910aa28",
+    "englishHash": "e39208cd86c3238f5b9de9d377d0a8e3f3badc4575b8494e76b7fa95f69f582d",
     "context": "Partial parsing diagnostics in project request files",
     "reviewedLocales": [
       "ru",
@@ -28550,8 +28550,58 @@
     ]
   },
   "requests.file.headerProblem": {
-    "englishHash": "5ee7234cd60dffc4baffef9f5da931458d50632c44a65762c935900804cbaee0",
+    "englishHash": "b540ccbae83b7d72153f1af794a4fa732109de51da7a011aa74c83dbe9ec0e4a",
     "context": "Partial parsing diagnostics in project request files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.formUnsupported": {
+    "englishHash": "ef8225c72b6fde671b1adcb260563004a0947e49c4fd062156b6ce9af9881993",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.secretPending": {
+    "englishHash": "2f198a51a753806c2c63697cca930181778dc6267ccf3bed162a44ec59800918",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.secretChecked": {
+    "englishHash": "5e1332e0a2a0fb77f9954403e87394227e15ba1ac0c606e513d5bcaae6275461",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.sensitiveUnavailable": {
+    "englishHash": "d473369aeabf1a08beaffff6cf06fcb7ee3b3a98a3717f841ad60abd16af46c4",
+    "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.pendingEdit": {
+    "englishHash": "d8581407608fbfbde492091ccd2377c8b54a84918d67aff0f2b074a6dcaa2d8d",
+    "context": "Conditional file writes and secret migration diagnostics",
     "reviewedLocales": [
       "ru",
       "lv",

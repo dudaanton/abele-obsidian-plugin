@@ -9,6 +9,7 @@ const f = vi.hoisted(() => ({
     lineTop: () => 200,
     destroy: vi.fn(),
     blame: vi.fn(),
+    requests: vi.fn(),
   },
 }))
 vi.mock('@/github/codeViewer', () => ({ mountCode: () => f.viewer }))

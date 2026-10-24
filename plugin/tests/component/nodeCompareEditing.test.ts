@@ -11,7 +11,12 @@ import NodeFileSaveState from '@/components/NodeFileSaveState.vue'
 import Button from '@/components/obsidian/Button.vue'
 
 vi.mock('@/github/codeViewer', () => ({
-  mountCode: vi.fn(() => ({ destroy: vi.fn(), setText: vi.fn(), blame: vi.fn() })),
+  mountCode: vi.fn(() => ({
+    destroy: vi.fn(),
+    setText: vi.fn(),
+    blame: vi.fn(),
+    requests: vi.fn(),
+  })),
 }))
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => true) }))
 
