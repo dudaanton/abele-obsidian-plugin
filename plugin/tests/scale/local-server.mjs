@@ -24,7 +24,8 @@ export async function verifyUploadPresence(address, key, fetch = globalThis.fetc
   const request = (method, hash, body) =>
     fetch(`${address}/v2/uploads/${hash}`, {
       method,
-      headers,
+      headers:
+        method === 'PUT' ? { ...headers, 'content-type': 'application/octet-stream' } : headers,
       body,
       signal: AbortSignal.timeout(10000),
     })

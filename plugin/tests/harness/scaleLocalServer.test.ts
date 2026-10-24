@@ -123,8 +123,12 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
 
 it('proves upload HEAD on known and absent bytes rather than accepting a missing route', async () => {
   const stored = new Set<string>()
-  const fetch = async (url: string, options: { method: string }) => {
+  const fetch = async (
+    url: string,
+    options: { method: string; headers: Record<string, string> }
+  ) => {
     if (options.method === 'PUT') {
+      expect(options.headers['content-type']).toBe('application/octet-stream')
       stored.add(url)
       return new Response(null, { status: 201 })
     }
