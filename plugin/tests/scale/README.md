@@ -74,8 +74,10 @@ of source, compiled output, tests and package manifests.
 
 Set `serverMode: "local"`, `serverFixture`, `serverCommit` and
 `localServerDirectory` in the run config. With `serverCommit`, the runner verifies the
-fixture against that exact commit and checks its core version against the selected
-plugin build receipt's pinned SDK version. Checksummed inputs are verified before launch;
+fixture against that exact commit. Set `serverCoreVersion` and `serverVersion` to the
+expected core/server package versions; these can differ from the SDK release version.
+The receipt records the plugin build receipt's paired SDK version separately. Without
+an explicit core version, the legacy same-version check remains. Checksummed inputs are verified before launch;
 wrong commit/version or changed files fail instead of falling back to the older fixture.
 The server receipt records this selection and the fixture receipt digest.
 

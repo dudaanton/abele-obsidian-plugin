@@ -56,14 +56,17 @@ export async function openServer(config) {
   const coreVersion = JSON.parse(
     await readFile(join(fixture, 'packages/core/package.json'), 'utf8')
   ).version
-  if (config.serverSdkVersion && coreVersion !== config.serverSdkVersion)
-    throw new Error('Local fixture core version differs from selected SDK')
+  const expectedCoreVersion = config.serverCoreVersion ?? config.serverSdkVersion
+  if (expectedCoreVersion && coreVersion !== expectedCoreVersion)
+    throw new Error('Local fixture core version differs from selected SDK/server pairing')
   const directory = resolve(config.localServerDirectory)
   await mkdir(directory, { recursive: true })
   if ((await readdir(directory)).length) throw new Error('Local server storage must be empty')
   const { version } = JSON.parse(
     await readFile(join(fixture, 'packages/server/package.json'), 'utf8')
   )
+  if (config.serverVersion && version !== config.serverVersion)
+    throw new Error('Local fixture server version differs from selected pairing')
   const probe = createServer()
   await new Promise((done, reject) => {
     probe.once('error', reject)
@@ -149,6 +152,7 @@ export async function openServer(config) {
           .digest('hex'),
         revision,
         coreVersion,
+        pairedSdkVersion: config.serverSdkVersion ?? null,
         sourceTree: provenance.tree ?? null,
         version,
         database: 'sqlite',

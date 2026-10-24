@@ -73,6 +73,16 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
     })
     expect(candidate.receipt).toMatchObject({ revision: selected, coreVersion: '0.3.5' })
     await candidate.close()
+    const paired = await openServer({
+      serverMode: 'local',
+      serverFixture: fixture,
+      localServerDirectory: data,
+      serverCommit: selected,
+      serverCoreVersion: '0.3.5',
+      serverSdkVersion: '0.3.5-pre.1',
+    })
+    expect(paired.receipt).toMatchObject({ coreVersion: '0.3.5', pairedSdkVersion: '0.3.5-pre.1' })
+    await paired.close()
     await expect(
       openServer({
         serverMode: 'local',
