@@ -8,6 +8,7 @@ import type { ConditionalFileHost } from './conditionalFiles'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
+import { isHidden, isWireConfigDir } from './scope'
 import { durableHostOf } from './hostSyncStorage'
 import { MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { retainedFileStat } from './vaultPathLinks'
@@ -563,6 +564,7 @@ export class ObsidianFileSystem implements FileSystem {
     target: string,
     filesOnly = false
   ): Promise<InventoryChild[]> {
+    if (parent && !this.inventoryVisible(parent)) return []
     const inventory = this.inventory
     if (
       !this.indexReady() ||
@@ -615,7 +617,7 @@ export class ObsidianFileSystem implements FileSystem {
       ]
     }
     const children = filesOnly ? await read() : await inventory.indexedChildren.stable(parent, read)
-    return children.map((one) => ({ ...one }))
+    return children.filter((one) => this.inventoryVisible(one.path)).map((one) => ({ ...one }))
   }
   private inventoryListing(parent: string): Promise<ListedFiles> {
     const inventory = this.inventory
@@ -1649,7 +1651,19 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /** Existing installation recovery runs before scanner/watcher activation. */
+  private inventoryVisible(path: string): boolean {
+    return (
+      ((path === this.configDir && isWireConfigDir(this.configDir)) ||
+        !isHidden(path, this.configDir)) &&
+      !isDeviceLocalPluginState(path, this.configDir) &&
+      !isAdapterTemp(path)
+    )
+  }
   async *listDirectories() {
+    for await (const directory of this.listDirectoriesUnlocked())
+      if (this.inventoryVisible(directory.path)) yield directory
+  }
+  private async *listDirectoriesUnlocked() {
     this.runtimeFence?.assertReady()
     const scope = this.scopedRoot()
     if (this.discovery && !scope) {
@@ -1672,10 +1686,11 @@ export class ObsidianFileSystem implements FileSystem {
   /** Bounded alias recheck inside an existing placement lease; recovery runs before it. */
   async listChildren(parent: string) {
     this.runtimeFence?.assertReady()
+    if (parent && !this.inventoryVisible(parent)) return []
     const children = this.inventory
       ? await this.inventory.children.stable(parent, () => this.readInventoryChildren(parent))
       : await this.readInventoryChildren(parent)
-    return children.map((one) => ({ ...one }))
+    return children.filter((one) => this.inventoryVisible(one.path)).map((one) => ({ ...one }))
   }
   private async readInventoryChildren(parent: string): Promise<InventoryChild[]> {
     const scope = this.scopedRoot()
@@ -1701,7 +1716,11 @@ export class ObsidianFileSystem implements FileSystem {
     if (this.discovery && this.discovery.roots.length === 0 && this.indexReady()) {
       const children = new Map<string, InventoryChild>()
       for (const file of this.app.vault.getFiles()) {
-        if (!this.discovery.includes(file.path) || (parent && !file.path.startsWith(parent + '/')))
+        if (
+          !this.inventoryVisible(file.path) ||
+          !this.discovery.includes(file.path) ||
+          (parent && !file.path.startsWith(parent + '/'))
+        )
           continue
         const prefix = parent ? parent + '/' : ''
         const tail = file.path.slice(prefix.length)
@@ -1718,9 +1737,10 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const listing = await this.inventoryListing(parent)
     const children: InventoryChild[] = listing.files
-      .filter((path) => !isAdapterTemp(path))
+      .filter((path) => this.inventoryVisible(path))
       .map((path) => ({ path, kind: 'file' }))
     for (const path of listing.folders) {
+      if (!this.inventoryVisible(path)) continue
       if (await this.isSymlink(path)) continue
       children.push({ path, kind: 'directory', identity: await this.directories.identity(path) })
     }
@@ -2059,7 +2079,7 @@ export class ObsidianFileSystem implements FileSystem {
       await budget.account(4096)
       if (!withinScope(file.path) || (this.discovery && !this.discovery.includes(file.path)))
         continue
-      if (isAdapterTemp(file.path) || isDeviceLocalPluginState(file.path, this.configDir)) continue
+      if (!this.inventoryVisible(file.path)) continue
       if (this.awaitingIndex.has(file.path)) {
         const actual = await this.rawStat(file.path)
         if (!actual || actual.type !== 'file') continue
@@ -2083,7 +2103,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     for (const path of candidates) {
       await budget.account(4096)
-      if (!withinScope(path)) continue
+      if (!withinScope(path) || !this.inventoryVisible(path)) continue
       if (this.discovery && !this.discovery.includes(path)) continue
       if (indexed.has(this.pathKey(path)) || path.startsWith(`${this.configDir}/`)) {
         continue
@@ -2150,10 +2170,7 @@ export class ObsidianFileSystem implements FileSystem {
     const within = (path: string) => !scope || path === scope || path.startsWith(scope + '/')
     // A folder token reads only its own subtree and the folders leading down to it.
     const relevant = (path: string) => within(path)
-    const visible = (path: string) =>
-      !path.split('/').some((part) => part.startsWith('.')) ||
-      path === this.configDir ||
-      path.startsWith(this.configDir + '/')
+    const visible = (path: string) => this.inventoryVisible(path)
     const root =
       scope === undefined ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(scope)
     const index = async (node: { path: string; children?: unknown[] }) => {
@@ -2343,7 +2360,7 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of (await this.physicalPaths(scope)).files) {
       if (readiness === true && this.indexReady() !== true)
         throw new EngineError('io', 'Host index changed during inventory; retry using disk')
-      if (path.split('/').some((part) => part.startsWith('.'))) continue
+      if (isHidden(path, '')) continue
       const file = indexed.get(path)
       // An indexed row keeps the index's own stat: the caller compares it with the disk to
       // learn whether Obsidian has caught up with a write it is still waiting on.
@@ -2392,15 +2409,14 @@ export class ObsidianFileSystem implements FileSystem {
           preferred && !listed.has(preferred) && (await this.rawStat(preferred))
             ? preferred
             : rawPath
-        if (path.split('/').some((part) => part.startsWith('.')) || !this.withinFileScope(path))
-          continue
+        if (isHidden(path, '') || !this.withinFileScope(path)) continue
         if (await this.isSymlink(path)) continue
         const stat = await this.rawStat(path)
         if (stat?.type === 'file') yield { path, stat }
       }
       for (const path of listing.folders) {
         await budget.account(4096)
-        if (!path.split('/').some((part) => part.startsWith('.'))) pending.push(path)
+        if (!isHidden(path, '')) pending.push(path)
       }
     }
   }
@@ -3210,14 +3226,24 @@ export class ObsidianFileSystem implements FileSystem {
         onWatch: this.onWatch
           ? (paths) =>
               this.onWatch(
-                paths.filter((path) => path === IGNORE_FILE || this.withinFileScope(path))
+                paths.filter(
+                  (path) =>
+                    path === IGNORE_FILE ||
+                    (this.inventoryVisible(path) && this.withinFileScope(path))
+                )
               )
           : null,
         pollMs: this.pollMs,
         configDir: this.configDir,
         snapshot: () => this.configSnapshot(),
       },
-      (paths) => cb(paths.filter((path) => path === IGNORE_FILE || this.withinFileScope(path)))
+      (paths) =>
+        cb(
+          paths.filter(
+            (path) =>
+              path === IGNORE_FILE || (this.inventoryVisible(path) && this.withinFileScope(path))
+          )
+        )
     )
     this.pollNow = watcher.kick
     return () => {

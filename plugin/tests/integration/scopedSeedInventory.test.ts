@@ -38,11 +38,11 @@ it('inventories the 33000-file seed-42 folder shape including hidden physical si
   expect(app.vault.getFiles()).toHaveLength(files - 2)
   await expect(fs.listChildren('Shared')).resolves.toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ path: 'Shared/.obsidian', kind: 'directory' }),
       expect.objectContaining({ path: 'Shared/Notes', kind: 'directory' }),
       expect.objectContaining({ path: 'Shared/Attachments', kind: 'directory' }),
     ])
   )
+  expect((await fs.listChildren('Shared')).some((one) => one.path.includes('/.'))).toBe(false)
   const published = []
   for await (const entry of fs.listDirectories()) published.push(entry.path)
   expect(published).not.toContain('Shared/.obsidian')

@@ -90,10 +90,19 @@ export class VaultDirectories {
     if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
     const children = await this.disk.list(path)
     for (const child of [...children.files, ...children.folders])
-      this.assertPath(child, 'tree child')
+      if (!child.startsWith(path + '/')) throw new DirectoryScopeError(child, 'tree child')
     const files = [...children.files]
     const folders: { path: string; birth: number }[] = []
     for (const child of children.folders) {
+      try {
+        assertPhysicalPath(child)
+      } catch {
+        // An unrepresentable child is still evidence of local content. Never
+        // descend into it or mistake its absence from sync inventory for emptiness.
+        files.push(child)
+        continue
+      }
+      this.assertPath(child, 'tree child')
       // Never follow/remove a symlink or a protected directory as empty content.
       if (
         (await this.symlink(child)) ||

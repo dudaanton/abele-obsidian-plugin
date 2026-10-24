@@ -1,5 +1,6 @@
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { pathAdmission } from '@abele/sync-sdk/core'
+import { AbeleError } from '@abele/sync-sdk/protocol'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
 import { assertPhysicalPath } from './external/projection'
@@ -65,16 +66,29 @@ export class LocalFolderPlacement {
     from: string,
     to: string,
     incoming: boolean,
-    caller: string
+    caller: string,
+    enumeration = false
   ): string {
     const normalized = path,
       root = from
-    try {
-      assertPhysicalPath(normalized)
-      if (normalized === root || normalized.startsWith(root + '/'))
-        return to + normalized.slice(root.length)
-    } catch {
-      /* Refuse aliases and traversal as well as unrelated roots. */
+    if (
+      (normalized === root || normalized.startsWith(root + '/')) &&
+      !/^(?:\/|\\|[a-z]:)/i.test(path) &&
+      !path.split('/').some((part) => !part || part === '.' || part === '..')
+    ) {
+      // Preserve invalid inventory names for the scanner skipped-file report.
+      // Scalar effects still validate names; malformed structure remains a scope error.
+      if (!enumeration) {
+        try {
+          assertPhysicalPath(normalized)
+        } catch (error) {
+          throw new AbeleError(
+            'invalid_path',
+            `Invalid ${incoming ? 'server' : 'local'} path (${caller}): ${JSON.stringify(path)}: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
+      }
+      return to + normalized.slice(root.length)
     }
     if (incoming)
       throw new FolderScopeError(
@@ -91,8 +105,8 @@ export class LocalFolderPlacement {
   toLocal(path: string): string {
     return this.replace(path, this.server, this.local, true, 'toLocal')
   }
-  toServer(path: string, caller = 'toServer'): string {
-    return this.replace(path, this.local, this.server, false, caller)
+  toServer(path: string, caller = 'toServer', enumeration = false): string {
+    return this.replace(path, this.local, this.server, false, caller, enumeration)
   }
   localMetadata<T>(value: T): T {
     if (Array.isArray(value)) return value.map((item) => this.localMetadata(item)) as T
@@ -233,7 +247,7 @@ export class LocalFolderPlacement {
               if (item.path === root || item.path.startsWith(prefix))
                 projected.push({
                   ...item,
-                  path: placement.toServer(item.path, String(key) + '.result'),
+                  path: placement.toServer(item.path, String(key) + '.result', true),
                 })
               // At most 256 entries or 8 ms of projection before a renderer task boundary.
               await budget.account(4096)
@@ -295,7 +309,7 @@ export class LocalFolderPlacement {
             return (await value.call(target, placement.toLocal(parent), ...args)).map(
               (item: { path: string }) => ({
                 ...item,
-                path: placement.toServer(item.path, String(key) + '.result'),
+                path: placement.toServer(item.path, String(key) + '.result', true),
               })
             )
           }
@@ -313,7 +327,10 @@ export class LocalFolderPlacement {
             const budget = new SyncTaskBudget()
             for await (const item of value.call(target)) {
               if (item.path === root || item.path.startsWith(prefix))
-                yield { ...item, path: placement.toServer(item.path, String(key) + '.result') }
+                yield {
+                  ...item,
+                  path: placement.toServer(item.path, String(key) + '.result', true),
+                }
               await budget.account(4096)
             }
           }

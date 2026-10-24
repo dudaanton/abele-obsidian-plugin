@@ -558,11 +558,9 @@ it('inventories a scoped seed tree with nested hidden siblings', async () => {
   ])
   const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
   await expect(fs.listChildren('Shared')).resolves.toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ path: 'Shared/Notes', kind: 'directory' }),
-      expect.objectContaining({ path: 'Shared/.obsidian', kind: 'directory' }),
-    ])
+    expect.arrayContaining([expect.objectContaining({ path: 'Shared/Notes', kind: 'directory' })])
   )
+  expect((await fs.listChildren('Shared')).some((one) => one.path.includes('/.'))).toBe(false)
 })
 
 it.each(['Private', 'Shared/../Private', 'Shared//nested', 'Shared/./nested', 'Shared\\nested'])(
@@ -576,5 +574,20 @@ it.each(['Private', 'Shared/../Private', 'Shared//nested', 'Shared/./nested', 'S
       `Directory path is outside this connection: ${JSON.stringify(path)} (identity)`
     )
     expect(stat).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['.obsidian', '.trash', '.git', '.hidden', '.hidden-file.md', ' bad.md', 'bad\nname.md'])(
+  'keeps unrepresentable removal evidence without a false scope error: %s',
+  async (name) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const path = `Shared/Nested/${name}${name.endsWith('.md') ? '' : '/file.md'}`
+    const app = buildFakeVault([{ path, content: 'private' }])
+    const dirs = new VaultDirectories(app.vault.adapter, app, undefined, undefined, ['Shared'])
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    await expect(dirs.remove('Shared/Nested')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+    await expect(Array.fromAsync(dirs.list())).resolves.toEqual(expect.any(Array))
+    expect(await app.vault.adapter.read(path)).toBe('private')
+    expect(list.mock.calls.some(([path]) => path.includes('/.'))).toBe(false)
   }
 )
