@@ -1,5 +1,8 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'requests.file.methodProblem': 'Jānorāda HTTP metode un adrese',
+  'requests.file.headerProblem': 'Jānorāda galvenes nosaukums un kols',
+
   'requests.file.sending': 'sūta…',
   'requests.file.notSent': 'nav nosūtīts',
   'requests.file.openAnswer': 'Atvērt {name} ar atbildi',

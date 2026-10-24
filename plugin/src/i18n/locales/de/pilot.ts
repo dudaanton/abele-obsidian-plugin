@@ -1,5 +1,8 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'requests.file.methodProblem': 'HTTP-Methode und Adresse erwartet',
+  'requests.file.headerProblem': 'Headername und Doppelpunkt erwartet',
+
   'requests.file.sending': 'wird gesendet…',
   'requests.file.notSent': 'nicht gesendet',
   'requests.file.openAnswer': '{name} mit Antwort öffnen',

@@ -1,5 +1,8 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'requests.file.methodProblem': 'Ожидаются HTTP-метод и адрес',
+  'requests.file.headerProblem': 'Ожидаются имя заголовка и двоеточие',
+
   'requests.file.sending': 'отправляется…',
   'requests.file.notSent': 'не отправлено',
   'requests.file.openAnswer': 'Открыть {name} с ответом',

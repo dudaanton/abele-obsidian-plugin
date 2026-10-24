@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { importHttp } from './importers/http'
 import { importBruno } from './importers/bruno'
 import { credential, isMethod, scrubSecrets } from './importers/shared'
@@ -72,12 +73,12 @@ export function parseRequestFile(file: string, text: string): ParsedFile {
     if (method < 0) continue
     const first = block[method].trim().split(/\s+/)
     if (!isMethod(first[0].toUpperCase()) || !first[1]) {
-      problems.push({ line: start + method + 1, text: 'Expected an HTTP method and address' })
+      problems.push({ line: start + method + 1, text: t('requests.file.methodProblem') })
       continue
     }
     for (let i = method + 1; i < block.length && block[i].trim(); i++) {
       if (!/^\s*(#|\/\/)/.test(block[i]) && block[i].indexOf(':') <= 0)
-        problems.push({ line: start + i + 1, text: 'Expected a header name and colon' })
+        problems.push({ line: start + i + 1, text: t('requests.file.headerProblem') })
     }
     const scriptAt = block.findIndex((l) => /^\s*>\s*\{%/.test(l))
     const title = start > 0 ? lines[start - 1].replace(/^###\s*/, '') : ''

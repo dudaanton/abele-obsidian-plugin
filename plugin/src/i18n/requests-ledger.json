@@ -188,5 +188,25 @@
       "es",
       "de"
     ]
+  },
+  "requests.file.methodProblem": {
+    "englishHash": "69db107901583f70fcaa84e0887e0b96ed22906a1a71c2c6461194490910aa28",
+    "context": "Partial parsing diagnostics in project request files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "requests.file.headerProblem": {
+    "englishHash": "5ee7234cd60dffc4baffef9f5da931458d50632c44a65762c935900804cbaee0",
+    "context": "Partial parsing diagnostics in project request files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

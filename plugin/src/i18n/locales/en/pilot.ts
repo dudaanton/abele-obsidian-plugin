@@ -1,4 +1,7 @@
 export const en = {
+  'requests.file.methodProblem': 'Expected an HTTP method and address',
+  'requests.file.headerProblem': 'Expected a header name and colon',
+
   'requests.file.sending': 'sending…',
   'requests.file.notSent': 'not sent',
   'requests.file.openAnswer': 'Open {name} with its answer',
