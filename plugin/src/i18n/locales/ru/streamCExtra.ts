@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.sessionEnded': 'Сеанс отладки завершён. Запустите программу заново.',
+  'debug.newRun': 'Запустить заново',
+
   'sync.deleteIssuerOnly': 'Только выдавший доступ может удалить эти файлы с сервера',
   'sync.overlapGroupMany': 'Файлы ({count}) также в группе {group}. Оттуда тоже исчезнут.',
   'sync.scrollResults': 'Прокрутите, чтобы увидеть остальные',

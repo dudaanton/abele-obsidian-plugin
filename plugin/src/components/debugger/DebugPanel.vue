@@ -46,7 +46,17 @@
       />
     </div>
 
-    <div v-if="session.status === 'lost'" class="abele-debug-panel__notice" role="status">
+    <div v-if="session.unavailable" class="abele-debug-panel__notice" role="status">
+      <span>{{ t('debug.sessionEnded') }}</span>
+      <Icon
+        icon="play"
+        size="xs"
+        :tooltip="t('debug.newRun')"
+        :disabled="busy"
+        @click="emit('command', 'restart')"
+      />
+    </div>
+    <div v-else-if="session.status === 'lost'" class="abele-debug-panel__notice" role="status">
       <span>{{ t('streamC.43157504da6a73f8') }} {{ session.seen }}</span>
       <Icon
         icon="rotate-cw"
@@ -373,7 +383,9 @@ const props = withDefaults(
     openRun: undefined,
   }
 )
-const locked = computed(() => props.session.status === 'lost' || props.busy)
+const locked = computed(
+  () => props.session.status === 'lost' || props.session.unavailable || props.busy
+)
 const modeKnown = computed(
   () => props.modeAvailable && props.session.mode !== 'unknown' && props.session.status !== 'lost'
 )
@@ -536,7 +548,7 @@ const buttons = computed(() => {
       tooltip: t('streamC.b7fc4f16b2465d09'),
       disabled: !can,
     },
-    ...(props.reattachAvailable && (s === 'exited' || s === 'lost')
+    ...(props.reattachAvailable && !props.session.unavailable && (s === 'exited' || s === 'lost')
       ? [
           {
             action: 'reattach',
@@ -546,16 +558,20 @@ const buttons = computed(() => {
           },
         ]
       : []),
-    {
-      action: 'restart',
-      icon: 'rotate-ccw',
-      tooltip: props.restartAvailable
-        ? t('streamC.68c3954004c42f92')
-        : props.session.attached
-          ? t('streamC.2622f7acff07e917')
-          : t('streamC.ae94325219e7dc49'),
-      disabled: props.busy || !props.restartAvailable,
-    },
+    ...(!props.session.unavailable
+      ? [
+          {
+            action: 'restart',
+            icon: 'rotate-ccw',
+            tooltip: props.restartAvailable
+              ? t('streamC.68c3954004c42f92')
+              : props.session.attached
+                ? t('streamC.2622f7acff07e917')
+                : t('streamC.ae94325219e7dc49'),
+            disabled: props.busy || !props.restartAvailable,
+          },
+        ]
+      : []),
     // A program the node did not start is never stopped from here: the debugger lets go of it.
     props.session.attached
       ? {

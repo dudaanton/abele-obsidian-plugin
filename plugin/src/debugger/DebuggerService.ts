@@ -40,6 +40,7 @@ export class DebuggerBinding {
   readonly controller: DebuggerController
   attachmentKey?: string
   retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
+  sessionMissing = false
   /** The session's recording, where the node records runs. */
   trace?: TraceSession
   /** Runs the program last started from this chat again, with the same files: Restart in the panel. */
@@ -77,15 +78,25 @@ export class DebuggerBinding {
         ++this.revision.value
       }
     )
-    this.stopConnection = watch(connection.state, (state) => {
-      if (state !== 'connected') {
-        this.stopWatch()
-        this.controller.invalidate()
-      } else if (!this.disposed && this.observationId) {
-        // Recover observation only; never replay controls or restart the program.
-        void this.open(this.observationId).catch((error) => this.fail(error))
-      }
-    })
+    this.stopConnection = watch(
+      [connection.state, () => connection.healthEpoch?.value],
+      ([state], [previous]) => {
+        if (state !== 'connected') {
+          this.stopWatch()
+          this.controller.invalidate()
+        } else if (
+          !this.disposed &&
+          this.observationId &&
+          (previous !== 'connected' ||
+            (!this.controller.current && !this.controller.session.unavailable)) &&
+          !this.abort
+        ) {
+          // Recover observation only; never replay controls or restart the program.
+          void this.open(this.observationId).catch((error) => this.fail(error))
+        }
+      },
+      { flush: 'sync' }
+    )
   }
   get sessionId() {
     return this.controller.snapshot?.debug_session_id
@@ -102,6 +113,7 @@ export class DebuggerBinding {
     )
     if (this.disposed) return
     this.openingSessionId = sessionId
+    this.sessionMissing = false
     this.stopWatch()
     this.controller.invalidate()
     this.controller.clearGrant('Live agent grant is being loaded')
@@ -128,22 +140,40 @@ export class DebuggerBinding {
       }
       if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
-      if (this.controller.current) this.controller.error = ''
+      this.controller.session.unavailable = [
+        'connection-lost',
+        'terminated',
+        'detached',
+        'failed',
+      ].includes(result.snapshot.lifecycle)
+      if (this.controller.session.unavailable) this.controller.session.status = 'exited'
+      ++this.revision.value
+      if (this.controller.current || this.controller.session.unavailable) this.controller.error = ''
       DebuggerService.instance.observeFolder(this, sessionId)
       await this.loadGrant(abort)
       if (abort.signal.aborted || this.disposed) return
       await this.refresh()
       if (abort.signal.aborted) return
-      void this.loop(
-        sessionId,
-        result.snapshot.event_seq,
-        result.snapshot.incarnation,
-        abort
-      ).catch((e) => {
-        if (!abort.signal.aborted) this.fail(e)
-      })
+      void this.loop(sessionId, result.snapshot.event_seq, result.snapshot.incarnation, abort)
+        .catch((e) => {
+          if (!abort.signal.aborted) this.observationFailed(e)
+        })
+        .finally(() => {
+          if (this.abort === abort && !this.controller.current) this.abort = undefined
+        })
     } catch (e) {
-      if (!abort.signal.aborted) this.fail(e)
+      if (!abort.signal.aborted) {
+        if (e && typeof e === 'object' && 'code' in e && e.code === 'not_found') {
+          this.sessionMissing = true
+          this.controller.disconnected()
+          this.controller.session.unavailable = true
+          this.controller.session.status = 'exited'
+          this.controller.error = ''
+          ++this.revision.value
+        } else this.observationFailed(e)
+      }
+    } finally {
+      if (this.abort === abort && !this.controller.current) this.abort = undefined
     }
   }
   /** Whether the node records runs. A node that cannot say is treated as one that does not: the
@@ -254,6 +284,7 @@ export class DebuggerBinding {
       )
       if (result.reason === 'connection_lost' || !result.snapshot) {
         this.controller.disconnected()
+        if (this.abort === abort) this.abort = undefined
         await this.lastRuns()
         return
       }
@@ -334,6 +365,11 @@ export class DebuggerBinding {
     this.controller.error = error instanceof Error ? error.message : t('streamC.e6d2c5631ed60d81')
     if (this.connection.state.value !== 'connected') this.controller.disconnected()
     else ++this.revision.value
+  }
+  private observationFailed(error: unknown) {
+    this.fail(error)
+    this.stopWatch()
+    this.controller.disconnected()
   }
   private stopWatch() {
     ++this.grantGeneration

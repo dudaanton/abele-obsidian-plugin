@@ -59,6 +59,8 @@ export interface DebugSession {
   /** What runs: a script of package.json, a file, a test. */
   program: string
   status: DebugStatus
+  /** A fresh node reply confirms that this adapter session cannot resume. */
+  unavailable?: boolean
   /** Why it stopped: a breakpoint, a step, a pause, an exception. */
   reason?: string
   exitCode?: number

@@ -7723,5 +7723,15 @@
     "englishHash": "6fe52c1c2fc366987ee321677b03969be75e38d19c68b573d55705b9fa83a790",
     "context": "Disabled server deletion action for a receiver",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.sessionEnded": {
+    "englishHash": "f8c2420bf5176996c886cce0e65b73a29c650c4fe8bbca3bd870050d07efbb93",
+    "context": "Debugger recovery after a fresh node reply confirms the adapter session ended",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.newRun": {
+    "englishHash": "82101139dbf933edf751c37472d26b1b70127f8c3a0c2a5f7a055c468313558c",
+    "context": "Debugger recovery after a fresh node reply confirms the adapter session ended",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

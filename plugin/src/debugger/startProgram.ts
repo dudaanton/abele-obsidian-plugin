@@ -237,8 +237,10 @@ export async function startProgram(
   binding.rerun = async () => {
     await presenter.connection.connect()
     // Recover current state before deciding whether the old process needs stopping.
-    if (!binding.controller.current && binding.sessionId) await binding.open(binding.sessionId)
-    if (!binding.controller.current) throw new Error('Reconnect to the debugger before restarting')
+    if (!binding.controller.current && !binding.controller.session.unavailable && binding.sessionId)
+      await binding.open(binding.sessionId)
+    if (!binding.controller.current && !binding.controller.session.unavailable)
+      throw new Error('Reconnect to the debugger before restarting')
     const carried = carriedPoints(binding)
     if (binding.controller.session.status !== 'exited') await binding.controller.command('stop')
     if (binding.controller.session.status !== 'exited')
@@ -320,7 +322,8 @@ export class ProgramPicker extends NodeSuggestModal {
 /** Asks which program to run, offering the JavaScript files open from this chat's folder. */
 export async function askAndStartProgram(
   presenter: DebugOwner,
-  show: (sessionId: string) => Promise<void>
+  show: (sessionId: string) => Promise<void>,
+  carry: CarriedPoint[] = []
 ) {
   const failed = (e: Error | string) => {
     console.debug('[debugger] Program not started', e)
@@ -363,10 +366,10 @@ export async function askAndStartProgram(
           return startProgram(
             presenter,
             selected.program,
-            [...new Set([...open, ...selected.sources])],
+            [...new Set([...open, ...selected.sources, ...carry.map((point) => point.path)])],
             target,
             show,
-            [],
+            carry,
             argv,
             { npmScript: selected.npm_script, source: selected.sources[0], stopOnEntry }
           )

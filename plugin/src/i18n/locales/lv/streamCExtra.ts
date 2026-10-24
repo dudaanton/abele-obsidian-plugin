@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.sessionEnded': 'Atkļūdošanas sesija beigusies. Sāciet jaunu palaišanu.',
+  'debug.newRun': 'Sākt jaunu palaišanu',
+
   'sync.deleteIssuerOnly': 'Tikai piekļuves izsniedzējs var dzēst šos failus no servera',
   'sync.overlapGroupMany': 'Faili ({count}) ir arī grupā {group}. Tie pazudīs arī no turienes.',
   'sync.scrollResults': 'Ritiniet, lai redzētu vairāk',

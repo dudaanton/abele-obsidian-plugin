@@ -132,6 +132,14 @@ function configureSessionActions(
     const restart = async () => {
       const carried = [...(binding.retainedBreakpoints ?? [])]
       const recordPoints = [...(binding.trace?.points ?? [])]
+      if (binding.sessionMissing) {
+        const { askAndStartProgram, carriedPoints } = await import('./startProgram')
+        return askAndStartProgram(
+          presenter,
+          (id) => showSession(presenter, id),
+          carriedPoints(binding)
+        )
+      }
       const client = presenter.connection.client
       const { snapshot: previous } = await client.debugger.status(sessionId)
       binding.controller.observe(client.debugger.current(sessionId))

@@ -177,6 +177,7 @@ const clock = window.setInterval(() => {
 onBeforeUnmount(() => window.clearInterval(clock))
 const recording = computed(() => {
   binding.value?.revision.value
+  if (binding.value?.controller.session.unavailable) return undefined
   return binding.value?.trace?.recording(now.value)
 })
 const runs = computed(() => {
@@ -229,6 +230,19 @@ function selectFrame(index: number) {
 function command(action: string) {
   const b = binding.value
   if (!b) return
+  if (action === 'restart' && b.controller.session.unavailable) {
+    const restart = b.rerun ?? b.reattach
+    return void run(
+      restart ??
+        (async () => {
+          const owner = service.owner(b)
+          if (!owner) return
+          const { askAndStartProgram, carriedPoints } = await import('./startProgram')
+          const { showSession } = await import('./register')
+          await askAndStartProgram(owner, (id) => showSession(owner, id), carriedPoints(b))
+        })
+    )
+  }
   if (action === 'reattach' && b.reattach) return void run(b.reattach)
   if (action !== 'restart' || !b.rerun) return void run(() => b.controller.command(action))
   // Restart stops a program still going, then starts it again with its points.

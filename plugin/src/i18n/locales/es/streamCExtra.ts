@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.sessionEnded': 'La sesión de depuración terminó. Inicia una nueva ejecución.',
+  'debug.newRun': 'Iniciar una nueva ejecución',
+
   'sync.deleteIssuerOnly':
     'Solo quien concedió el acceso puede eliminar estos archivos del servidor',
   'sync.overlapGroupMany':

@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.sessionEnded': 'Die Debugsitzung wurde beendet. Starte einen neuen Lauf.',
+  'debug.newRun': 'Neuen Lauf starten',
+
   'sync.deleteIssuerOnly': 'Nur der Aussteller kann diese Dateien vom Server löschen',
   'sync.overlapGroupMany':
     '{count} Dateien sind auch in der Gruppe {group}. Dort werden sie ebenfalls entfernt.',

@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.sessionEnded': 'Debug session ended. Start a new run.',
+  'debug.newRun': 'Start a new run',
+
   'sync.deleteIssuerOnly': 'Only the issuer can delete these files from the server',
   'sync.overlapGroupMany': '{count} files are also in group {group}. They go from there too.',
   'sync.scrollResults': 'Scroll for more',

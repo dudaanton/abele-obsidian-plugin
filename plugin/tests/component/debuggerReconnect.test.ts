@@ -8,6 +8,97 @@ import type { NodeConnection } from '@/node/NodeService'
 import { debuggerStatus } from '../fixtures/debugger'
 import { useVault } from '../helpers/testEnv'
 
+it.each(['survived', 'request-failed', 'adapter-ended', 'missing'] as const)(
+  'recovers a stopped observer on a healthy channel: %s',
+  async (outcome) => {
+    useVault([])
+    DebuggerService.instance.destroy()
+    const state = ref('connected')
+    const healthEpoch = ref(0)
+    let reads = 0
+    let drop!: (value: unknown) => void
+    const rpc = vi.fn(async (method: string, raw: unknown) => {
+      if (method === 'debugger.v1.status') {
+        ++reads
+        if (reads > 1 && outcome === 'missing')
+          throw Object.assign(new Error('not_found'), { code: 'not_found' })
+        const result = debuggerStatus({
+          breakpoints: [
+            {
+              breakpoint_id: 'sample-log',
+              source_id: 'sample-source',
+              line: 7,
+              log_message: 'Count: {count}',
+              condition: 'count > 1',
+              enabled: false,
+              status: 'verified',
+              resolved_line: 7,
+              resolved_column: null,
+              message: null,
+            },
+          ],
+        })
+        if (reads > 1 && outcome === 'adapter-ended') result.snapshot.lifecycle = 'connection-lost'
+        return result
+      }
+      if (method === 'debugger.v1.wait')
+        return new Promise((resolve, reject) => {
+          drop = (value) =>
+            outcome === 'request-failed'
+              ? reject(new Error('Sample observation request failed'))
+              : resolve({ wait_id: (raw as { wait_id: string }).wait_id, ...(value as object) })
+        })
+      if (method === 'debugger.v1.cancelWait') return { cancelled: true }
+      throw new Error('Unexpected sample RPC')
+    })
+    const sdk = new DebuggerClient(rpc)
+    const binding = new DebuggerBinding(
+      { state, healthEpoch, client: { request: rpc, debugger: sdk } } as unknown as NodeConnection,
+      'sample-chat',
+      'sample-node'
+    )
+    vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+    DebuggerService.instance.select(binding)
+    const rerun = vi.fn(async () => {})
+    binding.rerun = rerun
+    const view = mount(DebuggerView)
+    try {
+      await binding.open('sample-debug')
+      binding.controller.registerSource('sample-source', 'sample.js')
+      const points = binding.retainedBreakpoints.map((point) => ({ ...point }))
+      drop({ reason: 'connection_lost', elapsed_ms: 0, snapshot: null })
+      await flushPromises()
+      expect(binding.controller.session.status).toBe('lost')
+      ++healthEpoch.value
+      await flushPromises()
+      expect(reads).toBe(2)
+      expect(binding.retainedBreakpoints).toEqual(points)
+      if (outcome === 'survived' || outcome === 'request-failed') {
+        expect(binding.controller.current).toBe(true)
+        expect(view.find('.abele-debug-panel_paused').exists()).toBe(true)
+      } else {
+        expect(view.text()).toContain('Debug session ended. Start a new run.')
+        expect(view.find('[aria-label="Try to reconnect"]').exists()).toBe(false)
+        await view.get('[aria-label="Start a new run"]').trigger('click')
+        await flushPromises()
+        expect(rerun).toHaveBeenCalledTimes(1)
+        ++healthEpoch.value
+        await flushPromises()
+        expect(reads).toBe(2)
+      }
+      expect(
+        rpc.mock.calls.every(([method]) =>
+          ['debugger.v1.status', 'debugger.v1.wait', 'debugger.v1.cancelWait'].includes(method)
+        )
+      ).toBe(true)
+    } finally {
+      view.unmount()
+      binding.destroy()
+      DebuggerService.instance.destroy()
+    }
+  }
+)
+
 it('recovers observation after reconnect only once a fresh debugger snapshot arrives, and retains Retry', async () => {
   useVault([])
   DebuggerService.instance.destroy()
