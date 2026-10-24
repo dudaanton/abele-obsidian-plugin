@@ -456,6 +456,43 @@ describe('scale harness independent guarantees', () => {
     vault.snapshot = async () => ({ rows: [{ status: 'error' }], engines: [] })
     await expect(vault.idle(5)).rejects.toThrow('Vault entered an error state')
   })
+  it('retains the fatal engine reason in the private device snapshot', async () => {
+    const vault = new RealVault({}, '/sample-vault')
+    const app = {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              ui: {
+                rows: { value: [{ id: 'sample', status: 'error', paused: false }] },
+                activity: { value: {} },
+              },
+              live: new Map([
+                [
+                  'sample',
+                  {
+                    engine: {
+                      status: {
+                        state: 'error',
+                        lastSyncAt: null,
+                        lastError: 'Sample directory recovery failed',
+                      },
+                    },
+                  },
+                ],
+              ]),
+            },
+          },
+        },
+      },
+    }
+    vault.evaluate = async (body) => runInNewContext(`(async()=>{${body}})()`, { app, window: {} })
+    expect((await vault.snapshot()).engines[0]).toMatchObject({
+      state: 'error',
+      lastSyncAt: null,
+      lastError: 'Sample directory recovery failed',
+    })
+  })
   it('cuts a content batch after the server applied it and before its acknowledgement reaches the client', async () => {
     let applied = false
     const upstream = createServer(async (req, res) => {

@@ -124,7 +124,7 @@ export class RealVault {
   }
   async snapshot() {
     return this.evaluate(
-      `${host}return !u?null:{job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
   async policy() {
