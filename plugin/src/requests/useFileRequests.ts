@@ -12,8 +12,15 @@ export function useFileRequests(
   onOpenRequest?: () => void
 ) {
   const context = computed(() => {
-    const identity = target.value?.source
-    if (identity?.provider !== 'node') return undefined
+    const at = target.value
+    const identity = at?.source
+    if (
+      identity?.provider !== 'node' ||
+      at.location.kind !== 'file' ||
+      at.location.ref !== WORKING_TREE ||
+      !/\.(http|rest)$/i.test(at.location.path)
+    )
+      return undefined
     const base = { registrationId: identity.node, projectId: identity.project }
     const root = RequestsService.instance().model(base).files?.port
     return root instanceof NodeRequestFiles && root.matches(identity.workspace)
