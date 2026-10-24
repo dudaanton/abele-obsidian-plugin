@@ -76,9 +76,11 @@ export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessor
   }
 }
 
-/** Each paragraph under `el` that holds a marker line, with the text node that is the marker. */
+/** Paragraphs and tight list items holding a marker line, with its text node. */
 function markers(el: HTMLElement): Array<{ paragraph: HTMLElement; marker: Text }> {
-  const paragraphs = el.matches('p') ? [el] : Array.from(el.querySelectorAll('p'))
+  const paragraphs = el.matches('p, li')
+    ? [el]
+    : Array.from(el.querySelectorAll<HTMLElement>('p, li'))
   const found: Array<{ paragraph: HTMLElement; marker: Text }> = []
   for (const paragraph of paragraphs) {
     for (const node of Array.from(paragraph.childNodes)) {
@@ -222,7 +224,10 @@ function mount(
     parent: container,
   })
 
-  paragraph.before(container)
+  // Tight lists have no paragraph wrapper. Keep their checkbox and prose in the item,
+  // with the gallery beneath them rather than inserting a div among the list's items.
+  if (paragraph.tagName === 'LI') paragraph.append(container)
+  else paragraph.before(container)
   if (!(paragraph.textContent ?? '').trim() && !paragraph.querySelector('*')) paragraph.remove()
 
   const { app } = GlobalStore.getInstance()

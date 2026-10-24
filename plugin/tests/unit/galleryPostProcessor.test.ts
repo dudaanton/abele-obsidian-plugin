@@ -53,6 +53,21 @@ beforeEach(() => {
 })
 
 describe('a whole document, as MarkdownRenderer hands it over', () => {
+  it('reads a marker directly in a tight checkbox list item without a paragraph wrapper', () => {
+    const el = render(
+      `<ul class="contains-task-list">\n<li data-task="" class="task-list-item"><input type="checkbox" class="task-list-item-checkbox">Sample <a class="internal-link">entry</a>.<br>\n::abele-gallery{height=160}::</li>\n</ul>\n<p>${EMBED('sample.png')}</p>`
+    )
+
+    galleryPostProcessor(el, context())
+
+    expect(galleries()).toHaveLength(1)
+    expect(galleries()[0].images.map((image) => image.path)).toEqual(['sample.png'])
+    expect(el.querySelector('li .abele-gallery-widget-container')).not.toBeNull()
+    expect(el.querySelector('li input[type=checkbox]')).not.toBeNull()
+    expect(el.textContent).toContain('Sample entry.')
+    expect(el.textContent).not.toContain('::abele-gallery')
+  })
+
   it('does not climb out of the rendered root looking for picture paragraphs', () => {
     const el = render(`<section><p>::abele-gallery::</p></section><p>${EMBED('outside.png')}</p>`)
 

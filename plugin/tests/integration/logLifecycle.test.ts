@@ -176,6 +176,12 @@ describe('Log relatedText and content', () => {
     expect(log(PATH, TARGET).relatedText(body)).toBe(selected)
   })
 
+  it('keeps a separate gallery paragraph immediately following the selected entry text', () => {
+    const selected = 'About [[Orchard]].\n\n::abele-gallery::\n\n![[sample.png]]'
+    const body = selected + '\n\nUnrelated prose.\n\n::abele-gallery::\n![[other.png]]'
+    expect(log(PATH, TARGET).relatedText(body)).toBe(selected)
+  })
+
   it.each(['', '\n', '\n\n', 'a\nb', 'a\n\nb', 'a\n\n\nb', 'a\n\n\n\nb'])(
     'preserves ordinary paragraph spacing for %j',
     (body) => {

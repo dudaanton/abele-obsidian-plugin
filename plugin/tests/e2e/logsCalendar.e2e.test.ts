@@ -21,7 +21,24 @@ const probe = (label: string) => String.raw`(async () => {
   const previousViewState = previousLeaf?.getViewState()
   const previousMemory = app.loadLocalStorage('abele-footer-view')
   let leaf
-  const report = {}
+  const report = { renderedHtml: [], galleryEntries: [] }
+  const saveEvidence = () => {
+    const fs = require('fs')
+    fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+    fs.writeFileSync(${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-entry-dom.json', JSON.stringify(report, null, 2))
+  }
+  // Observe the real renderer DOM before the gallery processor changes it. Only this
+  // probe's synthetic notes are captured; write immediately so failures keep the evidence.
+  const captureRendered = (el, ctx) => {
+    if (!ctx.sourcePath.startsWith(folder + '/') || !el.textContent.includes('::abele-gallery')) return
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    const markerParents = []
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent.includes('::abele-gallery')) markerParents.push(walker.currentNode.parentElement.tagName)
+    }
+    report.renderedHtml.push({ sourcePath: ctx.sourcePath, markerParents, outerHTML: el.outerHTML })
+    saveEvidence()
+  }
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async (fn, name) => {
     const deadline = Date.now() + 15000
@@ -53,6 +70,7 @@ const probe = (label: string) => String.raw`(async () => {
     fs.writeFileSync(path, image.toPNG())
   }
   try {
+    api.rendering.MarkdownPreviewRenderer.registerPostProcessor(captureRendered, -1)
     config.rememberNotePlaces = false
     store.applySettings()
     await app.vault.createFolder(folder)
@@ -69,15 +87,18 @@ const probe = (label: string) => String.raw`(async () => {
     const todayKey = date(today.getDate())
     const longDay = today.getDate() === 14 ? 13 : 14
     const files = []
+    const galleryText = '\n::abele-gallery{height=160}::\n\n![[sample-picture.png]]\n\n![[Media/sample-picture.png]]\n\n![Sample](Media/sample-picture.png)'
     for (let day = 1; day <= Math.max(28, today.getDate()); day++) {
       if (day % 5 === 0 && day !== today.getDate() && day !== longDay) continue
       let content = day === longDay
         ? Array.from({length: 14}, (_, i) => 'Sample line ' + (i+1) + ' about [[' + note.path + ']].').join('\n')
         : (day % 3 === 0 ? '- [ ] ' : day % 3 === 1 ? '- [x] ' : '') + 'Sample entry for [[' + note.path + ']].'
-      if (day === today.getDate()) content += '\n::abele-gallery{height=160}::\n\n![[sample-picture.png]]\n\n![[Media/sample-picture.png]]\n\n![Sample](Media/sample-picture.png)'
+      if (day === today.getDate()) content += galleryText
       const file = await create(date(day), '---\ntype: log\ncreated: ' + date(day) + '\n---\n' + content + '\n')
       files.push(file)
     }
+    const ordinary = await create('Sample ordinary entry', '---\ntype: log\ncreated: ' + todayKey + '\n---\nSample ordinary entry for [[' + note.path + ']].\n' + galleryText)
+    await until(() => app.metadataCache.resolvedLinks[ordinary.path]?.[note.path], 'ordinary entry links')
     await until(() => files.every(file => app.metadataCache.resolvedLinks[file.path]?.[note.path]), 'resolved log links')
     leaf = app.workspace.getLeaf('tab')
     await leaf.openFile(note, { state: { mode: 'source', source: false } })
@@ -94,7 +115,10 @@ const probe = (label: string) => String.raw`(async () => {
     const dayTitle = () => calendar.querySelector('.abele-logs-calendar__day-title')
     report.today = selected().getAttribute('aria-label').includes(today.getDate() + ' ')
     report.dailyLink = !!dayTitle().querySelector('a.internal-link')
-    report.noRepeatedSource = !calendar.querySelector('.abele-log__links')
+    const entryOf = path => [...calendar.querySelectorAll('.abele-log')].find(el => el.getAttribute('data-abele-anchor') === 'log:' + path)
+    const dailyPath = folder + '/' + todayKey + '.md'
+    report.noRepeatedSource = !entryOf(dailyPath).querySelector('.abele-log__links')
+    report.ordinarySource = !!entryOf(ordinary.path)?.querySelector('.abele-log__links')
     report.marks = {
       checked: calendar.querySelectorAll('.abele-calendar__day-log_done').length,
       open: calendar.querySelectorAll('.abele-calendar__day-log_open').length,
@@ -107,16 +131,26 @@ const probe = (label: string) => String.raw`(async () => {
     report.daySizes = [...calendar.querySelectorAll('.abele-calendar__day')].map(el => { const b=el.getBoundingClientRect(); return [b.width,b.height] })
     await shoot('today')
     await shoot('busy-month')
-    const gallery = await until(() => calendar.querySelector('.abele-gallery'), 'entry gallery')
-    gallery.scrollIntoView({ block: 'center' })
-    await until(() => {
-      const pictures = [...gallery.querySelectorAll('img')]
-      return pictures.length === 3 && pictures.every(img => img.complete && img.naturalWidth > 0)
-    }, 'entry gallery pictures')
-    report.galleryPictures = gallery.querySelectorAll('img').length
-    report.gallerySource = store.galleriesContainers.value.some(g => g.filePath === folder + '/' + todayKey + '.md' && g.images.length === 3)
-    report.galleryEmpty = gallery.textContent.includes('No pictures yet')
-    await shoot('gallery-entry')
+    for (const [shape, path] of [['checkbox', dailyPath], ['ordinary', ordinary.path]]) {
+      const entry = await until(() => entryOf(path), shape + ' entry')
+      entry.scrollIntoView({ block: 'center' })
+      const gallery = await until(() => entry.querySelector('.abele-gallery'), shape + ' entry gallery')
+      gallery.scrollIntoView({ block: 'center' })
+      await until(() => {
+        const pictures = [...gallery.querySelectorAll('img')]
+        return pictures.length === 3 && pictures.every(img => img.complete && img.naturalWidth > 0)
+      }, shape + ' entry gallery pictures')
+      report.galleryEntries.push({
+        shape, path,
+        pictures: gallery.querySelectorAll('img').length,
+        source: store.galleriesContainers.value.some(g => g.filePath === path && g.images.length === 3),
+        empty: gallery.textContent.includes('No pictures yet'),
+        readonly: gallery.classList.contains('abele-gallery_readonly') && !gallery.querySelector('.abele-gallery__header'),
+        outerHTML: entry.outerHTML,
+      })
+      saveEvidence()
+      await shoot('gallery-entry-' + shape)
+    }
     const title = calendar.querySelector('.abele-calendar__header-month-year')
     title.click()
     await until(() => calendar.querySelector('.abele-calendar-year'), 'footer year')
@@ -190,6 +224,8 @@ const probe = (label: string) => String.raw`(async () => {
     report.list = !root().querySelector('.abele-logs-calendar') && !!root().querySelector('.abele-logs-list__logs')
     return report
   } finally {
+    saveEvidence()
+    api.rendering.MarkdownPreviewRenderer.unregisterPostProcessor(captureRendered)
     if (leaf === previousLeaf && previousViewState) await leaf.setViewState(previousViewState)
     else leaf?.detach()
     if (previousLeaf) app.workspace.setActiveLeaf(previousLeaf, { focus: true })
@@ -205,6 +241,12 @@ async function check(label: string) {
   const raw = await evalLong(probe(label))
   if (raw.startsWith('Error:')) throw new Error(`${label} logs calendar: ${raw}`)
   const report = JSON.parse(raw)
+  console.info(
+    'Logs gallery renderer and fixed entry HTML (' +
+      label +
+      '): ' +
+      JSON.stringify({ renderedHtml: report.renderedHtml, galleryEntries: report.galleryEntries })
+  )
   expect(report.footerYearSaved).toBe(true)
   expect(report.footerMonthSaved).toBe(true)
   expect(report.sidebarYearSaved).toBe(true)
@@ -212,6 +254,7 @@ async function check(label: string) {
   expect(report.today).toBe(true)
   expect(report.dailyLink).toBe(true)
   expect(report.noRepeatedSource).toBe(true)
+  expect(report.ordinarySource).toBe(true)
   expect(report.marks.checked).toBeGreaterThan(0)
   expect(report.marks.open).toBeGreaterThan(0)
   expect(report.marks.all).toBeGreaterThan(20)
@@ -234,9 +277,17 @@ async function check(label: string) {
   expect(report.focusPaint).toBe(true)
   expect(report.saved).toBe(true)
   expect(report.list).toBe(true)
-  expect(report.galleryPictures).toBe(3)
-  expect(report.gallerySource).toBe(true)
-  expect(report.galleryEmpty).toBe(false)
+  expect(report.galleryEntries.map((entry) => entry.shape)).toEqual(['checkbox', 'ordinary'])
+  for (const entry of report.galleryEntries) {
+    expect(entry.pictures).toBe(3)
+    expect(entry.source).toBe(true)
+    expect(entry.empty).toBe(false)
+    expect(entry.readonly).toBe(true)
+    const parents = report.renderedHtml
+      .filter((raw) => raw.sourcePath === entry.path)
+      .flatMap((raw) => raw.markerParents)
+    expect(parents).toContain(entry.shape === 'checkbox' ? 'LI' : 'P')
+  }
 }
 
 describe.skipIf(!available)('logs calendar in the live note footer', () => {

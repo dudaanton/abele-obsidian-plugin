@@ -120,6 +120,11 @@ export class Log {
   relatedText(body: string): string {
     const lines = body.split('\n')
     const blocks = findGalleryBlocks(lines)
+    const beforeGallery = new Set<number>()
+    // A gallery in its own paragraph still belongs to the entry immediately above it.
+    for (const block of blocks) {
+      for (let i = block.headerLine - 1; i >= 0 && lines[i] === ''; i--) beforeGallery.add(i)
+    }
     let paragraphs: string[] = []
     let start = 0
     let blockIndex = 0
@@ -128,7 +133,12 @@ export class Log {
     for (let i = 1; i < lines.length - 1; i++) {
       while (blockIndex < blocks.length && blocks[blockIndex].lastLine < i) blockIndex++
       const block = blocks[blockIndex]
-      if (lines[i] !== '' || (block && i > block.headerLine && i <= block.lastLine)) continue
+      if (
+        lines[i] !== '' ||
+        beforeGallery.has(i) ||
+        (block && i > block.headerLine && i <= block.lastLine)
+      )
+        continue
       paragraphs.push(lines.slice(start, i).join('\n').trim())
       start = i + 1
       i++ // The separator consumes both newlines, as split('\n\n') does.
