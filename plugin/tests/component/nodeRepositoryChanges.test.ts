@@ -14,6 +14,7 @@ it('rereads the open file from a change batch only when it changed, and reads no
   useVault([])
   const f = nodeRepositoryFixture({ changes: true }),
     store = new MemoryClientStore()
+  f.client.repository.editingStatus = vi.fn(async (params) => ({ ...params, enabled: true }))
   await store.transaction((s) => {
     s.node_id = identity.node
     s.installation_id = identity.installation
@@ -50,6 +51,7 @@ it('rereads the open file from a change batch only when it changed, and reads no
   const wrapper = mount(NodeRepositoryItem, { props: { model, onTitle: vi.fn() } })
   try {
     await flushPromises()
+    expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('editable')).toBe(true)
     // The node's files are in its side panel (its batches are applied there, see
     // nodePathChanges.test.ts); the tab has no tree beside the file.
     expect(wrapper.find('.abele-github-tree').exists()).toBe(false)
@@ -69,6 +71,21 @@ it('rereads the open file from a change batch only when it changed, and reads no
     // A file that is not the open one changed: nothing is read again.
     expect(count('.blob')).toBe(before.blob)
     expect(count('.tree')).toBe(before.tree)
+    // Reuse the repository tab after visiting another file, with search still open.
+    model.sourceTarget.location = { kind: 'file', ref: WORKING_TREE, path: 'history.ts' }
+    model.nonce++
+    await flushPromises()
+    model.sourceTarget.location = { kind: 'file', ref: WORKING_TREE, path: 'app.ts' }
+    model.nonce++
+    await flushPromises()
+    await wrapper
+      .find('[aria-label="Search the code: this change, the whole repository, or file names"]')
+      .trigger('click')
+    await wrapper.find('.abele-github-search input').setValue('answer')
+    await wrapper.find('.abele-github-search input').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    before.blob = count('.blob')
+    expect(wrapper.find('.abele-github-blob').text()).toContain('42')
     f.change()
     f.batch(2, {
       complete: true,
@@ -82,6 +99,7 @@ it('rereads the open file from a change batch only when it changed, and reads no
     })
     await flushPromises()
     expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('text')).toContain('84')
+    expect(wrapper.find('.abele-github-blob').text()).toContain('84')
     // The open file is read again; no tree is.
     expect(count('.blob')).toBeGreaterThan(before.blob)
     expect(count('.tree')).toBe(before.tree)
