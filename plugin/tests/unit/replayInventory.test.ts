@@ -1,0 +1,146 @@
+import { expect, it, vi } from 'vitest'
+import {
+  EngineError,
+  MemoryFileSystem,
+  MemoryStateStore,
+  SyncEngine,
+  sha256,
+  type EngineClient,
+} from '@abele/sync-sdk/core'
+import { selectiveFrom } from '@/sync/connection'
+
+it('resumes a named upload before enumerating 33000 unrelated files', async () => {
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const path = 'Attachments/sample.bin',
+    bytes = new Uint8Array([1, 2, 3])
+  const sha = await sha256(bytes)
+  await fs.writeAtomic(path, bytes, 1000)
+  await state.setCursor(1)
+  await state.setJournal({
+    batchId: 'sample-batch',
+    idempotencyKey: 'sample-request',
+    startedAt: new Date().toISOString(),
+    ops: [{ op: 'create', path, sha, size: bytes.length, mtime: 1000 }],
+  })
+  Object.assign(fs, {
+    listChildren: async (parent: string) =>
+      parent === ''
+        ? [{ path: 'Attachments', kind: 'directory', identity: 'folder' }]
+        : parent === 'Attachments'
+          ? [{ path, kind: 'file' }]
+          : [],
+  })
+  const list = vi.spyOn(fs, 'list').mockImplementation(async function* () {
+    console.debug('replay inventory caller', new Error().stack)
+    for (let i = 0; i < 33000; i++) yield { path: `Notes/层/Sample ${i}.md`, size: 1, mtime: 1000 }
+    yield { path, size: bytes.length, mtime: 1000 }
+  })
+  const upload = vi.fn(async () => {
+    throw new EngineError('offline', 'sample upload interruption')
+  })
+  const client = {
+    state: async () => ({ head_seq: 1, settings: { max_file_bytes: 1e9, quota_bytes: null } }),
+    hasBlob: async () => false,
+    putBlob: upload,
+  } as unknown as EngineClient
+  const engine = new SyncEngine({ fs, state, client, selective: selectiveFrom(undefined) })
+  try {
+    await engine.sync().catch(() => {})
+    expect(upload).toHaveBeenCalledOnce()
+    expect(list).not.toHaveBeenCalled()
+    expect(await state.getJournal()).not.toBeNull()
+  } finally {
+    await engine.stop()
+  }
+})
+
+it('keeps unrelated directory holds during focused replay refresh', async () => {
+  const { refreshLocalPaths } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
+  )
+  const fs = Object.assign(new MemoryFileSystem(), { listChildren: async () => [] })
+  const state = new MemoryStateStore()
+  const holds = JSON.stringify([
+    { path: 'Other/é', winner: 'Other/é', aliases: ['Other/é', 'Other/é'] },
+  ])
+  await state.setMeta('normalization-directory-collisions', holds)
+  await state.setJournal({
+    batchId: 'sample',
+    idempotencyKey: 'sample',
+    startedAt: new Date().toISOString(),
+    ops: [{ op: 'create', path: 'sample.md', sha: 'a'.repeat(64), size: 1, mtime: 1 }],
+  })
+  await refreshLocalPaths(fs, state)
+  expect(await state.getMeta('normalization-directory-collisions')).toBe(holds)
+})
+
+it('still refuses a canonically ambiguous journal source without a whole-vault scan', async () => {
+  const { sourcesFromOps } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/pushSources.js'
+  )
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const bytes = new Uint8Array([1]),
+    sha = await sha256(bytes)
+  await fs.writeAtomic('é/sample.bin', bytes, 1)
+  await fs.writeAtomic('é/sample.bin', new Uint8Array([2]), 1)
+  Object.assign(fs, {
+    listChildren: async (parent: string) =>
+      parent === ''
+        ? [
+            { path: 'é', kind: 'directory', identity: 'first' },
+            { path: 'é', kind: 'directory', identity: 'second' },
+          ]
+        : [],
+  })
+  const list = vi.spyOn(fs, 'list')
+  const sources = await sourcesFromOps(fs, state, [
+    { op: 'create', path: 'é/sample.bin', sha, size: 1, mtime: 1 },
+  ])
+  await expect(sources.bytes(sha)).rejects.toThrow(/collision/)
+  expect(list).not.toHaveBeenCalled()
+  expect(await fs.read('é/sample.bin')).toEqual(bytes)
+  expect(await fs.read('é/sample.bin')).toEqual(new Uint8Array([2]))
+})
+
+it.each(['additive', 'destructive', 'restoring'] as const)(
+  'retains restored-file detection during %s replay',
+  async (mode) => {
+    const { reconciliationScan } = await import(
+      '../../node_modules/@abele/sync-sdk/dist/internal/core/reconciliation.js'
+    )
+    const fs = Object.assign(new MemoryFileSystem(), { listChildren: async () => [] })
+    const state = new MemoryStateStore(),
+      bytes = new Uint8Array([1]),
+      sha = await sha256(bytes)
+    for (const path of ['one.md', 'two.md']) {
+      await fs.writeAtomic(path, new Uint8Array([2]), 10)
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: path,
+        versionId: 'v1',
+        sha,
+        size: 1,
+        mtime: 100,
+      })
+    }
+    await state.setCursor(1)
+    await state.setJournal({
+      batchId: 'sample',
+      idempotencyKey: 'sample',
+      startedAt: new Date().toISOString(),
+      ops:
+        mode === 'destructive'
+          ? [{ op: 'delete', file_id: 'one.md', base_version_id: 'v1' }]
+          : [{ op: 'create', path: 'new.md', sha, size: 1, mtime: 100 }],
+    })
+    if (mode === 'restoring') await state.setMeta('server-restore-reconciling', 'yes')
+    await reconciliationScan(fs, state, { excluded: () => false }, 1).catch(() => {})
+    expect(JSON.parse((await state.getMeta('content-reconciliation'))!)).toMatchObject({
+      phase: 'requested',
+      reason: expect.stringContaining('older timestamps'),
+    })
+  }
+)

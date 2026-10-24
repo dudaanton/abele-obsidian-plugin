@@ -1,3 +1,4 @@
+import { DirectoryScopeError } from './vaultDirectories'
 import { SyncCancelled } from '@abele/sync-sdk/core'
 import { settingsSyncText } from '@/i18n/settingsSync'
 import { STARTUP_STOP } from './startupSafety'
@@ -31,6 +32,7 @@ export function connectionError(
   startup = false,
   text: SyncText = englishSyncText
 ): string {
+  if (error instanceof DirectoryScopeError) return error.message
   if (error instanceof MobileWholeReadLimitError) return error.message
   if (error instanceof LocalPlacementError || error instanceof FolderScopeError)
     return error.message

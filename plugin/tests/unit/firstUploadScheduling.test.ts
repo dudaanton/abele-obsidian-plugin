@@ -116,6 +116,7 @@ it.fails('pipelines a bounded pair of multipart requests', async () => {
   })
   let requests = 0
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    if (init?.method === 'HEAD') return new Response(null, { status: 404 })
     if (String(input).endsWith('/begin'))
       return Response.json({
         upload_id: '00000000-0000-4000-8000-000000000001',

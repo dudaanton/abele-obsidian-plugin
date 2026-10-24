@@ -205,6 +205,9 @@ export class TokenEngineRuntime
     )
     return {
       ...status,
+      ...(this.fatalFailure !== undefined && !this.userPaused
+        ? { state: 'error' as const, lastError: connectionError(this.fatalFailure) }
+        : {}),
       pending: Math.max(status.pending, this.quiet.pending),
       ...(waitingFiles ? { waitingFiles, waiting: waitingFiles.length } : {}),
     }
@@ -1483,7 +1486,10 @@ export class TokenEngineRuntime
           options.failed(rootFailure)
           return
         }
-        if (error instanceof LocalPlacementError) this.pauseEngine()
+        if (error instanceof LocalPlacementError) {
+          this.fatalFailure = error
+          this.pauseEngine()
+        }
         if (
           [
             'scope_unavailable',
@@ -1492,8 +1498,12 @@ export class TokenEngineRuntime
             'vault-root-changed',
             'protocol',
           ].includes((error as { code?: string }).code ?? '')
-        )
+        ) {
+          // Access and scope failures retain their dedicated recovery controls.
+          if ((error as { code?: string }).code === 'protocol') this.fatalFailure = error
           this.pauseEngine()
+        }
+        if (this.fatalFailure !== undefined) options.changed(this.statusWithQuiet())
         comparing()
         if (!this.yieldedForReview(error)) options.failed(error)
       },
@@ -1578,6 +1588,7 @@ export class TokenEngineRuntime
       this.actions.recordDeleteResults(this.client, ops, outcome.body.results)
       return outcome
     }
+    this.userPaused = options.paused ?? false
     if (options.paused) this.pauseEngine()
     this.rootIssue = options.rootIssue
     if (this.rootIssue) this.pauseEngine()
@@ -2340,9 +2351,12 @@ export class TokenEngineRuntime
       this.scopeRootGone({ kind: 'deleted' })
     this.assertHeld()
   }
+  private fatalFailure: unknown
+  private userPaused = false
   private runFailure: unknown
   async sync(retryHeld = true): Promise<void> {
     await this.checkRoot()
+    if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
     if (retryHeld) return this.quiet.flush(() => this.syncUnpaced(retryHeld))
     return this.syncUnpaced(false)
   }
@@ -2352,6 +2366,10 @@ export class TokenEngineRuntime
     await this.refreshHolds()
     this.assertHeld()
     try {
+      if (this.fatalFailure !== undefined && !this.userPaused) {
+        this.fatalFailure = undefined
+        this.engine.resume()
+      }
       await this.syncThroughReviews(retryHeld)
       if (this.runFailure !== undefined && !this.yieldedForReview(this.runFailure))
         throw this.runFailure
@@ -2583,8 +2601,11 @@ export class TokenEngineRuntime
   }
   async pause(paused: boolean): Promise<void> {
     this.assertHeld()
+    this.userPaused = paused
     if (paused) this.pauseEngine()
     else {
+      this.fatalFailure = undefined
+      this.runFailure = undefined
       this.quiet.pause(false)
       this.engine.resume()
       // Resume starts a run asynchronously. Join it before exposing a fresh host

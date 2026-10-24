@@ -545,3 +545,36 @@ it('keeps a created configuration directory visible with a startup file inventor
     expect(directories.some((dir) => dir.path.includes('/abele/sync-'))).toBe(false)
   }
 })
+
+// A folder-scoped seed tree can contain a nested configuration folder even when
+// that folder is excluded from publication. Sibling inventory must still work.
+it('inventories a scoped seed tree with nested hidden siblings', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([
+    { path: 'Shared/Notes/Section 0/层 0/Nested 0/Sample 4.md', content: 'sample' },
+    { path: 'Shared/.obsidian/sample.json', content: '{}' },
+    { path: 'Shared/.obsidian/plugins/sample-disabled/data.json', content: '{}' },
+  ])
+  const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
+  await expect(fs.listChildren('Shared')).resolves.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: 'Shared/Notes', kind: 'directory' }),
+      expect.objectContaining({ path: 'Shared/.obsidian', kind: 'directory' }),
+    ])
+  )
+})
+
+it.each(['Private', 'Shared/../Private', 'Shared//nested', 'Shared/./nested', 'Shared\\nested'])(
+  'reports the rejected physical identity path and caller: %s',
+  async (path) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const app = buildFakeVault([])
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const dirs = new VaultDirectories(app.vault.adapter, app, undefined, undefined, ['Shared'])
+    await expect(dirs.identity(path)).rejects.toThrow(
+      `Directory path is outside this connection: ${JSON.stringify(path)} (identity)`
+    )
+    expect(stat).not.toHaveBeenCalled()
+  }
+)

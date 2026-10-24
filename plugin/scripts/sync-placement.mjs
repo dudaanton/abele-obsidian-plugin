@@ -27,6 +27,20 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
+// An additive replay needs tracked restore evidence, not discovery of unrelated new files.
+// Destructive, restored and review-pending work retains the complete inventory path.
+async function additiveReplayEntries(fs, state) {
+  if (!fs.listChildren || !state.getMeta) return null;
+  const journal = await state.getJournal();
+  if (!journal?.ops.length || journal.ops.some(op =>
+    !['create', 'modify'].includes(op.op) || op.prefer === 'mine')) return null;
+  if (await state.getMeta('server-restore-reconciling')) return null;
+  const raw = await state.getMeta('content-reconciliation');
+  if (raw && JSON.parse(raw).phase !== 'complete') return null;
+  const entries = [];
+  for await (const entry of state.all()) entries.push(entry);
+  return entries;
+}
 async function pairedBaseline(fs, state, entry) {
   if (!fs.fileIdentity || !state.getMeta) return null;
   const raw = await state.getMeta('paired-file:' + entry.path);
@@ -228,6 +242,25 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/reconciliation.js')) {
         code = replaceOnce(
           code,
+          'for await (const info of fs.list()) {\n        await work.step();\n        disk.set(info.path, info);\n    }',
+          `const replayEntries = retiredEntries ? null : await additiveReplayEntries(fs, state);
+    if (replayEntries === null) {
+      for await (const info of fs.list()) {
+        await work.step();
+        disk.set(info.path, info);
+      }
+    } else {
+      for (const entry of replayEntries) {
+        await work.step();
+        if (isEngineOwn(entry.wirePath) || filter.excluded(entry.wirePath, entry.size)) continue;
+        const info = await fs.stat(entry.path);
+        if (info) disk.set(entry.path, { ...info, path: entry.path });
+      }
+    }`
+        )
+
+        code = replaceOnce(
+          code,
           'const cached = !selected.has(path) ? await readScanHint(state, info, epoch) : null;',
           `const hostHash = changed ? await fs[Symbol.for('abele.sync.cached-scan-hash-v1')]?.(info.path) : null;
           const cached = hostHash?.size === info.size && hostHash?.mtime === info.mtime
@@ -261,6 +294,21 @@ export function syncPlacementPlugin() {
             if (!opts.readOnly) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);`
         )
       } else if (file.endsWith('/localPaths.js')) {
+        code = replaceOnce(
+          code,
+          'const inventory = await LocalPaths.read(fs, state);\n    await inventory.rememberDirectories(state);',
+          `const replayEntries = await additiveReplayEntries(fs, state);
+    const inventory = replayEntries === null ? await LocalPaths.read(fs, state) : new LocalPaths();
+    if (replayEntries === null) await inventory.rememberDirectories(state);
+    else {
+      for (const entry of replayEntries) {
+        const local = await LocalPaths.forPath(fs, entry.wirePath, state);
+        for (const candidates of local.entries.values()) for (const candidate of candidates) inventory.add(candidate);
+        inventory.heldDirectories.push(...local.heldDirectories);
+      }
+    }`
+        )
+
         code = replaceOnce(
           code,
           'for await (const dir of fs.listDirectories())',
@@ -740,6 +788,37 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/pushSources.js')) {
         code = replaceOnce(
           code,
+          `const inventory = await LocalPaths.read(fs, state);
+    for (const [sha, local] of paths)
+        paths.set(sha, await resolveLocalFile(fs, state, local.normalize('NFC'), local, inventory));
+    return sourcesAt(fs, paths);`,
+          `if (!fs.listChildren) {
+      const inventory = await LocalPaths.read(fs, state);
+      for (const [sha, local] of paths)
+        paths.set(sha, await resolveLocalFile(fs, state, local.normalize('NFC'), local, inventory));
+      return sourcesAt(fs, paths);
+    }
+    return sourcesAt(fs, paths, local => resolveLocalFile(fs, state, local.normalize('NFC'), local));`
+        )
+        code = replaceOnce(
+          code,
+          'const sourcesAt = (fs, paths) => ({',
+          'const sourcesAt = (fs, paths, resolve = async path => path) => ({'
+        )
+        for (const spaces of [16, 8]) {
+          const indent = ' '.repeat(spaces)
+          code = replaceOnce(
+            code,
+            indent + 'const path = paths.get(sha);',
+            indent +
+              'const requested = paths.get(sha);\n' +
+              indent +
+              'const path = requested === undefined ? undefined : await resolve(requested);'
+          )
+        }
+
+        code = replaceOnce(
+          code,
           'return fs.openRead(path);',
           `const upload = fs[Symbol.for('abele.sync.open-upload-v1')];
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
@@ -913,8 +992,8 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'const path = `/v2/uploads/${expected.sha}`;',
-          '}\n            const path = `/v2/uploads/${expected.sha}`;'
+          "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');",
+          "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');\n            }"
         )
       } else if (file.endsWith('/pushRefusal.js')) {
         code = replaceOnce(code, '    return {', '    const row = {')

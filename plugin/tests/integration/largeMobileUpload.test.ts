@@ -78,6 +78,7 @@ it('uploads 200 MiB in one bounded pass and resumes without resending acknowledg
   const client = () =>
     new V2EngineClient(token, {
       fetch: async (url, init) => {
+        if (init?.method === 'HEAD') return new Response(null, { status: completed ? 200 : 404 })
         const path = new URL(String(url)).pathname
         if (path.endsWith('/begin'))
           return Response.json({
@@ -136,7 +137,8 @@ it('never completes or commits corrupt multipart content and closes its source',
     scope: { kind: 'folder', id: 'root', path: '/' },
   })
   const client = new V2EngineClient(token, {
-    fetch: async (url) => {
+    fetch: async (url, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 })
       const path = new URL(String(url)).pathname
       paths.push(path)
       if (path.endsWith('/begin'))

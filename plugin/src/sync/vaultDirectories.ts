@@ -22,6 +22,14 @@ interface DirectoryAdapter {
   rename(from: string, to: string): Promise<void>
   rmdir(path: string, recursive: boolean): Promise<void>
 }
+export class DirectoryScopeError extends EngineError {
+  constructor(path: string, caller: string) {
+    super(
+      'protocol',
+      `Directory path is outside this connection: ${JSON.stringify(path)} (${caller})`
+    )
+  }
+}
 /** Device-local identities and strictly nonrecursive directory effects. */
 export class VaultDirectories {
   constructor(
@@ -33,19 +41,26 @@ export class VaultDirectories {
     private readonly scope: (() => string | undefined) | readonly string[] = () => undefined,
     private readonly indexedHidden: (path: string) => boolean = () => false
   ) {}
-  private includes(path: string): boolean {
+  private includes(path: string, physical = false): boolean {
     const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
     if (roots.some((root) => !root || root === '/')) return true
     try {
-      assertPhysicalPath(path)
+      if (physical) {
+        if (
+          path.startsWith('/') ||
+          path.includes('\\') ||
+          Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
+          path.split('/').some((part) => !part || part === '.' || part === '..')
+        )
+          return false
+      } else assertPhysicalPath(path)
     } catch {
       return false
     }
     return roots.some((root) => root && (path === root || path.startsWith(root + '/')))
   }
-  private assertPath(path: string): void {
-    if (!this.includes(path))
-      throw new EngineError('protocol', 'Directory path is outside this connection')
+  private assertPath(path: string, caller: string, physical = false): void {
+    if (!this.includes(path, physical)) throw new DirectoryScopeError(path, caller)
   }
   /** The path or any ancestor up to the vault root is a symlink: never the vault's to touch. */
   private linked(path: string, seen?: Map<string, Promise<boolean | null>>): Promise<boolean> {
@@ -71,10 +86,11 @@ export class VaultDirectories {
     path: string,
     depth = 0
   ): Promise<{ files: string[]; folders: { path: string; birth: number }[] }> {
-    this.assertPath(path)
+    this.assertPath(path, 'tree')
     if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
     const children = await this.disk.list(path)
-    for (const child of [...children.files, ...children.folders]) this.assertPath(child)
+    for (const child of [...children.files, ...children.folders])
+      this.assertPath(child, 'tree child')
     const files = [...children.files]
     const folders: { path: string; birth: number }[] = []
     for (const child of children.folders) {
@@ -222,7 +238,7 @@ export class VaultDirectories {
       const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
       for (const root of roots) {
         if (root && root !== '/') {
-          this.assertPath(root)
+          this.assertPath(root, 'list')
           await assertNoLinkedAncestors(root, this.symlink)
           const stat = await this.disk.stat(root)
           if (stat?.type === 'folder') {
@@ -291,7 +307,7 @@ export class VaultDirectories {
   async mkdir(path: string): Promise<void> {
     if (await this.linked(path))
       throw new EngineError('conflict', 'Directory path contains a symbolic link')
-    this.assertPath(path)
+    this.assertPath(path, 'mkdir')
     const before = await this.disk.stat(path)
     if (await this.linked(path)) throw new EngineError('conflict', 'Directory path is occupied')
     if (before) {
@@ -304,7 +320,7 @@ export class VaultDirectories {
   }
   /** A received directory needs only its own identity, not another walk of the vault. */
   async identity(path: string): Promise<string> {
-    this.assertPath(path)
+    this.assertPath(path, 'identity', true)
     const stat = await this.disk.stat(path)
     if (stat?.type !== 'folder' || (await this.linked(path)))
       throw new EngineError('io', 'Received directory is unavailable')
@@ -321,8 +337,8 @@ export class VaultDirectories {
   async move(from: string, to: string): Promise<void> {
     if ((await this.linked(from)) || (await this.linked(to)))
       throw new EngineError('conflict', 'Directory path contains a symbolic link')
-    this.assertPath(from)
-    this.assertPath(to)
+    this.assertPath(from, 'move source')
+    this.assertPath(to, 'move destination')
     if (await this.disk.stat(to))
       throw new EngineError('conflict', 'Directory destination is occupied')
     if (await this.linked(to))
@@ -344,7 +360,7 @@ export class VaultDirectories {
   async remove(path: string, expectedIdentity?: string): Promise<void> {
     if (await this.linked(path))
       throw new EngineError('conflict', 'Directory path contains a symbolic link')
-    this.assertPath(path)
+    this.assertPath(path, 'remove')
     const stat = await this.disk.stat(path)
     if (!stat) {
       this.saveRemovals(this.removals().filter((one) => one.path !== path))

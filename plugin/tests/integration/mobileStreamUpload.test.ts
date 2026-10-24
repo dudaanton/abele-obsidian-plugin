@@ -36,6 +36,7 @@ it('resumes a single whole-read 200 MiB mobile upload without resending received
   const client = () =>
     new V2EngineClient(token, {
       fetch: async (url, init) => {
+        if (init?.method === 'HEAD') return new Response(null, { status: completed ? 200 : 404 })
         const path = new URL(String(url)).pathname
         if (path.endsWith('/begin'))
           return Response.json({

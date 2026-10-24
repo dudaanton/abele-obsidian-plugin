@@ -1,3 +1,4 @@
+import { DirectoryScopeError } from '@/sync/vaultDirectories'
 import { expect, it, vi } from 'vitest'
 import {
   EngineError,
@@ -3868,3 +3869,30 @@ it.each([false, true])(
     }
   }
 )
+
+it('exposes a fatal directory error and retries it on the next explicit sync', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const fs = new MemoryFileSystem()
+  const changed = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, { changed })
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    const error = new DirectoryScopeError('Private', 'identity')
+    vi.spyOn(fs, 'list').mockImplementationOnce(async function* () {
+      yield await Promise.reject<never>(error)
+    })
+    await expect(one.runtime.sync()).rejects.toBe(error)
+    expect(one.runtime.statusWithQuiet()).toMatchObject({
+      state: 'error',
+      lastError: error.message,
+    })
+    expect(changed.mock.calls.at(-1)?.[0]).toMatchObject({ state: 'error' })
+    const sync = vi.spyOn(one.runtime.engine, 'sync')
+    await one.runtime.sync()
+    expect(sync).toHaveBeenCalled()
+    expect(one.runtime.statusWithQuiet().state).toBe('idle')
+  } finally {
+    await one.runtime.close()
+  }
+})
