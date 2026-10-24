@@ -137,7 +137,7 @@ export function registerCheckboxes(plugin: Plugin): void {
     editorCheckCallback(checking, editor: Editor) {
       const view = (editor as Editor & { cm?: EditorView }).cm
       if (!view) return false
-      const target = editorTarget(view, editor.getCursor().line + 1)
+      const target = editorTarget(view, editor.getCursor().line + 1, plugin)
       if (!target) return false
       if (!checking) void target.set(nextCheckboxState(target.marker))
       return true
