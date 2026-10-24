@@ -95,6 +95,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { SECRET_NAME } from '@/requests/importers/shared'
 
 import { computed, reactive, ref } from 'vue'
 import Button from '../../obsidian/Button.vue'
@@ -143,7 +144,6 @@ const secret = reactive(
 const stepHeader = ref(!!props.environment.stepHeader)
 
 /** A value in the file under a name that holds secrets: a token, a password, a key. */
-const SECRET_NAME = /token|secret|password|passwd|api[-_]?key|auth/i
 const exposed = computed(
   () =>
     props.fileSecrets ??
