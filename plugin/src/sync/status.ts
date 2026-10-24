@@ -161,7 +161,10 @@ export function statusLabel(status: SyncStatus): string {
   if (leadsWithConflicts(status))
     return t('sync.status.conflicts', { count: status.conflicts ?? 0 })
   if (leadsWithNotSynced(status))
-    return t('sync.status.notSynced', { count: status.notSynced ?? 0 })
+    return t('sync.status.notSynced', { count: status.notSynced ?? 0 }).replace(
+      String(status.notSynced ?? 0),
+      (status.notSynced ?? 0).toLocaleString()
+    )
   if (leadsWithReview(status)) return t('sync.status.review')
   if (status.state === 'idle' && status.pending > 0) return t('sync.status.waiting')
   return t(`sync.status.${status.state}`)
@@ -208,7 +211,12 @@ export function statusTooltip(status: SyncStatus): string {
   if ((status.conflicts ?? 0) > 0)
     lines.push(t('sync.status.copies', { count: status.conflicts ?? 0 }))
   if ((status.notSynced ?? 0) > 0)
-    lines.push(t('sync.status.notSyncedLine', { count: status.notSynced ?? 0 }))
+    lines.push(
+      t('sync.status.notSyncedLine', { count: status.notSynced ?? 0 }).replace(
+        String(status.notSynced ?? 0),
+        (status.notSynced ?? 0).toLocaleString()
+      )
+    )
   if ((status.review ?? 0) > 0) lines.push(t('sync.status.decision', { count: status.review ?? 0 }))
   if (status.deferred > 0) lines.push(stagedLine(status.deferred))
   if (status.state === 'joining') lines.push(t('sync.status.connecting'))

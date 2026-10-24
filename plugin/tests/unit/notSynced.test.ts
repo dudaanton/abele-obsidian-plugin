@@ -9,6 +9,14 @@ const item: NotSyncedItem = {
   direction: 'in',
   since: '2026-01-01T00:00:00Z',
 }
+it('formats large connection and status counts while keeping singular selection', () => {
+  const count = 1243
+  const expected = `${count.toLocaleString()} files not synced`
+  expect(
+    connectionLine({ status: 'idle', paused: false }, { notSynced: Array(count).fill(item) })
+  ).toBe(expected)
+  expect(statusText({ ...DISCONNECTED_STATUS, state: 'idle', notSynced: count })).toBe(expected)
+})
 it('groups reasons once and keeps safety and server retry separate from names and sizes', () => {
   const groups = groupNotSynced([
     item,

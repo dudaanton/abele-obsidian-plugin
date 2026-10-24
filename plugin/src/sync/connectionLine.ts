@@ -112,7 +112,7 @@ export function connectionLine(
       '{count} files not synced',
       { count: activity.notSynced.length },
       '{count} file not synced'
-    )
+    ).replace(String(activity.notSynced.length), activity.notSynced.length.toLocaleString())
   if (activity?.notSyncedError) return text('Could not check which files are not synced')
   if (activity?.refused?.length)
     return text(

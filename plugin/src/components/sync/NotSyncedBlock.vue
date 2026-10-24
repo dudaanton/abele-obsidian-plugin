@@ -80,7 +80,6 @@
             />
           </template>
           <template #meta>
-            <PathLabel :path="item.path" :max-length="Platform.isMobile ? 28 : 44" />
             <span class="abele-not-synced__meta">{{ meta(item) }}</span>
           </template>
         </EntryRow>
@@ -97,7 +96,6 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { Platform } from 'obsidian'
 import { computed, reactive } from 'vue'
 import Section from '../obsidian/Section.vue'
 import EntryRow from '../obsidian/EntryRow.vue'
@@ -105,7 +103,6 @@ import FoldHeading from '../obsidian/FoldHeading.vue'
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import ScrollMore from '../obsidian/ScrollMore.vue'
-import PathLabel from '../obsidian/PathLabel.vue'
 import {
   FOLD_OVER,
   PAGE,
@@ -134,13 +131,20 @@ const more = (group: NotSyncedGroup) => {
 }
 
 const fileName = (path: string) => path.split('/').pop() ?? path
-const since = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+const since = (iso: string) => {
+  const time = Date.parse(iso)
+  return Number.isFinite(time) && time > 0
+    ? t('sync.notSynced.since', {
+        when: new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+      })
+    : ''
+}
 const meta = (item: NotSyncedItem) =>
   [
+    item.path.split('/').slice(0, -1).join('/'),
     item.fact,
     item.devices?.length ? t('sync.notSynced.on', { devices: item.devices.join(', ') }) : '',
-    t('sync.notSynced.since', { when: since(item.since) }),
+    since(item.since),
   ]
     .filter(Boolean)
     .join(' · ')

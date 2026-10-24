@@ -52,18 +52,25 @@ it('shortens a long path in the shared kit while retaining its full detail', asy
   expect(view.text()).toContain(path)
   view.unmount()
 })
-it('bounds the phone folder label while preserving the full path in its disclosure', () => {
+it('shows folder and fact in one plain metadata line on phone', () => {
   const saved = Platform.isMobile
   Reflect.set(Platform, 'isMobile', true)
   const view = mount(NotSyncedBlock, {
     props: {
       items: [
-        { ...item, path: 'Projects/Research/Collected material/Long working folder/sample.md' },
+        {
+          ...item,
+          path: 'Projects/Research/Collected material/Long working folder/sample.md',
+          fact: 'changed while it was being placed',
+        },
       ],
     },
   })
   try {
-    expect(view.find('.abele-path-label__path').text().length).toBeLessThanOrEqual(28)
+    expect(view.find('.abele-not-synced__meta').text()).toBe(
+      'Projects/Research/Collected material/Long working folder · changed while it was being placed · since Jan 1'
+    )
+    expect(view.findComponent(PathLabel).exists()).toBe(false)
   } finally {
     view.unmount()
     Reflect.set(Platform, 'isMobile', saved)
@@ -73,8 +80,13 @@ it('hides an empty list and exposes its unreadable state', async () => {
   const view = mount(NotSyncedBlock, { props: { items: [] } })
   expect(view.text()).toBe('')
   await view.setProps({ error: true, items: [item] })
-  expect(view.find('[role=alert]').text()).toContain("Couldn't read")
+  expect(view.find('[role=alert]').text()).toContain('Could not read')
   expect(view.findAll('.abele-not-synced__row')).toHaveLength(0)
+  view.unmount()
+})
+it.each(['', 'invalid', '1970-01-01T00:00:00Z'])('omits an unavailable since date: %s', (since) => {
+  const view = mount(NotSyncedBlock, { props: { items: [{ ...item, since }] } })
+  expect(view.find('.abele-not-synced__meta').text()).toBe('Notes')
   view.unmount()
 })
 it('renders a thousand-entry group in bounded pages and retries the selected row', async () => {

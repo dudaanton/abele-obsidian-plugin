@@ -3743,7 +3743,7 @@ export const en = {
   },
   'sync.notSynced.title': 'Not synced · {count}',
   'sync.notSynced.titleBare': 'Not synced',
-  'sync.notSynced.unreadable': "Couldn't read the list of files that aren't synced.",
+  'sync.notSynced.unreadable': "Could not read the list of files that are not synced.",
   'sync.notSynced.out': 'On this device, not sent',
   'sync.notSynced.in': 'On your other devices, not placed here',
   'sync.notSynced.reveal': 'Show in system explorer',
