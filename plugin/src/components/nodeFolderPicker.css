@@ -10,7 +10,8 @@
   text-overflow: ellipsis;
 }
 .abele-node-folder-choice .suggestion-aux {
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
   max-width: 40%;
   overflow: hidden;
 }
