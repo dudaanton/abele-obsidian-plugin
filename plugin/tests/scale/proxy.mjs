@@ -1,5 +1,5 @@
-import { createServer, request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
+import { Agent as HttpAgent, createServer, request as httpRequest } from 'node:http'
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https'
 import { EventEmitter } from 'node:events'
 import * as compression from 'node:zlib'
 
@@ -8,6 +8,10 @@ export class WireProxy extends EventEmitter {
   constructor(upstream, device) {
     super()
     this.upstream = new URL(upstream)
+    this.agent =
+      this.upstream.protocol === 'https:'
+        ? new HttpsAgent({ keepAlive: true })
+        : new HttpAgent({ keepAlive: true })
     this.device = device
     this.events = []
     this.active = new Map()
@@ -122,85 +126,93 @@ export class WireProxy extends EventEmitter {
           entry.contentCommit = false
         }
       })
-    const upstream = send(target, { method: req.method, headers }, (response) => {
-      const batchCandidate =
-        this.breakpoint === 'batch' && url.pathname === '/v2/commit' && entry.contentCommit
-      const matches =
-        (this.breakpoint === 'comparison' && /\/(manifest|changes)$/.test(url.pathname)) ||
-        (this.breakpoint === 'pull' && /\/content$/.test(url.pathname))
-      if (matches) {
-        const kind = this.breakpoint
-        this.breakpoint = null
-        response.pause()
-        this.held = () => response.pipe(res)
-        this.record({ event: 'trigger', kind, id })
-      }
-      res.writeHead(response.statusCode, response.headers)
-      let received = 0
-      const metadata = []
-      response.on('data', (chunk) => {
-        received += chunk.length
-        if (
-          (url.pathname === '/v2/commit' ||
-            url.pathname === '/v2/manifest' ||
-            url.pathname === '/v2/changes') &&
-          received <= 16 * 1024 ** 2
-        )
-          metadata.push(chunk)
-      })
-      response.on('end', () => {
-        let heldBatch = false
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          try {
-            let decoded = Buffer.concat(metadata)
-            if (metadata.length) {
-              const decoders = {
-                gzip: compression.gunzipSync,
-                deflate: compression.inflateSync,
-                br: compression.brotliDecompressSync,
-                zstd: compression.zstdDecompressSync,
-              }
-              for (const encoding of String(response.headers['content-encoding'] ?? 'identity')
-                .split(',')
-                .map((value) => value.trim())
-                .reverse()) {
-                if (encoding === 'identity') continue
-                if (!decoders[encoding]) throw new Error('Unsupported metadata encoding')
-                decoded = decoders[encoding](decoded, { maxOutputLength: 16 * 1024 ** 2 })
-              }
-            }
-            const json = metadata.length ? JSON.parse(decoded.toString()) : null
-            if (url.pathname === '/v2/commit') {
-              const ops = JSON.parse(Buffer.concat(body).toString()).ops
-              for (const op of ops) if (op.sha) this.markOwned(op.sha, id)
-              for (const result of json.results)
-                if (result.version_id && result.sha)
-                  this.versions.set(result.version_id, result.sha)
-              if (
-                batchCandidate &&
-                this.breakpoint === 'batch' &&
-                json.results.some((result) => result.status === 'applied' && result.sha)
-              ) {
-                this.breakpoint = null
-                this.held = () => res.end(Buffer.concat(metadata))
-                heldBatch = true
-                this.record({ event: 'trigger', kind: 'batch', id, serverApplied: true })
-              }
-            }
-            for (const item of json?.items ?? []) {
-              const file = item.item ?? item
-              if (file.version_id && file.sha) this.versions.set(file.version_id, file.sha)
-            }
-          } catch {
-            this.record({ event: 'unparsed-metadata', id })
-          }
+    const upstream = send(
+      target,
+      { method: req.method, headers, agent: this.agent },
+      (response) => {
+        // Node decides framing before its HEAD no-body rule. Without Content-Length
+        // it disables reuse even when the server explicitly keeps the socket alive.
+        if (req.method === 'HEAD' && /\bkeep-alive\b/i.test(response.headers.connection ?? ''))
+          upstream.shouldKeepAlive = true
+        const batchCandidate =
+          this.breakpoint === 'batch' && url.pathname === '/v2/commit' && entry.contentCommit
+        const matches =
+          (this.breakpoint === 'comparison' && /\/(manifest|changes)$/.test(url.pathname)) ||
+          (this.breakpoint === 'pull' && /\/content$/.test(url.pathname))
+        if (matches) {
+          const kind = this.breakpoint
+          this.breakpoint = null
+          response.pause()
+          this.held = () => response.pipe(res)
+          this.record({ event: 'trigger', kind, id })
         }
-        this.record({ event: 'finish', id, status: response.statusCode, bytes: received })
-        if (batchCandidate && !heldBatch) res.end(Buffer.concat(metadata))
-      })
-      response.on('error', () => res.destroy())
-      if (!matches && !batchCandidate) response.pipe(res)
-    })
+        res.writeHead(response.statusCode, response.headers)
+        let received = 0
+        const metadata = []
+        response.on('data', (chunk) => {
+          received += chunk.length
+          if (
+            (url.pathname === '/v2/commit' ||
+              url.pathname === '/v2/manifest' ||
+              url.pathname === '/v2/changes') &&
+            received <= 16 * 1024 ** 2
+          )
+            metadata.push(chunk)
+        })
+        response.on('end', () => {
+          let heldBatch = false
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            try {
+              let decoded = Buffer.concat(metadata)
+              if (metadata.length) {
+                const decoders = {
+                  gzip: compression.gunzipSync,
+                  deflate: compression.inflateSync,
+                  br: compression.brotliDecompressSync,
+                  zstd: compression.zstdDecompressSync,
+                }
+                for (const encoding of String(response.headers['content-encoding'] ?? 'identity')
+                  .split(',')
+                  .map((value) => value.trim())
+                  .reverse()) {
+                  if (encoding === 'identity') continue
+                  if (!decoders[encoding]) throw new Error('Unsupported metadata encoding')
+                  decoded = decoders[encoding](decoded, { maxOutputLength: 16 * 1024 ** 2 })
+                }
+              }
+              const json = metadata.length ? JSON.parse(decoded.toString()) : null
+              if (url.pathname === '/v2/commit') {
+                const ops = JSON.parse(Buffer.concat(body).toString()).ops
+                for (const op of ops) if (op.sha) this.markOwned(op.sha, id)
+                for (const result of json.results)
+                  if (result.version_id && result.sha)
+                    this.versions.set(result.version_id, result.sha)
+                if (
+                  batchCandidate &&
+                  this.breakpoint === 'batch' &&
+                  json.results.some((result) => result.status === 'applied' && result.sha)
+                ) {
+                  this.breakpoint = null
+                  this.held = () => res.end(Buffer.concat(metadata))
+                  heldBatch = true
+                  this.record({ event: 'trigger', kind: 'batch', id, serverApplied: true })
+                }
+              }
+              for (const item of json?.items ?? []) {
+                const file = item.item ?? item
+                if (file.version_id && file.sha) this.versions.set(file.version_id, file.sha)
+              }
+            } catch {
+              this.record({ event: 'unparsed-metadata', id })
+            }
+          }
+          this.record({ event: 'finish', id, status: response.statusCode, bytes: received })
+          if (batchCandidate && !heldBatch) res.end(Buffer.concat(metadata))
+        })
+        response.on('error', () => res.destroy())
+        if (!matches && !batchCandidate) response.pipe(res)
+      }
+    )
     upstream.on('error', () => res.destroy())
     req.on('error', () => upstream.destroy())
     req.on('aborted', () => upstream.destroy())
@@ -250,6 +262,7 @@ export class WireProxy extends EventEmitter {
     ).length
   }
   async close() {
+    this.agent.destroy()
     for (const socket of this.sockets ?? []) socket.destroy()
     await new Promise((resolve) => this.server.close(resolve))
   }
