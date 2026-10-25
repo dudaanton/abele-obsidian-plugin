@@ -372,7 +372,7 @@ async function refreshStatus() {
           const providers = nodeProviders(await description).filter(
             (provider) => provider.available !== false
           )
-          const modes = providers.flatMap(
+          const modes = providers.map(
             (provider) =>
               provider.configuration?.permission_modes ?? provider.permission_modes ?? []
           )
@@ -380,7 +380,11 @@ async function refreshStatus() {
             nodeScopeKey(entry),
             {
               connected: connection.client.connected,
-              bypass: modes.length ? modes.includes('bypassPermissions') : undefined,
+              bypass: modes.some((value) => value.length)
+                ? modes
+                    .filter((value) => value.length)
+                    .every((value) => value.includes('bypassPermissions'))
+                : undefined,
             },
           ]
         } catch {

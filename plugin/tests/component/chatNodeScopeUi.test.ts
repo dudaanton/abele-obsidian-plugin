@@ -282,6 +282,11 @@ describe('node scope beside vault scope and in the header', () => {
                 configuration: { permission_modes: ['manual'] },
               },
               {
+                provider: 'acp',
+                available: true,
+                configuration: { permission_modes: ['manual', 'bypassPermissions'] },
+              },
+              {
                 provider: 'pi',
                 available: false,
                 configuration: { permission_modes: ['manual', 'bypassPermissions'] },
