@@ -127,3 +127,59 @@ export function requireHealthySnapshot(snapshot) {
   if (snapshot?.rows?.some((row) => row.status === 'error'))
     throw new Error('Fatal sync state; see retained snapshot')
 }
+
+export function uploadRecoveryMetrics(
+  events,
+  startedAt,
+  { untilAt = Infinity, device = '0' } = {}
+) {
+  const observed = Number.isFinite(startedAt)
+  const result = {
+    observed,
+    firstRequestMs: null,
+    firstUploadMs: null,
+    firstPayloadPutMs: null,
+    headRequestsSeen: observed ? 0 : null,
+    headRequestsBeforeUpload: null,
+    headStatusesBeforeUpload: null,
+  }
+  if (!observed) return result
+  const heads = [],
+    finishes = new Map()
+  const first = (field, at) => {
+    result[field] = Math.min(result[field] ?? Infinity, at - startedAt)
+  }
+  for (const event of events) {
+    if (event.device !== device || event.at < startedAt || event.at >= untilAt) continue
+    if (event.event === 'finish') finishes.set(event.id, event.status)
+    if (event.event !== 'start') continue
+    first('firstRequestMs', event.at)
+    if (event.method === 'HEAD' && /^\/v2\/uploads\//.test(event.route)) {
+      heads.push(event)
+      result.headRequestsSeen++
+    }
+    const upload = /^\/v2\/uploads\//.test(event.route)
+    if (['PUT', 'POST'].includes(event.method) && (upload || event.contentCommit))
+      first('firstUploadMs', event.at)
+    if (event.method === 'PUT' && upload && event.sent > 0) first('firstPayloadPutMs', event.at)
+  }
+  if (result.firstUploadMs !== null) {
+    const before = heads.filter((event) => event.at - startedAt < result.firstUploadMs)
+    result.headRequestsBeforeUpload = before.length
+    const statuses = { present: 0, absent: 0, other: 0, incomplete: 0 }
+    for (const event of before) {
+      const status = finishes.get(event.id)
+      statuses[
+        status === undefined
+          ? 'incomplete'
+          : status === 200
+            ? 'present'
+            : status === 404
+              ? 'absent'
+              : 'other'
+      ]++
+    }
+    result.headStatusesBeforeUpload = statuses
+  }
+  return result
+}

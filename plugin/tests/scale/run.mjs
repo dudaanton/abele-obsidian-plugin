@@ -42,6 +42,7 @@ import {
   activeRequestIds,
   recoveryTimings,
   requireHealthySnapshot,
+  uploadRecoveryMetrics,
 } from './progress.mjs'
 import {
   compareInventory,
@@ -894,6 +895,10 @@ export async function run(config) {
         0
       )
       report.wire = proxies.flatMap((proxy) => proxy.events)
+      const resumeIndex = report.phases.findIndex((phase) => phase.name === 'resume upload')
+      report.uploadRecovery = uploadRecoveryMetrics(report.wire, report.phases[resumeIndex]?.at, {
+        untilAt: report.phases[resumeIndex + 1]?.at ?? Infinity,
+      })
       report.phaseTimings = phaseTimings(report.phases)
       report.recoveryTimings = recoveryTimings(
         report.interruptions,
