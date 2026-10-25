@@ -93,7 +93,7 @@ async function exercise(label: string, plain: boolean) {
       `(()=>{window.__sampleNodeActionTurn=${nodeAgentTurn(chat, `[()=>({name:'node_write',params:{path:'sample-approval.txt',expected_content_id:null,text:'approved text'}})]`)};return true})()`
     )
     await evalLong(
-      `(async()=>{for(let i=0;i<200;i++){if(document.querySelector('.abele-tool-approval'))return;await new Promise(r=>setTimeout(r,50))}throw Error('File approval missing')})()`
+      `(async()=>{for(let i=0;i<200;i++){if([...document.querySelectorAll('.abele-tool-approval button')].some(b=>b.textContent.trim()==='Allow'))return;await new Promise(r=>setTimeout(r,50))}throw Error('File approval missing')})()`
     )
     columnShot(`${shots}/${label}-ask.png`)
     expect(

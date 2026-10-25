@@ -4,7 +4,9 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
-import { evalRaw } from './helpers/obsidianCli'
+import { enterPhone, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { columnShot } from './helpers/columnShots'
+import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 targets('desktop')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -43,7 +45,7 @@ const NODE_TOOLS = [
   'node_propose_edit',
 ]
 
-it('lets an ordinary chat find, read and edit project files on a node once the chat has node access', async () => {
+async function exercise(label: string) {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
   mkdirSync('../.scratch', { recursive: true })
@@ -168,6 +170,7 @@ it('lets an ordinary chat find, read and edit project files on a node once the c
     expect(withAccess.calls[3].result, JSON.stringify(withAccess)).toContain('second line')
     expect(withAccess.calls[4].result, JSON.stringify(withAccess)).toMatch(/saved/)
     expect(readFileSync(resolve(repo, 'sample.txt'), 'utf8')).toBe('first line\nedited line\n')
+    columnShot(`${shotDir('abele-node-agent-files')}/${label}.png`)
   } finally {
     evalRaw(`(async()=>{
       const T=window.__abeleTest,chats=T.ChatService.getInstance(),s=chats.getSessionByFile(${JSON.stringify(chat)});
@@ -184,4 +187,14 @@ it('lets an ordinary chat find, read and edit project files on a node once the c
     }
     rmSync(dir, { recursive: true, force: true })
   }
-}, 120000)
+}
+
+it('lets an ordinary chat find, read and edit project files on a node once the chat has node access', async () => {
+  await exercise('desktop')
+  try {
+    await enterPhone()
+    await exercise('phone-emulated')
+  } finally {
+    await reloadApp('app.emulateMobile(false)')
+  }
+}, 240000)

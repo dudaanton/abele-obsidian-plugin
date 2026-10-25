@@ -75,6 +75,13 @@ it('emits parseable model SSE and restores fetch after a scripted vault turn', a
   ).toEqual({ name: 'node_read', arguments: '{"path":"sample.txt"}' })
   expect(streams[1]).toContain('"content":"Done."')
   expect(browser.fetch).toBe(originalFetch)
+  await new Function(
+    'window',
+    `return ${nodeAgentTurn('Sample.abchat', "[()=>({name:'node_read',params:{path:'sample.txt'}})]")}`
+  )(browser)
+  const callId = (stream: string) =>
+    JSON.parse(stream.split('\n\n')[0].slice(6)).choices[0].delta.tool_calls[0].id
+  expect(callId(streams[2])).not.toBe(callId(streams[0]))
 })
 
 it.each([false, true])(
