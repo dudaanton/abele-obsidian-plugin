@@ -23,6 +23,21 @@ import { WireProxy } from '../scale/proxy.mjs'
 import { RealVault } from '../scale/run.mjs'
 
 describe('scale harness independent guarantees', () => {
+  for (const active of [0, 1]) {
+    it(`stops request-boundary waits on a fatal state with ${active} active requests`, async () => {
+      const vault = new RealVault({ vaults: ['/sample-vault'] }, '/sample-vault')
+      const snapshot = { rows: [{ status: 'error' }], engines: [{ lastError: 'sample conflict' }] }
+      vault.snapshot = async () => snapshot
+      await expect(
+        vault.inFlight(
+          { active: new Set(Array.from({ length: active }, (_, i) => i)) },
+          'request',
+          500
+        )
+      ).rejects.toMatchObject({ scaleFatalSnapshot: snapshot, scaleFatalDevice: 0 })
+    })
+  }
+
   it('records the pause invocation time separately from the controller observation boundary', async () => {
     const vault = new RealVault({}, '/sample-vault')
     const window = {},

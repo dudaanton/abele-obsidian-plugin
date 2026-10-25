@@ -164,6 +164,26 @@ export class RealVault {
       `${host}return !u?null:{job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
+  async inFlight(proxy, label, timeout = this.config.timeoutMs) {
+    let nextHealthCheck = 0
+    return wait(
+      label,
+      async () => {
+        if (Date.now() >= nextHealthCheck) {
+          const snapshot = await this.snapshot()
+          try {
+            requireHealthySnapshot(snapshot)
+          } catch (error) {
+            error.scaleFatalDevice = this.config.vaults?.indexOf(this.root)
+            throw error
+          }
+          nextHealthCheck = Date.now() + 2000
+        }
+        return proxy.active.size > 0
+      },
+      timeout
+    )
+  }
   async policy() {
     return this.evaluate(
       `${host}const v=app.vault;return {configDir:v.configDir,selective:u.registry.records()[0]?.selective,ignoreText:await v.adapter.exists('.abele-sync-ignore')?await v.adapter.read('.abele-sync-ignore'):null}`
@@ -701,13 +721,13 @@ export async function run(config) {
     mark('quit during comparison')
     await start()
     phase('network and plugin interruption')
-    await wait('network interruption in flight', () => p.active.size > 0, config.timeoutMs)
+    await a.inFlight(p, 'network interruption in flight')
     p.drop()
     mark('network drop')
     await sleep(2000)
     p.offline = false
     await a.sync()
-    await wait('plugin interruption in flight', () => p.active.size > 0, config.timeoutMs)
+    await a.inFlight(p, 'plugin interruption in flight')
     await a.invalidateJob()
     report.pluginDisable = await a.pluginEnabled(false)
     report.pluginEnable = await a.pluginEnabled(true)
@@ -868,6 +888,12 @@ export async function run(config) {
       report.failure = 'Device settle checks failed; byte evidence was still collected'
     phase('complete')
   } catch (error) {
+    if (error.scaleFatalSnapshot && Number.isInteger(error.scaleFatalDevice))
+      report.failures.push({
+        device: String(error.scaleFatalDevice),
+        step: report.phase,
+        snapshot: error.scaleFatalSnapshot,
+      })
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.cliFailure = error.scaleCliFailure
     report.failure =
