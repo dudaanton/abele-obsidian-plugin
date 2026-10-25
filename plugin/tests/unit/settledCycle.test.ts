@@ -10,6 +10,92 @@ import {
 import { AbeleError, VaultSettingsSchema } from '@abele/sync-sdk/protocol'
 import { FileRetries } from '../../node_modules/@abele/sync-sdk/dist/internal/core/fileRetry.js'
 
+it('expires an unchanged watched proof from its last ordinary inspection, despite frequent cycles', async () => {
+  let now = 1000
+  const fs = Object.assign(new MemoryFileSystem(), {
+    [Symbol.for('abele.sync.local-scan-revision-v1')]: () => 'sample-revision',
+  })
+  const state = new MemoryStateStore()
+  const path = 'Notes/sample.bin'
+  const initial = new Uint8Array([1]),
+    changed = new Uint8Array([2])
+  await fs.writeAtomic(path, initial, 1000)
+  await state.put({
+    path,
+    wirePath: path,
+    fileId: 'sample',
+    versionId: 'initial',
+    sha: await sha256(initial),
+    size: 1,
+    mtime: 1000,
+  })
+  await state.setCursor(1)
+  const list = vi.spyOn(fs, 'list')
+  let head = 1
+  const commitRaw = vi.fn(async () => {
+    head = 2
+    return {
+      replayed: false,
+      body: {
+        head_seq: head,
+        results: [
+          {
+            status: 'applied',
+            file_id: 'sample',
+            version_id: 'changed',
+            path,
+            sha: await sha256(changed),
+            size: 1,
+            mtime: 1000,
+            kind: 'attachment',
+          },
+        ],
+      },
+    }
+  })
+  const client = {
+    state: async () => ({ head_seq: head, settings: VaultSettingsSchema.parse({}), usage: {} }),
+    changes: async () => ({ items: [], head_seq: head, next_since: head }),
+    subscribe: () => () => {},
+    hasBlob: async () => false,
+    putBlob: async () => {},
+    commitRaw,
+  } as unknown as EngineClient
+  const engine = new SyncEngine({
+    fs,
+    state,
+    client,
+    selective: selectiveDefaults(),
+    now: () => now,
+  })
+  try {
+    engine.start()
+    await Reflect.get(engine, 'running')
+    list.mockClear()
+    // Simulate an unobservable writer: same length and date, no event/revision change.
+    await fs.writeAtomic(path, changed, 1000)
+    for (let i = 0; i < 5; i++) {
+      now += 10000
+      await engine.sync()
+      expect(list).not.toHaveBeenCalled()
+      expect(commitRaw).not.toHaveBeenCalled()
+    }
+    now += 10000
+    await engine.sync()
+    expect(list).toHaveBeenCalled()
+    expect(commitRaw).toHaveBeenCalledOnce()
+    expect((await state.get(path))?.sha).toBe(await sha256(changed))
+    list.mockClear()
+    await engine.sync()
+    expect(list).not.toHaveBeenCalled()
+    now -= 1
+    await engine.sync()
+    expect(list).toHaveBeenCalled()
+  } finally {
+    await engine.stop()
+  }
+})
+
 it('leaves a stable size refusal waiting without scheduling another whole cycle', async () => {
   const state = new MemoryStateStore()
   const retries = new FileRetries(

@@ -117,7 +117,9 @@ export function syncPlacementPlugin() {
         const entryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
         const directoryRevision = await state.getMeta?.('v2-directories');
         const waiting = this.retries.list();
+        const inspectionAge = this.ctx.now() - this.settledInspectionAt;
         const unchanged = localRevision !== undefined && entryRevision !== undefined &&
+          Number.isFinite(inspectionAge) && inspectionAge >= 0 && inspectionAge < 60_000 &&
           priorSettledLocalRevision === localRevision && priorSettledEntryRevision === entryRevision && this.settledDirectoryRevision === directoryRevision;
         const sizeWait = row => row.phase === 'push' && !row.local && row.nextAt > 0 && row.reason.startsWith('too_large:');
         if (unchanged && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
@@ -153,6 +155,9 @@ export function syncPlacementPlugin() {
           this.settledLocalRevision = localRevision;
           this.settledEntryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
           this.settledCollisions = found.collisions;
+          // Only an ordinary inspection renews the deadline. Frequent feed/idle cycles
+          // cannot extend trust in watcher coverage; a backwards clock expires it too.
+          this.settledInspectionAt = this.ctx.now();
         }
         return {
             pull: before,`

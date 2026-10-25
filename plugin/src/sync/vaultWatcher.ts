@@ -23,7 +23,7 @@ export interface WatchHost {
   /** How often the config folder is polled. */
   pollMs: number
   configDir: string
-  /** path → `size:mtime` for the config folder and the ignore file. */
+  /** path → fresh metadata/object identity for the config folder and ignore file. */
   snapshot: () => Promise<Map<string, string>>
 }
 

@@ -2535,7 +2535,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.yielded.delete(info.path)
       return info
     }
-    const seen = `${info.size}:${info.mtime}`
+    const seen = (await this.fileSnapshot(info.path)) ?? 'absent'
     if (listed) this.yielded.set(info.path, seen)
     else if ((this.yielded.get(info.path) ?? seen) !== seen) return info
     return { ...info, mtime: 0 }
@@ -3487,11 +3487,11 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /**
-   * path → `size:mtime` for the whole config folder and the vault's ignore file, which is what
-   * a poll compares.
+   * Poll the same metadata/object identity used by normal fingerprints. Native metadata
+   * change time additionally detects in-place writes that restore their modification time.
    *
-   * The ignore file costs one `stat` a tick and is the only way an edit to it is ever reported:
-   * it is neither in the file index nor under the config folder.
+   * The ignore file is polled explicitly: it is neither in the file index nor under
+   * the config folder, so no vault event reports an external edit to it.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
     if (this.configPolled) {
@@ -3504,8 +3504,8 @@ export class ObsidianFileSystem implements FileSystem {
     const taken = new Map<string, string>()
     if (this.scopedRoot() || this.discovery) {
       this.configPolled = true
-      const ignore = await this.stat(IGNORE_FILE)
-      if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
+      const ignore = await this.fileSnapshot(IGNORE_FILE)
+      if (ignore !== null) taken.set(IGNORE_FILE, ignore)
       return taken
     }
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
@@ -3517,11 +3517,39 @@ export class ObsidianFileSystem implements FileSystem {
     }
     this.configPolled = true
     for (const info of this.configInventory) {
-      taken.set(info.path, `${info.size}:${info.mtime}`)
+      const signature = await this.fileSnapshot(info.path)
+      if (signature !== null) taken.set(info.path, signature)
     }
-    const ignore = await this.stat(IGNORE_FILE)
-    if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
+    const ignore = await this.fileSnapshot(IGNORE_FILE)
+    if (ignore !== null) taken.set(IGNORE_FILE, ignore)
     return taken
+  }
+
+  /** Fresh facts, never index/listing hints or wire-rounded dates. Shared with config
+   * yield observations so an equal-length replacement cannot keep an old baseline.
+   */
+  private async fileSnapshot(path: string): Promise<string | null> {
+    const stat = await this.rawStat(path)
+    if (stat?.type !== 'file') return null
+    // The ignore file is host metadata, deliberately outside the public file port.
+    const readIdentity = () =>
+      path === IGNORE_FILE ? this.native?.fileIdentity?.(path) : this.fileIdentity?.(path)
+    const identity = await readIdentity()
+    const changed = await retainedFileStat(this.disk, path)
+    if (changed?.type !== 'file') return null
+    const after = await this.rawStat(path)
+    if (
+      !after ||
+      after.type !== 'file' ||
+      stat.size !== after.size ||
+      stat.mtime !== after.mtime ||
+      stat.ctime !== after.ctime ||
+      changed.size !== after.size ||
+      changed.mtime !== after.mtime ||
+      identity !== (await readIdentity())
+    )
+      throw new EngineError('conflict', 'File changed while polling metadata')
+    return JSON.stringify([stat.size, stat.mtime, stat.ctime, identity ?? null, changed.ctime])
   }
   private async readConfigInventory(): Promise<FileInfo[]> {
     const files: FileInfo[] = []

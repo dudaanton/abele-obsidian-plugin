@@ -159,11 +159,13 @@ it.each(['pull', 'upload'] as const)(
         subscribe: () => () => {},
       } as unknown as EngineClient
       let completed: import('@abele/sync-sdk/core').SyncReport | undefined
+      let now = 1000
       engine = new SyncEngine({
         fs: coreFs,
         state,
         client,
         selective: selectiveDefaults(),
+        now: () => now,
         onSync: (report) => {
           completed = report
         },
@@ -181,6 +183,20 @@ it.each(['pull', 'upload'] as const)(
       expect(probes).toBeLessThan(128)
       expect(reads).toBe(0)
       expect(performance.now() - started).toBeLessThan(5000)
+
+      now += 60000
+      probes = reads = 0
+      const inspectionStart = performance.now()
+      await engine.sync()
+      console.log('native periodic inspection', {
+        probes,
+        reads,
+        ms: performance.now() - inspectionStart,
+      })
+      expect(probes).toBeGreaterThan(count)
+      expect(reads).toBe(0)
+      expect(performance.now() - inspectionStart).toBeLessThan(5000)
+      expect(engine.status.state).toBe('idle')
 
       let since = 0
       const changes = Array.from({ length: 34000 }, (_, i) => ({
