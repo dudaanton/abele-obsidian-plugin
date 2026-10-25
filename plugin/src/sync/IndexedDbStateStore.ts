@@ -135,7 +135,34 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private committed: Promise<void> = Promise.resolve()
   // Bounded evidence of this connection's intervening commits. Unknown/other-connection
   // revisions are never guessed independent: those transactions restart from fresh reads.
-  private readonly recentWrites = new Map<number, { key: string | null; owner: string }>()
+  private readonly recentWrites = new Map<
+    number,
+    { key: string | null; owner: string; entries: boolean }
+  >()
+  private scanStateRevision = 0
+  private scanStateReadRevision: number | undefined
+
+  /** Only committed entry writes retire a local scan. Unknown writers retire it conservatively. */
+  async [Symbol.for('abele.sync.local-scan-state-revision-v1')](): Promise<number | undefined> {
+    this.assertRecovery()
+    const revision = (await this.metaValue('revision')) ?? 0
+    if (typeof revision !== 'number' || !Number.isSafeInteger(revision)) return undefined
+    const previous = this.scanStateReadRevision
+    this.scanStateReadRevision = revision
+    if (previous !== undefined && previous !== revision) {
+      let changed = revision < previous || revision - previous > this.recentWrites.size
+      if (!changed)
+        for (let at = previous + 1; at <= revision; at++) {
+          const write = this.recentWrites.get(at)
+          if (!write || write.entries) {
+            changed = true
+            break
+          }
+        }
+      if (changed) this.scanStateRevision++
+    }
+    return this.scanStateRevision
+  }
 
   /** Status writes follow engine overlays, but are not file-effect overlays themselves.
    * External phases may proceed: they CAS their own document and never consume this projection.
@@ -273,6 +300,60 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       wait<StateEntry[]>(tx.objectStore(ENTRIES).index(BY_FILE_ID).getAll(fileId))
     )
     return copyEntry(rows[0])
+  }
+
+  /** A feed page asks for its identities together, never one native transaction per lookup. */
+  async [Symbol.for('abele.sync.feed-entries-v1')](
+    ids: readonly string[],
+    signal?: AbortSignal
+  ): Promise<StateEntry[]> {
+    this.assertRecovery()
+    const result: StateEntry[] = []
+    const budget = new SyncTaskBudget()
+    for (let offset = 0; offset < ids.length; offset += 512) {
+      signal?.throwIfAborted()
+      const rows = await this.read('cannot read feed ledger entries', [ENTRIES], async (tx) => {
+        const index = tx.objectStore(ENTRIES).index(BY_FILE_ID)
+        return Promise.all(
+          ids.slice(offset, offset + 512).map((id) => wait<StateEntry | undefined>(index.get(id)))
+        )
+      })
+      for (const row of rows) if (row) result.push({ ...row })
+      await budget.account(8192, signal)
+    }
+    return result
+  }
+
+  /** Read only the current feed page's ordering proofs; retain no cross-page snapshot. */
+  async [Symbol.for('abele.sync.feed-metadata-v1')](
+    keys: readonly string[],
+    signal?: AbortSignal
+  ): Promise<Map<string, string | null>> {
+    return this.feedMetadata(keys, signal)
+  }
+  private async feedMetadata(
+    keys: readonly string[],
+    signal?: AbortSignal
+  ): Promise<Map<string, string | null>> {
+    this.assertRecovery()
+    const result = new Map<string, string | null>()
+    const budget = new SyncTaskBudget()
+    for (let offset = 0; offset < keys.length; offset += 1024) {
+      signal?.throwIfAborted()
+      const names = keys.slice(offset, offset + 1024)
+      const rows = await this.read('cannot read feed metadata', [META], async (tx) =>
+        Promise.all(
+          names.map((name) => wait<MetaRow | undefined>(tx.objectStore(META).get(own(name))))
+        )
+      )
+      for (const [i, row] of rows.entries()) {
+        if (row && typeof row.value !== 'string')
+          throw new EngineError('io', 'Invalid feed metadata')
+        result.set(names[i], row ? (row.value as string) : null)
+      }
+      await budget.account(8192, signal)
+    }
+    return result
   }
 
   async *pathCandidates(
@@ -643,11 +724,13 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     const revision = (await this.metaValue('revision')) ?? 0
     const reads = new Set<string>()
     const prefixes = new Set<string>()
+    const prefetched = new Map<string, string | null>()
     const parent = new Proxy(this, {
       get: (target, key) => {
         if (key === 'getMeta')
           return (name: string) => {
             reads.add(own(name))
+            if (prefetched.has(name)) return Promise.resolve(prefetched.get(name))
             return target.getMeta(name)
           }
         if (key === 'metadataKeys')
@@ -669,11 +752,27 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       const rows = await Promise.all(paths.map((path) => this.get(path)))
       return rows.filter((row): row is StateEntry => row !== null)
     })
+    let prefetchOpen = true
+    Object.defineProperty(scoped, Symbol.for('abele.sync.feed-metadata-v1'), {
+      configurable: true,
+      value: async (keys: readonly string[], signal?: AbortSignal) => {
+        if (!prefetchOpen) throw new EngineError('conflict', 'state transaction handle has expired')
+        const rows = await this.feedMetadata(keys, signal)
+        if (!prefetchOpen) throw new EngineError('conflict', 'state transaction handle has expired')
+        // These are ordinary transaction reads: an overlapping writer forces a fresh retry.
+        for (const [key, value] of rows) {
+          reads.add(own(key))
+          prefetched.set(key, value)
+        }
+        return rows
+      },
+    })
     // Keep acknowledgements separate so caller handles expire before any flush awaits.
     const acknowledgements = new StateTransaction(this)
     try {
       const result = await fn(scoped)
       scoped.acknowledgeThrough(acknowledgements)
+      prefetchOpen = false
       scoped.close()
       const overlay = newOverlay()
       for (const mutation of scoped.mutations) {
@@ -703,6 +802,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       )
       return result
     } finally {
+      prefetchOpen = false
       scoped.close()
       acknowledgements.close()
       this.normalizationCache?.clear()
@@ -717,50 +817,56 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     prefixes: Set<string>,
     owner: string
   ): Promise<void> {
-    await this.write('cannot commit the state transaction', [ENTRIES, META], async (tx) => {
-      const meta = tx.objectStore(META)
-      const current = await wait<MetaRow | undefined>(meta.get('revision'))
-      const latest = current?.value ?? 0
-      if (latest !== revision) {
-        let independent =
-          typeof revision === 'number' &&
-          typeof latest === 'number' &&
-          latest > revision &&
-          latest - revision <= this.recentWrites.size
-        if (independent) {
-          for (let at = Number(revision) + 1; at <= Number(latest); at++) {
-            const write = this.recentWrites.get(at)
-            if (
-              !write?.key ||
-              reads.has(write.key) ||
-              overlay.meta.has(write.key) ||
-              [...prefixes].some((prefix) => write.key?.startsWith(prefix))
-            ) {
-              independent = false
-              break
+    await this.write(
+      'cannot commit the state transaction',
+      [ENTRIES, META],
+      async (tx) => {
+        const meta = tx.objectStore(META)
+        const current = await wait<MetaRow | undefined>(meta.get('revision'))
+        const latest = current?.value ?? 0
+        if (latest !== revision) {
+          let independent =
+            typeof revision === 'number' &&
+            typeof latest === 'number' &&
+            latest > revision &&
+            latest - revision <= this.recentWrites.size
+          if (independent) {
+            for (let at = Number(revision) + 1; at <= Number(latest); at++) {
+              const write = this.recentWrites.get(at)
+              if (
+                !write?.key ||
+                reads.has(write.key) ||
+                overlay.meta.has(write.key) ||
+                [...prefixes].some((prefix) => write.key?.startsWith(prefix))
+              ) {
+                independent = false
+                break
+              }
             }
           }
+          if (!independent) {
+            throw new RevisionConflict(owner, current?.owner ?? 'unknown connection')
+          }
+          // Only disjoint plugin metadata changed. Apply the original overlay to the current
+          // database, preserving acknowledged receipts without replaying any file effects.
         }
-        if (!independent) {
-          throw new RevisionConflict(owner, current?.owner ?? 'unknown connection')
+        // Deletes first. One path holds one word in the overlay, so no key is both — but a row
+        // that has to go before another can take its `fileId` is the invariant `put` keeps, and
+        // this order is what keeps it if an index is ever declared unique.
+        for (const [path, entry] of overlay.entries) {
+          if (entry === null) await deleteEntry(tx, path)
         }
-        // Only disjoint plugin metadata changed. Apply the original overlay to the current
-        // database, preserving acknowledged receipts without replaying any file effects.
-      }
-      // Deletes first. One path holds one word in the overlay, so no key is both — but a row
-      // that has to go before another can take its `fileId` is the invariant `put` keeps, and
-      // this order is what keeps it if an index is ever declared unique.
-      for (const [path, entry] of overlay.entries) {
-        if (entry === null) await deleteEntry(tx, path)
-      }
-      for (const entry of overlay.entries.values()) {
-        if (entry !== null) await putEntry(tx, entry)
-      }
-      for (const [key, value] of overlay.meta) {
-        if (value === null) await wait(meta.delete(key))
-        else await wait(meta.put({ key, value } satisfies MetaRow))
-      }
-    })
+        for (const entry of overlay.entries.values()) {
+          if (entry !== null) await putEntry(tx, entry)
+        }
+        for (const [key, value] of overlay.meta) {
+          if (value === null) await wait(meta.delete(key))
+          else await wait(meta.put({ key, value } satisfies MetaRow))
+        }
+      },
+      null,
+      overlay.entries.size > 0
+    )
   }
 
   /** The paths of the rows the database holds under this entry's keys, for the keys asked about. */
@@ -826,7 +932,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     what: string,
     stores: string[],
     fn: (tx: IDBTransaction) => Promise<T>,
-    metadataKey: string | null = null
+    metadataKey: string | null = null,
+    entriesChanged = stores.includes(ENTRIES)
   ): Promise<T> {
     const owner = new Error(what).stack ?? what
     if (stores.includes(ENTRIES)) this.entrySnapshot = null
@@ -853,7 +960,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         throw asEngineError(what, cause)
       }
       await done
-      this.recentWrites.set(revision, { key: metadataKey, owner })
+      this.recentWrites.set(revision, { key: metadataKey, owner, entries: entriesChanged })
       if (this.recentWrites.size > 128)
         this.recentWrites.delete(this.recentWrites.keys().next().value)
       return result

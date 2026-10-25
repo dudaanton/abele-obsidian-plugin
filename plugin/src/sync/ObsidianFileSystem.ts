@@ -4,7 +4,7 @@ import { SyncTaskBudget } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
 import { INSTALL_BATCH, nativeInstallBatch, type InstallItem } from './nativeInstallBatch'
 import { PORTABLE_CANDIDATES } from './ledgerPathCandidates'
-import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
+import { guardedVaultAdapter, mutationCheckedAdapter, vaultDisk } from './vaultPathLinks'
 import {
   withMetadataInventory,
   invalidateMetadataInventory,
@@ -3212,6 +3212,8 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
   private wrote(paths: readonly string[], known?: 'file' | null): void {
+    if (paths.some((path) => this.inventoryVisible(path) && this.withinFileScope(path)))
+      this.scanWatchRevision++
     this.invalidateRootChain(paths)
     this.updateInventory(paths, known)
     for (const path of paths) {
@@ -3310,14 +3312,42 @@ export class ObsidianFileSystem implements FileSystem {
    * settings behind the vault's back — so that half is polled, and `css-change` and `kick`
    * are the two ways of not waiting for the next tick.
    */
+  private scanWatchers = 0
+  private scanWatchRevision = 0;
+  [Symbol.for('abele.sync.local-scan-revision-v1')](): string | undefined {
+    return this.scanWatchers
+      ? `${this.scanWatchRevision}:${folderMutations(this.app.vault).revision}`
+      : undefined
+  }
   watch(cb: (paths: string[]) => void): () => void {
     this.runtimeFence?.assertReady()
+    this.scanWatchers++
+    this.scanWatchRevision++
     this.rootChain = undefined
+    const changed = (file: { path: string }) => {
+      if (this.inventoryVisible(file.path) && this.withinFileScope(file.path))
+        this.scanWatchRevision++
+    }
+    // Observe adapter changes before their promises resolve, including config writes without
+    // vault events. Device-local journals/settings cannot invalidate an unchanged sync set.
+    // A scoped port can retain its own wrappers; user writes arrive on the vault adapter.
+    const stopScanChanges = observeAdapterConfig(vaultDisk(this.app.vault), '', (paths) => {
+      for (const path of paths) changed({ path })
+    })
     const rootChanges = [
-      this.app.vault.on('create', (file) => this.invalidateRootChain([file.path])),
-      this.app.vault.on('delete', (file) => this.invalidateRootChain([file.path])),
+      this.app.vault.on('create', (file) => {
+        changed(file)
+        this.invalidateRootChain([file.path])
+      }),
+      this.app.vault.on('modify', changed),
+      this.app.vault.on('delete', (file) => {
+        changed(file)
+        this.invalidateRootChain([file.path])
+      }),
     ]
     const directoryRename = this.app.vault.on('rename', (file, previous) => {
+      changed(file)
+      changed({ path: previous })
       this.invalidateRootChain([previous, file.path])
       if ('children' in file && this.withinFileScope(previous) && this.withinFileScope(file.path))
         this.directories.renamed(previous, file.path)
@@ -3341,17 +3371,31 @@ export class ObsidianFileSystem implements FileSystem {
         configDir: this.configDir,
         snapshot: () => this.configSnapshot(),
       },
-      (paths) =>
+      (paths) => {
+        if (
+          paths.some(
+            (path) =>
+              path === IGNORE_FILE || (this.inventoryVisible(path) && this.withinFileScope(path))
+          )
+        )
+          this.scanWatchRevision++
         cb(
           paths.filter(
             (path) =>
               path === IGNORE_FILE || (this.inventoryVisible(path) && this.withinFileScope(path))
           )
         )
+      }
     )
     this.pollNow = watcher.kick
+    let stopped = false
     return () => {
+      if (stopped) return
+      stopped = true
+      this.scanWatchers--
+      this.scanWatchRevision++
       watcher.stop()
+      stopScanChanges()
       this.app.vault.offref(directoryRename)
       for (const ref of rootChanges) this.app.vault.offref(ref)
       this.rootChain = undefined

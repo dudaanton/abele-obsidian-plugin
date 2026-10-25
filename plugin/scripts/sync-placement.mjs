@@ -106,6 +106,65 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          '        await this.scanWork(() => refreshLocalPaths(scanningFs, state, {',
+          `        for (const row of this.retries.list()) {
+          if (row.phase !== 'push' || row.local || !row.reason.startsWith('too_large:')) continue;
+          if (this.unscanned || earlyPull?.bootstrapped || [...this.ctx.watch.reported].some(path =>
+              row.path === path || row.path.startsWith(path + '/')))
+            await this.retries.succeeded(row.path, 'push');
+        }
+        const localRevision = fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.();
+        const entryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
+        const directoryRevision = await state.getMeta?.('v2-directories');
+        const waiting = this.retries.list();
+        const unchanged = localRevision !== undefined && entryRevision !== undefined &&
+          priorSettledLocalRevision === localRevision && priorSettledEntryRevision === entryRevision && this.settledDirectoryRevision === directoryRevision;
+        const sizeWait = row => row.phase === 'push' && !row.local && row.nextAt > 0 && row.reason.startsWith('too_large:');
+        if (unchanged && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+            this.ctx.watching() && !this.unscanned && !joining && !reconciling &&
+            (!priorReconciliation || priorReconciliation.phase === 'complete') &&
+            scope.recheck.size === 0 && earlyPull && !earlyPull.bootstrapped && earlyPull.held.length === 0 &&
+            this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0 &&
+            waiting.every(row => !this.retries.ready(row.path) || sizeWait(row)) &&
+            [...this.kept].every(path => waiting.some(row => row.path === path))) {
+          const empty = { ops: [], hashes: new Map(), infos: new Map(), diskPaths: new Map(), dirty: new Set(), skipped: [], collisions: [] };
+          const sent = await push(client, fs, state, empty, common);
+          this.ctx.set({ pending: this.kept.size, cursor: earlyPull.cursor });
+          const deferred = await this.countStaged();
+          if (localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+              this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0)
+          {
+            this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
+          this.settledLocalRevision = localRevision;
+            this.settledEntryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
+          }
+          this.ctx.log('sync: local inventory unchanged; no filesystem scan');
+          return { pull: earlyPull, push: sent, secondPull: null, collisions: this.settledCollisions ?? [], deferred, joined: false };
+        }
+        this.settledLocalRevision = undefined;
+        await this.scanWork(() => refreshLocalPaths(scanningFs, state, {`
+        )
+        code = replaceOnce(
+          code,
+          '        return {\n            pull: before,',
+          `        if (localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+            this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0) {
+          this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
+          this.settledLocalRevision = localRevision;
+          this.settledEntryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
+          this.settledCollisions = found.collisions;
+        }
+        return {
+            pull: before,`
+        )
+        code = replaceOnce(
+          code,
+          'const report = await pull(client, fs, state, {',
+          `const report = await pull(client, fs, state, {
+            [Symbol.for('abele.sync.cursor-committed-v1')]: cursor => this.ctx.set({ cursor }),`
+        )
+        code = replaceOnce(
+          code,
           'this.scanFilter = opts.client.reportSizeRefusals ? localFilter : this.filter;',
           `const scanFilter = opts.client.reportSizeRefusals ? localFilter : this.filter;
           this.scanFilter = {
@@ -123,7 +182,12 @@ export function syncPlacementPlugin() {
           const run = () => metadataPass ? metadataPass.call(state, () => this.cycleUnlocked()) : this.cycleUnlocked();
           return pass ? pass.call(this.ctx.opts.fs, run) : run();
         }
-        async cycleUnlocked() {`
+        async cycleUnlocked() {
+          const priorSettledLocalRevision = this.settledLocalRevision;
+          const priorSettledEntryRevision = this.settledEntryRevision;
+          // Failure/cancellation cannot leave an earlier pass's proof reusable.
+          this.settledLocalRevision = undefined;
+          this.settledEntryRevision = undefined;`
         )
       } else if (file.endsWith('/pullWrite.js')) {
         code = replaceOnce(
@@ -229,6 +293,43 @@ export async function judgeDeletesCooperatively(args, scheduling) {
         code =
           `import { PendingPullWrites } from './pullWrite.js';\nimport { notifyApplied } from './applied.js';\nimport { ScanWork, scanScheduling } from './scanWork.js';\n` +
           code
+        code = replaceOnce(
+          code,
+          '            await publish?.(tx);\n        });\n    }',
+          `            await publish?.(tx);
+        });
+        this.opts[Symbol.for('abele.sync.cursor-committed-v1')]?.(this.report.cursor);
+    }`
+        )
+        code = replaceOnce(
+          code,
+          '        for (const change of wanted) {\n            checkCancellation(this.opts.signal);',
+          `        const pendingWrites = this.state.metadataKeys && !this.stagedReplay
+          ? new Set(await this.state.metadataKeys('pull-write:')) : null;
+        const candidates = pendingWrites ? wanted.filter(change => change.op !== 'delete' && change.sha !== null &&
+          !this.opts.recheck?.has(change.file_id) && !pendingWrites.has('pull-write:' + change.file_id) &&
+          !this.placer.pending.cleanups.has(change.file_id) && !this.heldFiles.has(change.file_id) &&
+          !this.refused.files.has(change.file_id)) : [];
+        const feedEntries = this.state[Symbol.for('abele.sync.feed-entries-v1')];
+        const echoEntries = new Map((await (feedEntries
+          ? feedEntries.call(this.state, candidates.map(change => change.file_id), this.opts.signal)
+          : Promise.all(candidates.map(change => this.state.byFileId(change.file_id)))))
+          .filter(Boolean).map(entry => [entry.fileId, entry]));
+        const echoWork = new ScanWork({ ...scanScheduling(this.state), signal: this.opts.signal });
+        for (const change of wanted) {
+            await echoWork.step();
+            checkCancellation(this.opts.signal);
+            const echo = echoEntries.get(change.file_id);
+            if (!this.stagedReplay && pendingWrites && change.op !== 'delete' && change.sha !== null &&
+                echo?.versionId === change.version_id && echo.sha === change.sha && echo.wirePath === change.path &&
+                !this.opts.recheck?.has(change.file_id) && !pendingWrites.has('pull-write:' + change.file_id) &&
+                !this.placer.pending.cleanups.has(change.file_id) && !this.heldFiles.has(change.file_id) &&
+                !this.refused.files.has(change.file_id)) {
+              this.report.skipped++;
+              await finish(change);
+              continue;
+            }`
+        )
         code = replaceOnce(
           code,
           'const local = await shaIndex(this.state);',
@@ -1285,7 +1386,41 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           'await this.fs.removeDirectory(path, removal.identity);',
           'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path, removal.identity));'
         )
+      } else if (file.endsWith('/departureSettlement.js')) {
+        code = replaceOnce(
+          code,
+          '        for (const membership of memberships) {',
+          `        await tx[Symbol.for('abele.sync.feed-metadata-v1')]?.([
+          DEPARTURE_MARK + 'index',
+          ...memberships.flatMap(row => [completedKey(row.event.file_id), membershipKey(row.event.file_id),
+            DEPARTURE_MARK + 'p:' + encodeURIComponent(row.event.path)])
+        ]);
+        for (const membership of memberships) {`
+        )
       } else if (file.endsWith('/v2Client.js')) {
+        code = replaceOnce(
+          code,
+          'async fileItem(item, seq) {',
+          'async fileItem(item, seq, proofState) {'
+        )
+        code = replaceOnce(
+          code,
+          'await predatesDeparture(this.ports.state, item.file_id, seq,',
+          'await predatesDeparture(proofState ?? this.ports.state, item.file_id, seq,'
+        )
+        code = replaceOnce(
+          code,
+          '        const departing = new Map();',
+          `        const metadata = await this.ports?.state[Symbol.for('abele.sync.feed-metadata-v1')]?.(
+          page.items.filter(row => row.type === 'content').map(row => 'settlement-departure:completed:' + encodeURIComponent(row.file_id)));
+        const proofState = metadata ? { getMeta: async key => metadata.get(key) ?? null } : undefined;
+        const departing = new Map();`
+        )
+        code = replaceOnce(
+          code,
+          'this.fileItem(event.item, event.cursor)',
+          'this.fileItem(event.item, event.cursor, proofState)'
+        )
         // Multipart parts are private until complete. Hash that pass, including already
         // received parts on resume, rather than reading the entire source once more first.
         code = replaceOnce(
@@ -1298,6 +1433,25 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           code,
           "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');",
           "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');\n            }"
+        )
+      } else if (relative === 'dist/internal/core/state.js') {
+        code = replaceOnce(
+          code,
+          '    transactionScoped = true;',
+          `    transactionScoped = true;
+    scanEntryRevision = 0;
+    [Symbol.for('abele.sync.local-scan-state-revision-v1')]() { return this.scanEntryRevision; }`
+        )
+        code = replaceOnce(
+          code,
+          '        if (map === this.entries) {',
+          '        if (map === this.entries) {\n            this.scanEntryRevision++;'
+        )
+      } else if (file.endsWith('/fileRetry.js')) {
+        code = replaceOnce(
+          code,
+          'if (!row.quarantined) {',
+          `if (!row.quarantined && !(row.phase === 'push' && !row.local && row.nextAt > 0 && row.reason.startsWith('too_large:'))) {`
         )
       } else if (file.endsWith('/stateTransaction.js')) {
         code = replaceOnce(

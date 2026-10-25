@@ -155,6 +155,9 @@ export class LocalFolderPlacement {
           return (entry: StateEntry) => target.put({ ...entry, path: toServer(entry.path) })
         if (key === 'delete') return (path: string) => target.delete(toServer(path))
         const value = Reflect.get(target, key)
+        if (key === Symbol.for('abele.sync.feed-entries-v1') && typeof value === 'function')
+          return async (ids: readonly string[], signal?: AbortSignal) =>
+            ((await value.call(target, ids, signal)) as StateEntry[]).map(local)
         if (key === 'readCommittedEntries' && typeof value === 'function')
           return async (paths: readonly string[]) => {
             const entries = (await value.call(target, paths.map(toServer))) as StateEntry[]
@@ -213,6 +216,13 @@ export class LocalFolderPlacement {
         }
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
+          return () => {
+            const revision = value.call(target)
+            return revision === undefined
+              ? undefined
+              : JSON.stringify([placement.server, placement.local, revision])
+          }
         if (key === INSTALL_BATCH)
           return (
             items: InstallItem[],

@@ -9,6 +9,24 @@ const assertPath = (path: string) => {
   if (!includes(path)) throw new Error('outside scope')
 }
 
+it('forwards readonly scan revisions without granting a path and binds the current scope root', () => {
+  const revision = Symbol.for('abele.sync.local-scan-revision-v1')
+  let root = 'Shared'
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [revision]: function () {
+      expect(this).toBe(disk)
+      return 'sample-revision'
+    },
+  })
+  const fs = scopedFileSystem(disk, assertPath, includes, undefined, () => root)
+  const first = Reflect.get(fs, revision)()
+  root = 'Other'
+  expect(Reflect.get(fs, revision)()).not.toBe(first)
+  expect(
+    Reflect.get(scopedFileSystem(new MemoryFileSystem(), assertPath, includes), revision)
+  ).toBeUndefined()
+})
+
 it('permits cleanup of an owned opaque stage but refuses foreign cleanup', async () => {
   const discardStage = vi.fn(async () => {})
   const disk = Object.assign(new MemoryFileSystem(), { discardStage })

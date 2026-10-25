@@ -1780,7 +1780,7 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
 class FolderMutations {
   private readonly pending = new Set<Promise<void>>()
   private users = 0
-  /** Changes when an operation starts, including one that finishes before a scan ends. */
+  /** Changes when a namespace operation starts, before its index event can arrive. */
   revision = 0
   private restore: (() => void) | null = null
   private readonly listeners = new Set<(path: string, to?: string) => void>()
@@ -1795,6 +1795,9 @@ class FolderMutations {
         // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with apply and restored by identity
         const original = this.vault[method]
         const begin = (): (() => void) => this.begin()
+        const touch = () => {
+          this.revision++
+        }
         const notify = (path: string) => {
           for (const listener of this.listeners) listener(path)
         }
@@ -1802,7 +1805,10 @@ class FolderMutations {
           this: Vault,
           ...args: Parameters<typeof original>
         ) {
-          if (!(args[0] instanceof TFolder)) return original.apply(this, args)
+          if (!(args[0] instanceof TFolder)) {
+            touch()
+            return original.apply(this, args)
+          }
           // Enter before calling the original: even synchronous child events see the barrier.
           const finish = begin()
           return (async () => {
@@ -1823,11 +1829,17 @@ class FolderMutations {
       // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with apply and restored by identity
       const rename = this.vault.rename
       const beginRename = () => this.begin()
+      const touchRename = () => {
+        this.revision++
+      }
       const notifyRename = (path: string, to: string) => {
         for (const listener of this.listeners) listener(path, to)
       }
       const wrappedRename: typeof rename = async function (this: Vault, ...args) {
-        if (!(args[0] instanceof TFolder)) return rename.apply(this, args)
+        if (!(args[0] instanceof TFolder)) {
+          touchRename()
+          return rename.apply(this, args)
+        }
         const finish = beginRename()
         try {
           notifyRename(args[0].path, args[1])

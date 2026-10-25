@@ -10,6 +10,10 @@ import { analyze } from 'eslint-scope'
 const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
+it('leaves the external state module outside the memory-store integration', () => {
+  const id = join(root, 'dist/internal/core/external/state.js')
+  expect(syncPlacementPlugin().transform(readFileSync(id, 'utf8'), id)).toBeNull()
+})
 it('keeps retained-answer filesystem settlement under the placement lease', () => {
   const { id, input } = sample(version, 'pusher.js')
   const output = syncPlacementPlugin().transform(input, id)!
@@ -45,6 +49,8 @@ function sample(installedVersion = version, module = 'cycle.js') {
 }
 it.each([
   'cycle.js',
+  'fileRetry.js',
+  'state.js',
   'scanner.js',
   'reconciliation.js',
   'pushSources.js',
@@ -56,6 +62,7 @@ it.each([
   'pusher.js',
   'v2Directories.js',
   'v2Client.js',
+  'departureSettlement.js',
 ])('passes %s through a second plugin instance and query id unchanged', (module) => {
   const { id, input } = sample(version, module)
   const first = syncPlacementPlugin().transform(input, id)!

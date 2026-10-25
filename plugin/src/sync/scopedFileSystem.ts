@@ -76,6 +76,14 @@ export function scopedFileSystem(
       }
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
+      if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
+        return () => {
+          const revision = value.call(target)
+          const root = typeof scopeRootInput === 'function' ? scopeRootInput() : scopeRootInput
+          return revision === undefined || root === undefined
+            ? undefined
+            : JSON.stringify([root, revision])
+        }
       if (key === INSTALL_BATCH)
         return (
           items: InstallItem[],

@@ -6,6 +6,52 @@ import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacem
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 
+it('forwards a readonly scan revision with its receiver and current placement identity', () => {
+  const revision = Symbol.for('abele.sync.local-scan-revision-v1')
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [revision]: function () {
+      expect(this).toBe(disk)
+      return 'sample-revision'
+    },
+  })
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const fs = placement.fileSystem(disk)
+  const first = Reflect.get(fs, revision)()
+  placement.local = 'Other'
+  expect(Reflect.get(fs, revision)()).not.toBe(first)
+  expect(Reflect.get(placement.fileSystem(new MemoryFileSystem()), revision)).toBeUndefined()
+})
+
+it('projects batched feed entries like byFileId while forwarding cancellation and receiver', async () => {
+  const port = Symbol.for('abele.sync.feed-entries-v1')
+  const row = {
+    path: 'Shared/sample.bin',
+    wirePath: 'Shared/sample.bin',
+    fileId: 'sample',
+    versionId: 'version',
+    sha: 'a'.repeat(64),
+    size: 1,
+    mtime: 1000,
+  }
+  const signal = new AbortController().signal
+  const store = Object.assign(new MemoryStateStore(), {
+    [port]: async function (ids: readonly string[], given: AbortSignal) {
+      expect(this).toBe(store)
+      expect(ids).toEqual(['sample'])
+      expect(given).toBe(signal)
+      return [row]
+    },
+  })
+  const local = new LocalFolderPlacement('Shared', 'Moved').localState(store)
+  expect(await Reflect.get(local, port)(['sample'], signal)).toEqual([
+    { ...row, path: 'Moved/sample.bin' },
+  ])
+  row.path = 'Private/sample.bin'
+  await expect(Reflect.get(local, port)(['sample'], signal)).rejects.toThrow(
+    'outside this connection'
+  )
+})
+
 it('reports the outbound caller and relative rejected name without absolute host paths', async () => {
   const placement = new LocalFolderPlacement('Shared', 'Moved')
   const disk = new MemoryFileSystem()
