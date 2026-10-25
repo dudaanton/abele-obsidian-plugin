@@ -102,7 +102,7 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
           const tag='segment${segment}turn'+turn;
           const list=chat().querySelector('.abele-ai-chat__messages');list.scrollTop=list.scrollHeight;
           const started=performance.now();
-          const sending=presenter().send('work '+tag+' 12 8');
+          const sending=presenter().send('work '+tag+' 12 60');
           await until(()=>[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(tag+' word0:')),'First streamed words');
           firstMs.push(performance.now()-started);
           if(turn===37&&!${onPhone()}) {
@@ -139,18 +139,18 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
       up: node!.traffic.up - before.up,
     })
     console.log('ENDLESS_SEGMENT ' + JSON.stringify(reports.at(-1)))
-    expect(result.events).toBeLessThanOrEqual(400)
-    expect(result.visible).toBeLessThan(1600)
-    expect(result.duplicates).toBe(0)
-    expect(result.follows).toBe(true)
-    expect(result.typingP95).toBeLessThan(400)
-    expect(result.openMs).toBeLessThan(15000)
     columnShot(
       join(
         shots,
         `${onPhone() ? 'phone' : segment === 3 ? 'emulated-phone' : 'desktop'}-segment-${segment}-end.png`
       )
     )
+    expect(result.events).toBeLessThanOrEqual(400)
+    expect(result.visible).toBeLessThan(1600)
+    expect(result.duplicates).toBe(0)
+    expect(result.follows).toBe(true)
+    expect(result.typingP95).toBeLessThan(400)
+    expect(result.openMs).toBeLessThan(15000)
   }
   try {
     await run(0)

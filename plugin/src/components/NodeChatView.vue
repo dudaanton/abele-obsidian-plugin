@@ -873,15 +873,27 @@ const loadOlder = async () => {
 const onScroll = () => {
   const el = scroller.value
   if (!el) return
-  // Reading at the end keeps the chat there as answers render and grow; scrolling away lets go.
-  stickToEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  // A queued scroll event can arrive after streamed content grew. Distance from the new
+  // bottom alone is not evidence that the reader scrolled away. Prefix eviction can also
+  // move the scroll anchor upwards as the list shrinks.
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) stickToEnd = true
+  else if (el.scrollTop < lastScrollTop && el.scrollHeight >= lastScrollHeight) stickToEnd = false
+  lastScrollTop = el.scrollTop
+  lastScrollHeight = el.scrollHeight
   if (el.scrollTop < 300 && props.presenter.hasOlder?.value) void loadOlder()
 }
 /** The chat follows its end: opened, it shows the latest words even once they finish rendering. */
 let stickToEnd = true
+let lastScrollTop = 0
+let lastScrollHeight = 0
+const followEnd = (el: HTMLElement) => {
+  el.scrollTop = el.scrollHeight
+  lastScrollTop = el.scrollTop
+  lastScrollHeight = el.scrollHeight
+}
 const settle = new ResizeObserver(() => {
   const el = scroller.value
-  if (el && stickToEnd && keepFromBottom === null) el.scrollTop = el.scrollHeight
+  if (el && stickToEnd && keepFromBottom === null) followEnd(el)
 })
 onUnmounted(() => settle.disconnect())
 watch(
@@ -893,7 +905,7 @@ watch(
     settle.disconnect()
     for (const child of el.children) settle.observe(child)
     if (keepFromBottom !== null) return
-    if (stickToEnd) el.scrollTop = el.scrollHeight
+    if (stickToEnd) followEnd(el)
     if (el.scrollHeight <= el.clientHeight && props.presenter.hasOlder?.value) void loadOlder()
   }
 )

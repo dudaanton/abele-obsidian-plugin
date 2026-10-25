@@ -225,6 +225,44 @@ describe('a background task', () => {
 })
 
 describe('a long session', () => {
+  it('keeps following when a pending scroll event arrives after streamed content grows', async () => {
+    const p = presenter(null)
+    const w = open(p)
+    const list = w.get('.abele-ai-chat__messages')
+    const element = list.element as HTMLElement
+    let height = 1000
+    Object.defineProperties(element, {
+      scrollHeight: { get: () => height },
+      clientHeight: { get: () => 400 },
+    })
+    element.scrollTop = 600
+    await list.trigger('scroll')
+    height = 1400
+    // This event was queued at the old end before the new output was laid out.
+    await list.trigger('scroll')
+    p.messages.value = []
+    await flushPromises()
+    expect(element.scrollTop).toBe(1400)
+  })
+
+  it('lets the reader scroll away while live messages continue', async () => {
+    const p = presenter(null)
+    const w = open(p)
+    const list = w.get('.abele-ai-chat__messages')
+    const element = list.element as HTMLElement
+    Object.defineProperties(element, {
+      scrollHeight: { get: () => 1000 },
+      clientHeight: { get: () => 400 },
+    })
+    element.scrollTop = 600
+    await list.trigger('scroll')
+    element.scrollTop = 400
+    await list.trigger('scroll')
+    p.messages.value = []
+    await flushPromises()
+    expect(element.scrollTop).toBe(400)
+  })
+
   it('reads the earlier page from the node when the list is scrolled to its top', async () => {
     const p = {
       ...presenter(sessionLive()),
