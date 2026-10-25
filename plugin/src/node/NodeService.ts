@@ -19,7 +19,7 @@ import { NodeObsidianTools } from './NodeObsidianTools'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ensureNodeAgents } from './nodeAgentTools'
 import { nodeScopeEntries } from '@/ai/nodeScope'
-import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
+import { requireDelegationScope, scopedPlainCommandRoot } from '@/ai/tools/node/delegationScope'
 import { NodeRequestActivity } from './NodeRequestActivity'
 import { nodeLogAvailable } from './nodeLogCapability'
 
@@ -92,7 +92,10 @@ export class NodeConnection {
       }
       const entries = nodeScopeEntries(chat).filter((e) => e.node_id === node)
       if (entries.some((e) => e.kind === 'node')) return verify()
-      if (target?.project_id) return verify(target.project_id)
+      if (target?.project_id) {
+        const root = await scopedPlainCommandRoot(client, chat, node, target.project_id)
+        return verify(target.project_id, root)
+      }
       const resolveWorktree = async (worktree: string) => {
         const projects = new Set(entries.flatMap((e) => (e.kind === 'node' ? [] : [e.project_id])))
         for (const project of projects) {

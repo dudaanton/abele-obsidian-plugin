@@ -12,7 +12,58 @@ import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import { folderDebugReason } from '@/debugger/folderActions'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
-import { ref } from 'vue'
+
+it('approves a plain-root command without requiring a broader project grant', async () => {
+  const chat = {
+    delegationParentId: 'sample-parent',
+    getToolMode: () => 'ask',
+    overrides: ref({
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          access: 'edit',
+          target: { kind: 'workspace', workspace_id: 'sample-root' },
+        },
+      ],
+    }),
+  }
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [chat] } as never)
+  const client = {
+    target: { expected_node_id: 'sample-node' },
+    disconnect: async () => {},
+    getProject: async () => ({ repository_path: null }),
+    getWorkspace: vi.fn(async () => ({
+      workspace_id: 'sample-root',
+      project_id: 'sample-project',
+      kind: 'root',
+      state: 'ready',
+    })),
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  vi.spyOn(connection.manager, 'targetFor').mockResolvedValue({ project_id: 'sample-project' })
+  const run = { session_id: 'sample-context', run_id: 'sample-run', method: 'command.v1.run' }
+  try {
+    const guard = await connection.manager.canApprove!('sample-parent', run as never)
+    expect(typeof guard).toBe('function')
+    client.getWorkspace.mockResolvedValueOnce({
+      workspace_id: 'sample-root',
+      project_id: 'sample-project',
+      kind: 'root',
+      state: 'unavailable',
+    })
+    expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
+    chat.overrides.value.nodeScope = []
+    expect(() => (guard as () => void)()).toThrow()
+    expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
+  } finally {
+    connection.destroy()
+    chats.mockRestore()
+  }
+})
 
 it('uses the integration tool permission and rechecks both worktree scopes for approval', async () => {
   let enabled = true
