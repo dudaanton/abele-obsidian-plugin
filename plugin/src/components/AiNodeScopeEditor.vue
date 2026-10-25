@@ -102,7 +102,7 @@
             <span class="abele-node-scope-editor__why">{{
               t('chatTree.nodeStillAsks', { node: nodeName(entry) })
             }}</span>
-            <NodeBypassHelp :expanded="bypassHelpOpen ?? true" />
+            <NodeBypassHelp expanded />
           </div>
           <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
         </div>
@@ -166,7 +166,6 @@ const props = defineProps<{
   session: NodeScopeOwner & { permissionMode?: { value: string } }
   folder?: boolean
   /** The node's own switch shown open, as after a press on the orange line. */
-  bypassHelpOpen?: boolean
 }>()
 
 /** One level per folder, as a glyph and in words, from reading to running commands there. */

@@ -1,11 +1,17 @@
 <template>
   <Disclosure
+    v-model="isExpanded"
     class="abele-node-bypass-help"
     :label="t('streamB.permissionNodeOptIn')"
-    v-model="expanded"
   >
     <div class="abele-node-bypass-command">
-      <Input as-text-area :rows="phone ? 3 : 2" :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
+      <Input
+        as-text-area
+        :rows="phone ? 3 : 2"
+        :model-value="command"
+        readonly
+        :aria-label="t('streamB.permissionNodeOptIn')"
+      />
       <Icon icon="copy" :tooltip="t('streamB.permissionCopyCommand')" @click="copy" />
     </div>
   </Disclosure>
@@ -18,7 +24,7 @@ import Disclosure from './obsidian/Disclosure.vue'
 import Input from './obsidian/Input.vue'
 import Icon from './obsidian/Icon.vue'
 const props = defineProps<{ expanded?: boolean }>()
-const expanded = ref(!!props.expanded)
+const isExpanded = ref(!!props.expanded)
 const command = 'abele-node service flags set --allow-bypass on'
 // A phone wraps the command onto three lines; the box shows all of them.
 const phone = Platform.isPhone

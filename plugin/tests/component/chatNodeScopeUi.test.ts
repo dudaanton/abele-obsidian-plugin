@@ -299,6 +299,8 @@ describe('node scope beside vault scope and in the header', () => {
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
     expect(view.text()).toContain('still asks before commands')
+    expect(view.find('.abele-node-bypass-command textarea').exists()).toBe(true)
+    expect(view.find('.abele-node-bypass-command [data-icon="copy"]').exists()).toBe(true)
     expect(view.find('.abele-status-dot_orange').exists()).toBe(true)
     expect(mocks.approve).not.toHaveBeenCalled()
     view.unmount()
