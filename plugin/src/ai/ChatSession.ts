@@ -1610,11 +1610,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             AbeleConfig.getInstance().ai.mcpServers
           )
           if (identityRefusal) throw new Error(identityRefusal)
-          if (
-            this.inheritedNodeScopes.length &&
-            NODE_MUTATION_TOOLS.includes(tool.name) &&
-            !this.nodeScopeIdentity
-          ) {
+          if (NODE_MUTATION_TOOLS.includes(tool.name) && !this.nodeScopeIdentity) {
             await this.ensureDelegationParentId()
             signal?.throwIfAborted()
             if (this.destroyed || this.conversationVersion.value !== version)
