@@ -31,7 +31,7 @@ import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
 import { NodeSessionControl } from './NodeSessionControl'
-import { catchUp, openWindow, readOlder, windowAt } from './sessionWindow'
+import { SESSION_WINDOW, catchUp, openWindow, readOlder, windowAt } from './sessionWindow'
 import { StableMessages } from './stableMessages'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { NodeChatHistory, type NodeHistoryAction, type NodeChatPreview } from './NodeChatHistory'
@@ -127,7 +127,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     shallowRef<NonNullable<ReturnType<typeof reduceTranscript>['session']>>()
   /** Earlier events read from the node page by page as the person scrolls back; never stored. */
   private readonly older = shallowRef<JournalEvent[]>([])
-  /** Events already drawn stay visible while the durable device window advances. */
+  /** Recent complete turns stay visible while the durable device window advances. */
   private readonly visibleEvents = new Map<number, JournalEvent>()
   private visibleHead = 0
   private subscribedOnce = false
@@ -404,7 +404,21 @@ export class NodeChatPresenter implements ChatPresentationSession {
           this.visibleEvents.set(event.seq, event)
           this.visibleHead = Math.max(this.visibleHead, event.seq)
         }
-        const visible = [...this.visibleEvents.values()].sort((a, b) => a.seq - b.seq)
+        let visible = [...this.visibleEvents.values()].sort((a, b) => a.seq - b.seq)
+        // A view left open for days must not become a second, unbounded journal. Evict
+        // complete old turns as live work advances; explicit paging does not move the tail.
+        // Keep an unfinished turn intact, including its tool calls and streamed deltas.
+        if (this.visibleHead > latest && visible.length > SESSION_WINDOW * 3) {
+          const cutoff = visible.length - SESSION_WINDOW * 3
+          const boundary = visible.slice(0, cutoff).findLast((e) => e.type === 'turn.completed')
+          if (boundary) {
+            for (const event of visible) {
+              if (event.seq <= boundary.seq) this.visibleEvents.delete(event.seq)
+            }
+            this.older.value = this.older.value.filter((e) => e.seq > boundary.seq)
+            visible = visible.filter((e) => e.seq > boundary.seq)
+          }
+        }
         const active = await restoredTranscript(visible, (source, before) =>
           this.readPrefix(source, before)
         )
@@ -465,6 +479,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         projection.session = current.success
           ? current.data
           : (this.sessionRecord.value ?? projection.session)
+        if (projection.session) this.sessionRecord.value = projection.session
         projection.children = this.stable.children(projection.children)
         this.projection.value = projection
         if (projection.session && this.reference.title !== projection.session.title) {

@@ -230,6 +230,41 @@ describe('a giant session in its chat', () => {
       } as unknown as NodeConnection
     )
 
+  it('bounds a chat kept open for hundreds of turns and can page evicted turns back', async () => {
+    const f = fixture()
+    await f.store.transaction((s) => {
+      s.node_id = 'sample-node'
+    })
+    const p = presenter(f)
+    try {
+      for (const event of journal.filter((e) => e.type === 'turn.completed')) {
+        await f.store.transaction((s) => {
+          s.events[SID] = journal.slice(Math.max(0, event.seq - SESSION_WINDOW), event.seq)
+          s.cursors[SID] = event.seq
+        })
+        await p.refresh()
+      }
+      const retained = (p as unknown as { visibleEvents: Map<number, JournalEvent> }).visibleEvents
+      expect(retained.size).toBeLessThanOrEqual(SESSION_WINDOW * 3 + 20)
+      expect(p.messages.value.at(-1)?.content).toContain('Answer 300.')
+      expect(p.hasOlder.value).toBe(true)
+      const first = Math.min(...retained.keys())
+      await p.loadOlder()
+      expect(f.requests).toContainEqual({
+        method: 'stream.read',
+        params: {
+          stream_id: SID,
+          after_seq: first - 257,
+          limit: 256,
+        },
+      })
+      const ids = p.messages.value.map((m) => m.id)
+      expect(new Set(ids).size).toBe(ids.length)
+    } finally {
+      p.destroy()
+    }
+  })
+
   it('starts a newly opened stale device at the tail without backfilling the entire session', async () => {
     const f = fixture()
     await f.store.transaction((s) => {
