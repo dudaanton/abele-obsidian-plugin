@@ -417,3 +417,14 @@ and explicit `remainingPhaseEvidence: [{phase, status: "not run"}]`. Final-analy
 also write `failure-report.json`; raw JSONL, profiles and earlier phase files stay intact.
 The driver does not execute dependent phases after an abort or manufacture their results.
 A failed profile/receipt read fails the run even when the rest of analysis can continue.
+
+For offline window comparisons, run `profile-windows.mjs captures.json profiles windows.json output.json`.
+Captures are the `cpu-profile` receipts; windows contain `name`, `device`, `start` and `end`
+in epoch milliseconds. The analyzer clips weighted sample intervals using the calibrated
+profiler clock, resolves omitted URLs by script ID within each profile, and reports plugin
+self/inclusive time plus native leaf ownership. Inclusive rows overlap and must not be added.
+Names can combine several functions; retained bundle positions support source verification.
+Sampled time includes native waits and is not process CPU accounting. Compare coverage with
+window duration: missing spans and `profileFailures` make a window incomplete, never zero work.
+Malformed sample timing stays rejected and is listed explicitly. This analysis does not
+replace the qualification report or change any runtime gate.
