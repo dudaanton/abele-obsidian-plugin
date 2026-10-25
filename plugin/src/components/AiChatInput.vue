@@ -100,7 +100,7 @@
           <Icon
             v-if="scopeLabel"
             :icon="scopeIcon ?? 'vault'"
-            :text-right="scopeCode || undefined"
+            :text-right="scopeCode && scopeCode !== '0' ? scopeCode : undefined"
             :tooltip="scopeTooltip"
             class="abele-chat-input__scope"
             @click="emit('openScope')"

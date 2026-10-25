@@ -323,3 +323,15 @@ describe('the chat around an opened composer', () => {
     expect(messages().style.display).toBe('')
   })
 })
+
+it('shows only the access glyph when no places are granted', () => {
+  const view = composer({
+    scopeLabel: 'Access: No files',
+    scopeCode: '0',
+    scopeIcon: 'folder-lock',
+  })
+  expect(view.get('button.abele-chat-input__scope').text()).toBe('')
+  expect(view.get('button.abele-chat-input__scope [data-icon]').attributes('data-icon')).toBe(
+    'folder-lock'
+  )
+})
