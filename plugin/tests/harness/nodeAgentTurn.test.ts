@@ -56,7 +56,12 @@ it('emits parseable model SSE and restores fetch after a scripted vault turn', a
       for (let i = 0; i < 2; i++) {
         const response = await browser.fetch(
           'https://sample-node-files-model.invalid/v1/chat/completions',
-          { body: JSON.stringify({ messages: [], tools: [{ function: { name: 'node_read' } }] }) }
+          {
+            body: JSON.stringify({
+              messages: i ? [{ role: 'tool', content: 'Tool not found' }] : [],
+              tools: [{ function: { name: 'node_read' } }],
+            }),
+          }
         )
         streams.push(await response.text())
       }
@@ -69,6 +74,7 @@ it('emits parseable model SSE and restores fetch after a scripted vault turn', a
     )(browser)
   )
   expect(result.tools).toEqual(['node_read'])
+  expect(result.modelResults).toEqual(['Tool not found'])
   expect(streams[0].split('\n\n')).toHaveLength(4)
   expect(
     JSON.parse(streams[0].split('\n\n')[0].slice(6)).choices[0].delta.tool_calls[0].function

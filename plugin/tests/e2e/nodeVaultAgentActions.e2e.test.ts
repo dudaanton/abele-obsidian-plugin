@@ -141,7 +141,7 @@ async function exercise(label: string, plain: boolean) {
       `[()=>({name:'node_command_run',params:{node:${JSON.stringify(node.node)},argv:['node','--version'],operation_id:crypto.randomUUID(),justification:'Check the sample runtime.'}})]`
     )
     expect(off.tools).not.toContain('node_command_run')
-    expect(off.calls[0].result).toMatch(/off|unknown|not (available|found)/i)
+    expect(off.modelResults[0], JSON.stringify(off)).toMatch(/off|unknown|not (available|found)/i)
   } finally {
     await evalLong(
       `(async()=>{${setup}if(session){session.abort();await chats.closeTab(session.id)}if(app.vault.getAbstractFileByPath(${JSON.stringify(chat)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(chat)});delete window.__sampleNodeActionTurn})()`

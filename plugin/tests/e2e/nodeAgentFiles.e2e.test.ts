@@ -170,6 +170,9 @@ async function exercise(label: string) {
     expect(withAccess.calls[3].result, JSON.stringify(withAccess)).toContain('second line')
     expect(withAccess.calls[4].result, JSON.stringify(withAccess)).toMatch(/saved/)
     expect(readFileSync(resolve(repo, 'sample.txt'), 'utf8')).toBe('first line\nedited line\n')
+    evalAsync(
+      `(async()=>{await window.__abeleTest.ChatService.getInstance().revealSidebar({focus:false});return JSON.stringify(true)})()`
+    )
     columnShot(`${shotDir('abele-node-agent-files')}/${label}.png`)
   } finally {
     evalRaw(`(async()=>{

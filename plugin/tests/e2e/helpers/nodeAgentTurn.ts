@@ -1,5 +1,6 @@
 export interface NodeAgentTurn {
   tools: string[]
+  modelResults: string[]
   calls: { name: string; params: Record<string, unknown>; result: string }[]
   error?: string
 }
@@ -11,8 +12,8 @@ export interface NodeAgentTurn {
  */
 export const nodeAgentTurn = (path: string, steps: string) => `(async()=>{
   const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(path)});
-  const realFetch=window.fetch,endpoint='https://sample-node-files-model.invalid/v1',out={tools:[],calls:[]};
-  const steps=${steps},turnId=crypto.randomUUID();let n=0;
+  const realFetch=window.fetch,endpoint='https://sample-node-files-model.invalid/v1',out={tools:[],calls:[],modelResults:[]};
+  const steps=${steps},turnId=crypto.randomUUID();let n=0,initialResultCount;
   session.resolveModel=()=>({id:'sample',name:'Sample',baseUrl:endpoint,apiKey:'none',contextWindow:100000,maxTokens:1000,supportsReasoning:false});
   for(const key of ['generateTitle','generateSummary','generateRecap','autoCompactIfNeeded'])session.summarizer[key]=async()=>{};
   window.fetch=async(url,init)=>{
@@ -20,6 +21,7 @@ export const nodeAgentTurn = (path: string, steps: string) => `(async()=>{
     const body=JSON.parse(init.body);
     out.tools=(body.tools||[]).map(t=>t.function.name);
     const results=body.messages.filter(m=>m.role==='tool').map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content));
+    initialResultCount??=results.length;out.modelResults=results.slice(initialResultCount);
     const step=n<steps.length?await steps[n](results):null;n++;
     const delta=step?{tool_calls:[{index:0,id:turnId+'-'+n,type:'function',function:{name:step.name,arguments:JSON.stringify(step.params)}}]}:{content:'Done.'};
     const enc=new TextEncoder();
