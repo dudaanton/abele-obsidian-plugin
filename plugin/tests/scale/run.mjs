@@ -139,7 +139,7 @@ export class RealVault {
     await this
       .evaluate(`const job=window.__scalePluginChange={id:${JSON.stringify(id)},state:'pending',startedAt:Date.now()};
       void Promise.resolve().then(()=>app.plugins.${action}Plugin('abele')).then(
-        ()=>Object.assign(job,{state:'done',endedAt:Date.now()}),
+        result=>Object.assign(job,{state:result===false?'failed':'done',endedAt:Date.now()}),
         ()=>Object.assign(job,{state:'failed',endedAt:Date.now()}));
       return {...job}`)
     return wait(

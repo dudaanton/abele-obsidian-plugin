@@ -62,6 +62,17 @@ it('reports a rejected plugin action without exposing its private error text', a
   expect(JSON.stringify(context.window)).not.toContain('sample secret')
 })
 
+it('does not treat a refused plugin enable as successful completion', async () => {
+  const context = createContext({
+    window: {},
+    Date,
+    app: { plugins: { enablePlugin: async () => false } },
+  })
+  const vault = new RealVault({}, '/sample-vault')
+  vault.evaluate = (body) => runInContext(`(async()=>{${body}})()`, context)
+  await expect(vault.pluginEnabled(true, 2000)).rejects.toThrow('Plugin enable action failed')
+})
+
 it('retains CLI exit metadata without retaining process output', async () => {
   const root = await mkdtemp(join(process.cwd(), '.scale-cli-failure-'))
   try {
