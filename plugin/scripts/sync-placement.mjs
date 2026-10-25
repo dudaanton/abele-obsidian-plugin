@@ -1128,19 +1128,6 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
-        code = `import { ScanWork, scanScheduling } from './scanWork.js';\n` + code
-        code = replaceOnce(
-          code,
-          `async sendable(ops, checkPaths = true) {
-        const kept = [];
-        for (const op of ops) {`,
-          `async sendable(ops, checkPaths = true) {
-        const scheduling = scanScheduling(this.state);
-        const work = new ScanWork({ ...scheduling, signal: this.opts.signal ?? scheduling.signal });
-        const kept = [];
-        for (const op of ops) {
-            await work.step();`
-        )
         code = replaceOnce(
           code,
           'await this.uploadOne(sha, sources);',

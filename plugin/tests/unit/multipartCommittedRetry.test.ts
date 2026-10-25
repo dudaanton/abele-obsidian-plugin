@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { MAX_CHUNK_BYTES, V2EngineClient, fingerprintSource } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 
@@ -57,3 +57,70 @@ it('probes a committed multipart blob after a lost completion response without r
   expect(probes).toBe(1)
   expect(sent).toBe(0)
 })
+
+it.each(['part', 'complete'])(
+  'validates the pinned source after a lost multipart %s session is found committed',
+  async (at) => {
+    const bytes = new Uint8Array(16),
+      identity = await fingerprintSource({
+        size: 16,
+        read: async (offset, length) => bytes.slice(offset, offset + length),
+        assertUnchanged: async () => {},
+        close: async () => {},
+      })
+    let replaced = false,
+      probes = 0
+    const close = vi.fn(async () => {})
+    const assertUnchanged = vi.fn(async () => {
+      if (replaced) throw new Error('Sample source replaced')
+    })
+    const client = new V2EngineClient(
+      encodeAccessToken({
+        v: 1,
+        address: 'https://sync.example.invalid',
+        key: 'a'.repeat(43),
+        scope: { kind: 'folder', id: 'sample-root', path: '/' },
+      }),
+      {
+        fetch: async (input, init) => {
+          const path = new URL(String(input)).pathname
+          if (init?.method === 'HEAD') {
+            probes++
+            return new Response(null, { status: replaced ? 200 : 404 })
+          }
+          if (path.endsWith('/begin'))
+            return Response.json({
+              upload_id: 'sample-session',
+              part_size: 8,
+              parts: 2,
+              received: [],
+            })
+          if ((at === 'part' && init?.method === 'PUT') || path.endsWith('/complete')) {
+            replaced = true
+            return Response.json(
+              { error: { code: 'not_found', message: 'Sample session expired' } },
+              { status: 404 }
+            )
+          }
+          return new Response(null, { status: 204 })
+        },
+      }
+    )
+    await expect(
+      client.putBlobSource(
+        identity,
+        {
+          size: 16,
+          read: async (offset, length) => bytes.slice(offset, offset + length),
+          assertUnchanged,
+          close,
+        },
+        undefined,
+        8
+      )
+    ).rejects.toThrow('Sample source replaced')
+    expect(probes).toBe(2)
+    expect(assertUnchanged).toHaveBeenCalled()
+    expect(close).toHaveBeenCalledExactlyOnceWith()
+  }
+)

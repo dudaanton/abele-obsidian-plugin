@@ -4538,3 +4538,60 @@ it('drains committed cleanup owners before connection departure without a sync r
     await one.runtime.close()
   }
 })
+
+it.each([false, true])(
+  'keeps expired manifest continuations recoverable and resumes the retained inventory (held=%s)',
+  async (held) => {
+    const wire = await server('Notes/sample.md', 'remote bytes')
+    const send = wire.fetch.getMockImplementation()!
+    let expired = true,
+      continuations = 0
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/v2/manifest') {
+        if (url.searchParams.has('next')) {
+          continuations++
+          if (expired)
+            return Response.json(
+              { error: { code: 'invalid_request', message: 'invalid or expired page cursor' } },
+              { status: 400 }
+            )
+          return Response.json({ items: [], cursor: 1, next: null })
+        }
+        return Response.json({ items: [wire.item], cursor: 1, next: 'sample-continuation' })
+      }
+      if (held && expired && url.pathname.includes('/content'))
+        return Response.json(
+          { error: { code: 'too_large', message: 'Sample file temporarily refused' } },
+          { status: 413 }
+        )
+      return send(input, init)
+    })
+    const fs = new MemoryFileSystem(),
+      one = runtime(wire, fs)
+    try {
+      await expect(one.runtime.sync()).resolves.toBeUndefined()
+      expect(continuations).toBeGreaterThan(0)
+      expect(continuations).toBeLessThanOrEqual(9)
+      expect(await one.state.getMeta('pull-manifest-progress')).not.toBeNull()
+      expect(await one.state.getCursor()).toBe(0)
+      if (held) {
+        expect(await fs.stat('Notes/sample.md')).toBeNull()
+        expect(await one.runtime.notSynced()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ path: 'Notes/sample.md', direction: 'in' }),
+          ])
+        )
+      } else expect(new TextDecoder().decode(await fs.read('Notes/sample.md'))).toBe('remote bytes')
+      expired = false
+      if (held) await one.runtime.retryNotSynced(['Notes/sample.md'])
+      await one.runtime.sync()
+      expect(await one.state.getMeta('pull-manifest-progress')).toBeNull()
+      expect(await one.state.getCursor()).toBe(1)
+      expect(new TextDecoder().decode(await fs.read('Notes/sample.md'))).toBe('remote bytes')
+      expect(await one.runtime.notSynced()).toEqual([])
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
