@@ -1,4 +1,5 @@
 import { MOBILE_LARGE_SOURCE } from './mobileLargeFileGate'
+import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
 import { sha256 } from './external/hash'
 import {
   type FileSystem,
@@ -268,6 +269,26 @@ export class TokenOffloadCoordinator {
       )
     return new Proxy(fs, {
       get: (target, method) => {
+        if (method === INSTALL_BATCH) {
+          const install = Reflect.get(target, method)
+          if (typeof install !== 'function') return install
+          return (
+            items: InstallItem[],
+            work: (view: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+          ) => {
+            const absent = new Set(virtual().map((file) => caseKey(file.path)))
+            if (
+              items.some(
+                (item) =>
+                  !includes(item.path) || artifact(item.path) || absent.has(caseKey(item.path))
+              )
+            )
+              return Promise.resolve(undefined)
+            return install.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
+              work(this.fileSystem(view, includes, owner), flush)
+            )
+          }
+        }
         if (
           (method === 'listChildren' ||
             method === Symbol.for('abele.sync.inventory-children-v1')) &&

@@ -1,0 +1,535 @@
+// @vitest-environment node
+import { desktopFsPort } from '../helpers/desktopRequire'
+import { expect, it } from 'vitest'
+import { promises as disk } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import type { App } from 'obsidian'
+import { IDBFactory } from 'fake-indexeddb'
+import { pull, ExpectedWrites, sha256 } from '@abele/sync-sdk/core'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { HostSyncStorage } from '@/sync/hostSyncStorage'
+import { buildFakeVault } from '../helpers/fakeVault'
+import { WriteJournal } from '@/sync/writeJournal'
+import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
+import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
+import { ExternalRepresentation } from '@/sync/external/representation'
+import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+
+function discardFinishedFakeTransactions(db: IDBDatabase): void {
+  // The fake retains finished transactions as history, unlike the browser. At
+  // scale that history both pins request results and makes scheduling quadratic.
+  // Keep every active/queued transaction; only completed lifetimes are discarded.
+  const raw = Reflect.get(db, '_rawDatabase') as { transactions: { _state: string }[] }
+  raw.transactions = raw.transactions.filter((tx) => tx._state !== 'finished')
+}
+
+for (const fault of [
+  'none',
+  'batch-tail',
+  'directory-flush',
+  'publication',
+  'sealed-cache',
+  'ordered-operations',
+  'ledger-abort',
+  'occupied-target',
+  'scoped',
+  'coordinated',
+  'live-recovery',
+  'composed',
+  'admission',
+  'pause-notification',
+  'pause-admission',
+  'second-ledger-abort',
+] as const)
+  it(
+    `bounds native peer installation persistence and retained payloads by a batch (${fault})`,
+    async () => {
+      const normal = ![
+        'directory-flush',
+        'publication',
+        'sealed-cache',
+        'ledger-abort',
+        'occupied-target',
+        'second-ledger-abort',
+      ].includes(fault)
+      const count =
+        fault === 'batch-tail'
+          ? 65
+          : fault === 'second-ledger-abort' || fault === 'ordered-operations'
+            ? 128
+            : normal
+              ? Number(process.env.PEER_PULL_FILES ?? 64)
+              : 8
+      const size = normal ? Number(process.env.PEER_PULL_BYTES ?? 4096) : 4096
+      const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-peer-pull-')))
+      const app = buildFakeVault([])
+      const factory = new IDBFactory()
+      const host = await HostSyncStorage.open(factory, 'sample-peer', app)
+      let state = await IndexedDbStateStore.open(factory, 'sample-peer')
+      if (fault === 'ordered-operations') {
+        // The local file is already gone. The earlier remote deletion must retire
+        // its ledger identity before later creates turn that spelling into a folder.
+        await disk.mkdir(join(root, 'Notes'))
+        await state.put({
+          path: 'Notes/Section 0',
+          wirePath: 'Notes/Section 0',
+          fileId: 'sample-deleted',
+          versionId: 'sample-old',
+          sha: 'e'.repeat(64),
+          size: 1,
+          mtime: 1,
+        })
+        await state.setCursor(1)
+      }
+      const flushes = new Map<string, number>()
+      const durableDirectories = new Set<string>()
+      let commits = 0,
+        hostCommits = 0,
+        maxCommitBytes = 0,
+        entryCommits = 0
+      const hostDb = Reflect.get(host, 'db') as IDBDatabase
+      const hostTransaction = hostDb.transaction.bind(hostDb)
+      hostDb.transaction = ((...args: Parameters<typeof hostDb.transaction>) => {
+        discardFinishedFakeTransactions(hostDb)
+        const tx = hostTransaction(...args)
+        if (args[1] === 'readwrite') tx.addEventListener('complete', () => hostCommits++)
+        return tx
+      }) as typeof hostDb.transaction
+      let armed = !normal,
+        publications = 0,
+        downloads = 0
+      // Count acknowledged ledger transactions, rather than calls which may abort.
+      const db = Reflect.get(Reflect.get(state, 'connection'), 'db') as IDBDatabase
+      const transaction = db.transaction.bind(db)
+      db.transaction = ((...args: Parameters<typeof db.transaction>) => {
+        discardFinishedFakeTransactions(db)
+        const tx = transaction(...args)
+        let commitBytes = 0
+        const observed = new WeakSet<IDBObjectStore>()
+        if (args[1] === 'readwrite') tx.addEventListener('complete', () => commits++)
+        tx.addEventListener('complete', () => {
+          maxCommitBytes = Math.max(maxCommitBytes, commitBytes)
+          if (commitBytes) entryCommits++
+        })
+        if (args[1] === 'readwrite') {
+          const objectStore = tx.objectStore.bind(tx)
+          tx.objectStore = ((name: string) => {
+            const store = objectStore(name),
+              put = store.put.bind(store)
+            if (name === 'entries' && !observed.has(store)) {
+              observed.add(store)
+              store.put = ((...values: Parameters<typeof store.put>) => {
+                const entry = values[0] as { path: string }
+                commitBytes += size
+                expect(
+                  durableDirectories.has(entry.path.slice(0, entry.path.lastIndexOf('/')))
+                ).toBe(true)
+                if (
+                  armed &&
+                  (fault === 'ledger-abort' ||
+                    (fault === 'second-ledger-abort' && entryCommits === 1))
+                ) {
+                  armed = false
+                  tx.abort()
+                }
+                return put(...values)
+              }) as typeof store.put
+            }
+            return store
+          }) as typeof tx.objectStore
+        }
+        return tx
+      }) as typeof db.transaction
+      const fs = {
+        ...disk,
+        link: async (from: string, to: string) => {
+          expect(durableDirectories.has(from.slice(root.length + 1))).toBe(true)
+          if (armed && fault === 'sealed-cache') {
+            armed = false
+            throw new Error('sample sealed cache interrupted before publication')
+          }
+          if (armed && fault === 'occupied-target' && ++publications === 4) {
+            armed = false
+            await disk.writeFile(to, 'sample independent edit')
+          }
+          if (armed && fault === 'publication' && ++publications === 4) {
+            armed = false
+            throw new Error('sample publication interrupted')
+          }
+          return disk.link(from, to)
+        },
+        open: async (...args: Parameters<typeof disk.open>) => {
+          const handle = await disk.open(...args)
+          return new Proxy(handle, {
+            get(target, key) {
+              if (key === 'read' || key === 'write')
+                return (bytes: Uint8Array, ...args: [number, number, number]) => {
+                  expect(bytes.buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
+                  return handle[key](bytes, ...args)
+                }
+              if (key === 'sync')
+                return async () => {
+                  const path = String(args[0]).slice(root.length + 1)
+                  flushes.set(path, (flushes.get(path) ?? 0) + 1)
+                  if (armed && fault === 'directory-flush' && path === 'Notes/Section 0') {
+                    armed = false
+                    throw new Error('sample directory barrier interrupted')
+                  }
+                  await handle.sync()
+                  durableDirectories.add(path)
+                }
+              const value = Reflect.get(target, key, target)
+              return typeof value === 'function' ? value.bind(target) : value
+            },
+          })
+        },
+      }
+      desktopFsPort(fs)
+      Object.assign(app.vault.adapter, {
+        getFullPath: (path: string) => join(root, path),
+        fsPromises: fs,
+        queue: async <T>(work: () => Promise<T>) => work(),
+      })
+      const capturedPaths = new Set<string>()
+      let captures = 0,
+        recoveredLive = false,
+        admissions = 0
+      const stopped = new AbortController()
+      let files = new ObsidianFileSystem(app as unknown as App, {
+        storage: host,
+        ledger: state,
+        ...(fault === 'admission' || fault === 'pause-admission'
+          ? {
+              beforeEngineMutation: async () => {
+                admissions++
+                if (fault === 'pause-admission') stopped.abort()
+              },
+            }
+          : {}),
+        ...(fault === 'scoped' || fault === 'composed'
+          ? { connectionId: 'sample-connection', fileScope: 'Notes' }
+          : {}),
+      })
+      state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
+      let composed: import('@abele/sync-sdk/core').FileSystem | undefined
+      if (fault === 'composed') {
+        const placement = new LocalFolderPlacement('Notes', 'Notes')
+        const representation = await ExternalRepresentation.open({
+          state: null,
+          ledger: state,
+          fs: placement.fileSystem(files),
+          emptyView: {
+            ledgerId: 'sample-ledger',
+            binding: {
+              endpoint: 'https://sync.example.invalid',
+              vaultId: 'sample-vault',
+              mode: 'personal',
+              principalId: 'sample-principal',
+              principalType: 'device',
+              grantId: null,
+              generation: 1,
+              credentialAssociation: 'sample-slot',
+            },
+          },
+          assertOwned: () => {},
+          scriptsFolder: () => 'Scripts',
+          verify: async () => {
+            throw new Error('unexpected verification')
+          },
+          installProjection: async () => {
+            throw new Error('unexpected installation')
+          },
+        })
+        const includes = (path: string) => path === 'Notes' || path.startsWith('Notes/')
+        const locks = new PathCoordinator(),
+          manager = new TokenOffloadCoordinator(locks)
+        const coordinated = coordinatedFileSystem(
+          manager.fileSystem(placement.localFileSystem(representation.fileSystem()), includes),
+          locks,
+          () => {},
+          async (paths) => {
+            for await (const _ of files.placementFiles(paths)) {
+              /* preserve */
+            }
+          }
+        )
+        composed = placement.fileSystem(
+          scopedFileSystem(
+            coordinated,
+            (path) => {
+              if (!includes(path)) throw new Error('sample scope refusal')
+            },
+            includes,
+            connectionPrivateRoot('sample-connection')
+          )
+        )
+      }
+      const bytes = new Uint8Array(size).fill(37)
+      const payload = (i: number) => {
+        const result = bytes.slice()
+        new DataView(result.buffer).setUint32(0, i)
+        return result
+      }
+      const items = []
+      for (let i = 0; i < count; i++)
+        items.push({
+          file_id: `sample-file-${i}`,
+          version_id: `sample-version-${i}`,
+          seq: i + 1,
+          path: `Notes/Section ${i % 16}/Sample ${i}.bin`,
+          sha: await sha256(payload(i)),
+          size,
+          mtime: 2000,
+          kind: 'attachment',
+        })
+      const rss: { files: number; ms: number; rss: number; arrayBuffers: number }[] = []
+      const started = performance.now()
+      let installed = 0
+      const sample = () => {
+        const row = {
+          files: installed,
+          ms: performance.now() - started,
+          rss: process.memoryUsage().rss,
+          arrayBuffers: process.memoryUsage().arrayBuffers,
+          heapUsed: process.memoryUsage().heapUsed,
+        }
+        rss.push(row)
+        console.log('[peer-pull-rss]', JSON.stringify(row))
+      }
+      sample()
+      try {
+        const run = () =>
+          pull(
+            {
+              manifest: async (cursor: string | null, limit: number) => {
+                const offset = Number(cursor ?? 0),
+                  end = Math.min(offset + limit, count)
+                return {
+                  items: items.slice(offset, end),
+                  head_seq: count,
+                  next: end < count ? String(end) : null,
+                }
+              },
+              changes: async (since: number) =>
+                fault === 'ordered-operations'
+                  ? {
+                      items:
+                        since === 1
+                          ? [
+                              {
+                                seq: 2,
+                                file_id: 'sample-deleted',
+                                version_id: 'sample-delete',
+                                op: 'delete',
+                                path: 'Notes/Section 0',
+                                prev_path: null,
+                                sha: null,
+                                size: null,
+                                mtime: null,
+                                kind: 'attachment',
+                                actor: { kind: 'system', id: 'sample', name: 'sample' },
+                                at: '',
+                              },
+                              ...items.map((item, i) => ({
+                                ...item,
+                                seq: i + 3,
+                                op: 'create',
+                                prev_path: null,
+                                actor: { kind: 'system', id: 'sample', name: 'sample' },
+                                at: '',
+                              })),
+                            ]
+                          : [],
+                      head_seq: count + 2,
+                      next_since: count + 2,
+                    }
+                  : { items: [], head_seq: count, next_since: count },
+              getBlob: async (sha: string) => payload(items.findIndex((item) => item.sha === sha)),
+              openVersion: async (id: string) => {
+                downloads++
+                return {
+                  size,
+                  read: async (offset: number, length: number) =>
+                    payload(Number(id.split('-').at(-1))).slice(offset, offset + length),
+                  assertUnchanged: async () => {},
+                  close: async () => {
+                    if (fault === 'live-recovery' && !recoveredLive) {
+                      recoveredLive = true
+                      await Reflect.get(files, 'writer').recover()
+                    }
+                  },
+                }
+              },
+            } as never,
+            composed ??
+              (fault === 'coordinated'
+                ? coordinatedFileSystem(
+                    files,
+                    new PathCoordinator(),
+                    () => {},
+                    async (paths) => {
+                      for (const path of paths) capturedPaths.add(path)
+                      for await (const _info of files.placementFiles(paths)) captures++
+                      captures++
+                    }
+                  )
+                : fault === 'scoped'
+                  ? scopedFileSystem(
+                      files,
+                      (path) => {
+                        if (!path.startsWith('Notes/')) throw new Error('sample scope refusal')
+                      },
+                      (path) => path.startsWith('Notes/'),
+                      connectionPrivateRoot('sample-connection')
+                    )
+                  : files),
+            state,
+            {
+              ...(fault === 'pause-notification' || fault === 'pause-admission'
+                ? { signal: stopped.signal }
+                : {}),
+              dirty: new Set(),
+              expected: new ExpectedWrites(),
+              filter: { excluded: () => false },
+              placementConcurrency: 16,
+              onApplied: () => {
+                installed++
+                if (fault === 'pause-notification' && installed === 1) stopped.abort()
+                if (installed % 256 === 0 || installed === count) sample()
+              },
+            }
+          )
+        if (fault === 'ordered-operations') {
+          const report = await run()
+          expect(report.held).toEqual([])
+          expect(await state.byFileId('sample-deleted')).toBeNull()
+          expect(report.cursor).toBe(count + 2)
+          for (const item of items)
+            expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
+          return
+        }
+        if (fault === 'occupied-target') {
+          const report = await run()
+          expect(armed).toBe(false)
+          expect(report.held).toHaveLength(1)
+          expect(report.applied).toBe(count - 1)
+          const held = report.held[0]
+          expect(await disk.readFile(join(root, held.path), 'utf8')).toBe('sample independent edit')
+          expect(await state.get(held.path)).toBeNull()
+          for (const item of items.filter((item) => item.path !== held.path)) {
+            expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
+            expect((await state.get(item.path))?.versionId).toBe(item.version_id)
+          }
+          return
+        }
+        if (!normal) {
+          await expect(run()).rejects.toBeDefined()
+          expect(armed).toBe(false)
+          const rows = []
+          for await (const row of state.all()) rows.push(row)
+          if (fault === 'second-ledger-abort') expect(rows).toHaveLength(64)
+          else expect(rows).toEqual([])
+          const publicPaths = new Set<string>()
+          for (const item of items) {
+            const data = await disk.readFile(join(root, item.path)).catch(() => null)
+            if (data) {
+              expect(await sha256(data)).toBe(item.sha)
+              publicPaths.add(item.path)
+            }
+          }
+          const before = downloads
+          const reusable = new Set<string>()
+          for (const entry of await new WriteJournal(host).currentEntries()) {
+            if (!entry.temp) continue
+            const data = await disk.readFile(join(root, entry.temp)).catch(() => null)
+            if (data && (await sha256(data)) === entry.replacementSha) reusable.add(entry.target)
+          }
+          if (fault === 'sealed-cache') expect(reusable.size).toBeGreaterThan(0)
+          // Reopen the ledger and filesystem capabilities; no process-local batch proof survives.
+          state.close()
+          state = await IndexedDbStateStore.open(factory, 'sample-peer')
+          files = new ObsidianFileSystem(app as unknown as App, { storage: host, ledger: state })
+          state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
+          await files.recover()
+          const report = await run()
+          expect(report.held).toEqual([])
+          expect(downloads - before).toBe(count - new Set([...reusable, ...publicPaths]).size)
+          expect(await new WriteJournal(host).currentEntries()).toEqual([])
+          expect(await state.getMeta('pull-cleanup-head')).toBeNull()
+          for (const item of items) {
+            expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
+            expect((await state.get(item.path))?.versionId).toBe(item.version_id)
+          }
+          return
+        }
+        if (fault === 'pause-admission') {
+          await expect(run()).rejects.toBeDefined()
+          expect(admissions).toBeGreaterThan(0)
+          expect(installed).toBe(0)
+          expect(await Array.fromAsync(state.all())).toEqual([])
+          for (const item of items)
+            expect(await disk.stat(join(root, item.path)).catch(() => null)).toBeNull()
+          return
+        }
+        if (fault === 'pause-notification') {
+          await expect(run()).rejects.toBeDefined()
+          expect(installed).toBe(1)
+          for (const item of items)
+            expect((await state.get(item.path))?.versionId).toBe(item.version_id)
+          return
+        }
+        const report = await run()
+        if (fault === 'admission') expect(admissions).toBe(count)
+        expect(downloads).toBe(count)
+        if (fault === 'coordinated')
+          expect([...capturedPaths].sort()).toEqual(items.map((item) => item.path).sort())
+        if (fault === 'live-recovery') expect(recoveredLive).toBe(true)
+        sample()
+        console.log(
+          '[peer-pull-profile]',
+          JSON.stringify({
+            count,
+            size,
+            installed,
+            commits,
+            hostCommits,
+            maxCommitBytes,
+            fault,
+            elapsedMs: performance.now() - started,
+            flushes: Object.fromEntries(flushes),
+            rss,
+          })
+        )
+        expect(report.applied).toBe(count)
+        expect(report.held).toEqual([])
+        for (const item of items) {
+          expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
+          expect((await state.get(item.path))?.versionId).toBe(item.version_id)
+        }
+        // Bytes are flushed once; directory durability and ledger writes amortize over cohorts.
+        expect([...flushes.values()].reduce((a, b) => a + b, 0)).toBeLessThan(count * 2 + 64)
+        const batchLimit = Math.min(64, Math.max(1, Math.floor((16 * 1024 * 1024) / size)))
+        const batches =
+          Math.floor(count / 5000) * Math.ceil(5000 / batchLimit) +
+          Math.ceil((count % 5000) / batchLimit)
+        if (fault === 'coordinated') expect(captures).toBe(batches)
+        expect(commits).toBeLessThanOrEqual(batches + Math.ceil(count / 5000) * 4 + 4)
+        expect(hostCommits).toBeLessThanOrEqual(batches * 3 + 8)
+        expect(maxCommitBytes).toBeLessThanOrEqual(Math.max(16 * 1024 * 1024, size))
+        for (const [path, flushCount] of flushes) {
+          if (path.endsWith('.tmp')) expect(flushCount).toBe(1)
+          else expect(flushCount).toBeLessThanOrEqual(batches)
+        }
+        expect(await new WriteJournal(host).currentEntries()).toEqual([])
+      } finally {
+        state.close()
+        host.close()
+        await disk.rm(root, { recursive: true, force: true })
+      }
+    },
+    process.env.PEER_PULL_FILES ? 3_600_000 : 30_000
+  )

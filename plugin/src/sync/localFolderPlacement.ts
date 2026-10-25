@@ -8,6 +8,7 @@ import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlace
 import { IGNORE_FILE } from './scope'
 import { PLACEMENT } from './pathCoordinator'
 import { SyncTaskBudget } from './syncTaskBudget'
+import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
 
 export { FolderScopeError } from './scopedFileSystem'
 import { FolderScopeError } from './scopedFileSystem'
@@ -133,7 +134,7 @@ export class LocalFolderPlacement {
       },
     }).fileSystem(fs)
   }
-  localState(store: StateStore): StateStore {
+  localState<T extends StateStore>(store: T): T {
     const toLocal = (path: string) => this.toLocal(path)
     const local = (entry: StateEntry | null) =>
       entry ? { ...entry, path: toLocal(entry.path) } : null
@@ -154,6 +155,16 @@ export class LocalFolderPlacement {
           return (entry: StateEntry) => target.put({ ...entry, path: toServer(entry.path) })
         if (key === 'delete') return (path: string) => target.delete(toServer(path))
         const value = Reflect.get(target, key)
+        if (key === 'readCommittedEntries' && typeof value === 'function')
+          return async (paths: readonly string[]) => {
+            const entries = (await value.call(target, paths.map(toServer))) as StateEntry[]
+            return entries.map((entry) => ({ ...entry, path: toLocal(entry.path) }))
+          }
+        if (key === 'observeCommittedEntries' && typeof value === 'function')
+          return (observer: (entries: StateEntry[]) => Promise<void>) =>
+            value.call(target, (entries: StateEntry[]) =>
+              observer(entries.map((entry) => ({ ...entry, path: toLocal(entry.path) })))
+            )
         if (key === 'pathCandidates' && typeof value === 'function')
           return async function* (path: string, nameKey?: (path: string) => string) {
             const mappedKey = nameKey
@@ -202,6 +213,17 @@ export class LocalFolderPlacement {
         }
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        if (key === INSTALL_BATCH)
+          return (
+            items: InstallItem[],
+            work: (fs: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+          ) =>
+            value.call(
+              target,
+              items.map((item) => ({ ...item, path: placement.toLocal(item.path) })),
+              (view: FileSystem, flush: () => Promise<void>) =>
+                work(placement.fileSystem(view), flush)
+            )
         if (key === 'conditionalFile' || key === Symbol.for('abele.sync.stream-move-source-v1'))
           return (operation: import('./conditionalFiles').ConditionalFileOperation) =>
             value.call(target, {

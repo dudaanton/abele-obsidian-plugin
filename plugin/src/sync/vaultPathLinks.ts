@@ -834,6 +834,8 @@ export interface NativeFs {
   restoreDirectoryExclusive?(from: string, to: string): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
   syncPath?(path: string, parentsOnly?: boolean): Promise<void>
+  /** Data barrier; callers must separately flush namespace changes before ledger commit. */
+  syncFile?(path: string): Promise<void>
   /** Retain the displaced inode outside the vault, including late writes through open handles. */
   archiveBackup?(path: string): Promise<string>
   rename(from: string, to: string): Promise<void>
@@ -926,7 +928,18 @@ export function nativeOf(
       const [left, right] = await Promise.all([fsp.stat(at(a)), fsp.stat(at(b))])
       return left.dev === right.dev && left.ino === right.ino
     }
-  if (fsp.open)
+  if (fsp.open) {
+    native.syncFile = async (path) => {
+      await assertVaultPath(adapter, path)
+      assertEffect([path])
+      const handle = await fsp.open(at(path), 'r')
+      try {
+        if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+    }
     native.syncPath = async (path, parentsOnly = false) => {
       const fs = diagnostic
         ? nativeDiagnostics(nativeSource, (operation, startedAt, outcome) =>
@@ -947,6 +960,7 @@ export function nativeOf(
       if (!parentsOnly) await flush(path)
       await directEntryDurability(adapter).flushAncestors(path, flush)
     }
+  }
   const scopedSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
   if (typeof scopedSync === 'function')
     native.syncPath = async (path, parentsOnly = false) => {

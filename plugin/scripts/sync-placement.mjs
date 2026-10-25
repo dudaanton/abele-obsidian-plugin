@@ -125,6 +125,25 @@ export function syncPlacementPlugin() {
         }
         async cycleUnlocked() {`
         )
+      } else if (file.endsWith('/pullWrite.js')) {
+        code = replaceOnce(
+          code,
+          'async flushCleanup() {',
+          'async flushCleanup(commitState = this.state) {'
+        )
+        code = replaceOnce(
+          code,
+          'if (!done.size)\n            return;\n        await commitAppliedSettlement(this.state,',
+          'if (!done.size)\n            return;\n        await commitAppliedSettlement(commitState,'
+        )
+      } else if (file.endsWith('/pathOccupant.js')) {
+        code = replaceOnce(
+          code,
+          'key = fs.pathKey.bind(fs);',
+          `key = fs.pathKey.bind(fs);
+          if (fs[Symbol.for('abele.sync.portable-candidates-v1')] === true)
+            key[Symbol.for('abele.sync.portable-candidates-v1')] = true;`
+        )
       } else if (file.endsWith('/deleteGate.js')) {
         code = replaceOnce(
           code,
@@ -132,6 +151,138 @@ export function syncPlacementPlugin() {
           'if (ops.length) for await (const entry of this.ctx.state.all())'
         )
       } else if (file.endsWith('/pullRun.js')) {
+        code =
+          `import { PendingPullWrites } from './pullWrite.js';\nimport { notifyApplied } from './applied.js';\nimport { ScanWork, scanScheduling } from './scanWork.js';\n` +
+          code
+        code = replaceOnce(
+          code,
+          'const local = await shaIndex(this.state);',
+          'const local = this.opts.nativeBatchLocal ?? await shaIndex(this.state);'
+        )
+        const ordinaryStart = code.indexOf(
+          '        const budget = this.opts.prefetchBytes ?? DEFAULT_PREFETCH_BYTES;'
+        )
+        const ordinaryEnd = code.indexOf(
+          '\n        this.firstHeld = this.holds.earliest();\n    }\n    async retryFailure',
+          ordinaryStart
+        )
+        if (ordinaryStart < 0 || ordinaryEnd < 0)
+          throw boundaryError(id, 'ordinary placement body', 0)
+        const ordinary = code.slice(ordinaryStart, ordinaryEnd)
+        code =
+          code.slice(0, ordinaryStart) +
+          '        await this.placeTaking(taking, local, finish);' +
+          code.slice(ordinaryEnd)
+        code = replaceOnce(
+          code,
+          '    async retryFailure',
+          `    async placeTaking(taking, local, finish) {\n${ordinary}\n    }\n    async retryFailure`
+        )
+        code = replaceOnce(
+          code,
+          'await this.placeTaking(taking, local, finish);',
+          `
+        const installBatch = this.fs[Symbol.for('abele.sync.install-batch-v1')];
+        if (installBatch && this.opts.nativeBatch !== false &&
+            this.state.externalDurability === 'durable') {
+          let previousCleanup;
+          const process = async (group) => {
+            checkCancellation(this.opts.signal);
+            const plans = [];
+            const split = async () => {
+              if (group.length === 1) return this.placeTaking(group, local, finish);
+              const middle = Math.floor(group.length / 2);
+              await process(group.slice(0, middle));
+              await process(group.slice(middle));
+            };
+            const fallback = async () => {
+              // A declined cohort often contains existing destinations. Preserve
+              // their ordinary shared inspection/prefetch context, rather than
+              // turning a populated-vault pull into one whole setup per file.
+              const present = [];
+              for (const plan of plans) present.push(await this.fs.stat(plan.path) !== null);
+              if (present.every(Boolean)) return this.placeTaking(group, local, finish);
+              if (!present.some(Boolean)) return split();
+              for (let start = 0; start < group.length;) {
+                let end = start + 1;
+                while (end < group.length && present[end] === present[start]) end++;
+                const run = group.slice(start, end);
+                if (present[start]) await this.placeTaking(run, local, finish);
+                else await process(run);
+                start = end;
+              }
+            };
+            let eligible = group.length > 0;
+            try { for (const change of group) {
+              if (!eligible) break;
+              if (change.op !== 'create' || change.prev_path !== null || change.sha === null ||
+                  change.size === null || this.isDirty(change, null) || this.isNoted(change, null) ||
+                  await this.changeRefusal(change) ||
+                  await this.state.byFileId(change.file_id) !== null ||
+                  await this.placer.pending.read(change.file_id) !== null) { eligible = false; break; }
+              const path = await this.placer.targetOf(change, null);
+              plans.push({ path, sha: change.sha, size: change.size, mtime: change.mtime ?? 0 });
+            } } catch { eligible = false; }
+            if (!eligible) return split();
+            const notifications = [], refused = {};
+            let result;
+            try {
+              result = await installBatch.call(this.fs, plans, async (view, flush) => {
+                const report = { applied: 0, skipped: 0, held: [], deferred: 0,
+                  cursor: this.report.cursor, bootstrapped: this.report.bootstrapped };
+                await this.state.transaction(async (tx) => {
+                  // Prior aliases have already retired after their acknowledged
+                  // commit. Retire their metadata in this cohort's same commit.
+                  await previousCleanup?.flushCleanup(tx);
+                  // Reuse all ordinary admission, content, ownership and settlement checks.
+                  // Savepoints do not acknowledge cleanup until the outer host COMMIT.
+                  const batch = new Puller(this.client, view, tx, { ...this.opts,
+                    nativeBatch: false, nativeBatchLocal: local,
+                    placementConcurrency: Math.min(16, this.opts.placementConcurrency ?? 1),
+                    prefetchBytes: 0, onApplied: (change) => notifications.push(change),
+                  }, report);
+                  await batch.apply(group);
+                  if (report.held.length || report.deferred || report.rejected?.length ||
+                      report.applied + report.skipped !== group.length) throw refused;
+                  await flush();
+                });
+                const cleanup = new PendingPullWrites(this.state, view, true, this.client, this.opts.signal);
+                // This capability is the committed root, never an outer savepoint.
+                await cleanup.recoverCleanup();
+                previousCleanup = cleanup;
+                return report;
+              });
+            } catch (error) { if (error !== refused) throw error; }
+            if (!result) return fallback();
+            this.report.applied += result.applied;
+            this.report.skipped += result.skipped;
+            for (const change of group) { this.resolve(change); await finish(change); }
+            const delivery = new ScanWork({ ...scanScheduling(this.state), signal: this.opts.signal });
+            for (const notification of notifications) {
+              await delivery.step();
+              if (!this.opts.signal?.aborted) await notifyApplied(this.opts, notification);
+            }
+          };
+          for (let offset = 0; offset < taking.length;) {
+            const group = [];
+            let bytes = 0;
+            while (offset < taking.length && group.length < 64) {
+              const change = taking[offset], size = Math.max(0, change.size ?? 0);
+              if (group.length && bytes + size > 16 * 1024 * 1024) break;
+              group.push(change); bytes += size; offset++;
+            }
+            // Keep a tiny tail in a real cohort: 65 small files form 63 + 2,
+            // rather than restoring the ordinary singleton's repeated barriers.
+            if (taking.length - offset === 1 && group.length > 1 &&
+                (group.at(-1).size ?? 0) + (taking[offset].size ?? 0) <= 16 * 1024 * 1024) {
+              offset--;
+              group.pop();
+            }
+            await process(group);
+          }
+          await previousCleanup?.flushCleanup();
+        } else await this.placeTaking(taking, local, finish);`
+        )
         code = replaceOnce(code, 'const MANIFEST_PAGE = 1000;', 'const MANIFEST_PAGE = 5000;')
         code = replaceOnce(
           code,
@@ -145,6 +296,7 @@ export function syncPlacementPlugin() {
           code,
           'async prefetch(changes, local) {',
           `async prefetch(changes, local) {
+          if (this.opts.prefetchBytes === 0) return new Map();
           // Reuse the input inventory, not receipts installed by earlier pages of this pull.
           this.placer.initialLocal ??= new Map(local);
           // Absence belongs to this batch: a later page may move the same id to local bytes.

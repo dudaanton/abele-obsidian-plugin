@@ -606,27 +606,33 @@ describe('Abele settings between two devices', () => {
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
   })
 
-  it('reads a settings file pulled half written again, and takes the whole one after it', async () => {
-    const a = await device('Laptop')
-    const b = await device('Phone')
-    await settle(a, b)
-    const whole = { ...(await onDisk(a)), tasksFolder: 'Whole' }
-    const text = JSON.stringify(whole, undefined, 2)
+  it(
+    'reads a settings file pulled half written again, and takes the whole one after it',
+    async () => {
+      const a = await device('Laptop')
+      const b = await device('Phone')
+      await settle(a, b)
+      const whole = { ...(await onDisk(a)), tasksFolder: 'Whole' }
+      const text = JSON.stringify(whole, undefined, 2)
 
-    // Another device's write caught half way, then finished, within half a second.
-    await commitSettings(text.slice(0, text.length / 2))
-    await b.service.syncNow()
-    await commitSettings(text)
-    await b.service.syncNow()
-    await waitFor('the phone to reload', () => b.config.tasksFolder === 'Whole')
+      // Another device's write caught half way, then finished, within half a second.
+      await commitSettings(text.slice(0, text.length / 2))
+      await b.service.syncNow()
+      await commitSettings(text)
+      await b.service.syncNow()
+      await waitFor('the phone to reload', () => b.config.tasksFolder === 'Whole')
 
-    expect(b.config.settingsUnreadable).toBe(false)
-    await tick(600)
-    expect(b.config.settingsUnreadable).toBe(false)
+      expect(b.config.settingsUnreadable).toBe(false)
+      await tick(600)
+      expect(b.config.settingsUnreadable).toBe(false)
 
-    await settle(a, b)
-    await twoMoreCycles(a, b)
-    expect([pushed(a), pushed(b)]).toEqual([0, 0])
-    expect(a.config.tasksFolder).toBe('Whole')
-  })
+      await settle(a, b)
+      await twoMoreCycles(a, b)
+      expect([pushed(a), pushed(b)]).toEqual([0, 0])
+      expect(a.config.tasksFolder).toBe('Whole')
+      // Two real-server devices exchange malformed and complete versions, then
+      // prove quiescence. The outer budget must contain the condition wait above.
+    },
+    PATIENCE_MS * 3
+  )
 })

@@ -2,6 +2,8 @@ import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemova
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
+import { INSTALL_BATCH, nativeInstallBatch, type InstallItem } from './nativeInstallBatch'
+import { PORTABLE_CANDIDATES } from './ledgerPathCandidates'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
 import {
   withMetadataInventory,
@@ -295,6 +297,67 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  readonly [PORTABLE_CANDIDATES] = true
+  get [INSTALL_BATCH]() {
+    const native = this.native
+    return native?.syncFile && native.syncPath && native.installExclusive && native.sameObject
+      ? this.installBatch.bind(this)
+      : undefined
+  }
+  private installBatch<T>(
+    items: readonly InstallItem[],
+    work: (fs: FileSystem, flush: () => Promise<void>) => Promise<T>
+  ): Promise<T | undefined> {
+    const native = this.native
+    if (!native) return Promise.resolve(undefined)
+    const paths = items.flatMap((item) => {
+      const paths = [item.path]
+      for (
+        let parent = folderOf(item.path).replace(/^\/$/, '');
+        parent;
+        parent = folderOf(parent).replace(/^\/$/, '')
+      )
+        paths.push(parent)
+      return paths
+    })
+    return this.withScanMutation(paths, () =>
+      nativeInstallBatch(
+        {
+          fs: this,
+          disk: this.disk,
+          native,
+          io: this.io,
+          journal: this.journal,
+          freeName: (path) => this.writer.freeName(path, 'tmp'),
+          ownsStage: (path) =>
+            isAdapterTemp(path) &&
+            (!this.privateRoot ||
+              withinRoot(path, stagingDirectory(this.configDir, this.privateRoot))),
+          assertReady: () => this.runtimeFence?.assertReady(),
+          validate: (path) => this.validateConditionalPath(path),
+          parents: (path) => this.makeParents(path),
+          publish: async (from, to, signal) => {
+            const release = this.externalCoordination.beginEngineMutation([to])
+            try {
+              await this.beforeEngineMutation?.([to])
+              signal?.throwIfAborted()
+              this.runtimeFence?.assertReady()
+              await native.installExclusive(from, to)
+            } finally {
+              release()
+            }
+          },
+          installed: (item) => {
+            this.writtenStat = { path: item.path, size: item.size, mtime: item.mtime }
+            this.awaitingIndex.add(item.path)
+            this.wrote([item.path], 'file')
+          },
+        },
+        items,
+        work
+      )
+    )
+  }
   readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
@@ -1600,6 +1663,7 @@ export class ObsidianFileSystem implements FileSystem {
             'restoreDirectoryExclusive',
             'archiveBackup',
             'syncPath',
+            'syncFile',
             'sameObject',
             'fileIdentity',
           ],
@@ -1926,7 +1990,13 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertOwned()
     if (this.ledger?.readCommittedEntries) {
       const paths = (await this.journal.currentEntries())
-        .filter((entry) => entry.replacementSha && !entry.backup && !entry.retiredGeneration)
+        .filter(
+          (entry) =>
+            entry.replacementSha &&
+            !entry.backup &&
+            !entry.retiredGeneration &&
+            this.withinFileScope(entry.target)
+        )
         .map((entry) => entry.target)
       if (paths.length)
         await this.acknowledgeWrites(await this.ledger.readCommittedEntries([...new Set(paths)]))
@@ -1983,6 +2053,14 @@ export class ObsidianFileSystem implements FileSystem {
         continue
       if (entry.temp && (this.stageOperations.has(entry.temp) || adapterWriteInFlight(entry.temp)))
         continue
+      if (entry.disposableSource && entry.temp) {
+        // An interrupted fresh batch can leave an uninstalled server-only cache.
+        // The matching committed row now owns that version; never touch the public name.
+        if (await this.rawStat(entry.temp)) await this.disk.remove(entry.temp)
+        if (this.native) await this.native.syncPath(entry.temp, true)
+        installed.push(entry)
+        continue
+      }
       const published = entry.temp && this.publications.get(entry.temp) === JSON.stringify(entry)
       if (!entry.installed && !published && (!entry.temp || (await this.rawStat(entry.temp))))
         continue

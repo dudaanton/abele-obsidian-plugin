@@ -856,6 +856,7 @@ export class TokenEngines {
                   : groupCandidates.has(path.normalize('NFC')) ||
                     localCandidates.has(path.normalize('NFC')),
             }
+      const physicalLedger = externalPlacement?.localState(state) ?? state
       const ordinary = new ObsidianFileSystem(this.app, {
         adapter,
         connectionId: scopedRoot ? record.id : undefined,
@@ -867,7 +868,7 @@ export class TokenEngines {
         discovery,
         startupInventory: () => inventory,
         runtimeFence: fence,
-        ledger: state,
+        ledger: physicalLedger,
         preserveEmptyDirectories: true,
         pollMs: pollMsOf(this.deps),
         onEngineWrite: (path) => {
@@ -875,7 +876,7 @@ export class TokenEngines {
           runtime?.written(path)
         },
       })
-      state.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
+      physicalLedger.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
       if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)

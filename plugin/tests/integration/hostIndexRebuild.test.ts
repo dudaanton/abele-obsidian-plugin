@@ -280,10 +280,10 @@ it.each([
           prefetchBytes: 0,
         }
       )
-      // The current direct-placement contract reads inspection and placement sources.
-      // Reindexing must add no requests or bytes to that same steady-state contract.
-      expect(openVersion).toHaveBeenCalledTimes(2)
-      expect(received).toBe(bytes.length * 2)
+      // Direct placement verifies and installs one source read. Rebuilding must
+      // add no requests or bytes to that same steady-state baseline.
+      expect(openVersion).toHaveBeenCalledTimes(1)
+      expect(received).toBe(bytes.length)
     }
     const fingerprint = vi.spyOn(fs, 'fingerprint')
     expect((await scan(fs, state, { excluded: () => false })).ops).toEqual([])

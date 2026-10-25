@@ -368,16 +368,17 @@ export class VaultWriter {
       if (
         this.deps.retainInstalled &&
         !entry.backup &&
-        !entry.streaming &&
+        (!entry.streaming || entry.disposableSource) &&
         entry.replacementSha &&
         entry.temp &&
-        entry.temp.slice(entry.temp.lastIndexOf('/') + 1).startsWith('.abele-receipt-')
+        (entry.disposableSource ||
+          entry.temp.slice(entry.temp.lastIndexOf('/') + 1).startsWith('.abele-receipt-'))
       ) {
         // This pre-publication intent survives a lost install acknowledgement too.
         // A native alias may be removed only with inode proof; neither an alias nor
         // equal public bytes authorize retiring evidence before the ledger commits.
         if (
-          !inFlight.has(entry.temp) &&
+          !adapterWriteInFlight(entry.temp) &&
           this.deps.native?.sameObject &&
           this.deps.native.syncPath
         ) {

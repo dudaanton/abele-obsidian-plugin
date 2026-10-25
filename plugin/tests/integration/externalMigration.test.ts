@@ -65,7 +65,7 @@ it('upgrades the real version-1 ledger without losing rows, then refuses old nor
   await activateExternalFiles(app as never, store, 'sample-ledger', name, binding, () => {})
   store.close()
   await expect(oldOpen(factory, name)).rejects.toMatchObject({ name: 'VersionError' })
-  expect((await inspectExistingLedger(factory, name))?.version).toBe(2)
+  expect((await inspectExistingLedger(factory, name))?.version).toBe(3)
 })
 it('old direct database deletion is still possible, but its surviving activation marker forbids new bootstrap', async () => {
   const factory = new IDBFactory(),

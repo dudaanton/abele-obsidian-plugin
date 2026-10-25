@@ -1346,6 +1346,8 @@ export class TokenEngineRuntime
       // Confirm the first useful transfer before spending the rest of the scan's I/O.
       if (!this.scanUploadPrimed) await task
     }
+    // Returned batch views retain these same progress, trace and cancellation hooks.
+    let runtimeFsHandler: ProxyHandler<FileSystem>
     this.engine = new SyncEngine({
       placementConcurrency: 16,
       yieldTask: yieldSyncTask,
@@ -1377,251 +1379,268 @@ export class TokenEngineRuntime
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
-      fs: new Proxy(options.fs, {
-        get: (target, name) => {
-          if (name === Symbol.for('abele.sync.prepare-scan-upload-v1'))
-            return this.prepareScanUpload
-          if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
-            return async () => {
-              await Promise.all(this.scanUploads)
-              const error = this.scanUploadFailure
-              this.scanUploadFailure = undefined
-              this.scanUploadPrimed = false
-              if (error) throw error
-            }
-          if (name === Symbol.for('abele.sync.upload-owner-v1'))
-            return (path: string) => options.uploadAllowed?.(path) ?? true
-          if (name === 'watch' && target.watch)
-            return (notify: (paths: string[]) => void) => {
-              this.notifyLocal = notify
-              const unwatch = target.watch((paths) => {
-                if (this.rootIssue) return
-                // Polling settings and editor activity also reports ignored files.
-                // They cannot change this connection's inventory; keep the ignore
-                // control file itself observable so scope changes still take effect.
-                const relevant = paths.filter(
-                  (path) =>
-                    path === '.abele-sync-ignore' || !this.ignore?.ignores(path.normalize('NFC'))
+      fs: new Proxy(
+        options.fs,
+        (runtimeFsHandler = {
+          get: (target, name) => {
+            if (name === Symbol.for('abele.sync.install-batch-v1')) {
+              const install = Reflect.get(target, name)
+              if (typeof install !== 'function') return install
+              return (
+                items: import('./nativeInstallBatch').InstallItem[],
+                work: (view: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+              ) =>
+                install.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
+                  work(new Proxy(view, runtimeFsHandler), flush)
                 )
-                if (relevant.length)
-                  void this.quiet.notice(relevant).catch((error) => {
-                    console.debug('[abele-sync] cannot schedule local changes', error)
-                    // An unavailable stat must not swallow the original change report.
-                    if (this.active) notify(relevant)
-                  })
-              })
-              return () => {
-                this.notifyLocal = undefined
-                unwatch()
+            }
+            if (name === Symbol.for('abele.sync.prepare-scan-upload-v1'))
+              return this.prepareScanUpload
+            if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
+              return async () => {
+                await Promise.all(this.scanUploads)
+                const error = this.scanUploadFailure
+                this.scanUploadFailure = undefined
+                this.scanUploadPrimed = false
+                if (error) throw error
               }
-            }
-          if (name === 'conditionalFile' && target.conditionalFile)
-            return async (operation: Parameters<NonNullable<FileSystem['conditionalFile']>>[0]) => {
-              const applied = await this.trace.run(
-                'pull conditional ' + operation.effect.kind + ' ' + operation.path,
-                () => target.conditionalFile(operation),
-                true
-              )
-              if (
-                applied &&
-                (operation.effect.kind === 'write' || operation.effect.kind === 'install')
-              ) {
-                this.actions.written(operation.path)
-                this.pulled(operation.path)
-                this.trace.written(operation.path)
-              }
-              return applied
-            }
-          if (name === 'writeAtomic')
-            return async (path: string, bytes: Uint8Array, mtime: number) => {
-              await this.trace.run(
-                'pull atomic write ' + path,
-                () => target.writeAtomic(path, bytes, mtime),
-                true
-              )
-              this.actions.written(path)
-              this.pulled(path)
-              this.trace.written(path)
-            }
-          if (name === 'mkdir' && target.mkdir)
-            return async (path: string) => {
-              await this.trace.run('mkdir ' + path, () => target.mkdir(path), true)
-              this.folderPrepared(path)
-              this.pulled(path)
-            }
-          if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
-            return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
-              const stage = await this.trace.run(
-                'pull stage create ' + args[0],
-                () => target.beginAtomicWrite(...args),
-                true
-              )
-              const trace = this.trace
-              const written = () => {
-                this.actions.written(args[0])
-                this.pulled(args[0])
-                this.trace.written(args[0])
-              }
-              return new Proxy(stage, {
-                get(target, key) {
-                  if (key === 'commit')
-                    return async (signal?: AbortSignal) => {
-                      await trace.run(
-                        'pull stage publish ' + args[0],
-                        () => target.commit(signal),
-                        true
-                      )
-                      written()
-                    }
-                  const value = Reflect.get(target, key)
-                  if (
-                    ['append', 'seal', 'discard'].includes(String(key)) &&
-                    typeof value === 'function'
+            if (name === Symbol.for('abele.sync.upload-owner-v1'))
+              return (path: string) => options.uploadAllowed?.(path) ?? true
+            if (name === 'watch' && target.watch)
+              return (notify: (paths: string[]) => void) => {
+                this.notifyLocal = notify
+                const unwatch = target.watch((paths) => {
+                  if (this.rootIssue) return
+                  // Polling settings and editor activity also reports ignored files.
+                  // They cannot change this connection's inventory; keep the ignore
+                  // control file itself observable so scope changes still take effect.
+                  const relevant = paths.filter(
+                    (path) =>
+                      path === '.abele-sync-ignore' || !this.ignore?.ignores(path.normalize('NFC'))
                   )
-                    return (...parameters: unknown[]) =>
-                      trace.run(
-                        'pull stage ' + String(key) + ' ' + args[0],
-                        () => value.apply(target, parameters),
-                        true
-                      )
-                  return typeof value === 'function' ? value.bind(target) : value
-                },
-              })
-            }
-          const value = Reflect.get(target, name)
-          if (name === Symbol.for('abele.sync.trace-pull-v1')) return beginPull
-          if (
-            name === Symbol.for('abele.sync.directory-identity-v1') &&
-            typeof value === 'function'
-          )
-            return (path: string) =>
-              this.trace.run('directory identity ' + path, () => value.call(target, path), true)
-          if (name === 'move')
-            return async (from: string, to: string) => {
-              await target.move(from, to)
-              this.trace.written(to)
-            }
-          if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
-            const trace = this.trace
-            const inventoried = (completed: number) => {
-              if (name === 'list') this.inventoryTotal = completed
-            }
-            const candidate = (path: string) => this.namedCandidate(path)
-            const largeUploads = this.largeUploadPaths
-            const budget = this.comparisonBudget
-            const checkRoot = () => this.checkRoot()
-            const generation = () => (this.active ? this.comparisonRun : -1)
-            const syncing = () => this.engine.status.state === 'syncing'
-            const nameTracked = async () => {
-              if (this.token.scope.kind !== 'group') return
-              for await (const entry of options.state.all()) this.nameCandidates([entry.path])
-            }
-            return async function* () {
-              const run = generation()
-              const managed = syncing()
-              const current = () => {
-                if (generation() < 0 || (managed && generation() !== run)) throw new SyncCancelled()
-              }
-              current()
-              await checkRoot()
-              current()
-              await nameTracked()
-              current()
-              const finish = trace.begin('fs ' + String(name))
-              let completed = 0
-              try {
-                for await (const info of value.call(target)) {
-                  await budget.account(0)
-                  current()
-                  if (name === 'list' && !candidate(info.path)) continue
-                  if (managed && name === 'list') {
-                    if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
-                    else largeUploads.delete(info.path)
-                  }
-                  completed++
-                  yield info
+                  if (relevant.length)
+                    void this.quiet.notice(relevant).catch((error) => {
+                      console.debug('[abele-sync] cannot schedule local changes', error)
+                      // An unavailable stat must not swallow the original change report.
+                      if (this.active) notify(relevant)
+                    })
+                })
+                return () => {
+                  this.notifyLocal = undefined
+                  unwatch()
                 }
-              } finally {
-                if (managed && generation() === run) {
-                  inventoried(completed)
-                  trace.inventory(completed)
-                }
-                finish(completed)
               }
-            }
-          }
-          if (name === PLACEMENT && typeof value === 'function')
-            return (
-              paths: string[],
-              work: () => Promise<unknown>,
-              preserve: boolean | readonly string[] = true
-            ) =>
-              this.trace.run(
-                'placement ' + paths.join(', '),
-                () => value.call(target, paths, work, preserve),
-                true
-              )
-          if (
-            (name === 'read' ||
-              name === 'stat' ||
-              name === 'fingerprint' ||
-              name === Symbol.for('abele.sync.fingerprint-fresh-v1')) &&
-            typeof value === 'function'
-          )
-            return async (path: string, ...args: unknown[]) => {
-              const managed = this.engine.status.state === 'syncing'
-              const run = this.comparisonRun
-              const signal =
-                (args[0] as AbortSignal | undefined) ??
-                (managed ? this.comparisonCancellation.signal : this.requests.signal)
-              const forwarded =
-                args[0] === undefined &&
-                (name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1'))
-                  ? [signal, ...args.slice(1)]
-                  : args
-              const current = () => {
-                if (!this.active || (managed && run !== this.comparisonRun) || signal.aborted)
-                  throw new SyncCancelled()
-              }
-              const invoke = () => {
-                current()
-                return value.call(target, path, ...forwarded)
-              }
-              await this.comparisonBudget.account(0)
-              current()
-              return this.trace.run('fs ' + String(name) + ' ' + path, async () => {
-                if (name === 'stat') {
-                  const result = await invoke()
-                  current()
-                  return result
-                }
-                const total = this.inventoryTotal
-                if (managed && this.compared.size === 0) comparing({ completed: 0, total })
-                const bytes =
-                  name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
-                    ? ((this.largeUploadPaths.has(path)
-                        ? await this.fingerprintForUpload(target, path, signal)
-                        : undefined) ?? (await invoke()))
-                    : await connectStage(
-                        'Comparing files',
-                        'Comparing a local file could not finish. Try syncing again.',
-                        invoke
-                      )
-                current()
-                if (managed) this.compared.add(path)
+            if (name === 'conditionalFile' && target.conditionalFile)
+              return async (
+                operation: Parameters<NonNullable<FileSystem['conditionalFile']>>[0]
+              ) => {
+                const applied = await this.trace.run(
+                  'pull conditional ' + operation.effect.kind + ' ' + operation.path,
+                  () => target.conditionalFile(operation),
+                  true
+                )
                 if (
-                  managed &&
-                  (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total)
+                  applied &&
+                  (operation.effect.kind === 'write' || operation.effect.kind === 'install')
                 ) {
-                  this.comparisonPublished = Date.now()
-                  comparing({ completed: this.compared.size, total })
+                  this.actions.written(operation.path)
+                  this.pulled(operation.path)
+                  this.trace.written(operation.path)
                 }
-                return bytes
-              })
+                return applied
+              }
+            if (name === 'writeAtomic')
+              return async (path: string, bytes: Uint8Array, mtime: number) => {
+                await this.trace.run(
+                  'pull atomic write ' + path,
+                  () => target.writeAtomic(path, bytes, mtime),
+                  true
+                )
+                this.actions.written(path)
+                this.pulled(path)
+                this.trace.written(path)
+              }
+            if (name === 'mkdir' && target.mkdir)
+              return async (path: string) => {
+                await this.trace.run('mkdir ' + path, () => target.mkdir(path), true)
+                this.folderPrepared(path)
+                this.pulled(path)
+              }
+            if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
+              return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
+                const stage = await this.trace.run(
+                  'pull stage create ' + args[0],
+                  () => target.beginAtomicWrite(...args),
+                  true
+                )
+                const trace = this.trace
+                const written = () => {
+                  this.actions.written(args[0])
+                  this.pulled(args[0])
+                  this.trace.written(args[0])
+                }
+                return new Proxy(stage, {
+                  get(target, key) {
+                    if (key === 'commit')
+                      return async (signal?: AbortSignal) => {
+                        await trace.run(
+                          'pull stage publish ' + args[0],
+                          () => target.commit(signal),
+                          true
+                        )
+                        written()
+                      }
+                    const value = Reflect.get(target, key)
+                    if (
+                      ['append', 'seal', 'discard'].includes(String(key)) &&
+                      typeof value === 'function'
+                    )
+                      return (...parameters: unknown[]) =>
+                        trace.run(
+                          'pull stage ' + String(key) + ' ' + args[0],
+                          () => value.apply(target, parameters),
+                          true
+                        )
+                    return typeof value === 'function' ? value.bind(target) : value
+                  },
+                })
+              }
+            const value = Reflect.get(target, name)
+            if (name === Symbol.for('abele.sync.trace-pull-v1')) return beginPull
+            if (
+              name === Symbol.for('abele.sync.directory-identity-v1') &&
+              typeof value === 'function'
+            )
+              return (path: string) =>
+                this.trace.run('directory identity ' + path, () => value.call(target, path), true)
+            if (name === 'move')
+              return async (from: string, to: string) => {
+                await target.move(from, to)
+                this.trace.written(to)
+              }
+            if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
+              const trace = this.trace
+              const inventoried = (completed: number) => {
+                if (name === 'list') this.inventoryTotal = completed
+              }
+              const candidate = (path: string) => this.namedCandidate(path)
+              const largeUploads = this.largeUploadPaths
+              const budget = this.comparisonBudget
+              const checkRoot = () => this.checkRoot()
+              const generation = () => (this.active ? this.comparisonRun : -1)
+              const syncing = () => this.engine.status.state === 'syncing'
+              const nameTracked = async () => {
+                if (this.token.scope.kind !== 'group') return
+                for await (const entry of options.state.all()) this.nameCandidates([entry.path])
+              }
+              return async function* () {
+                const run = generation()
+                const managed = syncing()
+                const current = () => {
+                  if (generation() < 0 || (managed && generation() !== run))
+                    throw new SyncCancelled()
+                }
+                current()
+                await checkRoot()
+                current()
+                await nameTracked()
+                current()
+                const finish = trace.begin('fs ' + String(name))
+                let completed = 0
+                try {
+                  for await (const info of value.call(target)) {
+                    await budget.account(0)
+                    current()
+                    if (name === 'list' && !candidate(info.path)) continue
+                    if (managed && name === 'list') {
+                      if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
+                      else largeUploads.delete(info.path)
+                    }
+                    completed++
+                    yield info
+                  }
+                } finally {
+                  if (managed && generation() === run) {
+                    inventoried(completed)
+                    trace.inventory(completed)
+                  }
+                  finish(completed)
+                }
+              }
             }
-          return typeof value === 'function' ? value.bind(target) : value
-        },
-      }),
+            if (name === PLACEMENT && typeof value === 'function')
+              return (
+                paths: string[],
+                work: () => Promise<unknown>,
+                preserve: boolean | readonly string[] = true
+              ) =>
+                this.trace.run(
+                  'placement ' + paths.join(', '),
+                  () => value.call(target, paths, work, preserve),
+                  true
+                )
+            if (
+              (name === 'read' ||
+                name === 'stat' ||
+                name === 'fingerprint' ||
+                name === Symbol.for('abele.sync.fingerprint-fresh-v1')) &&
+              typeof value === 'function'
+            )
+              return async (path: string, ...args: unknown[]) => {
+                const managed = this.engine.status.state === 'syncing'
+                const run = this.comparisonRun
+                const signal =
+                  (args[0] as AbortSignal | undefined) ??
+                  (managed ? this.comparisonCancellation.signal : this.requests.signal)
+                const forwarded =
+                  args[0] === undefined &&
+                  (name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1'))
+                    ? [signal, ...args.slice(1)]
+                    : args
+                const current = () => {
+                  if (!this.active || (managed && run !== this.comparisonRun) || signal.aborted)
+                    throw new SyncCancelled()
+                }
+                const invoke = () => {
+                  current()
+                  return value.call(target, path, ...forwarded)
+                }
+                await this.comparisonBudget.account(0)
+                current()
+                return this.trace.run('fs ' + String(name) + ' ' + path, async () => {
+                  if (name === 'stat') {
+                    const result = await invoke()
+                    current()
+                    return result
+                  }
+                  const total = this.inventoryTotal
+                  if (managed && this.compared.size === 0) comparing({ completed: 0, total })
+                  const bytes =
+                    name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
+                      ? ((this.largeUploadPaths.has(path)
+                          ? await this.fingerprintForUpload(target, path, signal)
+                          : undefined) ?? (await invoke()))
+                      : await connectStage(
+                          'Comparing files',
+                          'Comparing a local file could not finish. Try syncing again.',
+                          invoke
+                        )
+                  current()
+                  if (managed) this.compared.add(path)
+                  if (
+                    managed &&
+                    (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total)
+                  ) {
+                    this.comparisonPublished = Date.now()
+                    comparing({ completed: this.compared.size, total })
+                  }
+                  return bytes
+                })
+              }
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+      ),
       state: progressState,
       selective: this.selective,
       stillHeld: () => this.active && !this.rootIssue,

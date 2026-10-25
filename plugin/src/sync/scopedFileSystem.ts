@@ -4,6 +4,7 @@ import { pathAdmission, EngineError, type FileSystem, type AtomicStage } from '@
 import { PLACEMENT } from './pathCoordinator'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'
+import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
 
 export class FolderScopeError extends EngineError {
   constructor(message: string) {
@@ -61,6 +62,16 @@ export function scopedFileSystem(
       }
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
+      if (key === INSTALL_BATCH)
+        return (
+          items: InstallItem[],
+          work: (fs: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+        ) => {
+          for (const item of items) assertPath(item.path)
+          return value.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
+            work(scopedFileSystem(view, assertPath, includes, privateRoot, scopeRootInput), flush)
+          )
+        }
       // Comparing names is pure; it does not grant access to the named objects.
       if (key === 'pathKey') return value.bind(target)
       if (key === pathAdmission)

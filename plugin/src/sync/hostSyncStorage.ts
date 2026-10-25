@@ -107,10 +107,21 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
 export class HostSyncStorage implements LocalStorage {
   private readonly scanRevisions = new Map<string, number>()
   private readonly scanMutations = new Map<string, number>()
+  private scanGeneration = 0
+  private scanRevisionFloor = 0
+  private reviseScan(path: string): void {
+    if (!this.scanRevisions.has(path) && this.scanRevisions.size >= 4096) {
+      this.scanRevisions.clear()
+      // Eviction invalidates every older captured generation, including paths
+      // whose explicit revision was zero. It cannot revive stale write-back.
+      this.scanRevisionFloor = ++this.scanGeneration
+    }
+    this.scanRevisions.set(path, ++this.scanGeneration)
+  }
   scanFingerprintRevision(path: string): number {
-    let revision = 0
+    let revision = this.scanRevisionFloor
     for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
-      revision += this.scanRevisions.get(key) ?? 0
+      revision = Math.max(revision, this.scanRevisions.get(key) ?? 0)
     return revision
   }
   private scanMutationActive(path: string): boolean {
@@ -120,11 +131,15 @@ export class HostSyncStorage implements LocalStorage {
   }
   async withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const keys = [...new Set(paths)]
+    const invalidated = keys.every((key) => this.scanMutationActive(key))
     for (const key of keys) {
-      this.scanRevisions.set(key, (this.scanRevisions.get(key) ?? 0) + 1)
+      this.reviseScan(key)
       this.scanMutations.set(key, (this.scanMutations.get(key) ?? 0) + 1)
     }
     try {
+      // An outer cohort already durably invalidated these names. Still count
+      // nested/concurrent lifetimes so an inner writer cannot outlive its fence.
+      if (invalidated) return await work()
       const tx = this.db.transaction(STORE, 'readwrite')
       const done = completion(tx, 'invalidate scan fingerprints')
       for (const key of keys) {
@@ -149,7 +164,7 @@ export class HostSyncStorage implements LocalStorage {
       return await work()
     } finally {
       for (const key of keys) {
-        this.scanRevisions.set(key, (this.scanRevisions.get(key) ?? 0) + 1)
+        this.reviseScan(key)
         const remaining = (this.scanMutations.get(key) ?? 1) - 1
         if (remaining) this.scanMutations.set(key, remaining)
         else this.scanMutations.delete(key)

@@ -19,6 +19,8 @@ import {
   type StateOpenOptions,
 } from './idbIdentity'
 import { IndexedDbConnection } from './idbConnection'
+import { caseKey } from '@abele/sync-sdk/protocol'
+import { portableCandidateKey, PORTABLE_CANDIDATES } from './ledgerPathCandidates'
 import {
   copyEntry,
   copyJournal,
@@ -29,15 +31,16 @@ import {
 } from './stateOverlay'
 
 /**
- * Version 2 fences the version-1 client before external-file activation. The migration
- * preserves existing stores, entries and metadata; it is not a new empty ledger.
+ * Version 3 adds an indexed spelling inventory without duplicating ledger payloads.
+ * The upgrade preserves the existing entries, metadata and external-file fence.
  */
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const ENTRIES = 'entries'
 const META = 'meta'
 const BY_FILE_ID = 'byFileId'
 const BY_WIRE_PATH = 'byWirePath'
+const PATH_CANDIDATES = 'pathCandidates'
 
 /** How long a `delete` waits for a connection that will not close before it gives up. */
 const DELETE_BLOCKED_TIMEOUT_MS = 5000
@@ -242,6 +245,33 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     return copyEntry(rows[0])
   }
 
+  async *pathCandidates(
+    path: string,
+    key: (path: string) => string = caseKey
+  ): AsyncIterable<StateEntry> {
+    this.assertRecovery()
+    // Unknown/custom equivalence relations retain the conservative complete walk.
+    if (key !== caseKey && Reflect.get(key, PORTABLE_CANDIDATES) !== true) {
+      const wanted = key(path)
+      for await (const entry of this.all()) if (key(entry.path) === wanted) yield entry
+      return
+    }
+    const rows = await this.read(
+      'cannot read path candidates',
+      [ENTRIES, PATH_CANDIDATES],
+      async (tx) => {
+        const paths = await wait<{ path: string }[]>(
+          tx.objectStore(PATH_CANDIDATES).index('bucket').getAll(portableCandidateKey(path))
+        )
+        return Promise.all(
+          paths.map((item) => wait<StateEntry | undefined>(tx.objectStore(ENTRIES).get(item.path)))
+        )
+      }
+    )
+    const wanted = key(path)
+    for (const entry of rows) if (entry && key(entry.path) === wanted) yield { ...entry }
+  }
+
   async *all(): AsyncIterable<StateEntry> {
     this.assertRecovery()
     // Every row up front: the caller may await between steps, and an IDB cursor held across an
@@ -275,18 +305,16 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     await this.write(what, [ENTRIES], async (tx) => {
       const entries = tx.objectStore(ENTRIES)
       for (const path of await clashingKeys(entries, copy, true, true)) {
-        if (path !== copy.path) await wait(entries.delete(path))
+        if (path !== copy.path) await deleteEntry(tx, path)
       }
-      await wait(entries.put(copy))
+      await putEntry(tx, copy)
     })
     await this.committedEntryObserver?.([copy])
   }
 
   async delete(path: string): Promise<void> {
     this.assertRecovery()
-    await this.write(`cannot forget ${path}`, [ENTRIES], async (tx) =>
-      wait(tx.objectStore(ENTRIES).delete(path))
-    )
+    await this.write(`cannot forget ${path}`, [ENTRIES], async (tx) => deleteEntry(tx, path))
   }
 
   async getCursor(): Promise<number> {
@@ -417,7 +445,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       for (const entry of ledger.putEntries ?? []) await this.entryObserver?.({ ...entry })
       this.assertRecovery()
       if (!this.permitsEngineEffects) throw new ExternalStateError('recovery-required')
-      tx = this.begin('cannot commit external phase', [ENTRIES, META], 'readwrite')
+      tx = this.begin('cannot commit external phase', [ENTRIES, META, PATH_CANDIDATES], 'readwrite')
     } catch (cause) {
       this.externalPhasePending = false
       throw new ExternalStateError('aborted', { cause })
@@ -435,11 +463,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       if (row && typeof row.value !== 'string') throw new ExternalStateError('recovery-required')
       const { ledger } = checkExternalPhase(batch, row ? (row.value as string) : null)
       const entries = tx.objectStore(ENTRIES)
-      for (const path of ledger.deletePaths ?? []) await wait(entries.delete(path))
+      for (const path of ledger.deletePaths ?? []) await deleteEntry(tx, path)
       for (const entry of ledger.putEntries ?? []) {
         for (const path of await clashingKeys(entries, entry, true, true))
-          if (path !== entry.path) await wait(entries.delete(path))
-        await wait(entries.put(entry))
+          if (path !== entry.path) await deleteEntry(tx, path)
+        await putEntry(tx, entry)
       }
       if (ledger.cursor !== undefined)
         await wait(meta.put({ key: CURSOR_KEY, value: ledger.cursor }))
@@ -550,7 +578,6 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   /** The overlay, in one readwrite transaction over both stores. */
   private async flush(overlay: Overlay, revision: unknown): Promise<void> {
     await this.write('cannot commit the state transaction', [ENTRIES, META], async (tx) => {
-      const entries = tx.objectStore(ENTRIES)
       const meta = tx.objectStore(META)
       const current = await wait<MetaRow | undefined>(meta.get('revision'))
       if ((current?.value ?? 0) !== revision)
@@ -559,10 +586,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       // that has to go before another can take its `fileId` is the invariant `put` keeps, and
       // this order is what keeps it if an index is ever declared unique.
       for (const [path, entry] of overlay.entries) {
-        if (entry === null) await wait(entries.delete(path))
+        if (entry === null) await deleteEntry(tx, path)
       }
       for (const entry of overlay.entries.values()) {
-        if (entry !== null) await wait(entries.put(entry))
+        if (entry !== null) await putEntry(tx, entry)
       }
       for (const [key, value] of overlay.meta) {
         if (value === null) await wait(meta.delete(key))
@@ -632,7 +659,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   ): Promise<T> {
     if (stores.includes(ENTRIES)) this.entrySnapshot = null
     return this.once(what, async () => {
-      const tx = this.begin(what, [...new Set([...stores, META])], 'readwrite')
+      const tx = this.begin(
+        what,
+        [...new Set([...stores, META, ...(stores.includes(ENTRIES) ? [PATH_CANDIDATES] : [])])],
+        'readwrite'
+      )
       const done = completion(tx, what)
       let result: T
       try {
@@ -673,6 +704,31 @@ function build(db: IDBDatabase): void {
     entries.createIndex(BY_WIRE_PATH, 'wirePath')
   }
   if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' })
+  if (!db.objectStoreNames.contains(PATH_CANDIDATES)) {
+    const paths = db.createObjectStore(PATH_CANDIDATES, { keyPath: 'path' })
+    paths.createIndex('bucket', 'bucket')
+    const cursor = paths.transaction.objectStore(ENTRIES).openCursor()
+    cursor.onsuccess = () => {
+      const current = cursor.result
+      if (!current) return
+      const path = (current.value as StateEntry).path
+      paths.put({ path, bucket: portableCandidateKey(path) })
+      current.continue()
+    }
+  }
+}
+
+async function putEntry(tx: IDBTransaction, entry: StateEntry): Promise<void> {
+  await wait(tx.objectStore(ENTRIES).put(entry))
+  await wait(
+    tx
+      .objectStore(PATH_CANDIDATES)
+      .put({ path: entry.path, bucket: portableCandidateKey(entry.path) })
+  )
+}
+async function deleteEntry(tx: IDBTransaction, path: string): Promise<void> {
+  await wait(tx.objectStore(ENTRIES).delete(path))
+  await wait(tx.objectStore(PATH_CANDIDATES).delete(path))
 }
 
 /** The paths of the rows that hold this entry's `fileId` or its `wirePath`, as asked for. */

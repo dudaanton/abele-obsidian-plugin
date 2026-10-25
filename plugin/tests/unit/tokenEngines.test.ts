@@ -1424,6 +1424,7 @@ it('follows a moved folder after native pulls preserve local edit sources', asyn
     // Matching local bytes are now adopted without a redundant download. Seed genuine
     // retained source stages explicitly so Follow still proves their preservation.
     const journal = new WriteJournal(app, undefined, id)
+    expect(await journal.currentEntries()).toEqual([])
     for (const [index, text] of ['retained source one', 'retained source two'].entries()) {
       const temp = connectionPrivateRoot(id) + `/writes/.abele-sync-source0${index}.tmp`
       const bytes = new TextEncoder().encode(text)

@@ -1,4 +1,5 @@
 import { sha256 } from './hash'
+import { INSTALL_BATCH, type InstallItem } from '../nativeInstallBatch'
 import {
   type FileSystem,
   type AtomicStage,
@@ -297,8 +298,7 @@ export class ExternalRepresentation {
     }
     return { kind: 'ordinary' }
   }
-  private guardStage(stage: AtomicStage, path: string): AtomicStage {
-    const fs = this.options.fs
+  private guardStage(stage: AtomicStage, path: string, fs = this.options.fs): AtomicStage {
     return new Proxy(stage, {
       get: (stage, key) => {
         if (key === 'commit')
@@ -325,13 +325,26 @@ export class ExternalRepresentation {
       },
     })
   }
-  fileSystem(): FileSystem {
-    const fs = this.options.fs
+  fileSystem(fs = this.options.fs): FileSystem {
     // Proxy closures deliberately retain their owner after the method returns.
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- The original coordinator must survive later method receivers.
     const self = this
     return new Proxy(fs, {
       get(target, method) {
+        if (method === INSTALL_BATCH) {
+          const install = Reflect.get(target, method)
+          if (typeof install !== 'function') return install
+          return async (
+            items: InstallItem[],
+            work: (view: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+          ) => {
+            for (const item of items)
+              if ((await self.classify(item.path)).kind !== 'ordinary') return undefined
+            return install.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
+              work(self.fileSystem(view), flush)
+            )
+          }
+        }
         if (method === 'list')
           return async function* () {
             try {
@@ -356,14 +369,14 @@ export class ExternalRepresentation {
                 'held representation cannot be mutated by ordinary sync'
               )
             const stage = await fs.beginAtomicWrite(...args)
-            return self.guardStage(stage, path)
+            return self.guardStage(stage, path, fs)
           }
         if (method === 'reopenStage' && fs.reopenStage)
           return async (id: string) => {
             const stage = (await fs.reopenStage(id)) as AtomicStage & { target?: string }
             if (typeof stage.target !== 'string')
               throw new ExternalRecoveryRequired('stage target is unavailable')
-            return self.guardStage(stage, stage.target)
+            return self.guardStage(stage, stage.target, fs)
           }
         if (method === 'read')
           return async (path: string) => {

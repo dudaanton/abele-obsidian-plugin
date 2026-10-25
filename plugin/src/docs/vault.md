@@ -226,6 +226,19 @@ modification time match a current disk stat. Missing or stale cache evidence fal
 content verification. Startup uses indexed file metadata and a bulk ledger snapshot; an
 unready or inconsistent index falls back to disk membership without treating index absence
 as deletion. Inventory work yields to the host between bounded groups of paths.
+The local IndexedDB ledger keeps a separate indexed spelling inventory alongside its
+entries. Its upgrade preserves existing entries, metadata and recovery ownership;
+unknown name policies retain a complete conservative lookup. Native first pulls install
+at most 64 fresh destinations and 16 MiB per cohort; a larger file has its own cohort.
+Independent host intents own private download files before creation. Each complete
+inode is flushed before exclusive publication;
+public directories are flushed before the cohort's single entry-ledger commit. Private aliases
+retire only after committed cleanup acknowledges them; their directory is flushed once after
+the cohort retires. Cleanup metadata joins the next cohort commit, with one final cleanup
+commit at a page boundary. An interruption retains complete public
+files and private recovery evidence; it never publishes a partial download. Verified complete
+server-only caches can resume without downloading again. Replacements, moves, deletions and
+user-data recovery intents keep their ordinary publication path.
 Without ranged reads or identity, a streamed move installs the server version and retains
 the unverified source through the same owned, ready-marked conditional capture as replacement.
 The ledger advances only after the destination is installed; interruption preserves the intent.
@@ -343,8 +356,8 @@ held; a known damaged path remains protected. An unrelated `.abele-ref` is an or
 Durable commit receipts require actual database completion; unknown outcomes require reopening
 and inspection. No memory-store fallback or arbitrary power-loss guarantee is provided.
 
-The plugin's generic IndexedDB ledger schema is version 2, preserving the version-1 rows while
-rejecting old version-1 normal opens. Device-local `abele-sync-external-activation-v1` holds
+The plugin's generic IndexedDB ledger schema is version 3, preserving older rows while
+rejecting older normal opens. Device-local `abele-sync-external-activation-v1` holds
 preparing/active bindings and database-instance identity outside the deletable ledger;
 `abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
 connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
