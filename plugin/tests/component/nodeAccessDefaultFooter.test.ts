@@ -41,3 +41,51 @@ it('keeps the save button when access changed during the pending save', async ()
   expect(view.text()).toContain('Save as')
   view.unmount()
 })
+
+it('shows inherited permission mode with the saved default state', async () => {
+  const agent = ref({
+    id: 'sample-agent',
+    name: 'Sample helper',
+    permissionMode: 'confirm-all',
+    scope: [] as { type: string; path: string }[],
+    fullVaultAccess: false,
+  })
+  const session = {
+    id: 'sample-chat',
+    agent,
+    chatTitle: ref('Sample chat'),
+    overrides: ref({ permissionMode: 'allow-all', scope: [{ type: 'folder', path: 'Samples' }] }),
+    toolModes: ref({}),
+    permissionMode: ref('allow-all'),
+    scopeResolver: {
+      entries: ref([{ type: 'folder', path: 'Samples' }]),
+      fullVaultAccess: ref(false),
+    },
+    effectiveNodeScope: [],
+    isOverridden: (key: string) => ['scope', 'permissionMode'].includes(key),
+    saveAccessAsAgentDefault: async () => {
+      agent.value.permissionMode = session.permissionMode.value
+      agent.value.scope = session.scopeResolver.entries.value
+    },
+  }
+  mock.active = shallowRef(session)
+  const view = mount(AiChatSetup, {
+    global: {
+      stubs: {
+        ObsidianModal: { template: '<div><slot/><slot name="footer"/></div>' },
+        Tabs: true,
+        AiScopeEditor: true,
+        AiNodeScopeEditor: true,
+        AiPermissions: true,
+        AiChatSettings: true,
+      },
+    },
+  })
+  expect(view.text()).toContain('Overridden for this chat.')
+  view.findComponent(Button).vm.$emit('click')
+  await flushPromises()
+  expect(view.text()).toContain('Saved as')
+  expect(view.text()).toContain("Permission mode comes from this chat's agent.")
+  expect(view.text()).not.toContain('Overridden for this chat.')
+  view.unmount()
+})

@@ -55,7 +55,23 @@ const props = withDefaults(
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const agentName = computed(() => session.value?.agent.value?.name ?? '')
-const isOverridden = computed(() => session.value?.isOverridden(props.field) ?? false)
+const isOverridden = computed(() => {
+  const current = session.value
+  if (
+    props.field === 'permissionMode' &&
+    current?.permissionMode.value === current?.agent.value?.permissionMode
+  )
+    return false
+  if (
+    props.field === 'scope' &&
+    current?.agent.value &&
+    JSON.stringify(current.scopeResolver.entries.value) ===
+      JSON.stringify(current.agent.value.scope) &&
+    current.scopeResolver.fullVaultAccess.value === (current.agent.value.fullVaultAccess ?? false)
+  )
+    return false
+  return current?.isOverridden(props.field) ?? false
+})
 
 function reset() {
   const s = session.value
