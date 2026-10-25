@@ -129,13 +129,10 @@ async function exercise(label: string) {
       )
     )
     expect(without.error).toBeUndefined()
-    expect(without.tools).toEqual(expect.arrayContaining(['node_nodes', 'node_read', 'node_edit']))
-    expect(without.calls.map((c) => c.name)).toEqual(['open_nodes', 'node_nodes', 'node_read'])
-    expect(without.calls[0].result, JSON.stringify(without)).toMatch(/Give a chat access/)
-    for (const call of without.calls.slice(1))
-      expect(call.result, JSON.stringify(without)).toMatch(/access/i)
-    for (const call of without.calls.slice(1))
-      expect(call.result, JSON.stringify(without)).toMatch(/Give a chat access/)
+    // Folder levels now control availability; node switches cannot unlock unscoped tools.
+    expect(without.tools).not.toContain('node_read')
+    expect(without.tools).not.toContain('node_edit')
+    expect(without.modelResults.join(' ')).toMatch(/access|unknown|not (available|found)/i)
 
     // The access the node panel's row menu gives: one worktree, read and edit.
     evalAsync(`(async()=>{

@@ -40,6 +40,7 @@ import { t } from '@/i18n'
  * chat are things done to it once in a while, in the header's ⋯. Three tabs fit on a phone's
  * width, where six ran off its edge.
  */
+import { nodeScopeKey } from '@/ai/nodeScope'
 import { computed, ref, watch } from 'vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
@@ -80,20 +81,25 @@ const session = computed(() => ChatService.getInstance().activeSession.value)
 const agentName = computed(() => session.value?.agent.value?.name ?? '')
 /** Saved as the agent's defaults; said until the chat's access changes again. */
 const saved = ref(false)
-watch(
-  () => [
+const accessState = computed(() =>
+  JSON.stringify([
+    session.value?.id,
+    session.value?.agent.value?.id,
     session.value?.overrides.value,
+    session.value?.scopeResolver?.entries.value,
+    session.value?.scopeResolver?.fullVaultAccess.value,
+    [...new Set(session.value?.effectiveNodeScope?.map(nodeScopeKey) ?? [])].sort(),
     session.value?.toolModes.value,
     session.value?.permissionMode.value,
-  ],
-  () => (saved.value = false),
-  { deep: true }
+  ])
 )
+watch(accessState, () => (saved.value = false))
 async function saveAsDefault() {
-  await (
-    session.value as { saveAccessAsAgentDefault?: () => Promise<void> } | null
-  )?.saveAccessAsAgentDefault?.()
-  saved.value = true
+  const target = session.value
+  if (!target) return
+  const snapshot = accessState.value
+  await target.saveAccessAsAgentDefault()
+  saved.value = session.value === target && accessState.value === snapshot
 }
 
 const title = computed(

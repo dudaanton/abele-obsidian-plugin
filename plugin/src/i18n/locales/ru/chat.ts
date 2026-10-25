@@ -1,4 +1,17 @@
 export const chat = {
+  'chatTree.nodeNone': 'Агенту не доступны ноды.',
+  'chatTree.addNodeFolder': 'Добавить папку ноды',
+  'chatTree.pickNodeFolder': 'Проект или ветка на ноде…',
+  'chatTree.noNodeFolders': 'На подключённых нодах нет папок.',
+  'chatTree.allBranches': 'все ветки',
+  'chatTree.saveAsDefault': 'Сохранить как настройки агента {agent} по умолчанию',
+  'chatTree.saveAsDefaultTip':
+    'Новые чаты с {agent} получат эти доступы, инструменты и режим подтверждений',
+  'chatTree.savedAsDefault': 'Сохранено как настройки агента {agent} по умолчанию',
+  'chatTree.nodeEditRun': 'Читать, менять и запускать команды',
+  'chatTree.nodeStillAsks':
+    '{node} всё ещё спрашивает перед командами: запуск без вопросов не разрешён.',
+  'chatTree.permissionNodes': 'Какие изменения требуют подтверждения в хранилище и папках нод.',
   'chatTree.hideFolder': 'Скрыть папку',
   'chatTree.hideFolderAndClose': 'Скрыть папку и закрыть её чаты',
   'chatTree.showFolder': 'Показать папку',

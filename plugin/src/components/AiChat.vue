@@ -632,7 +632,11 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
 import ChatArtifacts from './ChatArtifacts.vue'
-import { NodeScopeEntriesSchema, type NodeScopeEntry } from '@/ai/nodeScope'
+import {
+  NodeScopeEntriesSchema,
+  combineNodeScopeEntries,
+  type NodeScopeEntry,
+} from '@/ai/nodeScope'
 import { approveObsidianChatNodeAccess } from '@/ai/tools/node/owner'
 import { accessCovers, type NodeAccessRefusal } from '@/ai/tools/node/accessRefusal'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
@@ -1246,15 +1250,13 @@ const scopeSummary = computed(() => {
  * count, and the full list goes into its tooltip.
  */
 const nodeAccess = computed(() => {
-  const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
-  return [
-    ...new Map(
-      [
-        ...(parsed.success ? parsed.data : []),
-        ...(session.value?.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
-      ].map((entry) => [JSON.stringify(entry), entry])
-    ).values(),
-  ]
+  const parsed = NodeScopeEntriesSchema.safeParse(
+    session.value?.overrides?.value.nodeScope ?? session.value?.agent.value?.nodeScope ?? []
+  )
+  return combineNodeScopeEntries([
+    ...(parsed.success ? parsed.data : []),
+    ...(session.value?.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+  ])
 })
 provide(
   NODE_CODE_LINK_OPENER,

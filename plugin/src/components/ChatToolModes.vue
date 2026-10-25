@@ -149,6 +149,7 @@ const query = ref('')
 const groups = computed<Group[]>(() => {
   const byCategory = new Map<string, Tool[]>()
   for (const tool of props.registry ?? getToolRegistry()) {
+    if (['Nodes', 'Node files', 'Node repositories'].includes(tool.category ?? '')) continue
     const list = byCategory.get(tool.category) ?? []
     list.push({
       name: tool.name,

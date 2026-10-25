@@ -1,3 +1,4 @@
+import { openChatSetup } from '../helpers/chatProbeInteractions'
 import { expect, it } from 'vitest'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -31,7 +32,7 @@ async function exercise(label: string, plain: boolean) {
       await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',title:'Sample node actions',created:'2026-01-01'})+'\\n'));
       const session=chats.getSessionByFile(${JSON.stringify(chat)}),project=${plain ? `await client.registerProject(${JSON.stringify(plainPath)},'trusted')` : '(await client.listProjects())[0]'};
       const target=project.repository_path?{kind:'worktree',worktree_id:(await client.repository.worktrees({project_id:project.project_id})).entries[0].worktree_id}:{kind:'workspace',workspace_id:(await client.listWorkspaces(project.project_id)).find(w=>w.kind==='root').workspace_id};
-      await T.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target,access:'edit'});
+      await T.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target,access:'run'});
       session.permissionMode.value='allow-all';session.toolModes.value={...session.toolModes.value,node_command_run:'auto'};
       await chats.revealSidebar({focus:false});
     })()`)
@@ -135,7 +136,7 @@ async function exercise(label: string, plain: boolean) {
     expect(outside.calls[0].result).not.toContain('approved text')
     expect(outside.calls[0].result).toMatch(/invalid|relative|path|travers/i)
     await evalLong(
-      `(()=>{${setup}session.toolModes.value={...session.toolModes.value,node_command_run:'off'}})()`
+      `(()=>{${setup}session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'edit'}))}})()`
     )
     const off = await turn(
       `[()=>({name:'node_command_run',params:{node:${JSON.stringify(node.node)},argv:['node','--version'],operation_id:crypto.randomUUID(),justification:'Check the sample runtime.'}})]`
@@ -164,3 +165,61 @@ it.each([false, true])(
   },
   360000
 )
+
+it('shows each node access state on desktop and phone geometry', async () => {
+  for (const phone of [false, true]) {
+    if (phone) await enterPhone()
+    const node = await startPairedNode({ allowBypass: false })
+    const chat = `Sample access setup ${Date.now()}.abchat`
+    const label = phone ? 'phone' : 'desktop'
+    const setup = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(chat)}),wait=ms=>new Promise(r=>setTimeout(r,ms));`
+    let agentId = ''
+    try {
+      agentId = JSON.parse(
+        await evalLong(`(async()=>{
+        const T=window.__abeleTest,chats=T.ChatService.getInstance();
+        const agent=T.AgentRegistry.getInstance().create({name:'Sample helper'});
+        await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',agentId:agent.id,providerId:'',modelId:'',title:'Sample access setup',created:'2026-01-01'})+'\\n'));
+        await chats.revealSidebar({focus:false});return JSON.stringify(agent.id)
+      })()`)
+      )
+      await evalLong(`(async()=>{${setup}
+        const root=[...document.querySelectorAll('.abele-ai-chat')].find(e=>e.getBoundingClientRect().width>0);
+        const until=async(fn,ms)=>{const end=Date.now()+ms;while(Date.now()<end){if(fn())return true;await wait(50)}return false};
+        await (${openChatSetup.toString()})(root,until);await wait(500);
+      })()`)
+      columnShot(`${shots}/${label}-access-none.png`)
+      for (const access of ['read', 'edit', 'run']) {
+        await evalLong(`(async()=>{${setup}
+          await T.giveNodeChatAccess(session,{kind:'project',node_id:${JSON.stringify(node.node)},project_id:${JSON.stringify(node.project)},access:${JSON.stringify(access)}});
+          session.permissionMode.value='allow-all';await wait(700);
+        })()`)
+        columnShot(`${shots}/${label}-access-${access}.png`)
+      }
+      const refused = await evalLong(
+        `document.querySelector('.abele-node-scope-editor__why')?.textContent ?? ''`
+      )
+      expect(refused).toContain('still asks')
+      await evalLong(
+        `(async()=>{${setup}const footer=document.querySelector('.modal');[...footer.querySelectorAll('button')].find(b=>b.textContent.includes('Save as'))?.click();await wait(500)})()`
+      )
+      expect(
+        await evalLong(`document.querySelector('.abele-chat-setup__saved')?.textContent ?? ''`)
+      ).toContain('Saved as')
+      columnShot(`${shots}/${label}-access-saved.png`)
+      await evalLong(
+        `(async()=>{${setup}document.querySelector('.abele-node-scope-editor__add')?.click();await wait(500)})()`
+      )
+      columnShot(`${shots}/${label}-access-picker.png`)
+    } finally {
+      await evalLong(`(async()=>{${setup}
+        for(const m of [...document.querySelectorAll('.modal-container')].reverse())m.querySelector('.modal-close-button,.modal-header-button')?.click();
+        if(session)await chats.closeTab(session.id);
+        if(app.vault.getAbstractFileByPath(${JSON.stringify(chat)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(chat)});
+        T.AgentRegistry.getInstance().remove(${JSON.stringify(agentId)});
+      })()`).catch(() => {})
+      await node.close()
+      if (phone) await reloadApp('app.emulateMobile(false)')
+    }
+  }
+}, 360000)

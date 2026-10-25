@@ -1,4 +1,18 @@
 export const chat = {
+  'chatTree.nodeNone': 'Der Agent hat keinen Zugriff auf einen Node.',
+  'chatTree.addNodeFolder': 'Node-Ordner hinzufügen',
+  'chatTree.pickNodeFolder': 'Ein Projekt oder Branch auf einem Node…',
+  'chatTree.noNodeFolders': 'Keine Ordner auf den verbundenen Nodes.',
+  'chatTree.allBranches': 'alle Branches',
+  'chatTree.saveAsDefault': 'Als Standard für {agent} speichern',
+  'chatTree.saveAsDefaultTip':
+    'Neue Chats mit {agent} übernehmen diese Zugriffe, Werkzeuge und Bestätigungen',
+  'chatTree.savedAsDefault': 'Als Standard für {agent} gespeichert',
+  'chatTree.nodeEditRun': 'Lesen, bearbeiten und Befehle ausführen',
+  'chatTree.nodeStillAsks':
+    '{node} fragt vor Befehlen weiterhin nach: Ausführung ohne Rückfragen ist nicht erlaubt.',
+  'chatTree.permissionNodes':
+    'Welche Änderungen im Vault und in Node-Ordnern eine Bestätigung erfordern.',
   'chatTree.hideFolder': 'Ordner ausblenden',
   'chatTree.hideFolderAndClose': 'Ordner ausblenden und Chats schließen',
   'chatTree.showFolder': 'Ordner anzeigen',

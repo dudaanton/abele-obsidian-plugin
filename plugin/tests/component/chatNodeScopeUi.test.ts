@@ -18,6 +18,29 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   approved: false,
   host: vi.fn(),
+  picker: vi.fn(),
+  choices: [] as { entry: unknown }[],
+  pick: undefined as ((choice: { entry: unknown }) => void) | undefined,
+}))
+// The folder picker replaces nested Add menus; local approval controls were removed.
+vi.mock('@/components/nodeFolderPicker', () => ({
+  nodeFolderChoices: async (host: { nodes(): { id: string }[] }) =>
+    host.nodes().map((n) => ({
+      entry: { kind: 'project', node_id: n.id, project_id: 'sample-project', access: 'read' },
+    })),
+  NodeFolderPicker: class {
+    constructor(
+      _app: unknown,
+      choices: { entry: unknown }[],
+      pick: (choice: { entry: unknown }) => void
+    ) {
+      mocks.choices = choices
+      mocks.pick = pick
+    }
+    open() {
+      mocks.picker()
+    }
+  },
 }))
 vi.mock('@/ai/tools/node/owner', () => ({
   setObsidianChatNodeScope: mocks.set,
@@ -115,9 +138,9 @@ describe('node scope beside vault scope and in the header', () => {
     expect(view.text()).not.toContain('No nodes connected here')
     expect(view.text()).not.toContain('Local approval')
     expect(view.find('.abele-status-dot_faint').exists()).toBe(true)
-    expect(view.find('.abele-status-dot_orange').exists()).toBe(true)
+    expect(view.find('.abele-status-dot_orange').exists()).toBe(false)
     expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'shield-check')).toBe(
-      true
+      false
     )
     view.unmount()
   })
@@ -167,7 +190,7 @@ describe('node scope beside vault scope and in the header', () => {
       view.unmount()
     }
   )
-  it('explains whole-node future access, keeps it separate from vault access, and approves loaded settings locally', async () => {
+  it('explains whole-node future access without another device approval', async () => {
     const session = setup()
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
@@ -178,9 +201,7 @@ describe('node scope beside vault scope and in the header', () => {
         .find((icon) => icon.props('icon') === 'server')!
         .props('tooltip')
     ).toContain('future')
-    await icon(view, 'shield-check')
-    expect(mocks.approve).toHaveBeenCalledWith(session, session.overrides.value.nodeScope)
-    expect(view.find('.abele-status-dot_orange').exists()).toBe(false)
+    expect(mocks.approve).not.toHaveBeenCalled()
     expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'shield-check')).toBe(
       false
     )
@@ -190,11 +211,15 @@ describe('node scope beside vault scope and in the header', () => {
     const view = mount(AiNodeScopeEditor, { props: { session: setup() } })
     await flushPromises()
     await icon(view, 'plus')
-    expect(menus.at(-1)!.items.find((item) => item.title === 'Sample node')!.checked).toBe(true)
+    expect(mocks.picker).toHaveBeenCalled()
     await icon(view, 'server')
     expect(menus.at(-1)!.items[0].title).toBe('Whole node')
     await icon(view, 'pencil')
-    expect(menus.at(-1)!.items.map((item) => item.title)).toEqual(['read', 'read and edit'])
+    expect(menus.at(-1)!.items.map((item) => item.title)).toEqual([
+      'read',
+      'read and edit',
+      'Read, edit and run commands',
+    ])
     expect(menus.at(-1)!.items[1].checked).toBe(true)
     await choose('read')
     expect(mocks.give).toHaveBeenCalledWith(expect.anything(), {
@@ -210,13 +235,62 @@ describe('node scope beside vault scope and in the header', () => {
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
     await icon(view, 'plus')
-    await choose('Sample node')
+    mocks.pick!(mocks.choices[0])
+    await flushPromises()
     expect(mocks.give).toHaveBeenCalledWith(session, {
-      kind: 'node',
+      kind: 'project',
+      project_id: 'sample-project',
       node_id: 'sample-node',
       access: 'read',
     })
     expect(mocks.set).not.toHaveBeenCalled()
+    view.unmount()
+  })
+  it('reads daemon permission availability once for folders on the same node', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope = [
+      { kind: 'project', node_id: 'sample-node', project_id: 'sample-first', access: 'run' },
+      { kind: 'project', node_id: 'sample-node', project_id: 'sample-second', access: 'run' },
+    ]
+    const describe = vi.fn(async () => ({
+      providers: [{ provider: 'claude', configuration: { permission_modes: ['manual'] } }],
+    }))
+    mocks.host.mockResolvedValue({
+      nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
+      connection: () => ({ client: { connected: true, listProjects: async () => [], describe } }),
+    })
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    expect(describe).toHaveBeenCalledOnce()
+    view.unmount()
+  })
+  it('shows the daemon bypass refusal for a run folder without device approval controls', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope![0].access = 'run'
+    Object.assign(session, { permissionMode: ref('allow-all') })
+    mocks.host.mockResolvedValue({
+      nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
+      connection: () => ({
+        client: {
+          connected: true,
+          listProjects: async () => [],
+          describe: async () => ({
+            providers: [
+              {
+                provider: 'claude',
+                available: true,
+                configuration: { permission_modes: ['manual'] },
+              },
+            ],
+          }),
+        },
+      }),
+    })
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    expect(view.text()).toContain('still asks before commands')
+    expect(view.find('.abele-status-dot_orange').exists()).toBe(true)
+    expect(mocks.approve).not.toHaveBeenCalled()
     view.unmount()
   })
   it('keeps malformed synced scope visible as an error rather than crashing the chat', async () => {
@@ -250,13 +324,13 @@ describe('node scope beside vault scope and in the header', () => {
     await flushPromises()
     expect(pendingNodeAccess.value).toBeNull()
     await icon(view, 'plus')
-    menus.at(-1)!.items[0].handler!()
+    mocks.pick!(mocks.choices[0])
     await flushPromises()
     expect(mocks.give).toHaveBeenCalledWith(session, {
       kind: 'project',
       node_id: 'sample-registration',
       project_id: 'sample-project',
-      access: 'edit',
+      access: 'read',
     })
     view.unmount()
   })
@@ -312,7 +386,7 @@ describe('node scope beside vault scope and in the header', () => {
     expect(mocks.remove).toHaveBeenCalledWith(session, session.overrides.value.nodeScope![0])
     view.unmount()
   })
-  it('shows the empty state only without grants or known nodes and offers a disabled connection hint', async () => {
+  it('shows a quiet empty state and opens the folder picker without grants', async () => {
     const session = setup()
     session.overrides.value.nodeScope = []
     mocks.host.mockResolvedValue({
@@ -325,9 +399,8 @@ describe('node scope beside vault scope and in the header', () => {
     await flushPromises()
     expect(view.text()).toContain('No nodes connected here')
     await icon(view, 'plus')
-    expect(menus.at(-1)!.items).toHaveLength(1)
-    expect(menus.at(-1)!.items[0].disabled).toBe(true)
-    expect(menus.at(-1)!.items[0].title).toBe('Connect a node from the Node panel')
+    expect(mocks.picker).toHaveBeenCalled()
+    expect(mocks.choices).toEqual([])
     view.unmount()
   })
   it('opens the source folder and keeps inherited mode and removal unavailable', async () => {

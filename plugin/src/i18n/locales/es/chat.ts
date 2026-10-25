@@ -1,4 +1,18 @@
 export const chat = {
+  'chatTree.nodeNone': 'El agente no tiene acceso a ningún nodo.',
+  'chatTree.addNodeFolder': 'Añadir carpeta de nodo',
+  'chatTree.pickNodeFolder': 'Un proyecto o rama en un nodo…',
+  'chatTree.noNodeFolders': 'No hay carpetas en los nodos conectados.',
+  'chatTree.allBranches': 'todas las ramas',
+  'chatTree.saveAsDefault': 'Guardar como predeterminado de {agent}',
+  'chatTree.saveAsDefaultTip':
+    'Los nuevos chats con {agent} usarán estos accesos, herramientas y confirmaciones',
+  'chatTree.savedAsDefault': 'Guardado como predeterminado de {agent}',
+  'chatTree.nodeEditRun': 'Leer, editar y ejecutar comandos',
+  'chatTree.nodeStillAsks':
+    '{node} aún pide confirmación antes de los comandos: no permite ejecutar sin preguntar.',
+  'chatTree.permissionNodes':
+    'Qué cambios requieren confirmación en la bóveda y las carpetas de nodos.',
   'chatTree.hideFolder': 'Ocultar carpeta',
   'chatTree.hideFolderAndClose': 'Ocultar carpeta y cerrar sus chats',
   'chatTree.showFolder': 'Mostrar carpeta',

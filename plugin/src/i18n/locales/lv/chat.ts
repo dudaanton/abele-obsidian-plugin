@@ -1,4 +1,17 @@
 export const chat = {
+  'chatTree.nodeNone': 'Aģentam nav piekļuves mezgliem.',
+  'chatTree.addNodeFolder': 'Pievienot mezgla mapi',
+  'chatTree.pickNodeFolder': 'Projekts vai zars mezglā…',
+  'chatTree.noNodeFolders': 'Savienotajos mezglos nav mapju.',
+  'chatTree.allBranches': 'visi zari',
+  'chatTree.saveAsDefault': 'Saglabāt kā {agent} noklusējumu',
+  'chatTree.saveAsDefaultTip':
+    'Jaunas sarunas ar {agent} izmantos šīs piekļuves, rīkus un apstiprinājumus',
+  'chatTree.savedAsDefault': 'Saglabāts kā {agent} noklusējums',
+  'chatTree.nodeEditRun': 'Lasīt, rediģēt un palaist komandas',
+  'chatTree.nodeStillAsks':
+    '{node} joprojām prasa apstiprinājumu pirms komandām: palaišana bez jautāšanas nav atļauta.',
+  'chatTree.permissionNodes': 'Kuras izmaiņas krātuvē un mezglu mapēs prasa apstiprinājumu.',
   'chatTree.hideFolder': 'Paslēpt mapi',
   'chatTree.hideFolderAndClose': 'Paslēpt mapi un aizvērt tās sarunas',
   'chatTree.showFolder': 'Rādīt mapi',

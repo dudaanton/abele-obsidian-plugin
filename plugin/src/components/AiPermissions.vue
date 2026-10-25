@@ -21,7 +21,9 @@ import type { ToolMode } from '@/ai/types'
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 // What the agent may do on a node is set once, by each node folder on the Access tab.
-const registry = getToolRegistry().filter((tool) => tool.category !== NODE_GROUP)
+const registry = getToolRegistry().filter(
+  (tool) => ![NODE_GROUP, 'Node files', 'Node repositories'].includes(tool.category ?? '')
+)
 
 const onUpdateMany = (modes: Record<string, ToolMode>) => {
   const s = session.value

@@ -13,7 +13,13 @@
     >
       <Icon
         class="abele-node-scope-chips__place"
-        :icon="entry.access === 'edit' ? 'folder-pen' : 'folder-search'"
+        :icon="
+          entry.access === 'run'
+            ? 'terminal'
+            : entry.access === 'edit'
+              ? 'folder-pen'
+              : 'folder-search'
+        "
         :text-right="title(entry)"
         :tooltip="sentence(entry)"
         @click="emit('open')"
@@ -56,6 +62,7 @@ import { computed, ref, watch } from 'vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import {
   NodeScopeEntriesSchema,
+  combineNodeScopeEntries,
   NodeScopeTargetSchema,
   nodeScopeKey,
   nodeTargetId,
@@ -80,20 +87,20 @@ const emit = defineEmits<{
   (e: 'open'): void
 }>()
 const parsed = computed(() =>
-  NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
+  NodeScopeEntriesSchema.safeParse(
+    props.session.overrides?.value.nodeScope ?? props.session.agent?.value?.nodeScope ?? []
+  )
 )
 const inheritedFrom = (entry: NodeScopeEntry) =>
   props.session.inheritedNodeScopes?.find((source) =>
     source.entries.some((value) => nodeScopeKey(value) === nodeScopeKey(entry))
   )?.folder
-const entries = computed(() => [
-  ...new Map(
-    [
-      ...(parsed.value.success ? parsed.value.data : []),
-      ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
-    ].map((entry) => [nodeScopeKey(entry), entry])
-  ).values(),
-])
+const entries = computed(() =>
+  combineNodeScopeEntries([
+    ...(parsed.value.success ? parsed.value.data : []),
+    ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+  ])
+)
 const selected = computed(() => {
   const target = NodeScopeTargetSchema.safeParse(props.session.overrides?.value.nodeTarget)
   return target.success ? target.data : undefined

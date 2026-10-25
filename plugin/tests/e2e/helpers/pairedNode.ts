@@ -26,7 +26,7 @@ const until=async(fn,what,ms=60000)=>{const end=Date.now()+ms;while(Date.now()<e
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const chat=()=>[...document.querySelectorAll('.abele-node-chat')].find(r=>r.getBoundingClientRect().width>0);`
 
-export async function startPairedNode(options: { latencyMs?: number } = {}) {
+export async function startPairedNode(options: { latencyMs?: number; allowBypass?: boolean } = {}) {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built node CLI')
   const latency = options.latencyMs ?? 0
@@ -96,7 +96,7 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
         'start',
         '--json',
         '--no-codex',
-        '--claude-allow-bypass',
+        ...(options.allowBypass === false ? [] : ['--claude-allow-bypass']),
         // Sessions end with the node: a test leaves no Claude process behind.
         '--claude-detached-ms',
         '0',
@@ -213,6 +213,7 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
     state,
     registration,
     node: placed.node,
+    project: placed.project,
     traffic,
     logs: () => logs,
     /** Drop the transport without stopping the running agent. */

@@ -727,5 +727,38 @@
   },
   "discussion.withoutAsking": {
     "englishHash": "56857e41f708053fe67d3cb3cee73080d238b1009699657e8b95426362710c28"
+  },
+  "chatTree.nodeNone": {
+    "englishHash": "882ca70d638f7deb9d38b5b27ff6c605f4552debe8a63e2104232766111fda35"
+  },
+  "chatTree.addNodeFolder": {
+    "englishHash": "6fc8f773da6c5d49e767714e2e8fe71956d9ac9bbbe9a445c2ee4ce5d5509b53"
+  },
+  "chatTree.pickNodeFolder": {
+    "englishHash": "81f90d344c53b5a09ae7ebab4b6f2a7209d5c646ab5701a47a6411e9b9a0d3b2"
+  },
+  "chatTree.noNodeFolders": {
+    "englishHash": "4af2309f2b4364144484b41cd540937c4c6175cb0f8fd764c180b5d00a98fcf8"
+  },
+  "chatTree.allBranches": {
+    "englishHash": "a0200348dc0dbcc3c002821b613c9b1cdfce3857dffaa9d919e14702ef4faf65"
+  },
+  "chatTree.saveAsDefault": {
+    "englishHash": "c0f80d578ebf814b6ee05ce71725165c48a10eaddd35103d082a3657b0bae956"
+  },
+  "chatTree.saveAsDefaultTip": {
+    "englishHash": "e8a204dfdc7fec21559bfd197ee831cb526b287e19c65613d1bbe8800a210745"
+  },
+  "chatTree.savedAsDefault": {
+    "englishHash": "c5273ac12ddc6af581da7632469d9e99f597e5762cd0141009ace77ea1e9096f"
+  },
+  "chatTree.nodeEditRun": {
+    "englishHash": "6aee61f7de84b87ab7c8bc27e8a19e9a954dc2e2d6403777590eb01106f10409"
+  },
+  "chatTree.nodeStillAsks": {
+    "englishHash": "483582aa280625fd6379789013423514bcd44eada7331004757d8cfdbca831e7"
+  },
+  "chatTree.permissionNodes": {
+    "englishHash": "a0c32f5ea6788f2e3dcc83eba1de1c090ce24817b37a0174e788b926b84e8292"
   }
 }

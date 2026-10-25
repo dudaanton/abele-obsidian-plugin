@@ -183,8 +183,8 @@ async function runLive(label: string) {
       await session.addUserNote('Sample command context check');await session.saveForRelease();await chats.revealSidebar({focus:false});
       const project=(await client.listProjects())[0],tree=(await client.repository.worktrees({project_id:project.project_id,limit:256})).entries[0];
       await client.nodePath.execution({project_id:project.project_id,target:{kind:'worktree',worktree_id:tree.worktree_id},enabled:true});
-      await api.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target:{kind:'worktree',worktree_id:tree.worktree_id},access:'read'});
-      session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
+      await api.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target:{kind:'worktree',worktree_id:tree.worktree_id},access:'run'});
+      session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'run'}))};session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
       const args={node:${JSON.stringify(node.registration)},worktree_id:tree.worktree_id,argv:['node','--version'],operation_id:crypto.randomUUID(),justification:'Check the runtime version.'};
       window.__sampleCommandArgs=args;
       const tool=session.getTools().find(t=>t.name==='node_command_run');if(!tool)throw Error('Command tool is missing');
@@ -236,7 +236,7 @@ async function runLive(label: string) {
       session.permissionMode.value='allow-all';const tool=session.getTools().find(t=>t.name==='node_command_run');
       const bypass=JSON.parse((await tool.execute('sample-bypass',args,undefined,{session})).content[0].text);
       let final;for(let i=0;i<200;i++){final=await connection.manager.status(await session.ensureDelegationParentId(),bypass.session_id,bypass.run_id);if(final.state==='exited')break;await new Promise(r=>setTimeout(r,50))}
-      session.toolModes.value={...session.toolModes.value,node_command_run:'off'};
+      session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'edit'}))};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
     })()`,
@@ -266,7 +266,7 @@ async function runLive(label: string) {
       await evalLong(
         `(async()=>{${setup}
       const session=chats.getSession(window.__sampleCommandChat);
-      session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
+      session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'run'}))};session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
       const tool=session.getTools().find(t=>t.name==='node_command_run');
       let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder',justification:'Check access to the selected subfolder.'},undefined,{session})}catch(error){reason=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));

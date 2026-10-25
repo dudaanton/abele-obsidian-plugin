@@ -36,76 +36,76 @@
     </EmptyState>
     <div class="abele-scope-mgr__entries" role="list" :aria-label="t('streamB.nodeAccess.bc448d')">
       <template v-for="entry in entries" :key="nodeScopeKey(entry)">
-      <div class="abele-scope-mgr__entry" role="listitem">
-        <Icon
-          :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'"
-          :interactive="!inheritedFrom(entry)"
-          :tooltip="
-            entry.kind === 'node'
-              ? t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')
-              : label(entry)
-          "
-          @click="(event) => locationMenu(entry, event)"
-        />
-        <span class="abele-scope-mgr__entry-path"
-          >{{ label(entry) }}
-          <span
-            v-if="inheritedFrom(entry)"
-            class="abele-scope-mgr__entry-type abele-node-scope-editor__source"
-            >{{ t('chatTree.fromFolder', { name: inheritedFrom(entry) }) }}</span
-          >
-        </span>
-        <StatusDot
-          v-if="!states[nodeScopeKey(entry)]?.connected"
-          tone="faint"
-          :label="t('chatTree.nodeDisconnected')"
-        />
-        <StatusDot
-          v-if="stillAsks(entry)"
-          tone="orange"
-          :label="t('chatTree.nodeStillAsks', { node: nodeName(entry) })"
-        />
-        <!-- What the agent may do here, one level: read, edit, or edit and run commands and hand
+        <div class="abele-scope-mgr__entry" role="listitem">
+          <Icon
+            :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'"
+            :interactive="!inheritedFrom(entry)"
+            :tooltip="
+              entry.kind === 'node'
+                ? t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')
+                : label(entry)
+            "
+            @click="(event) => locationMenu(entry, event)"
+          />
+          <span class="abele-scope-mgr__entry-path"
+            >{{ label(entry) }}
+            <span
+              v-if="inheritedFrom(entry)"
+              class="abele-scope-mgr__entry-type abele-node-scope-editor__source"
+              >{{ t('chatTree.fromFolder', { name: inheritedFrom(entry) }) }}</span
+            >
+          </span>
+          <StatusDot
+            v-if="!states[nodeScopeKey(entry)]?.connected"
+            tone="faint"
+            :label="t('chatTree.nodeDisconnected')"
+          />
+          <StatusDot
+            v-if="stillAsks(entry)"
+            tone="orange"
+            :label="t('chatTree.nodeStillAsks', { node: nodeName(entry) })"
+          />
+          <!-- What the agent may do here, one level: read, edit, or edit and run commands and hand
              tasks to the node's agents. Whether it asks first is the chat's one switch below. -->
-        <Icon
-          class="abele-node-scope-editor__mode"
-          :icon="LEVEL[entry.access].icon"
-          :interactive="!inheritedFrom(entry)"
-          :tooltip="
-            inheritedFrom(entry)
-              ? t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })
-              : LEVEL[entry.access].said
-          "
-          @click="(event) => modeMenu(entry, event)"
-        />
-        <Icon
-          v-if="inheritedFrom(entry)"
-          class="abele-node-scope-editor__folder"
-          icon="folder"
-          :tooltip="t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })"
-          @click="openFolder(entry)"
-        />
-        <Icon
-          v-else
-          class="abele-scope-mgr__entry-remove"
-          icon="x"
-          :disabled="busy"
-          :tooltip="t('streamB.removeFromChatAccess.f736f6', { v0: String(label(entry)) })"
-          @click="remove(entry)"
-        />
-      </div>
-      <!-- Commands without asking that the node itself turns back into questions: why, and the
-           node's own switch as a command to copy, under the folder's name. -->
-      <div v-if="stillAsks(entry)" class="abele-node-scope-editor__under">
-        <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
-        <div class="abele-node-scope-editor__note abele-node-scope-editor__note_stack">
-          <span class="abele-node-scope-editor__why">{{
-            t('chatTree.nodeStillAsks', { node: nodeName(entry) })
-          }}</span>
-          <NodeBypassHelp :expanded="bypassHelpOpen" />
+          <Icon
+            class="abele-node-scope-editor__mode"
+            :icon="LEVEL[entry.access].icon"
+            :interactive="!inheritedFrom(entry)"
+            :tooltip="
+              inheritedFrom(entry)
+                ? t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })
+                : LEVEL[entry.access].said
+            "
+            @click="(event) => modeMenu(entry, event)"
+          />
+          <Icon
+            v-if="inheritedFrom(entry)"
+            class="abele-node-scope-editor__folder"
+            icon="folder"
+            :tooltip="t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })"
+            @click="openFolder(entry)"
+          />
+          <Icon
+            v-else
+            class="abele-scope-mgr__entry-remove"
+            icon="x"
+            :disabled="busy"
+            :tooltip="t('streamB.removeFromChatAccess.f736f6', { v0: String(label(entry)) })"
+            @click="remove(entry)"
+          />
         </div>
-        <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
-      </div>
+        <!-- Commands without asking that the node itself turns back into questions: why, and the
+           node's own switch as a command to copy, under the folder's name. -->
+        <div v-if="stillAsks(entry)" class="abele-node-scope-editor__under">
+          <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
+          <div class="abele-node-scope-editor__note abele-node-scope-editor__note_stack">
+            <span class="abele-node-scope-editor__why">{{
+              t('chatTree.nodeStillAsks', { node: nodeName(entry) })
+            }}</span>
+            <NodeBypassHelp :expanded="bypassHelpOpen ?? true" />
+          </div>
+          <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
+        </div>
       </template>
       <EmptyState
         v-if="!entries.length && !nodes.length && !loading"
@@ -121,7 +121,6 @@
         /></template>
       </EmptyState>
     </div>
-
   </Section>
 </template>
 <script setup lang="ts">
@@ -135,6 +134,7 @@ import {
   type NodeScopeNames,
 } from '@/ai/tools/node/scopeNames'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
+import { nodeProviders } from '@/node/providers'
 import type { NodeScopeOwner } from '@/ai/tools/node/owner'
 import { Menu } from 'obsidian'
 import { useChatTreeSource } from '@/chats/chatTree'
@@ -142,6 +142,7 @@ import type { NodeAgentHost } from '@/ai/tools/node/agent'
 import { delegationBranchLabel } from '@/node/delegation'
 import {
   NodeScopeEntriesSchema,
+  combineNodeScopeEntries,
   nodeScopeKey,
   type NodeScopeEntry,
   type NodeChatTarget,
@@ -179,23 +180,22 @@ const stillAsks = (entry: NodeScopeEntry) =>
   entry.access === 'run' &&
   props.session.permissionMode?.value === 'allow-all' &&
   states.value[nodeScopeKey(entry)]?.bypass === false
-const nodeName = (entry: NodeScopeEntry) =>
-  names.value[nodeScopeKey(entry)]?.node ?? label(entry)
+const nodeName = (entry: NodeScopeEntry) => names.value[nodeScopeKey(entry)]?.node ?? label(entry)
 const parsed = computed(() =>
-  NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
+  NodeScopeEntriesSchema.safeParse(
+    props.session.overrides?.value.nodeScope ?? props.session.agent?.value?.nodeScope ?? []
+  )
 )
 const inheritedFrom = (entry: NodeScopeEntry) =>
   props.session.inheritedNodeScopes?.find((source) =>
     source.entries.some((value) => nodeScopeKey(value) === nodeScopeKey(entry))
   )?.folder
-const entries = computed(() => [
-  ...new Map(
-    [
-      ...(parsed.value.success ? parsed.value.data : []),
-      ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
-    ].map((entry) => [nodeScopeKey(entry), entry])
-  ).values(),
-])
+const entries = computed(() =>
+  combineNodeScopeEntries([
+    ...(parsed.value.success ? parsed.value.data : []),
+    ...(props.session.inheritedNodeScopes ?? []).flatMap((source) => source.entries),
+  ])
+)
 const nodes = ref<{ id: string; label: string; node_id?: string }[]>([])
 const projects = ref<{ id: string; label: string; git: boolean }[]>([])
 const targets = ref<{ value: string; display: string; identity: NodeChatTarget }[]>([])
@@ -205,9 +205,7 @@ const wanted = ref<NodeScopeEntry>()
 const preparing = ref(!!pendingNodeAccess.value)
 const tree = useChatTreeSource()
 const host = shallowRef<NodeAgentHost>()
-const states = ref<
-  Record<string, { connected: boolean; approved: boolean; bypass?: boolean }>
->({})
+const states = ref<Record<string, { connected: boolean; bypass?: boolean }>>({})
 const loading = ref(false),
   busy = ref(false),
   error = ref('')
@@ -297,7 +295,10 @@ async function chooseProject(value: string) {
     for (let page = 0; page < 64; page++) {
       const result = git
         ? await connection.client.repository.worktrees({ project_id: value, cursor })
-        : { entries: await connection.client.listWorkspaces(value, cursor), cursor: null }
+        : {
+            entries: await connection.client.listWorkspaces(value, cursor),
+            cursor: null as string | null,
+          }
       if (generation !== version) return
       targets.value.push(
         ...result.entries.map((entry) => {
@@ -350,29 +351,45 @@ async function perform(work: () => Promise<void>) {
     refreshStatus()
   }
 }
-function refreshStatus() {
+let refreshingStatus = false
+async function refreshStatus() {
   const current = host.value
-  if (!current) return
-  states.value = Object.fromEntries(
-    entries.value.map((entry) => {
-      try {
-        const connection = current.connection(entry.node_id, props.session)
-        return [
-          nodeScopeKey(entry),
-          {
-            connected: connection.client.connected,
-            // Whether the node lets a command go without asking; unknown until it says.
-            bypass: (connection.client as { bypassAllowed?: boolean }).bypassAllowed,
-            approved: current.ledger
-              .approvedEntries(props.session, entry.node_id, connection.principal())
-              .some((value) => nodeScopeKey(value) === nodeScopeKey(entry)),
-          },
-        ]
-      } catch {
-        return [nodeScopeKey(entry), { connected: false, approved: false }]
-      }
-    })
-  )
+  if (!current || refreshingStatus) return
+  refreshingStatus = true
+  const snapshot = entries.value
+  const descriptions = new Map<string, Promise<unknown>>()
+  try {
+    const result = await Promise.all(
+      snapshot.map(async (entry) => {
+        try {
+          const connection = current.connection(entry.node_id, props.session)
+          if (!connection.client.connected) return [nodeScopeKey(entry), { connected: false }]
+          let description = descriptions.get(entry.node_id)
+          if (!description) {
+            description = connection.client.describe()
+            descriptions.set(entry.node_id, description)
+          }
+          const providers = nodeProviders(await description)
+          const modes = providers.flatMap(
+            (provider) =>
+              provider.configuration?.permission_modes ?? provider.permission_modes ?? []
+          )
+          return [
+            nodeScopeKey(entry),
+            {
+              connected: connection.client.connected,
+              bypass: modes.length ? modes.includes('bypassPermissions') : undefined,
+            },
+          ]
+        } catch {
+          return [nodeScopeKey(entry), { connected: false }]
+        }
+      })
+    )
+    if (entries.value === snapshot) states.value = Object.fromEntries(result)
+  } finally {
+    refreshingStatus = false
+  }
 }
 watch(entries, refreshStatus)
 function openFolder(entry: NodeScopeEntry) {
