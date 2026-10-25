@@ -123,9 +123,40 @@ export async function saveFailureCheckpoint(output, report, proxies, stage, at =
     .map((phase) => ({ phase, status: 'not run' }))
   await saveCheckpoint(output, report, proxies, at, true)
 }
-export function requireHealthySnapshot(snapshot) {
-  if (snapshot?.rows?.some((row) => row.status === 'error'))
-    throw new Error('Fatal sync state; see retained snapshot')
+export function requireHealthySnapshot(
+  snapshot,
+  message = 'Fatal sync state; see retained snapshot'
+) {
+  if (snapshot?.rows?.some((row) => row.status === 'error')) {
+    const error = new Error(message)
+    error.scaleFatalSnapshot = snapshot
+    throw error
+  }
+}
+
+export function fatalDeviceSnapshots(snapshots, failures = []) {
+  const fatal = (snapshot) => snapshot?.rows?.some((row) => row.status === 'error')
+  const retained = new Map()
+  for (const failure of failures) {
+    const device =
+      typeof failure.device === 'number' ||
+      (typeof failure.device === 'string' && failure.device.trim() !== '')
+        ? Number(failure.device)
+        : NaN
+    if (
+      failure.device !== undefined &&
+      Number.isInteger(device) &&
+      device >= 0 &&
+      device < snapshots.length &&
+      fatal(failure.snapshot) &&
+      !retained.has(device)
+    )
+      retained.set(device, failure.snapshot)
+  }
+  snapshots.forEach((snapshot, device) => {
+    if (fatal(snapshot) && !retained.has(device)) retained.set(device, snapshot)
+  })
+  return [...retained].map(([device, snapshot]) => ({ device, snapshot }))
 }
 
 export function uploadRecoveryMetrics(

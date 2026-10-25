@@ -12,7 +12,53 @@ import {
   requireServerCapacity,
   saveFailureCheckpoint,
   uploadRecoveryMetrics,
+  fatalDeviceSnapshots,
 } from '../scale/progress.mjs'
+
+it('carries the first fatal snapshot without requiring a second state read', () => {
+  const snapshot = { rows: [{ status: 'error' }] }
+  let failure: unknown
+  try {
+    requireHealthySnapshot(snapshot)
+  } catch (error) {
+    failure = error
+  }
+  expect(failure).toMatchObject({ scaleFatalSnapshot: snapshot })
+})
+
+it('retains the triggering fatal device after a later snapshot returns to syncing', () => {
+  const fatal = { rows: [{ status: 'error' }], engines: [{ lastError: 'sample failure' }] }
+  expect(
+    fatalDeviceSnapshots(
+      [{ rows: [{ status: 'idle' }] }, { rows: [{ status: 'syncing' }] }],
+      [{ device: '1', snapshot: fatal }]
+    )
+  ).toEqual([{ device: 1, snapshot: fatal }])
+})
+
+it('captures current errors once and ignores nonfatal or unbound retained snapshots', () => {
+  const fatal = { rows: [{ status: 'error' }] }
+  expect(
+    fatalDeviceSnapshots(
+      [fatal, { rows: [{ status: 'syncing' }] }],
+      [
+        { device: '0', snapshot: fatal },
+        { device: '1', snapshot: { rows: [{ status: 'syncing' }] } },
+        { device: '9', snapshot: fatal },
+        { snapshot: fatal },
+      ]
+    )
+  ).toEqual([{ device: 0, snapshot: fatal }])
+  expect(
+    fatalDeviceSnapshots(
+      [{ rows: [{ status: 'idle' }] }],
+      [
+        { device: null, snapshot: fatal },
+        { device: '', snapshot: fatal },
+      ]
+    )
+  ).toEqual([])
+})
 
 it('separates recovery presence probes, upload admission and actual payload bytes', () => {
   const events = [

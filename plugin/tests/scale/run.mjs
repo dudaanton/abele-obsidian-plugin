@@ -46,6 +46,7 @@ import {
   recoveryTimings,
   requireHealthySnapshot,
   uploadRecoveryMetrics,
+  fatalDeviceSnapshots,
 } from './progress.mjs'
 import {
   compareInventory,
@@ -203,10 +204,9 @@ export class RealVault {
       'vault idle',
       async () => {
         const state = await this.snapshot()
+        requireHealthySnapshot(state, 'Vault entered an error state')
         if (state?.job === 'failed')
           throw new Error('Sync action failed (private details suppressed)')
-        if (state?.rows.some((row) => row.status === 'error'))
-          throw new Error('Vault entered an error state')
         return (
           state?.job !== 'pending' &&
           state?.rows.length &&
@@ -387,7 +387,12 @@ export async function run(config) {
       ].includes(error.message)
         ? error.message
         : 'Device state unavailable'
-      report.failures.push({ step, reason, snapshot: await device.snapshot().catch(() => null) })
+      report.failures.push({
+        step,
+        reason,
+        device: String(devices.indexOf(device)),
+        snapshot: error.scaleFatalSnapshot ?? (await device.snapshot().catch(() => null)),
+      })
       requireHealthySnapshot(report.failures.at(-1).snapshot)
       await device.invalidateJob().catch(() => {})
       return false
@@ -884,6 +889,7 @@ export async function run(config) {
     report.lastSnapshots = await Promise.all(
       devices.map((device) => device.snapshot().catch(() => null))
     )
+    report.fatalSnapshots = fatalDeviceSnapshots(report.lastSnapshots, report.failures)
   } finally {
     try {
       clearInterval(checkpointTimer)
