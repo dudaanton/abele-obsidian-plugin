@@ -2851,21 +2851,34 @@ it('shows a structured refusal while the cycle is still uploading', async () => 
   }
 })
 
-it('requests an ordinary inspection on foreground without resuming paused connections', async () => {
-  const f = inspectionFixture()
-  f.release()
-  try {
-    await f.ui.connect(f.encoded)
-    const id = f.registry.records()[0].id
-    await f.ui.sync(id)
-    const runtime = Reflect.get(f.host, 'live').get(id)
-    const inspect = vi.spyOn(runtime, 'inspect').mockResolvedValue(undefined)
-    await f.host.foreground(true)
-    expect(inspect).toHaveBeenCalledOnce()
-    await f.ui.pause(id, true)
-    await f.host.foreground(true)
-    expect(inspect).toHaveBeenCalledOnce()
-  } finally {
-    await f.host.close()
+it.each(['/', 'Notes'])(
+  'requests a real ordinary inspection on foreground for %s without resuming paused connections',
+  async (folder) => {
+    const f = inspectionFixture(false, folder)
+    f.release()
+    try {
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await f.ui.sync(id)
+      const runtime = Reflect.get(f.host, 'live').get(id)
+      const inspect = vi.spyOn(runtime, 'inspect')
+      const fs = Reflect.get(runtime, 'options').fs
+      const revision = () =>
+        Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1')).call(fs)
+      const before = revision()
+      const list = vi.spyOn(ObsidianFileSystem.prototype, 'list')
+      await f.host.foreground(true)
+      expect(inspect).toHaveBeenCalledOnce()
+      expect(revision()).not.toBe(before)
+      expect(list).toHaveBeenCalled()
+      expect(f.ui.activity.value[id]?.error).toBeUndefined()
+      const inspections = list.mock.calls.length
+      await f.ui.pause(id, true)
+      await f.host.foreground(true)
+      expect(inspect).toHaveBeenCalledOnce()
+      expect(list).toHaveBeenCalledTimes(inspections)
+    } finally {
+      await f.host.close()
+    }
   }
-})
+)

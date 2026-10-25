@@ -102,6 +102,8 @@ export function scopedFileSystem(
           return value.call(target, path)
         }
       if (
+        // Pathless proof retirement changes no namespace and grants no file access.
+        key === Symbol.for('abele.sync.invalidate-local-scan-v1') ||
         key === Symbol.for('abele.sync.inventory-pass-v1') ||
         key === Symbol.for('abele.sync.verify-inventory-root-v1') ||
         key === Symbol.for('abele.sync.operation-pass-v1') ||

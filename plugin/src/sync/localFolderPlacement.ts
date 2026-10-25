@@ -259,6 +259,8 @@ export class LocalFolderPlacement {
             value.call(target, path === undefined ? undefined : placement.toLocal(path))
         if (
           [
+            // Pathless proof retirement changes no namespace and grants no file access.
+            Symbol.for('abele.sync.invalidate-local-scan-v1'),
             Symbol.for('abele.sync.inventory-pass-v1'),
             Symbol.for('abele.sync.verify-inventory-root-v1'),
             Symbol.for('abele.sync.operation-pass-v1'),

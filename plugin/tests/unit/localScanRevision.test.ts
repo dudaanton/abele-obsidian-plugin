@@ -2,6 +2,42 @@ import { expect, it } from 'vitest'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { connectionAdapter, vaultDisk } from '@/sync/vaultPathLinks'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { scopedFileSystem } from '@/sync/scopedFileSystem'
+
+it.each(['placement', 'scope', 'both'])(
+  'forwards proof invalidation through %s without granting paths',
+  async (kind) => {
+    const app = buildFakeVault([{ path: 'Private/sample.md', content: 'sample' }])
+    const raw = new ObsidianFileSystem(app as never)
+    const includes = (path: string) => path === 'Shared' || path.startsWith('Shared/')
+    let fs = raw as import('@abele/sync-sdk/core').FileSystem
+    if (kind !== 'placement')
+      fs = scopedFileSystem(
+        fs,
+        (path) => {
+          if (!includes(path)) throw new Error('outside scope')
+        },
+        includes,
+        undefined,
+        'Shared'
+      )
+    if (kind !== 'scope') fs = new LocalFolderPlacement('Shared', 'Shared').fileSystem(fs)
+    const stop = fs.watch!(() => {})
+    try {
+      const revision = () =>
+        Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1')).call(fs)
+      const before = revision()
+      Reflect.get(fs, Symbol.for('abele.sync.invalidate-local-scan-v1')).call(fs)
+      expect(revision()).not.toBe(before)
+      await expect(fs.read('Private/sample.md')).rejects.toThrow()
+      Object.assign(raw, { unrecognizedFunction: () => {} })
+      expect(() => Reflect.get(fs, 'unrecognizedFunction')).toThrow()
+    } finally {
+      stop()
+    }
+  }
+)
 
 it('retires a watched proof on foreground inspection without inventing file changes', () => {
   const app = buildFakeVault([])

@@ -9,11 +9,17 @@ import {
   selectiveDefaults,
   sha256,
   type EngineClient,
+  type FileSystem,
 } from '@abele/sync-sdk/core'
 import { VaultSettingsSchema } from '@abele/sync-sdk/protocol'
 import { expect, it } from 'vitest'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import { ExternalRepresentation } from '@/sync/external/representation'
+import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
+import { PathCoordinator } from '@/sync/pathCoordinator'
 
 function nativeApp(root: string, files: { path: string; content: string; mtime?: number }[] = []) {
   const app = buildFakeVault(files)
@@ -84,6 +90,8 @@ it.each([
   ['.obsidian/app.json', 'poll'],
   ['Notes/sample.md', 'expiry'],
   ['Notes/sample.md', 'foreground'],
+  ['Notes/sample.md', 'folder-foreground'],
+  ['Notes/sample.md', 'folder-expiry'],
 ])(
   'uploads an external identity-only replacement of %s after settling via %s',
   async (path, trigger) => {
@@ -100,6 +108,51 @@ it.each([
     if (path.startsWith('Notes/'))
       Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
     const fs = new ObsidianFileSystem(app as never, { ledger: state })
+    const placement = trigger.startsWith('folder-')
+      ? new LocalFolderPlacement('Notes', 'Notes')
+      : undefined
+    const representation = await ExternalRepresentation.open({
+      state: null,
+      emptyView: {
+        ledgerId: 'sample-ledger',
+        binding: {
+          endpoint: 'https://sync.example.invalid',
+          vaultId: 'sample-vault',
+          mode: 'personal',
+          principalId: 'sample-principal',
+          principalType: 'device',
+          grantId: null,
+          generation: 1,
+          credentialAssociation: 'sample-slot',
+        },
+      },
+      ledger: state,
+      fs: placement?.fileSystem(fs) ?? fs,
+      assertOwned: () => {},
+      scriptsFolder: () => 'Scripts',
+      verify: async () => {
+        throw new Error('unexpected verification')
+      },
+      installProjection: async () => {
+        throw new Error('unexpected projection')
+      },
+    })
+    let composed: FileSystem = representation.fileSystem()
+    if (placement) composed = placement.localFileSystem(composed)
+    composed = new TokenOffloadCoordinator(new PathCoordinator()).fileSystem(composed, () => true)
+    if (placement) {
+      const includes = (path: string) => path === 'Notes' || path.startsWith('Notes/')
+      composed = scopedFileSystem(
+        composed,
+        (path) => {
+          if (!includes(path)) throw new Error('outside scope')
+        },
+        includes,
+        undefined,
+        'Notes'
+      )
+      composed = placement.fileSystem(composed)
+    }
     const snapshots: Promise<unknown>[] = []
     const snapshot = Reflect.get(fs, 'configSnapshot').bind(fs)
     Object.assign(fs, {
@@ -144,7 +197,7 @@ it.each([
       },
     } as unknown as EngineClient
     const engine = new SyncEngine({
-      fs,
+      fs: composed,
       state,
       client,
       selective: selectiveDefaults(),
@@ -175,8 +228,8 @@ it.each([
       if (path.startsWith('.obsidian/')) {
         fs.kick()
         await Promise.all(snapshots)
-      } else if (trigger === 'foreground') {
-        Reflect.get(fs, Symbol.for('abele.sync.invalidate-local-scan-v1')).call(fs)
+      } else if (trigger.endsWith('foreground')) {
+        Reflect.get(composed, Symbol.for('abele.sync.invalidate-local-scan-v1')).call(composed)
       } else now += 300000
       await engine.sync()
       expect(commits).toBe(1)
