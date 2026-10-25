@@ -63,6 +63,7 @@ it.each([
   'v2Directories.js',
   'v2Client.js',
   'departureSettlement.js',
+  'departureMarks.js',
 ])('passes %s through a second plugin instance and query id unchanged', (module) => {
   const { id, input } = sample(version, module)
   const first = syncPlacementPlugin().transform(input, id)!

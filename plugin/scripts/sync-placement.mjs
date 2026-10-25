@@ -1386,6 +1386,29 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           'await this.fs.removeDirectory(path, removal.identity);',
           'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path, removal.identity));'
         )
+      } else if (file.endsWith('/departureMarks.js')) {
+        code = `import { ScanWork } from './scanWork.js';\n` + code
+        code = replaceOnce(
+          code,
+          'export async function loadDepartureMarks(state, prefix, paths) {',
+          `export async function loadDepartureMarks(state, prefix, paths) {
+    const read = state[Symbol.for('abele.sync.metadata-prefix-v1')];
+    if (read) {
+        const rows = await read.call(state, prefix);
+        state = { getMeta: async key => rows.get(key) ?? null };
+    }
+    const work = new ScanWork();`
+        )
+        code = replaceOnce(
+          code,
+          '        const path = decodeURIComponent(key.slice(prefix.length + 2));',
+          '        await work.step();\n        const path = decodeURIComponent(key.slice(prefix.length + 2));'
+        )
+        code = replaceOnce(
+          code,
+          '    while (path !== null) {',
+          '    const work = new ScanWork();\n    while (path !== null) {\n        await work.step();'
+        )
       } else if (file.endsWith('/departureSettlement.js')) {
         code = replaceOnce(
           code,

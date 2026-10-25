@@ -520,6 +520,24 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     )
   }
 
+  /** One readonly prefix snapshot for startup's linked metadata inventories.
+   * No cache survives the caller's pass; unrelated receipts are never materialized.
+   */
+  async [Symbol.for('abele.sync.metadata-prefix-v1')](
+    prefix: string
+  ): Promise<Map<string, string>> {
+    this.assertRecovery()
+    return this.readMetadata(
+      prefix,
+      false,
+      () => new Map<string, string>(),
+      (rows, key, value) => {
+        if (typeof value !== 'string') throw new EngineError('io', 'Invalid plugin metadata')
+        rows.set(key, value)
+      }
+    )
+  }
+
   /** Each bounded page is its own host task; never materialize the entire store in onsuccess.
    * Keep one readonly snapshot, including when lifecycle retirement races another writer.
    * Seek directly to the plugin prefix without reading unrelated payloads.
