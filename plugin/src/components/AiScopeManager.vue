@@ -17,7 +17,7 @@
       />
       <Setting
         :name="t('streamB.permissionMode.c7a8e6')"
-        :desc="t('streamB.controlsWhichFileOperationsRequireYourApproval.2a4ffa')"
+        :desc="t('chatTree.permissionNodes')"
       >
         <Dropdown
           :model-value="permissionMode"

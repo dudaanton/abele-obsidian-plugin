@@ -5,19 +5,23 @@
     v-model="expanded"
   >
     <div class="abele-node-bypass-command">
-      <Input as-text-area :rows="2" :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
+      <Input as-text-area :rows="phone ? 3 : 2" :model-value="command" readonly :aria-label="t('streamB.permissionNodeOptIn')" />
       <Icon icon="copy" :tooltip="t('streamB.permissionCopyCommand')" @click="copy" />
     </div>
   </Disclosure>
 </template>
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Platform } from 'obsidian'
 import { t } from '@/i18n'
 import Disclosure from './obsidian/Disclosure.vue'
 import Input from './obsidian/Input.vue'
 import Icon from './obsidian/Icon.vue'
-const expanded = ref(false)
+const props = defineProps<{ expanded?: boolean }>()
+const expanded = ref(!!props.expanded)
 const command = 'abele-node service flags set --allow-bypass on'
+// A phone wraps the command onto three lines; the box shows all of them.
+const phone = Platform.isPhone
 const copy = () => navigator.clipboard.writeText(command)
 </script>
 <style scoped>

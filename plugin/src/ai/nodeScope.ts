@@ -9,7 +9,7 @@ export const NodeChatTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('workspace'), workspace_id: id }).strict(),
   z.object({ kind: z.literal('worktree'), worktree_id: id }).strict(),
 ])
-const common = { node_id: id, access: z.enum(['read', 'edit']) }
+const common = { node_id: id, access: z.enum(['read', 'edit', 'run']) }
 export const NodeScopeEntrySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('node'), ...common }).strict(),
   z.object({ kind: z.literal('project'), ...common, project_id: id }).strict(),
@@ -78,7 +78,7 @@ export function coversNodeScope(
 ): boolean {
   return (
     entry.node_id === target.node_id &&
-    (access === 'read' || entry.access === 'edit') &&
+    (access === 'read' || entry.access !== 'read') &&
     (entry.kind === 'node' || entry.project_id === target.project_id) &&
     (entry.kind !== 'target' ||
       (entry.target.kind === target.target.kind &&

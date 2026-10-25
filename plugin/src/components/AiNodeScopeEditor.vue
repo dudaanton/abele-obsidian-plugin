@@ -8,30 +8,19 @@
         .join(' ')
     "
   >
-    <template #lead
-      ><StatusDot v-if="needsApproval" tone="orange" :label="t('chatTree.nodeApprovalTip')"
-    /></template>
     <template #actions>
       <Icon
         class="abele-node-scope-editor__add"
         icon="plus"
         :disabled="busy || loading || preparing"
-        :tooltip="t('chatTree.addNode')"
-        @click="addMenu"
+        :tooltip="t('chatTree.addNodeFolder')"
+        @click="addFolder"
       />
       <Icon
         icon="refresh-cw"
         :disabled="busy"
         :tooltip="t('streamB.refreshNodes.d0c8aa')"
         @click="loadNodes"
-      />
-      <Icon
-        v-if="needsApproval"
-        class="abele-node-scope-editor__approve"
-        icon="shield-check"
-        :disabled="busy"
-        :tooltip="t('chatTree.nodeApprovalTip')"
-        @click="approve"
       />
     </template>
     <EmptyState v-if="loading" variant="loading" :text="t('streamB.loadingNodeFolders.1fb024')" />
@@ -46,12 +35,8 @@
       /></template>
     </EmptyState>
     <div class="abele-scope-mgr__entries" role="list" :aria-label="t('streamB.nodeAccess.bc448d')">
-      <div
-        v-for="entry in entries"
-        :key="nodeScopeKey(entry)"
-        class="abele-scope-mgr__entry"
-        role="listitem"
-      >
+      <template v-for="entry in entries" :key="nodeScopeKey(entry)">
+      <div class="abele-scope-mgr__entry" role="listitem">
         <Icon
           :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'"
           :interactive="!inheritedFrom(entry)"
@@ -75,16 +60,21 @@
           tone="faint"
           :label="t('chatTree.nodeDisconnected')"
         />
+        <StatusDot
+          v-if="stillAsks(entry)"
+          tone="orange"
+          :label="t('chatTree.nodeStillAsks', { node: nodeName(entry) })"
+        />
+        <!-- What the agent may do here, one level: read, edit, or edit and run commands and hand
+             tasks to the node's agents. Whether it asks first is the chat's one switch below. -->
         <Icon
           class="abele-node-scope-editor__mode"
-          :icon="entry.access === 'edit' ? 'pencil' : 'eye'"
+          :icon="LEVEL[entry.access].icon"
           :interactive="!inheritedFrom(entry)"
           :tooltip="
             inheritedFrom(entry)
               ? t('chatTree.inheritedNodeModeTip', { name: inheritedFrom(entry) })
-              : entry.access === 'edit'
-                ? t('streamB.readAndEdit.4067e8')
-                : t('streamB.read.331634')
+              : LEVEL[entry.access].said
           "
           @click="(event) => modeMenu(entry, event)"
         />
@@ -104,11 +94,34 @@
           @click="remove(entry)"
         />
       </div>
+      <!-- Commands without asking that the node itself turns back into questions: why, and the
+           node's own switch as a command to copy, under the folder's name. -->
+      <div v-if="stillAsks(entry)" class="abele-node-scope-editor__under">
+        <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
+        <div class="abele-node-scope-editor__note abele-node-scope-editor__note_stack">
+          <span class="abele-node-scope-editor__why">{{
+            t('chatTree.nodeStillAsks', { node: nodeName(entry) })
+          }}</span>
+          <NodeBypassHelp :expanded="bypassHelpOpen" />
+        </div>
+        <Icon class="abele-node-scope-editor__room" icon="x" interactive disabled />
+      </div>
+      </template>
       <EmptyState
         v-if="!entries.length && !nodes.length && !loading"
         :text="t('streamB.noNodesConnectedHereConnectOneFrom.a6484f')"
       />
+      <EmptyState v-else-if="!entries.length && !loading" :text="t('chatTree.nodeNone')">
+        <template #action
+          ><Button
+            icon="folder-plus"
+            :text="t('chatTree.addNodeFolder')"
+            :disabled="busy || preparing"
+            @click="addFolder"
+        /></template>
+      </EmptyState>
     </div>
+
   </Section>
 </template>
 <script setup lang="ts">
@@ -138,15 +151,36 @@ import {
   giveObsidianChatAccess,
   setObsidianChatNodeScope,
   removeObsidianChatNodeAccess,
-  approveObsidianChatNodeAccess,
 } from '@/ai/tools/node/owner'
 import Section from './obsidian/Section.vue'
 import StatusDot from './obsidian/StatusDot.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import EmptyState from './obsidian/EmptyState.vue'
+import NodeBypassHelp from './NodeBypassHelp.vue'
+import { NodeFolderPicker, nodeFolderChoices } from './nodeFolderPicker'
+import { GlobalStore } from '@/stores/GlobalStore'
 
-const props = defineProps<{ session: NodeScopeOwner; folder?: boolean }>()
+const props = defineProps<{
+  session: NodeScopeOwner & { permissionMode?: { value: string } }
+  folder?: boolean
+  /** The node's own switch shown open, as after a press on the orange line. */
+  bypassHelpOpen?: boolean
+}>()
+
+/** One level per folder, as a glyph and in words, from reading to running commands there. */
+const LEVEL = {
+  read: { icon: 'eye', said: t('streamB.read.331634') },
+  edit: { icon: 'pencil', said: t('streamB.readAndEdit.4067e8') },
+  run: { icon: 'square-terminal', said: t('chatTree.nodeEditRun') },
+} as const
+/** A folder where commands go without asking by the chat, but its node asks anyway. */
+const stillAsks = (entry: NodeScopeEntry) =>
+  entry.access === 'run' &&
+  props.session.permissionMode?.value === 'allow-all' &&
+  states.value[nodeScopeKey(entry)]?.bypass === false
+const nodeName = (entry: NodeScopeEntry) =>
+  names.value[nodeScopeKey(entry)]?.node ?? label(entry)
 const parsed = computed(() =>
   NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )
@@ -171,10 +205,9 @@ const wanted = ref<NodeScopeEntry>()
 const preparing = ref(!!pendingNodeAccess.value)
 const tree = useChatTreeSource()
 const host = shallowRef<NodeAgentHost>()
-const states = ref<Record<string, { connected: boolean; approved: boolean }>>({})
-const needsApproval = computed(() =>
-  entries.value.some((entry) => !states.value[nodeScopeKey(entry)]?.approved)
-)
+const states = ref<
+  Record<string, { connected: boolean; approved: boolean; bypass?: boolean }>
+>({})
 const loading = ref(false),
   busy = ref(false),
   error = ref('')
@@ -328,6 +361,8 @@ function refreshStatus() {
           nodeScopeKey(entry),
           {
             connected: connection.client.connected,
+            // Whether the node lets a command go without asking; unknown until it says.
+            bypass: (connection.client as { bypassAllowed?: boolean }).bypassAllowed,
             approved: current.ledger
               .approvedEntries(props.session, entry.node_id, connection.principal())
               .some((value) => nodeScopeKey(value) === nodeScopeKey(entry)),
@@ -347,43 +382,25 @@ function openFolder(entry: NodeScopeEntry) {
 function give(entry: NodeScopeEntry) {
   void perform(() => giveObsidianChatAccess(props.session, entry))
 }
-function addMenu(event: MouseEvent) {
-  const menu = new Menu()
-  if (wanted.value) {
-    const entry = { ...wanted.value }
-    menu.addItem((item) =>
-      item
-        .setTitle(label(entry))
-        .setIcon('folder-plus')
-        .onClick(() => give(entry))
-    )
-    menu.addSeparator()
+/** Every folder of the connected nodes, searchable; one press gives the chat that place. */
+async function addFolder() {
+  try {
+    const choices = await nodeFolderChoices(host.value ?? (await nodeAgentHost()))
+    new NodeFolderPicker(GlobalStore.getInstance().app, choices, (choice) =>
+      give(choice.entry)
+    ).open()
+  } catch (failure) {
+    error.value = failure instanceof Error ? failure.message : t('streamB.couldNotLoadNodes.260985')
   }
-  if (!nodes.value.length)
-    menu.addItem((item) => item.setTitle(t('chatTree.connectNode')).setDisabled(true))
-  for (const node of nodes.value) {
-    const granted = entries.value.some((entry) => entry.node_id === (node.node_id ?? node.id))
-    menu.addItem((item) =>
-      item
-        .setTitle(node.label)
-        .setIcon('server')
-        .setChecked(granted)
-        .onClick(() => {
-          if (!granted) give({ kind: 'node', node_id: node.id, access: 'read' })
-          else void locationMenu({ kind: 'node', node_id: node.id, access: 'read' }, event, true)
-        })
-    )
-  }
-  menu.showAtMouseEvent(event)
 }
 function modeMenu(entry: NodeScopeEntry, event: MouseEvent) {
   if (inheritedFrom(entry) || busy.value) return
   const menu = new Menu()
-  for (const access of ['read', 'edit'] as const)
+  for (const access of ['read', 'edit', 'run'] as const)
     menu.addItem((item) =>
       item
-        .setTitle(access === 'read' ? t('streamB.read.331634') : t('streamB.readAndEdit.4067e8'))
-        .setIcon(access === 'read' ? 'eye' : 'pencil')
+        .setTitle(LEVEL[access].said)
+        .setIcon(LEVEL[access].icon)
         .setChecked(entry.access === access)
         .onClick(() => give({ ...entry, access }))
     )
@@ -473,11 +490,6 @@ function clear() {
   const chat = props.session
   void perform(() => setObsidianChatNodeScope(chat, []))
 }
-function approve() {
-  const chat = props.session,
-    current = [...entries.value]
-  void perform(() => approveObsidianChatNodeAccess(chat, current))
-}
 function remove(entry: NodeScopeEntry) {
   const chat = props.session
   void perform(() => removeObsidianChatNodeAccess(chat, entry))
@@ -527,6 +539,58 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
+// One quiet line under the folders: an orange dot, why, and the button or switch that helps.
+.abele-node-scope-editor__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2-2) var(--size-4-2);
+  font-size: var(--font-ui-small);
+}
+// Why the node still asks, and its own switch under it, the two on the edge of the rows above.
+.abele-node-scope-editor__note_stack {
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-block-end: var(--size-4-2);
+}
+.abele-node-scope-editor__note_stack .abele-node-scope-editor__why {
+  flex: none;
+}
+.abele-node-scope-editor__why {
+  flex: 1 1 12em;
+  color: var(--text-muted);
+}
+.abele-node-scope-editor__actions {
+  display: flex;
+  flex-direction: column;
+}
+// What the agent may do besides files reads as the folders read: the same row, a glyph for what
+// it is, the mode in the column of the folders' read or edit.
+.abele-node-scope-editor__kind.abele-obsidian-icon_disabled {
+  opacity: 1;
+  color: var(--text-faint);
+  cursor: default;
+}
+// What belongs to a row stands under its words and ends under its mode: the row's own columns,
+// the glyph places kept empty.
+// A phone gives the note the row's last column too: a command to copy needs the width.
+body.is-phone .abele-node-scope-editor__under > .abele-node-scope-editor__room:last-child {
+  display: none;
+}
+.abele-node-scope-editor__under {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  padding: 0 var(--size-4-1) 0 var(--size-4-2);
+}
+.abele-node-scope-editor__action_off .abele-scope-mgr__entry-path {
+  color: var(--text-faint);
+}
+.abele-node-scope-editor__room {
+  visibility: hidden;
+}
 .abele-node-scope-editor__source {
   display: block;
   overflow: hidden;

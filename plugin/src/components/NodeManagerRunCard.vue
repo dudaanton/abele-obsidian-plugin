@@ -65,6 +65,9 @@
       />
       <MetaLine :facts="[{ key: '0', value: resultLabel }]" />
     </div>
+    <!-- Asked although the chat said without asking: the node's own switch, the same as on the
+         Access tab, as a command to copy. -->
+    <NodeBypassHelp v-if="card.run.reason?.includes('node_bypass_disabled')" />
     <Disclosure
       v-if="failed && !failure"
       v-model="originalOpen"
@@ -133,6 +136,7 @@ import RequestCard from './obsidian/RequestCard.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import Icon from './obsidian/Icon.vue'
 import StatusDot from './obsidian/StatusDot.vue'
+import NodeBypassHelp from './NodeBypassHelp.vue'
 import { commandLine, commandFolder } from '@/node/commandPresentation'
 import { displayCommandJustification } from '@/node/commandJustification'
 const props = defineProps<{
