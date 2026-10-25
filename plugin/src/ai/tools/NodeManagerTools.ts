@@ -205,6 +205,9 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           )
           if (
             scopedRoots.length &&
+            !entries.some(
+              (entry) => entry.kind === 'project' && entry.project_id === params.project_id
+            ) &&
             !(await connection.client.getProject(params.project_id)).repository_path
           ) {
             for (const entry of scopedRoots) {

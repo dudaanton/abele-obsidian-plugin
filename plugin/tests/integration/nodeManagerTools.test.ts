@@ -83,6 +83,15 @@ it('runs a command in the sole granted plain folder without widening workspace s
     tool.execute('sample-missing', { ...args, project_id: 'sample-project' })
   ).rejects.toThrow(/node access|node chips/i)
   expect(command).toHaveBeenCalledTimes(1)
+  owner.overrides.value.nodeScope!.push({
+    kind: 'project',
+    node_id: 'sample-node',
+    project_id: 'sample-project',
+    access: 'edit',
+  })
+  client.getWorkspace.mockRejectedValueOnce(new Error('missing stale workspace'))
+  await tool.execute('sample-project-grant', { ...args, project_id: 'sample-project' })
+  expect(command).toHaveBeenCalledTimes(2)
 })
 it.each(['node_command_run', 'node_git_integrate'])(
   'scopes model aliases to the chat, tool and exact intended action while preserving retries for %s',
