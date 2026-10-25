@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.agentBranch': 'Rama del agente · {id}',
   'chatTree.nodeNone': 'El agente no tiene acceso a ningún nodo.',
   'chatTree.addNodeFolder': 'Añadir carpeta de nodo',
   'chatTree.pickNodeFolder': 'Un proyecto o rama en un nodo…',

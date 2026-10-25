@@ -760,5 +760,8 @@
   },
   "chatTree.permissionNodes": {
     "englishHash": "a0c32f5ea6788f2e3dcc83eba1de1c090ce24817b37a0174e788b926b84e8292"
+  },
+  "chatTree.agentBranch": {
+    "englishHash": "4816d0b92db4a587ed433320cc733929068e4a26dfe9d0cc80cac1e3a7e04a22"
   }
 }

@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.agentBranch': 'Aģenta zars · {id}',
   'chatTree.nodeNone': 'Aģentam nav piekļuves mezgliem.',
   'chatTree.addNodeFolder': 'Pievienot mezgla mapi',
   'chatTree.pickNodeFolder': 'Projekts vai zars mezglā…',

@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.agentBranch': "Agent's branch · {id}",
   'chatTree.hideFolder': 'Hide folder',
   'chatTree.hideFolderAndClose': 'Hide folder and close its chats',
   'chatTree.showFolder': 'Show folder',
