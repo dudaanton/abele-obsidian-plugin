@@ -21,6 +21,7 @@ interface Segment {
   longTasks: number
   longMs: number
   heap: number | null
+  heapRaw: number | null
   events: number
   visible: number
   messages: number
@@ -123,8 +124,23 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
         const messages=presenter().messages.value;
         const ids=messages.map(m=>m.id),list=chat().querySelector('.abele-ai-chat__messages');
         typing.sort((a,b)=>a-b);
-        return JSON.stringify({openMs,firstMs,turnMs,typingP95:typing[Math.floor(typing.length*.95)],...probe,
-          heap:performance.memory?.usedJSHeapSize??null,events:state.events.length,bytes:state.bytes,idbBytes,
+        const heapRaw=performance.memory?.usedJSHeapSize??null;
+        const measured={...probe};observer?.disconnect();
+        // Raw heap includes uncollected allocations and changes sharply on a reload. Keep
+        // reporting it, but compare retained heap at the same GC boundary in each segment.
+        // The emulated phone uses the same renderer probe; a real phone has no CDP heap API.
+        let heap=null;
+        if(!${onPhone()}) {
+          const debuggerApi=require('@electron/remote').getCurrentWindow().webContents.debugger;
+          const owned=!debuggerApi.isAttached();
+          try {
+            if(owned)debuggerApi.attach('1.3');
+            await debuggerApi.sendCommand('HeapProfiler.collectGarbage');
+            heap=(await debuggerApi.sendCommand('Runtime.getHeapUsage')).usedSize;
+          } finally {if(owned)debuggerApi.detach()}
+        }
+        return JSON.stringify({openMs,firstMs,turnMs,typingP95:typing[Math.floor(typing.length*.95)],...measured,
+          heap,heapRaw,events:state.events.length,bytes:state.bytes,idbBytes,
           visible:presenter().visibleEvents.size,messages:messages.length,duplicates:ids.length-new Set(ids).size,
           follows:list.scrollHeight-list.scrollTop-list.clientHeight<100});
       }finally{store.transaction=original;IDBDatabase.prototype.transaction=idbTransaction;stopEvents();observer?.disconnect()}
