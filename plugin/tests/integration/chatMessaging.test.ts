@@ -609,6 +609,13 @@ it('forces approval when an automatic letter addresses a broader target', async 
   expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(true)
   target.toolModes.value = { ...sender.toolModes.value }
   expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(false)
+  // Stale node switches confer no authority; actual folder access still does.
+  target.toolModes.value = { ...target.toolModes.value, node_command_run: 'auto' }
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(false)
+  target.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'run' }]
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(true)
+  sender.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'run' }]
+  expect(sender.needsApproval('send_message_to_chat', { chat_id: target.id })).toBe(false)
 })
 
 it('withholds sending from delegated runs and ownerless script tools', () => {

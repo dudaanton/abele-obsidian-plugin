@@ -4856,8 +4856,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const result: string[] = []
     if (rank[target.permissionMode.value] > rank[this.permissionMode.value])
       result.push(target.permissionMode.value)
-    for (const [name, mode] of Object.entries(target.toolModes.value)) {
-      if (mode === 'auto' && this.getToolMode(name) !== 'auto') result.push(name)
+    const names = new Set([
+      ...Object.keys(target.toolModes.value),
+      ...NODE_AGENT_TOOL_NAMES,
+      ...NODE_ACTION_TOOLS,
+    ])
+    for (const name of names) {
+      if (target.getToolMode(name) === 'auto' && this.getToolMode(name) !== 'auto')
+        result.push(name)
     }
     return result
   }
