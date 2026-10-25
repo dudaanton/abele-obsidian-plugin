@@ -89,10 +89,7 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
   if (ownerHost && ownerApp === app && ownerService === service) return ownerHost
   ownerApp = app
   ownerService = service
-  const ledger = new NodeScopeLedger({
-    read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
-    write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
-  })
+  const ledger = new NodeScopeLedger()
   const connectionFor = (id: string): NodeAgentConnection => {
     const connection = service.connection(id)
     return {
@@ -163,7 +160,7 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
 }
 
 /** Owner UI only. Whole-node scope intentionally includes future registered folders.
- * Credentials and installation IDs stay in the local ledger, never in chat metadata.
+ * Connection credentials and installation IDs never enter chat metadata.
  */
 export interface NodeScopeOwner extends NodeScopeChat {
   readonly delegationParentId?: string
@@ -216,61 +213,24 @@ export async function approveObsidianChatNodeAccess(
 async function saveNodeScope(
   session: NodeScopeOwner,
   entries: NodeScopeEntry[],
-  toApprove: NodeScopeEntry[]
+  _toApprove: NodeScopeEntry[]
 ): Promise<void> {
-  const raw = entries.map((entry) => NodeScopeEntrySchema.parse(entry)),
-    version = session.conversationVersion.value
+  const version = session.conversationVersion.value
   const host = await nodeAgentHost()
-  const canonical = raw.map((entry) => ({
-    ...entry,
+  const normalized = entries.map((entry) => ({
+    ...NodeScopeEntrySchema.parse(entry),
     node_id: host.nodeId?.(entry.node_id) ?? entry.node_id,
   }))
-  const normalized = [
-    ...new Map(canonical.map((entry) => [nodeScopeResourceKey(entry), entry])).values(),
-  ]
-  const check = () => {
-    if (session.conversationVersion.value !== version)
-      throw new Error('Chat changed while approving node scope')
+  if (session.conversationVersion.value !== version)
+    throw new Error('Chat changed while saving node scope')
+  session.overrides.value = {
+    ...session.overrides.value,
+    nodeAccessVersion: 1,
+    nodeScope: [
+      ...new Map(normalized.map((entry) => [nodeScopeResourceKey(entry), entry])).values(),
+    ],
   }
-  check()
-  const chosen = toApprove.map((entry) => NodeScopeEntrySchema.parse(entry))
-  const canonicalChosen = chosen.map((entry) => ({
-    ...entry,
-    node_id: host.nodeId?.(entry.node_id) ?? entry.node_id,
-  }))
-  const connections = new Map<string, NodeAgentConnection>()
-  // Only explicitly chosen entries may bind an installation or create a grant.
-  for (let index = 0; index < chosen.length; index++)
-    if (chosen[index].node_id !== canonicalChosen[index].node_id)
-      connections.set(
-        canonicalChosen[index].node_id,
-        host.connection(chosen[index].node_id, session)
-      )
-  for (const entry of canonicalChosen)
-    if (!connections.has(entry.node_id))
-      connections.set(entry.node_id, host.connection(entry.node_id, session))
-  const principals = Object.fromEntries(
-    [...connections].map(([id, connection]) => [id, connection.principal()])
-  )
-  const generations = new Map(
-    [...connections].map(([id, connection]) => [id, connection.authorizationGeneration])
-  )
-  session.overrides.value = { ...session.overrides.value, nodeScope: normalized }
-  host.ledger.reconcile(session)
   await session.saveForRelease()
-  check()
-  if (!canonicalChosen.length) return
-  await session.ensureDelegationParentId()
-  check()
-  if (JSON.stringify(session.overrides.value.nodeScope ?? []) !== JSON.stringify(normalized))
-    throw new Error('Node scope changed while saving owner approval')
-  for (const [id, connection] of connections)
-    if (
-      principals[id] !== connection.principal() ||
-      generations.get(id) !== connection.authorizationGeneration
-    )
-      throw new Error('Node identity changed during scope approval')
-  host.ledger.approve(session, principals, canonicalChosen)
 }
 
 /** Public Node-panel row-menu action. C supplies the explicitly chosen chat and immutable row identity.
@@ -281,7 +241,7 @@ export function giveObsidianChatAccess(
   raw: NodeScopeEntry
 ): Promise<void> {
   const entry = NodeScopeEntrySchema.parse(raw),
-    current = session.overrides.value.nodeScope ?? []
+    current = session.overrides.value.nodeScope ?? session.agent?.value?.nodeScope ?? []
   return saveNodeScope(
     session,
     [...current.filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry)), entry],
@@ -294,9 +254,11 @@ export async function removeObsidianChatNodeAccess(
   session: NodeScopeOwner,
   entry: NodeScopeEntry
 ): Promise<void> {
-  const remaining = (session.overrides.value.nodeScope ?? []).filter(
-    (value) => nodeScopeKey(value) !== nodeScopeKey(entry)
-  )
+  const remaining = (
+    session.overrides.value.nodeScope ??
+    session.agent?.value?.nodeScope ??
+    []
+  ).filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry))
   session.overrides.value = { ...session.overrides.value, nodeScope: remaining }
   reconcileNodeScopeApproval(session)
   return saveNodeScope(session, remaining, [])

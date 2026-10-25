@@ -21,7 +21,7 @@ export interface NodeAccessRefusal {
   wanted?: string
   known?: string[]
   /** `edit` when the call would have changed files where the chat may only read. */
-  access?: 'edit'
+  access?: 'edit' | 'run'
 }
 
 /**
@@ -52,7 +52,7 @@ export type NodeAccessWant = Pick<NodeAccessRefusal, 'node_id' | 'project_id' | 
 
 type Covering = {
   kind: 'node' | 'project' | 'target'
-  access?: 'read' | 'edit'
+  access?: 'read' | 'edit' | 'run'
   node_id: string
   project_id?: string
   target?: NodeChatTarget
@@ -66,7 +66,8 @@ export function accessCovers(entries: readonly Covering[], want: NodeAccessWant)
   if (!want.node_id) return entries.length > 0
   return entries.some((e) => {
     if (e.node_id !== want.node_id) return false
-    if (want.access === 'edit' && e.access !== 'edit') return false
+    if (want.access === 'edit' && e.access !== 'edit' && e.access !== 'run') return false
+    if (want.access === 'run' && e.access !== 'run') return false
     if (e.kind === 'node') return true
     if (e.project_id !== want.project_id) return false
     if (e.kind === 'project') return true

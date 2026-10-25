@@ -7,7 +7,12 @@ export function activeRequestsContext(): RequestToolContext | undefined {
   const service = RequestsService.instance()
   const c = service.context.value
   if (!c) return undefined
-  return { model: service.model(c), project: c.label ?? c.projectId }
+  return {
+    registrationId: c.registrationId,
+    worktreeId: c.worktreeId,
+    model: service.model(c),
+    project: c.label ?? c.projectId,
+  }
 }
 
 /** The request an agent's send would put on the wire, for the card asking the person: keys and

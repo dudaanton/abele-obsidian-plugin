@@ -143,7 +143,9 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
       const stored = { ...place, node_id: host.nodeId?.(place.node_id) ?? place.node_id }
       const where = nodeScopeTitle(names)
       const reach = (session: ChatSession) => {
-        const parsed = NodeScopeEntriesSchema.safeParse(session.overrides?.value.nodeScope ?? [])
+        const parsed = NodeScopeEntriesSchema.safeParse(
+          session.overrides?.value.nodeScope ?? session.agent?.value?.nodeScope ?? []
+        )
         return parsed.success ? parsed.data : []
       }
       const session = await chooseNodePathChat((s) =>
@@ -152,7 +154,7 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
       if (!session) return
       const chat = session.chatTitle.value || t('streamB.chat.460b3a')
       const had = reach(session).find((e) => accessCovers([e], stored))
-      const access = shallowRef<'read' | 'edit'>(had?.access ?? 'edit'),
+      const access = shallowRef<'read' | 'edit' | 'run'>(had?.access ?? 'read'),
         error = shallowRef(''),
         busy = shallowRef(false)
       return new Promise<void>((resolve) => {
@@ -177,9 +179,11 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                   desc: had
                     ? t('streamB.alreadyHasAccessWhetherChangesAskFirst.14a91e', {
                         v0: String(
-                          had.access === 'edit'
-                            ? t('streamB.readAndEdit.4067e8')
-                            : t('streamBMeta.3316348dba')
+                          had.access === 'run'
+                            ? t('chatTree.nodeEditRun')
+                            : had.access === 'edit'
+                              ? t('streamB.readAndEdit.4067e8')
+                              : t('streamBMeta.3316348dba')
                         ),
                       })
                     : t('streamB.whetherFileChangesAskFirstStillFollows.519f4b'),
@@ -194,9 +198,11 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                           display: t('streamB.readFiles.4e792b'),
                         },
                         { value: 'edit', display: t('streamB.readAndEditFiles.3cfbdf') },
+                        { value: 'run', display: t('chatTree.nodeEditRun') },
                       ],
                       'onUpdate:modelValue': (value: string) => {
-                        if (value === 'read' || value === 'edit') access.value = value
+                        if (value === 'read' || value === 'edit' || value === 'run')
+                          access.value = value
                       },
                     }),
                 }

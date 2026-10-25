@@ -1,6 +1,7 @@
 // Tools over a run the debugger recorded, for the agent to read it a little at a time. The run
 // lives on the node; every answer is one of its bounded views, at the agent's ceiling (80 lines,
 // 6 KB), which no parameter lifts. There is no tool that shows a run or a value whole.
+import { nodeProjectGuard } from './node/projectAccess'
 import type { AgentTool, AgentToolResult } from '../client'
 import type { TraceRpc, WireStep } from '@/debugger/trace/wire'
 import type { PointEdit } from '@/debugger/trace/TraceSession'
@@ -14,6 +15,8 @@ export interface TraceToolContext {
   rpc: TraceRpc
   projectId: string
   registrationId: string
+  worktreeId?: string
+  workspaceId?: string
   /** The newest run first. */
   runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
   addPoint(file: string, line: number, edit: PointEdit): Promise<void>
@@ -96,7 +99,19 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     category: 'Nodes',
     description,
     parameters: { type: 'object', properties, required, additionalProperties: false },
-    execute: async (_id, params) => text(await run(context(), params)),
+    execute: async (_id, params, _signal, ctx) => {
+      const c = context()
+      const guard = await nodeProjectGuard(
+        ctx?.session,
+        name,
+        c,
+        undefined,
+        ctx?.interactive === true && ctx?.approved === true
+      )
+      const result = await run(c, params)
+      guard()
+      return text(result)
+    },
   })
 
   return [

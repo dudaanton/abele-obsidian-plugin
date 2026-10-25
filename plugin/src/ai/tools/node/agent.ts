@@ -621,7 +621,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           )
       }
       if (NODE_MANAGER_TOOLS.includes(name)) {
-        checks.push(host.ledger.guard(session, target, connection.principal(), 'edit'))
+        checks.push(host.ledger.guard(session, target, connection.principal(), 'run'))
         if (session.permissionMode.value !== 'allow-all' && !(ctx.interactive && ctx.approved))
           throw new Error('Explicit owner approval is required')
         const operation = managerOperation()
@@ -746,7 +746,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             session,
             target,
             connection.principal(),
-            NODE_MANAGER_TOOLS.includes(name) ? 'edit' : access
+            NODE_MANAGER_TOOLS.includes(name) ? 'run' : access
           )
         )
       // This chat's current selection is captured, never read from a human tab.

@@ -3,6 +3,7 @@
 // may go into the recording of a running program, and its run is then read with the trace tools.
 // Keys are only ever named, `${abele_key:name}`: no tool takes or shows a key's value, and a send
 // the agent makes never asks to allow an address for a key or to confirm a script.
+import { nodeProjectGuard } from './node/projectAccess'
 import type { AgentTool, AgentToolResult } from '../client'
 import type { RequestsModel } from '@/requests/RequestsModel'
 import type { RequestDoc } from '@/requests/wire'
@@ -10,6 +11,8 @@ import { TRACE_AGENT_BYTES, TRACE_AGENT_LINES } from './TraceTools'
 
 /** The saved requests the tools work on: the project the Requests view shows. */
 export interface RequestToolContext {
+  registrationId?: string
+  worktreeId?: string
   model: RequestsModel
   /** The project's name, to say which one. */
   project: string
@@ -128,7 +131,22 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
     category: 'Nodes',
     description,
     parameters: { type: 'object', properties, required, additionalProperties: false },
-    execute: async (_id, params, signal) => text(await run(context(), params, signal)),
+    execute: async (_id, params, signal, ctx) => {
+      const c = context()
+      const guard = await nodeProjectGuard(
+        ctx?.session,
+        name,
+        {
+          ...c,
+          projectId: c.model.projectId,
+        },
+        undefined,
+        ctx?.interactive === true && ctx?.approved === true
+      )
+      const result = await run(c, params, signal)
+      guard()
+      return text(result)
+    },
   })
 
   return [

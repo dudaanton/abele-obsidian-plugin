@@ -1383,19 +1383,15 @@ Do not edit these records by hand.
 
 Chat metadata `overrides.nodeScope` stores remote scope separately from vault paths:
 entries identify a whole node, registered project, or exact plain workspace/Git worktree,
-with read/edit access. `overrides.nodeTarget` is this chat's selected remote target, not a
-permission. Both travel with the chat log and its sparse overrides. Whole-node scope includes
-future registered projects. Message discussions, including discussions nested in other discussions,
-copy the nearest parent's node scope on creation or opening if their own scope is unset.
-An explicit child scope, including an empty one, is retained. Existing device-local approvals
-for the inherited entries are copied to the child's durable identity on that device.
-A copied or synced configuration does not authorize itself:
-owner approvals live only in device-local preferences, bound to durable chat identity,
-exact scope entries, node installation/key and durable local registration authority.
-The local registration authority changes on re-pairing and on removal/recreation; it is retained
-across ordinary restarts and never travels with chat metadata. The process-local authorization
-generation fences in-flight reads, writes and scope approval, but is never part of persisted
-approval or mutation principals. Removing/changing
+with read/edit/run access. `overrides.nodeTarget` is selection, not permission. Both travel
+with the chat. Agent `nodeScope` holds defaults for new chats; an explicit chat scope wins,
+including an empty scope. `nodeAccessVersion: 1` records migration to folder execution levels.
+Legacy enabled command/delegation permissions promote only existing edit folders to run;
+read folders stay read. Access is shared across devices without a local approval ledger.
+Connection identity and authorization generations still fence in-flight operations.
+Saving chat access as the agent default copies vault scope, full-vault access, node folders,
+permission mode and tool modes. Message discussions inherit the nearest parent's scope
+unless they already have an explicit scope. Removing/changing
 scope fences pending tool reads and new mutations. Node writes and their durable receipts stay
 on the daemon; successful edits retain before/after Diff text in the ordinary chat tool result.
 `node_propose_edit` remains a separate device-local draft, not an immediate disk writer.

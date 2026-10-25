@@ -13,6 +13,8 @@ export function activeTraceContext(): TraceToolContext | undefined {
     rpc: trace.rpc,
     projectId,
     registrationId: binding.registrationId,
+    worktreeId: binding.controller.snapshot?.target.worktree_id ?? undefined,
+    workspaceId: binding.controller.snapshot?.target.workspace_id ?? undefined,
     runs: async () =>
       (await trace.rpc.runs(projectId)).runs.map((r) => ({
         id: r.id,

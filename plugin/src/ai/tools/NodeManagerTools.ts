@@ -112,7 +112,11 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       if (matches.length !== 1) throw new Error('Choose an explicit node registration')
       const connection = service.connection(matches[0].id)
       const nodeId = matches[0].expectedNodeId ?? matches[0].id
-      if (!nodeScopeEntries(parent).some((entry) => entry.node_id === nodeId))
+      if (
+        !nodeScopeEntries(parent).some(
+          (entry) => entry.node_id === nodeId && entry.access === 'run'
+        )
+      )
         requireDelegationScope(parent, nodeId)
       if (
         name === 'node_command_run' &&
@@ -122,7 +126,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         !input.session_id
       ) {
         const scoped = nodeScopeEntries(parent).filter(
-          (e) => e.node_id === nodeId && e.kind !== 'node'
+          (e) => e.node_id === nodeId && e.access === 'run' && e.kind !== 'node'
         )
         if (scoped.length === 1) {
           const entry = scoped[0]
@@ -173,7 +177,9 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           : undefined
       if (storedTarget) Object.assign(params, storedTarget)
       const guards: (() => void)[] = [permission]
-      const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
+      const entries = nodeScopeEntries(parent).filter(
+        (entry) => entry.node_id === nodeId && entry.access === 'run'
+      )
       if (entries.some((entry) => entry.kind === 'node')) {
         guards.push(requireDelegationScope(parent, nodeId))
       } else {

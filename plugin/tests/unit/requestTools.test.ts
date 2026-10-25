@@ -1,3 +1,5 @@
+// Project authorization has its own tests; these cases exercise request/trace behavior.
+vi.mock('@/ai/tools/node/projectAccess', () => ({ nodeProjectGuard: async () => () => {} }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequestTools } from '@/ai/tools/RequestTools'
 import { forgetRequestSecrets, RequestsModel } from '@/requests/RequestsModel'

@@ -1,3 +1,4 @@
+// Folder execution levels replace the former separate action switches.
 import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeDelegationTools } from '@/ai/tools/NodeDelegationTools'
@@ -40,9 +41,10 @@ it('uses the exact registration for both the scope check and the connection', as
     connection,
   } as never)
   const owner = {
+    permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
-    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
   } as unknown as ChatSession
   await createNodeDelegationTools(owner)[1].execute('sample-call', {
     node: 'sample-alias',
@@ -58,9 +60,10 @@ it('uses project scope for every child action and rechecks it after connecting',
   const owner = {
     overrides: ref({
       nodeScope: [
-        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
+        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'run' },
       ],
     }),
+    permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession
@@ -94,7 +97,9 @@ it('uses project scope for every child action and rechecks it after connecting',
     title: 'Task',
     text: 'Work',
   }
-  await expect(tools[1].execute('create', args)).rejects.toThrow(/node chips/i)
+  await expect(tools[1].execute('create', args)).rejects.toThrow(
+    /node chips|folder needs edit and run/i
+  )
   for (const tool of tools.slice(2)) {
     await expect(
       tool.execute('child', {
@@ -102,7 +107,7 @@ it('uses project scope for every child action and rechecks it after connecting',
         delegation_id: 'sample-child',
         ...(tool.name.endsWith('_send') ? { text: 'Continue' } : {}),
       })
-    ).rejects.toThrow(/node chips/i)
+    ).rejects.toThrow(/node chips|folder needs edit and run/i)
   }
   expect(connect).not.toHaveBeenCalled()
   connect.mockImplementationOnce(async () => {
@@ -110,7 +115,7 @@ it('uses project scope for every child action and rechecks it after connecting',
   })
   await expect(
     tools[1].execute('create', { ...args, project_id: 'sample-project' })
-  ).rejects.toThrow(/node chips/i)
+  ).rejects.toThrow(/node chips|folder needs edit and run/i)
   for (const method of ['create', 'send', 'status', 'cancel'] as const)
     expect(delegation[method]).not.toHaveBeenCalled()
 })
@@ -146,10 +151,11 @@ it('lists stable IDs and resolves them for all child operations', async () => {
   const tools = createNodeDelegationTools({
     overrides: ref({
       nodeScope: [
-        { kind: 'node', node_id: 'stable', access: 'read' },
-        { kind: 'node', node_id: 'registration', access: 'edit' },
+        { kind: 'node', node_id: 'stable', access: 'run' },
+        { kind: 'node', node_id: 'registration', access: 'run' },
       ],
     }),
+    permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
@@ -204,7 +210,8 @@ it('never creates after Stop while connecting, and cancels a child accepted conc
   }
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
   const tools = createNodeDelegationTools({
-    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'node', access: 'edit' }] }),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'node', access: 'run' }] }),
+    permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
@@ -294,10 +301,11 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
     id: 'transient-tab',
     overrides: ref({
       nodeScope: [
-        { kind: 'node', node_id: 'stable', access: 'read' },
-        { kind: 'node', node_id: 'registration', access: 'edit' },
+        { kind: 'node', node_id: 'stable', access: 'run' },
+        { kind: 'node', node_id: 'registration', access: 'run' },
       ],
     }),
+    permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)

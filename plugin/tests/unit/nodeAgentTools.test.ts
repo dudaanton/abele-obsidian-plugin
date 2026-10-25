@@ -142,7 +142,7 @@ describe('Obsidian chat node tools', () => {
     f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })
     Object.assign(f.host, {
       childReadGuard: async () => async () => {
-        f.ledger.revoke(f.session)
+        f.session.overrides.value.nodeScope = []
       },
     })
     await expect(f.call('node_read', { path: 'sample.txt' })).rejects.toThrow(/revoked|approval/)
@@ -191,7 +191,7 @@ describe('Obsidian chat node tools', () => {
         node_id: 'sample-node',
         project_id: project.project_id,
         target: { kind: 'worktree', worktree_id: 'other-tree' },
-        access: 'edit',
+        access: 'run',
       },
     ]
     f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })
@@ -226,7 +226,7 @@ describe('Obsidian chat node tools', () => {
       ...catalogue,
       entries: [{ ...catalogue.entries[0], kind: 'managed', dirty: false }],
     })
-    await expect(f.call('node_worktree_remove', args)).rejects.toThrow(/approval/)
+    await expect(f.call('node_worktree_remove', args)).rejects.toThrow(/no node access|approval/)
     await f.call('node_worktree_remove', args, true)
     expect(remove).toHaveBeenCalledWith(
       {
@@ -270,7 +270,7 @@ describe('Obsidian chat node tools', () => {
       head: '1'.repeat(40),
       observation_id: 'sample-observation',
     })
-    await expect(f.call('node_git_commit', args)).rejects.toThrow(/approval/)
+    await expect(f.call('node_git_commit', args)).rejects.toThrow(/no node access|approval/)
     expect(commit).not.toHaveBeenCalled()
     await f.call('node_git_commit', args, true)
     expect(commit).toHaveBeenCalledWith(
@@ -372,7 +372,7 @@ describe('Obsidian chat node tools', () => {
   it('asks in confirm-all, rejects stale text and never labels an operation ID as saved', async () => {
     const { call, client } = setup('confirm-all')
     const params = { path: 'sample.txt', expected_content_id: hash, text: 'new' }
-    await expect(call('node_write', params)).rejects.toThrow(/approval/)
+    await expect(call('node_write', params)).rejects.toThrow(/no node access|approval/)
     await expect(
       call('node_write', { ...params, expected_content_id: 'c'.repeat(64) }, true)
     ).rejects.toThrow(/content|changed/)
@@ -385,7 +385,7 @@ describe('Obsidian chat node tools', () => {
   it('fences bytes and writes after revocation or principal replacement during a read', async () => {
     const { call, client, session, ledger } = setup()
     client.readContent.mockImplementationOnce(async () => {
-      ledger.revoke(session)
+      session.overrides.value.nodeScope = []
       return { offset: 0, total: 3, base64: btoa('old') }
     })
     await expect(call('node_read', { path: 'sample.txt' })).rejects.toThrow(/revoked|approval/)
@@ -618,9 +618,9 @@ describe('Obsidian chat node tools', () => {
     ])
     const result = await call('node_folders')
     expect(result.content[0].text).not.toContain('private-project')
-    ledger.revoke(session)
+    session.overrides.value.nodeScope = []
     await expect(call('node_read', { path: 'sample.txt', approved: true }, true)).rejects.toThrow(
-      /approval/
+      /no node access/
     )
   })
   it('fences retained read continuations after scope revocation, replacement and branch switches', async () => {
@@ -641,7 +641,7 @@ describe('Obsidian chat node tools', () => {
     session.branchSelectionVersion++
     await expect(call('node_read', { cursor })).rejects.toThrow()
     session.branchSelectionVersion--
-    ledger.revoke(session)
+    session.overrides.value.nodeScope = []
     ledger.approve(session, { 'sample-node': 'sample-pin:0' })
     await expect(call('node_read', { cursor })).rejects.toThrow()
     principal('replacement-pin:0')
@@ -696,7 +696,7 @@ describe('Obsidian chat node tools', () => {
     })
     await expect(
       call('node_write', { path: 'sample.txt', expected_content_id: hash, text: 'new' })
-    ).rejects.toThrow(/approval/)
+    ).rejects.toThrow(/no node access|approval/)
     expect(client.writeFile).not.toHaveBeenCalled()
   })
   it('conflict/unknown receipts render no saved Diff and are never retried', async () => {
@@ -824,10 +824,12 @@ describe('what the node file tools tell a model that cannot reach a file yet', (
       /Give a chat access/
     )
   })
-  it('says the access needs approving on this device when it arrived with the chat', async () => {
-    const { call, session, ledger } = setup()
-    ledger.revoke(session)
-    expect((await call('node_nodes')).content[0].text).toMatch(/Approve on this device/)
+  // Synced scope now works without an installation-local approval.
+  it('uses access that arrived with the chat without asking for device approval', async () => {
+    const { call } = setup()
+    const result = await call('node_nodes')
+    expect(result.content[0].text).not.toMatch(/Approve on this device/)
+    expect(result.content[0].text).toContain('sample-node')
   })
   it('reads from the one target this chat was given when the call names none', async () => {
     const { call, session, ledger } = setup()
@@ -838,7 +840,7 @@ describe('what the node file tools tell a model that cannot reach a file yet', (
           node_id: 'sample-node',
           project_id: project.project_id,
           target: { kind: 'workspace', workspace_id: workspace.workspace_id },
-          access: 'edit',
+          access: 'run',
         },
       ],
     }

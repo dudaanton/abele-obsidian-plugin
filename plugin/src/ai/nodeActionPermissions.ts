@@ -1,3 +1,4 @@
+import { nodeScopeEntries } from './nodeScope'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ref } from 'vue'
 import { NODE_ACTION_PARENTS, NODE_ACTION_TOOLS, type ToolMode } from './types'
@@ -63,11 +64,9 @@ export function requireNodeActionPermission(
   name: string,
   approved = false
 ): void {
-  const mode = chat.getToolMode(name)
-  if (mode !== 'ask' && mode !== 'auto')
-    throw new Error('Node tool is off in this device’s tool permissions')
+  if (!nodeScopeEntries(chat).some((entry) => entry.access === 'run'))
+    throw new Error('Node tool is off: folder needs edit and run access')
   if (
-    mode === 'ask' &&
     chat.permissionMode?.value !== 'allow-all' &&
     ![
       'node_delegations',

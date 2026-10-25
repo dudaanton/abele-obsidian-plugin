@@ -8,6 +8,7 @@ import { getNoteBody } from '@/helpers/notesUtils'
 import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
 import { renderMemory } from './memory'
 import { copyEntries, interceptorPatch } from '../interceptor/entries'
+import { migrateNodeAccess } from '../nodeAccess'
 import { CORE_TOOLS } from '@/ai/types'
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import type { ModelConfig } from '@/ai/client'
@@ -63,6 +64,13 @@ export class AgentRegistry {
     if (!ai) return []
     if (!ai.agents) ai.agents = []
     if (!isReactive(ai.agents)) ai.agents = reactive(ai.agents)
+    for (const agent of ai.agents) {
+      if (agent.nodeAccessVersion !== 1 && agent.nodeScope) {
+        const entries = migrateNodeAccess(agent.nodeScope, agent.toolModes)
+        agent.nodeScope = entries
+        agent.nodeAccessVersion = 1
+      }
+    }
     return ai.agents
   }
 
@@ -135,6 +143,9 @@ export class AgentRegistry {
       toolModes: { ...source.toolModes },
       githubConnections: source.githubConnections ? { ...source.githubConnections } : undefined,
       scope: source.scope.map((s) => ({ ...s })),
+      nodeScope: source.nodeScope?.map((entry) =>
+        entry.kind === 'target' ? { ...entry, target: { ...entry.target } } : { ...entry }
+      ),
       skills: [...source.skills],
       memory: (source.memory ?? []).map((m) => ({ ...m })),
       ...(source.interceptors ? { interceptors: copyEntries(source.interceptors) } : {}),

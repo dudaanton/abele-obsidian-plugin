@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { NodeChatTarget, NodeScopeEntry } from '@/ai/nodeScope'
 import { nodeTargetId } from '@/ai/nodeScope'
 import { nodeAgentHost } from './owner'
@@ -148,12 +149,13 @@ export const nodeScopeTitle = (n: NodeScopeNames) =>
   n.folder ? (n.branch ? `${n.folder} / ${n.branch}` : n.folder) : n.node
 
 /** The place and what may be done there, said in full: what a tooltip tells. */
-export function nodeScopeSentence(n: NodeScopeNames, access: 'read' | 'edit'): string {
+export function nodeScopeSentence(n: NodeScopeNames, access: 'read' | 'edit' | 'run'): string {
   const where = [
     `${n.node} node`,
     n.folder ?? 'every folder',
     ...(n.branch ? [`worktree ${n.branch}`] : []),
   ]
+  if (access === 'run') return `${where.join(' · ')} · ${t('chatTree.nodeEditRun')}`
   return `${where.join(' · ')} · can ${access === 'edit' ? 'read and edit' : 'read'} files`
 }
 

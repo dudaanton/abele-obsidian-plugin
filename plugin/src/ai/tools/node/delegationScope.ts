@@ -14,6 +14,7 @@ export function requireDelegationScope(
     const allowed = nodeScopeEntries(chat).some(
       (entry) =>
         entry.node_id === node &&
+        entry.access === 'run' &&
         (entry.kind === 'node' ||
           (entry.project_id === project &&
             (entry.kind === 'project' ||
@@ -37,7 +38,9 @@ export async function scopedPlainCommandRoot(
   node: string,
   project: string
 ): Promise<string | undefined> {
-  const entries = nodeScopeEntries(chat).filter((entry) => entry.node_id === node)
+  const entries = nodeScopeEntries(chat).filter(
+    (entry) => entry.node_id === node && entry.access === 'run'
+  )
   let rootWorkspace: string | undefined
   const scopedRoots = entries.filter(
     (entry) =>

@@ -163,6 +163,8 @@ export function setup(mode = 'allow-edit') {
 }
 export function setupGit() {
   const fixture = setup()
+  // Manager actions now require the folder execution level.
+  fixture.session.overrides.value.nodeScope![0].access = 'run'
   const tip = '1'.repeat(40)
   const worktree = {
     worktree_id: 'sample-tree',

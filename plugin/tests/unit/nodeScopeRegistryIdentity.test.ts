@@ -1,3 +1,4 @@
+// Scope travels across installations; registration authority still rotates on re-pairing.
 import { describe, it, expect, vi } from 'vitest'
 import { NodeRegistry, type PairedNode } from '@/node/NodeRegistry'
 import { NodeScopeLedger, type NodeScopeChat } from '@/ai/nodeScope'
@@ -52,10 +53,10 @@ describe('durable registration authority for node scope', () => {
       },
     }
     new NodeScopeLedger(storage).approve(chat, { 'sample-node': first })
-    expect(new NodeScopeLedger(storage).approvedNode(chat, 'sample-node', second)).toBe(false)
+    expect(new NodeScopeLedger(storage).approvedNode(chat, 'sample-node', second)).toBe(true)
     expect(registry.list()).toEqual([node])
   })
-  it('removal and recreation of the same cryptographic principal never resurrects an approval', () => {
+  it('removal and recreation rotate connection authority while configured scope travels', () => {
     const { registry, host, binding } = setup()
     let saved: unknown
     const storage = {
@@ -81,7 +82,7 @@ describe('durable registration authority for node scope', () => {
         'sample-node',
         binding(new NodeRegistry(host))
       )
-    ).toBe(false)
+    ).toBe(true)
   })
   it('persists an authority for old registrations before they can be approved', () => {
     let stored: unknown = [node]

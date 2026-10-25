@@ -59,6 +59,7 @@ import { NODE_AGENT_TOOL_NAMES, NODE_MUTATION_TOOLS } from './tools/node/agent'
 import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { nodeRepositoryToolsHost } from './tools/node'
 import { hasNodeScope, nodeScopeEntries } from './nodeScope'
+import { nodeToolAccess, migrateNodeAccess } from './nodeAccess'
 import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
@@ -1308,6 +1309,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return true
   }
 
+  async saveAccessAsAgentDefault(): Promise<void> {
+    const agent = this.agent.value
+    if (!agent) throw new Error('Choose an agent before saving access defaults')
+    AgentRegistry.getInstance().update(agent.id, {
+      scope: this.scopeResolver.entries.value.map((entry) => ({ ...entry })),
+      fullVaultAccess: this.scopeResolver.fullVaultAccess.value,
+      nodeAccessVersion: 1,
+      nodeScope: JSON.parse(JSON.stringify(this.effectiveNodeScope)),
+      permissionMode: this.permissionMode.value,
+      toolModes: { ...this.toolModes.value },
+    })
+    await AbeleConfig.getInstance().saveSettings()
+  }
+
   /** Summarizes the conversation so far and continues from the summary. */
   async compact(): Promise<void> {
     return this.summarizer.compact()
@@ -1324,15 +1339,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   getToolMode(toolName: string, toolCallId?: string): ToolMode {
+    const nodeAccess = nodeToolAccess(toolName, this.effectiveNodeScope)
+    if (nodeAccess !== undefined)
+      return nodeAccess ? (this.needsApproval(toolName) ? 'ask' : 'auto') : 'off'
     const saved = this.toolModes.value[this.getToolPermissionKey(toolName, toolCallId)]
     if (saved !== undefined) return saved
-    if (
-      this.effectiveNodeScope.length &&
-      NODE_AGENT_TOOL_NAMES.includes(toolName) &&
-      (this.overrides.value.nodeScope?.length ||
-        !['node_git_commit', 'node_worktree_remove'].includes(toolName))
-    )
-      return this.needsApproval(toolName) ? 'ask' : 'auto'
     return 'off'
   }
 
@@ -1443,7 +1454,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     ]
     const scopeTools = [...NODE_AGENT_TOOL_NAMES, ...delegationTools]
     const permitted = filtered.filter(
-      (tool) => !NODE_ACTION_TOOLS.includes(tool.name) || this.getToolMode(tool.name) !== 'off'
+      (tool) => nodeToolAccess(tool.name, this.effectiveNodeScope) !== false
     )
     const scopeFiltered = this.effectiveNodeScope.length
       ? permitted
@@ -1453,13 +1464,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           ...scopeFiltered,
           ...allTools.filter(
             (tool) =>
-              scopeTools.includes(tool.name) &&
-              (!!this.overrides.value.nodeScope?.length ||
-                this.toolModes.value[tool.name] !== undefined ||
-                (NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
-                  !['node_git_commit', 'node_worktree_remove'].includes(tool.name))) &&
-              this.toolModes.value[tool.name] !== 'off' &&
-              (!NODE_ACTION_TOOLS.includes(tool.name) || this.getToolMode(tool.name) !== 'off') &&
+              (scopeTools.includes(tool.name) ||
+                nodeToolAccess(tool.name, this.effectiveNodeScope) === true) &&
+              this.getToolMode(tool.name) !== 'off' &&
               !scopeFiltered.some((value) => value.name === tool.name)
           ),
         ]
@@ -3475,6 +3482,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       overrides.toolModes = result.modes
       migrated = result.changed
       notifyMcpPermissionReset(result.reset)
+    }
+    const legacyModes = nodeActionModes(
+      overrides.toolModes ?? {},
+      localNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value),
+      this.agent.value?.toolModes ?? {}
+    )
+    if (overrides.nodeScope && overrides.nodeAccessVersion !== 1) {
+      const next = migrateNodeAccess(overrides.nodeScope, {
+        ...overrides.toolModes,
+        ...legacyModes,
+      })
+      migrated = true
+      overrides.nodeScope = next
+      overrides.nodeAccessVersion = 1
     }
     this.overrides.value = overrides
     this.syncScopeFromAgent()

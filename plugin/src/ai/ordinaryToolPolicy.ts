@@ -70,9 +70,12 @@ export function ordinaryNeedsApproval(
   if (NODE_ACTION_TOOLS.includes(toolName))
     return (
       policy.permissionMode !== 'allow-all' &&
-      !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(toolName) &&
-      policy.getToolMode(toolName) !== 'auto'
+      !['node_delegations', 'node_delegation_status', 'node_command_status'].includes(toolName)
     )
+  if (toolName === 'http_send') return policy.permissionMode !== 'allow-all'
+  if (['http_request_save', 'http_import', 'trace_point_add', 'trace_note'].includes(toolName))
+    return !['allow-edit', 'allow-all'].includes(policy.permissionMode)
+  if (toolName.startsWith('http_') || toolName.startsWith('trace_')) return false
   if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
   const mode = policy.permissionMode
   if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'

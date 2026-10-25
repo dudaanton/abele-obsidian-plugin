@@ -970,20 +970,15 @@ own permissions and cannot move them to a similarly named server.
 `node_delegation_cancel`.
 
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
-Delegation and command tools are Off by default. Enable them through the ordinary agent or
-chat tool permissions (Off / Ask / Auto) on this device. Node chips only select scope; they
-cannot enable these tools. In Ask mode, starting a delegation (`node_delegate`) asks in the
-plugin; commands (`node_command_run`) and integration (`node_git_integrate`) use the node's
-exact approval without a duplicate preliminary card. Without asking skips plugin action
-cards for enabled tools; Off and node scope still apply. Sending new instructions
-(`node_delegation_send`) copies `node_delegate` exactly: Ask prompts unless the chat runs
-without asking, Auto sends without a
-prompt, Off disables sending. The tools that list, check status or cancel that work
-(`node_delegations`, `node_delegation_status`,
-`node_delegation_cancel` with `node_delegate`; `node_command_status`, `node_command_cancel` with
-`node_command_run`) follow their parent tool: available without a prompt while it is Ask or Auto,
-unavailable while it is Off. Chat files
-and folder permissions cannot grant these action permissions on another device.
+Node folders are configured in the chat's Access › Nodes. Each folder has one level:
+Read, Edit, or Edit and run. New folders start at Read. Commands, integration and delegation
+require Edit and run at the exact target; file changes require Edit or Edit and run.
+There are no node switches in Tools and no device approval step. Access works on every device.
+The chat's single permission mode controls asking. Ask creates a delegation approval in the
+plugin and one exact command/integration approval on the node. Without asking runs without
+these cards when the daemon permits bypass. Status/listing tools do not ask; cancellation
+and follow-up instructions use the same chat mode. The node's identity, connection and project
+trust checks still apply.
 Models cannot access credentials, send generic node requests or answer child human prompts.
 Nodes must advertise delegation_without_grant. Older nodes say they need an update to take tasks
 from chats; do not ask for a grant or create one automatically.
@@ -1242,19 +1237,11 @@ in chat history after access is revoked.
 
 Node scope is separate from vault scope: full vault access grants no node access. The owner
 chooses a node, registered folder, or exact worktree in the chat scope settings. Whole-node
-access also includes future registered folders. Read/edit scope travels in chat overrides;
-approval stays on this device and binds each exact scope entry to the chat identity and node installation/key generation.
-Adding one entry approves only that entry; removing one never approves the remaining configuration.
-The explicit local confirmation action approves the displayed entries individually.
-Loaded or copied scope must be approved locally. No open human tab is required. Scope does not
-turn on external browsing/editing, project trust or execution on the daemon.
-
-The person gives a chat node access in two places: in the chat, the access button at the
-bottom left of the message box, then **Node access**, choose the node, folder and worktree,
-**Add access**; or in the Node panel, open the place's **…** menu, **Give a chat access**,
-choose the chat, **Give access**. Access copied or synced from another device is approved
-once on this one with **Approve on this device** in the same Node access section. A tool that
-cannot reach a file says which of these is missing.
+access also includes future registered folders. Read / Edit / Edit and run scope travels in
+chat overrides and works across devices. No open human tab is required. Project trust and
+daemon permission policy still apply. Use the chat's access button, Access › Nodes, Add a node
+folder to search connected projects and branches; or use Give a chat access in the Node panel.
+Save as agent default copies the chat's complete access and asking mode for new chats.
 
 A model starts with `node_nodes`, then `node_folders` for one node, which lists each folder's
 `project` ID, whether it is Git, and its worktree or workspace IDs. Every other tool takes
@@ -1268,7 +1255,7 @@ picker, shell, stage or push is exposed by this toolset. Delegation tools use th
 
 | Tool | Purpose |
 | --- | --- |
-| `node_nodes` | Locally approved nodes, labels and connection state |
+| `node_nodes` | In-scope nodes, labels and connection state |
 | `node_folders` | Registered folders and scoped plain-folder workspaces on an allowed node |
 | `list_node_worktrees` | Git worktrees, filtered to the executing chat's scope |
 | `node_ls` | Directory entries in current files (or an explicit Git `ref`) |
@@ -1318,7 +1305,7 @@ or direct process execution is available through this protocol yet; do not claim
 
 Switching selection grants nothing and does not move a node-agent session. The switch is
 recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tree`, `node_commits`,
-`node_blame` and `node_grep` aliases use approved node scope when configured. The existing
+`node_blame` and `node_grep` aliases use chat node scope when configured. The existing
 `node_propose_edit` keeps its separate approval and draft-only meaning.
 
 Large reads return a chat/tool-bound `cursor` (same tool, cursor alone), expire after ten minutes,

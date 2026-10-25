@@ -1,3 +1,4 @@
+// Folder execution levels replace the former separate action switches.
 import { expect, it } from 'vitest'
 import { ref } from 'vue'
 import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
@@ -10,7 +11,7 @@ it('allows node and project access without a separate delegation grant', () => {
         kind,
         node_id: 'sample-node',
         ...(kind === 'project' ? { project_id: 'sample-project' } : {}),
-        access: 'read',
+        access: 'run',
       },
     ])
     expect(() => requireDelegationScope(session, 'sample-node', 'sample-project')).not.toThrow()
@@ -18,7 +19,7 @@ it('allows node and project access without a separate delegation grant', () => {
 })
 it('refuses missing nodes and other projects with instructions for the node chips', () => {
   const session = chat([
-    { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'edit' },
+    { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'run' },
   ])
   expect(() => requireDelegationScope(session, 'other-node', 'sample-project')).toThrow(
     /node chips/i
@@ -28,7 +29,7 @@ it('refuses missing nodes and other projects with instructions for the node chip
   )
 })
 it('rechecks scope after it changes', () => {
-  const session = chat([{ kind: 'node', node_id: 'sample-node', access: 'edit' }])
+  const session = chat([{ kind: 'node', node_id: 'sample-node', access: 'run' }])
   const guard = requireDelegationScope(session, 'sample-node', 'sample-project')
   session.overrides.value.nodeScope = []
   expect(guard).toThrow(/node chips/i)

@@ -36,18 +36,22 @@ export interface NodeScopeChat {
   }[]
   readonly nodeScopeIdentity: string | undefined
   readonly overrides: { value: SessionOverrides }
+  readonly agent?: { value: { nodeScope?: NodeScopeEntry[] } | null }
   readonly conversationVersion: { value: number }
   readonly branchSelectionVersion?: number
 }
 export function hasNodeScope(chat: NodeScopeChat): boolean {
   return (
     (!!chat.overrides?.value && Object.hasOwn(chat.overrides.value, 'nodeScope')) ||
+    !!chat.agent?.value?.nodeScope?.length ||
     !!chat.inheritedNodeScopes?.length
   )
 }
 export function nodeScopeEntries(chat: NodeScopeChat): NodeScopeEntry[] {
   return [
-    ...NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? []),
+    ...NodeScopeEntriesSchema.parse(
+      chat.overrides?.value.nodeScope ?? chat.agent?.value?.nodeScope ?? []
+    ),
     ...(chat.inheritedNodeScopes ?? []).flatMap((source) =>
       NodeScopeEntriesSchema.parse(source.entries)
     ),
@@ -74,11 +78,13 @@ function normalized(chat: NodeScopeChat): string {
 export function coversNodeScope(
   entry: NodeScopeEntry,
   target: NodeScopeTarget,
-  access: 'read' | 'edit'
+  access: 'read' | 'edit' | 'run'
 ): boolean {
   return (
     entry.node_id === target.node_id &&
-    (access === 'read' || entry.access !== 'read') &&
+    (access === 'read' ||
+      entry.access === 'run' ||
+      (access === 'edit' && entry.access === 'edit')) &&
     (entry.kind === 'node' || entry.project_id === target.project_id) &&
     (entry.kind !== 'target' ||
       (entry.target.kind === target.target.kind &&
@@ -171,30 +177,16 @@ export class NodeScopeLedger {
     this.commit(next)
   }
   approvedEntries(chat: NodeScopeChat, node: string, principal: string): NodeScopeEntry[] {
-    const sources = [
-      {
-        identity: chat.nodeScopeIdentity,
-        entries: nodeScopeEntries(chat),
-      },
-      ...(chat.inheritedNodeScopes ?? []),
-    ]
-    return sources.flatMap(({ identity, entries }) =>
-      entries.filter(
-        (entry) =>
-          entry.node_id === node &&
-          !!identity &&
-          this.approvals[identity]?.entries[nodeScopeKey(entry)]?.principal === principal
-      )
-    )
+    // Access is chat configuration shared by all installations. Connections validate identity.
+    return principal ? nodeScopeEntries(chat).filter((entry) => entry.node_id === node) : []
   }
   approvedNode(chat: NodeScopeChat, node: string, principal: string): boolean {
     return this.approvedEntries(chat, node, principal).length > 0
   }
   guardNode(chat: NodeScopeChat, node: string, principal: string): () => void {
-    const identity = chat.nodeScopeIdentity,
-      approval = identity ? this.approvals[identity] : undefined
-    const inherited = (chat.inheritedNodeScopes ?? []).map(
-      (source) => [source.identity, this.approvals[source.identity]] as const
+    const identity = chat.nodeScopeIdentity
+    const sources = JSON.stringify(
+      (chat.inheritedNodeScopes ?? []).map((source) => source.identity)
     )
     const scope = normalized(chat),
       conversation = chat.conversationVersion.value,
@@ -208,10 +200,8 @@ export class NodeScopeLedger {
         )
       if (
         chat.nodeScopeIdentity !== identity ||
-        (identity ? this.approvals[identity] : undefined) !== approval ||
         JSON.stringify((chat.inheritedNodeScopes ?? []).map((source) => source.identity)) !==
-          JSON.stringify(inherited.map(([id]) => id)) ||
-        inherited.some(([id, grant]) => this.approvals[id] !== grant) ||
+          sources ||
         normalized(chat) !== scope ||
         chat.conversationVersion.value !== conversation ||
         chat.branchSelectionVersion !== branch
@@ -225,7 +215,7 @@ export class NodeScopeLedger {
     chat: NodeScopeChat,
     target: NodeScopeTarget,
     principal: string,
-    access: 'read' | 'edit'
+    access: 'read' | 'edit' | 'run'
   ): () => void {
     const nodeGuard = this.guardNode(chat, target.node_id, principal)
     const check = () => {
@@ -238,13 +228,15 @@ export class NodeScopeLedger {
         throw new NodeAccessRefusalError(
           access === 'edit'
             ? 'This chat may only read here, not change files. The person gives it read and edit access with Give this chat access under this call, or in Node access.'
-            : 'Local owner node scope approval is missing or revoked for this target',
+            : access === 'run'
+              ? 'This folder needs edit and run access for commands and delegation'
+              : 'This target is outside the chat node scope access',
           {
             kind: 'no-access',
             node_id: target.node_id,
             project_id: target.project_id,
             target: target.target,
-            ...(access === 'edit' ? { access } : {}),
+            ...(access !== 'read' ? { access } : {}),
           }
         )
     }

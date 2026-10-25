@@ -1,3 +1,4 @@
+// Folder execution levels replace the former separate action switches.
 import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeManagerTools } from '@/ai/tools/NodeManagerTools'
@@ -51,7 +52,7 @@ it('runs a command in the sole granted plain folder without widening workspace s
           node_id: 'sample-node',
           project_id: 'sample-project',
           target: { kind: 'workspace', workspace_id: 'sample-folder' },
-          access: 'edit',
+          access: 'run',
         },
       ],
     }),
@@ -87,7 +88,7 @@ it('runs a command in the sole granted plain folder without widening workspace s
     kind: 'project',
     node_id: 'sample-node',
     project_id: 'sample-project',
-    access: 'edit',
+    access: 'run',
   })
   client.getWorkspace.mockRejectedValueOnce(new Error('missing stale workspace'))
   await tool.execute('sample-project-grant', { ...args, project_id: 'sample-project' })
@@ -118,7 +119,7 @@ it.each(['node_command_run', 'node_git_integrate'])(
     } as never)
     const tools = (parent: string) =>
       createNodeManagerTools({
-        overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }),
+        overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
         getToolMode: () => 'auto',
         ensureDelegationParentId: async () => parent,
       } as ChatSession)
@@ -189,7 +190,7 @@ it.each(['confirm-all', 'allow-all'] as const)(
       }),
     } as never)
     const owner = {
-      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
       permissionMode: ref(mode),
       getToolMode: () => 'auto',
       ensureDelegationParentId: async () => 'sample-parent',
@@ -240,7 +241,7 @@ it.each(['confirm-all', 'allow-all'] as const)(
       }),
     } as never)
     const chat = {
-      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+      overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
       permissionMode: ref(mode),
       getToolMode: () => 'auto',
       ensureDelegationParentId: async () => 'sample-parent',
@@ -285,7 +286,7 @@ it('retains the inferred scoped folder in an old-node refusal', async () => {
           node_id: 'sample-node',
           project_id: 'sample-project',
           target: { kind: 'worktree', worktree_id: 'sample-tree' },
-          access: 'read',
+          access: 'run',
         },
       ],
     }),
@@ -339,7 +340,7 @@ it('refuses every manager operation on an older node without sending a mutation'
     }),
   } as never)
   const tools = createNodeManagerTools({
-    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
@@ -393,7 +394,7 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
             node_id: 'sample-node',
             project_id: 'sample-project',
             target: { kind: 'worktree', worktree_id: 'sample-tree' },
-            access: 'read',
+            access: 'run',
           },
         ],
       }),
@@ -443,7 +444,7 @@ it('refuses a command for a project outside the chat node chips', async () => {
   const tool = createNodeManagerTools({
     overrides: ref({
       nodeScope: [
-        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
+        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'run' },
       ],
     }),
     getToolMode: () => 'auto',
@@ -495,7 +496,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     connection: () => connection,
   } as never)
   const tools = createNodeManagerTools({
-    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
@@ -567,7 +568,7 @@ it('never enqueues execution after the parent stops while connecting', async () 
     }),
   } as never)
   const tool = createNodeManagerTools({
-    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]

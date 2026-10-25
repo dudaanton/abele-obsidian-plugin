@@ -107,6 +107,8 @@ export interface AgentDefinition {
   toolSectionDescriptions?: Record<string, string>
   /** Per-connection GitHub access. Absent IDs are Off, including newly added connections. */
   githubConnections?: Record<string, ToolMode>
+  nodeAccessVersion?: 1
+  nodeScope?: NodeScopeEntry[]
   scope: ScopeEntry[]
   fullVaultAccess: boolean
 
@@ -256,6 +258,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     },
     // An explicit empty map distinguishes a new agent from saved pre-connection agents.
     githubConnections: {},
+    nodeAccessVersion: 1,
     scope: [],
     fullVaultAccess: false,
     skillsMode: 'all',
@@ -291,6 +294,7 @@ export interface SessionOverrides {
   toolModes?: Record<string, ToolMode>
   scope?: ScopeEntry[]
   /** Remote permissions travel with the chat; local owner approval never does. */
+  nodeAccessVersion?: 1
   nodeScope?: NodeScopeEntry[]
   /** Selection is not permission and cannot expand nodeScope. */
   nodeTarget?: NodeScopeTarget

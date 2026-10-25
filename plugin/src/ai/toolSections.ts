@@ -296,7 +296,12 @@ const WRITE_MODES: Record<string, string> = {
 }
 
 function scopeLine(entry: NodeScopeEntry): string {
-  const access = entry.access === 'edit' ? 'read and edit' : 'read only'
+  const access =
+    entry.access === 'run'
+      ? 'read, edit, run commands and delegate tasks'
+      : entry.access === 'edit'
+        ? 'read and edit'
+        : 'read only'
   if (entry.kind === 'node') return `- the whole node ${entry.node_id} (${access})`
   if (entry.kind === 'project')
     return `- project ${entry.project_id} on ${entry.node_id} (${access})`

@@ -1,3 +1,4 @@
+// Folder run access replaces action switches; the chat mode alone controls asking.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
@@ -36,7 +37,10 @@ it('defaults every node action off', () => {
   }
 })
 it('requires approval for Ask actions and refuses Off even with an old approval', () => {
-  const session = { getToolMode: () => 'ask' } as unknown as ChatSession
+  const session = {
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
+    getToolMode: () => 'ask',
+  } as unknown as ChatSession
   for (const name of actions) {
     if (
       [
@@ -52,6 +56,7 @@ it('requires approval for Ask actions and refuses Off even with an old approval'
     expect(() => requireNodeActionPermission(session, name, true)).not.toThrow()
   }
   session.getToolMode = () => 'off'
+  session.overrides.value.nodeScope = []
   for (const name of actions)
     expect(() => requireNodeActionPermission(session, name, true)).toThrow(/off/)
 })
@@ -90,11 +95,13 @@ it('does not show preliminary node action cards in bypass', () => {
   for (const name of ['node_git_commit', 'node_worktree_remove'])
     expect(ordinaryNeedsApproval(policy, name)).toBe(false)
   const chat = {
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'ask',
     permissionMode: ref('allow-all'),
   } as unknown as ChatSession
   for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).not.toThrow()
   chat.getToolMode = () => 'off'
+  chat.overrides.value.nodeScope = []
   for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).toThrow(/off/)
 })
 it('lets listing, status and cancel tools follow the tool that started the work', () => {
@@ -121,7 +128,13 @@ it('lets listing, status and cancel tools follow the tool that started the work'
 it.each(['off', 'ask', 'auto'] as const)('keeps delegation send in parent %s mode', (mode) => {
   const modes = nodeActionModes({}, { node_delegate: mode, node_delegation_send: 'auto' }, {})
   expect(modes.node_delegation_send).toBe(mode)
-  const session = { getToolMode: (name: string) => modes[name] } as unknown as ChatSession
+  const session = {
+    overrides: ref({
+      nodeScope: mode === 'off' ? [] : [{ kind: 'node', node_id: 'sample-node', access: 'run' }],
+    }),
+    permissionMode: ref(mode === 'auto' ? 'allow-all' : 'confirm-all'),
+    getToolMode: (name: string) => modes[name],
+  } as unknown as ChatSession
   if (mode === 'auto')
     expect(() => requireNodeActionPermission(session, 'node_delegation_send')).not.toThrow()
   else
