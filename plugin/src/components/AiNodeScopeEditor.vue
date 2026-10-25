@@ -369,7 +369,9 @@ async function refreshStatus() {
             description = connection.client.describe()
             descriptions.set(entry.node_id, description)
           }
-          const providers = nodeProviders(await description)
+          const providers = nodeProviders(await description).filter(
+            (provider) => provider.available !== false
+          )
           const modes = providers.flatMap(
             (provider) =>
               provider.configuration?.permission_modes ?? provider.permission_modes ?? []

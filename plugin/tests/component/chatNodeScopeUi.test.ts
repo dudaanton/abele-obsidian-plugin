@@ -281,6 +281,11 @@ describe('node scope beside vault scope and in the header', () => {
                 available: true,
                 configuration: { permission_modes: ['manual'] },
               },
+              {
+                provider: 'pi',
+                available: false,
+                configuration: { permission_modes: ['manual', 'bypassPermissions'] },
+              },
             ],
           }),
         },
