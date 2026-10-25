@@ -357,7 +357,14 @@ Durable commit receipts require actual database completion; unknown outcomes req
 and inspection. No memory-store fallback or arbitrary power-loss guarantee is provided.
 
 The plugin's generic IndexedDB ledger schema is version 3, preserving older rows while
-rejecting older normal opens. Device-local `abele-sync-external-activation-v1` holds
+rejecting older normal opens. Its protected `revision` metadata row also records the last
+durable writer's operation/caller for local conflict diagnosis. A bounded in-memory revision
+history allows disjoint plugin metadata writes to coexist with an engine overlay without
+replaying file effects. Unknown or overlapping revisions restart the transaction from fresh
+reads, at most three attempts; failed attempts never publish commit acknowledgements.
+Push refusal evidence follows nested verdict savepoints and commits with its ledger changes;
+root refusal notifications wait for persistence before later push work opens an overlay.
+Device-local `abele-sync-external-activation-v1` holds
 preparing/active bindings and database-instance identity outside the deletable ledger;
 `abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
 connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
@@ -3787,7 +3794,6 @@ and connection departure drains committed cleanup before dropping its authority.
 Captured removals use a connection-local retained-object summary. Victims remain private
 for at least 24 hours; changed retained bytes restore exclusively or appear as a root
 conflict file if their former parent is unavailable. Unknown recovery artifacts are kept.
-
 
 Repeated local uploads have a per-file quiet period measured from the last completed
 local upload of that file: 10 seconds through 10 KiB, 20 seconds through 100 KiB, and 30 seconds

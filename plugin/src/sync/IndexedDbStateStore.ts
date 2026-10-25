@@ -67,6 +67,13 @@ export const stateDatabaseName = (stateId: string): string => `abele-sync-${stat
 interface MetaRow {
   key: string
   value: unknown
+  owner?: string
+}
+
+class RevisionConflict extends EngineError {
+  constructor(owner: string, writer: string) {
+    super('conflict', `State changed during transaction; owner=${owner}; writer=${writer}`)
+  }
 }
 
 /** Durable ledger with private revocable transaction handles and native revision CAS. */
@@ -126,6 +133,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
    * (or failed). A new top-level transaction chains itself onto it before opening its overlay.
    */
   private committed: Promise<void> = Promise.resolve()
+  // Bounded evidence of this connection's intervening commits. Unknown/other-connection
+  // revisions are never guessed independent: those transactions restart from fresh reads.
+  private readonly recentWrites = new Map<number, { key: string | null; owner: string }>()
 
   /** Status writes follow engine overlays, but are not file-effect overlays themselves.
    * External phases may proceed: they CAS their own document and never consume this projection.
@@ -574,7 +584,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         else await wait(meta.put({ key: own(item.key), value: item.value }))
       }
       await wait(meta.put({ key: own(EXTERNAL_STATE_KEY), value: batch.next }))
-      await bumpRevision(tx)
+      await bumpRevision(tx, new Error('external file phase').stack ?? 'external file phase')
       await done
       if (!this.permitsEngineEffects) throw new ExternalStateError('commit-unknown')
     } catch (cause) {
@@ -606,6 +616,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   async transaction<T>(fn: (tx: StateStore) => Promise<T>): Promise<T> {
     this.assertRecovery()
     if (this.externalPhasePending) throw new ExternalStateError('nested-transaction')
+    const owner = new Error('state transaction').stack ?? 'state transaction'
     const previous = this.committed
     let finish!: () => void
     this.committed = new Promise<void>((resolve) => {
@@ -614,16 +625,41 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.transactionPending++
     try {
       await previous
-      return await this.runScoped(fn)
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await this.runScoped(fn, owner)
+        } catch (error) {
+          if (!(error instanceof RevisionConflict) || attempt === 2) throw error
+          console.debug('[abele-sync] retrying state transaction', error.message)
+        }
+      }
     } finally {
       this.transactionPending--
       finish()
     }
   }
 
-  private async runScoped<T>(fn: (tx: StateStore) => Promise<T>): Promise<T> {
+  private async runScoped<T>(fn: (tx: StateStore) => Promise<T>, owner: string): Promise<T> {
     const revision = (await this.metaValue('revision')) ?? 0
-    const scoped = new StateTransaction(this, async (entry) => {
+    const reads = new Set<string>()
+    const prefixes = new Set<string>()
+    const parent = new Proxy(this, {
+      get: (target, key) => {
+        if (key === 'getMeta')
+          return (name: string) => {
+            reads.add(own(name))
+            return target.getMeta(name)
+          }
+        if (key === 'metadataKeys')
+          return (prefix: string) => {
+            prefixes.add(own(prefix))
+            return target.metadataKeys(prefix)
+          }
+        const value: unknown = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const scoped = new StateTransaction(parent, async (entry) => {
       const paths = await this.clashesInDatabase(
         'cannot check transaction indexes',
         entry,
@@ -660,7 +696,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
             break
         }
       }
-      await this.flush(overlay, revision)
+      await this.flush(overlay, revision, reads, prefixes, owner)
       acknowledgements.acknowledgeCommit()
       await this.committedEntryObserver?.(
         [...overlay.entries.values()].filter((entry): entry is StateEntry => entry !== null)
@@ -674,12 +710,43 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   }
 
   /** The overlay, in one readwrite transaction over both stores. */
-  private async flush(overlay: Overlay, revision: unknown): Promise<void> {
+  private async flush(
+    overlay: Overlay,
+    revision: unknown,
+    reads: Set<string>,
+    prefixes: Set<string>,
+    owner: string
+  ): Promise<void> {
     await this.write('cannot commit the state transaction', [ENTRIES, META], async (tx) => {
       const meta = tx.objectStore(META)
       const current = await wait<MetaRow | undefined>(meta.get('revision'))
-      if ((current?.value ?? 0) !== revision)
-        throw new EngineError('conflict', 'State changed during transaction')
+      const latest = current?.value ?? 0
+      if (latest !== revision) {
+        let independent =
+          typeof revision === 'number' &&
+          typeof latest === 'number' &&
+          latest > revision &&
+          latest - revision <= this.recentWrites.size
+        if (independent) {
+          for (let at = Number(revision) + 1; at <= Number(latest); at++) {
+            const write = this.recentWrites.get(at)
+            if (
+              !write?.key ||
+              reads.has(write.key) ||
+              overlay.meta.has(write.key) ||
+              [...prefixes].some((prefix) => write.key?.startsWith(prefix))
+            ) {
+              independent = false
+              break
+            }
+          }
+        }
+        if (!independent) {
+          throw new RevisionConflict(owner, current?.owner ?? 'unknown connection')
+        }
+        // Only disjoint plugin metadata changed. Apply the original overlay to the current
+        // database, preserving acknowledged receipts without replaying any file effects.
+      }
       // Deletes first. One path holds one word in the overlay, so no key is both — but a row
       // that has to go before another can take its `fileId` is the invariant `put` keeps, and
       // this order is what keeps it if an index is ever declared unique.
@@ -720,11 +787,16 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private async setMetaValue(what: string, key: string, value: unknown): Promise<void> {
     this.normalizationCache?.delete(key.slice('plugin:'.length))
     try {
-      await this.write(what, [META], async (tx) => {
-        const meta = tx.objectStore(META)
-        if (value === null) await wait(meta.delete(key))
-        else await wait(meta.put({ key, value } satisfies MetaRow))
-      })
+      await this.write(
+        what,
+        [META],
+        async (tx) => {
+          const meta = tx.objectStore(META)
+          if (value === null) await wait(meta.delete(key))
+          else await wait(meta.put({ key, value } satisfies MetaRow))
+        },
+        key.startsWith('plugin:') ? key : null
+      )
     } finally {
       this.normalizationCache?.delete(key.slice('plugin:'.length))
     }
@@ -753,8 +825,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private async write<T>(
     what: string,
     stores: string[],
-    fn: (tx: IDBTransaction) => Promise<T>
+    fn: (tx: IDBTransaction) => Promise<T>,
+    metadataKey: string | null = null
   ): Promise<T> {
+    const owner = new Error(what).stack ?? what
     if (stores.includes(ENTRIES)) this.entrySnapshot = null
     return this.once(what, async () => {
       const tx = this.begin(
@@ -764,9 +838,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       )
       const done = completion(tx, what)
       let result: T
+      let revision: number
       try {
         result = await fn(tx)
-        await bumpRevision(tx)
+        revision = await bumpRevision(tx, owner)
       } catch (cause) {
         // The abort a failed request already caused must not be reported instead of the request.
         void done.catch((): void => undefined)
@@ -778,6 +853,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         throw asEngineError(what, cause)
       }
       await done
+      this.recentWrites.set(revision, { key: metadataKey, owner })
+      if (this.recentWrites.size > 128)
+        this.recentWrites.delete(this.recentWrites.keys().next().value)
       return result
     }).finally(() => {
       if (stores.includes(ENTRIES)) this.entrySnapshot = null
@@ -848,8 +926,10 @@ async function clashingKeys(
   return found as string[]
 }
 
-async function bumpRevision(tx: IDBTransaction): Promise<void> {
+async function bumpRevision(tx: IDBTransaction, owner: string): Promise<number> {
   const meta = tx.objectStore(META)
   const row = await wait<MetaRow | undefined>(meta.get('revision'))
-  await wait(meta.put({ key: 'revision', value: Number(row?.value ?? 0) + 1 }))
+  const revision = Number(row?.value ?? 0) + 1
+  await wait(meta.put({ key: 'revision', value: revision, owner } satisfies MetaRow))
+  return revision
 }

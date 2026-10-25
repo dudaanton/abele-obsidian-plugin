@@ -53,19 +53,31 @@ export class NotSyncedState {
   recordRefusal(
     path: string,
     reason: string,
-    expected?: { sha: string; size: number; mtime: number }
-  ): void {
+    expected?: { sha: string; size: number; mtime: number },
+    scoped?: StateStore
+  ): Promise<void> {
+    const key = 'not-synced-outgoing:' + encodeURIComponent(path)
+    const value = JSON.stringify({ path, reason, expected })
+    if (scoped?.afterCommit && scoped.setMeta) {
+      // A push verdict owns a scoped ledger capability. Persist with that verdict,
+      // not through the independent root queue while its transaction is still open.
+      const afterCommit = scoped.afterCommit.bind(scoped)
+      return Promise.resolve(scoped.setMeta(key, value)).then(() => {
+        afterCommit(() => {
+          this.outgoing.add(path)
+          this.invalidate()
+        })
+      })
+    }
     this.outgoing.add(path)
     this.writes = this.writes.then(async () => {
-      await this.state.setMeta?.(
-        'not-synced-outgoing:' + encodeURIComponent(path),
-        JSON.stringify({ path, reason, expected })
-      )
+      await this.state.setMeta?.(key, value)
       this.invalidate()
     })
     void this.writes.catch((error) =>
       console.debug('[abele-sync] cannot persist file refusal', error)
     )
+    return this.writes
   }
   async resolved(path: string): Promise<void> {
     await this.writes

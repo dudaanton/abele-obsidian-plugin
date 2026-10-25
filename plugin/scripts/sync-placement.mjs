@@ -1312,13 +1312,23 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');",
           "if (digest(first) !== expected.sha)\n                throw new AbeleError('hash_mismatch', 'source content changed');\n            }"
         )
+      } else if (file.endsWith('/stateTransaction.js')) {
+        code = replaceOnce(
+          code,
+          '    close() {',
+          `    [Symbol.for('abele.sync.push-refusal-v1')](row, scoped = this) {
+        this.check();
+        return this.parent[Symbol.for('abele.sync.push-refusal-v1')]?.(row, scoped);
+    }
+    close() {`
+        )
       } else if (file.endsWith('/pushRefusal.js')) {
         code = replaceOnce(code, '    return {', '    const row = {')
         code = replaceOnce(
           code,
           '    };\n}',
           `    };
-    state[Symbol.for('abele.sync.push-refusal-v1')]?.(row);
+    await state[Symbol.for('abele.sync.push-refusal-v1')]?.(row);
     return row;
 }`
         )

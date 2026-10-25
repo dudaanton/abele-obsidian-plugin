@@ -176,7 +176,10 @@ export class TokenEngineRuntime
     const rows = [...this.pushRefusals.values()]
     return this.placement?.localMetadata(rows) ?? rows
   }
-  private recordNotSyncedRefusal(row: SyncReport['push']['rejected'][number]): void {
+  private recordNotSyncedRefusal(
+    row: SyncReport['push']['rejected'][number],
+    state?: StateStore
+  ): Promise<void> | undefined {
     if (row.path === undefined) return
     const size = row.size ?? ('size' in row.op ? row.op.size : undefined)
     const limit = row.limit ?? this.authority?.limits.max_file_bytes
@@ -191,7 +194,12 @@ export class TokenEngineRuntime
       typeof row.op.mtime === 'number'
         ? { sha: row.op.sha, size: row.op.size, mtime: row.op.mtime }
         : undefined
-    this.notSyncedState.recordRefusal(row.path, `${row.code}: ${row.message}${bounds}`, expected)
+    return this.notSyncedState.recordRefusal(
+      row.path,
+      `${row.code}: ${row.message}${bounds}`,
+      expected,
+      state
+    )
   }
   readonly trace = new ExchangeTrace()
   private readonly notSyncedState: NotSyncedState
@@ -1175,11 +1183,16 @@ export class TokenEngineRuntime
               return target.setMeta(key, value)
             }
           if (name === Symbol.for('abele.sync.push-refusal-v1'))
-            return (row: SyncReport['push']['rejected'][number]) => {
+            return (row: SyncReport['push']['rejected'][number], scoped: StateStore = target) => {
               if (!this.active || row.path === undefined || UploadQuietPeriod.isQuiet(row)) return
-              this.pushRefusals.set(row.path, row)
-              this.recordNotSyncedRefusal(row)
-              options.changed(this.engine.status)
+              const path = row.path
+              const publish = () => {
+                this.pushRefusals.set(path, row)
+                options.changed(this.engine.status)
+              }
+              if (scoped.afterCommit) scoped.afterCommit(publish)
+              else publish()
+              return this.recordNotSyncedRefusal(row, scoped)
             }
           if (name === 'transaction')
             return <T>(work: (tx: StateStore) => Promise<T>) =>
@@ -1701,7 +1714,7 @@ export class TokenEngineRuntime
         for (const row of report.push.rejected)
           if (row.path !== undefined) {
             this.pushRefusals.set(row.path, row)
-            this.recordNotSyncedRefusal(row)
+            void this.recordNotSyncedRefusal(row)
           }
         // An empty scan has no push journal, but still completed its metadata checks.
         activityLog.finishComparison(this.inventoryTotal)
