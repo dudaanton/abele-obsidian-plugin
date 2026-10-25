@@ -1,4 +1,5 @@
 import { Platform } from 'obsidian'
+import { bridgedDesktopSession, type AsyncRemote } from './asyncDesktopSession'
 
 /** Electron's session.fetch uses Chromium's net stack, including the selected proxy/PAC. */
 export interface SessionFetch {
@@ -61,7 +62,16 @@ export function sessionAwareNet(overrideSession?: SessionFetch): SessionNet {
   const buffer = require('node:buffer') as {
     Buffer: { from(bytes: ArrayBuffer): Uint8Array<ArrayBuffer> }
   }
-  const net = remoteSessionNet(remote, buffer.Buffer, overrideSession)
+  if (overrideSession) return remoteSessionNet(remote, buffer.Buffer, overrideSession)
+  // Request/response work uses async IPC. Remote proxies are used only for setup.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Electron renderer IPC is a desktop host dependency
+  const renderer = require('electron') as {
+    ipcRenderer: { invoke(channel: string, ...args: unknown[]): Promise<unknown> }
+  }
+  const net = bridgedDesktopSession(
+    remote as unknown as AsyncRemote,
+    renderer.ipcRenderer.invoke.bind(renderer.ipcRenderer)
+  )
   // The window's own session lives as long as the window; an override is the caller's to keep.
   if (!overrideSession) windowNet = net
   return net

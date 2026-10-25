@@ -1,3 +1,4 @@
+import { PreparedUploads } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
 import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
@@ -220,6 +221,7 @@ export class TokenEngineRuntime
   private readonly wholeReadUploads = new Set<string>()
   /** Own uploads no commit has used yet. A scoped server admits a new sha only against this
    * principal's own upload and spends it on commit, so only these may skip the blob upload. */
+  private readonly uploadPayloadStarted = new Map<string, number>()
   private readonly uploadEntitlements = new Set<string>()
   private readonly uploadFingerprints = new Map<
     string,
@@ -296,8 +298,15 @@ export class TokenEngineRuntime
   private readonly uploadProgress: TransferProgress
   private activeUploads = 0
   private journalActive = false
+  private readonly preparedUploads: PreparedUploads
+  private prepareScanUpload!: (
+    path: string,
+    identity: { sha: string; size: number },
+    signal?: AbortSignal
+  ) => Promise<void>
   private readonly scanUploads = new Set<Promise<void>>()
   private readonly scanUploadHashes = new Map<string, Promise<void>>()
+  private resumePendingUploads: (() => Promise<void>) | undefined
   private scanUploadFailure: unknown
   private scanUploadPrimed = false
   private readonly sentUploadHashes = new Set<string>()
@@ -536,6 +545,7 @@ export class TokenEngineRuntime
           ).pathname
           if (path.startsWith('/v2/uploads/') && init?.method === 'PUT') {
             this.sentUploadHashes.add(path.split('/')[3])
+            this.uploadPayloadStarted.set(path.split('/')[3], Date.now())
             this.uploadProgress.phase('Uploading')
           }
           if (
@@ -543,8 +553,13 @@ export class TokenEngineRuntime
               path === '/v2/group-assets' ||
               path.endsWith('/external/verify')) &&
             typeof init?.body === 'string'
-          )
-            this.assertScopedPayload(JSON.parse(init.body))
+          ) {
+            const publication = JSON.parse(init.body)
+            this.assertScopedPayload(publication)
+            if (path !== '/v2/commit' && typeof publication?.sha === 'string') {
+              await this.spendPreparedUploads([publication.sha])
+            }
+          }
           const expectedGeneration =
             this.generation ?? (await options.state.getMeta(GENERATION_KEY))
           const handshake = path === '/v2/connection' && this.acceptHandshake
@@ -853,11 +868,20 @@ export class TokenEngineRuntime
       item: options.item,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
+    this.preparedUploads = new PreparedUploads(options.state, () =>
+      JSON.stringify([this.token.address, this.authority?.token_id ?? null, this.generation])
+    )
     const hasBlob = this.client.hasBlob.bind(this.client)
     this.client.hasBlob = async (sha, signal) => {
       if (!this.activeUploads && this.uploadProgress.stage)
         this.uploadProgress.phase('Checking the vault')
-      return this.uploadEntitlements.has(sha) || (await hasBlob(sha, signal))
+      if (this.uploadEntitlements.has(sha) || (await this.preparedUploads.known(sha))) {
+        this.uploadEntitlements.add(sha)
+        return true
+      }
+      const present = await hasBlob(sha, signal)
+      if (present) this.uploadEntitlements.add(sha)
+      return present
     }
     const prepare = this.client.prepare.bind(this.client)
     const inventoryFs = (fs: FileSystem): FileSystem =>
@@ -885,6 +909,7 @@ export class TokenEngineRuntime
       this.journalActive = false
       this.largeUploadPaths.clear()
       this.readyToPublish = false
+      this.resumePendingUploads = undefined
       this.acceptHandshake = true
       if (options.rootExists && (await state.getCursor()) > 0 && !(await options.rootExists()))
         this.scopeRootGone({ kind: 'deleted' })
@@ -912,6 +937,7 @@ export class TokenEngineRuntime
       this.pulling = (await state.getCursor()) === 0
       this.uploadProgress.clear()
       this.sentUploadHashes.clear()
+      this.uploadPayloadStarted.clear()
       this.folderProgress.clear()
       this.pendingFolders.clear()
       this.progress.begin('Checking the vault', false)
@@ -939,6 +965,47 @@ export class TokenEngineRuntime
         options.recoverPlacement?.()
       )
       this.readyToPublish = true
+      this.resumePendingUploads = async () => {
+        let resumeFailure: unknown
+        try {
+          for (const pending of await this.preparedUploads.pending()) {
+            if (await this.preparedUploads.known(pending.sha)) {
+              await this.preparedUploads.discard(pending.sha)
+              continue
+            }
+            if (
+              !this.namedCandidate(pending.path) ||
+              this.localExcluded(pending.path, pending.size) ||
+              options.uploadAllowed?.(pending.path) === false
+            ) {
+              await this.preparedUploads.discard(pending.sha)
+              continue
+            }
+            const current = await options.fs.stat(pending.path)
+            if (!current || current.size !== pending.size) {
+              await this.preparedUploads.discard(pending.sha)
+              continue
+            }
+            await this.prepareScanUpload(pending.path, pending, signal)
+          }
+        } finally {
+          await Promise.all(this.scanUploads)
+          resumeFailure = this.scanUploadFailure
+          this.scanUploadFailure = undefined
+          if (resumeFailure) this.scanUploadPrimed = false
+        }
+        if (resumeFailure) throw resumeFailure
+      }
+      // Ordinary startup applies incoming changes before a potentially large resumed payload.
+      // Unresolved publication/reconciliation already precedes the SDK startup pull.
+      if (
+        (await state.getJournal()) !== null ||
+        (reconciliation && reconciliation.phase !== 'complete')
+      ) {
+        const resume = this.resumePendingUploads
+        this.resumePendingUploads = undefined
+        await resume()
+      }
       if (this.token.scope.kind === 'group') {
         const identities = assetIdentitiesSchema.parse(
           JSON.parse((await options.state.getMeta(ASSET_IDENTITIES)) ?? '[]')
@@ -1013,11 +1080,15 @@ export class TokenEngineRuntime
     const finishPull = this.client.finishPull.bind(this.client)
     this.client.finishPull = async () => {
       await finishPull()
+      const resume = this.resumePendingUploads
+      this.resumePendingUploads = undefined
+      await resume?.()
       this.progress.clear()
       comparing()
     }
     const putBlob = this.client.putBlob.bind(this.client)
     this.client.putBlob = async (sha, bytes) => {
+      this.uploadPayloadStarted.delete(sha)
       this.activeUploads++
       try {
         if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
@@ -1026,6 +1097,8 @@ export class TokenEngineRuntime
         const path = this.uploadNames.get(sha)
         if (path) this.uploadProgress.current(path)
         await putBlob(sha, bytes)
+        const sentAt = this.uploadPayloadStarted.get(sha)
+        if (sentAt !== undefined) await this.preparedUploads.acknowledge(sha, sentAt)
         if (this.sentUploadHashes.has(sha)) this.uploadProgress.done(sha)
         this.uploadProgress.refresh()
       } finally {
@@ -1034,6 +1107,7 @@ export class TokenEngineRuntime
     }
     const putBlobSource = this.client.putBlobSource.bind(this.client)
     this.client.putBlobSource = async (...args) => {
+      this.uploadPayloadStarted.delete(args[0].sha)
       this.activeUploads++
       try {
         if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
@@ -1042,6 +1116,8 @@ export class TokenEngineRuntime
         const path = this.uploadNames.get(args[0].sha)
         if (path) this.uploadProgress.current(path)
         await putBlobSource(...args)
+        const sentAt = this.uploadPayloadStarted.get(args[0].sha)
+        if (sentAt !== undefined) await this.preparedUploads.acknowledge(args[0].sha, sentAt)
         if (this.sentUploadHashes.has(args[0].sha)) this.uploadProgress.done(args[0].sha)
         this.uploadProgress.refresh()
       } finally {
@@ -1123,6 +1199,109 @@ export class TokenEngineRuntime
           this.incomingQuietConflicts.add(item.path)
       }
     }
+    this.prepareScanUpload = async (
+      path: string,
+      identity: { sha: string; size: number },
+      signal?: AbortSignal
+    ) => {
+      if (
+        !Reflect.get(options.fs, Symbol.for('abele.sync.scan-upload-source-v1')) ||
+        !options.fs.openRead ||
+        !this.authority ||
+        identity.size > this.authority.limits.max_file_bytes ||
+        this.client.pathRefusal?.(path)
+      )
+        return
+      if (await this.preparedUploads.known(identity.sha)) {
+        this.uploadEntitlements.add(identity.sha)
+        return
+      }
+      const matching = this.scanUploadHashes.get(identity.sha)
+      if (matching !== undefined) await matching
+      if (this.scanUploads.size >= 2) await Promise.race(this.scanUploads)
+      if (this.scanUploadFailure) throw this.scanUploadFailure
+      signal?.throwIfAborted()
+      this.assertHeld()
+      await this.preparedUploads.begin({ path, ...identity })
+      const task = this.transferBudget
+        .run(async () => {
+          signal?.throwIfAborted()
+          this.assertHeld()
+          if (await this.client.hasBlob(identity.sha, signal)) {
+            await this.preparedUploads.discard(identity.sha)
+            this.scanUploadPrimed = true
+            return
+          }
+          signal?.throwIfAborted()
+          this.assertHeld()
+          const source = await options.fs.openRead(path)
+          let sourceChanged = false
+          const checkedSource = new Proxy(source, {
+            get(target, key) {
+              const value = Reflect.get(target, key)
+              if (key === 'assertUnchanged')
+                return async () => {
+                  try {
+                    await target.assertUnchanged()
+                  } catch (error) {
+                    if (error instanceof EngineError && error.code === 'conflict')
+                      sourceChanged = true
+                    throw error
+                  }
+                }
+              return typeof value === 'function' ? value.bind(target) : value
+            },
+          })
+          try {
+            if (source.size !== identity.size) {
+              await this.preparedUploads.discard(identity.sha)
+              return
+            }
+            this.uploadNames.set(identity.sha, path)
+            await this.client.putBlobSource(
+              identity,
+              checkedSource,
+              signal,
+              this.transferBudget.maxChunkBytes
+            )
+            await checkedSource.assertUnchanged()
+            this.wholeReadUploads.add(identity.sha)
+            this.uploadEntitlements.add(identity.sha)
+            this.scanUploadPrimed = true
+          } catch (error) {
+            // Changed sources and policy refusals belong to the ordinary push report.
+            if (sourceChanged) {
+              console.debug('[abele-sync] local source changed; retaining ordinary push verdict')
+              await this.preparedUploads.discard(identity.sha)
+              return
+            }
+            if (
+              !(error instanceof AbeleError) ||
+              !['too_large', 'quota_exceeded', 'hash_mismatch'].includes(error.code)
+            )
+              throw error
+            await this.preparedUploads.discard(identity.sha)
+            console.debug(
+              '[abele-sync] early blob refused; retaining ordinary push verdict',
+              error.code
+            )
+          } finally {
+            await source.close()
+          }
+        }, signal)
+        .catch((error: unknown) => {
+          this.scanUploadFailure ??= error
+        })
+      this.scanUploads.add(task)
+      this.scanUploadHashes.set(identity.sha, task)
+      void task.then(() => {
+        this.scanUploads.delete(task)
+        if (this.scanUploadHashes.get(identity.sha) === task)
+          this.scanUploadHashes.delete(identity.sha)
+      })
+      // Confirm the first useful transfer before spending the rest of the scan's I/O.
+      if (!this.scanUploadPrimed) await task
+    }
     this.engine = new SyncEngine({
       placementConcurrency: 16,
       yieldTask: yieldSyncTask,
@@ -1157,100 +1336,7 @@ export class TokenEngineRuntime
       fs: new Proxy(options.fs, {
         get: (target, name) => {
           if (name === Symbol.for('abele.sync.prepare-scan-upload-v1'))
-            return async (
-              path: string,
-              identity: { sha: string; size: number },
-              signal?: AbortSignal
-            ) => {
-              if (
-                !Reflect.get(target, Symbol.for('abele.sync.scan-upload-source-v1')) ||
-                !target.openRead ||
-                !this.authority ||
-                identity.size > this.authority.limits.max_file_bytes ||
-                this.client.pathRefusal?.(path)
-              )
-                return
-              const matching = this.scanUploadHashes.get(identity.sha)
-              if (matching !== undefined) await matching
-              if (this.scanUploads.size >= 2) await Promise.race(this.scanUploads)
-              if (this.scanUploadFailure) throw this.scanUploadFailure
-              signal?.throwIfAborted()
-              this.assertHeld()
-              const task = this.transferBudget
-                .run(async () => {
-                  signal?.throwIfAborted()
-                  this.assertHeld()
-                  if (await this.client.hasBlob(identity.sha, signal)) {
-                    this.scanUploadPrimed = true
-                    return
-                  }
-                  signal?.throwIfAborted()
-                  this.assertHeld()
-                  const source = await target.openRead(path)
-                  let sourceChanged = false
-                  const checkedSource = new Proxy(source, {
-                    get(target, key) {
-                      const value = Reflect.get(target, key)
-                      if (key === 'assertUnchanged')
-                        return async () => {
-                          try {
-                            await target.assertUnchanged()
-                          } catch (error) {
-                            if (error instanceof EngineError && error.code === 'conflict')
-                              sourceChanged = true
-                            throw error
-                          }
-                        }
-                      return typeof value === 'function' ? value.bind(target) : value
-                    },
-                  })
-                  try {
-                    if (source.size !== identity.size) return
-                    this.uploadNames.set(identity.sha, path)
-                    await this.client.putBlobSource(
-                      identity,
-                      checkedSource,
-                      signal,
-                      this.transferBudget.maxChunkBytes
-                    )
-                    await checkedSource.assertUnchanged()
-                    this.wholeReadUploads.add(identity.sha)
-                    this.uploadEntitlements.add(identity.sha)
-                    this.scanUploadPrimed = true
-                  } catch (error) {
-                    // Changed sources and policy refusals belong to the ordinary push report.
-                    if (sourceChanged) {
-                      console.debug(
-                        '[abele-sync] local source changed; retaining ordinary push verdict'
-                      )
-                      return
-                    }
-                    if (
-                      !(error instanceof AbeleError) ||
-                      !['too_large', 'quota_exceeded', 'hash_mismatch'].includes(error.code)
-                    )
-                      throw error
-                    console.debug(
-                      '[abele-sync] early blob refused; retaining ordinary push verdict',
-                      error.code
-                    )
-                  } finally {
-                    await source.close()
-                  }
-                }, signal)
-                .catch((error: unknown) => {
-                  this.scanUploadFailure ??= error
-                })
-              this.scanUploads.add(task)
-              this.scanUploadHashes.set(identity.sha, task)
-              void task.then(() => {
-                this.scanUploads.delete(task)
-                if (this.scanUploadHashes.get(identity.sha) === task)
-                  this.scanUploadHashes.delete(identity.sha)
-              })
-              // Confirm the first useful transfer before spending the rest of the scan's I/O.
-              if (!this.scanUploadPrimed) await task
-            }
+            return this.prepareScanUpload
           if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
             return async () => {
               await Promise.all(this.scanUploads)
@@ -1676,6 +1762,26 @@ export class TokenEngineRuntime
     this.client.commitRaw = async (ops, key) => {
       let outcome: Awaited<ReturnType<typeof commit>>
       this.uploadProgress.phase('Committing changes')
+      await Reflect.get(options.fs, Symbol.for('abele.sync.verify-inventory-root-v1'))?.call(
+        options.fs
+      )
+      const acknowledgedUploads = new Set<string>()
+      const preparedTimes = new Map<string, number>()
+      const accountingBudget = new SyncTaskBudget()
+      for (const op of ops) {
+        if ('sha' in op) {
+          const at = await this.preparedUploads.preparedAt(op.sha)
+          if (at !== undefined) {
+            preparedTimes.set(op.sha, at)
+            if (!this.sentUploadHashes.has(op.sha)) acknowledgedUploads.add(op.sha)
+          }
+        }
+        await accountingBudget.account(4096)
+      }
+      await this.spendPreparedUploads(
+        ops.flatMap((op) => ('sha' in op ? [op.sha] : [])),
+        false
+      )
       try {
         outcome = await commit(ops, key)
       } catch (error) {
@@ -1683,11 +1789,24 @@ export class TokenEngineRuntime
         for (const op of ops) if ('sha' in op) this.uploadEntitlements.delete(op.sha)
         throw error
       }
+      const consumed = new Set<string>()
       for (const [index, op] of ops.entries())
-        if ('sha' in op && outcome.body.results[index]?.status !== 'rejected')
+        if ('sha' in op && outcome.body.results[index]?.status !== 'rejected') {
+          consumed.add(op.sha)
           this.uploadEntitlements.delete(op.sha)
+        }
+      // A confirmed rejection leaves the prepared grant unspent. Preserve its
+      // original age; one accepted operation with the same SHA spends it for all.
+      for (const [sha, at] of preparedTimes)
+        if (!consumed.has(sha)) await this.preparedUploads.acknowledge(sha, at)
       for (const [index, result] of outcome.body.results.entries()) {
         const op = ops[index]
+        if (result.status !== 'rejected' && 'sha' in op && 'size' in op) {
+          this.uploadProgress.add(op.sha, op.size)
+          if (acknowledgedUploads.has(op.sha))
+            this.uploadProgress.bytes('/v2/uploads/' + op.sha, 0, op.size)
+          this.uploadProgress.done(op.sha)
+        }
         const path =
           'path' in op ? op.path : 'to_path' in op ? op.to_path : await this.pathFor(op.file_id)
         if (path) {
@@ -1900,6 +2019,16 @@ export class TokenEngineRuntime
   written(path: string): void {
     this.actions.written(this.placement?.toServer(path, 'TokenEngineRuntime') ?? path)
   }
+  private async spendPreparedUploads(
+    shas: readonly string[],
+    forgetEntitlements = true
+  ): Promise<void> {
+    await this.preparedUploads.spend(shas)
+    for (const sha of shas) {
+      this.uploadPayloadStarted.delete(sha)
+      if (forgetEntitlements) this.uploadEntitlements.delete(sha)
+    }
+  }
   private publishAssetSource(
     one: { path: string; sha: string; mtime: number; key: string },
     source: ChunkSource
@@ -1913,6 +2042,7 @@ export class TokenEngineRuntime
         this.transferBudget.maxChunkBytes
       )
       this.assertHeld()
+      await this.spendPreparedUploads([one.sha])
       const response = await this.options.fetch(new URL('/v2/group-assets', this.token.address), {
         method: 'POST',
         signal: this.requests.signal,

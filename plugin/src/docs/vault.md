@@ -2693,6 +2693,18 @@ with state updates across independent connections; network downloads do not hold
 Incoming executable operations require immutable source-aware review in the later review stage.
 Attachment consent is connection-specific and cannot be granted by background processing.
 
+The connection ledger also stores device-only prepared-upload receipts under
+`plugin:prepared-upload:<sha>` and at most two unfinished source hints under
+`plugin:prepared-upload-sources`. A receipt records a successful payload upload, its
+request start time, server address, principal and generation; it expires after 23 hours
+and is retired before sending a namespace commit. Confirmed rejection restores its
+original timestamp only when no operation spent that hash; applied or uncertain outcomes
+keep it retired. It suppresses redundant blob probes
+after a restart, but never authorizes installing or overwriting local bytes. Unfinished
+hints contain only relative paths, hashes and sizes: recovery checks scope, upload ownership and the current
+immutable source before resuming them ahead of inventory. These records do not transfer
+to another device.
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

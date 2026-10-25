@@ -3,6 +3,11 @@ import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirecto
 import { SyncTaskBudget } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
 import { guardedVaultAdapter, mutationCheckedAdapter } from './vaultPathLinks'
+import {
+  withMetadataInventory,
+  invalidateMetadataInventory,
+  verifyMetadataInventory,
+} from './vaultPathLinks'
 import { vaultPathKey } from './vaultPathLinks'
 import type { ConditionalFileHost } from './conditionalFiles'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobileWholeRead'
@@ -368,6 +373,19 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async [INVENTORY_PASS]<T>(work: () => Promise<T>): Promise<T> {
+    return withMetadataInventory(this.app.vault, async () => {
+      this.directories.beginInventory()
+      try {
+        return await this.inventoryPass(work)
+      } finally {
+        this.directories.endInventory()
+      }
+    })
+  }
+  [Symbol.for('abele.sync.verify-inventory-root-v1')](): Promise<void> {
+    return verifyMetadataInventory(this.app.vault)
+  }
+  private async inventoryPass<T>(work: () => Promise<T>): Promise<T> {
     if (this.inventoryDepth === 0) {
       this.indexFallback = false
       this.indexReady()
@@ -376,6 +394,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.inventory = ++this.inventoryDepth === 1 ? this.createInventory() : null
     const inventory = this.inventory
     const recordChange = (path: string) => {
+      invalidateMetadataInventory(this.app.vault)
       if (inventory) this.recordInventoryChange(inventory, path)
     }
     const invalidate = (
@@ -383,6 +402,8 @@ export class ObsidianFileSystem implements FileSystem {
       previous?: string,
       created = false
     ) => {
+      invalidateMetadataInventory(this.app.vault)
+      this.directories.invalidateInventory()
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
@@ -496,6 +517,7 @@ export class ObsidianFileSystem implements FileSystem {
     return this.pathRevision(path, this.inventory)
   }
   private recordInventoryChange(inventory: InventoryPass, path: string, membership = true): void {
+    invalidateMetadataInventory(this.app.vault)
     const revision = ++inventory.localRevision
     inventory.localChanges.set(this.pathKey(path), revision)
     if (membership)
@@ -608,7 +630,7 @@ export class ObsidianFileSystem implements FileSystem {
             .map(async (path) => ({
               path,
               kind: 'directory' as const,
-              identity: await this.directories.identity(path),
+              identity: await this.directories.identity(path, true),
             }))
         )),
         ...directories
@@ -677,7 +699,7 @@ export class ObsidianFileSystem implements FileSystem {
                       {
                         path,
                         kind: 'directory' as const,
-                        identity: await this.directories.identity(path),
+                        identity: await this.directories.identity(path, true),
                       },
                     ]
                   : []),
@@ -1706,7 +1728,7 @@ export class ObsidianFileSystem implements FileSystem {
           kind: 'directory',
           identity:
             path === scope
-              ? await this.directories.identity(path)
+              ? await this.directories.identity(path, true)
               : 'scope-ancestor:' + this.pathKey(path),
         },
       ]
@@ -1730,7 +1752,7 @@ export class ObsidianFileSystem implements FileSystem {
           path,
           cut < 0
             ? { path, kind: 'file' }
-            : { path, kind: 'directory', identity: await this.directories.identity(path) }
+            : { path, kind: 'directory', identity: await this.directories.identity(path, true) }
         )
       }
       return [...children.values()]
@@ -1742,7 +1764,11 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of listing.folders) {
       if (!this.inventoryVisible(path)) continue
       if (await this.isSymlink(path)) continue
-      children.push({ path, kind: 'directory', identity: await this.directories.identity(path) })
+      children.push({
+        path,
+        kind: 'directory',
+        identity: await this.directories.identity(path, true),
+      })
     }
     return children
   }

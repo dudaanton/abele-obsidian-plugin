@@ -148,9 +148,39 @@ export async function bootProductionPlugin(code: string) {
     }
     return response
   }
+  const handlers = new Map<string, (...args: any[]) => Promise<unknown>>()
+  const destroyed = new Set<() => void>()
+  const contents = {
+    id: 1,
+    session: { fetch: sessionFetch },
+    once: (_event: string, listener: () => void) => destroyed.add(listener),
+    removeListener: (_event: string, listener: () => void) => destroyed.delete(listener),
+  }
+  const mainElectron = {
+    webContents: { fromId: (id: number) => (id === contents.id ? contents : null) },
+    ipcMain: {
+      handle: (channel: string, handler: (...args: any[]) => Promise<unknown>) => {
+        if (handlers.has(channel)) throw new Error('Duplicate sample IPC handler')
+        handlers.set(channel, handler)
+      },
+      removeHandler: (channel: string) => handlers.delete(channel),
+    },
+  }
+  const rendererElectron = {
+    ipcRenderer: {
+      invoke: async (channel: string, ...args: unknown[]) => {
+        await Promise.resolve()
+        const handler = handlers.get(channel)
+        if (!handler) throw new Error('Missing sample IPC handler')
+        return structuredClone(
+          await handler({ sender: { id: contents.id } }, ...structuredClone(args))
+        )
+      },
+    },
+  }
   const remote = {
-    getCurrentWebContents: () => ({ session: { fetch: sessionFetch } }),
-    require: native,
+    getCurrentWebContents: () => contents,
+    require: (id: string) => (id === 'electron' ? mainElectron : native(id)),
     getGlobal: (name: string) => (globalThis as any)[name],
   }
   const module = { exports: {} as any }
@@ -158,6 +188,7 @@ export async function bootProductionPlugin(code: string) {
   evaluate(module, module.exports, (id: string) => {
     if (id === 'obsidian') return obsidian
     if (id === '@electron/remote') return remote
+    if (id === 'electron') return rendererElectron
     return native(id)
   })
   const Plugin = module.exports.default ?? module.exports
@@ -213,6 +244,8 @@ export async function bootProductionPlugin(code: string) {
       // The plugin closes this synchronously and records its async work in the reload barrier.
       // Awaiting it here is cleanup observation, never fixture-installed teardown wiring.
       await host?.close()
+      for (const listener of [...destroyed]) listener()
+      if (handlers.size) throw new Error('Sample window retained IPC handlers after destruction')
       for (const dispose of disposals.splice(0).reverse()) dispose()
     },
   }

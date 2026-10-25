@@ -32,6 +32,17 @@ export class DirectoryScopeError extends EngineError {
 }
 /** Device-local identities and strictly nonrecursive directory effects. */
 export class VaultDirectories {
+  private inventoryUsers = 0
+  private identitySnapshot: Map<string, { birth: number; identity: string }> | undefined
+  beginInventory(): void {
+    this.inventoryUsers++
+  }
+  endInventory(): void {
+    if (--this.inventoryUsers === 0) this.identitySnapshot = undefined
+  }
+  invalidateInventory(): void {
+    this.identitySnapshot = undefined
+  }
   constructor(
     private readonly disk: DirectoryAdapter,
     private readonly storage: LocalStorage,
@@ -328,11 +339,17 @@ export class VaultDirectories {
     this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
   /** A received directory needs only its own identity, not another walk of the vault. */
-  async identity(path: string): Promise<string> {
+  async identity(path: string, advisory = false): Promise<string> {
     this.assertPath(path, 'identity', true)
     const stat = await this.disk.stat(path)
     if (stat?.type !== 'folder' || (await this.linked(path)))
       throw new EngineError('io', 'Received directory is unavailable')
+    if (advisory && this.inventoryUsers) {
+      this.identitySnapshot ??= new Map(this.records().map((one) => [one.path, one]))
+      const saved = this.identitySnapshot.get(path)
+      if (saved?.birth === stat.ctime) return saved.identity
+    }
+    // A miss/effect always reloads the shared document before publishing a change.
     const records = this.records()
     const same = records.find((one) => one.path === path && one.birth === stat.ctime)
     if (same) return same.identity
@@ -341,6 +358,7 @@ export class VaultDirectories {
       ...records.filter((one) => one.path !== path),
       { path, birth: stat.ctime, identity },
     ])
+    this.identitySnapshot?.set(path, { birth: stat.ctime, identity })
     return identity
   }
   async move(from: string, to: string): Promise<void> {

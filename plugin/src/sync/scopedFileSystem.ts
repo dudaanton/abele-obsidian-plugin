@@ -70,6 +70,7 @@ export function scopedFileSystem(
         }
       if (
         key === Symbol.for('abele.sync.inventory-pass-v1') ||
+        key === Symbol.for('abele.sync.verify-inventory-root-v1') ||
         key === Symbol.for('abele.sync.operation-pass-v1') ||
         key === Symbol.for('abele.sync.retention-idle-v1')
       )

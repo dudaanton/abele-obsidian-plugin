@@ -228,6 +228,7 @@ export class LocalFolderPlacement {
         if (
           [
             Symbol.for('abele.sync.inventory-pass-v1'),
+            Symbol.for('abele.sync.verify-inventory-root-v1'),
             Symbol.for('abele.sync.operation-pass-v1'),
             Symbol.for('abele.sync.retention-idle-v1'),
             Symbol.for('abele.sync.diagnostic-v1'),

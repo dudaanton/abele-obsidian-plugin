@@ -10,6 +10,7 @@ import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ExecutableReview } from '@/sync/executableReview'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import { PreparedUploads } from '@/sync/preparedUploads'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
 const MiB = 1024 * 1024
@@ -221,7 +222,8 @@ it('uses the upload-only reader when opening a journal or scan source through pl
 
 it('spends an own upload acknowledgement on the commit that used it, but keeps it after a rejection', async () => {
   const scope = { kind: 'folder' as const, id: 'root', path: '/' }
-  const metadata = new MemoryStateStore()
+  const metadata = new MemoryStateStore(),
+    state = new MemoryStateStore()
   const kept = 'd'.repeat(64),
     spent = 'e'.repeat(64),
     lost = 'f'.repeat(64)
@@ -235,7 +237,7 @@ it('spends an own upload acknowledgement on the commit that used it, but keeps i
       scope,
     }),
     fs: new MemoryFileSystem(),
-    state: new MemoryStateStore(),
+    state,
     selective: selectiveDefaults(),
     reviews: {
       attachments: new AttachmentConsent(metadata),
@@ -252,7 +254,7 @@ it('spends an own upload acknowledgement on the commit that used it, but keeps i
       return Response.json({
         cursor: 1,
         results: ops.map((op, index) =>
-          op.sha === kept
+          op.sha === kept || op.path === 'spent-rejected.md'
             ? { status: 'rejected', code: 'quota_exceeded', message: 'sample quota' }
             : {
                 status: 'applied',
@@ -273,16 +275,28 @@ it('spends an own upload acknowledgement on the commit that used it, but keeps i
   })
   try {
     const acknowledged = Reflect.get(one, 'uploadEntitlements') as Set<string>
-    for (const sha of [kept, spent, lost]) acknowledged.add(sha)
+    const receipts = Reflect.get(one, 'preparedUploads') as PreparedUploads
+    const reopened = () =>
+      new PreparedUploads(state, () => JSON.stringify(['https://sync.example', null, null]))
+    for (const sha of [kept, spent, lost]) {
+      acknowledged.add(sha)
+      await receipts.acknowledge(sha)
+    }
     const create = (sha: string, path: string) =>
       ({ op: 'create', path, sha, size: 1, mtime: 1 }) as const
-    await one.client.commitRaw([create(kept, 'kept.md'), create(spent, 'spent.md')], 'sample-1')
+    await one.client.commitRaw(
+      [create(kept, 'kept.md'), create(spent, 'spent.md'), create(spent, 'spent-rejected.md')],
+      'sample-1'
+    )
     expect(await one.client.hasBlob(kept)).toBe(true)
     expect(await one.client.hasBlob(spent)).toBe(false)
+    expect(await reopened().known(kept)).toBe(true)
+    expect(await reopened().known(spent)).toBe(false)
     failNext = true
     await expect(one.client.commitRaw([create(lost, 'lost.md')], 'sample-2')).rejects.toThrow()
     // The server may have consumed it before the response was lost; upload again rather than guess.
     expect(await one.client.hasBlob(lost)).toBe(false)
+    expect(await reopened().known(lost)).toBe(false)
   } finally {
     await one.close()
   }

@@ -32,6 +32,198 @@ import { TokenUi } from '@/sync/tokenUi'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 import { deferred } from '../helpers/deferred'
+import { PreparedUploads } from '@/sync/preparedUploads'
+
+it('does not resume a source now owned by another connection', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation((input, init) =>
+    new URL(String(input)).pathname === '/v2/manifest'
+      ? Promise.resolve(Response.json({ items: [], cursor: 1, next: null }))
+      : send(input, init)
+  )
+  const state = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  const bytes = new TextEncoder().encode('local')
+  await fs.writeAtomic('Notes/local.md', bytes, 2000)
+  const hints = new PreparedUploads(state, () =>
+    JSON.stringify([wire.address, 'sample-token', null])
+  )
+  await hints.begin({ path: 'Notes/local.md', sha: await sha256(bytes), size: bytes.length })
+  const openRead = vi.fn(async () => {
+    throw new Error('foreign owner source must stay unopened')
+  })
+  Object.assign(fs, { [Symbol.for('abele.sync.scan-upload-source-v1')]: true, openRead })
+  const one = runtime(wire, fs, state, undefined, null, { uploadAllowed: () => false })
+  try {
+    await one.runtime.sync()
+    expect(openRead).not.toHaveBeenCalled()
+    expect(await hints.pending()).toEqual([])
+    expect(wire.requests.some((route) => route.startsWith('/v2/uploads/'))).toBe(false)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('does not turn a failed payload attempt into a receipt when a later call only observes HEAD', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const send = wire.fetch.getMockImplementation()!
+  const state = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  const one = runtime(wire, fs, state)
+  const bytes = new TextEncoder().encode('sample interrupted bytes'),
+    sha = await sha256(bytes)
+  let observed = false
+  try {
+    await one.runtime.sync()
+    wire.fetch.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (route === '/v2/uploads/' + sha) {
+        if (init?.method === 'HEAD') return new Response(null, { status: observed ? 200 : 404 })
+        if (init?.method === 'PUT')
+          throw new EngineError('offline', 'sample unacknowledged payload')
+      }
+      return send(input, init)
+    })
+    await expect(one.runtime.client.putBlob(sha, bytes)).rejects.toThrow()
+    observed = true
+    await one.runtime.client.putBlob(sha, bytes)
+    expect(await state.getMeta('plugin:prepared-upload:' + sha)).toBeNull()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(['bytes', 'source'] as const)(
+  'retires prepared knowledge before an uncertain asset publication (%s)',
+  async (mode) => {
+    const wire = await server('Notes/remote.md', 'remote')
+    const send = wire.fetch.getMockImplementation()!
+    const state = new MemoryStateStore(),
+      fs = new MemoryFileSystem()
+    const one = runtime(wire, fs, state)
+    const bytes = new TextEncoder().encode('sample asset'),
+      sha = await sha256(bytes)
+    let receiptAtPublication: string | null | undefined = 'not sent'
+    let payloads = 0
+    try {
+      await one.runtime.sync()
+      wire.fetch.mockImplementation(async (input, init) => {
+        const route = new URL(String(input)).pathname
+        if (route.startsWith('/v2/uploads/')) {
+          if (init?.method === 'PUT') payloads++
+          if (init?.method === 'HEAD' && receiptAtPublication !== 'not sent')
+            return new Response(null, { status: 200 })
+        }
+        if (route === '/v2/group-assets') {
+          receiptAtPublication = await state.getMeta('plugin:prepared-upload:' + sha)
+          throw new EngineError('offline', 'sample publication response lost')
+        }
+        return send(input, init)
+      })
+      const publication =
+        mode === 'bytes'
+          ? one.runtime.client.publishGroupAsset('Notes/sample.bin', bytes, 2000, 'sample')
+          : Reflect.get(one.runtime, 'publishAssetSource').call(
+              one.runtime,
+              { path: 'Notes/sample.bin', sha, mtime: 2000, key: 'sample' },
+              {
+                size: bytes.length,
+                read: async (offset: number, length: number) =>
+                  bytes.slice(offset, offset + length),
+                assertUnchanged: async () => {},
+                close: async () => {},
+              }
+            )
+      await expect(publication).rejects.toThrow()
+      expect(receiptAtPublication).toBeNull()
+      const sent = payloads
+      await one.runtime.client.putBlob(sha, bytes)
+      expect(payloads).toBe(sent)
+      expect(await state.getMeta('plugin:prepared-upload:' + sha)).toBeNull()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it('applies the startup pull before resuming an unfinished upload without a publication journal', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const send = wire.fetch.getMockImplementation()!
+  const state = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  const bytes = new TextEncoder().encode('local')
+  await fs.writeAtomic('Notes/local.md', bytes, 2000)
+  const hints = new PreparedUploads(state, () =>
+    JSON.stringify([wire.address, 'sample-token', null])
+  )
+  await hints.begin({ path: 'Notes/local.md', sha: await sha256(bytes), size: bytes.length })
+  Object.assign(fs, {
+    [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+    openRead: async (path: string) => {
+      const content = await fs.read(path)
+      return {
+        size: content.length,
+        read: async (offset: number, length: number) => content.slice(offset, offset + length),
+        assertUnchanged: async () => {},
+        close: async () => {},
+      }
+    },
+  })
+  const pulledBeforePayload: boolean[] = []
+  wire.fetch.mockImplementation(async (input, init) => {
+    if (init?.method === 'PUT' && new URL(String(input)).pathname.startsWith('/v2/uploads/'))
+      pulledBeforePayload.push((await fs.stat('Notes/remote.md')) !== null)
+    return send(input, init)
+  })
+  const one = runtime(wire, fs, state)
+  try {
+    await one.runtime.sync()
+    expect(pulledBeforePayload).toEqual([true])
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('retries pending upload recovery after an offline first source with another source queued', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const send = wire.fetch.getMockImplementation()!
+  const state = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  Object.assign(fs, {
+    [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+    openRead: async () => {
+      throw new Error('offline probe must precede source opening')
+    },
+  })
+  const hints = new PreparedUploads(state, () =>
+    JSON.stringify([wire.address, 'sample-token', null])
+  )
+  for (const name of ['first', 'second']) {
+    const bytes = new TextEncoder().encode(name)
+    const path = `Notes/${name}.md`
+    await fs.writeAtomic(path, bytes, 2000)
+    await hints.begin({ path, sha: await sha256(bytes), size: bytes.length })
+  }
+  let probes = 0
+  wire.fetch.mockImplementation(async (input, init) => {
+    if (init?.method === 'HEAD' && new URL(String(input)).pathname.startsWith('/v2/uploads/')) {
+      probes++
+      throw new EngineError('offline', 'sample offline source')
+    }
+    return send(input, init)
+  })
+  const one = runtime(wire, fs, state)
+  try {
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+    const previous = probes
+    expect(previous).toBeGreaterThan(0)
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+    expect(probes).toBeGreaterThan(previous)
+  } finally {
+    await one.runtime.close()
+  }
+})
 
 it('aborts an early blob probe on pause before opening an upload source', async () => {
   const wire = await server('Notes/unused.md', '')

@@ -1,6 +1,38 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('loads existing directory identities once per advisory inventory, but reloads before effects', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Shared/sub/sample.md', content: 'sample' }])
+  const directories = new VaultDirectories(app.vault.adapter, app)
+  const first = await directories.identity('Shared')
+  await directories.identity('Shared/sub')
+  const load = vi.spyOn(app, 'loadLocalStorage')
+  directories.beginInventory()
+  try {
+    for (let n = 0; n < 100; n++) {
+      expect(await directories.identity('Shared', true)).toBe(first)
+      await directories.identity('Shared/sub', true)
+    }
+    expect(
+      load.mock.calls.filter(([key]) => key === 'abele-sync-local-directories-v1')
+    ).toHaveLength(1)
+    const rows = app.loadLocalStorage('abele-sync-local-directories-v1') as {
+      path: string
+      identity: string
+    }[]
+    app.saveLocalStorage(
+      'abele-sync-local-directories-v1',
+      rows.map((row) => (row.path === 'Shared' ? { ...row, identity: 'replacement' } : row))
+    )
+    expect(await directories.identity('Shared')).toBe('replacement')
+    directories.invalidateInventory()
+    expect(await directories.identity('Shared', true)).toBe('replacement')
+  } finally {
+    directories.endInventory()
+  }
+})
+
 it('starts directory discovery at the scoped root rather than filtering a vault-wide walk', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')

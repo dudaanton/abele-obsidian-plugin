@@ -10,6 +10,7 @@ import type { Vault } from 'obsidian'
 import type { DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-sdk/core'
 import { PathCoordinator } from './pathCoordinator'
+import { SyncTaskBudget } from './syncTaskBudget'
 import { caseKey } from '@abele/sync-sdk/protocol'
 
 const namePolicies = new WeakMap<DataAdapter, (path: string) => string>()
@@ -100,12 +101,19 @@ export async function vaultPathIsLink(
     }
   }
   const access = rootAccess(adapter),
-    pinned = await access.pin?.verify()
+    inventory = access.pin && metadataInventories.get(access.pin),
+    pinned = await (inventory?.root ?? access.pin?.verify())
   if (!access.full || !access.native?.lstat) return false
   try {
-    return (
-      await access.native.lstat(pinned ? physicalPath(pinned.path, path) : access.full(path))
-    ).isSymbolicLink()
+    const cached = inventory?.directories.get(path)
+    const stat = (
+      cached !== undefined
+        ? await cached
+        : await access.native.lstat(pinned ? physicalPath(pinned.path, path) : access.full(path))
+    ) as import('node:fs').Stats | null
+    if (stat?.isDirectory?.() && cached === undefined)
+      inventory?.directories.set(path, Promise.resolve(stat))
+    return stat?.isSymbolicLink() ?? false
   } catch (error) {
     if ((error as { code?: string }).code === 'ENOENT') return false
     throw error
@@ -1313,6 +1321,69 @@ interface RootPin {
   verify(): Promise<RootIdentity>
   stop(error: Error): void
 }
+interface MetadataInventory {
+  root: Promise<RootIdentity>
+  directories: Map<string, Promise<import('node:fs').Stats | null>>
+  users: number
+}
+const metadataInventories = new WeakMap<RootPin, MetadataInventory>()
+/** Advisory inventory metadata only. Effects and content opens keep fresh path checks. */
+export async function withMetadataInventory<T>(
+  vault: Pick<Vault, 'adapter'>,
+  work: () => Promise<T>
+): Promise<T> {
+  const pin = rootAccess(vault.adapter).pin
+  if (!pin) return work()
+  let inventory = metadataInventories.get(pin)
+  if (!inventory) {
+    inventory = { root: pin.verify(), directories: new Map(), users: 0 }
+    metadataInventories.set(pin, inventory)
+  }
+  inventory.users++
+  try {
+    await inventory.root
+    return await work()
+  } finally {
+    if (--inventory.users === 0) metadataInventories.delete(pin)
+    await pin.verify()
+  }
+}
+export function invalidateMetadataInventory(vault: Pick<Vault, 'adapter'>): void {
+  const pin = rootAccess(vault.adapter).pin
+  if (pin) metadataInventories.get(pin)?.directories.clear()
+}
+/** Revalidate advisory directory proofs before namespace effects; never a byte receipt. */
+export async function verifyMetadataInventory(vault: Pick<Vault, 'adapter'>): Promise<void> {
+  const access = rootAccess(vault.adapter),
+    pin = access.pin
+  if (!pin || !access.native?.lstat) return
+  const root = await pin.verify(),
+    inventory = metadataInventories.get(pin)
+  const rows = [...(inventory?.directories ?? [])]
+  const budget = new SyncTaskBudget()
+  for (let offset = 0; offset < rows.length; offset += 32) {
+    await Promise.all(
+      rows.slice(offset, offset + 32).map(async ([path, prior]) => {
+        const before = await prior
+        let after: import('node:fs').Stats | null = null
+        try {
+          after = await (access.native as Pick<typeof import('node:fs/promises'), 'lstat'>).lstat(
+            physicalPath(root.path, path)
+          )
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'ENOENT') throw error
+        }
+        if (before?.dev !== after?.dev || before?.ino !== after?.ino || after?.isSymbolicLink()) {
+          const error = new VaultRootChangedError()
+          pin.stop(error)
+          throw error
+        }
+      })
+    )
+    await budget.account(32 * 4096)
+  }
+  await pin.verify()
+}
 
 /** Node has no *at syscalls. A local filesystem attacker can still race the syscall
  * itself; synchronous prechecks narrow that window and postchecks stop further sync. */
@@ -1415,11 +1486,21 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
 /** Fresh read-only metadata: one no-link walk, with the root pinned at both ends. */
 async function nativeMetadata(native: object, pin: RootPin, path: string) {
   const io = native as typeof import('node:fs/promises')
-  const root = await pin.verify()
+  const inventory = metadataInventories.get(pin)
+  const root = await (inventory?.root ?? pin.verify())
   let leaf: import('node:fs').Stats | null = null
   await assertNoLinkedAncestors(path, async (part) => {
     try {
-      leaf = await io.lstat(physicalPath(root.path, part))
+      let pending = part !== path ? inventory?.directories.get(part) : undefined
+      if (pending === undefined) {
+        pending = io.lstat(physicalPath(root.path, part)).catch((error): null => {
+          if ((error as { code?: string }).code === 'ENOENT') return null
+          throw error
+        })
+        if (part !== path) inventory?.directories.set(part, pending)
+      }
+      leaf = await pending
+      if (!leaf) return false
       return leaf.isSymbolicLink()
     } catch (error) {
       if ((error as { code?: string }).code !== 'ENOENT') throw error
@@ -1428,7 +1509,7 @@ async function nativeMetadata(native: object, pin: RootPin, path: string) {
     }
   })
   if (!path.split('/').filter(Boolean).length) leaf = await io.lstat(root.path)
-  await pin.verify()
+  if (!inventory) await pin.verify()
   const stat = leaf
   return stat === null
     ? null
