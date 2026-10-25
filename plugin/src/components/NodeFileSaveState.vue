@@ -270,6 +270,8 @@ const keepMine = () =>
     padding-block: var(--size-4-2);
   }
   .abele-disclosure {
+    box-sizing: border-box;
+    padding-inline: var(--size-4-2);
     width: 100%;
     min-width: 0;
   }

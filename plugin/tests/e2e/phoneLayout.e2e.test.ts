@@ -149,11 +149,15 @@ const DIALOGS = [
   'node-syntax-ts',
   'node-syntax-diff',
   'node-files',
+  'node-lsp-live',
   'node-lsp-missing',
   'node-lsp-untrusted',
   'node-lsp-loading',
   'node-lsp-errors',
   'node-lsp-eslint',
+  'node-lsp-failed',
+  'node-lsp-off',
+  'node-lsp-ready',
   'node-edit',
   'node-edit-conflict',
   'node-edit-unknown',
@@ -305,6 +309,8 @@ const probeScript = `(async () => {
 
     const host = body || root
     const hostBox = host.getBoundingClientRect()
+    // Native drawer safe-area padding is outside the content available to its scrollport.
+    const hostBottom = hostBox.bottom - parseFloat(getComputedStyle(host).paddingBottom || '0')
     const scrollers = []
     const capped = []
     for (const el of host.querySelectorAll('*')) {
@@ -320,7 +326,7 @@ const probeScript = `(async () => {
       if (el.scrollHeight <= el.clientHeight + 1) continue
       const r = el.getBoundingClientRect()
       if (r.height === 0) continue
-      scrollers.push({ name: name(el), height: Math.round(r.height), spare: Math.round(hostBox.bottom - r.bottom) })
+      scrollers.push({ name: name(el), height: Math.round(r.height), spare: Math.round(hostBottom - r.bottom) })
     }
 
     // A card's actions belong on the row of its title. A title long enough to wrap took the
@@ -463,7 +469,7 @@ const probeScript = `(async () => {
       return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= window.innerWidth &&
         r.top >= 0 && r.bottom <= window.innerHeight
     }
-    for (const button of root.querySelectorAll('.abele-ai-chat__header-actions button')) {
+    for (const button of root.querySelectorAll('.abele-chat-parent-back, .abele-ai-chat__header-actions button')) {
       if (!button.getBoundingClientRect().width) continue
       const label = button.getAttribute('aria-label').split(' · ')[0]
       entry.direct.push(label)
@@ -2678,11 +2684,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     (label) => {
       const header = report[label]?.header
       expect(header?.direct).toEqual([
-        ...(label === 'nested comment' ? ['Back to the passage this is about'] : []),
+        ...(label === 'nested comment'
+          ? ['Back to Which train exactly, and does it have sleeping car']
+          : []),
         'Start a new chat',
         'More chat actions',
       ])
       expect(header?.overflow).toEqual([
+        'Rename…',
         'Open a chat you have had',
         'Find in this chat',
         'Outline of this chat',
