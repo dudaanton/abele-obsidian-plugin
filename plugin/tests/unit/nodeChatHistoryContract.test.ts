@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { NodeChatHistory } from '@/node/NodeChatHistory'
+import { validateParams } from '@abele/node-protocol'
 
 const point = {
   checkpoint_id: 'sample-point',
@@ -27,6 +28,18 @@ const fixture = (reason = '') => {
     ),
   }
 }
+
+// BUG: The checkpoint endpoint accepts only a session ID and returns the entire history.
+// A rolling transcript cannot bound history traffic without a bounded node query too.
+it.fails('can request a bounded checkpoint page in a long-lived session', () => {
+  expect(() =>
+    validateParams('chat.checkpoints', {
+      session_id: 'sample-session',
+      before_seq: 20000,
+      limit: 400,
+    })
+  ).not.toThrow()
+})
 it('loads real checkpoints and keeps conversation actions free of file consent', async () => {
   const { chat, history } = fixture()
   await history.read()

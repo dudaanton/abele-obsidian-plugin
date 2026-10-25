@@ -241,9 +241,67 @@ const turn = async (content, uuid) => {
     say('after-' + turns, 'after-pause')
     return result('after-pause')
   }
-  const streamed = /^stream (\d+) (\d+)$/.exec(text)
+  const work = /^work (\w+) (\d+) (\d+)$/.exec(text)
+  if (work) {
+    const tag = work[1]
+    emit({
+      type: 'assistant',
+      message: {
+        id: 'thinking-' + tag,
+        role: 'assistant',
+        content: [
+          {
+            type: 'thinking',
+            thinking: 'Check the parser, edit the sample, then run the focused tests.',
+          },
+        ],
+      },
+    })
+    for (let k = 0; k < 4; k++) {
+      const id = `tool-${tag}-${k}`
+      const name = ['Read', 'Grep', 'Edit', 'Bash'][k]
+      emit({
+        type: 'assistant',
+        message: {
+          id,
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id,
+              name,
+              input:
+                name === 'Edit'
+                  ? { file_path: 'sample.ts', old_string: 'before', new_string: 'after' }
+                  : name === 'Bash'
+                    ? { command: 'npm test -- sample' }
+                    : { file_path: 'sample.ts' },
+            },
+          ],
+        },
+      })
+      emit({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: id,
+              content: Array.from(
+                { length: 80 },
+                (_, i) => `sample line ${i}: focused test output`
+              ).join('\n'),
+            },
+          ],
+        },
+      })
+    }
+  }
+  const streamed = work ? [text, work[2], work[3]] : /^stream (\d+) (\d+)$/.exec(text)
   if (streamed) {
-    const id = 'streamed-' + turns
+    const id = work ? 'streamed-' + work[1] : 'streamed-' + turns
     emit({ type: 'stream_event', event: { type: 'message_start', message: { id } } })
     emit({
       type: 'stream_event',
@@ -251,11 +309,17 @@ const turn = async (content, uuid) => {
     })
     let all = ''
     for (let k = 0; k < Number(streamed[1]); k++) {
-      const piece = `word${k} `
+      const piece = work
+        ? `${work[1]} word${k}: the focused tests pass after the parser change. `
+        : `word${k} `
       all += piece
       emit({
         type: 'stream_event',
-        event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: piece } },
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: piece },
+        },
       })
       await new Promise((r) => setTimeout(r, Number(streamed[2])))
     }

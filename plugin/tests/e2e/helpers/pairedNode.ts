@@ -87,6 +87,7 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
   let pairedPort = 0
   let logs = ''
   const sockets = new Set<Socket>()
+  let disconnected = false
   const launch = async () => {
     child = spawn(
       process.execPath,
@@ -143,6 +144,7 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
   await launch()
   const proxy: Server = createServer()
   proxy.on('upgrade', (request, socket: Socket, head) => {
+    if (disconnected) return socket.destroy()
     if (request.url !== '/channel') return socket.destroy()
     const upstream = connect(pairedPort, '127.0.0.1')
     for (const s of [socket, upstream]) {
@@ -213,6 +215,20 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
     node: placed.node,
     traffic,
     logs: () => logs,
+    /** Drop the transport without stopping the running agent. */
+    disconnect() {
+      disconnected = true
+      for (const socket of sockets) socket.destroy()
+    },
+    reconnect() {
+      disconnected = false
+    },
+    /** Reload creates a new service; restore only this fixture's transport adapter. */
+    async restoreTransport() {
+      await evalLong(`(()=>{${PAIRED_PRELUDE}
+        api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');
+        void nodes.connection(${JSON.stringify(registration)}).connect();return 'restored'})()`)
+    },
     /** Another managed worktree of the sample project: a second session works there. */
     async worktree(): Promise<string> {
       return evalLong(
