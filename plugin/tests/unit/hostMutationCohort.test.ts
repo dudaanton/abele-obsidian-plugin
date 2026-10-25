@@ -1,7 +1,93 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { deferred } from '../helpers/deferred'
+
+it.each([
+  { paths: ['Notes'] },
+  { paths: ['Notes/Sample.md'] },
+  { paths: ['Notes/Sample.md', 'Other/Sample.md'] },
+])(
+  'durably invalidates $paths after an overlapping covering invalidation aborts',
+  async ({ paths }) => {
+    const local = { loadLocalStorage: () => null, saveLocalStorage: () => {} }
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-pending-invalidation', local)
+    const fingerprint = {
+      identity: 'sample-inode',
+      size: 1,
+      mtime: 1,
+      ctime: 1,
+      sha: 'a'.repeat(64),
+    }
+    const path = 'Notes/Sample.md'
+    await host.writeScanFingerprint(path, fingerprint)
+    const db = Reflect.get(host, 'db') as IDBDatabase
+    const transaction = db.transaction.bind(db)
+    const writes: IDBTransaction[] = []
+    let commits = 0
+    const spy = vi.spyOn(db, 'transaction').mockImplementation((...args) => {
+      const tx = transaction(...args)
+      if (args[1] === 'readwrite') {
+        writes.push(tx)
+        tx.addEventListener('complete', () => commits++)
+      }
+      return tx
+    })
+    const outerWork = vi.fn(async () => {})
+    const commitsAtWork: number[] = []
+    const outer = host.withScanMutation(['Notes'], outerWork)
+    void outer.catch(() => {})
+    const inner = host.withScanMutation(paths, async () => {
+      commitsAtWork.push(commits)
+    })
+    void inner.catch(() => {})
+    try {
+      // Both callers are registered before the first native invalidation can commit.
+      // Abort the covering transaction, not a timer or a mocked persistence promise.
+      writes[0]!.abort()
+      await expect(outer).rejects.toThrow('invalidate scan fingerprints')
+      await inner
+      expect(outerWork).not.toHaveBeenCalled()
+      expect(commitsAtWork).toEqual([1])
+      expect(await host.readScanFingerprint(path)).toBeUndefined()
+      expect((Reflect.get(host, 'scanMutations') as Map<string, number>).size).toBe(0)
+    } finally {
+      await Promise.allSettled([outer, inner])
+      spy.mockRestore()
+      host.close()
+    }
+  }
+)
+
+it('runs neither mutation when both overlapping invalidations abort', async () => {
+  const local = { loadLocalStorage: () => null, saveLocalStorage: () => {} }
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-aborted-invalidations', local)
+  const path = 'Notes/Sample.md'
+  const fingerprint = { identity: 'sample-inode', size: 1, mtime: 1, ctime: 1, sha: 'a'.repeat(64) }
+  await host.writeScanFingerprint(path, fingerprint)
+  const db = Reflect.get(host, 'db') as IDBDatabase
+  const transaction = db.transaction.bind(db)
+  const writes: IDBTransaction[] = []
+  const spy = vi.spyOn(db, 'transaction').mockImplementation((...args) => {
+    const tx = transaction(...args)
+    if (args[1] === 'readwrite') writes.push(tx)
+    return tx
+  })
+  const work = vi.fn(async () => {})
+  const outer = host.withScanMutation(['Notes'], work)
+  const inner = host.withScanMutation([path], work)
+  const settled = Promise.allSettled([outer, inner])
+  try {
+    for (const tx of writes) tx.abort()
+    expect((await settled).map((result) => result.status)).toEqual(['rejected', 'rejected'])
+    expect(work).not.toHaveBeenCalled()
+    expect(await host.readScanFingerprint(path)).toEqual(fingerprint)
+  } finally {
+    await settled
+    spy.mockRestore()
+    host.close()
+  }
+})
 
 it('shares a durable invalidation without ending an overlapping writer fence early', async () => {
   const local = { loadLocalStorage: () => null, saveLocalStorage: () => {} }

@@ -3223,7 +3223,9 @@ metadata read failure is shown explicitly. Resolving an obligation removes its r
 Their keys use the vault's normalized path policy; unchanged older path spellings migrate
 lazily without content reads. Sync invalidates affected records durably
 before adapter/native writes, moves or removals, including recovery, and prevents overlapping
-hashes from recreating them during that mutation. These scan hints never replace fresh byte
+hashes from recreating them during that mutation. Overlapping mutations reuse only an already
+committed covering invalidation; a pending or aborted invalidation never permits a write to
+start. An uncovered caller commits its own invalidation first. These scan hints never replace fresh byte
 verification when the legacy write/move/delete bridge establishes its conflict base. Explicit
 identity-bearing conditional operations retain their paired-identity contract.
 Generation retirement clears the adapter's live receipts, including those shared by another

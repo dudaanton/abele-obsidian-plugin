@@ -107,6 +107,8 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
 export class HostSyncStorage implements LocalStorage {
   private readonly scanRevisions = new Map<string, number>()
   private readonly scanMutations = new Map<string, number>()
+  /** Only scopes whose invalidation has reached IDB COMMIT may cover another writer. */
+  private readonly scanInvalidations = new Map<string, number>()
   private scanGeneration = 0
   private scanRevisionFloor = 0
   private reviseScan(path: string): void {
@@ -124,46 +126,57 @@ export class HostSyncStorage implements LocalStorage {
       revision = Math.max(revision, this.scanRevisions.get(key) ?? 0)
     return revision
   }
-  private scanMutationActive(path: string): boolean {
+  private scanMutationActive(path: string, scopes = this.scanMutations): boolean {
     for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
-      if (this.scanMutations.has(key)) return true
+      if (scopes.has(key)) return true
     return false
   }
   async withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const keys = [...new Set(paths)]
-    const invalidated = keys.every((key) => this.scanMutationActive(key))
+    const invalidated = keys.every((key) => this.scanMutationActive(key, this.scanInvalidations))
     for (const key of keys) {
       this.reviseScan(key)
       this.scanMutations.set(key, (this.scanMutations.get(key) ?? 0) + 1)
     }
+    let committed = false
     try {
-      // An outer cohort already durably invalidated these names. Still count
-      // nested/concurrent lifetimes so an inner writer cannot outlive its fence.
-      if (invalidated) return await work()
-      const tx = this.db.transaction(STORE, 'readwrite')
-      const done = completion(tx, 'invalidate scan fingerprints')
-      for (const key of keys) {
-        tx.objectStore(STORE).delete([this.namespace, '!scan-fingerprint-v1:' + key])
-        // Seek just this subtree; directory moves never enumerate unrelated records.
-        const prefix = '!scan-fingerprint-v1:' + key + '/'
-        const request = tx.objectStore(STORE).openKeyCursor()
-        request.onsuccess = () => {
-          const cursor = request.result
-          if (!cursor) return
-          const [namespace, name] = cursor.key as [string, string]
-          if (namespace < this.namespace || (namespace === this.namespace && name < prefix)) {
-            cursor.continue([this.namespace, prefix])
-            return
+      // Pending mutations fence caches, but cannot prove durable invalidation.
+      // Only an already committed covering scope lets this writer skip its own barrier.
+      if (!invalidated) {
+        const tx = this.db.transaction(STORE, 'readwrite')
+        const done = completion(tx, 'invalidate scan fingerprints')
+        for (const key of keys) {
+          tx.objectStore(STORE).delete([this.namespace, '!scan-fingerprint-v1:' + key])
+          // Seek just this subtree; directory moves never enumerate unrelated records.
+          const prefix = '!scan-fingerprint-v1:' + key + '/'
+          const request = tx.objectStore(STORE).openKeyCursor()
+          request.onsuccess = () => {
+            const cursor = request.result
+            if (!cursor) return
+            const [namespace, name] = cursor.key as [string, string]
+            if (namespace < this.namespace || (namespace === this.namespace && name < prefix)) {
+              cursor.continue([this.namespace, prefix])
+              return
+            }
+            if (namespace !== this.namespace || !name.startsWith(prefix)) return
+            tx.objectStore(STORE).delete(cursor.primaryKey)
+            cursor.continue()
           }
-          if (namespace !== this.namespace || !name.startsWith(prefix)) return
-          tx.objectStore(STORE).delete(cursor.primaryKey)
-          cursor.continue()
         }
+        await done
       }
-      await done
+      // Count each lifetime even when it reuses a covering cohort: nested work may outlive it.
+      for (const key of keys)
+        this.scanInvalidations.set(key, (this.scanInvalidations.get(key) ?? 0) + 1)
+      committed = true
       return await work()
     } finally {
       for (const key of keys) {
+        if (committed) {
+          const remaining = (this.scanInvalidations.get(key) ?? 1) - 1
+          if (remaining) this.scanInvalidations.set(key, remaining)
+          else this.scanInvalidations.delete(key)
+        }
         this.reviseScan(key)
         const remaining = (this.scanMutations.get(key) ?? 1) - 1
         if (remaining) this.scanMutations.set(key, remaining)

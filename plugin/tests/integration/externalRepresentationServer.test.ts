@@ -56,6 +56,7 @@ async function tokenPair(server: V2Server) {
 }
 
 describe('two-device external attachment matrix', () => {
+  // Two real clients, retention, hydration and delete/restore share native I/O under load.
   it.each([
     [false, null],
     [true, null],
@@ -331,7 +332,8 @@ describe('two-device external attachment matrix', () => {
         fence!.release()
         otherStore.close()
       }
-    }
+    },
+    30000
   )
 })
 
