@@ -1,4 +1,4 @@
-import { PreparedUploads } from './preparedUploads'
+import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
 import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
@@ -139,6 +139,33 @@ export interface TokenEngineOptions {
     resolve(id: string): ConsentTarget | null
   }
 }
+// Match the pusher's definitive per-file refusal/retry boundary. Access denial,
+// pacing and transient server failures must still stop speculative preparation.
+function earlyUploadRefusal(error: unknown): error is AbeleError {
+  return (
+    error instanceof AbeleError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    !['rate_limited', 'unauthorized', 'forbidden'].includes(error.code)
+  )
+}
+
+// Only call at the local source port: the pusher retries these filesystem
+// failures per file, but the same codes from storage/transport must propagate.
+function earlySourceRefusal(error: unknown): boolean {
+  if (error instanceof AbeleError && error.code === 'forbidden') return true
+  let cause = error
+  for (let depth = 0; cause && depth < 8; depth++) {
+    const failure = cause as { code?: string; cause?: unknown }
+    if (
+      ['EIO', 'EACCES', 'EPERM', 'ENOSPC', 'EROFS', 'EBUSY', 'ETXTBSY'].includes(failure.code ?? '')
+    )
+      return true
+    cause = failure.cause
+  }
+  return false
+}
+
 /** Host wiring around the retained engine. All exchange and journaling belongs to core. */
 export class TokenEngineRuntime
   implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
@@ -222,7 +249,7 @@ export class TokenEngineRuntime
   /** Own uploads no commit has used yet. A scoped server admits a new sha only against this
    * principal's own upload and spends it on commit, so only these may skip the blob upload. */
   private readonly uploadPayloadStarted = new Map<string, number>()
-  private readonly uploadEntitlements = new Set<string>()
+  private readonly uploadEntitlements = new Map<string, { at: number; context: string }>()
   private readonly uploadFingerprints = new Map<
     string,
     { signal: AbortSignal; run: number; work: Promise<unknown> }
@@ -868,19 +895,20 @@ export class TokenEngineRuntime
       item: options.item,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
-    this.preparedUploads = new PreparedUploads(options.state, () =>
-      JSON.stringify([this.token.address, this.authority?.token_id ?? null, this.generation])
-    )
+    this.preparedUploads = new PreparedUploads(options.state, () => this.uploadContext())
     const hasBlob = this.client.hasBlob.bind(this.client)
     this.client.hasBlob = async (sha, signal) => {
       if (!this.activeUploads && this.uploadProgress.stage)
         this.uploadProgress.phase('Checking the vault')
-      if (this.uploadEntitlements.has(sha) || (await this.preparedUploads.known(sha))) {
-        this.uploadEntitlements.add(sha)
+      if (this.hasUploadEntitlement(sha)) return true
+      const preparedAt = await this.preparedUploads.preparedAt(sha)
+      if (preparedAt !== undefined) {
+        this.rememberUploadEntitlement(sha, preparedAt)
         return true
       }
+      const startedAt = Date.now()
       const present = await hasBlob(sha, signal)
-      if (present) this.uploadEntitlements.add(sha)
+      if (present) this.rememberUploadEntitlement(sha, startedAt)
       return present
     }
     const prepare = this.client.prepare.bind(this.client)
@@ -1212,8 +1240,9 @@ export class TokenEngineRuntime
         this.client.pathRefusal?.(path)
       )
         return
-      if (await this.preparedUploads.known(identity.sha)) {
-        this.uploadEntitlements.add(identity.sha)
+      const preparedAt = await this.preparedUploads.preparedAt(identity.sha)
+      if (preparedAt !== undefined) {
+        this.rememberUploadEntitlement(identity.sha, preparedAt)
         return
       }
       const matching = this.scanUploadHashes.get(identity.sha)
@@ -1223,6 +1252,15 @@ export class TokenEngineRuntime
       signal?.throwIfAborted()
       this.assertHeld()
       await this.preparedUploads.begin({ path, ...identity })
+      let sourceRefusal: unknown
+      const localSource = async <T>(work: () => Promise<T>): Promise<T> => {
+        try {
+          return await work()
+        } catch (error) {
+          if (earlySourceRefusal(error)) sourceRefusal = error
+          throw error
+        }
+      }
       const task = this.transferBudget
         .run(async () => {
           signal?.throwIfAborted()
@@ -1234,7 +1272,7 @@ export class TokenEngineRuntime
           }
           signal?.throwIfAborted()
           this.assertHeld()
-          const source = await options.fs.openRead(path)
+          const source = await localSource(() => options.fs.openRead(path))
           let sourceChanged = false
           const checkedSource = new Proxy(source, {
             get(target, key) {
@@ -1242,14 +1280,16 @@ export class TokenEngineRuntime
               if (key === 'assertUnchanged')
                 return async () => {
                   try {
-                    await target.assertUnchanged()
+                    await localSource(() => target.assertUnchanged())
                   } catch (error) {
                     if (error instanceof EngineError && error.code === 'conflict')
                       sourceChanged = true
                     throw error
                   }
                 }
-              return typeof value === 'function' ? value.bind(target) : value
+              return typeof value === 'function'
+                ? (...args: unknown[]) => localSource(() => value.apply(target, args))
+                : value
             },
           })
           try {
@@ -1266,7 +1306,8 @@ export class TokenEngineRuntime
             )
             await checkedSource.assertUnchanged()
             this.wholeReadUploads.add(identity.sha)
-            this.uploadEntitlements.add(identity.sha)
+            const preparedAt = await this.preparedUploads.preparedAt(identity.sha)
+            if (preparedAt !== undefined) this.rememberUploadEntitlement(identity.sha, preparedAt)
             this.scanUploadPrimed = true
           } catch (error) {
             // Changed sources and policy refusals belong to the ordinary push report.
@@ -1275,22 +1316,25 @@ export class TokenEngineRuntime
               await this.preparedUploads.discard(identity.sha)
               return
             }
-            if (
-              !(error instanceof AbeleError) ||
-              !['too_large', 'quota_exceeded', 'hash_mismatch'].includes(error.code)
-            )
-              throw error
+            throw error
+          } finally {
+            await checkedSource.close()
+          }
+        }, signal)
+        .catch(async (error: unknown) => {
+          try {
+            signal?.throwIfAborted()
+            this.assertHeld()
+            const localRefused = sourceRefusal !== undefined && sourceRefusal === error
+            if (!localRefused && !earlyUploadRefusal(error)) throw error
             await this.preparedUploads.discard(identity.sha)
             console.debug(
               '[abele-sync] early blob refused; retaining ordinary push verdict',
-              error.code
+              localRefused ? 'local source unavailable' : (error as AbeleError).code
             )
-          } finally {
-            await source.close()
+          } catch (failure) {
+            this.scanUploadFailure ??= failure
           }
-        }, signal)
-        .catch((error: unknown) => {
-          this.scanUploadFailure ??= error
         })
       this.scanUploads.add(task)
       this.scanUploadHashes.set(identity.sha, task)
@@ -1790,13 +1834,15 @@ export class TokenEngineRuntime
         throw error
       }
       const consumed = new Set<string>()
-      for (const [index, op] of ops.entries())
-        if ('sha' in op && outcome.body.results[index]?.status !== 'rejected') {
+      for (const [index, op] of ops.entries()) {
+        const result = outcome.body.results[index]
+        if ('sha' in op && (result?.status !== 'rejected' || result.code === 'not_found')) {
           consumed.add(op.sha)
           this.uploadEntitlements.delete(op.sha)
         }
-      // A confirmed rejection leaves the prepared grant unspent. Preserve its
-      // original age; one accepted operation with the same SHA spends it for all.
+      }
+      // Policy rejections leave the grant unspent; missing-blob rejections prove
+      // it unusable. One accepted or missing operation invalidates it for all.
       for (const [sha, at] of preparedTimes)
         if (!consumed.has(sha)) await this.preparedUploads.acknowledge(sha, at)
       for (const [index, result] of outcome.body.results.entries()) {
@@ -2018,6 +2064,20 @@ export class TokenEngineRuntime
   }
   written(path: string): void {
     this.actions.written(this.placement?.toServer(path, 'TokenEngineRuntime') ?? path)
+  }
+  private uploadContext(): string {
+    return JSON.stringify([this.token.address, this.authority?.token_id ?? null, this.generation])
+  }
+  private rememberUploadEntitlement(sha: string, at: number): void {
+    this.uploadEntitlements.set(sha, { at, context: this.uploadContext() })
+  }
+  private hasUploadEntitlement(sha: string): boolean {
+    const receipt = this.uploadEntitlements.get(sha)
+    const age = receipt ? Date.now() - receipt.at : Infinity
+    if (receipt?.context === this.uploadContext() && age >= 0 && age < PREPARED_UPLOAD_LIFETIME)
+      return true
+    this.uploadEntitlements.delete(sha)
+    return false
   }
   private async spendPreparedUploads(
     shas: readonly string[],
@@ -2745,18 +2805,28 @@ export class TokenEngineRuntime
         async (identity: { size: number; sha: string }, source: ChunkSource) => {
           current()
           this.assertHeld()
-          const present = await this.client.hasBlob(identity.sha, signal)
-          current()
-          if (present) return
-          this.assertHeld()
-          await this.client.putBlobSource(
-            identity,
-            source,
-            signal,
-            this.transferBudget.maxChunkBytes
-          )
+          try {
+            const present = await this.client.hasBlob(identity.sha, signal)
+            current()
+            if (present) return
+            this.assertHeld()
+            await this.client.putBlobSource(
+              identity,
+              source,
+              signal,
+              this.transferBudget.maxChunkBytes
+            )
+          } catch (error) {
+            if (!earlyUploadRefusal(error)) throw error
+            console.debug(
+              '[abele-sync] early blob refused; retaining ordinary push verdict',
+              error.code
+            )
+            return
+          }
           this.wholeReadUploads.add(identity.sha)
-          this.uploadEntitlements.add(identity.sha)
+          const preparedAt = await this.preparedUploads.preparedAt(identity.sha)
+          if (preparedAt !== undefined) this.rememberUploadEntitlement(identity.sha, preparedAt)
         },
         signal,
         (identity: { sha: string }) => this.wholeReadUploads.has(identity.sha)

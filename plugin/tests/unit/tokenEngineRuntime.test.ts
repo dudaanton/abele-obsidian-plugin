@@ -33,6 +33,265 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 import { deferred } from '../helpers/deferred'
 import { PreparedUploads } from '@/sync/preparedUploads'
+import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
+
+it.each(['receipt', 'head'] as const)(
+  'expires a cached %s entitlement without restarting',
+  async (mode) => {
+    const wire = await server('Notes/remote.md', 'remote')
+    const state = new MemoryStateStore()
+    const sha = 'b'.repeat(64)
+    const clock = vi.spyOn(Date, 'now')
+    let now = Date.now()
+    clock.mockImplementation(() => now)
+    const one = runtime(wire, new MemoryFileSystem(), state)
+    const send = wire.fetch.getMockImplementation()!
+    let present = true
+    wire.fetch.mockImplementation((input, init) =>
+      init?.method === 'HEAD'
+        ? Promise.resolve(new Response(null, { status: present ? 200 : 404 }))
+        : send(input, init)
+    )
+    try {
+      await one.runtime.sync()
+      if (mode === 'receipt')
+        await (Reflect.get(one.runtime, 'preparedUploads') as PreparedUploads).acknowledge(sha, now)
+      expect(await one.runtime.client.hasBlob(sha)).toBe(true)
+      if (mode === 'receipt')
+        await one.runtime.client.commitRaw(
+          [{ op: 'create', path: 'Notes/sample.md', sha, size: 1, mtime: 1 }],
+          'sample-quota-rejection'
+        )
+      now += 22 * 60 * 60 * 1000
+      expect(await one.runtime.client.hasBlob(sha)).toBe(true)
+      now += 2 * 60 * 60 * 1000
+      present = false
+      expect(await one.runtime.client.hasBlob(sha)).toBe(false)
+    } finally {
+      clock.mockRestore()
+      await one.runtime.close()
+    }
+  }
+)
+
+it('reuploads after a missing-grant commit rejection instead of restoring the receipt', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const state = new MemoryStateStore()
+  const one = runtime(wire, new MemoryFileSystem(), state)
+  const bytes = new TextEncoder().encode('sample prepared content')
+  const sha = await sha256(bytes)
+  const receipts = Reflect.get(one.runtime, 'preparedUploads') as PreparedUploads
+  const send = wire.fetch.getMockImplementation()!
+  let payloads = 0
+  wire.fetch.mockImplementation((input, init) => {
+    const route = new URL(String(input)).pathname
+    if (route === '/v2/commit')
+      return Promise.resolve(
+        Response.json({
+          cursor: 1,
+          results: [{ status: 'rejected', code: 'not_found', message: 'sample missing grant' }],
+        })
+      )
+    if (init?.method === 'HEAD') return Promise.resolve(new Response(null, { status: 404 }))
+    if (init?.method === 'PUT') payloads++
+    return send(input, init)
+  })
+  try {
+    await one.runtime.sync()
+    await receipts.acknowledge(sha)
+    expect(await one.runtime.client.hasBlob(sha)).toBe(true)
+    await one.runtime.client.commitRaw(
+      [{ op: 'create', path: 'Notes/sample.md', sha, size: bytes.length, mtime: 1 }],
+      'sample-missing'
+    )
+    expect(await receipts.known(sha)).toBe(false)
+    await one.runtime.client.putBlob(sha, bytes)
+    expect(payloads).toBe(1)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+// The ordinary pusher tolerates definitive per-file 4xx refusals, except access
+// denial and rate limiting; exercise its entire protocol-code set here too.
+const earlyRefusals = ERROR_CODES.filter((code) => {
+  const error = new AbeleError(code, 'sample refusal')
+  return (
+    error.status >= 400 &&
+    error.status < 500 &&
+    !['rate_limited', 'unauthorized', 'forbidden'].includes(code)
+  )
+})
+it.each(earlyRefusals)('retains the fingerprint after a whole-file early %s', async (code) => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const one = runtime(wire, new MemoryFileSystem())
+  const identity = { sha: 'c'.repeat(64), size: 1 }
+  try {
+    await one.runtime.sync()
+    vi.spyOn(one.runtime.client, 'hasBlob').mockResolvedValue(false)
+    vi.spyOn(one.runtime.client, 'putBlobSource').mockRejectedValue(
+      new AbeleError(code, 'sample refusal')
+    )
+    const fs = {
+      [FINGERPRINT_UPLOAD]: async (
+        _path: string,
+        consume: (identity: { sha: string; size: number }, source: unknown) => Promise<void>
+      ) => {
+        await consume(identity, {
+          size: 1,
+          read: async () => new Uint8Array([1]),
+          assertUnchanged: async () => {},
+          close: async () => {},
+        })
+        return identity
+      },
+    }
+    await expect(
+      Reflect.get(one.runtime, 'fingerprintForUpload').call(
+        one.runtime,
+        fs,
+        'Notes/fresh.bin',
+        new AbortController().signal
+      )
+    ).resolves.toEqual(identity)
+    expect(
+      await (Reflect.get(one.runtime, 'preparedUploads') as PreparedUploads).known(identity.sha)
+    ).toBe(false)
+  } finally {
+    await one.runtime.close()
+  }
+})
+it.each(earlyRefusals)('keeps a local deletion publishable after early %s', async (code) => {
+  const wire = await server('Notes/removed.md', 'remote')
+  const fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  const send = wire.fetch.getMockImplementation()!
+  const committed: { op: string }[] = []
+  try {
+    await one.runtime.sync()
+    await fs.remove('Notes/removed.md')
+    await fs.writeAtomic('Notes/fresh.bin', new TextEncoder().encode('sample fresh'), 2000)
+    Object.assign(fs, {
+      [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+      openRead: async (path: string) => {
+        const bytes = await fs.read(path)
+        return {
+          size: bytes.length,
+          read: async (offset: number, length: number) => bytes.slice(offset, offset + length),
+          assertUnchanged: async () => {},
+          close: async () => {},
+        }
+      },
+    })
+    if (code !== 'quota_waiting')
+      vi.spyOn(one.runtime.client, 'putBlobSource').mockRejectedValue(
+        new AbeleError(code, 'sample per-file refusal')
+      )
+    wire.fetch.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (route.startsWith('/v2/uploads/') && init?.method === 'HEAD')
+        return new Response(null, { status: 404 })
+      if (route.startsWith('/v2/uploads/') && code === 'quota_waiting') {
+        const error = new AbeleError(code, 'sample pending uploads fill quota')
+        return Response.json(error.toBody(), { status: error.status })
+      }
+      if (route === '/v2/commit') committed.push(...JSON.parse(String(init?.body)).ops)
+      return send(input, init)
+    })
+    await one.runtime.sync()
+    expect(committed.some((op) => op.op === 'delete')).toBe(true)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(['openRead', 'read', 'assertUnchanged', 'close'] as const)(
+  'defers a native early source %s failure to the ordinary per-file retry path',
+  async (failedMethod) => {
+    const wire = await server('Notes/remote.md', 'remote')
+    const fs = new MemoryFileSystem()
+    const one = runtime(wire, fs)
+    const error = Object.assign(new Error('sample local source denial'), { code: 'EACCES' })
+    Object.assign(fs, {
+      [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+      openRead: async () => {
+        if (failedMethod === 'openRead') throw error
+        return {
+          size: 1,
+          read: async () => {
+            if (failedMethod === 'read') throw error
+            return new Uint8Array([1])
+          },
+          assertUnchanged: async () => {
+            if (failedMethod === 'assertUnchanged') throw error
+          },
+          close: async () => {
+            if (failedMethod === 'close') throw error
+          },
+        }
+      },
+    })
+    try {
+      await one.runtime.sync()
+      vi.spyOn(one.runtime.client, 'hasBlob').mockResolvedValue(false)
+      vi.spyOn(one.runtime.client, 'putBlobSource').mockImplementation(
+        async (_identity, source) => {
+          await source.read(0, 1)
+          await source.assertUnchanged()
+        }
+      )
+      const prepare = Reflect.get(one.runtime, 'prepareScanUpload') as (
+        path: string,
+        identity: { sha: string; size: number },
+        signal: AbortSignal
+      ) => Promise<void>
+      await expect(
+        prepare('Notes/fresh.bin', { sha: 'd'.repeat(64), size: 1 }, new AbortController().signal)
+      ).resolves.toBeUndefined()
+      expect(Reflect.get(one.runtime, 'scanUploadFailure')).toBeUndefined()
+      expect(
+        await (Reflect.get(one.runtime, 'preparedUploads') as PreparedUploads).pending()
+      ).toEqual([])
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each(['forbidden', 'unauthorized', 'rate_limited', 'EACCES'] as const)(
+  'keeps transport %s failures cycle-level during native preparation',
+  async (code) => {
+    const wire = await server('Notes/remote.md', 'remote')
+    const fs = new MemoryFileSystem()
+    const one = runtime(wire, fs)
+    Object.assign(fs, {
+      [Symbol.for('abele.sync.scan-upload-source-v1')]: true,
+      openRead: async () => ({
+        size: 1,
+        read: async () => new Uint8Array([1]),
+        assertUnchanged: async () => {},
+        close: async () => {},
+      }),
+    })
+    const error =
+      code === 'EACCES'
+        ? Object.assign(new Error('sample transport failure'), { code })
+        : new AbeleError(code, 'sample transport refusal')
+    try {
+      await one.runtime.sync()
+      vi.spyOn(one.runtime.client, 'hasBlob').mockResolvedValue(false)
+      vi.spyOn(one.runtime.client, 'putBlobSource').mockRejectedValue(error)
+      await Reflect.get(one.runtime, 'prepareScanUpload')(
+        'Notes/fresh.bin',
+        { sha: 'e'.repeat(64), size: 1 },
+        new AbortController().signal
+      )
+      expect(Reflect.get(one.runtime, 'scanUploadFailure')).toBe(error)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
 
 it('does not resume a source now owned by another connection', async () => {
   const wire = await server('Notes/remote.md', 'remote')

@@ -274,13 +274,12 @@ it('spends an own upload acknowledgement on the commit that used it, but keeps i
     covers: async () => false,
   })
   try {
-    const acknowledged = Reflect.get(one, 'uploadEntitlements') as Set<string>
     const receipts = Reflect.get(one, 'preparedUploads') as PreparedUploads
     const reopened = () =>
       new PreparedUploads(state, () => JSON.stringify(['https://sync.example', null, null]))
     for (const sha of [kept, spent, lost]) {
-      acknowledged.add(sha)
       await receipts.acknowledge(sha)
+      expect(await one.client.hasBlob(sha)).toBe(true)
     }
     const create = (sha: string, path: string) =>
       ({ op: 'create', path, sha, size: 1, mtime: 1 }) as const

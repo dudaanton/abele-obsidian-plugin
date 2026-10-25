@@ -8,7 +8,7 @@ export interface PreparedSource {
 const PENDING = 'plugin:prepared-upload-sources'
 const receiptKey = (sha: string) => 'plugin:prepared-upload:' + sha
 // Leave a margin before the scoped server's 24-hour prepared-blob lifetime.
-const LIFETIME = 23 * 60 * 60 * 1000
+export const PREPARED_UPLOAD_LIFETIME = 23 * 60 * 60 * 1000
 
 /** Acknowledged immutable uploads, never authority to install or overwrite local bytes. */
 export class PreparedUploads {
@@ -36,7 +36,12 @@ export class PreparedUploads {
       this.receipts.set(key, receipt ?? null)
     }
     const age = receipt ? this.now() - receipt.at : Infinity
-    return receipt?.context === this.context() && Number.isFinite(age) && age >= 0 && age < LIFETIME
+    return (
+      receipt?.context === this.context() &&
+      Number.isFinite(age) &&
+      age >= 0 &&
+      age < PREPARED_UPLOAD_LIFETIME
+    )
   }
   async preparedAt(sha: string): Promise<number | undefined> {
     if (!(await this.known(sha))) return undefined
