@@ -24,7 +24,7 @@ module.exports = class extends Plugin {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
     const nativeCrypto = require('node:crypto')
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Reuse stack provenance for hash observations.
-    const classifyHash = require(config.diagnostics).classifyOrigin
+    const { classifyOrigin: classifyHash, stateChunks } = require(config.diagnostics)
     globalThis.__scaleObserveIncrementalHash = (hash) =>
       reindexObserver.observeIncrementalHash(hash, emit)
     this.register(() => {
@@ -78,7 +78,7 @@ module.exports = class extends Plugin {
       }
       const next = JSON.stringify(state)
       if (next !== previous) {
-        emit(state)
+        for (const chunk of stateChunks(state)) emit(chunk)
         previous = next
       }
     }, 1000)

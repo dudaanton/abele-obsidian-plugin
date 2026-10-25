@@ -16,6 +16,41 @@ function classify(stack) {
     : 'unknown'
 }
 exports.classifyOrigin = classify
+exports.stateChunks = function (state, limit = 1024 ** 2) {
+  // Leave room for receipt timestamps, device identity and chunk metadata.
+  const budget = limit - 256
+  if (Buffer.byteLength(JSON.stringify(state)) <= budget) return [state]
+  const chunks = []
+  for (const activity of state.activity ?? []) {
+    const empty = () => ({ ...state, activity: [{ ...activity, refused: [], events: [] }] })
+    let chunk = empty()
+    let bytes = Buffer.byteLength(JSON.stringify(chunk))
+    let count = 0
+    if (bytes > budget) throw new Error('Activity value exceeds receipt budget')
+    for (const key of ['refused', 'events']) {
+      for (const value of activity[key] ?? []) {
+        const size = Buffer.byteLength(JSON.stringify(value)) + 1
+        if (bytes + size > budget) {
+          if (!count) throw new Error('Activity value exceeds receipt budget')
+          chunks.push(chunk)
+          chunk = empty()
+          bytes = Buffer.byteLength(JSON.stringify(chunk))
+          count = 0
+        }
+        if (bytes + size > budget) throw new Error('Activity value exceeds receipt budget')
+        chunk.activity[0][key].push(value)
+        bytes += size
+        count++
+      }
+    }
+    chunks.push(chunk)
+  }
+  if (!chunks.length) throw new Error('Activity value exceeds receipt budget')
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    activityChunk: { index, total: chunks.length },
+  }))
+}
 exports.observeNotices = function (
   { Notice, Node, Element },
   capture = () => {

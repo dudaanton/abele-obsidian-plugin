@@ -4,6 +4,36 @@ import diagnostics from '../scale/diagnostics.cjs'
 import { noticeSummary, profileSummary, rssSample, deadlinePlan } from '../scale/diagnostics.mjs'
 import { budgets } from '../scale/oracles.mjs'
 
+it('keeps a large activity snapshot in bounded receipts without dropping refusals or events', () => {
+  const refused = Array.from({ length: 33000 }, (_, i) => ({
+    path: `Notes/Sample ${i}.md`,
+    reason: 'sample reason '.repeat(12),
+  }))
+  const events = [{ at: 100, text: 'sample failure' }]
+  const state = {
+    event: 'primary-state',
+    snapshot: { rows: [{ status: 'error' }] },
+    activity: [{ refused, events }],
+  }
+  expect(Buffer.byteLength(JSON.stringify(state))).toBeGreaterThan(4 * 1024 ** 2)
+  const chunks = diagnostics.stateChunks(state)
+  expect(chunks.length).toBeGreaterThan(1)
+  expect(chunks.every((chunk) => Buffer.byteLength(JSON.stringify(chunk)) <= 1024 ** 2)).toBe(true)
+  expect(chunks.flatMap((chunk) => chunk.activity.flatMap((a) => a.refused))).toEqual(refused)
+  expect(chunks.flatMap((chunk) => chunk.activity.flatMap((a) => a.events))).toEqual(events)
+  expect(chunks.every((chunk) => chunk.snapshot === state.snapshot)).toBe(true)
+  expect(chunks.map((chunk) => chunk.activityChunk)).toEqual(
+    chunks.map((_, index) => ({ index, total: chunks.length }))
+  )
+  expect(state.activity[0].refused).toHaveLength(33000)
+})
+
+it('fails explicitly if one activity value alone exceeds the receipt budget', () => {
+  expect(() =>
+    diagnostics.stateChunks({ activity: [{ refused: [{ reason: 'x'.repeat(2 ** 21) }] }] })
+  ).toThrow('Activity value exceeds receipt budget')
+})
+
 it('attributes identical notice text to its creation stack, never its wording', () => {
   let stack = 'Error\n at host (app://obsidian.md/app.js:4:2)'
   class Notice {
