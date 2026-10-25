@@ -179,30 +179,42 @@ describe('scale harness independent guarantees', () => {
       URL,
       Error,
       require: (name) =>
-        name === '/sample/reindex.cjs'
-          ? { observeRebuild: () => {}, observeHashes: () => () => {} }
-          : name === 'obsidian'
+        name === '@electron/remote'
+          ? {
+              getCurrentWebContents: () => ({ id: 7 }),
+              require: () => ({ openEvidencePort: () => 'sample-evidence' }),
+            }
+          : name === 'electron'
             ? {
-                Plugin: class {
-                  app = { vault: { adapter: { getBasePath: () => '/sample' } } }
-                  register() {}
+                ipcRenderer: {
+                  send: (_channel, line) => evidence.push(JSON.parse(line)),
+                  invoke: async () => true,
                 },
               }
-            : name === '/sample/absolute-writes.cjs'
-              ? { observeWrites: () => () => {} }
-              : name === 'fs'
+            : name === '/sample/reindex.cjs'
+              ? { observeRebuild: () => {}, observeHashes: () => () => {} }
+              : name === 'obsidian'
                 ? {
-                    existsSync: () => false,
-                    readFileSync: () =>
-                      JSON.stringify({
-                        device: '0',
-                        evidence: 'sample',
-                        writeObserver: '/sample/absolute-writes.cjs',
-                        reindexObserver: '/sample/reindex.cjs',
-                      }),
-                    appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                    Plugin: class {
+                      app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                      register() {}
+                    },
                   }
-                : { join: (...parts) => parts.join('/') },
+                : name === '/sample/absolute-writes.cjs'
+                  ? { observeWrites: () => () => {} }
+                  : name === 'fs'
+                    ? {
+                        existsSync: () => false,
+                        readFileSync: () =>
+                          JSON.stringify({
+                            device: '0',
+                            evidence: 'sample',
+                            writeObserver: '/sample/absolute-writes.cjs',
+                            reindexObserver: '/sample/reindex.cjs',
+                          }),
+                        appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                      }
+                    : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [] },
       MutationObserver: class {
         observe() {}
@@ -294,30 +306,42 @@ describe('scale harness independent guarantees', () => {
       setInterval: () => 0,
       clearInterval: () => {},
       require: (name) =>
-        name === '/sample/reindex.cjs'
-          ? { observeRebuild: () => {}, observeHashes: () => () => {} }
-          : name === 'obsidian'
+        name === '@electron/remote'
+          ? {
+              getCurrentWebContents: () => ({ id: 7 }),
+              require: () => ({ openEvidencePort: () => 'sample-evidence' }),
+            }
+          : name === 'electron'
             ? {
-                Plugin: class {
-                  app = { vault: { adapter: { getBasePath: () => '/sample' } } }
-                  register() {}
+                ipcRenderer: {
+                  send: (_channel, line) => evidence.push(JSON.parse(line)),
+                  invoke: async () => true,
                 },
               }
-            : name === '/sample/absolute-writes.cjs'
-              ? { observeWrites: () => () => {} }
-              : name === 'fs'
+            : name === '/sample/reindex.cjs'
+              ? { observeRebuild: () => {}, observeHashes: () => () => {} }
+              : name === 'obsidian'
                 ? {
-                    existsSync: () => false,
-                    readFileSync: () =>
-                      JSON.stringify({
-                        device: '0',
-                        evidence: 'sample',
-                        writeObserver: '/sample/absolute-writes.cjs',
-                        reindexObserver: '/sample/reindex.cjs',
-                      }),
-                    appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                    Plugin: class {
+                      app = { vault: { adapter: { getBasePath: () => '/sample' } } }
+                      register() {}
+                    },
                   }
-                : { join: (...parts) => parts.join('/') },
+                : name === '/sample/absolute-writes.cjs'
+                  ? { observeWrites: () => () => {} }
+                  : name === 'fs'
+                    ? {
+                        existsSync: () => false,
+                        readFileSync: () =>
+                          JSON.stringify({
+                            device: '0',
+                            evidence: 'sample',
+                            writeObserver: '/sample/absolute-writes.cjs',
+                            reindexObserver: '/sample/reindex.cjs',
+                          }),
+                        appendFileSync: (_path, value) => evidence.push(JSON.parse(value)),
+                      }
+                    : { join: (...parts) => parts.join('/') },
       document: { body: {}, querySelectorAll: () => [node] },
       MutationObserver: class {
         constructor(callback) {

@@ -118,7 +118,9 @@ it('clicks the real setting once, persists actual click time, and observes host 
   const module = { exports: {} }
   const fs = {
     writeFileSync: (path, value) => files.set(path, value),
-    appendFileSync: (_path, value) => rows.push(JSON.parse(value)),
+    appendFileSync: () => {
+      throw new Error('Click evidence must use the ordered host sink')
+    },
     existsSync: (path) => files.has(path),
     readFileSync: (path) => files.get(path),
     unlinkSync: (path) => files.delete(path),
@@ -126,6 +128,7 @@ it('clicks the real setting once, persists actual click time, and observes host 
   runInNewContext(source, {
     module,
     exports: module.exports,
+    __scaleEmitEvidence: (value) => rows.push(value),
     require: (name) => (name === 'node:fs' ? fs : { resolve: (p) => p }),
     setTimeout: (fn) => scheduled.push(fn),
     Date,

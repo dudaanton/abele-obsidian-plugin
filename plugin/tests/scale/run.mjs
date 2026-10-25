@@ -278,6 +278,7 @@ async function setupVault(config, root, device) {
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
   await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
+  await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -440,6 +441,20 @@ export async function run(config) {
     clearInterval(memoryTimer)
     await memoryPending
     if (!appProcess) return
+    for (const device of devices) {
+      const at = Date.now()
+      const flushed = await device
+        .evaluate(
+          'if(globalThis.__scaleStopProfiles)await globalThis.__scaleStopProfiles();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
+        )
+        .catch(() => false)
+      ;(report.observerFlushes ??= []).push({
+        device: String(devices.indexOf(device)),
+        at,
+        flushed,
+      })
+      if (!flushed) report.failure ??= 'Observer evidence flush failed'
+    }
     if (!hard)
       await devices[0]
         .evaluate(`setTimeout(()=>require('@electron/remote').app.quit(),100);return true`)

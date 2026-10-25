@@ -242,11 +242,19 @@ it.each([true, false])(
             observeReads: () => () => events.push({ event: 'cleanup-read' }),
           }
         if (name === config.diagnostics) return diagnostics
-        if (name === 'electron') return { ipcRenderer: { send: (channel) => sent.push(channel) } }
+        if (name === 'electron')
+          return {
+            ipcRenderer: {
+              send: (channel, text) =>
+                channel === 'sample-evidence' ? events.push(JSON.parse(text)) : sent.push(channel),
+              invoke: async () => true,
+            },
+          }
         if (name === '@electron/remote')
           return {
             getCurrentWebContents: () => ({ id: 7 }),
             require: () => ({
+              openEvidencePort: () => 'sample-evidence',
               watch: async (id, serialized) => {
                 expect(JSON.parse(serialized).device).toBe('0')
                 expect(id).toBe(7)
@@ -373,6 +381,8 @@ it('replaces only its own debugger watch across a renderer reload', async () => 
     require: (name) => {
       if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain }
       if (name === 'node:crypto') return { randomUUID: () => String(++sequence) }
+      if (name === './evidence-writer.cjs')
+        return { writerFor: () => ({ enqueue: (line) => rows.push(JSON.parse(line)) }) }
       if (name === 'node:fs')
         return {
           appendFileSync: (_p, line) => rows.push(JSON.parse(line)),

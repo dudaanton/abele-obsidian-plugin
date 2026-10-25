@@ -13,11 +13,20 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-owned asynchronous evidence survives renderer reloads.
+    const evidenceRemote = require('@electron/remote')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Ordered, nonblocking evidence delivery.
+    const { ipcRenderer: evidenceIpc } = require('electron')
+    const evidenceChannel = evidenceRemote
+      .require(config.diagnostics)
+      .openEvidencePort(evidenceRemote.getCurrentWebContents().id, JSON.stringify(config))
     const emit = (data) =>
-      fs.appendFileSync(
-        config.evidence,
+      evidenceIpc.send(
+        evidenceChannel,
         JSON.stringify({ at: Date.now(), device: config.device, ...data }) + '\n'
       )
+    globalThis.__scaleFlushEvidence = () => evidenceIpc.invoke(evidenceChannel)
+    globalThis.__scaleEmitEvidence = emit
     emit({ event: 'renderer-start', pid: globalThis.process?.pid ?? null })
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer module.
     const reindexObserver = require(config.reindexObserver)
@@ -52,17 +61,18 @@ module.exports = class extends Plugin {
     let previous = ''
     const seenActivity = new Set()
     const stateTimer = setInterval(() => {
-      if (config.device !== '0') return
       const host = this.app.plugins?.plugins?.abele?.tokenEngines
       const ui = host?.ui
       if (!ui) return
       const state = {
-        event: 'primary-state',
+        event: config.device === '0' ? 'primary-state' : 'device-state',
         snapshot: {
           rows: ui.rows.value.map(({ status, paused }) => ({ status, paused })),
           engines: [...host.live.values()].map((e) => ({
             state: e.engine.status.state,
             pending: e.engine.status.pending,
+            cursor: e.engine.status.cursor,
+            headSeq: e.engine.status.headSeq,
             lastSyncAt: e.engine.status.lastSyncAt,
           })),
         },
@@ -178,6 +188,7 @@ module.exports = class extends Plugin {
         remote.getCurrentWebContents().id,
         JSON.stringify(config)
       )
+      globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
       globalThis.__scaleReindexCoverage = {
         begin: (id) => diagnostic.beginReindexCoverage(channel, id),
         end: () => diagnostic.endReindexCoverage(channel),

@@ -191,6 +191,27 @@ exports.createStallProfiler = function ({
 }
 
 const watches = new Map()
+const evidencePorts = new Map()
+exports.openEvidencePort = function (id, serializedConfig) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Evidence queues survive renderer navigation in the host.
+  const { ipcMain } = require('electron')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Shared serialized evidence appends.
+  const writer = require('./evidence-writer.cjs').writerFor(JSON.parse(serializedConfig).evidence)
+  const key = `${id}:${JSON.parse(serializedConfig).evidence}`
+  if (evidencePorts.has(key)) return evidencePorts.get(key)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable IPC identifier.
+  const channel = `scale-evidence-${require('node:crypto').randomUUID()}`
+  ipcMain.on(channel, (event, text) => {
+    if (event.sender.id === id && typeof text === 'string') writer.enqueue(text)
+  })
+  ipcMain.handle(channel, async (event) => {
+    if (event.sender.id !== id) throw new Error('Evidence sender mismatch')
+    await writer.flush()
+    return true
+  })
+  evidencePorts.set(key, channel)
+  return channel
+}
 const ownedContents = new Map()
 const coverageWatches = new Map()
 exports.beginReindexCoverage = (channel, id) => coverageWatches.get(channel)?.begin(id)
@@ -207,11 +228,10 @@ exports.watch = async function (id, serializedConfig) {
   const { randomUUID } = require('node:crypto')
   const wc = webContents.fromId(id),
     channel = `scale-heartbeat-${id}-${randomUUID()}`
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- The renderer and profiler share one host-owned append queue.
+  const evidence = require('./evidence-writer.cjs').writerFor(config.evidence)
   const emit = (e) =>
-    fs.appendFileSync(
-      config.evidence,
-      JSON.stringify({ at: Date.now(), device: config.device, ...e }) + '\n'
-    )
+    evidence.enqueue(JSON.stringify({ at: Date.now(), device: config.device, ...e }) + '\n')
   await ownedContents.get(id)?.()
   if (!wc || wc.debugger.isAttached()) {
     emit({

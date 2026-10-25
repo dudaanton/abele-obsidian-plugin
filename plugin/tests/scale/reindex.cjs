@@ -3,6 +3,11 @@ const fs = require('node:fs')
 const path = require('node:path')
 /* eslint-enable @typescript-eslint/no-require-imports -- Native observer imports end here. */
 
+function appendEvidence(file, value) {
+  if (globalThis.__scaleEmitEvidence) globalThis.__scaleEmitEvidence(value)
+  else fs.appendFileSync(file, JSON.stringify(value) + '\n')
+}
+
 // Drive only the visible host setting. Never clear caches or reload via an internal API.
 exports.clickRebuild = async function (app, document, receipt, pendingFile) {
   await app.setting.open()
@@ -25,23 +30,20 @@ exports.clickRebuild = async function (app, document, receipt, pendingFile) {
       0,
       pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')
     )
-    fs.appendFileSync(
-      evidence,
-      JSON.stringify({
-        event: 'reindex-setting-unavailable',
-        id: receipt.id,
-        device: receipt.device,
-        at: Date.now(),
-        rowCount: rows.length,
-        buttonCount: buttons.length,
-        settingKeys: Object.keys(app.setting),
-        rootClass: root.className,
-        documentClass: document.body?.className,
-        labels: [...root.querySelectorAll('.setting-item-name')].map((row) =>
-          row.textContent?.trim()
-        ),
-      }) + '\n'
-    )
+    appendEvidence(evidence, {
+      event: 'reindex-setting-unavailable',
+      id: receipt.id,
+      device: receipt.device,
+      at: Date.now(),
+      rowCount: rows.length,
+      buttonCount: buttons.length,
+      settingKeys: Object.keys(app.setting),
+      rootClass: root.className,
+      documentClass: document.body?.className,
+      labels: [...root.querySelectorAll('.setting-item-name')].map((row) =>
+        row.textContent?.trim()
+      ),
+    })
     throw new Error('Rebuild setting unavailable or ambiguous')
   }
   if (typeof globalThis.__scaleReindexCoverage?.begin === 'function')
@@ -51,9 +53,9 @@ exports.clickRebuild = async function (app, document, receipt, pendingFile) {
   setTimeout(() => {
     const clicked = { ...operation, at: Date.now() }
     fs.writeFileSync(pendingFile, JSON.stringify(clicked))
-    fs.appendFileSync(
+    appendEvidence(
       pendingFile.slice(0, pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')),
-      JSON.stringify({ ...clicked, event: 'reindex-click' }) + '\n'
+      { ...clicked, event: 'reindex-click' }
     )
     buttons[0].click()
   }, 100)
