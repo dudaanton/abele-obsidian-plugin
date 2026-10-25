@@ -46,6 +46,7 @@ export function rssSample(text, rootPid) {
   return {
     rssBytes: selected.reduce((sum, r) => sum + r[2] * 1024, 0),
     pids: selected.map((r) => r[0]).sort((a, b) => a - b),
+    processes: selected.map(([pid, , rss]) => ({ pid, rssBytes: rss * 1024 })),
   }
 }
 export function sampleMemory(rootPid) {

@@ -140,6 +140,11 @@ it('aggregates only the owned app process tree and plans five hours with cleanup
   expect(rssSample('1 0 100\n2 1 200\n3 2 300\n4 0 900', 1)).toEqual({
     rssBytes: 600 * 1024,
     pids: [1, 2, 3],
+    processes: [
+      { pid: 1, rssBytes: 100 * 1024 },
+      { pid: 2, rssBytes: 200 * 1024 },
+      { pid: 3, rssBytes: 300 * 1024 },
+    ],
   })
   expect(rssSample('4 0 900', 1)).toBeNull()
   expect(deadlinePlan(1000)).toEqual({
@@ -194,6 +199,7 @@ it.each([true, false])(
     const module = { exports: null }
     runInNewContext(source, {
       module,
+      process: { pid: 42 },
       console: { debug() {} },
       performance: { timeOrigin: 1000 },
       setInterval: () => 1,
@@ -262,6 +268,7 @@ it.each([true, false])(
     expect(finished).toBe(false)
     release()
     await pending
+    expect(events).toContainEqual(expect.objectContaining({ event: 'renderer-start', pid: 42 }))
     expect(sent).toEqual(['sample-heartbeat'])
     observers.at(-1)({ getEntries: () => [{ startTime: 50, duration: 7061, attribution: [] }] })
     expect(events).toContainEqual(

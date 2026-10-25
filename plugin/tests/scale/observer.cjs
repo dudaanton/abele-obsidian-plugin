@@ -18,7 +18,7 @@ module.exports = class extends Plugin {
         config.evidence,
         JSON.stringify({ at: Date.now(), device: config.device, ...data }) + '\n'
       )
-    emit({ event: 'renderer-start' })
+    emit({ event: 'renderer-start', pid: globalThis.process?.pid ?? null })
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer module.
     const reindexObserver = require(config.reindexObserver)
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
