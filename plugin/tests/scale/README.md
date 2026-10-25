@@ -55,6 +55,10 @@ Build the desired branch or commit in a disposable checkout with the normal chec
 Pass the resulting `plugin/build` directory and the **resolved commit SHA**, not a moving
 branch name. Asset digests and the build's recorded revision are checked before installation.
 The build can be changed independently of this driver, including to test an SDK migration.
+Include the existing release tags when exporting the checkout: changelog generation needs
+release boundaries even for a build at an exact commit. A branch-only bundle can omit those
+tags and fail the checked build. Import the missing existing tags into the disposable
+checkout without changing its selected commit, then finish the build before starting the app.
 
 ### Local or remote server
 
