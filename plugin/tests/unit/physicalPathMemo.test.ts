@@ -60,3 +60,47 @@ describe('physical path checks are remembered', () => {
     expect(() => placement.toLocal('Shared/note.md')).toThrow(/outside this connection/)
   })
 })
+
+it('preserves protocol and physical byte limits after warming sibling directory checks', () => {
+  const parent = 'Notes/Cafe\u0301/' + 'Nested/'.repeat(10)
+  assertPhysicalPath(parent + 'sample.md')
+  const candidates = [
+    'next.md',
+    '.hidden',
+    '.obsidian',
+    '.trash',
+    '..',
+    '.',
+    '',
+    ' a.md',
+    'a\\b',
+    'a\u0000b',
+    'a'.repeat(255),
+    'a'.repeat(256),
+    'e\u0301'.repeat(85),
+    'e\u0301'.repeat(86),
+    'Sub/next.md',
+    '/bad.md',
+    '../bad.md',
+  ]
+  for (const leaf of candidates) {
+    const path = parent + leaf
+    let valid = true
+    try {
+      protocol.validatePath(path.normalize('NFC'))
+    } catch {
+      valid = false
+    }
+    const encoder = new TextEncoder()
+    valid &&=
+      encoder.encode(path).length <= 1024 &&
+      path.split('/').every((part) => encoder.encode(part).length <= 255)
+    if (valid) expect(() => assertPhysicalPath(path)).not.toThrow()
+    else expect(() => assertPhysicalPath(path)).toThrow()
+  }
+  const longParent = ('x'.repeat(200) + '/').repeat(4)
+  assertPhysicalPath(longParent + 'short.md')
+  expect(() => assertPhysicalPath(longParent + 'x'.repeat(221))).toThrow()
+  assertPhysicalPath('.obsidian/sample.json')
+  expect(() => assertPhysicalPath('.obsidian/.trash')).toThrow()
+})

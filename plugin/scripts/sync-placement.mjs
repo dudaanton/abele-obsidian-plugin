@@ -144,7 +144,82 @@ export function syncPlacementPlugin() {
           if (fs[Symbol.for('abele.sync.portable-candidates-v1')] === true)
             key[Symbol.for('abele.sync.portable-candidates-v1')] = true;`
         )
+      } else if (file.endsWith('/deletes.js')) {
+        // Both entry checks and operation partitioning can cover an entire vault. Keep the
+        // synchronous public helper, but drive the same algorithm cooperatively in the cycle.
+        code = `import { ScanWork } from './scanWork.js';\n` + code
+        code = replaceOnce(
+          code,
+          'export function judgeDeletes(ops, entries, filter, confirmed, guard, context = {}) {',
+          `function* judgeDeleteSteps(ops, entries, filter, confirmed, guard, context = {}) {`
+        )
+        code = replaceOnce(
+          code,
+          'for (const entry of entries) {',
+          'for (const entry of entries) { yield;'
+        )
+        for (const [before, after] of [
+          [
+            "ops.filter((op) => op.op === 'delete' && !confirmed.has(op.file_id))",
+            "(yield* deleteFilter(ops, (op) => op.op === 'delete' && !confirmed.has(op.file_id)))",
+          ],
+          [
+            'unconfirmed.filter((op) => !sticky.has(op.file_id))',
+            '(yield* deleteFilter(unconfirmed, (op) => !sticky.has(op.file_id)))',
+          ],
+          [
+            'unconfirmed.filter((op) => sticky.has(op.file_id) || trips).map((op) => op.file_id)',
+            '(yield* deleteMap((yield* deleteFilter(unconfirmed, (op) => sticky.has(op.file_id) || trips)), (op) => op.file_id))',
+          ],
+          [
+            "ops.filter((op) => op.op !== 'delete' || !holding.has(op.file_id))",
+            "(yield* deleteFilter(ops, (op) => op.op !== 'delete' || !holding.has(op.file_id)))",
+          ],
+          [
+            `unconfirmed
+            .filter((op) => holding.has(op.file_id))
+            .map((op) => ({
+            path: byId.get(op.file_id)?.wirePath ?? op.file_id,
+            fileId: op.file_id,
+        }))`,
+            `(yield* deleteMap((yield* deleteFilter(unconfirmed, (op) => holding.has(op.file_id))), (op) => ({
+            path: byId.get(op.file_id)?.wirePath ?? op.file_id, fileId: op.file_id,
+          })))`,
+          ],
+        ])
+          code = replaceOnce(code, before, after)
+        code += `
+function* deleteFilter(items, test) {
+  const result = [];
+  for (const item of items) { yield; if (test(item)) result.push(item); }
+  return result;
+}
+function* deleteMap(items, map) {
+  const result = [];
+  for (const item of items) { yield; result.push(map(item)); }
+  return result;
+}
+export function judgeDeletes(...args) {
+  const steps = judgeDeleteSteps(...args);
+  for (;;) { const next = steps.next(); if (next.done) return next.value; }
+}
+export async function judgeDeletesCooperatively(args, scheduling) {
+  const steps = judgeDeleteSteps(...args), work = new ScanWork(scheduling);
+  for (;;) { const next = steps.next(); if (next.done) return next.value; await work.step(); }
+}
+`
       } else if (file.endsWith('/deleteGate.js')) {
+        code = replaceOnce(code, 'judgeDeletes,', 'judgeDeletesCooperatively,')
+        code = replaceOnce(
+          code,
+          'judgeDeletes(ops, entries, this.ctx.filter, confirmed, guard, {',
+          'await judgeDeletesCooperatively([ops, entries, this.ctx.filter, confirmed, guard, {'
+        )
+        code = replaceOnce(
+          code,
+          'recent,\n        });',
+          'recent,\n        }], scanScheduling(this.ctx.state));'
+        )
         code = replaceOnce(
           code,
           'for await (const entry of this.ctx.state.all())',

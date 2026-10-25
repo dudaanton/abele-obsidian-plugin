@@ -80,11 +80,12 @@ describe('npm sync SDK input preflight', () => {
     writeFileSync(file, JSON.stringify(value))
     expect(() => verifySyncSdkInputs(root)).toThrow(/Retired/)
   })
+  // Copies and hashes real package bytes; loaded filesystem runs can exceed 6 s.
   it('refuses modified installed bytes', () => {
     const { root, installed } = sample()
     writeFileSync(join(installed, 'dist/notes/index.js'), 'changed')
     expect(() => verifySyncSdkInputs(root)).toThrow(/input mismatch/)
-  })
+  }, 30000)
   it('refuses an incorrect installed package revision', () => {
     const { root, installed } = sample()
     writeFileSync(

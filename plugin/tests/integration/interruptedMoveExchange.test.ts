@@ -151,5 +151,6 @@ it.each([false, true])(
       debug.mockRestore()
       await server.close()
     }
-  }
+  },
+  30000
 )

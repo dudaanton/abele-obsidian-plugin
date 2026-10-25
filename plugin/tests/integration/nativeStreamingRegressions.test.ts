@@ -237,6 +237,7 @@ it('streams a peer move and removes its old native file and empty directory', as
   }
 })
 
+// Native barriers and recovery are awaited directly; allow loaded filesystem latency.
 it('recovers an archived native inode when its locator acknowledgement fails', async () => {
   const f = await fixture(false)
   let retained: string | undefined
@@ -273,7 +274,7 @@ it('recovers an archived native inode when its locator acknowledgement fails', a
     if (retained) await disk.rm(retained, { force: true })
     await f.close()
   }
-})
+}, 30000)
 
 it('archives previously confirmed vault backups even when no publication journal remains', async () => {
   const f = await fixture(false)

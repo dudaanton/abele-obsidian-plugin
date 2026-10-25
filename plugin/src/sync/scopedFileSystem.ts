@@ -5,6 +5,20 @@ import { PLACEMENT } from './pathCoordinator'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'
 import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
+import { SyncTaskBudget } from './syncTaskBudget'
+
+async function includedChildren<T extends { path: string }>(
+  children: T[],
+  includes: (path: string) => boolean
+): Promise<T[]> {
+  const result: T[] = [],
+    budget = new SyncTaskBudget()
+  for (const child of children) {
+    await budget.account(0)
+    if (includes(child.path)) result.push(child)
+  }
+  return result
+}
 
 export class FolderScopeError extends EngineError {
   constructor(message: string) {
@@ -92,8 +106,7 @@ export function scopedFileSystem(
           return value.call(target, path)
         }
       if (key === Symbol.for('abele.sync.inventory-directories-v1'))
-        return async () =>
-          (await value.call(target)).filter((info: { path: string }) => includes(info.path))
+        return async () => includedChildren(await value.call(target), includes)
       if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
         return async (parent: string, ...args: unknown[]) => {
           const scopeRoot = typeof scopeRootInput === 'function' ? scopeRootInput() : scopeRootInput
@@ -118,7 +131,7 @@ export function scopedFileSystem(
           }
           assertPath(parent)
           const children = await value.call(target, parent, ...args)
-          return children.filter((info: { path: string }) => includes(info.path))
+          return includedChildren(children, includes)
         }
       if (
         key === Symbol.for('abele.sync.diagnostic-v1') ||

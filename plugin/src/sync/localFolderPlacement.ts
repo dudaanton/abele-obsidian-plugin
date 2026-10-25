@@ -329,12 +329,17 @@ export class LocalFolderPlacement {
               )
               return root ? [{ ...root, path, kind: 'directory' }] : []
             }
-            return (await value.call(target, placement.toLocal(parent), ...args)).map(
-              (item: { path: string }) => ({
+            const children = await value.call(target, placement.toLocal(parent), ...args)
+            const result = [],
+              budget = new SyncTaskBudget()
+            for (const item of children) {
+              await budget.account(0)
+              result.push({
                 ...item,
                 path: placement.toServer(item.path, String(key) + '.result', true),
               })
-            )
+            }
+            return result
           }
         const policy =
           key === DIRECTORY_IDENTITY ||

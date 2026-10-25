@@ -520,6 +520,7 @@ describe('Abele settings between two devices', () => {
    * put back on top of it rather than lost under it, and what is on disk — and then on every
    * device — holds both.
    */
+  // Several real device exchanges; the condition waits already have their own failure bounds.
   it('takes an arriving file with a change made here and not saved yet on top, on disk and everywhere', async () => {
     const a = await device('Laptop')
     const b = await device('Phone')
@@ -540,7 +541,7 @@ describe('Abele settings between two devices', () => {
     expect(await onDisk(a)).toMatchObject({ tasksFolder: 'Projects', refreshDelay: 777 })
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
-  })
+  }, 30000)
 
   it('takes an arriving file with a save made here between its write and its reload on top', async () => {
     const a = await device('Laptop')

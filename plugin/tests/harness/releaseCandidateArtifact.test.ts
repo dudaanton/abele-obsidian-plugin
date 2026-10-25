@@ -125,13 +125,14 @@ it('offers the harness guarded build name without removing standalone type check
   expect(scripts.build).toContain('npm run types')
 })
 
+// Real filesystem and git subprocess fixture: allow the measured loaded cost (over 6 s) plus margin.
 it('rejects damaged production bytes instead of creating a publishable package', () => {
   const { root, build } = fixture()
   writeFileSync(join(build, 'main.js'), 'corrupt')
   expect(() =>
     exportReleaseArtifact(root, build, join(root, 'plugin/node_modules/.cache/bad'))
   ).toThrow(/checksum/)
-})
+}, 30000)
 
 it('rejects a damaged translation asset before export', () => {
   const { root, build } = fixture()

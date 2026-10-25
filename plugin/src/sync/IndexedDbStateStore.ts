@@ -13,6 +13,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
 import { SyncTaskBudget } from './syncTaskBudget'
+import { STATE_PROJECTION_PASS } from './stateProjectionPass'
 import {
   initializeDatabaseIdentity,
   StateRecoveryRequired,
@@ -125,6 +126,25 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
    * (or failed). A new top-level transaction chains itself onto it before opening its overlay.
    */
   private committed: Promise<void> = Promise.resolve()
+
+  /** Status writes follow engine overlays, but are not file-effect overlays themselves.
+   * External phases may proceed: they CAS their own document and never consume this projection.
+   */
+  async [STATE_PROJECTION_PASS]<T>(work: () => Promise<T>): Promise<T> {
+    this.assertRecovery()
+    const previous = this.committed
+    let finish!: () => void
+    this.committed = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    try {
+      await previous
+      this.assertRecovery()
+      return await work()
+    } finally {
+      finish()
+    }
+  }
   /** Told when another window made this connection close: see `onClosedElsewhere`. */
   private closedElsewhere: (() => void) | null = null
 
@@ -384,16 +404,15 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   /** Durable plugin metadata inventory for conservative lifecycle retirement, never engine rows. */
   async pluginMeta(): Promise<Map<string, string>> {
     this.assertRecovery()
-    const rows = await this.read('cannot inventory plugin metadata', [META], async (tx) =>
-      wait<MetaRow[]>(tx.objectStore(META).getAll())
+    return this.readMetadata(
+      '',
+      false,
+      () => new Map<string, string>(),
+      (result, key, value) => {
+        if (typeof value !== 'string') throw new EngineError('io', 'Invalid plugin metadata')
+        result.set(key, value)
+      }
     )
-    const result = new Map<string, string>()
-    for (const row of rows) {
-      if (!row.key.startsWith('plugin:')) continue
-      if (typeof row.value !== 'string') throw new EngineError('io', 'Invalid plugin metadata')
-      result.set(row.key.slice(7), row.value)
-    }
-    return result
   }
 
   /**
@@ -402,12 +421,91 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
    */
   async metadataKeys(prefix: string): Promise<string[]> {
     this.assertRecovery()
-    const stored = await this.read('cannot list plugin metadata', [META], async (tx) =>
-      wait<IDBValidKey[]>(tx.objectStore(META).getAllKeys())
+    return this.readMetadata(
+      prefix,
+      true,
+      () => [] as string[],
+      (keys, key) => keys.push(key)
     )
-    const keys = new Set(stored.filter((key): key is string => typeof key === 'string'))
+  }
+
+  /** Each bounded page is its own host task; never materialize the entire store in onsuccess.
+   * Keep one readonly snapshot, including when lifecycle retirement races another writer.
+   * Seek directly to the plugin prefix without reading unrelated payloads.
+   */
+  private async readMetadata<T>(
+    prefix: string,
+    keysOnly: boolean,
+    create: () => T,
+    visit: (result: T, key: string, value: unknown) => void
+  ): Promise<T> {
     const scoped = own(prefix)
-    return [...keys].filter((key) => key.startsWith(scoped)).map((key) => key.slice(7))
+    return this.read(
+      'cannot inventory plugin metadata',
+      [META],
+      async (tx) =>
+        new Promise<T>((resolve, reject) => {
+          // A recovered connection restarts with a fresh accumulator, never a partial inventory.
+          const result = create()
+          const store = tx.objectStore(META)
+          if (typeof IDBKeyRange !== 'undefined') {
+            let lower = scoped,
+              exclusive = false
+            const page = () => {
+              const range = IDBKeyRange.lowerBound(lower, exclusive)
+              const request = keysOnly ? store.getAllKeys(range, 256) : store.getAll(range, 256)
+              request.onerror = () => reject(request.error)
+              request.onsuccess = () => {
+                try {
+                  const rows = request.result as (IDBValidKey | MetaRow)[]
+                  let last: string | undefined
+                  for (const row of rows) {
+                    const key = keysOnly ? row : (row as MetaRow).key
+                    if (typeof key !== 'string' || !key.startsWith(scoped)) return resolve(result)
+                    visit(result, key.slice(7), keysOnly ? undefined : (row as MetaRow).value)
+                    last = key
+                  }
+                  if (rows.length < 256 || last === undefined) return resolve(result)
+                  lower = last
+                  exclusive = true
+                  page()
+                } catch (error) {
+                  reject(asEngineError('cannot inventory plugin metadata', error))
+                }
+              }
+            }
+            page()
+            return
+          }
+          // Non-browser consumers can supply only an IDBFactory. Keep cursor semantics there.
+          const request = keysOnly ? store.openKeyCursor() : store.openCursor()
+          request.onerror = () => reject(request.error)
+          request.onsuccess = () => {
+            try {
+              const cursor = request.result
+              if (!cursor) return resolve(result)
+              const key = cursor.key
+              if (typeof key !== 'string') {
+                cursor.continue()
+                return
+              }
+              if (key < scoped) {
+                cursor.continue(scoped)
+                return
+              }
+              if (!key.startsWith(scoped)) return resolve(result)
+              visit(
+                result,
+                key.slice(7),
+                keysOnly ? undefined : (cursor as IDBCursorWithValue).value.value
+              )
+              cursor.continue()
+            } catch (error) {
+              reject(asEngineError('cannot inventory plugin metadata', error))
+            }
+          }
+        })
+    )
   }
 
   async setMeta(key: string, value: string | null): Promise<void> {

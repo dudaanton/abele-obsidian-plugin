@@ -1,6 +1,7 @@
-import type { StateStore } from '@abele/sync-sdk/core'
+import { EngineError, type StateStore } from '@abele/sync-sdk/core'
 import type { NotSyncedItem, NotSyncedKind } from './notSynced'
-import { SyncTaskBudget } from './syncTaskBudget'
+import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
+import { STATE_PROJECTION_PASS, type StateProjectionPass } from './stateProjectionPass'
 
 const SUMMARY = 'not-synced-v1'
 const PREFIXES = ['file-retry:', 'pull-held:', 'pull-refused:', 'not-synced-outgoing:']
@@ -68,7 +69,12 @@ export class NotSyncedState {
   }
   async resolved(path: string): Promise<void> {
     await this.writes
-    if (this.loaded < 0) await this.snapshot()
+    // Applied callbacks can run inside an engine overlay. Resolve just this path there;
+    // a cold projection would persist a summary and conflict with (or wait on) that overlay.
+    if (this.loaded < 0 && !this.outgoing.has(path)) {
+      if (!(await this.state.getMeta?.('not-synced-outgoing:' + encodeURIComponent(path)))) return
+      this.outgoing.add(path)
+    }
     if (!this.outgoing.has(path)) return
     await this.state.setMeta?.('not-synced-outgoing:' + encodeURIComponent(path), null)
     this.outgoing.delete(path)
@@ -101,7 +107,25 @@ export class NotSyncedState {
     return this.running
   }
   private async read(): Promise<NotSyncedItem[]> {
-    const saved = await this.state.getMeta?.(SUMMARY)
+    // The projection also retires resolved evidence and persists dates. Serialize those
+    // writes with engine overlays rather than invalidating their revision from a UI read.
+    for (;;) {
+      try {
+        const pass = Reflect.get(this.state, STATE_PROJECTION_PASS) as
+          | StateProjectionPass
+          | undefined
+        if (pass) return await pass.bind(this.state)(() => this.readState(this.state))
+        return await this.state.transaction((state) => this.readState(state))
+      } catch (error) {
+        // Independent metadata writers can invalidate this derived projection. Retry its
+        // rolled-back overlay, never a file operation or an externally visible effect.
+        if (!(error instanceof EngineError) || error.code !== 'conflict') throw error
+        await yieldSyncTask()
+      }
+    }
+  }
+  private async readState(state: StateStore): Promise<NotSyncedItem[]> {
+    const saved = await state.getMeta?.(SUMMARY)
     const previous: NotSyncedItem[] = saved ? JSON.parse(saved) : []
     if (!Array.isArray(previous)) throw new Error('Invalid not-synced summary')
     const dates = new Map(previous.map((row) => [row.path, row.since]))
@@ -124,20 +148,20 @@ export class NotSyncedState {
       if (!rows.has(path) || reason !== 'Held for safety') rows.set(path, next)
     }
     for (const prefix of PREFIXES) {
-      for (const key of (await this.state.metadataKeys?.(prefix)) ?? []) {
-        const raw = await this.state.getMeta?.(key)
+      for (const key of (await state.metadataKeys?.(prefix)) ?? []) {
+        const raw = await state.getMeta?.(key)
         if (!raw) continue
         const row = object(JSON.parse(raw))
         if (prefix === 'not-synced-outgoing:' && row.expected) {
           const expected = object(row.expected)
-          const entry = await this.state.get(text(row.path))
+          const entry = await state.get(text(row.path))
           if (
             entry &&
             entry.sha === expected.sha &&
             entry.size === expected.size &&
             entry.mtime === expected.mtime
           ) {
-            await this.state.setMeta?.(key, null)
+            await state.setMeta?.(key, null)
             await budget.account(8192)
             continue
           }
@@ -154,7 +178,7 @@ export class NotSyncedState {
                 ? path
                 : undefined
           if (row.phase === 'recovery' && owner && path === owner) {
-            const raw = await this.state.getMeta?.(owner)
+            const raw = await state.getMeta?.(owner)
             if (!raw) {
               await budget.account(8192)
               continue
@@ -189,7 +213,7 @@ export class NotSyncedState {
         await budget.account(8192)
       }
     }
-    const directoryRaw = await this.state.getMeta?.('v2-directories')
+    const directoryRaw = await state.getMeta?.('v2-directories')
     if (directoryRaw) {
       const refused = object(JSON.parse(directoryRaw)).refused ?? []
       if (!Array.isArray(refused)) throw new Error('Invalid directory refusals')
@@ -204,7 +228,7 @@ export class NotSyncedState {
       }
     }
     for (const key of ['held-deletes', 'token-asset-outbox']) {
-      const raw = await this.state.getMeta?.(key)
+      const raw = await state.getMeta?.(key)
       if (!raw) continue
       const values: unknown = JSON.parse(raw)
       if (!Array.isArray(values)) throw new Error('Invalid held file metadata')
@@ -223,7 +247,7 @@ export class NotSyncedState {
         await budget.account(8192)
       }
     }
-    const collisions = await this.state.getMeta?.('not-synced-collisions')
+    const collisions = await state.getMeta?.('not-synced-collisions')
     if (collisions) {
       const values: unknown = JSON.parse(collisions)
       if (!Array.isArray(values)) throw new Error('Invalid path collision metadata')
@@ -246,7 +270,7 @@ export class NotSyncedState {
     }
     result.sort((a, b) => a.path.localeCompare(b.path))
     const serialized = JSON.stringify(result)
-    if (serialized !== saved) await this.state.setMeta?.(SUMMARY, serialized)
+    if (serialized !== saved) await state.setMeta?.(SUMMARY, serialized)
     this.outgoing = outgoing
     return result
   }

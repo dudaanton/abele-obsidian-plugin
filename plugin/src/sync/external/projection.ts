@@ -184,13 +184,40 @@ function utf8Bytes(text: string): number {
  */
 const physicalPathsPassed = new Set<string>()
 const PHYSICAL_PATH_MEMO = 8192
+const physicalDirectoriesPassed = new Map<string, { bytes: number; normalizedBytes: number }>()
 
 /** Protocol spelling and physical UTF-8 limits are separate checks. */
 export function assertPhysicalPath(path: string): void {
   if (physicalPathsPassed.has(path)) return
-  validatePath(path.normalize('NFC'))
-  if (utf8Bytes(path) > 1024 || path.split('/').some((segment) => utf8Bytes(segment) > 255))
-    throw new Error('Projection physical path too long')
+  const slash = path.lastIndexOf('/'),
+    parent = path.slice(0, slash)
+  const directory = slash > 0 ? physicalDirectoriesPassed.get(parent) : undefined
+  if (directory) {
+    const leaf = path.slice(slash + 1),
+      normalized = leaf.normalize('NFC')
+    try {
+      // A non-root segment never inherits the two allowed root dot names.
+      validatePath('x/' + normalized)
+    } catch {
+      validatePath(path.normalize('NFC'))
+    }
+    if (directory.normalizedBytes + 1 + utf8Bytes(normalized) > 1024)
+      validatePath(path.normalize('NFC'))
+    if (directory.bytes + 1 + utf8Bytes(leaf) > 1024 || utf8Bytes(leaf) > 255)
+      throw new Error('Projection physical path too long')
+  } else {
+    validatePath(path.normalize('NFC'))
+    if (utf8Bytes(path) > 1024 || path.split('/').some((segment) => utf8Bytes(segment) > 255))
+      throw new Error('Projection physical path too long')
+    if (slash > 0) {
+      if (physicalDirectoriesPassed.size >= 2048)
+        physicalDirectoriesPassed.delete(physicalDirectoriesPassed.keys().next().value)
+      physicalDirectoriesPassed.set(parent, {
+        bytes: utf8Bytes(parent),
+        normalizedBytes: utf8Bytes(parent.normalize('NFC')),
+      })
+    }
+  }
   if (physicalPathsPassed.size >= PHYSICAL_PATH_MEMO) physicalPathsPassed.clear()
   physicalPathsPassed.add(path)
 }

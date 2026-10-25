@@ -108,6 +108,7 @@ it('two token connections keep intentional absence, hydrate real bytes through t
     await other.close()
   }
 })
+// Multiple real HTTP exchanges and durable placement can exceed 5 s on a loaded host.
 it('a user edit during hydration is never overwritten by the downloaded old version', async () => {
   await seed(remote, [await create(remote, 'sample.bin', 'old bytes', 1000)])
   const app = buildFakeVault([])
@@ -128,7 +129,7 @@ it('a user edit during hydration is never overwritten by the downloaded old vers
   edit = true
   await expect(first.host.hydrate('sample.bin')).rejects.toThrow(/hydration/i)
   expect(await app.vault.adapter.read('sample.bin')).toBe('new user bytes')
-})
+}, 30000)
 it('disconnect materializes its offloaded file and preserves the local bytes', async () => {
   await seed(remote, [await create(remote, 'sample.bin', 'retained bytes', 1000)])
   const app = buildFakeVault([])

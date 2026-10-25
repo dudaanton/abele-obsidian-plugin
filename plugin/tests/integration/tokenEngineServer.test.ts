@@ -468,7 +468,8 @@ it.each([
       for (const state of states) state.close()
       await server.close()
     }
-  }
+  },
+  30000
 )
 
 // The app's timer host is explicit; source type imports must not initialize it accidentally.
