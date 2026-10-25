@@ -4,6 +4,19 @@ import { NODE_ACTION_TOOLS } from './types'
 import { NODE_AGENT_TOOL_NAMES, NODE_MANAGER_TOOLS } from './tools/node/agent'
 import { NODE_MUTATION_TOOLS } from './tools/node/guidance'
 
+export const NODE_REPOSITORY_READ_TOOLS = [
+  'node_views',
+  'node_tree',
+  'node_file',
+  'node_changes',
+  'node_commits',
+  'node_commit',
+  'node_compare',
+  'node_grep',
+  'node_blame',
+  'node_open',
+]
+
 /** The folder level is the only node tool grant; the ordinary chat mode controls prompts. */
 export function nodeToolAccess(
   name: string,
@@ -24,18 +37,7 @@ export function nodeToolAccess(
     !run &&
     !edit &&
     !NODE_AGENT_TOOL_NAMES.includes(name) &&
-    ![
-      'node_views',
-      'node_tree',
-      'node_file',
-      'node_changes',
-      'node_commits',
-      'node_commit',
-      'node_compare',
-      'node_grep',
-      'node_blame',
-      'node_open',
-    ].includes(name) &&
+    !NODE_REPOSITORY_READ_TOOLS.includes(name) &&
     !name.startsWith('http_') &&
     !name.startsWith('trace_')
   )

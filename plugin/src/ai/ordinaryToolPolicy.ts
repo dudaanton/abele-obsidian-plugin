@@ -1,3 +1,4 @@
+import { NODE_REPOSITORY_READ_TOOLS } from './nodeAccess'
 import { NODE_AGENT_TOOL_NAMES, NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS } from './tools/node/agent'
 import { needsSecretApproval } from './tools/secretUtils'
 import { REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
@@ -80,7 +81,8 @@ export function ordinaryNeedsApproval(
   const mode = policy.permissionMode
   if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'
   if (NODE_FILE_OPERATIONS.includes(toolName)) return mode !== 'allow-all'
-  if (NODE_AGENT_TOOL_NAMES.includes(toolName)) return false
+  if (NODE_AGENT_TOOL_NAMES.includes(toolName) || NODE_REPOSITORY_READ_TOOLS.includes(toolName))
+    return false
 
   // This tool only records a proposal. Accepting it is a separate owner action, never a
   // permission mode, tool call or automatic approval.
