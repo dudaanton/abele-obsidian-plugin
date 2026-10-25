@@ -15,7 +15,13 @@ import type { NodeClientState } from '@/node/NodeClientStore'
 import { SESSION_WINDOW, catchUp, openWindow, readOlder, trimWindows } from '@/node/sessionWindow'
 
 const SID = 'sample-giant-session'
-const journal = giantJournal({ turns: 300, node: 'sample-node', stream: SID }) as JournalEvent[]
+// Windowing depends on event counts; large tool output bodies only slow store cloning.
+const journal = giantJournal({
+  turns: 300,
+  outputBytes: 64,
+  node: 'sample-node',
+  stream: SID,
+}) as JournalEvent[]
 const HEAD = journal.length
 
 /** A connected client whose node holds `journal`; the store and the node's answers are real
@@ -237,7 +243,11 @@ describe('a giant session in its chat', () => {
     })
     const p = presenter(f)
     try {
-      for (const event of journal.filter((e) => e.type === 'turn.completed')) {
+      // 150 turns advance past 1,650 events, clearly exceeding the 1,200-event bound.
+      // Rebuilding the transcript for all 300 turns adds cost without testing another limit.
+      const completed = journal.filter((e) => e.type === 'turn.completed').slice(0, 150)
+      expect(completed.at(-1)!.seq).toBeGreaterThan(SESSION_WINDOW * 4)
+      for (const event of completed) {
         await f.store.transaction((s) => {
           s.events[SID] = journal.slice(Math.max(0, event.seq - SESSION_WINDOW), event.seq)
           s.cursors[SID] = event.seq
@@ -246,10 +256,11 @@ describe('a giant session in its chat', () => {
       }
       const retained = (p as unknown as { visibleEvents: Map<number, JournalEvent> }).visibleEvents
       expect(retained.size).toBeLessThanOrEqual(SESSION_WINDOW * 3 + 20)
-      expect(p.messages.value.at(-1)?.content).toContain('Answer 300.')
+      expect(p.messages.value.at(-1)?.content).toContain('Answer 150.')
       expect(p.hasOlder.value).toBe(true)
       const first = Math.min(...retained.keys())
       await p.loadOlder()
+      expect(Math.min(...retained.keys())).toBeLessThan(first)
       expect(f.requests).toContainEqual({
         method: 'stream.read',
         params: {
