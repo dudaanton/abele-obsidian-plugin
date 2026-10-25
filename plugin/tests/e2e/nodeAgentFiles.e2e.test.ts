@@ -1,3 +1,4 @@
+import { nodeAgentTurn as chatTurn, type NodeAgentTurn as Turn } from './helpers/nodeAgentTurn'
 import { expect, it } from 'vitest'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs'
@@ -41,42 +42,6 @@ const NODE_TOOLS = [
   'node_open',
   'node_propose_edit',
 ]
-
-interface Turn {
-  tools: string[]
-  calls: { name: string; params: Record<string, unknown>; result: string }[]
-  error?: string
-}
-
-/**
- * An ordinary Obsidian chat whose agent has every node tool switched on, driven by a scripted
- * model. Each step names the next call from what the earlier results said, the way a model
- * would: it only knows what the tools tell it.
- */
-const chatTurn = (path: string, steps: string) => `(async()=>{
-  const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(path)});
-  const realFetch=window.fetch,endpoint='https://sample-node-files-model.invalid/v1',out={tools:[],calls:[]};
-  const steps=${steps};let n=0;
-  session.resolveModel=()=>({id:'sample',name:'Sample',baseUrl:endpoint,apiKey:'none',contextWindow:100000,maxTokens:1000,supportsReasoning:false});
-  for(const key of ['generateTitle','generateSummary','generateRecap','autoCompactIfNeeded'])session.summarizer[key]=async()=>{};
-  window.fetch=async(url,init)=>{
-    if(typeof url!=='string'||!url.startsWith(endpoint))return realFetch(url,init);
-    const body=JSON.parse(init.body);
-    out.tools=(body.tools||[]).map(t=>t.function.name);
-    const results=body.messages.filter(m=>m.role==='tool').map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content));
-    const step=n<steps.length?steps[n](results):null;n++;
-    const delta=step?{tool_calls:[{index:0,id:'sample-call-'+n,type:'function',function:{name:step.name,arguments:JSON.stringify(step.params)}}]}:{content:'Done.'};
-    const enc=new TextEncoder();
-    return new Response(new ReadableStream({start(c){for(const chunk of [{choices:[{delta}]},{choices:[{delta:{},finish_reason:step?'tool_calls':'stop'}]}])c.enqueue(enc.encode('data: '+JSON.stringify(chunk)+'\\n\\n'));c.enqueue(enc.encode('data: [DONE]\\n\\n'));c.close()}}),{status:200,headers:{'Content-Type':'text/event-stream'}});
-  };
-  try{
-    const before=session.allMessages.value.length;
-    await session.sendMessage('Work with the sample project files on the node.');
-    if(session.error.value)out.error=String(session.error.value);
-    for(const m of session.allMessages.value.slice(before))if(m.role==='tool-call'&&m.toolResult!==undefined)out.calls.push({name:m.toolName,params:m.toolParams||{},result:String(m.toolResult??m.content??'')});
-  }finally{window.fetch=realFetch}
-  return JSON.stringify(out)
-})()`
 
 it('lets an ordinary chat find, read and edit project files on a node once the chat has node access', async () => {
   const cli = process.env.ABELE_NODE_CLI
