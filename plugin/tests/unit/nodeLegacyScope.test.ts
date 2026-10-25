@@ -109,7 +109,7 @@ describe('configured node scope is a ceiling for every legacy node tool', () => 
       expect(source.compare).not.toHaveBeenCalled()
     })
   }
-  it('retains legacy behavior only when both the exact scope and legacy source are approved', async () => {
+  it('retains legacy repository behavior within the exact configured scope', async () => {
     const { session, legacy, ledger, call } = setup()
     session.overrides.value.nodeScope = [
       { kind: 'project', node_id: 'sample-node', project_id: 'other-project', access: 'read' },
@@ -178,4 +178,27 @@ describe('the node tools a person switches on in the agent settings', () => {
       /Give a chat access/
     )
   })
+})
+
+it('uses configured scope for an open repository without a second local grant', async () => {
+  const { session, legacy, call, source, approve } = setup()
+  session.overrides.value.nodeScope = [
+    { kind: 'project', node_id: 'sample-node', project_id: 'other-project', access: 'read' },
+  ]
+  legacy.revoke(session, 'sample-registration', 'other-project')
+  await call('node_changes', { path: '' })
+  expect(source.status).toHaveBeenCalledOnce()
+  expect(approve).not.toHaveBeenCalled()
+})
+
+it('fences a scoped repository read if its attached source changes', async () => {
+  const { session, call, source, tab } = setup()
+  session.overrides.value.nodeScope = [
+    { kind: 'project', node_id: 'sample-node', project_id: 'other-project', access: 'read' },
+  ]
+  vi.mocked(source.compare).mockImplementation(async () => {
+    tab.source = { ...source, cacheNamespace: 'replacement-source' }
+    return 'Private sample bytes' as never
+  })
+  await expect(call('node_compare')).rejects.toThrow(/source|authority/)
 })

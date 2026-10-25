@@ -1305,7 +1305,9 @@ or direct process execution is available through this protocol yet; do not claim
 
 Switching selection grants nothing and does not move a node-agent session. The switch is
 recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tree`, `node_commits`,
-`node_blame` and `node_grep` aliases use chat node scope when configured. The existing
+`node_blame` and `node_grep` aliases use chat node scope when configured. Open repository
+aliases use that same scope without a second device-local read grant; source identity and
+connection changes still fence pending reads. The existing
 `node_propose_edit` keeps its separate approval and draft-only meaning.
 
 Large reads return a chat/tool-bound `cursor` (same tool, cursor alone), expire after ten minutes,

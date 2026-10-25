@@ -13,11 +13,29 @@ export function nodeToolAccess(
     NODE_ACTION_TOOLS.includes(name) || NODE_MANAGER_TOOLS.includes(name) || name === 'http_send'
   const edit =
     NODE_MUTATION_TOOLS.includes(name) ||
-    ['http_request_save', 'http_import', 'trace_point_add', 'trace_note'].includes(name)
+    [
+      'node_propose_edit',
+      'http_request_save',
+      'http_import',
+      'trace_point_add',
+      'trace_note',
+    ].includes(name)
   if (
     !run &&
     !edit &&
     !NODE_AGENT_TOOL_NAMES.includes(name) &&
+    ![
+      'node_views',
+      'node_tree',
+      'node_file',
+      'node_changes',
+      'node_commits',
+      'node_commit',
+      'node_compare',
+      'node_grep',
+      'node_blame',
+      'node_open',
+    ].includes(name) &&
     !name.startsWith('http_') &&
     !name.startsWith('trace_')
   )

@@ -45,3 +45,10 @@ it('preserves legacy execution over inherited edit folders without changing the 
   expect(inherited[1].access).toBe('edit')
   expect(migrateNodeAccess([], {}, inherited)).toEqual([])
 })
+
+it('derives repository aliases from access rather than old tool switches', () => {
+  expect(nodeToolAccess('node_views', scope('read'))).toBe(true)
+  expect(nodeToolAccess('node_compare', scope('read'))).toBe(true)
+  expect(nodeToolAccess('node_propose_edit', scope('read'))).toBe(false)
+  expect(nodeToolAccess('node_propose_edit', scope('edit'))).toBe(true)
+})

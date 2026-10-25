@@ -374,7 +374,10 @@ export function createNodeTools(
               if (scopeState(session) !== originalScope)
                 throw new Error('Chat node scope changed during the repository read')
             }
-          const identity = sourceTab.source.identity
+          const source = sourceTab.source,
+            namespace = source.cacheNamespace,
+            identity = source.identity,
+            identityKey = JSON.stringify(identity)
           if (identity.provider !== 'node') throw new Error('Expected a node source')
           const remote = await factory(),
             connection = remote.connection(identity.node, session)
@@ -393,6 +396,9 @@ export function createNodeTools(
           const check = () => {
             if (
               scopeState(session) !== originalScope ||
+              !host.tabs.has(sourceTab) ||
+              sourceTab.source.cacheNamespace !== namespace ||
+              JSON.stringify(sourceTab.source.identity) !== identityKey ||
               !connection.client.connected ||
               connection.principal() !== principal ||
               connection.authorizationGeneration !== generation
@@ -408,15 +414,15 @@ export function createNodeTools(
         if (kind === 'views') {
           const entries: unknown[] = []
           for (const t of host.tabs) {
-            if (!host.authorized(session, t)) continue
+            if (!hasNodeScope(session) && !host.authorized(session, t)) continue
             let scoped: () => void
             try {
               scoped = await scopedSourceGuard(t)
             } catch {
               continue
             }
-            const check = host.guard(session, t)
-            checks.push(scoped, check)
+            checks.push(scoped)
+            if (!hasNodeScope(session)) checks.push(host.guard(session, t))
             const target = t.target?.()
             guard()
             entries.push({ source: t.source.identity, target, selection: t.selection() })
@@ -457,12 +463,13 @@ export function createNodeTools(
           guard()
           if (
             kind !== 'propose_edit' &&
+            !hasNodeScope(session) &&
             !host.authorized(session, tab) &&
             approve &&
             ctx.interactive
           )
             await host.request(session, tab, approve, signal)
-          checks.push(host.guard(session, tab))
+          if (!hasNodeScope(session)) checks.push(host.guard(session, tab))
           guard()
           const s = new Proxy(tab.source, {
               get(target, key) {
