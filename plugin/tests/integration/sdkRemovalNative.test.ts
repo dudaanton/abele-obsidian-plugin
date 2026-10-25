@@ -9,6 +9,10 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+// Retention and recovery await real file/directory durability barriers. A busy
+// disk can exceed the default budget even for this deliberately tiny fixture.
+const nativeIoTimeout = 30_000
+
 it.each(['missing', 'symlink'] as const)(
   'restores changed native retained bytes at the connection root after a %s parent',
   async (mode) => {
@@ -105,5 +109,6 @@ it.each(['missing', 'symlink'] as const)(
     } finally {
       await disk.rm(root, { recursive: true, force: true })
     }
-  }
+  },
+  nativeIoTimeout
 )

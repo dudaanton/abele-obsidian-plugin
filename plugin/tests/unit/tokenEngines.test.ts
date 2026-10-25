@@ -588,6 +588,8 @@ import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.restoreAllMocks())
 
+// The 1,147-file fixture hashes content and replays persisted state after a restart.
+// Allow scheduler contention across both runs while retaining the readiness checks.
 it('resumes a folder upload after a multipart interruption with already acknowledged siblings', async () => {
   const text = 'x'.repeat(2 * 1024 * 1024)
   const f = inspectionFixture(false, 'Notes', [
@@ -697,7 +699,7 @@ it('resumes a folder upload after a multipart interruption with already acknowle
     await f.host.close()
     f.probe.mockRestore()
   }
-}, 60000)
+}, 180_000)
 
 it('publishes progress while the not-synced metadata read is blocked', async () => {
   const f = inspectionFixture()

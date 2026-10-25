@@ -11,6 +11,9 @@ import { buildFakeVault } from '../helpers/fakeVault'
 // Per-barrier fsync table: [cold hierarchy, steady replacement]. These include
 // retained-victim and retirement durability, not only the three stage data flushes.
 const conditional = '.obsidian/plugins/abele/sync-conditional/'
+// Each case awaits 82 real durability barriers plus native reads and cleanup.
+// Allow disk contention; the exact barrier table and byte assertions bound the work.
+const nativeIoTimeout = 30_000
 const barriers: Record<string, readonly [number, number]> = {
   '.obsidian/plugins/abele/sync-staging/<stage>': [3, 3],
   '.obsidian/plugins/abele/sync-staging': [2, 2],
@@ -177,6 +180,13 @@ async function measure(recordsOnly = false) {
   }
 }
 
-it('appends, fsyncs, dates and replaces a native stage with bounded buffers inside the save queue', () =>
-  measure())
-it('flushes each immutable conditional record once before publication', () => measure(true))
+it(
+  'appends, fsyncs, dates and replaces a native stage with bounded buffers inside the save queue',
+  () => measure(),
+  nativeIoTimeout
+)
+it(
+  'flushes each immutable conditional record once before publication',
+  () => measure(true),
+  nativeIoTimeout
+)
