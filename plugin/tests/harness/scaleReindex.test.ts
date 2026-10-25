@@ -1,7 +1,70 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
 import { budgets } from '../scale/oracles.mjs'
-import { declaredInterruptions, reindexEvidence } from '../scale/reindex.mjs'
+import {
+  declaredInterruptions,
+  reindexEvidence,
+  completedBlobShas,
+  previouslyHashedShas,
+  payloadUploadEvents,
+} from '../scale/reindex.mjs'
+
+it('checks direct small-file PUTs as well as multipart payloads for redundant upload', () => {
+  const root = '/v2/uploads/' + 'a'.repeat(64)
+  const rows = [
+    { event: 'start', method: 'PUT', route: root, sent: 12 },
+    { event: 'start', method: 'PUT', route: root + '/sample/0', sent: 12 },
+    { event: 'start', method: 'POST', route: root + '/begin', sent: 12 },
+    { event: 'start', method: 'PUT', route: root, sent: 0 },
+  ]
+  expect(payloadUploadEvents(rows)).toEqual(rows.slice(0, 2))
+})
+
+it('knows completed blobs before manifest publication but not partial or failed uploads', () => {
+  const rows: Array<Record<string, unknown>> = [],
+    expected = ['a', 'b', 'c'].map((v) => v.repeat(64))
+  const add = (
+    id: number,
+    method: string,
+    sha: string,
+    suffix: string,
+    status: number | undefined,
+    finishedAt = 90
+  ) => {
+    rows.push({
+      event: 'start',
+      device: '0',
+      id,
+      at: 80,
+      method,
+      route: '/v2/uploads/' + sha.repeat(64) + suffix,
+    })
+    rows.push({ event: 'finish', device: '0', id, at: finishedAt, status })
+  }
+  add(1, 'HEAD', 'a', '', 200)
+  add(2, 'PUT', 'b', '', 201)
+  add(3, 'POST', 'c', '/sample/complete', 200)
+  add(4, 'PUT', 'd', '/sample/0', 204)
+  add(5, 'PUT', 'e', '', 500)
+  add(6, 'PUT', 'f', '', 201, 110)
+  add(7, 'HEAD', '1', '', undefined)
+  expect([...completedBlobShas(rows, 100)].sort()).toEqual(expected)
+})
+
+it('retains known fingerprint hashes across renderer restarts for the reindex oracle', () => {
+  const rows = [
+    { event: 'renderer-hash', device: '0', at: 20, source: 'abele', sha: 'sample-first' },
+    { event: 'renderer-start', device: '0', at: 50 },
+    { event: 'renderer-hash', device: '0', at: 80, source: 'abele', sha: 'sample-after-restart' },
+    { event: 'renderer-hash', device: '0', at: 85, source: 'host', sha: 'sample-host' },
+    { event: 'renderer-hash', device: '1', at: 90, source: 'abele', sha: 'sample-peer' },
+    { event: 'renderer-hash', device: '0', at: 110, source: 'abele', sha: 'sample-later' },
+  ]
+  expect([...previouslyHashedShas(rows, '0', 100)]).toEqual([
+    'sample-first',
+    'sample-after-restart',
+  ])
+})
 
 it('requires every declared occurrence, rather than a count of distinct kinds', () => {
   const declared = declaredInterruptions(true)

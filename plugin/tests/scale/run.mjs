@@ -19,6 +19,9 @@ import {
   javascriptHashEvidence,
   hashTracepoints,
   digestCoverage,
+  completedBlobShas,
+  previouslyHashedShas,
+  payloadUploadEvents,
 } from './reindex.mjs'
 import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
@@ -578,11 +581,10 @@ export async function run(config) {
       report.interruptions.push({ kind, triggered: true, at: Date.now() })
       checkpoint(true)
     }
-    const reindex = async (id, device, proxy) => {
+    const reindex = async (id, device, proxy, nextBreakpoint = null) => {
       const declared = report.declaredInterruptions.find((one) => one.id === id)
       if (!declared) return
-      if (id === 'reindex-primary-upload')
-        await triggered(proxy, 'reindex-upload', () => device.sync())
+      if (id === 'reindex-primary-upload') await triggered(proxy, 'reindex-upload', async () => {})
       else await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
       const allowed = new Set(expected.map((file) => file.path))
       for (const file of expected) {
@@ -621,7 +623,7 @@ export async function run(config) {
         triggered: activeRequestIds(proxy.events, clicked.at - 1).size > 0,
         activeClockResolutionMs: 1,
       }
-      proxy.release()
+      proxy.release(nextBreakpoint)
       report.interruptions.push(operation)
       const saved = { operation, before, serverBefore }
       rebuilds.push(saved)
@@ -677,6 +679,8 @@ export async function run(config) {
       config.timeoutMs
     )
     report.resumeUploadMs = upload.at - resumedAt
+    // Hold genuine resumed payload before all blobs have reached the server.
+    await reindex('reindex-primary-upload', a, p, 'batch')
     await wait(
       'commit acknowledgement interruption',
       () => p.events.find((e) => e.event === 'trigger' && e.kind === 'batch'),
@@ -704,7 +708,6 @@ export async function run(config) {
     report.pluginEnable = await a.pluginEnabled(true)
     mark('plugin disable-enable')
     await a.ready()
-    await reindex('reindex-primary-upload', a, p)
     report.firstUploadSettled = await settle(a, 'first upload')
     await endReindex('reindex-primary-upload', a)
     report.syncPolicy = await a.policy()
@@ -929,17 +932,14 @@ export async function run(config) {
             row.at >= saved.operation.at && row.at <= (saved.settledAt ?? end?.at ?? Infinity)
         )
         const knownLocal = new Set(saved.before.map((file) => file.sha))
-        const knownServer = new Set(saved.serverBefore.map((file) => file.sha))
+        const knownServer = new Set([
+          ...saved.serverBefore.map((file) => file.sha),
+          ...completedBlobShas(report.wire, saved.operation.at),
+        ])
         const reads = during.filter(
           (row) => row.event === 'start' && /\/content$/.test(row.route ?? '')
         )
-        const uploads = during.filter(
-          (row) =>
-            row.event === 'start' &&
-            row.method === 'PUT' &&
-            row.sent > 0 &&
-            /^\/v2\/uploads\/[a-f0-9]{64}\/[^/]+\/\d+$/.test(row.route ?? '')
-        )
+        const uploads = payloadUploadEvents(during)
         const unknown = reads.some((row) => !proxy.versions.has(row.version))
         const hashes = entries.filter(
           (row) =>
@@ -955,28 +955,10 @@ export async function run(config) {
             row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
             row.event === 'hash-observer-ready'
         )
-        const rendererStartedAt = Math.max(
-          0,
-          ...entries
-            .filter(
-              (row) =>
-                row.device === saved.operation.device &&
-                row.event === 'renderer-start' &&
-                row.at <= saved.operation.at
-            )
-            .map((row) => row.at)
-        )
-        const previouslyHashed = new Set(
-          entries
-            .filter(
-              (row) =>
-                row.device === saved.operation.device &&
-                row.at >= rendererStartedAt &&
-                row.at < saved.operation.at &&
-                row.event === 'renderer-hash' &&
-                row.source === 'abele'
-            )
-            .map((row) => row.sha)
+        const previouslyHashed = previouslyHashedShas(
+          entries,
+          saved.operation.device,
+          saved.operation.at
         )
         const fileHashes = new Set(
           [...expected, ...saved.before, ...saved.serverBefore].map((file) => file.sha)

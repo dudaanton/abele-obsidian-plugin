@@ -1,5 +1,58 @@
 import { compareInventory } from './oracles.mjs'
 
+export function completedBlobShas(events, beforeAt) {
+  if (!Number.isFinite(beforeAt)) return new Set()
+  const starts = new Map(
+    events.filter((row) => row.event === 'start').map((row) => [`${row.device}:${row.id}`, row])
+  )
+  const known = new Set()
+  for (const row of events) {
+    if (
+      row.event !== 'finish' ||
+      row.at >= beforeAt ||
+      !Number.isInteger(row.status) ||
+      row.status < 200 ||
+      row.status >= 300
+    )
+      continue
+    const start = starts.get(`${row.device}:${row.id}`)
+    if (!start || start.at >= beforeAt) continue
+    const match = /^\/v2\/uploads\/([a-f0-9]{64})(.*)$/.exec(start.route ?? '')
+    if (!match) continue
+    if (
+      (!match[2] && ['HEAD', 'PUT'].includes(start.method)) ||
+      (start.method === 'POST' && /^\/[^/]+\/complete$/.test(match[2]))
+    )
+      known.add(match[1])
+  }
+  return known
+}
+
+export function previouslyHashedShas(entries, device, beforeAt) {
+  return new Set(
+    entries
+      .filter(
+        (row) =>
+          row.device === device &&
+          row.at < beforeAt &&
+          row.event === 'renderer-hash' &&
+          row.source === 'abele' &&
+          row.sha
+      )
+      .map((row) => row.sha)
+  )
+}
+
+export function payloadUploadEvents(events) {
+  return events.filter(
+    (row) =>
+      row.event === 'start' &&
+      row.method === 'PUT' &&
+      row.sent > 0 &&
+      /^\/v2\/uploads\/[a-f0-9]{64}(?:\/|$)/.test(row.route ?? '')
+  )
+}
+
 export function declaredInterruptions(full) {
   const ordinary = [
     'kill mid-large-file',

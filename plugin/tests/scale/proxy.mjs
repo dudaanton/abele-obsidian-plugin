@@ -234,10 +234,10 @@ export class WireProxy extends EventEmitter {
     if (/\/files\/[^/]+\/content$/.test(url.pathname))
       entry.version = url.searchParams.get('version_id') ?? url.searchParams.get('version')
   }
-  release() {
+  release(nextBreakpoint = null) {
     this.held?.()
     this.held = null
-    this.breakpoint = null
+    this.breakpoint = nextBreakpoint
   }
   drop() {
     this.offline = true
