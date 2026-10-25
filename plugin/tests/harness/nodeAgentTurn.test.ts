@@ -3,6 +3,42 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { nodeAgentTurn } from '../e2e/helpers/nodeAgentTurn'
 
+it('keeps the fake provider installed while a vault tool waits for owner approval', async () => {
+  const originalFetch: typeof fetch = async () => new Response('unrelated')
+  const session = {
+    summarizer: {},
+    allMessages: { value: [] as Record<string, unknown>[] },
+    error: { value: '' },
+    pendingToolCalls: { value: ['sample-call'] },
+    isStreaming: { value: false },
+    isExecutingTool: { value: false },
+    sendMessage: async () => {},
+  }
+  const browser = {
+    fetch: originalFetch,
+    __abeleTest: { ChatService: { getInstance: () => ({ getSessionByFile: () => session }) } },
+  }
+  const completed = new Function('window', `return ${nodeAgentTurn('Sample.abchat', '[]')}`)(
+    browser
+  )
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  try {
+    expect(browser.fetch).not.toBe(originalFetch)
+    session.allMessages.value.push({
+      role: 'tool-call',
+      toolName: 'node_write',
+      toolParams: {},
+      toolResult: 'saved',
+    })
+  } finally {
+    session.pendingToolCalls.value = []
+  }
+  expect(JSON.parse(await completed).calls).toEqual([
+    { name: 'node_write', params: {}, result: 'saved' },
+  ])
+  expect(browser.fetch).toBe(originalFetch)
+})
+
 it('emits parseable model SSE and restores fetch after a scripted vault turn', async () => {
   const originalFetch: typeof fetch = async () => new Response('unrelated')
   const streams: string[] = []

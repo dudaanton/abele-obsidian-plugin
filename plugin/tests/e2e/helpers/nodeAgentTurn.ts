@@ -28,6 +28,11 @@ export const nodeAgentTurn = (path: string, steps: string) => `(async()=>{
   try{
     const before=session.allMessages.value.length;
     await session.sendMessage('Work with the sample project files on the node.');
+    const deadline=Date.now()+90000;
+    while(session.pendingToolCalls?.value.length||session.isStreaming?.value||session.isExecutingTool?.value){
+      if(Date.now()>deadline)throw Error('The scripted node turn did not finish after approval');
+      await new Promise(r=>setTimeout(r,25));
+    }
     if(session.error.value)out.error=String(session.error.value);
     for(const m of session.allMessages.value.slice(before))if(m.role==='tool-call'&&m.toolResult!==undefined)out.calls.push({name:m.toolName,params:m.toolParams||{},result:String(m.toolResult??m.content??'')});
   }finally{window.fetch=realFetch}
