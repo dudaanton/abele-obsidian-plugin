@@ -18,11 +18,11 @@ it('reuses upstream connections across bodyless upload presence requests', async
   const endpoint = await proxy.start()
   try {
     for (let i = 0; i < 32; i++) {
-      const response = await fetch(endpoint + '/v2/uploads/' + 'a'.repeat(64), {
+      const response = await globalThis.fetch(endpoint + '/v2/uploads/' + 'a'.repeat(64), {
         method: 'HEAD',
       })
       expect(response.status).toBe(200)
-      const content = await fetch(endpoint + '/sample')
+      const content = await globalThis.fetch(endpoint + '/sample')
       expect(await content.text()).toBe('sample payload')
     }
     expect(connections).toBeLessThanOrEqual(2)
@@ -47,7 +47,7 @@ it('honors a server that explicitly closes its HEAD connection', async () => {
   const endpoint = await proxy.start()
   try {
     for (let i = 0; i < 3; i++)
-      expect((await fetch(endpoint + '/sample', { method: 'HEAD' })).status).toBe(200)
+      expect((await globalThis.fetch(endpoint + '/sample', { method: 'HEAD' })).status).toBe(200)
     expect(connections).toBe(3)
   } finally {
     await proxy.close()
