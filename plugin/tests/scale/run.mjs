@@ -85,6 +85,7 @@ export class RealVault {
     // Only file locations travel in CLI arguments. Never token text or arbitrary product errors.
     let stdout
     const nonce = randomUUID()
+    const startedAt = Date.now()
     const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
     try {
       ;({ stdout } = await exec(
@@ -100,8 +101,17 @@ export class RealVault {
         ],
         { timeout: 14000, maxBuffer: 2 * 1024 ** 2 }
       ))
-    } catch {
-      throw new Error('Vault CLI unavailable')
+    } catch (error) {
+      const failure = new Error('Vault CLI unavailable')
+      failure.scaleCliFailure = {
+        elapsedMs: Date.now() - startedAt,
+        code: error.code,
+        signal: error.signal,
+        killed: error.killed === true,
+        stdoutBytes: Buffer.byteLength(error.stdout ?? ''),
+        stderrBytes: Buffer.byteLength(error.stderr ?? ''),
+      }
+      throw failure
     }
     const line = stdout.slice(stdout.lastIndexOf('=> ') + 3).trim()
     let result
@@ -122,6 +132,27 @@ export class RealVault {
   }
   async ready() {
     return wait('plugin startup', () => this.evaluate(`${host}return !!u`).catch(() => false))
+  }
+  async pluginEnabled(enabled, timeout = this.config.timeoutMs) {
+    const id = randomUUID()
+    const action = enabled ? 'enable' : 'disable'
+    await this
+      .evaluate(`const job=window.__scalePluginChange={id:${JSON.stringify(id)},state:'pending',startedAt:Date.now()};
+      void Promise.resolve().then(()=>app.plugins.${action}Plugin('abele')).then(
+        ()=>Object.assign(job,{state:'done',endedAt:Date.now()}),
+        ()=>Object.assign(job,{state:'failed',endedAt:Date.now()}));
+      return {...job}`)
+    return wait(
+      `plugin ${action}`,
+      async () => {
+        const job = await this.evaluate(
+          `const job=window.__scalePluginChange;return job?.id===${JSON.stringify(id)}?job:null`
+        )
+        if (job?.state === 'failed') throw new Error(`Plugin ${action} action failed`)
+        return job?.state === 'done' ? job : false
+      },
+      timeout
+    )
   }
   async snapshot() {
     return this.evaluate(
@@ -668,8 +699,8 @@ export async function run(config) {
     await a.sync()
     await wait('plugin interruption in flight', () => p.active.size > 0, config.timeoutMs)
     await a.invalidateJob()
-    await a.evaluate(`await app.plugins.disablePlugin('abele');return true`)
-    await a.evaluate(`await app.plugins.enablePlugin('abele');return true`)
+    report.pluginDisable = await a.pluginEnabled(false)
+    report.pluginEnable = await a.pluginEnabled(true)
     mark('plugin disable-enable')
     await a.ready()
     await reindex('reindex-primary-upload', a, p)
@@ -829,6 +860,7 @@ export async function run(config) {
     phase('complete')
   } catch (error) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
+    report.cliFailure = error.scaleCliFailure
     report.failure =
       /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
