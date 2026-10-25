@@ -406,15 +406,15 @@ export class TokenEngines {
       await this.engines.settled()
     }
     if (visible) this.presentReviews()
-    if (!Platform.isMobile && visible) return
-    await this.flushUploads()
+    await this.flushUploads(visible)
   }
-  private async flushUploads(): Promise<void> {
+  private async flushUploads(inspect = false): Promise<void> {
     await Promise.all(
       [...this.live].map(async ([id, runtime]) => {
         if (this.ui.registry.records().find((record) => record.id === id)?.paused) return
         try {
-          await runtime.sync()
+          if (inspect) await runtime.inspect()
+          else await runtime.sync()
         } catch (error) {
           this.failed(id, error)
         }

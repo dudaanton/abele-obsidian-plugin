@@ -2686,6 +2686,15 @@ export class TokenEngineRuntime
   private fatalFailure: unknown
   private userPaused = false
   private runFailure: unknown
+  /** Inspect on host resume without retrying held decisions or bypassing upload pacing. */
+  async inspect(): Promise<void> {
+    const invalidate = Reflect.get(
+      this.options.fs,
+      Symbol.for('abele.sync.invalidate-local-scan-v1')
+    )
+    if (typeof invalidate === 'function') invalidate.call(this.options.fs)
+    await this.sync(false)
+  }
   async sync(retryHeld = true): Promise<void> {
     await this.checkRoot()
     if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)

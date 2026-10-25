@@ -75,12 +75,12 @@ it('expires an unchanged watched proof from its last ordinary inspection, despit
     // Simulate an unobservable writer: same length and date, no event/revision change.
     await fs.writeAtomic(path, changed, 1000)
     for (let i = 0; i < 5; i++) {
-      now += 10000
+      now += 50000
       await engine.sync()
       expect(list).not.toHaveBeenCalled()
       expect(commitRaw).not.toHaveBeenCalled()
     }
-    now += 10000
+    now += 50000
     await engine.sync()
     expect(list).toHaveBeenCalled()
     expect(commitRaw).toHaveBeenCalledOnce()

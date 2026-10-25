@@ -119,7 +119,7 @@ export function syncPlacementPlugin() {
         const waiting = this.retries.list();
         const inspectionAge = this.ctx.now() - this.settledInspectionAt;
         const unchanged = localRevision !== undefined && entryRevision !== undefined &&
-          Number.isFinite(inspectionAge) && inspectionAge >= 0 && inspectionAge < 60_000 &&
+          Number.isFinite(inspectionAge) && inspectionAge >= 0 && inspectionAge < 300_000 &&
           priorSettledLocalRevision === localRevision && priorSettledEntryRevision === entryRevision && this.settledDirectoryRevision === directoryRevision;
         const sizeWait = row => row.phase === 'push' && !row.local && row.nextAt > 0 && row.reason.startsWith('too_large:');
         if (unchanged && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&

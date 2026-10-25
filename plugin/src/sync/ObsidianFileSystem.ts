@@ -3314,6 +3314,11 @@ export class ObsidianFileSystem implements FileSystem {
    */
   private scanWatchers = 0
   private scanWatchRevision = 0;
+  /** Foreground inspection retires a proof even when no file event was available. */
+  [Symbol.for('abele.sync.invalidate-local-scan-v1')](): void {
+    this.scanWatchRevision++
+  }
+
   [Symbol.for('abele.sync.local-scan-revision-v1')](): string | undefined {
     return this.scanWatchers
       ? `${this.scanWatchRevision}:${folderMutations(this.app.vault).revision}`

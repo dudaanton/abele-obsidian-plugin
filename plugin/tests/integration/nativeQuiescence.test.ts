@@ -184,15 +184,35 @@ it.each(['pull', 'upload'] as const)(
       expect(reads).toBe(0)
       expect(performance.now() - started).toBeLessThan(5000)
 
-      now += 60000
+      now += 300000
       probes = reads = 0
+      // A real timer samples every event-loop turn: its longest gap bounds renderer
+      // blocking conservatively (it includes scheduling/IO delay, not just JS CPU).
+      let lastTurn = performance.now(),
+        longestTaskBoundMs = 0
+      const heartbeat = setInterval(() => {
+        const at = performance.now()
+        longestTaskBoundMs = Math.max(longestTaskBoundMs, at - lastTurn)
+        lastTurn = at
+      }, 1)
       const inspectionStart = performance.now()
-      await engine.sync()
+      const cpuStart = process.cpuUsage()
+      let cpu: NodeJS.CpuUsage
+      try {
+        await engine.sync()
+        await new Promise((resolve) => setTimeout(resolve, 2))
+        cpu = process.cpuUsage(cpuStart)
+      } finally {
+        clearInterval(heartbeat)
+      }
       console.log('native periodic inspection', {
         probes,
         reads,
         ms: performance.now() - inspectionStart,
+        cpuMs: (cpu.user + cpu.system) / 1000,
+        longestTaskBoundMs,
       })
+      expect(longestTaskBoundMs).toBeLessThan(50)
       expect(probes).toBeGreaterThan(count)
       expect(reads).toBe(0)
       expect(performance.now() - inspectionStart).toBeLessThan(5000)

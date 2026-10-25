@@ -43,7 +43,7 @@ export function phoneSocket(): typeof WebSocket {
 export interface FrontHandlers {
   /** Ask a question about held deletes that was found while the app was away. */
   held(): void
-  /** Flush on background everywhere; also sync on phone foreground. */
+  /** Flush on background; inspect ordinary local state on foreground or page resume. */
   sync(visible: boolean): void
 }
 
@@ -54,26 +54,53 @@ export interface FrontHandlers {
  * did since is what the user is about to read. Going away, because the system is about to
  * freeze the app, and an edit whose push is still waiting on the watcher's pause would sit
  * here until the app is next opened; the system gives a moment, and a small push fits in it.
- * On every device, coming back also asks a question about held deletes that was found while
- * the app was away (`HeldDeletesPrompt.foreground`).
+ * On every device, coming back also inspects local files and asks a question about held
+ * deletes found while the app was away (`HeldDeletesPrompt.foreground`). A page resume
+ * event does the same where the host provides Page Lifecycle events. Desktop also listens
+ * for native wake through the host's existing Electron bridge, without polling.
  *
  * Registered through the plugin so Obsidian takes the listener away when the plugin unloads.
  */
 export function watchTheFront(
   plugin: {
-    registerDomEvent(el: Document, type: 'visibilitychange', cb: () => void): void
+    registerDomEvent(el: Document, type: 'visibilitychange' | 'resume', cb: () => void): void
     registerDomEvent(el: Window, type: 'focus', cb: () => void): void
+    register?(cleanup: () => void): void
   },
   phone: boolean,
   on: FrontHandlers
 ): void {
   // Desktop windows can regain focus without a visibilitychange (another app covered them).
   // Presentation still checks editor idleness; focus does not grant sharing permission.
-  if (!phone) plugin.registerDomEvent(window, 'focus', () => on.held())
+  const foreground = () => {
+    on.held()
+    on.sync(true)
+  }
+  plugin.registerDomEvent(window, 'focus', foreground)
+  // Page Lifecycle resume is cheap where supported; other hosts emit nothing.
+  plugin.registerDomEvent(document, 'resume', foreground)
+  if (!phone && plugin.register) {
+    try {
+      const host = window as unknown as {
+        require?: (name: string) => {
+          powerMonitor?: {
+            on(event: 'resume', cb: () => void): void
+            removeListener(event: 'resume', cb: () => void): void
+          }
+        }
+      }
+      const monitor = host.require?.('@electron/remote').powerMonitor
+      if (monitor) {
+        monitor.on('resume', foreground)
+        plugin.register(() => monitor.removeListener('resume', foreground))
+      }
+    } catch (error) {
+      console.debug('[abele-sync] native wake events unavailable', error)
+    }
+  }
   plugin.registerDomEvent(document, 'visibilitychange', () => {
     on.held()
-    if (phone || document.visibilityState !== 'visible')
-      on.sync(document.visibilityState === 'visible')
+    on.sync(document.visibilityState === 'visible')
   })
 }
 

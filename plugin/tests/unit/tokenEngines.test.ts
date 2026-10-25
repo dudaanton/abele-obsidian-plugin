@@ -2850,3 +2850,22 @@ it('shows a structured refusal while the cycle is still uploading', async () => 
     await f.host.close()
   }
 })
+
+it('requests an ordinary inspection on foreground without resuming paused connections', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const inspect = vi.spyOn(runtime, 'inspect').mockResolvedValue(undefined)
+    await f.host.foreground(true)
+    expect(inspect).toHaveBeenCalledOnce()
+    await f.ui.pause(id, true)
+    await f.host.foreground(true)
+    expect(inspect).toHaveBeenCalledOnce()
+  } finally {
+    await f.host.close()
+  }
+})

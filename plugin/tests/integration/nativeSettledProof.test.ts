@@ -80,9 +80,13 @@ it('refuses a config snapshot whose object identity changes across its awaited r
   }
 })
 
-it.each(['.obsidian/app.json', 'Notes/sample.md'])(
-  'uploads an external identity-only replacement of %s after settling',
-  async (path) => {
+it.each([
+  ['.obsidian/app.json', 'poll'],
+  ['Notes/sample.md', 'expiry'],
+  ['Notes/sample.md', 'foreground'],
+])(
+  'uploads an external identity-only replacement of %s after settling via %s',
+  async (path, trigger) => {
     const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-settled-')))
     const timers = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] as const
     const previous = timers.map((key) => Object.getOwnPropertyDescriptor(window, key))
@@ -171,7 +175,9 @@ it.each(['.obsidian/app.json', 'Notes/sample.md'])(
       if (path.startsWith('.obsidian/')) {
         fs.kick()
         await Promise.all(snapshots)
-      } else now += 60000
+      } else if (trigger === 'foreground') {
+        Reflect.get(fs, Symbol.for('abele.sync.invalidate-local-scan-v1')).call(fs)
+      } else now += 300000
       await engine.sync()
       expect(commits).toBe(1)
       expect((await state.get(path))?.sha).toBe(nextSha)

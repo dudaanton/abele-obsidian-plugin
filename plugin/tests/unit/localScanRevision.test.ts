@@ -3,6 +3,22 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { connectionAdapter, vaultDisk } from '@/sync/vaultPathLinks'
 
+it('retires a watched proof on foreground inspection without inventing file changes', () => {
+  const app = buildFakeVault([])
+  const fs = new ObsidianFileSystem(app as never)
+  let notifications = 0
+  const stop = fs.watch(() => notifications++)
+  try {
+    const revision = () => Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1')).call(fs)
+    const before = revision()
+    Reflect.get(fs, Symbol.for('abele.sync.invalidate-local-scan-v1')).call(fs)
+    expect(revision()).not.toBe(before)
+    expect(notifications).toBe(0)
+  } finally {
+    stop()
+  }
+})
+
 it('observes ordinary adapter changes when its own file port is connection-scoped', async () => {
   const app = buildFakeVault([{ path: 'Notes/sample.md', content: 'sample' }])
   const fs = new ObsidianFileSystem(app as never, {
