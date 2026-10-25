@@ -23,7 +23,7 @@ it('approves a plain-root command without requiring a broader project grant', as
           kind: 'target',
           node_id: 'sample-node',
           project_id: 'sample-project',
-          access: 'edit',
+          access: 'run',
           target: { kind: 'workspace', workspace_id: 'sample-root' },
         },
       ],
@@ -56,6 +56,8 @@ it('approves a plain-root command without requiring a broader project grant', as
       state: 'unavailable',
     })
     expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
+    chat.overrides.value.nodeScope[0].access = 'edit'
+    expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
     chat.overrides.value.nodeScope = []
     expect(() => (guard as () => void)()).toThrow()
     expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
@@ -65,18 +67,17 @@ it('approves a plain-root command without requiring a broader project grant', as
   }
 })
 
-it('uses the integration tool permission and rechecks both worktree scopes for approval', async () => {
-  let enabled = true
-  const scope = (id: string) => ({
+it('requires Run access and rechecks both worktree scopes for integration approval', async () => {
+  const scope = (id: string, access = 'run') => ({
     kind: 'target',
     node_id: 'sample-node',
     project_id: 'sample-project',
     target: { kind: 'worktree', worktree_id: id },
-    access: 'read',
+    access,
   })
   const chat = {
     delegationParentId: 'sample-parent',
-    getToolMode: (tool: string) => (tool === 'node_git_integrate' && enabled ? 'ask' : 'off'),
+    getToolMode: () => 'ask',
     overrides: ref({ nodeScope: [scope('sample-tree'), scope('sample-source')] }),
   }
   const chats = vi
@@ -105,7 +106,7 @@ it('uses the integration tool permission and rechecks both worktree scopes for a
     chat.overrides.value.nodeScope = [scope('sample-tree')]
     expect(() => (guard as () => void)()).toThrow()
     expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
-    enabled = false
+    chat.overrides.value.nodeScope = [scope('sample-tree', 'edit'), scope('sample-source')]
     expect(await connection.manager.canApprove!('sample-parent', run as never)).toBe(false)
   } finally {
     connection.destroy()

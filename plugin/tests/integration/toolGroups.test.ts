@@ -201,7 +201,7 @@ describe('tools offered by section', () => {
     reopened.destroy()
   })
 
-  it('opens node files with scope and offers node actions only after a local tool choice', () => {
+  it('opens node files with Read scope and node actions with Run scope', () => {
     session.overrides.value = {
       ...session.overrides.value,
       nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
@@ -228,24 +228,30 @@ describe('tools offered by section', () => {
       node_command_run: 'ask',
       node_git_integrate: 'ask',
     }
+    expect(names(session)).not.toContain('node_delegate')
+    session.overrides.value.nodeScope![0].access = 'run'
     const enabled = names(session)
     for (const tool of actions) expect(enabled).toContain(tool)
     expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
-    expect(session.getToolMode('node_command_run')).toBe('ask')
+    expect(session.getToolMode('node_command_run')).toBe('auto')
     expect(session.getToolMode('node_command_status')).toBe('auto')
-    expect(session.getToolMode('node_command_cancel')).toBe('auto')
-    for (const tool of ['node_delegations', 'node_delegation_status', 'node_delegation_cancel'])
+    expect(session.getToolMode('node_command_cancel')).toBe('ask')
+    for (const tool of ['node_delegations', 'node_delegation_status'])
       expect(session.getToolMode(tool)).toBe('auto')
     expect(session.getToolMode('node_delegation_send')).toBe('ask')
     expect(session.getToolMode('node_git_commit')).toBe('ask')
-    // A follower cannot be kept on once its parent is off.
+    // Folder levels replace the former parent/follower tool switches.
     session.toolModes.value = {
       ...session.toolModes.value,
       node_command_run: 'off',
       node_command_status: 'auto',
     }
-    expect(session.getToolMode('node_command_status')).toBe('off')
+    expect(session.getToolMode('node_command_status')).toBe('auto')
+    expect(names(session)).toContain('node_command_cancel')
+    expect(session.getToolMode('node_delegation_cancel')).toBe('ask')
+    session.overrides.value.nodeScope = []
     expect(names(session)).not.toContain('node_command_cancel')
+    session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'run' }]
     expect(names(session)).toContain('node_delegation_status')
   })
 
@@ -295,6 +301,7 @@ describe('tools offered by section', () => {
     AgentRegistry.getInstance().update(session.agentId.value, {
       toolSectionOpening: { nodes: 'always' },
     })
+    session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'read' }]
     session.toolModes.value = { ...session.toolModes.value, node_read: 'auto', node_file: 'auto' }
     expect(names(session)).toContain('node_read')
     expect(names(session)).not.toContain('node_file')
@@ -307,6 +314,7 @@ describe('tools offered by section', () => {
 
   it('offers no old node name when every tool is offered at once either', () => {
     AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
+    session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'read' }]
     session.toolModes.value = { ...session.toolModes.value, node_read: 'auto', node_file: 'auto' }
     expect(names(session)).toContain('node_read')
     expect(names(session)).not.toContain('node_file')

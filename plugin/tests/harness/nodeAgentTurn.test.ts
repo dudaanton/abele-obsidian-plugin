@@ -1,3 +1,4 @@
+import { openChatSetup } from '../helpers/chatProbeInteractions'
 import { expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
@@ -116,6 +117,9 @@ it.each([false, true])(
               'receipt',
               'plain',
               'plainPath',
+              'openChatSetup',
+              'access',
+              'agentId',
               `return ${argument.getText(tree)}`
             )(
               { registration: 'sample-registration', node: 'sample-node' },
@@ -124,7 +128,10 @@ it.each([false, true])(
               nodeAgentTurn,
               { session_id: 'sample-context', run_id: 'sample-run' },
               plain,
-              '/sample/plain'
+              '/sample/plain',
+              openChatSetup,
+              'run',
+              'sample-agent'
             )
           )
         }

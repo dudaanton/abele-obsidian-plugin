@@ -28,7 +28,7 @@ describe('chat node file permissions and persistence', () => {
     expect(session.folderToolAccess.value.raisedBy.node_delegate).toBeUndefined()
     session.destroy()
   })
-  it('requires a local tool choice in addition to inherited or imported node scope', () => {
+  it('uses the shared Run level instead of local tool choices for inherited or imported scope', () => {
     const session = new ChatSession(ChatService.getInstance())
     session.overrides.value = {
       nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
@@ -39,6 +39,8 @@ describe('chat node file permissions and persistence', () => {
     expect(offered()).not.toContain('node_delegate')
     expect(offered()).not.toContain('node_command_run')
     session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
+    expect(offered()).not.toContain('node_delegate')
+    session.overrides.value.nodeScope![0].access = 'run'
     expect(offered()).toContain('node_delegate')
     expect(session.needsApproval('node_delegate')).toBe(true)
     session.overrides.value.nodeScope = []
@@ -82,7 +84,7 @@ describe('chat node file permissions and persistence', () => {
       target: { kind: 'workspace' as const, workspace_id: 'sample-folder' },
     }
     session.overrides.value = {
-      nodeScope: [{ kind: 'target', ...target, access: 'edit' }],
+      nodeScope: [{ kind: 'target', ...target, access: 'run' }],
       nodeTarget: target,
     }
     const tools = (session as unknown as { getTools(): { name: string }[] }).getTools()
