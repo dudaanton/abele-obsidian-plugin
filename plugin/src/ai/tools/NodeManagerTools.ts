@@ -195,8 +195,34 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
             )
           )
         }
-        if (typeof params.project_id === 'string')
-          guards.push(requireDelegationScope(parent, nodeId, params.project_id))
+        if (typeof params.project_id === 'string') {
+          let rootWorkspace: string | undefined
+          const scopedRoots = entries.filter(
+            (entry) =>
+              entry.kind === 'target' &&
+              entry.project_id === params.project_id &&
+              entry.target.kind === 'workspace'
+          )
+          if (
+            scopedRoots.length &&
+            !(await connection.client.getProject(params.project_id)).repository_path
+          ) {
+            for (const entry of scopedRoots) {
+              if (entry.kind !== 'target' || entry.target.kind !== 'workspace') continue
+              const workspace = await connection.client.getWorkspace(entry.target.workspace_id)
+              if (
+                workspace.workspace_id === entry.target.workspace_id &&
+                workspace.project_id === params.project_id &&
+                workspace.kind === 'root' &&
+                workspace.state === 'ready'
+              ) {
+                rootWorkspace = workspace.workspace_id
+                break
+              }
+            }
+          }
+          guards.push(requireDelegationScope(parent, nodeId, params.project_id, rootWorkspace))
+        }
         for (const worktree of [params.worktree_id, params.source_worktree_id]) {
           if (typeof worktree !== 'string') continue
           let found = false

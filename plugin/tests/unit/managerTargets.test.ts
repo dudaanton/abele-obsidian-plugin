@@ -68,3 +68,36 @@ it('refuses an unresolved workspace before dispatch with a useful code', async (
     })
   ).rejects.toThrow(/worktree_not_found.*workspace/i)
 })
+
+it('resolves a plain root workspace to its project without querying Git worktrees', async () => {
+  const plain = {
+    getWorkspace: vi.fn(async () => ({
+      workspace_id: 'sample-folder',
+      project_id: 'sample-project',
+      kind: 'root',
+      state: 'ready',
+    })),
+    getProject: vi.fn(async () => ({ project_id: 'sample-project', repository_path: null })),
+    repository: {
+      worktrees: vi.fn(async () => {
+        throw new Error('not a repository')
+      }),
+    },
+  }
+  expect(
+    await resolveManagerTargets(plain as never, 'command.v1.run', {
+      workspace_id: 'sample-folder',
+      argv: ['pwd'],
+    })
+  ).toEqual({ project_id: 'sample-project', argv: ['pwd'] })
+  expect(plain.repository.worktrees).not.toHaveBeenCalled()
+  for (const target of [{ project_id: 'other-project' }, { worktree_id: 'other-tree' }]) {
+    await expect(
+      resolveManagerTargets(plain as never, 'command.v1.run', {
+        workspace_id: 'sample-folder',
+        ...target,
+        argv: ['pwd'],
+      })
+    ).rejects.toThrow(/different targets/i)
+  }
+})

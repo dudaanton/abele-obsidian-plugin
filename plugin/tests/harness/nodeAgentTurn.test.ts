@@ -41,40 +41,50 @@ it('emits parseable model SSE and restores fetch after a scripted vault turn', a
   expect(browser.fetch).toBe(originalFetch)
 })
 
-it('passes expressions to the long-running browser evaluator', () => {
-  const source = readFileSync('tests/e2e/nodeVaultAgentActions.e2e.test.ts', 'utf8')
-  const tree = ts.createSourceFile('actions.ts', source, ts.ScriptTarget.Latest, true)
-  const scripts: string[] = []
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && ['evalLong', 'turn'].includes(node.expression.getText(tree))) {
-      const argument = node.arguments[0]
+it.each([false, true])(
+  'passes expressions to the long-running browser evaluator (plain folder: %s)',
+  (plain) => {
+    const source = readFileSync('tests/e2e/nodeVaultAgentActions.e2e.test.ts', 'utf8')
+    const tree = ts.createSourceFile('actions.ts', source, ts.ScriptTarget.Latest, true)
+    const scripts: string[] = []
+    const visit = (node: ts.Node) => {
       if (
-        ts.isTemplateExpression(argument) ||
-        ts.isNoSubstitutionTemplateLiteral(argument) ||
-        ts.isStringLiteral(argument)
+        ts.isCallExpression(node) &&
+        ['evalLong', 'turn'].includes(node.expression.getText(tree))
       ) {
-        scripts.push(
-          new Function(
-            'node',
-            'chat',
-            'setup',
-            'nodeAgentTurn',
-            'receipt',
-            `return ${argument.getText(tree)}`
-          )(
-            { registration: 'sample-registration', node: 'sample-node' },
-            'Sample.abchat',
-            '',
-            nodeAgentTurn,
-            { session_id: 'sample-context', run_id: 'sample-run' }
+        const argument = node.arguments[0]
+        if (
+          ts.isTemplateExpression(argument) ||
+          ts.isNoSubstitutionTemplateLiteral(argument) ||
+          ts.isStringLiteral(argument)
+        ) {
+          scripts.push(
+            new Function(
+              'node',
+              'chat',
+              'setup',
+              'nodeAgentTurn',
+              'receipt',
+              'plain',
+              'plainPath',
+              `return ${argument.getText(tree)}`
+            )(
+              { registration: 'sample-registration', node: 'sample-node' },
+              'Sample.abchat',
+              '',
+              nodeAgentTurn,
+              { session_id: 'sample-context', run_id: 'sample-run' },
+              plain,
+              '/sample/plain'
+            )
           )
-        )
+        }
       }
+      ts.forEachChild(node, visit)
     }
-    ts.forEachChild(node, visit)
+    visit(tree)
+    expect(scripts.length).toBeGreaterThan(5)
+    for (const script of scripts)
+      expect(() => new Function(`return (${script})`), script).not.toThrow()
   }
-  visit(tree)
-  expect(scripts.length).toBeGreaterThan(5)
-  for (const script of scripts)
-    expect(() => new Function(`return (${script})`), script).not.toThrow()
-})
+)

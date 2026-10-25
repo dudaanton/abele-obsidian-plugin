@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { evalLong, enterPhone, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { startPairedNode } from './helpers/pairedNode'
@@ -9,8 +11,10 @@ import { shotDir } from './helpers/shots'
 targets('desktop')
 const shots = shotDir('abele-vault-node-actions')
 
-async function exercise(label: string) {
+async function exercise(label: string, plain: boolean) {
   const node = await startPairedNode()
+  const plainPath = join(dirname(node.state), 'sample-plain')
+  if (plain) mkdirSync(plainPath)
   const chat = `Sample node actions ${Date.now()}.abchat`
   const setup = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(chat)}),connection=T.NodeService.getInstance().connection(${JSON.stringify(node.registration)}),client=connection.client;`
   const turn = async (steps: string) =>
@@ -25,8 +29,9 @@ async function exercise(label: string) {
     await evalLong(`(async()=>{
       const T=window.__abeleTest,chats=T.ChatService.getInstance(),client=T.NodeService.getInstance().connection(${JSON.stringify(node.registration)}).client;
       await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',title:'Sample node actions',created:'2026-01-01'})+'\\n'));
-      const session=chats.getSessionByFile(${JSON.stringify(chat)}),project=(await client.listProjects())[0],tree=(await client.repository.worktrees({project_id:project.project_id})).entries[0];
-      await T.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target:{kind:'worktree',worktree_id:tree.worktree_id},access:'edit'});
+      const session=chats.getSessionByFile(${JSON.stringify(chat)}),project=${plain ? `await client.registerProject(${JSON.stringify(plainPath)},'trusted')` : '(await client.listProjects())[0]'};
+      const target=project.repository_path?{kind:'worktree',worktree_id:(await client.repository.worktrees({project_id:project.project_id})).entries[0].worktree_id}:{kind:'workspace',workspace_id:(await client.listWorkspaces(project.project_id)).find(w=>w.kind==='root').workspace_id};
+      await T.giveNodeChatAccess(session,{kind:'target',node_id:${JSON.stringify(node.node)},project_id:project.project_id,target,access:'edit'});
       session.permissionMode.value='allow-all';session.toolModes.value={...session.toolModes.value,node_command_run:'auto'};
       await chats.revealSidebar({focus:false});
     })()`)
@@ -93,7 +98,7 @@ async function exercise(label: string) {
     columnShot(`${shots}/${label}-ask.png`)
     expect(
       await evalLong(
-        `(async()=>{${setup}const target=session.overrides.value.nodeScope[0];const observation=await client.repository.observe({worktree_id:target.target.worktree_id});const files=await client.repository.tree({worktree_id:target.target.worktree_id,revision:observation.revision,path:''});return files.entries.some(e=>e.path==='sample-approval.txt')})()`
+        `(async()=>{${setup}const target=session.overrides.value.nodeScope[0].target;let files;if(target.kind==='worktree'){const observation=await client.repository.observe({worktree_id:target.worktree_id});files=await client.repository.tree({worktree_id:target.worktree_id,revision:observation.revision,path:''})}else files=await client.listFiles(target.workspace_id,'');return files.entries.some(e=>e.path==='sample-approval.txt')})()`
       )
     ).toBe('false')
     await evalLong(
@@ -145,12 +150,17 @@ async function exercise(label: string) {
   }
 }
 
-it('lets a vault model create, edit, move, copy, delete and run commands on a paired node', async () => {
-  await exercise('desktop')
-  try {
-    await enterPhone()
-    await exercise('phone-emulated')
-  } finally {
-    await reloadApp('app.emulateMobile(false)')
-  }
-}, 360000)
+it.each([false, true])(
+  'lets a vault model create, edit, move, copy, delete and run commands on a paired node (plain folder: %s)',
+  async (plain) => {
+    const kind = plain ? 'plain' : 'git'
+    await exercise(`desktop-${kind}`, plain)
+    try {
+      await enterPhone()
+      await exercise(`phone-emulated-${kind}`, plain)
+    } finally {
+      await reloadApp('app.emulateMobile(false)')
+    }
+  },
+  360000
+)

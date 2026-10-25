@@ -6,6 +6,84 @@ import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('runs a command in the sole granted plain folder without widening workspace scope', async () => {
+  const command = vi.fn(async (_parent: string, _params: Record<string, unknown>) => ({
+    run_id: 'sample-run',
+    state: 'running',
+  }))
+  const status = vi.fn(async () => ({
+    run_id: 'sample-run',
+    state: 'exited',
+    stdout: '/sample/plain',
+  }))
+  const workspace = {
+    workspace_id: 'sample-folder',
+    project_id: 'sample-project',
+    kind: 'root',
+    state: 'ready',
+  }
+  const client = {
+    describe: async () => ({
+      capabilities: { capabilities: { command_context_v1: { status: 'supported' } } },
+    }),
+    getWorkspace: vi.fn(async () => workspace),
+    getProject: async () => ({ project_id: 'sample-project', repository_path: null }),
+    repository: {
+      worktrees: vi.fn(async () => {
+        throw new Error('not a repository')
+      }),
+    },
+  }
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      client,
+      manager: { command, status, targetFor: async () => ({ project_id: 'sample-project' }) },
+      refreshDelegations: async () => {},
+    }),
+  } as never)
+  const owner = {
+    overrides: ref({
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          target: { kind: 'workspace', workspace_id: 'sample-folder' },
+          access: 'edit',
+        },
+      ],
+    }),
+    permissionMode: ref('allow-all'),
+    getToolMode: () => 'auto',
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as unknown as ChatSession
+  const tool = createNodeManagerTools(owner)[0]
+  const args = {
+    node: 'sample-node',
+    argv: ['pwd'],
+    operation_id: 'sample-operation',
+    justification: 'Check the sample folder.',
+  }
+  await tool.execute('sample-call', args)
+  expect(command.mock.calls[0][1]).toEqual({ project_id: 'sample-project', argv: ['pwd'] })
+  expect(client.repository.worktrees).not.toHaveBeenCalled()
+  const result = await createNodeManagerTools(owner)[1].execute('sample-status', {
+    node: 'sample-node',
+    session_id: 'sample-context',
+    run_id: 'sample-run',
+  })
+  expect(JSON.parse(result.content[0].text)).toMatchObject({
+    state: 'exited',
+    stdout: '/sample/plain',
+  })
+  workspace.state = 'missing'
+  await expect(
+    tool.execute('sample-missing', { ...args, project_id: 'sample-project' })
+  ).rejects.toThrow(/node access|node chips/i)
+  expect(command).toHaveBeenCalledTimes(1)
+})
 it.each(['node_command_run', 'node_git_integrate'])(
   'scopes model aliases to the chat, tool and exact intended action while preserving retries for %s',
   async (name) => {

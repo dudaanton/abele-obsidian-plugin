@@ -19,6 +19,21 @@ export async function resolveManagerTargets(
     const workspace = params[alias]
     if (typeof workspace !== 'string') continue
     const project = await client.getWorkspace(workspace)
+    // A plain folder has a root workspace, but no Git worktree. Command contexts address
+    // that same root by project ID; integration still requires actual Git worktrees.
+    if (
+      method === 'command.v1.run' &&
+      alias === 'workspace_id' &&
+      project.kind === 'root' &&
+      project.state === 'ready' &&
+      !(await client.getProject(project.project_id)).repository_path
+    ) {
+      if (params.worktree_id || (params.project_id && params.project_id !== project.project_id))
+        throw new Error('invalid_params: The workspace and project identify different targets.')
+      params.project_id = project.project_id
+      delete params.workspace_id
+      continue
+    }
     let cursor: string | undefined
     let resolved: string | undefined
     for (let page = 0; page < 64; page++) {

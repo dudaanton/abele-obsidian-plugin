@@ -1367,6 +1367,8 @@ and durably creates/reuses a context per parent chat and target. It takes execut
 mode from the owner's effective chat mode (a per-chat override wins over agent
 settings); tools cannot supply a mode. Tool Auto never weakens an owner's Ask mode.
 The `workspace_id` returned by delegation is also accepted and resolved to its worktree.
+For a plain folder, its ready root `workspace_id` resolves to the same registered project;
+the chat's grant to that root remains sufficient for command execution and status reads.
 If no target is given, a single folder in the chat's scope may be inferred; otherwise
 supply an explicit target. An older supplied session can resolve its bound worktree,
 but execution still uses a command context. A worktree takes
