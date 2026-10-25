@@ -5,6 +5,33 @@ import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 const require = createRequire(import.meta.url)
 
+it('records durability barriers on readonly file and directory handles without observing payload reads', async () => {
+  const { observeWrites } = require('../scale/writes.cjs')
+  const events = []
+  const handle = { sync: async () => 7, datasync: async () => 8, read: async () => 9 }
+  const native = { open: async () => ({ ...handle }), rename: async () => {} }
+  const undo = observeWrites(
+    { getBasePath: () => '/sample', fsPromises: native, writeBinary: async () => {} },
+    (event) => events.push(event)
+  )
+  try {
+    const opened = await native.open('/sample/folder', 'r')
+    expect(await opened.sync()).toBe(7)
+    expect(await opened.datasync()).toBe(8)
+    expect(await opened.read()).toBe(9)
+    expect(events.filter((e) => e.event === 'write-start').map((e) => e.method)).toEqual([
+      'handle.sync',
+      'handle.datasync',
+    ])
+    expect(events.filter((e) => e.event === 'write-finish')).toHaveLength(2)
+    const root = await native.open('/sample', 'r')
+    await root.sync()
+    expect(events.filter((e) => e.event === 'write-start').at(-1).path).toBe('.')
+  } finally {
+    undo()
+  }
+})
+
 it('preserves filesystem errors and fails observation closed without breaking an uninstrumentable handle', async () => {
   const { observeWrites } = require('../scale/writes.cjs')
   const error = new Error('sample failure')

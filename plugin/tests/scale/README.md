@@ -379,6 +379,13 @@ physical bytes. Native handle `sync`/`datasync` start/finish receipts include el
 for phase analysis; these cover observed vault handles, not every filesystem flush by the
 app, database or operating system.
 
+Durability observation includes readonly file and directory handles, including the vault
+root, without enabling payload-read observation outside restart. Renderer evidence is sent
+over ordered IPC to one bounded asynchronous append queue per file in the host process.
+Queues survive renderer reloads; planned process exits finish profiler captures and await
+evidence flush acknowledgements before termination. Storage failure or queue overflow fails
+the flush instead of silently passing incomplete evidence. State receipts cover both devices.
+
 Synced restarts additionally require zero plugin payload-content read bytes, measured at
 adapter reads, native promise readFile and native FileHandle read/readv/readFile ports.
 Only generated payload paths count; stat calls and private control files do not. Host

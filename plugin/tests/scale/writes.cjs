@@ -30,6 +30,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
   const relative = (value) => {
     if (typeof value !== 'string') return null
     const full = path.resolve(value)
+    if (full === root) return '.'
     return full.startsWith(root + path.sep) ? path.relative(root, full) : null
   }
   const wrap = (object, key, layer, locate, amount) => {
@@ -178,24 +179,26 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
               durationMs: performance.now() - startedAt,
             })
         }
-        if (file != null && mutates && !handles.has(handle)) {
+        if (file != null && !handles.has(handle)) {
           handles.add(handle)
           try {
-            wrap(
-              handle,
-              'write',
-              'handle',
-              () => file,
-              (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0]))
-            )
-            wrap(
-              handle,
-              'writev',
-              'handle',
-              () => file,
-              (a) => a[0].reduce((sum, b) => sum + bytes(b), 0)
-            )
-            for (const name of ['writeFile', 'appendFile'])
+            if (mutates)
+              wrap(
+                handle,
+                'write',
+                'handle',
+                () => file,
+                (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0]))
+              )
+            if (mutates)
+              wrap(
+                handle,
+                'writev',
+                'handle',
+                () => file,
+                (a) => a[0].reduce((sum, b) => sum + bytes(b), 0)
+              )
+            for (const name of mutates ? ['writeFile', 'appendFile'] : [])
               wrap(
                 handle,
                 name,
@@ -211,13 +214,14 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
                 () => file,
                 () => 0
               )
-            wrap(
-              handle,
-              'truncate',
-              'handle',
-              () => file,
-              () => 0
-            )
+            if (mutates)
+              wrap(
+                handle,
+                'truncate',
+                'handle',
+                () => file,
+                () => 0
+              )
           } catch {
             emit({ event: 'write-observer-error', generation })
           }
