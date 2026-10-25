@@ -1387,7 +1387,9 @@ with read/edit/run access. `overrides.nodeTarget` is selection, not permission. 
 with the chat. Agent `nodeScope` holds defaults for new chats; an explicit chat scope wins,
 including an empty scope. `nodeAccessVersion: 1` records migration to folder execution levels.
 Legacy enabled command/delegation permissions promote only existing edit folders to run;
-read folders stay read. Access is shared across devices without a local approval ledger.
+read folders stay read. Inherited edit folders are promoted only in the migrating chat,
+leaving the shared folder configuration unchanged. Duplicate entries for a folder resolve to
+one effective level, the strongest granted level. Access is shared across devices without a local approval ledger.
 Connection identity and authorization generations still fence in-flight operations.
 Saving chat access as the agent default copies vault scope, full-vault access, node folders,
 permission mode and tool modes. Message discussions inherit the nearest parent's scope

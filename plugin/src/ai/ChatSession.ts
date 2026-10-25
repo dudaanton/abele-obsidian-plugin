@@ -3488,14 +3488,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       localNodeActionModes(this.nodeScopeIdentity ?? this.id, this.agentId.value),
       this.agent.value?.toolModes ?? {}
     )
-    if (overrides.nodeScope && overrides.nodeAccessVersion !== 1) {
-      const next = migrateNodeAccess(overrides.nodeScope, {
-        ...overrides.toolModes,
-        ...legacyModes,
-      })
-      migrated = true
-      overrides.nodeScope = next
-      overrides.nodeAccessVersion = 1
+    if (metadata && overrides.nodeAccessVersion !== 1) {
+      const inherited = this.chatService?.folders
+        ? this.inheritedNodeScopes.flatMap((source) => source.entries)
+        : []
+      const previous = overrides.nodeScope ?? []
+      const next = migrateNodeAccess(
+        previous,
+        { ...overrides.toolModes, ...legacyModes },
+        inherited
+      )
+      if (overrides.nodeScope || next.length) {
+        overrides.nodeScope = next
+        overrides.nodeAccessVersion = 1
+        migrated = true
+      }
     }
     this.overrides.value = overrides
     this.syncScopeFromAgent()

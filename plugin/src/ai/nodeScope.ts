@@ -48,14 +48,14 @@ export function hasNodeScope(chat: NodeScopeChat): boolean {
   )
 }
 export function nodeScopeEntries(chat: NodeScopeChat): NodeScopeEntry[] {
-  return [
+  return combineNodeScopeEntries([
     ...NodeScopeEntriesSchema.parse(
       chat.overrides?.value.nodeScope ?? chat.agent?.value?.nodeScope ?? []
     ),
     ...(chat.inheritedNodeScopes ?? []).flatMap((source) =>
       NodeScopeEntriesSchema.parse(source.entries)
     ),
-  ]
+  ])
 }
 export function nodeTargetId(target: NodeChatTarget): string {
   return target.kind === 'worktree' ? target.worktree_id : target.workspace_id
@@ -71,6 +71,17 @@ export function nodeScopeKey(entry: NodeScopeEntry): string {
 }
 export function nodeScopeResourceKey(entry: NodeScopeEntry): string {
   return nodeScopeKey({ ...entry, access: 'read' })
+}
+/** One effective level for each folder, including additive inherited access. */
+export function combineNodeScopeEntries(entries: readonly NodeScopeEntry[]): NodeScopeEntry[] {
+  const rank = { read: 0, edit: 1, run: 2 }
+  const combined = new Map<string, NodeScopeEntry>()
+  for (const entry of entries) {
+    const key = nodeScopeResourceKey(entry),
+      previous = combined.get(key)
+    if (!previous || rank[entry.access] > rank[previous.access]) combined.set(key, entry)
+  }
+  return [...combined.values()]
 }
 function normalized(chat: NodeScopeChat): string {
   return JSON.stringify([...new Set(nodeScopeEntries(chat).map(nodeScopeKey))].sort())

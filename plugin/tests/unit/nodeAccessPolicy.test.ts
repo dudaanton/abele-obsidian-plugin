@@ -28,3 +28,20 @@ it('migrates only edit folders with enabled legacy execution', () => {
   expect(migrateNodeAccess(entries, { node_delegate: 'off' })).toEqual(entries)
   expect(migrateNodeAccess(entries, {})).toEqual(entries)
 })
+
+it('preserves legacy execution over inherited edit folders without changing the shared folder', () => {
+  const inherited = [
+    ...scope('read'),
+    {
+      kind: 'project' as const,
+      node_id: 'sample-node',
+      project_id: 'sample-project',
+      access: 'edit' as const,
+    },
+  ]
+  expect(migrateNodeAccess([], { node_command_run: 'auto' }, inherited)).toEqual([
+    { ...inherited[1], access: 'run' },
+  ])
+  expect(inherited[1].access).toBe('edit')
+  expect(migrateNodeAccess([], {}, inherited)).toEqual([])
+})

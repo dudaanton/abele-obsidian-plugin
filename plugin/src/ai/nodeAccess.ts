@@ -30,12 +30,21 @@ export function nodeToolAccess(
 /** Preserve previous command grants without widening read-only folders. */
 export function migrateNodeAccess(
   entries: NodeScopeEntry[],
-  modes: Record<string, ToolMode>
+  modes: Record<string, ToolMode>,
+  inherited: readonly NodeScopeEntry[] = []
 ): NodeScopeEntry[] {
   const execution = NODE_ACTION_TOOLS.some(
     (name) => modes[name] === 'ask' || modes[name] === 'auto'
   )
-  return entries.map((entry) =>
-    execution && entry.access === 'edit' ? { ...entry, access: 'run' } : { ...entry }
-  )
+  return [
+    ...entries.map(
+      (entry): NodeScopeEntry =>
+        execution && entry.access === 'edit' ? { ...entry, access: 'run' } : { ...entry }
+    ),
+    ...(execution
+      ? inherited
+          .filter((entry) => entry.access === 'edit')
+          .map((entry): NodeScopeEntry => ({ ...entry, access: 'run' }))
+      : []),
+  ]
 }

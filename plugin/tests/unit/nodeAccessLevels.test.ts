@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { ref } from 'vue'
-import { coversNodeScope, NodeScopeLedger } from '@/ai/nodeScope'
+import { coversNodeScope, NodeScopeLedger, nodeScopeEntries } from '@/ai/nodeScope'
 import { requireDelegationScope } from '@/ai/tools/node/delegationScope'
 const target = {
   node_id: 'sample-node',
@@ -47,4 +47,14 @@ it('requires run at the exact delegation target', () => {
   expect(() =>
     requireDelegationScope(chat('run') as never, target.node_id, target.project_id, 'sample-folder')
   ).not.toThrow()
+})
+
+it('combines own and inherited grants into one strongest level per folder', () => {
+  const session = chat('edit')
+  Object.assign(session, {
+    inheritedNodeScopes: [
+      { identity: 'sample-parent-folder', entries: chat('run').overrides.value.nodeScope },
+    ],
+  })
+  expect(nodeScopeEntries(session).map((entry) => entry.access)).toEqual(['run'])
 })
