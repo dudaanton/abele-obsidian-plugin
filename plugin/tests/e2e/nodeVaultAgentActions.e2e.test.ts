@@ -14,7 +14,6 @@ const shots = shotDir('abele-vault-node-actions')
 async function exercise(label: string, plain: boolean) {
   const node = await startPairedNode()
   const plainPath = join(dirname(node.state), 'sample-plain')
-  if (plain) mkdirSync(plainPath)
   const chat = `Sample node actions ${Date.now()}.abchat`
   const setup = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(chat)}),connection=T.NodeService.getInstance().connection(${JSON.stringify(node.registration)}),client=connection.client;`
   const turn = async (steps: string) =>
@@ -26,6 +25,7 @@ async function exercise(label: string, plain: boolean) {
       return {name:'node_command_status',params:{node:${JSON.stringify(node.node)},session_id:${JSON.stringify(receipt.session_id)},run_id:${JSON.stringify(receipt.run_id)}}}
     })`)
   try {
+    if (plain) mkdirSync(plainPath)
     await evalLong(`(async()=>{
       const T=window.__abeleTest,chats=T.ChatService.getInstance(),client=T.NodeService.getInstance().connection(${JSON.stringify(node.registration)}).client;
       await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',title:'Sample node actions',created:'2026-01-01'})+'\\n'));
