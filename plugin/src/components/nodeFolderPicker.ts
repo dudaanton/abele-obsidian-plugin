@@ -1,3 +1,4 @@
+import './nodeFolderPicker.css'
 // Every folder of every connected node in one searchable list, as Obsidian's quick switcher lists
 // notes: a project with all its branches, or one branch's folder, the node's name faint beside it.
 // One press gives the chat that place; typing narrows the list first.
@@ -47,7 +48,7 @@ export async function nodeFolderChoices(host: NodeAgentHost): Promise<NodeFolder
               target: { kind: 'worktree', worktree_id: tree.worktree_id },
             },
             folder: labels[i]!,
-            branch: shortBranch(tree.branch ?? tree.path_label),
+            branch: shortBranch(tree.branch, tree.path_label),
             node: node.label,
           })
         if (!batch.cursor) break
@@ -79,7 +80,8 @@ export class NodeFolderPicker extends FuzzySuggestModal<NodeFolderChoice> {
   }
   renderSuggestion(match: FuzzyMatch<NodeFolderChoice>, el: HTMLElement): void {
     const c = match.item
-    el.classList.add('mod-complex')
+    el.classList.add('mod-complex', 'abele-node-folder-choice')
+    el.title = this.getItemText(c)
     const content = el.createDiv({ cls: 'suggestion-content' })
     content.createDiv({ cls: 'suggestion-title', text: c.folder })
     content.createDiv({ cls: 'suggestion-note', text: c.branch ?? t('chatTree.allBranches') })
