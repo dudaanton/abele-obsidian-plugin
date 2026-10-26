@@ -9,17 +9,25 @@ import { targets } from './helpers/target'
 targets('desktop')
 
 // Presentation data only: no token is stored, no engine starts and no file is changed.
+const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
 const waiting = [
   { path: 'Research/Field notes/Survey export.zip', fact: 'quota_waiting: server storage is full' },
   { path: 'Workshop/Reference photos.png', fact: 'quota_exceeded: server storage is full' },
   { path: 'Research/Reading list.md', fact: 'rate_limited: server asked to try again later' },
   { path: 'Workshop/Agenda.md', fact: 'Server unavailable; kept locally until it reconnects' },
-].map((item) => ({ ...item, kind: 'waiting', direction: 'out', since: '2025-01-01T12:00:00Z' }))
+].map((item) => ({
+  ...item,
+  // The state projection removes the code prefix before the UI receives a fact.
+  fact: item.fact.replace(/^[a-z_-]+: /, ''),
+  kind: 'waiting',
+  direction: 'out',
+  since,
+}))
 const refused = {
   path: 'Research/Field notes/Map reference.pdf',
   kind: 'held',
   direction: 'in',
-  since: '2025-01-01T12:00:00Z',
+  since,
   fact: 'Changed while it was being placed',
 }
 
@@ -49,10 +57,15 @@ it('pictures temporary waits apart from refusals and compares connection and sta
           ['several', waiting, 4, 0],
           ['mixed', [refused, ...waiting], 4, 1],
         ] as const) {
-          const result = run<Screen & { line: string; status: string; headings: string[] }>(`
+          const result = run<
+            Screen & { line: string; status: string; headings: string[]; height: number }
+          >(`
             ${probePrelude(shots)}
             svc.activity.value={'sample-waiting':{notSynced:${JSON.stringify(items)}}};
             const root=await openSyncTab();
+            const owner=root.ownerDocument.defaultView;
+            owner.require('@electron/remote').getCurrentWindow().setContentSize(${width},${height});
+            await poll(()=>owner.innerWidth===${width}&&owner.innerHeight===${height});
             connectionRow(root,'sample-waiting').click();
             await poll(()=>inWindows('.abele-sync-window'));
             await wait(300);
@@ -61,11 +74,14 @@ it('pictures temporary waits apart from refusals and compares connection and sta
             result.line=textOf(body.querySelector('.abele-sync-window__line'));
             result.status=textOf(document.querySelector('.abele-sync-status-text'));
             result.headings=[...body.querySelectorAll('.abele-section__heading')].map(textOf);
+            result.height=owner.innerHeight;
             return result;
           `)
           console.log('[waiting screenshot]', layout, state, JSON.stringify(result))
           expect(result.error).toBe('')
           expect(result.over).toEqual([])
+          expect(result.width).toBe(width)
+          expect(result.height).toBe(height)
           expect(result.line).toBe(
             expectedRefused ? '1 file not synced · Waiting (4)' : `Waiting (${expectedWaiting})`
           )
@@ -76,15 +92,32 @@ it('pictures temporary waits apart from refusals and compares connection and sta
           )
           run(close + 'return true')
           if (state === 'mixed') {
-            const summary = run<Screen>(`
+            const summary = run<Screen & { line: string }>(`
               ${probePrelude(shots)}
               const root=await openSyncTab();
               await wait(300);
-              return screen(${JSON.stringify(layout + '-status')},root.closest('.modal')||root,root);
+              const owner=root.ownerDocument.defaultView;
+              owner.require('@electron/remote').getCurrentWindow().setContentSize(${width},${height});
+              await poll(()=>owner.innerWidth===${width}&&owner.innerHeight===${height});
+              const result=await screen(${JSON.stringify(layout + '-status')},root.closest('.modal')||root,root);
+              result.line=textOf(root.querySelector('.abele-sync-row__line'));
+              return result;
             `)
             console.log('[waiting summary screenshot]', layout, JSON.stringify(summary))
             expect(summary.error).toBe('')
+            expect(summary.line).toBe('1 file not synced · Waiting (4)')
             run(close + 'return true')
+            if (layout === 'desktop') {
+              const bar = run<{ shot: string; text: string; visible: boolean }>(`
+                ${probePrelude(shots)}
+                const el=document.querySelector('.abele-sync-status-text');
+                const box=el.getBoundingClientRect();
+                return {shot:await shoot('desktop-status-bar'),text:textOf(el),visible:box.width>0&&box.height>0};
+              `)
+              console.log('[waiting status bar screenshot]', JSON.stringify(bar))
+              expect(bar.text).toBe('1 file not synced · Waiting (4)')
+              expect(bar.visible).toBe(true)
+            }
           }
         }
       } finally {
