@@ -3,7 +3,7 @@ import { promisify } from 'node:util'
 import { createServer } from 'node:net'
 import { randomBytes, createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rm, copyFile, stat, writeFile } from 'node:fs/promises'
-import { join, resolve, dirname } from 'node:path'
+import { join, resolve, dirname, sep } from 'node:path'
 import { verifySyncFixture } from '../../scripts/sync-server-fixture.mjs'
 import { SERVER_TEST_COMMIT } from '../../scripts/server-test-fixtures.mjs'
 const exec = promisify(execFile)
@@ -62,7 +62,7 @@ export async function openServer(config) {
     throw new Error('Local fixture core version differs from selected SDK/server pairing')
   const directory = resolve(config.localServerDirectory)
   const evidence = config.serverEvidenceDirectory ? resolve(config.serverEvidenceDirectory) : null
-  if (evidence && (evidence === directory || evidence.startsWith(directory + '/')))
+  if (evidence && (evidence === directory || evidence.startsWith(directory + sep)))
     throw new Error('Server evidence must be outside disposable storage')
   await mkdir(directory, { recursive: true })
   if ((await readdir(directory)).length) throw new Error('Local server storage must be empty')
