@@ -7,6 +7,23 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 let session: ChatSession | undefined
 afterEach(() => session?.destroy())
+it('hides node instructions when Delegate is off even with legacy node switches on', () => {
+  useVault([])
+  const agent = createAgent({
+    name: 'Sample helper',
+    toolModes: { delegate: 'off', node_delegate: 'auto', node_delegation_send: 'auto' },
+  })
+  AbeleConfig.getInstance().ai = {
+    ...DEFAULT_AI_SETTINGS,
+    agents: [agent],
+    defaultAgentId: agent.id,
+  }
+  session = new ChatSession(ChatService.getInstance())
+  session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'run' }]
+  const tools = session.getTools().map((tool) => tool.name)
+  expect(tools).not.toContain('node_delegate')
+  expect(tools).not.toContain('node_delegation_send')
+})
 it.each(['read', 'edit', 'run'] as const)(
   'offers node tools at %s without recursive permission resolution',
   (access) => {
@@ -26,5 +43,11 @@ it.each(['read', 'edit', 'run'] as const)(
     expect(tools.includes('node_write')).toBe(access !== 'read')
     expect(tools.includes('node_command_run')).toBe(access === 'run')
     expect(session.getToolMode('node_compare')).toBe('auto')
+    for (const delegate of ['off', 'ask', 'auto'] as const) {
+      session.overrides.value.toolModes = { delegate }
+      const offered = session.getTools().map((tool) => tool.name)
+      for (const name of ['node_delegate', 'node_delegation_send'])
+        expect(offered.includes(name)).toBe(access === 'run' && delegate !== 'off')
+    }
   }
 )

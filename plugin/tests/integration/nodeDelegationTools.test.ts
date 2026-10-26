@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeDelegationTools } from '@/ai/tools/NodeDelegationTools'
 import { NodeService } from '@/node/NodeService'
+import { ScopeResolver } from '@/ai/ScopeResolver'
 import { NodeDelegationController } from '@/node/NodeDelegationController'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
@@ -10,6 +11,27 @@ import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('refuses stale node instructions when Delegate is off despite run access and approval', async () => {
+  const ensureParent = vi.fn(async () => 'sample-parent')
+  const owner = {
+    getToolMode: () => 'off',
+    permissionMode: ref('allow-all'),
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
+    ensureDelegationParentId: ensureParent,
+  } as unknown as ChatSession
+  for (const tool of createNodeDelegationTools(owner).filter((tool) =>
+    ['node_delegate', 'node_delegation_send'].includes(tool.name)
+  ))
+    await expect(
+      tool.execute('sample-call', { node: 'sample-node' }, undefined, {
+        scope: new ScopeResolver(),
+        interactive: true,
+        session: owner,
+        approved: true,
+      })
+    ).rejects.toThrow(/Delegate tool permission is off/)
+  expect(ensureParent).not.toHaveBeenCalled()
+})
 it('refuses disabled tools before contacting a node, even with a read chip', async () => {
   const owner = {
     getToolMode: () => 'off',

@@ -1,4 +1,4 @@
-// Folder run access replaces action switches; the chat mode alone controls asking.
+// Node instructions also require the ordinary Delegate permission.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
@@ -18,6 +18,48 @@ beforeEach(() => {
   useVault([])
 })
 afterEach(() => vi.unstubAllGlobals())
+it('combines Delegate with folder access for offering and execution in every chat mode', () => {
+  for (const access of ['read', 'edit', 'run'] as const)
+    for (const delegate of ['off', 'ask', 'auto'] as const)
+      for (const mode of ['confirm-all', 'allow-edit', 'allow-all'] as const) {
+        const scope = [{ kind: 'node' as const, node_id: 'sample-node', access }]
+        const session = {
+          overrides: ref({ nodeScope: scope }),
+          effectiveNodeScope: scope,
+          toolModes: ref({ delegate }),
+          permissionMode: ref(mode),
+          getToolPermissionKey: (name: string) => name,
+          getToolMode(name: string): 'off' | 'ask' | 'auto' {
+            return ChatSession.prototype.getToolMode.call(this as unknown as ChatSession, name)
+          },
+          needsApproval(name: string): boolean {
+            return ordinaryNeedsApproval(
+              {
+                permissionMode: mode,
+                toolModes: { delegate },
+                getToolMode: (tool) => this.getToolMode(tool),
+                outOfScopePath: () => null,
+                bookAnchored: false,
+                skillNeedsApproval: () => false,
+              },
+              name
+            )
+          },
+        }
+        for (const name of ['node_delegate', 'node_delegation_send']) {
+          const enabled = access === 'run' && delegate !== 'off'
+          expect(session.getToolMode(name)).toBe(enabled ? delegate : 'off')
+          expect(session.needsApproval(name)).toBe(session.needsApproval('delegate'))
+          for (const approved of [false, true]) {
+            const invoke = () =>
+              requireNodeActionPermission(session as unknown as ChatSession, name, approved)
+            if (!enabled) expect(invoke).toThrow(/off|Delegate/)
+            else if (delegate === 'ask' && !approved) expect(invoke).toThrow(/approval/)
+            else expect(invoke).not.toThrow()
+          }
+        }
+      }
+})
 const actions = [
   'node_delegate',
   'node_delegations',
@@ -71,7 +113,7 @@ it('leaves the exact integration approval to the node in Ask mode without a dupl
   }
   expect(ordinaryNeedsApproval(policy, 'node_git_integrate')).toBe(false)
 })
-it('does not show preliminary node action cards in bypass', () => {
+it('retains Delegate approval in bypass', () => {
   // Vault chats and node agents share this evaluator.
   const policy = {
     permissionMode: 'allow-all' as const,
@@ -91,7 +133,9 @@ it('does not show preliminary node action cards in bypass', () => {
         'node_git_integrate',
       ].includes(n)
   ))
-    expect(ordinaryNeedsApproval(policy, name)).toBe(false)
+    expect(ordinaryNeedsApproval(policy, name)).toBe(
+      ['node_delegate', 'node_delegation_send'].includes(name)
+    )
   for (const name of ['node_git_commit', 'node_worktree_remove'])
     expect(ordinaryNeedsApproval(policy, name)).toBe(false)
   const chat = {
@@ -99,7 +143,11 @@ it('does not show preliminary node action cards in bypass', () => {
     getToolMode: () => 'ask',
     permissionMode: ref('allow-all'),
   } as unknown as ChatSession
-  for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).not.toThrow()
+  for (const name of actions) {
+    if (['node_delegate', 'node_delegation_send'].includes(name))
+      expect(() => requireNodeActionPermission(chat, name)).toThrow(/approval/)
+    else expect(() => requireNodeActionPermission(chat, name)).not.toThrow()
+  }
   chat.getToolMode = () => 'off'
   chat.overrides.value.nodeScope = []
   for (const name of actions) expect(() => requireNodeActionPermission(chat, name)).toThrow(/off/)
@@ -133,7 +181,7 @@ it.each(['off', 'ask', 'auto'] as const)('keeps delegation send in parent %s mod
       nodeScope: mode === 'off' ? [] : [{ kind: 'node', node_id: 'sample-node', access: 'run' }],
     }),
     permissionMode: ref(mode === 'auto' ? 'allow-all' : 'confirm-all'),
-    getToolMode: (name: string) => modes[name],
+    getToolMode: (name: string) => (name === 'delegate' ? mode : modes[name]),
   } as unknown as ChatSession
   if (mode === 'auto')
     expect(() => requireNodeActionPermission(session, 'node_delegation_send')).not.toThrow()

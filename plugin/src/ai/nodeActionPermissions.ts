@@ -1,4 +1,5 @@
 import { nodeScopeEntries } from './nodeScope'
+import { isNodeDelegateInstruction } from './nodeAccess'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ref } from 'vue'
 import { NODE_ACTION_PARENTS, NODE_ACTION_TOOLS, type ToolMode } from './types'
@@ -66,6 +67,12 @@ export function requireNodeActionPermission(
 ): void {
   if (!nodeScopeEntries(chat).some((entry) => entry.access === 'run'))
     throw new Error('Node tool is off: folder needs edit and run access')
+  if (isNodeDelegateInstruction(name)) {
+    const mode = chat.getToolMode('delegate')
+    if (mode === 'off') throw new Error('Node delegation is off: Delegate tool permission is off')
+    if (mode !== 'auto' && !approved) throw new Error('Node delegation requires approval')
+    return
+  }
   if (
     chat.permissionMode?.value !== 'allow-all' &&
     ![

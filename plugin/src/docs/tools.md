@@ -974,11 +974,13 @@ Node folders are configured in the chat's Access › Nodes. Each folder has one 
 Read, Edit, or Edit and run. New folders start at Read. Commands, integration and delegation
 require Edit and run at the exact target; file changes require Edit or Edit and run.
 There are no node switches in Tools and no device approval step. Access works on every device.
-The chat's single permission mode controls asking. Ask creates a delegation approval in the
-plugin and one exact command/integration approval on the node. Without asking runs without
-these cards when the daemon permits bypass. Status/listing tools do not ask; cancellation
-and follow-up instructions use the same chat mode. The node's identity, connection and project
-trust checks still apply.
+Starting a node task and sending follow-up instructions also require the ordinary Delegate
+permission in Tools: Off hides and refuses them, Ask requests approval for each call, and Auto
+runs without a delegation approval. This follows vault delegation in every chat permission
+mode, including Without asking. Edit and run is still required at the target.
+The chat permission mode controls other node actions, with exact command/integration approval
+on the node unless bypass is enabled there. Status/listing tools do not ask; cancellation
+uses the chat mode. The node's identity, connection and project trust checks still apply.
 Models cannot access credentials, send generic node requests or answer child human prompts.
 Nodes must advertise delegation_without_grant. Older nodes say they need an update to take tasks
 from chats; do not ask for a grant or create one automatically.

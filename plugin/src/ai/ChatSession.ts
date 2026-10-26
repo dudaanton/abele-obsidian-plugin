@@ -59,7 +59,7 @@ import { NODE_AGENT_TOOL_NAMES, NODE_MUTATION_TOOLS } from './tools/node/agent'
 import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { nodeRepositoryToolsHost } from './tools/node'
 import { hasNodeScope, nodeScopeEntries } from './nodeScope'
-import { nodeToolAccess, migrateNodeAccess } from './nodeAccess'
+import { isNodeDelegateInstruction, nodeToolAccess, migrateNodeAccess } from './nodeAccess'
 import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
@@ -1339,6 +1339,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   getToolMode(toolName: string, toolCallId?: string): ToolMode {
+    if (isNodeDelegateInstruction(toolName))
+      return nodeToolAccess(toolName, this.effectiveNodeScope)
+        ? this.getToolMode('delegate')
+        : 'off'
     const nodeAccess = nodeToolAccess(toolName, this.effectiveNodeScope)
     if (nodeAccess !== undefined)
       return nodeAccess ? (this.needsApproval(toolName) ? 'ask' : 'auto') : 'off'
@@ -1454,7 +1458,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     ]
     const scopeTools = [...NODE_AGENT_TOOL_NAMES, ...delegationTools]
     const permitted = filtered.filter(
-      (tool) => nodeToolAccess(tool.name, this.effectiveNodeScope) !== false
+      (tool) =>
+        nodeToolAccess(tool.name, this.effectiveNodeScope) !== false &&
+        (!isNodeDelegateInstruction(tool.name) || this.getToolMode(tool.name) !== 'off')
     )
     const scopeFiltered = this.effectiveNodeScope.length
       ? permitted
@@ -1558,7 +1564,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               ? structuredClone(params)
               : params
         if (NODE_ACTION_TOOLS.includes(tool.name) && this.getToolMode(tool.name) === 'off')
-          throw new Error('Node tool is off in this device’s tool permissions')
+          throw new Error(
+            isNodeDelegateInstruction(tool.name) && this.getToolMode('delegate') === 'off'
+              ? 'Node delegation is off: Delegate tool permission is off'
+              : 'Node tool is off: folder needs edit and run access'
+          )
         const ownerAgent = this.agent.value
         const version = this.conversationVersion.value
         const invocationApp = GlobalStore.getInstance().app

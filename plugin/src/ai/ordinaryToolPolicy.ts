@@ -1,4 +1,4 @@
-import { NODE_REPOSITORY_READ_TOOLS } from './nodeAccess'
+import { isNodeDelegateInstruction, NODE_REPOSITORY_READ_TOOLS } from './nodeAccess'
 import { NODE_AGENT_TOOL_NAMES, NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS } from './tools/node/agent'
 import { needsSecretApproval } from './tools/secretUtils'
 import { REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
@@ -64,6 +64,7 @@ export function ordinaryNeedsApproval(
   args?: Record<string, unknown>,
   permissionKey?: string
 ): boolean {
+  if (isNodeDelegateInstruction(toolName)) return ordinaryNeedsApproval(policy, 'delegate')
   if (toolName === 'node_git_commit' || toolName === 'node_worktree_remove')
     return policy.permissionMode !== 'allow-all'
   // The node asks once with the resolved folder and exact command before execution.

@@ -131,7 +131,7 @@ it('a normal plugin agent delegates through node chips to both fake providers, s
     const setup = evalAsync<{ registration: string; parent: string; agent: string }>(`(async () => {
       ${PRELUDE}
       if(app.vault.getAbstractFileByPath(${JSON.stringify(path)}))throw Error('Synthetic chat already exists');
-      const agent = T.AgentRegistry.getInstance().create({ toolDiscovery: 'all-at-once', name: 'Sample node parent', toolModes: { node_delegations: 'auto', node_delegate: 'auto', node_delegation_send: 'auto', node_delegation_status: 'auto', node_delegation_cancel: 'auto' } });
+      const agent = T.AgentRegistry.getInstance().create({ toolDiscovery: 'all-at-once', name: 'Sample node parent', toolModes: { delegate: 'auto', node_delegations: 'auto', node_delegate: 'auto', node_delegation_send: 'auto', node_delegation_status: 'auto', node_delegation_cancel: 'auto' } });
       const file = await app.vault.create(${JSON.stringify(path)}, JSON.stringify({ v:2, k:'meta', type:'abele-chat', agentId:agent.id, providerId:'', modelId:'', title:'Sample parent', created:'2028-01-01' })+'\\n');
       await chats.openChatFile(file); await chats.revealSidebar({focus:false});
       const parent = chats.getSessionByFile(file.path);

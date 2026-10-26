@@ -17,7 +17,12 @@ export const NODE_REPOSITORY_READ_TOOLS = [
   'node_open',
 ]
 
-/** The folder level is the only node tool grant; the ordinary chat mode controls prompts. */
+/** New instructions to node agents also follow the ordinary Delegate permission. */
+export function isNodeDelegateInstruction(name: string): boolean {
+  return name === 'node_delegate' || name === 'node_delegation_send'
+}
+
+/** Folder access is required in addition to any ordinary tool permission. */
 export function nodeToolAccess(
   name: string,
   entries: readonly NodeScopeEntry[]
