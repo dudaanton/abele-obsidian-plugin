@@ -5,6 +5,7 @@ import { probePrelude, type Screen } from './helpers/layoutProbe'
 import { SYNC_PRELUDE } from './helpers/syncDriver'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { heldPlacementSample } from './helpers/syncWaitingSamples'
 
 targets('desktop')
 
@@ -23,13 +24,7 @@ const waiting = [
   direction: 'out',
   since,
 }))
-const refused = {
-  path: 'Research/Field notes/Map reference.pdf',
-  kind: 'held',
-  direction: 'in',
-  since,
-  fact: 'Changed while it was being placed',
-}
+const refused = heldPlacementSample(since)
 
 it('pictures temporary waits apart from refusals and compares connection and status counts', async () => {
   const vault = vaultCli(activeVaultName())

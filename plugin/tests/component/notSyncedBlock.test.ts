@@ -10,6 +10,8 @@ import { shareSetSource } from '@/sync/shareSets'
 import { historyConnection } from '@/sync/tokenHistory'
 import type { NotSyncedItem } from '@/sync/notSynced'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
+import { heldPlacementSample } from '../e2e/helpers/syncWaitingSamples'
+import { initializeLocale } from '../helpers/i18n'
 
 const item: NotSyncedItem = {
   path: 'Notes/sample.md',
@@ -98,36 +100,41 @@ it('shortens a long path in the shared kit while retaining its full detail', asy
   expect(view.text()).toContain(path)
   view.unmount()
 })
-it('shows folder and fact in one plain metadata line on phone', () => {
-  const saved = Platform.isMobile
-  Reflect.set(Platform, 'isMobile', true)
-  const view = mount(NotSyncedBlock, {
-    props: {
-      items: [
-        {
-          ...item,
-          path: 'Projects/Research/Collected material/Long working folder/sample.md',
-          fact: 'changed while it was being placed',
-        },
-      ],
-    },
-  })
-  try {
-    expect(view.find('.abele-not-synced__meta').text()).toBe(
-      'Projects/Research/Collected material/Long working folder · changed while it was being placed · since Jan 1'
-    )
-    expect(view.findComponent(PathLabel).exists()).toBe(false)
-    expect(view.findAll('.abele-not-synced__part').map((part) => part.text())).toEqual([
-      'Projects/Research/Collected material/Long working folder',
-      'changed while it was being placed',
-      'since Jan 1',
-    ])
-    expect(view.findAll('.abele-not-synced__folder')).toHaveLength(1)
-  } finally {
-    view.unmount()
-    Reflect.set(Platform, 'isMobile', saved)
+it.each(['en', 'ru', 'lv', 'de', 'es'])(
+  'keeps the screenshot placement reason lowercase in %s phone metadata',
+  (locale) => {
+    initializeLocale(locale)
+    const saved = Platform.isMobile
+    Reflect.set(Platform, 'isMobile', true)
+    const view = mount(NotSyncedBlock, {
+      props: {
+        items: [
+          {
+            ...item,
+            path: 'Projects/Research/Collected material/Long working folder/sample.md',
+            fact: heldPlacementSample(item.since).fact,
+          },
+        ],
+      },
+    })
+    try {
+      expect(view.find('.abele-not-synced__meta').text()).toBe(
+        'Projects/Research/Collected material/Long working folder · changed while it was being placed · since Jan 1'
+      )
+      expect(view.findComponent(PathLabel).exists()).toBe(false)
+      expect(view.findAll('.abele-not-synced__part').map((part) => part.text())).toEqual([
+        'Projects/Research/Collected material/Long working folder',
+        'changed while it was being placed',
+        'since Jan 1',
+      ])
+      expect(view.findAll('.abele-not-synced__folder')).toHaveLength(1)
+    } finally {
+      view.unmount()
+      Reflect.set(Platform, 'isMobile', saved)
+      initializeLocale('en')
+    }
   }
-})
+)
 it('hides an empty list and exposes its unreadable state', async () => {
   const view = mount(NotSyncedBlock, { props: { items: [] } })
   expect(view.text()).toBe('')
