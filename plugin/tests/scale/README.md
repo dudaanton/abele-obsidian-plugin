@@ -33,8 +33,10 @@ remain required intact on the primary. Their absence on peer/server is expected 
 exact-path size refusals in both primary status and activity log, no repeated initiation
 within an engine generation, and no fully-synced claim. Only the harness's deliberate crash,
 quit and plugin-reload interruptions define generation boundaries; a network drop does not.
-Total/per-generation upload attempt counts and visible states
-are retained. Multipart interruption targets the largest eligible file, recorded with size
+Fully-synced claims use visible status-bar and connection-line words, not internal idle rows.
+Snapshots retain `activity.notSynced`; missing visible labels for connected states fail closed,
+while snapshots before any connection exists are counted separately. Total/per-generation
+upload attempt counts and visible states are retained. Multipart interruption targets the largest eligible file, recorded with size
 and hash. A missing limit or eligible target fails preflight. Quota is recorded without
 inferring remaining capacity. Hidden/settings exclusions remain a separate category.
 
@@ -373,8 +375,9 @@ verified `pinned-archive` SDK input from a registry pin or an explicit harness o
 
 Pause write evidence includes caller stacks. Only recognized host settings/workspace
 persistence with a proven host stack is reported separately and excluded from the sync-write
-budget. A matching settings path alone never exempts a write; plugin and unknown callers
-still fail. Adapter/native layers remain a conservative operation upper bound, not unique
+budget. The host recent-files save to `.obsidian/workspace.json` may pass through leading
+plugin adapter frames; those wrappers do not make the host save a sync write. Plugin callers
+below a host frame and unknown origins still fail, as do writes to ordinary note paths. Adapter/native layers remain a conservative operation upper bound, not unique
 physical bytes. Native handle `sync`/`datasync` start/finish receipts include elapsed durations
 for phase analysis; these cover observed vault handles, not every filesystem flush by the
 app, database or operating system.
@@ -439,3 +442,9 @@ Sampled time includes native waits and is not process CPU accounting. Compare co
 window duration: missing spans and `profileFailures` make a window incomplete, never zero work.
 Malformed sample timing stays rejected and is listed explicitly. This analysis does not
 replace the qualification report or change any runtime gate.
+
+Optional heap diagnostics sample renderer usage and bounded responsiveness throughout the
+scenario. Each renderer takes one heap snapshot after synced restart, outside the upload,
+pull, edit and restart timing windows, before the stopped-app byte verification. Snapshot
+GC and inspector mappings can inflate RSS; report workload pre-capture peaks separately
+from diagnostic peaks and do not equate retained JS bytes with total resident memory.
