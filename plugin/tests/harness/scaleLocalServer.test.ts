@@ -11,13 +11,14 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
   let session
   try {
     const fixture = join(root, 'fixture'),
-      data = join(root, 'data')
+      data = join(root, 'data'),
+      evidence = join(root, 'evidence')
     const files = {
       'package-lock.json': '{}',
       'packages/server/package.json': '{"version":"0.5.0-test"}',
       'packages/core/package.json': '{"version":"0.3.5"}',
       'packages/server/dist/index.js':
-        "const http=require('node:http');const s=http.createServer((q,r)=>r.end('ok'));s.listen(Number(process.env.ABELE_PORT),process.env.ABELE_HOST);process.on('SIGTERM',()=>s.close(()=>process.exit()));",
+        "const http=require('node:http'),fs=require('node:fs');const db=new URL(process.env.ABELE_DATABASE_URL).pathname;fs.writeFileSync(db,'running');const s=http.createServer((q,r)=>r.end('ok'));s.listen(Number(process.env.ABELE_PORT),process.env.ABELE_HOST);process.on('SIGTERM',()=>{fs.writeFileSync(db,'stopped');fs.writeFileSync(db+'-wal','last-transaction');s.close(()=>process.exit())});",
       'packages/cli/dist/index.js': '',
       'packages/server/dist/admin-cli/index.js': "console.log('sample-token')",
     }
@@ -41,6 +42,7 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
       serverMode: 'local',
       serverFixture: fixture,
       localServerDirectory: data,
+      serverEvidenceDirectory: evidence,
     })
     expect(session.address).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
     expect(session.receipt).toMatchObject({
@@ -52,8 +54,16 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
     })
     expect(JSON.stringify(session.receipt)).not.toContain('sample-token')
     expect(session.token).toBe('sample-token')
-    await session.close()
-    await session.close()
+    await Promise.all([session.close(), session.close()])
+    expect(await readFile(join(evidence, 'abele.db'), 'utf8')).toBe('stopped')
+    expect(await readFile(join(evidence, 'abele.db-wal'), 'utf8')).toBe('last-transaction')
+    expect(JSON.parse(await readFile(join(evidence, 'receipt.json'), 'utf8'))).toMatchObject({
+      serverStopped: true,
+      files: [
+        { name: 'abele.db', bytes: 7 },
+        { name: 'abele.db-wal', bytes: 16 },
+      ],
+    })
     await expect(readFile(join(data, 'anything'))).rejects.toThrow()
     await expect(
       openServer({ serverMode: 'local', serverFixture: fixture, localServerDirectory: fixture })
@@ -73,6 +83,18 @@ it('starts only the pinned scratch fixture with isolated SQLite/blobs and remove
     })
     expect(candidate.receipt).toMatchObject({ revision: selected, coreVersion: '0.3.5' })
     await candidate.close()
+    const blocked = await openServer({
+      serverMode: 'local',
+      serverFixture: fixture,
+      localServerDirectory: data,
+      serverCommit: selected,
+      serverEvidenceDirectory: evidence,
+    })
+    await expect(blocked.close()).rejects.toThrow()
+    // An evidence collision keeps the stopped source available instead of deleting it.
+    expect(await readFile(join(data, 'abele.db'), 'utf8')).toBe('stopped')
+    expect(await readFile(join(evidence, 'abele.db-wal'), 'utf8')).toBe('last-transaction')
+    await rm(data, { recursive: true })
     const paired = await openServer({
       serverMode: 'local',
       serverFixture: fixture,

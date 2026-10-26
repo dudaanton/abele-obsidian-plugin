@@ -466,3 +466,10 @@ scenario. Each renderer takes one heap snapshot after synced restart, outside th
 pull, edit and restart timing windows, before the stopped-app byte verification. Snapshot
 GC and inspector mappings can inflate RSS; report workload pre-capture peaks separately
 from diagnostic peaks and do not equate retained JS bytes with total resident memory.
+
+
+Local fixture shutdown preserves the stopped SQLite database and any WAL, SHM or rollback
+journal under `state/server-final` before deleting disposable server storage. A receipt lists
+the copied files. This excludes blob payloads; full server byte verification remains separate.
+A failed evidence copy retains the source storage and fails cleanup rather than discarding it.
+The guardian's later disk-state copy cannot substitute for this pre-disposal capture.

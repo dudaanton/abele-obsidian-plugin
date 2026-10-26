@@ -2,8 +2,8 @@ import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:net'
 import { randomBytes, createHash } from 'node:crypto'
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { mkdir, readdir, readFile, rm, copyFile, stat, writeFile } from 'node:fs/promises'
+import { join, resolve, dirname } from 'node:path'
 import { verifySyncFixture } from '../../scripts/sync-server-fixture.mjs'
 import { SERVER_TEST_COMMIT } from '../../scripts/server-test-fixtures.mjs'
 const exec = promisify(execFile)
@@ -61,6 +61,9 @@ export async function openServer(config) {
   if (expectedCoreVersion && coreVersion !== expectedCoreVersion)
     throw new Error('Local fixture core version differs from selected SDK/server pairing')
   const directory = resolve(config.localServerDirectory)
+  const evidence = config.serverEvidenceDirectory ? resolve(config.serverEvidenceDirectory) : null
+  if (evidence && (evidence === directory || evidence.startsWith(directory + '/')))
+    throw new Error('Server evidence must be outside disposable storage')
   await mkdir(directory, { recursive: true })
   if ((await readdir(directory)).length) throw new Error('Local server storage must be empty')
   const { version } = JSON.parse(
@@ -96,22 +99,47 @@ export async function openServer(config) {
   child.on('error', () => {
     spawnFailed = true
   })
-  let closed = false
-  const close = async () => {
-    if (closed) return
-    closed = true
-    if (child.exitCode === null && child.signalCode === null && !spawnFailed) {
-      const ended = new Promise((done) => child.once('exit', done))
-      child.kill('SIGTERM')
-      const timer = setTimeout(() => child.kill('SIGKILL'), 3000)
-      try {
-        await ended
-      } finally {
-        clearTimeout(timer)
+  let provisioned = false,
+    closing
+  const close = () =>
+    (closing ??= (async () => {
+      if (child.exitCode === null && child.signalCode === null && !spawnFailed) {
+        const ended = new Promise((done) => child.once('exit', done))
+        child.kill('SIGTERM')
+        const timer = setTimeout(() => child.kill('SIGKILL'), 3000)
+        try {
+          await ended
+        } finally {
+          clearTimeout(timer)
+        }
       }
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
+      // A stopped SQLite writer leaves a consistent database/WAL set. Copy it before
+      // disposal; a guardian cannot recover it after this fixture removes storage.
+      if (evidence && provisioned) {
+        await mkdir(dirname(evidence), { recursive: true })
+        await mkdir(evidence, { mode: 0o700 })
+        const files = []
+        for (const suffix of ['', '-wal', '-shm', '-journal']) {
+          const name = 'abele.db' + suffix
+          try {
+            await copyFile(join(directory, name), join(evidence, name))
+          } catch (error) {
+            if (suffix && error.code === 'ENOENT') continue
+            throw error
+          }
+          files.push({ name, bytes: (await stat(join(evidence, name))).size })
+        }
+        await writeFile(
+          join(evidence, 'receipt.json'),
+          JSON.stringify({
+            at: Date.now(),
+            serverStopped: true,
+            files,
+          })
+        )
+      }
+      await rm(directory, { recursive: true, force: true })
+    })())
   try {
     const until = Date.now() + 30000
     let ready = false
@@ -141,6 +169,7 @@ export async function openServer(config) {
       { env, timeout: 45000, killSignal: 'SIGKILL' }
     )
     if (!stdout.trim()) throw new Error('Local fixture provisioning failed')
+    provisioned = true
     return {
       address,
       token: stdout.trim(),

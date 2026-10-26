@@ -581,6 +581,7 @@ export async function run(config) {
       throw new Error('Selected build SDK provenance required for matching server')
     serverSession = await openServer({
       ...config,
+      serverEvidenceDirectory: join(config.output, 'state/server-final'),
       ...(config.serverCommit ? { serverSdkVersion: report.buildReceipt.sdk.version } : {}),
     })
     config = { ...config, server: serverSession.address }
