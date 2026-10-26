@@ -1,6 +1,37 @@
 import { expect, it } from 'vitest'
 import { retainedGraph } from '../scale/heap-retainers.mjs'
 
+it.each(['shortcut', 'weak-map'])('ignores a redundant %s ownership edge', (kind) => {
+  const pair = ' / part of key (Object @3) -> value (Object @7) pair in WeakMap (table @5))'
+  const snapshot = {
+    snapshot: {
+      meta: {
+        node_fields: ['type', 'name', 'id', 'self_size', 'edge_count'],
+        node_types: [['synthetic', 'object']],
+        edge_fields: ['type', 'name_or_index', 'to_node'],
+        edge_types: [['property', 'weak', 'shortcut', 'internal']],
+      },
+    },
+    strings: ['root', 'left', 'right', 'shared', '1' + pair, '2' + pair],
+    nodes: [0, 0, 1, 0, 2, 1, 1, 3, 10, 1, 1, 2, 5, 20, 1, 1, 3, 7, 30, 0],
+    edges: [
+      0,
+      0,
+      5,
+      2,
+      0,
+      10,
+      kind === 'shortcut' ? 0 : 3,
+      4,
+      15,
+      kind === 'shortcut' ? 2 : 3,
+      5,
+      15,
+    ],
+  }
+  expect([...retainedGraph(snapshot).retained]).toEqual([60, 40, 20, 30])
+})
+
 it('counts shared objects only under their common dominator and excludes weak edges', () => {
   const snapshot = {
     snapshot: {

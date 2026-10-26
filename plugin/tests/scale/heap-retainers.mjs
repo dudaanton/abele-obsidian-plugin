@@ -14,7 +14,31 @@ export function retainedGraph(snapshot) {
     size = meta.node_fields.indexOf('self_size')
   const et = meta.edge_fields.indexOf('type'),
     to = meta.edge_fields.indexOf('to_node')
-  const weak = meta.edge_types[et].indexOf('weak')
+  const types = meta.edge_types[et],
+    weak = types.indexOf('weak')
+  const shortcut = types.indexOf('shortcut'),
+    internal = types.indexOf('internal')
+  const edgeName = meta.edge_fields.indexOf('name_or_index'),
+    nodeId = meta.node_fields.indexOf('id')
+  const ownership = new Uint8Array(edges.length / ef),
+    weakMapTables = new Map()
+  const owns = (n, e) => {
+    const type = edges[e + et]
+    if (type === weak || edges[e + to] === n * nf || (n !== 0 && type === shortcut)) return false
+    if (type === internal && edgeName >= 0 && nodeId >= 0) {
+      const name = edges[e + edgeName]
+      if (!weakMapTables.has(name)) {
+        const match = /^\d+ \/ part of key .* pair in WeakMap \(table @(\d+)\)\)$/.exec(
+          snapshot.strings[name]
+        )
+        weakMapTables.set(name, match ? Number(match[1]) : null)
+      }
+      // A value needs both its weak key and table. Assign its retained size to the key,
+      // rather than giving it two independent owners and losing that attribution.
+      if (weakMapTables.get(name) === nodes[n * nf + nodeId]) return false
+    }
+    return true
+  }
   const count = nodes.length / nf
   const offsets = new Uint32Array(count + 1),
     degrees = new Uint32Array(count)
@@ -22,7 +46,11 @@ export function retainedGraph(snapshot) {
   for (let n = 0; n < count; n++) {
     offsets[n] = edge
     const end = edge + nodes[n * nf + ec] * ef
-    for (; edge < end; edge += ef) if (edges[edge + et] !== weak) degrees[edges[edge + to] / nf]++
+    for (; edge < end; edge += ef)
+      if (owns(n, edge)) {
+        ownership[edge / ef] = 1
+        degrees[edges[edge + to] / nf]++
+      }
   }
   offsets[count] = edge
   const incomingOffsets = new Uint32Array(count + 1)
@@ -31,7 +59,7 @@ export function retainedGraph(snapshot) {
     position = incomingOffsets.slice()
   for (let n = 0; n < count; n++)
     for (let e = offsets[n]; e < offsets[n + 1]; e += ef)
-      if (edges[e + et] !== weak) {
+      if (ownership[e / ef]) {
         const target = edges[e + to] / nf
         incoming[position[target]++] = n
       }
@@ -58,7 +86,7 @@ export function retainedGraph(snapshot) {
     }
     const e = cursors[top]
     cursors[top] += ef
-    if (edges[e + et] === weak) continue
+    if (!ownership[e / ef]) continue
     const target = edges[e + to] / nf
     if (number[target]) continue
     number[target] = ++reached
@@ -154,7 +182,7 @@ export function summarizeHeap(snapshot, limit = 30) {
     reachable: graph.reachable,
     strongGraphBytes: graph.retained[0],
     semantics:
-      'Root-reachable graph dominators, weak edges excluded; inclusive retained sizes overlap. Native/off-heap RSS is not measured here.',
+      'All-root graph dominators: weak/self edges and non-root shortcuts excluded; WeakMap values assigned to their key rather than duplicate table edges. Includes observer/debugger roots, without page-ownership filtering. Inclusive retained sizes overlap; native/off-heap RSS is not measured.',
     topRetainers: top,
     topShallowGroups: [...groups.values()]
       .sort((a, b) => b.shallowBytes - a.shallowBytes)
