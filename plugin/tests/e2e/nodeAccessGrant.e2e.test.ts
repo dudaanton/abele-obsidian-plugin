@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { resolve } from 'node:path'
+import { mkdirSync } from 'node:fs'
 import { evalAsync } from './helpers/githubLive'
 import { evalRaw } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
@@ -10,16 +11,6 @@ import { withNode } from './helpers/nodeAccessFixture'
 // The node daemon runs beside the app under test, so the phone is its emulated layout here.
 targets('desktop')
 const shots = shotDir('abele-node-access')
-const NODE_TOOLS = [
-  'node_nodes',
-  'node_folders',
-  'list_node_worktrees',
-  'node_ls',
-  'node_read',
-  'node_edit',
-  'node_search',
-  'node_worktree_switch',
-]
 const prelude = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),nodes=T.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async(f,what)=>{for(let i=0;i<300;i++){const v=f();if(v)return v;await wait(50)}throw Error('Did not settle: '+(what||f.toString()))};const visible=s=>[...document.querySelectorAll(s)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden'));const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text&&b.getBoundingClientRect().width>0);`
 
 /** A picture of the whole window, as the person would see it now. */
@@ -50,6 +41,11 @@ const chatTurn = (path: string, steps: string) => `(async()=>{
   try{
     const before=session.allMessages.value.length;
     await session.sendMessage('Read the sample file in the project on the node.');
+    const deadline=Date.now()+90000;
+    while(session.pendingToolCalls?.value.length||session.isStreaming?.value||session.isExecutingTool?.value){
+      if(Date.now()>deadline)throw Error('Scripted node turn did not finish');
+      await new Promise(r=>setTimeout(r,25));
+    }
     if(session.error.value)out.error=String(session.error.value);
     for(const m of session.allMessages.value.slice(before))if(m.role==='tool-call'&&m.toolResult!==undefined)out.calls.push({name:m.toolName,result:String(m.toolResult),refusal:m.nodeAccessRefusal});
   }finally{window.fetch=realFetch}
@@ -65,6 +61,8 @@ const chatTurn = (path: string, steps: string) => `(async()=>{
  */
 async function refusalToGrant(form: 'desktop' | 'phone') {
   await withNode(async ({ port, token, repo }) => {
+    const otherProject = resolve(repo, '../sample-library')
+    mkdirSync(otherProject)
     const stamp = Date.now()
     const chat = `Sample node access ${stamp}.abchat`
     let registration = '',
@@ -82,9 +80,14 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         await until(()=>client.connected,'node connected');
         const project=await client.registerProject(${JSON.stringify(repo)},'untrusted');
         const worktree=(await client.repository.worktrees({project_id:project.project_id})).entries[0];
-        const agent=T.AgentRegistry.getInstance().create({name:'Sample node access agent',toolModes:Object.fromEntries(${JSON.stringify(NODE_TOOLS)}.map(n=>[n,'auto']))});
+        const agent=T.AgentRegistry.getInstance().create({name:'Sample node access agent'});
         await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',agentId:agent.id,providerId:'',modelId:'',title:'Sample node access',created:'2026-01-01'})+'\\n'));
         const session=chats.getSessionByFile(${JSON.stringify(chat)});session.permissionMode.value='allow-all';
+        // A chat with no folders has no node tools. Give a different folder Read so the
+        // requested folder exercises the ordinary out-of-scope refusal and grant path.
+        if(session.getToolMode('node_read')!=='off')throw Error('Node tools enabled without access');
+        const other=await client.registerProject(${JSON.stringify(otherProject)},'untrusted');
+        await T.giveNodeChatAccess(session,{kind:'project',node_id:node.expectedNodeId,project_id:other.project_id,access:'read'});
         await chats.revealSidebar({focus:false});
         return JSON.stringify({registration:node.id,project:project.project_id,worktree:worktree.worktree_id,agent:agent.id})
       })()`
@@ -97,6 +100,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       const refused = evalAsync<Turn>(chatTurn(chat, `[{name:'open_nodes',params:{}},${read}]`))
       expect(refused.error, JSON.stringify(refused)).toBeUndefined()
       const call = refused.calls.at(-1)!
+      expect(call, JSON.stringify(refused)).toBeDefined()
       expect(call.name).toBe('node_read')
       expect(call.result).toMatch(/this chat needs node access|not in this chat's node access/)
       expect(call.refusal?.kind, JSON.stringify(refused)).toBe('no-access')
@@ -116,7 +120,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       expect(line).not.toContain(setup.project)
       await capture(`refusal-${form}`)
 
-      // One press: this chat's node access opens with the node, the folder and the worktree chosen.
+      // Open this chat's node access; its searchable picker offers the requested folder and branch.
       evalAsync(
         `(async()=>{${prelude}
         const line=[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].find(el=>el.getBoundingClientRect().width>0);
@@ -124,7 +128,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const add=await until(()=>visible('.abele-node-scope-editor__add:not(:disabled)'),'node access opened');
         await wait(300);
         add.click();
-        const selected=await until(()=>[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main')),'refused place offered');
+        const selected=await until(()=>[...document.querySelectorAll('.abele-node-folder-choice')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main')),'refused place offered');
         const shown=selected.textContent;
         if(shown.includes('refs/heads/'))throw Error('Branch is shown as a full ref: '+shown);
         return JSON.stringify(shown)
@@ -143,11 +147,11 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       )
       evalAsync(
         `(async()=>{${prelude}
-        const chosen=[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main'));
-        if(!chosen)throw Error('Refused place is missing from the add menu');
+        const chosen=[...document.querySelectorAll('.abele-node-folder-choice')].find(item=>item.textContent.includes('Sample workstation')&&item.textContent.includes('sample-app')&&item.textContent.includes('main'));
+        if(!chosen)throw Error('Refused place is missing from the folder picker');
         chosen.click();
         const session=chats.getSessionByFile(${JSON.stringify(chat)});
-        await until(()=>session.overrides.value.nodeScope?.length===1,'access added');
+        await until(()=>session.overrides.value.nodeScope?.length===2,'access added');
         const modal=document.querySelector('.abele-chat-setup').closest('.modal');const close=[...modal.querySelectorAll('.modal-close-button,.modal-header-button')].find(b=>b.getBoundingClientRect().width>0);if(close)close.click();else modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         await until(()=>!visible('.abele-node-scope-editor'),'dialog closed');
         await until(()=>[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].some(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('Access given. Ask the agent to try again')),'line says given');
@@ -202,6 +206,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         document.querySelector('.prompt-input[placeholder="Which chat gets access"]').closest('.prompt').querySelector('.suggestion-item').click();
         const dialog=await until(()=>[...document.querySelectorAll('.modal')].find(m=>m.getBoundingClientRect().width>0&&m.textContent.includes('Give a chat access')),'grant dialog');
         if(!dialog.textContent.includes('Folder: sample-app')||!dialog.textContent.includes('Worktree: main')||!dialog.textContent.includes('Sample workstation'))throw Error('Grant dialog does not name the place: '+dialog.textContent);
+        if(dialog.querySelector("select")?.value!=="read")throw Error("New folder access must start at Read");
         if(dialog.textContent.includes(${JSON.stringify(setup.worktree)}))throw Error('Grant dialog shows an id: '+dialog.textContent);
         return JSON.stringify('dialog')
       })()`
@@ -213,25 +218,21 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         button(dialog,'Give access').click();
         const other=chats.getAllSessions().find(s=>s.id===${JSON.stringify(second)});
         await until(()=>other.overrides.value.nodeScope?.length===1,'second chat given access');
-        await until(()=>[...document.querySelectorAll('.notice')].some(n=>n.textContent.includes('Sample second chat can read and edit sample-app / main')),'notice');
+        await until(()=>[...document.querySelectorAll('.notice')].some(n=>n.textContent.includes('Sample second chat can read sample-app / main')),'notice');
         return JSON.stringify('given')
       })()`
       )
       await capture(`panel-notice-${form}`)
 
-      // The agent's tools, offered by section, with the node section as three actions.
+      // Node access has one home; ordinary tool settings contain no node switches.
       evalAsync(
         `(async()=>{${prelude}
         await T.openDialog('agent-tools');
-        await until(()=>document.querySelector('.abele-tool-modes .abele-fold-heading'),'tool groups');
-        for(const fold of document.querySelectorAll('.abele-tool-modes > .abele-disclosure > .abele-fold-heading[aria-expanded="false"]'))fold.click();
-        const heading=await until(()=>[...document.querySelectorAll('.abele-tool-modes > .abele-disclosure > .abele-fold-heading')].find(h=>h.querySelector('.abele-fold-heading__text')?.textContent==='Node'&&h.getBoundingClientRect().width>0),'node section');
-        await until(()=>document.querySelector('.abele-tool-modes__action'),'node actions');
-        const text=heading.closest('.abele-tool-modes').textContent;
-        for(const words of ['Read files and search','Edit files','Worktrees','Hand work to a node agent','Debugger runs','Always open','Offer tools'])if(!text.includes(words)&&!document.querySelector('.abele-agent-editor').textContent.includes(words))throw Error('Missing '+words);
-        if(!document.querySelector('.abele-agent-editor .abele-tool-modes__opening-fixed')?.textContent.includes('Always open'))throw Error('Files is not said to be always open');for(const old of ['node_file','node_tree','node_grep','node_blame','node_commits'])if(document.querySelector('.abele-agent-editor').textContent.includes(old))throw Error('Old name listed: '+old);const about=heading.parentElement.querySelector('.abele-tool-modes__about');if(!about||about.textContent.trim()!=='Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.')throw Error('Node section is not said in one short line: '+(about&&about.textContent));
-        if(document.body.classList.contains('is-phone')){const row=[...document.querySelectorAll('.abele-tool-modes__action')].find(r=>r.textContent.includes('Read files and search'));const name=row.querySelector('.setting-item-name').getBoundingClientRect(),choice=row.querySelector('select').getBoundingClientRect(),count=row.querySelector('.abele-tool-modes__members-toggle').getBoundingClientRect();if(!(choice.top>=name.bottom-1&&count.top>=choice.bottom-1))throw Error('On a phone the choice is not under the name with the count below: '+JSON.stringify({name,choice,count}))}
-        heading.scrollIntoView({block:'start'});
+        const editor=await until(()=>visible('.abele-agent-editor .abele-tool-modes'),'tool groups');
+        const headings=[...editor.querySelectorAll('.abele-fold-heading__text')].map(h=>h.textContent.trim());
+        if(headings.some(name=>name==='Node'||name==='Nodes'))throw Error('Removed node tool group remains');
+        await until(()=>!visible('.notice'),'grant notice dismissed');
+        editor.scrollIntoView({block:'start'});
         return JSON.stringify('tools')
       })()`
       )
@@ -255,7 +256,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
   })
 }
 
-it('takes a refused node call to a working one in two presses, and gives a chat access from the node panel', async () => {
+it('takes a refused node call through folder access to a working one, and grants from the node panel', async () => {
   await refusalToGrant('desktop')
 }, 180000)
 

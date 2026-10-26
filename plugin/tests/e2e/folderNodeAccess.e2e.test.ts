@@ -16,7 +16,6 @@ const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.get
 const close=el=>el.closest('.modal-container').querySelector('.modal-close-button,.modal-header-button').click();
 const shot=async(name)=>{await wait(250);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(SHOTS+'/'+FORM+'-'+name+'.png',image.toPNG())};
 const editor=()=>visible('.abele-folder-access .abele-node-scope-editor')||visible('.abele-chat-setup .abele-node-scope-editor');
-const approve=async()=>{editor().querySelector('.abele-node-scope-editor__approve').click();await until(()=>!editor().querySelector('.abele-status-dot_orange'),'local approval');if(editor().querySelector('.abele-node-scope-editor__approve'))throw Error('Approval action stayed after confirmation')};
 const openFolder=async()=>{
  const root=visible('.abele-ai-chat'),current=root.querySelector('.abele-chat-switch__current');
  if(!visible('.abele-chat-tree'))current.click();
@@ -43,41 +42,44 @@ async function review(form: 'desktop' | 'phone') {
       await chats.folders.move(session.id,'Sample node collection');
       await chats.revealSidebar({focus:false});await wait(250);
       await openFolder();
-      await until(()=>editor().querySelector('.abele-status-dot_orange'),'unapproved dot');
+      await until(()=>!editor().querySelector('.abele-status-dot_faint'),'connected row');
+      if(editor().querySelector('.abele-node-scope-editor__approve'))throw Error('Per-device approval remains');
       if(editor().querySelector('.abele-status-dot_faint'))throw Error('Connected node marked disconnected');
       if(editor().textContent.includes('Local approval')||editor().textContent.includes('No nodes connected'))throw Error('Contradictory block remains');
       const headings=[...visible('.abele-folder-access').querySelectorAll('h3')].map(el=>el.textContent);
       if(JSON.stringify(headings)!==JSON.stringify(['Nodes','Tools']))throw Error('Unexpected groups: '+headings);
-      await shot('folder-unapproved');
-      await approve();
-      await shot('folder-connected-approved');
+      await shot('folder-connected-read');
       const mode=editor().querySelector('.abele-node-scope-editor__mode');
       if(!mode.classList.contains('clickable-icon')||!mode.querySelector('[data-lucide=eye],.lucide-eye'))throw Error('Own read mode is not an eye action');
       mode.click();
       const edit=await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='read and edit'),'mode menu');
       edit.click();await until(()=>chats.folders.nodeScopeForFolder('Sample node collection')[0]?.access==='edit','mode changed');
+      await until(()=>editor().querySelector('.abele-node-scope-editor__mode')?.getAttribute('aria-label')==='read and edit','edit glyph');
+      await shot('folder-connected-edit');
       editor().querySelector('.abele-node-scope-editor__mode').click();
       const read=await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='read'),'read mode');read.click();
       await until(()=>chats.folders.nodeScopeForFolder('Sample node collection')[0]?.access==='read','read restored');
-      await until(()=>!editor().querySelector('.abele-status-dot_orange'),'mode approved');
+      await until(()=>!editor().querySelector('.abele-status-dot_orange'),'read needs no device approval');
       close(visible('.abele-folder-access'));await until(()=>!visible('.abele-folder-access'),'folder closed');
       const root=visible('.abele-ai-chat');
       if(visible('.abele-chat-tree'))root.querySelector('.abele-chat-switch__current').click();
       root.querySelector('.abele-chat-input__scope').click();await until(()=>visible('.abele-chat-setup .abele-node-scope-editor'),'chat access');
-      await until(()=>!editor().querySelector('.abele-status-dot_orange'),'inherited approved');
+      await until(()=>!editor().querySelector('.abele-status-dot_orange'),'inherited needs no device approval');
       const inherited=editor().querySelector('[role=listitem]');
       if(inherited.querySelector('.abele-scope-mgr__entry-remove')||inherited.querySelector('.abele-node-scope-editor__mode').classList.contains('clickable-icon'))throw Error('Inherited access can be edited here');
       if(!inherited.textContent.includes('From the folder Sample node collection'))throw Error('Inherited source missing');
-      await shot('chat-inherited-approved');
+      await shot('chat-inherited-read');
       inherited.querySelector('.abele-node-scope-editor__folder').click();await until(()=>visible('.abele-folder-access'),'source folder opens');
       close(visible('.abele-folder-access'));await until(()=>!visible('.abele-folder-access'),'source closed');
       await chats.folders.setNodeScope('Sample node collection',[]);
+      await until(()=>!editor().querySelector('[role=listitem]'),'inherited access removed');
       await chats.folders.setNodeScope('Sample node collection',[entry]);
-      await until(()=>editor().querySelector('.abele-status-dot_orange'),'inherited unapproved');
-      await shot('chat-inherited-unapproved');
+      await until(()=>editor().querySelector('[role=listitem]'),'inherited access restored');
+      if(editor().querySelector('.abele-node-scope-editor__approve'))throw Error('Inherited access needs device approval');
+      await shot('chat-inherited-restored');
       if(session.overrides.value.nodeScope?.length)throw Error('Inherited scope copied into chat');
       close(visible('.abele-chat-setup'));await until(()=>!visible('.abele-chat-setup'),'chat closed');
-      await openFolder();await approve();
+      await openFolder();
       return JSON.stringify(true);
     })()`
     try {
@@ -89,7 +91,7 @@ async function review(form: 'desktop' | 'phone') {
             `(async()=>{const SHOTS=${JSON.stringify(resolve(shots))},FORM=${JSON.stringify(form)};${prelude}
         await until(()=>editor().querySelector('.abele-status-dot_faint'),'disconnected dot');
         if(editor().textContent.includes('No nodes connected'))throw Error('Disconnected grant shown as empty');
-        if(editor().querySelector('.abele-status-dot_orange'))throw Error('Transport loss removed local confirmation');
+        if(editor().querySelector('.abele-status-dot_orange'))throw Error('Transport loss added a command warning');
         await shot('folder-disconnected');
         await chats.folders.setNodeScope('Sample node collection',[]);
         await nodes.remove(window.__folderNodeReview.registration);

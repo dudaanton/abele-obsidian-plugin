@@ -192,23 +192,31 @@ it('shows each node access state on desktop and phone geometry', async () => {
       for (const access of ['read', 'edit', 'run']) {
         await evalLong(`(async()=>{${setup}
           await T.giveNodeChatAccess(session,{kind:'project',node_id:${JSON.stringify(node.node)},project_id:${JSON.stringify(node.project)},access:${JSON.stringify(access)}});
-          session.permissionMode.value='allow-all';await wait(700);
+          session.permissionMode.value='allow-all';
+          for(let i=0;i<300;i++){
+            const editor=[...document.querySelectorAll('.abele-node-scope-editor')].find(el=>el.getBoundingClientRect().width>0);
+            const mode=editor?.querySelector('.abele-node-scope-editor__mode')?.getAttribute('aria-label');
+            const hint=editor?.querySelector('.abele-node-scope-editor__why');
+            if(mode===${JSON.stringify(access === 'read' ? 'read' : access === 'edit' ? 'read and edit' : 'Read, edit and run commands')}&&(${JSON.stringify(access)}!=='run'||hint?.textContent.includes('still asks')))return;
+            await wait(50)
+          }
+          throw Error('Node access ${access} did not render');
         })()`)
         columnShot(`${shots}/${label}-access-${access}.png`)
       }
       const refused = await evalLong(
-        `document.querySelector('.abele-node-scope-editor__why')?.textContent ?? ''`
+        `(async()=>{${setup}for(let i=0;i<300;i++){const hint=[...document.querySelectorAll('.abele-node-scope-editor__why')].find(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('still asks'));if(hint)return hint.textContent;await wait(50)}throw Error('Node bypass hint did not render')})()`
       )
       expect(refused).toContain('still asks')
       await evalLong(
-        `(async()=>{${setup}const footer=document.querySelector('.modal');[...footer.querySelectorAll('button')].find(b=>b.textContent.includes('Save as'))?.click();await wait(500)})()`
+        `(async()=>{${setup}const footer=document.querySelector('.abele-chat-setup').closest('.modal');const save=[...footer.querySelectorAll('button')].find(b=>b.textContent.includes('Save as'));if(!save)throw Error('Save as action missing');save.click();for(let i=0;i<300;i++){if(footer.querySelector('.abele-chat-setup__saved')?.textContent.includes('Saved as'))return;await wait(50)}throw Error('Saved confirmation did not render')})()`
       )
       expect(
         await evalLong(`document.querySelector('.abele-chat-setup__saved')?.textContent ?? ''`)
       ).toContain('Saved as')
       columnShot(`${shots}/${label}-access-saved.png`)
       await evalLong(
-        `(async()=>{${setup}document.querySelector('.abele-node-scope-editor__add')?.click();await wait(500)})()`
+        `(async()=>{${setup}const add=document.querySelector('.abele-node-scope-editor__add');if(!add)throw Error('Add node folder action missing');add.click();for(let i=0;i<300;i++){if([...document.querySelectorAll('.abele-node-folder-choice')].some(el=>el.getBoundingClientRect().width>0))return;await wait(50)}throw Error('Node folder picker did not render')})()`
       )
       columnShot(`${shots}/${label}-access-picker.png`)
     } finally {
