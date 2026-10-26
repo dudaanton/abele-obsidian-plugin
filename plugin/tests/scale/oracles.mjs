@@ -282,6 +282,10 @@ export function* markdownChunks(report) {
     'Harness hash tracepoint setup intervals (included in raw startup clocks)',
     report.hashTracepointSetup
   )
+  yield* details(
+    'Long tasks with tracepoint setup intervals subtracted (accounting view only)',
+    report.tracepointAdjustedLongTasks
+  )
   yield* details('Renderer long-task sampled CPU attribution', report.longTaskAttribution)
   yield* details('Sampled peak app RSS', [
     {

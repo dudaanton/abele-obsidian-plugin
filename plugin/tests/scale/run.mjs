@@ -26,7 +26,13 @@ import {
 } from './reindex.mjs'
 import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import diagnostics from './diagnostics.cjs'
-import { noticeSummary, profileSummary, sampleMemory, deadlinePlan } from './diagnostics.mjs'
+import {
+  noticeSummary,
+  profileSummary,
+  sampleMemory,
+  deadlinePlan,
+  tracepointAdjustedTasks,
+} from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
 import {
   fileExpectations,
@@ -182,7 +188,7 @@ export class RealVault {
   }
   async snapshot() {
     return this.evaluate(
-      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
   async inFlight(proxy, label, timeout = this.config.timeoutMs) {
@@ -217,7 +223,7 @@ export class RealVault {
   }
   async activityEvidence() {
     return this.evaluate(
-      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,notSynced:a.notSynced??null,refused:a.refused??[],events:[...(a.events??[])]}))`
+      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,refused:a.refused??[],events:[...(a.events??[])]}))`
     )
   }
   async connect(tokenFile) {
@@ -1150,6 +1156,10 @@ export async function run(config) {
         (row) => row.event === 'javascript-hash-tracepoint-setup'
       )
       report.longTaskAttribution = await profileSummary(entries, entries, loadEvidence)
+      report.tracepointAdjustedLongTasks = tracepointAdjustedTasks(
+        report.longTaskAttribution,
+        report.hashTracepointSetup
+      )
       for (const rebuild of report.reindexes) {
         rebuild.longTasks = report.longTaskAttribution.filter(
           (row) =>

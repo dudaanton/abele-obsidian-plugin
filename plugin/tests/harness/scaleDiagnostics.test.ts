@@ -1,7 +1,13 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
 import diagnostics from '../scale/diagnostics.cjs'
-import { noticeSummary, profileSummary, rssSample, deadlinePlan } from '../scale/diagnostics.mjs'
+import {
+  noticeSummary,
+  profileSummary,
+  rssSample,
+  deadlinePlan,
+  tracepointAdjustedTasks,
+} from '../scale/diagnostics.mjs'
 import { budgets } from '../scale/oracles.mjs'
 
 it('keeps a large activity snapshot in bounded receipts without dropping refusals or events', () => {
@@ -579,7 +585,18 @@ it('retains classification in controller status and settled activity snapshots',
           abele: {
             tokenEngines: {
               live: new Map(),
-              ui: { rows: { value: [] }, activity: { value: { sample: { classification } } } },
+              ui: {
+                rows: { value: [] },
+                activity: {
+                  value: {
+                    sample: {
+                      classification,
+                      waiting: 2,
+                      waitingFiles: [{ path: 'sample.md', code: 'quota_waiting' }],
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -588,7 +605,14 @@ it('retains classification in controller status and settled activity snapshots',
   }
   const vault = new RealVault({}, '/sample-vault')
   vault.evaluate = (body) => runInNewContext(`(()=>{${body}})()`, context)
-  expect((await vault.snapshot()).activity).toMatchObject([{ id: 'sample', classification }])
+  expect((await vault.snapshot()).activity).toMatchObject([
+    {
+      id: 'sample',
+      classification,
+      waiting: 2,
+      waitingFiles: [{ path: 'sample.md', code: 'quota_waiting' }],
+    },
+  ])
   expect(await vault.activityEvidence()).toMatchObject([{ id: 'sample', classification }])
 })
 
@@ -617,4 +641,27 @@ it('resumes the renderer and reports missing hash coverage if setup fails', asyn
     'javascript-hash-observer-unavailable',
     'javascript-hash-tracepoint-setup',
   ])
+})
+
+it('reports task durations with setup interval unions removed without changing raw evidence', () => {
+  const tasks = [
+    { device: '0', startedAt: 100, durationMs: 200 },
+    { device: '1', startedAt: 100, durationMs: 200 },
+  ]
+  const setups = [
+    { device: '0', startedAt: 90, endedAt: 120 },
+    { device: '0', startedAt: 110, endedAt: 140 },
+    { device: '0', startedAt: 280, endedAt: 350 },
+  ]
+  expect(
+    tracepointAdjustedTasks(tasks, setups).map((t) => [
+      t.durationMs,
+      t.tracepointSetupMs,
+      t.withoutTracepointSetupMs,
+    ])
+  ).toEqual([
+    [200, 60, 140],
+    [200, 0, 200],
+  ])
+  expect(tasks[0].durationMs).toBe(200)
 })

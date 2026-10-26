@@ -133,3 +133,27 @@ export async function profileSummary(tasks, captures, load) {
   }
   return results
 }
+
+// Accounting view only: paused debugger setup is still included in the raw task.
+export function tracepointAdjustedTasks(tasks, setups) {
+  return tasks.map((task) => {
+    const start = task.startedAt,
+      end = start + task.durationMs
+    const intervals = setups
+      .filter((s) => s.device === task.device)
+      .map((s) => [Math.max(start, s.startedAt), Math.min(end, s.endedAt)])
+      .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a)
+      .sort((a, b) => a[0] - b[0])
+    let covered = 0,
+      until = start
+    for (const [a, b] of intervals) {
+      covered += Math.max(0, b - Math.max(a, until))
+      until = Math.max(until, b)
+    }
+    return {
+      ...task,
+      tracepointSetupMs: covered,
+      withoutTracepointSetupMs: task.durationMs - covered,
+    }
+  })
+}
