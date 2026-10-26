@@ -304,3 +304,8 @@ it('requires visible labels for connected snapshots without treating pre-connect
   ).toBe(false)
   expect(oversizedEvidence([file], [file], [disconnected], [])[0].pass).toBe(false)
 })
+
+it('recognizes the full visible completion label', async () => {
+  const { visibleSyncedClaim } = await import('../scale/refusals.mjs')
+  expect(visibleSyncedClaim({ visibleStatus: [{ text: 'Fully synced' }] })).toBe(true)
+})
