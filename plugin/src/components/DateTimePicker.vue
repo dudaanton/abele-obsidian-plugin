@@ -11,7 +11,12 @@
         <span v-if="getTaskTimeForDay(task)" class="abele-datetime-picker__task-time">
           {{ getTaskTimeForDay(task) }}
         </span>
-        <span class="abele-datetime-picker__task-title">{{ task.title || task.taskName }}</span>
+        <ObsidianMarkdown
+          class="abele-datetime-picker__task-title"
+          trusted
+          :text="task.title || task.taskName"
+          :file-path="task.taskPath"
+        />
       </div>
     </Section>
 
@@ -65,6 +70,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import Input from './obsidian/Input.vue'
 import Section from './obsidian/Section.vue'
 import Setting from './obsidian/Setting.vue'
+import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Task } from '@/entities/Task'
@@ -239,9 +245,15 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
 }
 
 .abele-datetime-picker__task-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  :deep(p),
+  :deep(div) {
+    display: inline;
+  }
 }
 
 .abele-datetime-picker__time {

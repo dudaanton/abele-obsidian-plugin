@@ -13,6 +13,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import dayjs from 'dayjs'
+import { MarkdownRenderer } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { TasksList } from '@/entities/TasksList'
+import { Task } from '@/entities/Task'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
@@ -71,6 +75,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  GlobalStore.getInstance().tasksList.value?.cleanup()
+  GlobalStore.getInstance().tasksList.value = null
   wrapper?.unmount()
   wrapper = null
   document.body.replaceChildren()
@@ -78,6 +84,47 @@ afterEach(() => {
 })
 
 describe('the date dialog with a keyboard up', () => {
+  it('renders scheduled task wiki links and aliases through the shared renderer', async () => {
+    const title = 'Review [[Sample note]] and [[Other note|short label]]'
+    const tasks = new TasksList()
+    const task = new Task({ wikilink: '[[sample-task]]' })
+    task.title = title
+    task.date = dayjs('2026-09-30')
+    task.taskNotFound = false
+    tasks.tasks.set(task.id, task)
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, text, el) => {
+      if (text !== title) return
+      const paragraph = el.createEl('p')
+      paragraph.append('Review ')
+      paragraph.createEl('a', {
+        cls: 'internal-link',
+        text: 'Sample note',
+        attr: { 'data-href': 'Sample note' },
+      })
+      paragraph.append(' and ')
+      paragraph.createEl('a', {
+        cls: 'internal-link',
+        text: 'short label',
+        attr: { 'data-href': 'Other note' },
+      })
+    })
+    GlobalStore.getInstance().tasksList.value = tasks
+    await advance(100)
+    await nextTick()
+
+    const rendered = document.querySelector('.abele-datetime-picker__task-title')!
+    expect(rendered).not.toBeNull()
+    expect(rendered.querySelector('a[data-href="Sample note"]')?.textContent).toBe('Sample note')
+    expect(rendered.querySelector('a[data-href="Other note"]')?.textContent).toBe('short label')
+    expect(MarkdownRenderer.render).toHaveBeenCalledWith(
+      expect.anything(),
+      title,
+      expect.anything(),
+      task.taskPath,
+      expect.anything()
+    )
+  })
+
   it('leaves the container as Obsidian made it while nothing covers the screen', () => {
     expect(container()?.classList.contains('abele-keyboard-room')).toBe(false)
   })
