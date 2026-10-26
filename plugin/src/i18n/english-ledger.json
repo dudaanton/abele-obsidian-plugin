@@ -28858,5 +28858,25 @@
     "englishHash": "38bb8e1d95a56099fbc97219fb1060f6113fca1b3e62edaacb2cd9581dd83c15",
     "context": "Sync not-synced list; English fallback pending translation review",
     "reviewedLocales": []
+  },
+  "sync.notSynced.waitingHeading": {
+    "englishHash": "e28a8b40b215e8ca34239cd667302f363e4793450424a4277dd4e310112e6073",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.waitingTitle": {
+    "englishHash": "c0ea20e4a18764b1e289a253471cbd2245428f9f560b568401ae48346ff07ed2",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.waitingDesc": {
+    "englishHash": "00ea42397baef00522932165a3f4511ad131cb8758e7854933c061461149173a",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "settings.sync.presentation.waiting": {
+    "englishHash": "db2cce5bb9a5485722bdf409cbddcf46e87b83eaadfd9460012fd529841218b7",
+    "context": "Sync not-synced list; English fallback pending translation review",
+    "reviewedLocales": []
   }
 }

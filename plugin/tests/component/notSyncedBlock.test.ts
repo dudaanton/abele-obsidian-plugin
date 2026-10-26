@@ -112,3 +112,34 @@ it('keeps the full path in row details and emits a scoped retry', async () => {
   expect(view.text()).toContain('Notes')
   view.unmount()
 })
+it('lists waiting files under their own heading, apart from the files that are not synced', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const selected = historyConnection.value
+  ui.registry.setStatus(id, 'idle')
+  ui.refresh()
+  ui.activity.value = {
+    [id]: {
+      notSynced: [
+        { ...item, path: 'Media/sample-large.mov', kind: 'too-large', direction: 'out' },
+        { ...item, path: 'Media/sample-wait.bin', kind: 'waiting', direction: 'out' },
+      ],
+    },
+  }
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<main><slot /></main>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.find('.abele-sync-window__line').text()).toBe('1 file not synced · Waiting (1)')
+    const blocks = view.findAllComponents(NotSyncedBlock)
+    const titles = blocks.map((block) => block.find('.abele-section__heading').text())
+    expect(titles).toEqual(['Not synced · 1', 'Waiting · 1'])
+    expect(blocks[0].text()).toContain('sample-large.mov')
+    expect(blocks[0].text()).not.toContain('sample-wait.bin')
+    expect(blocks[1].text()).toContain('sample-wait.bin')
+  } finally {
+    view.unmount()
+    historyConnection.value = selected
+  }
+})

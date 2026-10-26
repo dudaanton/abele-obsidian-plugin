@@ -40,8 +40,15 @@
       />
 
       <NotSyncedBlock
-        :items="activity?.notSynced ?? []"
+        :items="notSyncedParts.refused"
         :error="activity?.notSyncedError"
+        @reveal="(path) => emit('reveal', path)"
+        @retry="retryNotSynced"
+      />
+      <NotSyncedBlock
+        v-if="!activity?.notSyncedError"
+        :items="notSyncedParts.waiting"
+        waiting
         @reveal="(path) => emit('reveal', path)"
         @retry="retryNotSynced"
       />
@@ -148,6 +155,7 @@ import RemoveCopyModal from './RemoveCopyModal.vue'
 import { setTone, setLine, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
 import { type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
+import { splitNotSynced } from '@/sync/notSynced'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { historyConnection } from '@/sync/tokenHistory'
 import type { HeldDelete } from '@abele/sync-sdk/core'
@@ -276,6 +284,7 @@ const tone = computed(() =>
 const progress = computed(() => connectionProgress(activity.value))
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
+const notSyncedParts = computed(() => splitNotSynced(activity.value?.notSynced ?? []))
 const conflicts = computed(() => activity.value?.conflicts ?? [])
 // The same list until an event is added, so the rows below are left alone on progress ticks.
 const events = computed(() => activity.value?.events)

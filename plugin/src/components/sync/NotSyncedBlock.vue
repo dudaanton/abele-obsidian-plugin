@@ -1,8 +1,15 @@
 <template>
-  <!-- Every file sync is not moving, grouped by why. Absent when there are none. -->
+  <!-- Every file sync is not moving, grouped by why. Absent when there are none. Files that only
+       wait for the server are the same rows under their own heading. -->
   <Section
     v-if="error || items.length"
-    :title="error ? t('sync.notSynced.titleBare') : t('sync.notSynced.title', { count })"
+    :title="
+      error
+        ? t('sync.notSynced.titleBare')
+        : waiting
+          ? t('sync.notSynced.waitingHeading', { count })
+          : t('sync.notSynced.title', { count })
+    "
   >
     <p v-if="error" class="abele-not-synced__error" role="alert">
       <StatusDot tone="red" :label="t('sync.notSynced.unreadable')" />
@@ -120,7 +127,12 @@ import {
   type NotSyncedItem,
 } from '@/sync/notSynced'
 
-const props = defineProps<{ items: NotSyncedItem[]; error?: boolean; limit?: string }>()
+const props = defineProps<{
+  items: NotSyncedItem[]
+  error?: boolean
+  limit?: string
+  waiting?: boolean
+}>()
 const emit = defineEmits<{ reveal: [path: string]; retry: [paths: string[]] }>()
 
 const groups = computed(() => (props.error ? [] : groupNotSynced(props.items, props.limit)))

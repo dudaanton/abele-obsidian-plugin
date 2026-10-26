@@ -175,6 +175,7 @@ export function tokenUiFixture(empty = false): TokenUi {
       {
         path: 'Shared/sample-large-video.mp4',
         reason: 'The server is full. This file is kept locally and is still waiting.',
+        waiting: true,
       },
     ],
     conflicts: ['Shared/Sample note (Conflicted copy sample-device).md'],

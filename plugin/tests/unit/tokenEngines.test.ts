@@ -2084,6 +2084,7 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
           expect(ui.activity.value[registry.records()[0].id]?.refused).toContainEqual({
             path: 'Private/keep.md',
             reason: connectionError({ code: 'offline' }),
+            waiting: true,
           })
         )
         // A retry blocked on the connection check has not sent these bytes.
@@ -2103,6 +2104,7 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
         expect(ui.activity.value[id]?.refused).toContainEqual({
           path: 'Private/keep.md',
           reason: connectionError({ code: 'offline' }),
+          waiting: true,
         })
         expect(ui.activity.value[id]?.pending).toBeGreaterThan(0)
         const runtime = host as unknown as {
@@ -2141,6 +2143,7 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
         expect(ui.activity.value[id]?.refused).toContainEqual({
           path: 'Private/keep.md',
           reason: connectionError({ code: 'offline' }),
+          waiting: true,
         })
         expect(registry.records()[0].status).toBe('syncing')
         vi.spyOn(runtime.live.get(id)!, 'pendingLocalDetails').mockReturnValueOnce(

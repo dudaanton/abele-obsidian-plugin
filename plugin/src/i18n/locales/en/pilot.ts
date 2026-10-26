@@ -3769,4 +3769,9 @@ export const en = {
     other: '{count} files not synced',
   },
   'settings.sync.presentation.notSyncedUnreadable': 'Could not check which files are not synced',
+  'sync.notSynced.waitingHeading': 'Waiting · {count}',
+  'sync.notSynced.waitingTitle': 'Waiting for the server',
+  'sync.notSynced.waitingDesc':
+    'The server cannot take these yet. They stay here and are sent once it can.',
+  'settings.sync.presentation.waiting': 'Waiting ({count})',
 } as const

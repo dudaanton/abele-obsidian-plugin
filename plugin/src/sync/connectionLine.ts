@@ -8,6 +8,7 @@ import {
 } from './tokenUi'
 import { formatWhen } from './format'
 import { transferText } from './transferProgress'
+import { splitNotSynced } from './notSynced'
 
 /**
  * What one connection row says, as a code and one line: a dot coloured by its state and the one
@@ -107,23 +108,50 @@ export function connectionLine(
       { count: activity.conflicts.length },
       '{count} conflict copy'
     )
-  if (activity?.notSynced?.length)
-    return text(
-      '{count} files not synced',
-      { count: activity.notSynced.length },
-      '{count} file not synced'
-    ).replace(String(activity.notSynced.length), activity.notSynced.length.toLocaleString())
+  const counts = notSyncedCounts(activity)
+  const waiting = counts.waiting ? text('Waiting ({count})', { count: counts.waiting }) : ''
+  const notSynced = () =>
+    text('{count} files not synced', { count: counts.notSynced }, '{count} file not synced')
+      .replace(String(counts.notSynced), counts.notSynced.toLocaleString())
+      .concat(waiting ? ' · ' + waiting : '')
+  if (counts.notSynced && counts.listed) return notSynced()
   if (activity?.notSyncedError) return text('Could not check which files are not synced')
-  if (activity?.refused?.length)
-    return text(
-      '{count} files not sent',
-      { count: activity.refused.length },
-      '{count} file not sent'
-    )
+  if (counts.notSynced) return notSynced()
+  if (waiting) return waiting
   if (activity?.notSyncedLoading) return text('Checking the vault')
   if (activity?.lastSync)
     return text('Synced {when}', { when: when(new Date(activity.lastSync).toISOString()) })
   return text('Not synced yet')
+}
+
+/**
+ * How many files a connection holds back, split by whether the person has to act: refusals are
+ * «not synced», a file that only waits (a full server, a rate limit, no server) is «waiting».
+ * The list is the count of refusals once it holds any; before that the live refusals stand in.
+ */
+export function notSyncedCounts(activity?: ConnectionActivity): {
+  notSynced: number
+  waiting: number
+  listed: boolean
+} {
+  const { refused: listed, waiting: listedWaiting } = splitNotSynced(activity?.notSynced ?? [])
+  const refused = new Set(
+    listed.length
+      ? listed.map((item) => item.path)
+      : (activity?.refused ?? []).filter((row) => !row.waiting).map((row) => row.path)
+  )
+  const known = new Set(listedWaiting.map((item) => item.path))
+  const live = new Set(
+    (activity?.refused ?? [])
+      .filter((row) => row.waiting && !refused.has(row.path) && !known.has(row.path))
+      .map((row) => row.path)
+  )
+  // The list holds one row per path; its length is the count, as large lists are read.
+  return {
+    notSynced: listed.length || refused.size,
+    waiting: listedWaiting.length + live.size,
+    listed: listed.length > 0,
+  }
 }
 
 /** How much of a running exchange is done, for a bar; null when nothing is counted. */

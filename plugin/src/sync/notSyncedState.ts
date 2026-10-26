@@ -1,5 +1,5 @@
 import { EngineError, type StateStore } from '@abele/sync-sdk/core'
-import type { NotSyncedItem, NotSyncedKind } from './notSynced'
+import { waitingCode, type NotSyncedItem, type NotSyncedKind } from './notSynced'
 import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
 import { STATE_PROJECTION_PASS, type StateProjectionPass } from './stateProjectionPass'
 
@@ -21,7 +21,9 @@ const serverCodes = new Set([
 function kind(reason: string, local = false): NotSyncedKind {
   if (reason.startsWith('unsupported-host-name:')) return 'name'
   const code = reason.split(':', 1)[0]
-  return code === 'too_large' ? 'too-large' : !local && serverCodes.has(code) ? 'server' : 'held'
+  if (code === 'too_large') return 'too-large'
+  if (local || !serverCodes.has(code)) return 'held'
+  return waitingCode(code) ? 'waiting' : 'server'
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))

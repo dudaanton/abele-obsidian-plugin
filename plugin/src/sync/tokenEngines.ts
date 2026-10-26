@@ -25,6 +25,7 @@ import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 import { TokenUi, connectionError, connectStage, failureDetails } from './tokenUi'
+import { waitingCode, waitingReason } from './notSynced'
 import {
   factoryOf,
   transportOf,
@@ -1502,8 +1503,13 @@ export class TokenEngines {
         reason:
           connectionError({ code: one.code }) +
           (one.size === undefined ? '' : ` (${one.size} B / ${one.limit ?? '?'} B)`),
+        ...(waitingCode(one.code) ? { waiting: true } : {}),
       })),
-      ...publications.map((one) => ({ path: one.path, reason: one.reason })),
+      ...publications.map((one) => ({
+        path: one.path,
+        reason: one.reason,
+        ...(waitingReason(one.reason) ? { waiting: true } : {}),
+      })),
       ...(status.waitingFiles ?? []).map((one) => {
         const code = ErrorCodeSchema.safeParse(one.reason.split(':', 1)[0])
         return {
@@ -1512,6 +1518,7 @@ export class TokenEngines {
             one.phase === 'push' && !one.local && code.success
               ? connectionError({ code: code.data })
               : one.reason,
+          ...(!one.local && waitingReason(one.reason) ? { waiting: true } : {}),
         }
       }),
     ]
@@ -1528,6 +1535,7 @@ export class TokenEngines {
         ...unsent.paths.map((path) => ({
           path,
           reason: failureReason,
+          waiting: true,
         }))
       )
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
@@ -1558,6 +1566,7 @@ export class TokenEngines {
           reason:
             connectionError({ code: one.code }) +
             (one.size === undefined ? '' : ` (${one.size} B / ${one.limit ?? '?'} B)`),
+          ...(waitingCode(one.code) ? { waiting: true } : {}),
         }))
       )
       activity.refused = [
@@ -1627,7 +1636,7 @@ export class TokenEngines {
         const refused = [...(current?.refused ?? [])]
         for (const path of unsent.paths)
           if (!refused.some((one) => one.path === path))
-            refused.push({ path, reason: failureReason })
+            refused.push({ path, reason: failureReason, waiting: true })
         this.ui.publish(id, { refused, pending: Math.max(current?.pending ?? 0, unsent.count) })
       }
       return

@@ -1,6 +1,6 @@
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { safetyStopReason, type TokenUi } from './tokenUi'
-import { connectionLine } from './connectionLine'
+import { connectionLine, notSyncedCounts } from './connectionLine'
 import { transferText } from './transferProgress'
 
 /**
@@ -41,15 +41,11 @@ export function tokenStatus(
   status.heldDeletes = rows.reduce((sum, one) => sum + (activity[one.id]?.heldDeletes ?? 0), 0)
   status.deferred = rows.reduce((sum, one) => sum + (activity[one.id]?.deferred ?? 0), 0)
   status.conflicts = rows.reduce((sum, one) => sum + (activity[one.id]?.conflicts?.length ?? 0), 0)
-  // The list is the count once read. Before that, or for a refusal it does not hold, a live
-  // refusal still keeps a settled connection from saying everything is synced, as its own line does.
-  status.notSynced = rows.reduce(
-    (sum, one) =>
-      sum +
-      (activity[one.id]?.notSynced?.length ||
-        new Set(activity[one.id]?.refused?.map((row) => row.path)).size),
-    0
-  )
+  // Counted as each connection's own line counts them: refusals the person has to deal with,
+  // and apart from them the files that only wait for the server.
+  const counts = rows.map((one) => notSyncedCounts(activity[one.id]))
+  status.notSynced = counts.reduce((sum, one) => sum + one.notSynced, 0)
+  status.waits = counts.reduce((sum, one) => sum + one.waiting, 0)
   status.notSyncedError = rows.some((one) => activity[one.id]?.notSyncedError)
   status.notSyncedLoading = rows.some((one) => activity[one.id]?.notSyncedLoading)
   status.review = ui.candidates.value.length + ui.questions.value.length

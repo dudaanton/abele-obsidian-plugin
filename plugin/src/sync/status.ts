@@ -53,6 +53,8 @@ export interface SyncStatus {
   conflicts?: number
   /** Files sync deliberately does not move (too large, a name, held, refused); 0 when none. */
   notSynced?: number
+  /** Files that only wait to be sent (a full server, a rate limit); they go by themselves. */
+  waits?: number
   notSyncedError?: boolean
   notSyncedLoading?: boolean
   /** Incoming code and private files waiting for the person's decision; 0 when none. */
@@ -166,7 +168,7 @@ export function statusLabel(status: SyncStatus): string {
       (status.notSynced ?? 0).toLocaleString()
     )
   if (leadsWithReview(status)) return t('sync.status.review')
-  if (status.state === 'idle' && status.pending > 0) return t('sync.status.waiting')
+  if (status.state === 'idle' && unsentCount(status) > 0) return t('sync.status.waiting')
   return t(`sync.status.${status.state}`)
 }
 
@@ -180,10 +182,18 @@ export function statusText(status: SyncStatus): string {
   if (status.state === 'syncing' && status.progressText) return status.progressText
   const label = statusLabel(status)
   if (leadsWithHeld(status)) return `${label} (${status.heldDeletes})`
-  if (leadsWithConflicts(status) || leadsWithNotSynced(status)) return label
+  if (leadsWithConflicts(status)) return label
+  // Files that only wait keep their own word beside the ones that are not synced.
+  if (leadsWithNotSynced(status))
+    return status.waits ? `${label} · ${t('sync.status.waiting')} (${status.waits})` : label
   if (leadsWithReview(status)) return `${label} (${status.review})`
-  return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
+  return status.state === 'idle' && unsentCount(status) > 0
+    ? `${label} (${unsentCount(status)})`
+    : label
 }
+
+/** What waits to be sent: the engine's own count, or the files waiting on the server if more. */
+const unsentCount = (status: SyncStatus): number => Math.max(status.pending, status.waits ?? 0)
 
 /** The tooltip's line for settings from other devices waiting to be applied. */
 export function stagedLine(count: number): string {
@@ -204,8 +214,8 @@ export function statusTooltip(status: SyncStatus): string {
   if (status.state === 'syncing' && status.pending > 0) {
     lines.push(t('sync.status.found', { count: status.pending }))
   }
-  if (status.state === 'idle' && status.pending > 0) {
-    lines.push(t('sync.status.unsent', { count: status.pending }))
+  if (status.state === 'idle' && unsentCount(status) > 0) {
+    lines.push(t('sync.status.unsent', { count: unsentCount(status) }))
   }
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
   if ((status.conflicts ?? 0) > 0)
@@ -231,7 +241,7 @@ export function statusTooltip(status: SyncStatus): string {
 function statusIcon(status: SyncStatus): string {
   if (statusWarns(status)) return 'alert-triangle'
   if (leadsWithReview(status)) return 'eye'
-  if (status.state === 'idle' && status.pending > 0) return 'clock'
+  if (status.state === 'idle' && unsentCount(status) > 0) return 'clock'
   return STATUS_ICON[status.state]
 }
 

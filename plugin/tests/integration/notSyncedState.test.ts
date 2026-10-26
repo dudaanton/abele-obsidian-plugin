@@ -64,7 +64,7 @@ it('reads each durable reason without scanning file contents, survives restart, 
     ['held.md', 'held'],
     ['large.bin', 'too-large'],
     ['Notes/sample:part.md', 'name'],
-    ['quota.md', 'server'],
+    ['quota.md', 'waiting'],
   ])
   expect(await new NotSyncedState(state).snapshot()).toEqual(first)
   expect(all).not.toHaveBeenCalled()
@@ -187,7 +187,7 @@ it('retains the list when the production ledger closes and a new runtime opens i
     fixture.store.close()
     const first = await fixture.build()
     const rows = await first.runtime.notSynced()
-    expect(rows).toContainEqual(expect.objectContaining({ path: 'sample.bin', kind: 'server' }))
+    expect(rows).toContainEqual(expect.objectContaining({ path: 'sample.bin', kind: 'waiting' }))
     await first.host.close()
     const next = await fixture.build()
     expect(await next.runtime.notSynced()).toEqual(rows)

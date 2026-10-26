@@ -76,7 +76,7 @@ describe('a connection row', () => {
     expect(connectionLine(idle, { conflicts: ['a.md', 'b.md'] })).toBe('2 conflict copies')
     expect(connectionTone(idle, { conflicts: ['a.md'] })).toBe('orange')
     expect(connectionLine(idle, { refused: [{ path: 'a.mov', reason: 'big' }] })).toBe(
-      '1 file not sent'
+      '1 file not synced'
     )
     expect(connectionTone({ status: 'error', paused: false })).toBe('red')
     expect(connectionLine({ status: 'error', paused: false })).toBe('Needs attention')
@@ -116,10 +116,13 @@ describe('the status bar across connections', () => {
     expect(statusText(settled)).toBe('1 conflict')
     expect(statusWarns(settled)).toBe(true)
     expect(statusTooltip(settled)).toContain('1 conflict copy was saved')
-    // The fixture also refuses one file; settled, that leads before what waits for a decision.
-    expect(statusText({ ...settled, conflicts: 0 })).toBe('1 file not synced')
-    expect(statusText({ ...settled, conflicts: 0, notSynced: 0 })).toBe('To review (2)')
-    expect(statusWarns({ ...settled, conflicts: 0, notSynced: 0 })).toBe(false)
+    // The fixture's one unsent file only waits for a full server, so it does not lead.
+    expect(statusText({ ...settled, conflicts: 0 })).toBe('To review (2)')
+    expect(statusWarns({ ...settled, conflicts: 0 })).toBe(false)
+    // A refusal the person has to deal with leads before what waits for a decision.
+    expect(statusText({ ...settled, conflicts: 0, notSynced: 1 })).toBe(
+      '1 file not synced · Waiting (1)'
+    )
   })
   it('never says synced while a settled connection still refuses a file', () => {
     const ui = tokenUiFixture()

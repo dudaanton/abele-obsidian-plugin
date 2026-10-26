@@ -231,7 +231,8 @@ export interface ConnectionActivity {
   lastSync?: number
   completed?: number
   total?: number
-  refused?: { path: string; reason: string }[]
+  /** Files the last exchanges did not send; `waiting` marks one that goes by itself later. */
+  refused?: { path: string; reason: string; waiting?: boolean }[]
   /** Every file sync deliberately does not move, by reason; see `notSynced.ts`. */
   notSynced?: import('./notSynced').NotSyncedItem[]
   /** The list could not be read; the window says so in one line. */

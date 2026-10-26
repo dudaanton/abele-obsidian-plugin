@@ -3227,6 +3227,8 @@ held/refused obligations, directory refusals, held deletions and held publicatio
 publication succeeds, and `not-synced-collisions` records unresolved path collisions. These records
 never acknowledge installation or authorize publication. The UI reads a cached projection; a
 metadata read failure is shown explicitly. Resolving an obligation removes its row automatically.
+A row whose server answer only defers the file (no space or a rate limit) is kept as `waiting`:
+it is shown and counted as waiting, apart from the refusals that are reported as not synced.
 Their keys use the vault's normalized path policy; unchanged older path spellings migrate
 lazily without content reads. Sync invalidates affected records durably
 before adapter/native writes, moves or removals, including recovery, and prevents overlapping
