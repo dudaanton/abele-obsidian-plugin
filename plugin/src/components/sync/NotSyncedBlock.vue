@@ -217,6 +217,13 @@ const fileIcon = (path: string) => ICONS.find(([re]) => re.test(path))?.[1] ?? '
   white-space: normal;
   overflow-wrap: anywhere;
 }
+// Facts use the full row below the name and glyphs, rather than only the name's column.
+body.is-phone .abele-not-synced__row .abele-entry-row__body {
+  grid-template-areas:
+    'title codes actions'
+    'meta meta meta'
+    'detail detail detail';
+}
 .abele-not-synced__error {
   display: flex;
   align-items: center;
