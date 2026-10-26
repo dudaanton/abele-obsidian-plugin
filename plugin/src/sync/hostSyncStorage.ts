@@ -1,6 +1,6 @@
 import type { App } from 'obsidian'
 import type { LocalStorage } from './ledgerId'
-import { completion, connectTo, wait } from './idbRequests'
+import { completion, wait } from './idbRequests'
 import { IndexedRetention } from './retentionIndex'
 import {
   hostChanges,
@@ -9,76 +9,22 @@ import {
   joinHostValue,
   mergeHostChange,
   normalizeHostHeader,
-  splitHostValue,
   type HostChange,
   type HostRecord,
 } from './hostSyncRecords'
+import { HostScanCache, type ScanFingerprint } from './hostScanCache'
+import {
+  DATABASE,
+  RECORDS,
+  journalKey,
+  migrateHostStorage,
+  openHostDatabase,
+  readGroup,
+  recordKey,
+} from './hostSyncSchema'
 
-// This database never participates in an SDK overlay transaction.
-const DATABASE = 'abele-sync-host-v1'
-const STORE = 'host'
-const LEGACY_RECORDS = 'host-records'
-const RECORDS = 'host-records-v3'
-const recordKey = (namespace: string, key: string, id: string): string =>
-  JSON.stringify([namespace, key, id])
-const PATHS_MIGRATED = '!paths-migrated'
-const RECORDS_MIGRATED = '!records-migrated'
-const MIGRATED = '!migrated'
-const INSPECTION = '!inspection-v1:'
-export interface ScanFingerprint {
-  identity: string
-  size: number
-  mtime: number
-  ctime: number
-  sha: string
-}
-const journalKey = (key: string): boolean =>
-  key === 'abele-sync-writes' || key === 'abele-sync-recovered-writes'
+export type { ScanFingerprint } from './hostScanCache'
 
-/** The primary key already groups rows by namespace and document. A seek avoids
- * maintaining a redundant secondary index on every journal retirement. */
-function readGroup(
-  store: IDBObjectStore,
-  namespace: string,
-  key: string,
-  first?: (row: HostRecord) => boolean
-): Promise<HostRecord[]> {
-  return new Promise((resolve, reject) => {
-    const rows: HostRecord[] = []
-    const prefix = JSON.stringify([namespace, key]).slice(0, -1) + ','
-    const request = store.openCursor()
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => {
-      const cursor = request.result
-      if (!cursor) {
-        resolve(rows)
-        return
-      }
-      const heldKey = cursor.primaryKey as string
-      if (heldKey < prefix) {
-        cursor.continue(prefix)
-        return
-      }
-      if (!heldKey.startsWith(prefix)) {
-        resolve(rows)
-        return
-      }
-      const row = cursor.value as HostRecord
-      if (!first || first(row)) rows.push(row)
-      if (first && rows.length) resolve(rows)
-      else cursor.continue()
-    }
-  })
-}
-const KEYS = [
-  'abele-sync-writes',
-  'abele-sync-recovered-writes',
-  'abele-sync-connections-v2',
-  'abele-sync-item-connections-v1',
-  'abele-sync-item-selection-v1',
-  'abele-sync-registry-write-v1',
-  'abele-sync-connection-sets-v1',
-]
 const prepared = new WeakMap<LocalStorage, HostSyncStorage>()
 const parents = new WeakMap<LocalStorage, LocalStorage>()
 export const durableHostOf = (local: LocalStorage): HostSyncStorage | undefined => {
@@ -106,156 +52,39 @@ export const flushHostStorage = async (local: LocalStorage): Promise<void> => {
  * Only explicit record deltas are persisted, with their preconditions checked in IDB.
  */
 export class HostSyncStorage implements LocalStorage {
-  private readonly scanRevisions = new Map<string, number>()
-  private readonly scanMutations = new Map<string, number>()
-  /** Only scopes whose invalidation has reached IDB COMMIT may cover another writer. */
-  private readonly scanInvalidations = new Map<string, number>()
-  private scanGeneration = 0
-  private scanRevisionFloor = 0
-  private reviseScan(path: string): void {
-    if (!this.scanRevisions.has(path) && this.scanRevisions.size >= 4096) {
-      this.scanRevisions.clear()
-      // Eviction invalidates every older captured generation, including paths
-      // whose explicit revision was zero. It cannot revive stale write-back.
-      this.scanRevisionFloor = ++this.scanGeneration
-    }
-    this.scanRevisions.set(path, ++this.scanGeneration)
+  /** Scan fingerprints and the classification cache; see HostScanCache. */
+  private readonly scan: HostScanCache
+  /** Exposed for the bounded-memory tests, which read their sizes. */
+  private get scanRevisions(): Map<string, number> {
+    return this.scan.scanRevisions
+  }
+  private get scanMutations(): Map<string, number> {
+    return this.scan.scanMutations
   }
   scanFingerprintRevision(path: string): number {
-    let revision = this.scanRevisionFloor
-    for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
-      revision = Math.max(revision, this.scanRevisions.get(key) ?? 0)
-    return revision
+    return this.scan.scanFingerprintRevision(path)
   }
-  private scanMutationActive(path: string, scopes = this.scanMutations): boolean {
-    for (let key = path; key; key = key.slice(0, Math.max(0, key.lastIndexOf('/'))))
-      if (scopes.has(key)) return true
-    return false
+  withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
+    return this.scan.withScanMutation(paths, work)
   }
-  async withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
-    const keys = [...new Set(paths)]
-    const invalidated = keys.every((key) => this.scanMutationActive(key, this.scanInvalidations))
-    for (const key of keys) {
-      this.reviseScan(key)
-      this.scanMutations.set(key, (this.scanMutations.get(key) ?? 0) + 1)
-    }
-    let committed = false
-    try {
-      // Pending mutations fence caches, but cannot prove durable invalidation.
-      // Only an already committed covering scope lets this writer skip its own barrier.
-      if (!invalidated) {
-        const tx = this.db.transaction(STORE, 'readwrite')
-        const done = completion(tx, 'invalidate scan fingerprints')
-        for (const key of keys) {
-          tx.objectStore(STORE).delete([this.namespace, '!scan-fingerprint-v1:' + key])
-          // Seek just this subtree; directory moves never enumerate unrelated records.
-          const prefix = '!scan-fingerprint-v1:' + key + '/'
-          const request = tx.objectStore(STORE).openKeyCursor()
-          request.onsuccess = () => {
-            const cursor = request.result
-            if (!cursor) return
-            const [namespace, name] = cursor.key as [string, string]
-            if (namespace < this.namespace || (namespace === this.namespace && name < prefix)) {
-              cursor.continue([this.namespace, prefix])
-              return
-            }
-            if (namespace !== this.namespace || !name.startsWith(prefix)) return
-            tx.objectStore(STORE).delete(cursor.primaryKey)
-            cursor.continue()
-          }
-        }
-        await done
-      }
-      // Count each lifetime even when it reuses a covering cohort: nested work may outlive it.
-      for (const key of keys)
-        this.scanInvalidations.set(key, (this.scanInvalidations.get(key) ?? 0) + 1)
-      committed = true
-      return await work()
-    } finally {
-      for (const key of keys) {
-        if (committed) {
-          const remaining = (this.scanInvalidations.get(key) ?? 1) - 1
-          if (remaining) this.scanInvalidations.set(key, remaining)
-          else this.scanInvalidations.delete(key)
-        }
-        this.reviseScan(key)
-        const remaining = (this.scanMutations.get(key) ?? 1) - 1
-        if (remaining) this.scanMutations.set(key, remaining)
-        else this.scanMutations.delete(key)
-      }
-    }
+  readScanFingerprint(path: string): Promise<ScanFingerprint | undefined> {
+    return this.scan.readScanFingerprint(path)
   }
-  async readScanFingerprint(path: string): Promise<ScanFingerprint | undefined> {
-    const tx = this.db.transaction(STORE, 'readonly')
-    const done = completion(tx, 'read scan fingerprint')
-    const row = await wait<{ value: ScanFingerprint } | undefined>(
-      tx.objectStore(STORE).get([this.namespace, '!scan-fingerprint-v1:' + path])
-    )
-    await done
-    return this.scanMutationActive(path) ? undefined : row?.value
-  }
-  async writeScanFingerprint(
+  writeScanFingerprint(
     path: string,
     value: ScanFingerprint,
-    revision = this.scanFingerprintRevision(path)
+    revision = this.scan.scanFingerprintRevision(path)
   ): Promise<void> {
-    if (this.scanMutationActive(path) || revision !== this.scanFingerprintRevision(path)) return
-    const tx = this.db.transaction(STORE, 'readwrite')
-    const done = completion(tx, 'write scan fingerprint')
-    tx.objectStore(STORE).put({
-      namespace: this.namespace,
-      key: '!scan-fingerprint-v1:' + path,
-      value,
-    })
-    await done
+    return this.scan.writeScanFingerprint(path, value, revision)
   }
-  /** The projection classification cache, one row per physical path. It grows with the vault,
-   * so it lives here rather than in the host's small local-storage quota. */
-  async readInspections(): Promise<unknown[]> {
-    const tx = this.db.transaction(STORE, 'readonly')
-    const done = completion(tx, 'read inspection cache')
-    // One ranged request where the host has key ranges; a seeking cursor otherwise.
-    if (typeof IDBKeyRange !== 'undefined') {
-      const range = IDBKeyRange.bound(
-        [this.namespace, INSPECTION],
-        [this.namespace, INSPECTION + '\uffff']
-      )
-      const rows = await wait<{ value: unknown }[]>(tx.objectStore(STORE).getAll(range))
-      await done
-      return rows.map((row) => row.value)
-    }
-    const rows = await new Promise<unknown[]>((resolve, reject) => {
-      const values: unknown[] = []
-      const request = tx.objectStore(STORE).openCursor()
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        const cursor = request.result
-        if (!cursor) return resolve(values)
-        const [namespace, name] = cursor.key as [string, string]
-        if (namespace < this.namespace || (namespace === this.namespace && name < INSPECTION)) {
-          cursor.continue([this.namespace, INSPECTION])
-          return
-        }
-        if (namespace !== this.namespace || !name.startsWith(INSPECTION)) return resolve(values)
-        values.push((cursor.value as { value: unknown }).value)
-        cursor.continue()
-      }
-    })
-    await done
-    return rows
+  readInspections(): Promise<unknown[]> {
+    return this.scan.readInspections()
   }
-  async writeInspections(
+  writeInspections(
     entries: readonly { path: string }[],
     retired: readonly string[] = []
   ): Promise<void> {
-    if (!entries.length && !retired.length) return
-    const tx = this.db.transaction(STORE, 'readwrite')
-    const done = completion(tx, 'write inspection cache')
-    const store = tx.objectStore(STORE)
-    for (const path of retired) store.delete([this.namespace, INSPECTION + path])
-    for (const entry of entries)
-      store.put({ namespace: this.namespace, key: INSPECTION + entry.path, value: entry })
-    await done
+    return this.scan.writeInspections(entries, retired)
   }
   retentionIndex(root: string): IndexedRetention {
     return new IndexedRetention(this.db, this.namespace, root)
@@ -277,7 +106,9 @@ export class HostSyncStorage implements LocalStorage {
     private readonly db: IDBDatabase,
     private readonly namespace: string,
     private readonly local: LocalStorage
-  ) {}
+  ) {
+    this.scan = new HostScanCache(db, namespace)
+  }
 
   static async open(
     factory: IDBFactory,
@@ -285,110 +116,11 @@ export class HostSyncStorage implements LocalStorage {
     local: LocalStorage
   ): Promise<HostSyncStorage> {
     if (!namespace) throw new Error('Sync host storage requires a vault identity')
-    const db = await connectTo(
-      factory,
-      DATABASE,
-      (db) => {
-        if (!db.objectStoreNames.contains(STORE))
-          db.createObjectStore(STORE, { keyPath: ['namespace', 'key'] })
-        if (!db.objectStoreNames.contains(LEGACY_RECORDS)) {
-          db.createObjectStore(LEGACY_RECORDS, { keyPath: ['namespace', 'key', 'id'] }).createIndex(
-            'group',
-            ['namespace', 'key']
-          )
-        }
-        const indexed = db.createObjectStore(RECORDS, { keyPath: 'keyId' })
-        indexed.createIndex('path', ['namespace', 'key', 'path'])
-        indexed.createIndex('target', ['namespace', 'key', 'target'])
-      },
-      (db) => db.close(),
-      3
-    )
-    const result = new HostSyncStorage(db, namespace, local)
-    let transaction: IDBTransaction | undefined
-    let committed: Promise<void> | undefined
+    const db = await openHostDatabase(factory)
     try {
-      const tx = db.transaction([STORE, LEGACY_RECORDS, RECORDS], 'readwrite')
-      transaction = tx
-      const done = completion(tx, 'cannot migrate sync host storage')
-      committed = done
-      void done.catch(() => {})
-      const rows = tx.objectStore(STORE)
-      const records = tx.objectStore(RECORDS)
-      const pathMarker = await wait<{ value: unknown } | undefined>(
-        rows.get([namespace, PATHS_MIGRATED])
-      )
-      if (pathMarker && pathMarker.value !== true)
-        throw new Error('Sync host path migration requires recovery')
-      const marker = await wait<{ value: unknown } | undefined>(rows.get([namespace, MIGRATED]))
-      if (marker && marker.value !== true)
-        throw new Error('Sync host migration marker requires recovery')
-      const recordMarker = await wait<{ value: unknown } | undefined>(
-        rows.get([namespace, RECORDS_MIGRATED])
-      )
-      if (recordMarker && recordMarker.value !== true)
-        throw new Error('Sync host record migration requires recovery')
-      // Migration and its marker commit together. Leave the legacy copy intact until COMMIT.
-      for (const key of KEYS) {
-        const row = marker
-          ? await wait<{ value: unknown } | undefined>(rows.get([namespace, key]))
-          : undefined
-        if (marker && !row) throw new Error('Sync host storage is incomplete; recovery is required')
-        const value = marker
-          ? (row?.value ?? null)
-          : structuredClone(local.loadLocalStorage(key) ?? null)
-        if (recordMarker) {
-          const loaded = pathMarker
-            ? await readGroup(records, namespace, key)
-            : await wait<HostRecord[]>(
-                tx.objectStore(LEGACY_RECORDS).index('group').getAll([namespace, key])
-              )
-          for (const row of loaded) row.keyId = recordKey(namespace, key, row.id)
-          // Earlier schema-2 writers did not maintain an append counter on the header.
-          // Repair it during the already-required hydration, in this same transaction.
-          const header = loaded.find((row) => row.id === '!header')
-          const next = loaded.reduce(
-            (next, row) => (row.id === '!header' ? next : Math.max(next, row.order + 1)),
-            0
-          )
-          if (header && header.order < next) {
-            header.order = next
-            await wait(records.put(header))
-          }
-          if (!pathMarker)
-            for (const row of loaded) {
-              row.path = hostJournalPath(key, row.value)
-              if (row.path !== undefined) {
-                row.target = (row.value as { target: string }).target
-              }
-              await wait(records.put(row))
-            }
-          result.setView(key, joinHostValue(loaded))
-        } else {
-          let order = 0
-          for (const [id, item] of splitHostValue(key, value)) {
-            const path = hostJournalPath(key, item)
-            await wait(
-              records.put({
-                keyId: recordKey(namespace, key, id),
-                namespace,
-                key,
-                id,
-                value: item,
-                order: order++,
-                path,
-                target: path === undefined ? undefined : (item as { target: string }).target,
-              })
-            )
-          }
-          result.setView(key, value)
-        }
-        if (!marker) await wait(rows.put({ namespace, key, value }))
-      }
-      if (!marker) await wait(rows.put({ namespace, key: MIGRATED, value: true }))
-      if (!recordMarker) await wait(rows.put({ namespace, key: RECORDS_MIGRATED, value: true }))
-      if (!pathMarker) await wait(rows.put({ namespace, key: PATHS_MIGRATED, value: true }))
-      await done
+      const result = new HostSyncStorage(db, namespace, local)
+      for (const [key, value] of await migrateHostStorage(db, namespace, local))
+        result.setView(key, value)
       // Only a compatibility view. On every reopen the committed IDB rows win.
       for (const [key, value] of result.values) local.saveLocalStorage(key, structuredClone(value))
       prepared.set(local, result)
@@ -398,12 +130,6 @@ export class HostSyncStorage implements LocalStorage {
       }
       return result
     } catch (error) {
-      try {
-        transaction?.abort()
-      } catch {
-        /* May already be committed. */
-      }
-      await committed?.catch(() => {})
       db.close()
       throw error
     }

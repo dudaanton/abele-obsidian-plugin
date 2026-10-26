@@ -48,7 +48,9 @@ for (const fault of [
 ] as const)
   it(
     `bounds native peer installation persistence and retained payloads by a batch (${fault})`,
-    async () => {
+    // The test's signal stops this pull when the case times out. Otherwise it keeps running
+    // beside the next case, through the next case's desktop filesystem port.
+    async ({ signal: ended }) => {
       const normal = ![
         'directory-flush',
         'publication',
@@ -145,9 +147,12 @@ for (const fault of [
         }
         return tx
       }) as typeof db.transaction
+      // Only this case's own files count. A call for another root is passed through untouched.
+      const own = (path: string) => path.startsWith(root + '/')
       const fs = {
         ...disk,
         link: async (from: string, to: string) => {
+          if (!own(from)) return disk.link(from, to)
           expect(durableDirectories.has(from.slice(root.length + 1))).toBe(true)
           if (armed && fault === 'sealed-cache') {
             armed = false
@@ -174,6 +179,7 @@ for (const fault of [
                 }
               if (key === 'sync')
                 return async () => {
+                  if (!own(String(args[0]))) return handle.sync()
                   const path = String(args[0]).slice(root.length + 1)
                   flushes.set(path, (flushes.get(path) ?? 0) + 1)
                   if (armed && fault === 'directory-flush' && path === 'Notes/Section 0') {
@@ -390,9 +396,10 @@ for (const fault of [
                   : files),
             state,
             {
-              ...(fault === 'pause-notification' || fault === 'pause-admission'
-                ? { signal: stopped.signal }
-                : {}),
+              signal:
+                fault === 'pause-notification' || fault === 'pause-admission'
+                  ? AbortSignal.any([stopped.signal, ended])
+                  : ended,
               dirty: new Set(),
               expected: new ExpectedWrites(),
               filter: { excluded: () => false },
@@ -538,5 +545,6 @@ for (const fault of [
         await disk.rm(root, { recursive: true, force: true })
       }
     },
-    process.env.PEER_PULL_FILES ? 3_600_000 : fault === 'none' ? 600_000 : 30_000
+    // Alone the 33000-file case takes about six minutes; this only stops a hang.
+    process.env.PEER_PULL_FILES ? 3_600_000 : fault === 'none' ? 1_200_000 : 30_000
   )

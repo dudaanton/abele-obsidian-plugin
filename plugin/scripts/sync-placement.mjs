@@ -1428,8 +1428,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
       } else if (file.endsWith('/v2Client.js')) {
         code = replaceOnce(
           code,
-          'async fileItem(item, seq) {',
-          'async fileItem(item, seq, proofState) {'
+          'async fileItem(item, seq, readback) {',
+          'async fileItem(item, seq, readback, proofState) {'
         )
         code = replaceOnce(
           code,
@@ -1446,8 +1446,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'this.fileItem(event.item, event.cursor)',
-          'this.fileItem(event.item, event.cursor, proofState)'
+          'this.fileItem(event.item, event.cursor, readback)',
+          'this.fileItem(event.item, event.cursor, readback, proofState)'
         )
         // Multipart parts are private until complete. Hash that pass, including already
         // received parts on resume, rather than reading the entire source once more first.

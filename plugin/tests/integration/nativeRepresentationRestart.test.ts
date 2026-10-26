@@ -144,6 +144,7 @@ it('restarts a synced 33000-file native representation without reading content',
       await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
         for (let i = 0; i < listings; i++) await list()
       })
+    return representation.classificationStats()
   }
   try {
     await disk.mkdir(join(root, 'Shared'))
@@ -175,18 +176,26 @@ it('restarts a synced 33000-file native representation without reading content',
     state!.close()
     contentBytes = 0
     const started = performance.now()
-    await open(paths.length, 15)
+    const stats = await open(paths.length, 15)
     const idleMs = performance.now() - started
     console.log('native synced representation restart', {
       files: paths.length,
       listings: 15,
       contentBytes,
       idleMs,
+      callers: stats.callers,
     })
     expect(contentBytes).toBe(0)
+    expect(stats.contentReads).toBe(0)
     expect(await state!.getCursor()).toBe(1)
-    // Fifteen listings cost about one: an unchanged file is verified once per pass.
-    expect(idleMs).toBeLessThan(30000)
+    // Fifteen listings cost about one: an unchanged file is verified against the cache once
+    // per pass and every later listing in that pass reuses the proof. These counts are the
+    // regression oracle; they do not depend on how busy the machine is.
+    expect(stats.callers).toEqual({
+      list: { hit: paths.length, pass: paths.length * 14 },
+    })
+    // Alone this takes about 25 s. The bound only catches a collapse, not a busy machine.
+    expect(idleMs).toBeLessThan(90000)
     await host!.flush()
     host!.close()
     state!.close()
