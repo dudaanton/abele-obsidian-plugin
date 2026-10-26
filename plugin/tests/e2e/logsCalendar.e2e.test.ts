@@ -93,7 +93,8 @@ const probe = (label: string) => String.raw`(async () => {
       let content = day === longDay
         ? Array.from({length: 14}, (_, i) => 'Sample line ' + (i+1) + ' about [[' + note.path + ']].').join('\n')
         : (day % 3 === 0 ? '- [ ] ' : day % 3 === 1 ? '- [x] ' : '') + 'Sample entry for [[' + note.path + ']].'
-      if (day === today.getDate()) content += galleryText
+      // The gallery probe asserts tight-list markup, regardless of today's day number.
+      if (day === today.getDate()) content = '- [ ] Sample entry for [[' + note.path + ']].' + galleryText
       const file = await create(date(day), '---\ntype: log\ncreated: ' + date(day) + '\n---\n' + content + '\n')
       files.push(file)
     }
