@@ -81,7 +81,8 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
     }
     const attemptsByGeneration = [...generations.values()]
     const maxAttemptsPerGeneration = Math.max(0, ...attemptsByGeneration.map((g) => g.attempts))
-    const syncedClaims = snapshots.filter((s) => visibleSyncedClaim(s.snapshot) === true)
+    const connectedSnapshots = snapshots.filter((s) => s.snapshot?.rows?.length > 0)
+    const syncedClaims = connectedSnapshots.filter((s) => visibleSyncedClaim(s.snapshot) === true)
     return {
       ...file,
       status,
@@ -91,8 +92,10 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
       attemptsByGeneration,
       maxAttemptsPerGeneration,
       uploadRequests,
-      visibleStatusCoverage: snapshots.filter((s) => visibleSyncedClaim(s.snapshot) !== null)
-        .length,
+      disconnectedSnapshots: snapshots.length - connectedSnapshots.length,
+      visibleStatusCoverage: connectedSnapshots.filter(
+        (s) => visibleSyncedClaim(s.snapshot) !== null
+      ).length,
       syncedClaims: syncedClaims.map((s) => ({ at: s.at, snapshot: s.snapshot })),
       pass:
         status.length > 0 &&
@@ -100,8 +103,8 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
         intact &&
         maxAttemptsPerGeneration <= 1 &&
         syncedClaims.length === 0 &&
-        snapshots.length > 0 &&
-        snapshots.every((s) => visibleSyncedClaim(s.snapshot) !== null),
+        connectedSnapshots.length > 0 &&
+        connectedSnapshots.every((s) => visibleSyncedClaim(s.snapshot) !== null),
     }
   })
 }

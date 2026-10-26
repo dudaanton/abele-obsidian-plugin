@@ -280,3 +280,27 @@ it('judges synced claims from visible words rather than internal idle rows', asy
   expect(visibleSyncedClaim({ visibleStatus: [{ text: 'Syncing 12 files' }] })).toBe(false)
   expect(visibleSyncedClaim({})).toBe(null)
 })
+
+it('requires visible labels for connected snapshots without treating pre-connection emptiness as a claim', () => {
+  const file = { path: 'sample.bin', size: 256, sha: 'abc' }
+  const connected = {
+    snapshot: { rows: [{ status: 'idle' }], visibleStatus: [{ text: '1 file not synced' }] },
+    activity: [
+      {
+        refused: [{ path: file.path, reason: 'too large' }],
+        events: [{ text: 'too_large: sample.bin' }],
+      },
+    ],
+  }
+  const disconnected = { snapshot: { rows: [], engines: [], visibleStatus: [] }, activity: [] }
+  expect(oversizedEvidence([file], [file], [disconnected, connected], [])[0].pass).toBe(true)
+  expect(
+    oversizedEvidence(
+      [file],
+      [file],
+      [{ ...connected, snapshot: { rows: [{ status: 'idle' }], visibleStatus: [] } }],
+      []
+    )[0].pass
+  ).toBe(false)
+  expect(oversizedEvidence([file], [file], [disconnected], [])[0].pass).toBe(false)
+})
