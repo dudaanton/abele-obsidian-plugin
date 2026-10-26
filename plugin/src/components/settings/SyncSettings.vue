@@ -58,10 +58,14 @@
         @keydown.enter.self="opened = row.id"
       >
         <template #desc
-          ><span class="abele-sync-row__line" :class="{ 'mod-warning': tone(row) === 'red' }">{{
-            line(row)
-          }}</span
-          ><span class="abele-sync-row__server"> · {{ host(row.address) }}</span></template
+          ><span class="abele-sync-row__meta-part"
+            ><span class="abele-sync-row__line" :class="{ 'mod-warning': tone(row) === 'red' }">{{
+              line(row)
+            }}</span
+            ><span aria-hidden="true"> · </span></span
+          ><span class="abele-sync-row__server abele-sync-row__meta-part">{{
+            host(row.address)
+          }}</span></template
         >
         <StatusDot :tone="tone(row)" :label="line(row)" :pulse="tone(row) === 'accent'" />
         <Icon
@@ -452,5 +456,9 @@ onMounted(() => {
 }
 .abele-sync-row__server {
   color: var(--text-faint);
+}
+.abele-sync-row__meta-part {
+  display: inline-block;
+  white-space: nowrap;
 }
 </style>

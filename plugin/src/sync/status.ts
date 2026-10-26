@@ -185,10 +185,15 @@ export function statusText(status: SyncStatus): string {
   if (leadsWithConflicts(status)) return label
   // Files that only wait keep their own word beside the ones that are not synced.
   if (leadsWithNotSynced(status))
-    return status.waits ? `${label} · ${t('sync.status.waiting')} (${status.waits})` : label
+    return status.waits
+      ? `${label} · ${t('sync.status.waitingCount', { count: status.waits }).replace(String(status.waits), status.waits.toLocaleString())}`
+      : label
   if (leadsWithReview(status)) return `${label} (${status.review})`
   return status.state === 'idle' && unsentCount(status) > 0
-    ? `${label} (${unsentCount(status)})`
+    ? t('sync.status.filesWaiting', { count: unsentCount(status) }).replace(
+        String(unsentCount(status)),
+        unsentCount(status).toLocaleString()
+      )
     : label
 }
 

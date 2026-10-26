@@ -76,6 +76,21 @@ it('pictures temporary waits apart from refusals and compares connection and sta
             result.status=textOf(document.querySelector('.abele-sync-status-text'));
             result.headings=[...body.querySelectorAll('.abele-section__heading')].map(textOf);
             result.height=owner.innerHeight;
+            if(${layout === 'phone'}) {
+              result.extra.metaLines=[...body.querySelectorAll('.abele-not-synced__row')].map(row=>{
+                const meta=row.querySelector('.abele-not-synced__meta');
+                const range=owner.document.createRange();range.selectNodeContents(meta);
+                return new Set([...range.getClientRects()].filter(r=>r.height>0).map(r=>Math.round(r.top))).size;
+              });
+              const scroller=body.closest('.abele-modal__body');
+              scroller.scrollTop=scroller.scrollHeight;
+              await wait(150);
+              const last=[...body.querySelectorAll('.setting-item,.abele-entry-row')].filter(el=>el.getBoundingClientRect().height>0).at(-1);
+              result.extra.lastRowBottom=last.getBoundingClientRect().bottom;
+              result.extra.footerTop=sheet.querySelector('.abele-modal__footer').getBoundingClientRect().top;
+              if(${state === 'mixed'})result.extra.bottomShot=await shoot('phone-mixed-bottom',owner.document);
+              scroller.scrollTop=0;
+            }
             return result;
           `)
           console.log('[waiting screenshot]', layout, state, JSON.stringify(result))
@@ -83,13 +98,26 @@ it('pictures temporary waits apart from refusals and compares connection and sta
           expect(result.over).toEqual([])
           expect(result.width).toBe(width)
           expect(result.height).toBe(height)
+          if (layout === 'phone') {
+            expect(result.extra.metaLines as number[]).toEqual(
+              expect.arrayContaining([expect.any(Number)])
+            )
+            expect((result.extra.metaLines as number[]).every((lines) => lines <= 2)).toBe(true)
+            expect(result.extra.lastRowBottom as number).toBeLessThanOrEqual(
+              result.extra.footerTop as number
+            )
+          }
           expect(result.line).toBe(
-            expectedRefused ? '1 file not synced · Waiting (4)' : `Waiting (${expectedWaiting})`
+            expectedRefused
+              ? '1 file not synced · 4 waiting'
+              : `${expectedWaiting} ${expectedWaiting === 1 ? 'file' : 'files'} waiting`
           )
           expect(result.headings).toContain(`Waiting · ${expectedWaiting}`)
           expect(result.headings.includes('Not synced · 1')).toBe(expectedRefused > 0)
           expect(result.status).toBe(
-            expectedRefused ? '1 file not synced · Waiting (4)' : `Waiting (${expectedWaiting})`
+            expectedRefused
+              ? '1 file not synced · 4 waiting'
+              : `${expectedWaiting} ${expectedWaiting === 1 ? 'file' : 'files'} waiting`
           )
           run(close + 'return true')
           if (state === 'mixed') {
@@ -107,7 +135,7 @@ it('pictures temporary waits apart from refusals and compares connection and sta
             `)
             console.log('[waiting summary screenshot]', layout, JSON.stringify(summary))
             expect(summary.error).toBe('')
-            expect(summary.line).toBe('1 file not synced · Waiting (4)')
+            expect(summary.line).toBe('1 file not synced · 4 waiting')
             expect(summary.extra.opening).toBe(false)
             run(close + 'return true')
             if (layout === 'desktop') {
@@ -118,7 +146,7 @@ it('pictures temporary waits apart from refusals and compares connection and sta
                 return {shot:await shoot('desktop-status-bar'),text:textOf(el),visible:box.width>0&&box.height>0};
               `)
               console.log('[waiting status bar screenshot]', JSON.stringify(bar))
-              expect(bar.text).toBe('1 file not synced · Waiting (4)')
+              expect(bar.text).toBe('1 file not synced · 4 waiting')
               expect(bar.visible).toBe(true)
             }
           }

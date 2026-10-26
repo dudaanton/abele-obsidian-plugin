@@ -3894,7 +3894,7 @@ export const de = {
   },
   'sync.notSynced.title': 'Not synced · {count}',
   'sync.notSynced.titleBare': 'Not synced',
-  'sync.notSynced.unreadable': "Could not read the list of files that are not synced.",
+  'sync.notSynced.unreadable': 'Could not read the list of files that are not synced.',
   'sync.notSynced.out': 'On this device, not sent',
   'sync.notSynced.in': 'On your other devices, not placed here',
   'sync.notSynced.reveal': 'Show in system explorer',
@@ -3923,6 +3923,14 @@ export const de = {
   'sync.notSynced.waitingHeading': 'Waiting · {count}',
   'sync.notSynced.waitingTitle': 'Waiting for the server',
   'sync.notSynced.waitingDesc':
-    'The server cannot take these yet. They stay here and are sent once it can.',
-  'settings.sync.presentation.waiting': 'Waiting ({count})',
+    'These stay on this device and are sent once the server can take them.',
+  'settings.sync.presentation.waiting': {
+    one: '{count} file waiting',
+    other: '{count} files waiting',
+  },
+  'sync.status.filesWaiting': { one: '{count} file waiting', other: '{count} files waiting' },
+  'sync.status.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'settings.sync.presentation.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'sync.notSynced.serverOffline': 'server offline',
+  'sync.notSynced.serverBusy': 'server busy',
 } satisfies TranslationCatalog

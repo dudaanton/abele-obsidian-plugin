@@ -121,7 +121,7 @@ describe('the status bar across connections', () => {
     expect(statusWarns({ ...settled, conflicts: 0 })).toBe(false)
     // A refusal the person has to deal with leads before what waits for a decision.
     expect(statusText({ ...settled, conflicts: 0, notSynced: 1 })).toBe(
-      '1 file not synced · Waiting (1)'
+      '1 file not synced · 1 waiting'
     )
   })
   it('never says synced while a settled connection still refuses a file', () => {

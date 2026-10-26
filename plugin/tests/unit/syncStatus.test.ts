@@ -43,7 +43,7 @@ describe('the status vocabulary', () => {
       waiting: 2,
       waitingFiles: [],
     })
-    expect(statusText(waiting)).toBe('Waiting (2)')
+    expect(statusText(waiting)).toBe('2 files waiting')
   })
   it('gives every state a label and a glyph', () => {
     for (const state of STATES) {
@@ -116,7 +116,7 @@ describe('the status vocabulary', () => {
 
   it('never says fully synced while changes are waiting to be sent', () => {
     // Pending outside a sync is what the last push kept back: unsent, whatever else it is.
-    expect(statusText(status({ state: 'idle', pending: 4 }))).toBe('Waiting (4)')
+    expect(statusText(status({ state: 'idle', pending: 4 }))).toBe('4 files waiting')
     expect(statusLabel(status({ state: 'idle', pending: 1 }))).toBe('Waiting')
     expect(statusTooltip(status({ state: 'idle', pending: 1 }))).toContain(
       '1 change is waiting to be sent'
@@ -183,7 +183,7 @@ describe('renderStatus', () => {
 
     expect(el.querySelector('.abele-sync-status-text')).toBe(text)
     expect(el.querySelector('.abele-sync-status-icon')).toBe(icon)
-    expect(text?.textContent).toBe('Waiting (3)')
+    expect(text?.textContent).toBe('3 files waiting')
     expect(icon?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('clock')
   })
 

@@ -36,7 +36,7 @@
         <div class="abele-not-synced__desc">
           <span>{{ group.desc }}</span>
           <a
-            v-if="group.retry"
+            v-if="group.retry && group.items.length > 1"
             href="#"
             class="abele-not-synced__retry"
             @click.prevent="
@@ -45,9 +45,7 @@
                 group.items.map((item) => item.path)
               )
             "
-            >{{
-              group.items.length > 1 ? t('sync.notSynced.retryAll') : t('sync.notSynced.retry')
-            }}</a
+            >{{ t('sync.notSynced.retryAll') }}</a
           >
         </div>
         <EntryRow v-for="item in shown(group)" :key="item.path" class="abele-not-synced__row">
@@ -163,7 +161,12 @@ const since = (iso: string) => {
 const meta = (item: NotSyncedItem) =>
   [
     item.path.split('/').slice(0, -1).join('/'),
-    item.fact,
+    item.kind === 'waiting' &&
+    item.fact?.toLowerCase() === 'server unavailable; kept locally until it reconnects'
+      ? t('sync.notSynced.serverOffline')
+      : item.kind === 'waiting' && item.fact === 'server asked to try again later'
+        ? t('sync.notSynced.serverBusy')
+        : item.fact,
     item.devices?.length ? t('sync.notSynced.on', { devices: item.devices.join(', ') }) : '',
     since(item.since),
   ]

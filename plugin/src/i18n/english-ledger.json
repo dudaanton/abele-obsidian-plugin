@@ -28870,13 +28870,38 @@
     "reviewedLocales": []
   },
   "sync.notSynced.waitingDesc": {
-    "englishHash": "00ea42397baef00522932165a3f4511ad131cb8758e7854933c061461149173a",
-    "context": "Sync not-synced list; English fallback pending translation review",
+    "englishHash": "b9abf7eecf8cf1eba25c9d9148fa0e7d4cc95d09e33a15e630496fe0190a4bd2",
+    "context": "Sync waiting presentation; English fallback pending translation review",
     "reviewedLocales": []
   },
   "settings.sync.presentation.waiting": {
-    "englishHash": "db2cce5bb9a5485722bdf409cbddcf46e87b83eaadfd9460012fd529841218b7",
-    "context": "Sync not-synced list; English fallback pending translation review",
+    "englishHash": "1b75f7acc080e14327aec4b3f896bcfc3bae05cd3b5f57639d6aef61c553ec3a",
+    "context": "Sync waiting presentation; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.status.filesWaiting": {
+    "englishHash": "6520984c31b617e61f778124e19966d4488b6e883f9327be0393fad2be413142",
+    "context": "Sync waiting presentation; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.status.waitingCount": {
+    "englishHash": "cff777cfff157e336a623c6559fd17b0d6f495d27f2eb381b3659b8799efaff6",
+    "context": "Sync waiting presentation; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "settings.sync.presentation.waitingCount": {
+    "englishHash": "cff777cfff157e336a623c6559fd17b0d6f495d27f2eb381b3659b8799efaff6",
+    "context": "Sync waiting presentation; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.serverOffline": {
+    "englishHash": "92389724f29806885ceafa0cb8d3acfd98de57dd15627835d28c9cfb7533dc8f",
+    "context": "Sync waiting presentation; English fallback pending translation review",
+    "reviewedLocales": []
+  },
+  "sync.notSynced.serverBusy": {
+    "englishHash": "57be950148ff91266f32152877b04609e0cd43c63b6ede106438ad76a057852a",
+    "context": "Sync waiting presentation; English fallback pending translation review",
     "reviewedLocales": []
   }
 }

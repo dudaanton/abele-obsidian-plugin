@@ -9,6 +9,7 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { shareSetSource } from '@/sync/shareSets'
 import { historyConnection } from '@/sync/tokenHistory'
 import type { NotSyncedItem } from '@/sync/notSynced'
+import SyncSettings from '@/components/settings/SyncSettings.vue'
 
 const item: NotSyncedItem = {
   path: 'Notes/sample.md',
@@ -16,6 +17,51 @@ const item: NotSyncedItem = {
   direction: 'in',
   since: '2026-01-01T00:00:00Z',
 }
+it('keeps the connection metadata separator with the preceding nowrap part', () => {
+  const ui = tokenUiFixture()
+  const view = mount(SyncSettings, { props: { model: ui } })
+  const part = view.get('.abele-sync-row__meta-part')
+  expect(part.find('.abele-sync-row__line').exists()).toBe(true)
+  expect(part.text()).toMatch(/ ·$/)
+  expect(view.get('.abele-sync-row__server').text()).toBe('sync.example')
+  view.unmount()
+})
+it.each(['held', 'waiting'] as const)('shows only Retry all for multiple %s rows', (kind) => {
+  const view = mount(NotSyncedBlock, {
+    props: {
+      items: [
+        { ...item, kind },
+        { ...item, kind, path: 'Notes/other.md' },
+      ],
+    },
+  })
+  expect(view.get('.abele-not-synced__retry').text()).toBe('Retry all')
+  view.unmount()
+})
+it('uses short waiting facts and the approved description', () => {
+  const view = mount(NotSyncedBlock, {
+    props: {
+      waiting: true,
+      items: [
+        { ...item, kind: 'waiting', fact: 'Server unavailable; kept locally until it reconnects' },
+        {
+          ...item,
+          kind: 'waiting',
+          path: 'Notes/other.md',
+          fact: 'server asked to try again later',
+        },
+      ],
+    },
+  })
+  expect(view.text()).toContain(
+    'These stay on this device and are sent once the server can take them.'
+  )
+  expect(view.findAll('.abele-not-synced__meta').map((one) => one.text())).toEqual([
+    'Notes · server offline · since Jan 1',
+    'Notes · server busy · since Jan 1',
+  ])
+  view.unmount()
+})
 it('keeps the not-synced count and warning above a mixed shared-set synced summary', () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id
@@ -106,7 +152,8 @@ it('renders a thousand-entry group in bounded pages and retries the selected row
 })
 it('keeps the full path in row details and emits a scoped retry', async () => {
   const view = mount(NotSyncedBlock, { props: { items: [item] } })
-  const retry = view.findAll('a').find((link) => link.text() === 'Retry')!
+  expect(view.find('.abele-not-synced__retry').exists()).toBe(false)
+  const retry = view.get('.abele-not-synced__row [data-icon=refresh-cw]')
   await retry.trigger('click')
   expect(view.emitted('retry')).toEqual([[[item.path]]])
   expect(view.text()).toContain('Notes')
@@ -131,7 +178,7 @@ it('lists waiting files under their own heading, apart from the files that are n
     global: { stubs: { Modal: { template: '<main><slot /></main>' }, SelectiveSync: true } },
   })
   try {
-    expect(view.find('.abele-sync-window__line').text()).toBe('1 file not synced · Waiting (1)')
+    expect(view.find('.abele-sync-window__line').text()).toBe('1 file not synced · 1 waiting')
     const blocks = view.findAllComponents(NotSyncedBlock)
     const titles = blocks.map((block) => block.find('.abele-section__heading').text())
     expect(titles).toEqual(['Not synced · 1', 'Waiting · 1'])

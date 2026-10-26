@@ -109,11 +109,24 @@ export function connectionLine(
       '{count} conflict copy'
     )
   const counts = notSyncedCounts(activity)
-  const waiting = counts.waiting ? text('Waiting ({count})', { count: counts.waiting }) : ''
+  const waiting = counts.waiting
+    ? text('{count} files waiting', { count: counts.waiting }, '{count} file waiting').replace(
+        String(counts.waiting),
+        counts.waiting.toLocaleString()
+      )
+    : ''
   const notSynced = () =>
     text('{count} files not synced', { count: counts.notSynced }, '{count} file not synced')
       .replace(String(counts.notSynced), counts.notSynced.toLocaleString())
-      .concat(waiting ? ' · ' + waiting : '')
+      .concat(
+        counts.waiting
+          ? ' · ' +
+              text('{count} waiting', { count: counts.waiting }, '{count} waiting').replace(
+                String(counts.waiting),
+                counts.waiting.toLocaleString()
+              )
+          : ''
+      )
   if (counts.notSynced && counts.listed) return notSynced()
   if (activity?.notSyncedError) return text('Could not check which files are not synced')
   if (counts.notSynced) return notSynced()

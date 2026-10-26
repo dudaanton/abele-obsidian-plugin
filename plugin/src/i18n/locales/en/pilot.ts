@@ -3772,6 +3772,14 @@ export const en = {
   'sync.notSynced.waitingHeading': 'Waiting · {count}',
   'sync.notSynced.waitingTitle': 'Waiting for the server',
   'sync.notSynced.waitingDesc':
-    'The server cannot take these yet. They stay here and are sent once it can.',
-  'settings.sync.presentation.waiting': 'Waiting ({count})',
+    'These stay on this device and are sent once the server can take them.',
+  'settings.sync.presentation.waiting': {
+    one: '{count} file waiting',
+    other: '{count} files waiting',
+  },
+  'sync.status.filesWaiting': { one: '{count} file waiting', other: '{count} files waiting' },
+  'sync.status.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'settings.sync.presentation.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'sync.notSynced.serverOffline': 'server offline',
+  'sync.notSynced.serverBusy': 'server busy',
 } as const
