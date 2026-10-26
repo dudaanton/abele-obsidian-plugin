@@ -91,6 +91,14 @@ export class RealVault {
     let stdout
     const nonce = randomUUID()
     const startedAt = Date.now()
+    const device = String(this.config.vaults?.indexOf(this.root) ?? -1)
+    const slow = setTimeout(() => {
+      if (this.config.heapDiagnostics)
+        void writeFile(
+          join(this.config.output, 'profiles', `control-${device}.json`),
+          JSON.stringify({ id: nonce, kind: 'slow-cli', startedAt, device })
+        ).catch(() => {})
+    }, 3000)
     const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
     try {
       ;({ stdout } = await exec(
@@ -109,6 +117,9 @@ export class RealVault {
     } catch (error) {
       const failure = new Error('Vault CLI unavailable')
       failure.scaleCliFailure = {
+        startedAt,
+        endedAt: Date.now(),
+        device,
         elapsedMs: Date.now() - startedAt,
         code: error.code,
         signal: error.signal,
@@ -117,6 +128,8 @@ export class RealVault {
         stderrBytes: Buffer.byteLength(error.stderr ?? ''),
       }
       throw failure
+    } finally {
+      clearTimeout(slow)
     }
     const line = stdout.slice(stdout.lastIndexOf('=> ') + 3).trim()
     let result
@@ -278,6 +291,7 @@ async function setupVault(config, root, device) {
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
   await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
+  await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
@@ -314,6 +328,7 @@ async function setupVault(config, root, device) {
       diagnostics: join(observer, 'diagnostics.cjs'),
       profileDirectory: join(config.output, 'profiles'),
       continuousCpu: config.continuousCpu === true,
+      heapDiagnostics: config.heapDiagnostics === true,
       preciseHashCoverage: config.preciseHashCoverage !== false,
       javascriptHashTracepoints: hashTracepoints(
         await readFile(join(config.buildDir, 'main.js'), 'utf8')
@@ -390,6 +405,26 @@ export async function run(config) {
       report.failure ??= 'Harness evidence JSON could not be read'
       report.evidenceReadFailures = (report.evidenceReadFailures ?? 0) + 1
       throw error
+    }
+  }
+  const captureSettledHeap = async (device, step) => {
+    if (config.heapDiagnostics && !device.heapCaptured) {
+      const id = randomUUID(),
+        file = join(config.output, 'profiles', `control-${devices.indexOf(device)}.json`)
+      await writeFile(file, JSON.stringify({ id, kind: 'snapshot', step, startedAt: Date.now() }))
+      await wait(
+        'settled heap snapshot',
+        async () => {
+          const receipt = await readFile(`${file}.done`, 'utf8')
+            .then(JSON.parse)
+            .catch(() => null)
+          if (receipt?.id !== id) return false
+          if (!receipt.complete) throw new Error('Settled heap snapshot failed')
+          return true
+        },
+        180000
+      )
+      device.heapCaptured = true
     }
   }
   const settle = async (device, step) => {
@@ -758,6 +793,7 @@ export async function run(config) {
     report.initialUploadMs = firstUploadMs
     report.filesPerSecond = report.uploadedFiles / (firstUploadMs / 1000)
     report.mibPerSecond = report.uploadedBytes / 1024 ** 2 / (firstUploadMs / 1000)
+    if (report.firstUploadSettled) await captureSettledHeap(a, 'first upload')
     phase('second device pull')
     const peerDownloadAt = Date.now()
     await b.ready()
@@ -794,6 +830,7 @@ export async function run(config) {
     report.peerPullSettled = await settle(b, 'second device pull')
     await endReindex('reindex-peer-download', b)
     report.peerInitialDownloadMs = Date.now() - peerDownloadAt
+    if (report.peerPullSettled) await captureSettledHeap(b, 'second device pull')
     phase('edits and settle')
     const edits = [
       { device: a, path: `${prefix}/Notes/Device A.md`, text: '# Device A\n' },

@@ -242,6 +242,80 @@ exports.watch = async function (id, serializedConfig) {
   }
   const transport = wc.debugger
   transport.attach('1.3')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host process state, independent of renderer IPC.
+  const { app } = require('electron')
+  let probeBusy = false,
+    heapTimer,
+    requestId,
+    snapshotBusy = false
+  const controlFile = `${config.profileDirectory}/control-${config.device}.json`
+  const probe = async (request) => {
+    if (probeBusy) return
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Independent host-side diagnostic probes.
+    const { probeRenderer } = require('./heap.cjs')
+    probeBusy = true
+    try {
+      await probeRenderer({
+        command: (name, params) => transport.sendCommand(name, params),
+        emit,
+        request,
+        state: () => ({
+          mainPid: process.pid,
+          rendererPid: wc.getOSProcessId(),
+          destroyed: wc.isDestroyed(),
+          loading: wc.isLoading(),
+          mainMemory: process.memoryUsage(),
+          appMetrics: app.getAppMetrics(),
+        }),
+      })
+    } finally {
+      probeBusy = false
+    }
+  }
+  const takeHeap = async (request) => {
+    if (snapshotBusy) return
+    snapshotBusy = true
+    const file = `${config.profileDirectory}/${config.device}-${randomUUID()}.heapsnapshot`
+    fs.mkdirSync(config.profileDirectory, { recursive: true })
+    const fd = fs.openSync(file, 'wx')
+    let bytes = 0
+    emit({ event: 'heap-snapshot-start', request, file })
+    try {
+      // Snapshot chunks are written immediately so the observer never retains a second heap-sized string.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Bounded snapshot streaming in the host.
+      await require('./heap.cjs').streamSnapshot(transport, (chunk) => {
+        bytes += fs.writeSync(fd, chunk)
+      })
+      emit({ event: 'heap-snapshot-end', request, file, bytes, complete: true })
+      fs.writeFileSync(
+        `${controlFile}.done`,
+        JSON.stringify({ id: request.id, file, bytes, complete: true })
+      )
+    } catch {
+      emit({ event: 'heap-snapshot-end', request, file, bytes, complete: false })
+      fs.writeFileSync(`${controlFile}.done`, JSON.stringify({ id: request.id, complete: false }))
+    } finally {
+      fs.closeSync(fd)
+      snapshotBusy = false
+    }
+  }
+  if (config.heapDiagnostics) {
+    fs.mkdirSync(config.profileDirectory, { recursive: true })
+    let tick = 0
+    heapTimer = setInterval(() => {
+      if (++tick % 30 === 0) void probe({ kind: 'periodic' }).catch(() => {})
+      fs.promises
+        .readFile(controlFile, 'utf8')
+        .then(JSON.parse)
+        .then((request) => {
+          if (request.id === requestId) return
+          requestId = request.id
+          if (request.kind === 'snapshot') void takeHeap(request).catch(() => {})
+          else void probe(request).catch(() => {})
+        })
+        .catch(() => {})
+    }, 1000)
+  }
   let timer,
     closed = false
   let clock
@@ -254,6 +328,7 @@ exports.watch = async function (id, serializedConfig) {
     if (!Number.isFinite(timestampMs)) throw new Error('Debugger clock unavailable')
     clock = { beforeAt, afterAt, timestampMs }
   } catch {
+    clearInterval(heapTimer)
     if (transport.isAttached()) transport.detach()
     emit({ event: 'cpu-profile-unavailable', reason: 'debugger clock unavailable' })
     return channel
@@ -345,6 +420,7 @@ exports.watch = async function (id, serializedConfig) {
       wc.removeListener('destroyed', destroyed)
       wc.removeListener('did-start-navigation', navigating)
       clearInterval(timer)
+      clearInterval(heapTimer)
       ipcMain.removeListener(channel, heartbeat)
       try {
         await endCoverage()
