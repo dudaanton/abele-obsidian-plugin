@@ -137,7 +137,7 @@ it('a normal plugin agent delegates through node chips to both fake providers, s
       const parent = chats.getSessionByFile(file.path);
       const node = await nodes.add('Sample delegation node', 'http://127.0.0.1:${port}', ${JSON.stringify(token)});
       await parent.ensureDelegationParentId();
-      await T.giveNodeChatAccess(parent, {kind:'project', node_id:node.expectedNodeId, project_id:${JSON.stringify(project.project_id)}, access:'edit'});
+      await T.giveNodeChatAccess(parent, {kind:'project', node_id:node.expectedNodeId, project_id:${JSON.stringify(project.project_id)}, access:'run'});
       return JSON.stringify({registration:node.id,parent:parent.delegationParentId,agent:agent.id})
     })()`)
     registration = setup.registration
