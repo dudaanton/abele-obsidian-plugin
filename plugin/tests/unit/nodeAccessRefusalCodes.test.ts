@@ -53,13 +53,11 @@ describe('a node call refused for want of access', () => {
     })
   })
 
-  it('says the access is not approved on this device when it came with the chat', async () => {
+  it('uses shared chat access without a local device approval', async () => {
     const { call, session, ledger } = setup()
     ledger.revoke(session)
-    expect(await refusal(call('node_read', { path: 'sample.txt' }))).toMatchObject({
-      kind: 'not-approved',
-      node_id: 'sample-node',
-    })
+    const result = await call('node_read', { path: 'sample.txt' })
+    expect(result.content[0].text).toContain('old')
   })
 
   it('says the node is not connected when it is offline', async () => {

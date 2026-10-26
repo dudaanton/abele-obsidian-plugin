@@ -31,10 +31,11 @@ vi.mock('@/node/NodeService', () => {
       },
     ],
   }
+  const client = { connected: true }
   const service = {
     registry,
     nodes: { value: registry.list() },
-    connection: () => ({ client: { connected: true }, authorizationGeneration: 0 }),
+    connection: () => ({ client, authorizationGeneration: 0 }),
   }
   return {
     NodeService: {
@@ -57,10 +58,10 @@ beforeEach(() => {
 })
 
 describe('owner node scope actions', () => {
-  it('keeps a local tool choice after saving and reopening, while a copied file cannot carry it', async () => {
+  it('keeps shared Run access after saving, reopening and copying a chat', async () => {
     const session = new ChatSession(ChatService.getInstance())
     session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
-    await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'read' })
+    await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'run' })
     expect(session.getToolMode('node_delegate')).toBe('ask')
     const file = session.currentChatFile.value!
     const { GlobalStore } = await import('@/stores/GlobalStore')
@@ -71,7 +72,7 @@ describe('owner node scope actions', () => {
     expect(reopened.getToolMode('node_delegate')).toBe('ask')
     const clone = new ChatSession(ChatService.getInstance())
     await clone.load(copied)
-    expect(clone.getToolMode('node_delegate')).toBe('off')
+    expect(clone.getToolMode('node_delegate')).toBe('ask')
     session.destroy()
     reopened.destroy()
     clone.destroy()
@@ -89,11 +90,11 @@ describe('owner node scope actions', () => {
     const chat = restored.getAllSessions().find((chat) => chat.currentChatFile.value?.path === path)
     expect(chat?.overrides.value.nodeScope).toEqual([entry])
   })
-  it('saves even an empty chat before binding local owner approval to its durable identity', async () => {
+  it('saves shared access even for an empty chat without a device approval identity', async () => {
     const session = new ChatSession(ChatService.getInstance())
     const entry = { kind: 'node' as const, node_id: 'sample-node', access: 'edit' as const }
     await giveObsidianChatAccess(session, entry)
-    expect(session.nodeScopeIdentity).toBeTruthy()
+    expect(session.nodeScopeIdentity).toBeUndefined()
     const host = await nodeAgentHost()
     expect(
       host.ledger.approvedNode(session, 'sample-node', host.connection('sample-node').principal())
@@ -161,7 +162,7 @@ describe('owner node scope actions', () => {
     ])
     session.destroy()
   })
-  it('adding one entry approves only that entry, never other imported entries on the same node', async () => {
+  it('adding one entry preserves existing shared entries on the same node', async () => {
     const session = new ChatSession(ChatService.getInstance())
     const imported = {
       kind: 'project' as const,
@@ -196,10 +197,10 @@ describe('owner node scope actions', () => {
         principal,
         'edit'
       )
-    ).toThrow()
+    ).not.toThrow()
     session.destroy()
   })
-  it('removing one imported entry never approves the remaining imported scope', async () => {
+  it('removing one shared entry preserves the remaining shared scope', async () => {
     const session = new ChatSession(ChatService.getInstance())
     const first = {
       kind: 'project' as const,
@@ -211,7 +212,7 @@ describe('owner node scope actions', () => {
     await removeObsidianChatNodeAccess(session, first)
     const host = await nodeAgentHost(),
       principal = host.connection('sample-node').principal()
-    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(false)
+    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(true)
     session.destroy()
   })
   it('removing a different entry preserves only already approved surviving entries', async () => {
@@ -269,7 +270,7 @@ describe('owner node scope actions', () => {
     detach()
     session.destroy()
   })
-  it('the existing repository revoke action also revokes persisted node scope approvals', async () => {
+  it('the repository revoke action fences pending reads without clearing shared node scope', async () => {
     const session = new ChatSession(ChatService.getInstance())
     await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'read' })
     vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
@@ -285,7 +286,7 @@ describe('owner node scope actions', () => {
       .vm.$emit('click')
     expect(check).toThrow()
     await flushPromises()
-    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(false)
+    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(true)
     view.unmount()
     vi.restoreAllMocks()
     session.destroy()
@@ -306,7 +307,7 @@ describe('owner node scope actions', () => {
     session.overrides.value = { ...session.overrides.value, nodeScope: [] }
     session.overrides.value = { ...session.overrides.value, nodeScope: [entry] }
     expect(current).toThrow()
-    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(false)
+    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(true)
     session.destroy()
   })
 })

@@ -141,7 +141,7 @@ it('allocates a durable chat identity before an inherited node edit executes', a
     interactive: true,
   })
 })
-it('preserves a folder approval identity on rename and prunes a removed scope from local storage', async () => {
+it('preserves shared folder identity on rename and restores grants when scope is re-added', async () => {
   await folders.create('', 'Collection')
   const entries = [{ kind: 'node' as const, node_id: 'sample-node', access: 'read' as const }]
   await folders.setNodeScope('Collection', entries)
@@ -157,8 +157,9 @@ it('preserves a folder approval identity on rename and prunes a removed scope fr
   expect(owner.overrides.value.nodeScope).toEqual(entries)
   expect(ledger().approvedNode(owner, 'sample-node', 'sample-installation')).toBe(true)
   await folders.setNodeScope('Archive', [])
-  await folders.setNodeScope('Archive', entries)
   expect(ledger().approvedNode(owner, 'sample-node', 'sample-installation')).toBe(false)
+  await folders.setNodeScope('Archive', entries)
+  expect(ledger().approvedNode(owner, 'sample-node', 'sample-installation')).toBe(true)
 })
 it('stores node scope in the catalog and inherits all ancestors without enabling commands', async () => {
   await folders.create('', 'Projects')
