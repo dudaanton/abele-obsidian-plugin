@@ -3,6 +3,101 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 
+// Snapshot files can exceed the engine's single-string limit. Keep the input binary,
+// decoding only individual top-level values and bounded batches of array elements.
+export function parseSnapshotBuffer(bytes, chunkBytes = 1024 ** 2, parse = JSON.parse) {
+  if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 1) throw new Error('Invalid batch size')
+  let at = 0
+  const space = () => {
+    while ([9, 10, 13, 32].includes(bytes[at])) at++
+  }
+  const expect = (byte) => {
+    space()
+    if (bytes[at++] !== byte) throw new SyntaxError('Invalid snapshot structure')
+  }
+  const endValue = (start) => {
+    let depth = 0,
+      quoted = false,
+      escaped = false
+    for (let i = start; i < bytes.length; i++) {
+      const byte = bytes[i]
+      if (quoted) {
+        if (escaped) escaped = false
+        else if (byte === 92) escaped = true
+        else if (byte === 34) quoted = false
+      } else if (byte === 34) quoted = true
+      else if (byte === 91 || byte === 123) depth++
+      else if (byte === 93 || byte === 125) {
+        if (!depth) return i
+        depth--
+      } else if (byte === 44 && !depth) return i
+    }
+    throw new SyntaxError('Incomplete snapshot value')
+  }
+  const result = {}
+  expect(123)
+  space()
+  while (bytes[at] !== 125) {
+    // Object keys end at the colon, outside their quoted contents.
+    let colon = at + 1,
+      escaped = false
+    if (bytes[at] !== 34) throw new SyntaxError('Invalid snapshot key')
+    for (; colon < bytes.length; colon++) {
+      if (escaped) escaped = false
+      else if (bytes[colon] === 92) escaped = true
+      else if (bytes[colon] === 34) break
+    }
+    const key = parse(bytes.subarray(at, colon + 1).toString('utf8'))
+    at = colon + 1
+    expect(58)
+    space()
+    let value
+    if (bytes[at] === 91) {
+      at++
+      space()
+      value = []
+      let start = at
+      if (bytes[at] !== 93) {
+        while (true) {
+          const end = endValue(at)
+          if (end === at || ![44, 93].includes(bytes[end]))
+            throw new SyntaxError('Invalid snapshot array')
+          if (end - start >= chunkBytes || bytes[end] === 93) {
+            const batch = parse('[' + bytes.subarray(start, end).toString('utf8') + ']')
+            for (const element of batch) value.push(element)
+            start = end + 1
+          }
+          at = end
+          if (bytes[at] === 93) break
+          at++
+          space()
+          if (bytes[at] === 93) throw new SyntaxError('Trailing snapshot array comma')
+        }
+      }
+      at++
+    } else {
+      const end = endValue(at)
+      value = parse(bytes.subarray(at, end).toString('utf8'))
+      at = end
+    }
+    Object.defineProperty(result, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
+    space()
+    if (bytes[at] === 125) break
+    expect(44)
+    space()
+    if (bytes[at] === 125) throw new SyntaxError('Trailing snapshot object comma')
+  }
+  expect(125)
+  space()
+  if (at !== bytes.length) throw new SyntaxError('Trailing snapshot data')
+  return result
+}
+
 // Lengauer-Tarjan dominators over root-reachable, non-weak snapshot edges.
 // These are graph retained sizes, not total renderer allocations or RSS.
 export function retainedGraph(snapshot) {
@@ -191,6 +286,6 @@ export function summarizeHeap(snapshot, limit = 30) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const input = JSON.parse(await readFile(process.argv[2], 'utf8'))
+  const input = parseSnapshotBuffer(await readFile(process.argv[2]))
   await writeFile(process.argv[3], JSON.stringify(summarizeHeap(input), null, 2))
 }

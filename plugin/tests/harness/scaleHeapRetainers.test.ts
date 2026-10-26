@@ -98,3 +98,25 @@ it('matches removal-based retained sizes on cyclic graphs with unreachable nodes
     }
   }
 })
+
+it('reads snapshot arrays in bounded JSON batches across escaped text and nested values', async () => {
+  const { parseSnapshotBuffer } = await import('../scale/heap-retainers.mjs')
+  const value = {
+    snapshot: { meta: { node_fields: ['type', 'name'] } },
+    nodes: Array.from({ length: 300 }, (_, index) => index),
+    edges: [0, 1, 2],
+    strings: ['sample,] text', 'escaped \\" quote', 'sample 层', 'line\ntext'],
+    trace_tree: [[1, [2, 3]], [], { sample: [4, 5] }],
+    samples: [],
+  }
+  const source = JSON.stringify(value)
+  const batches = []
+  const parse = (text) => {
+    batches.push(text.length)
+    return JSON.parse(text)
+  }
+  expect(parseSnapshotBuffer(Buffer.from(source), 32, parse)).toEqual(value)
+  expect(Math.max(...batches)).toBeLessThan(source.length / 2)
+  expect(batches.length).toBeGreaterThan(10)
+  expect(() => parseSnapshotBuffer(Buffer.from('{"nodes":[1,]}'), 2)).toThrow()
+})
