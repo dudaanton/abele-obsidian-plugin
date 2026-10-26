@@ -27,9 +27,14 @@ exports.isHostPersistence = (row) => {
       /^\s+at (?:mutate|ChangeTracker\.around|(?:[\w$]+\.)?eval(?: \[as write\])?) \(plugin:abele[:/].*\)$/.test(
         frames[count] ?? ''
       )
-    )
+    ) {
       count++
-    if (frames.slice(0, count).some((line) => /at ChangeTracker\.around /.test(line)))
+      if (/\[as write\]/.test(frames[count - 1])) break
+    }
+    if (
+      /\[as write\]/.test(frames[count - 1] ?? '') &&
+      frames.slice(0, count).some((line) => /at ChangeTracker\.around /.test(line))
+    )
       stack = frames.slice(count).join('\n')
   }
   return (

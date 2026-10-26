@@ -321,3 +321,10 @@ it('does not exempt a plugin workspace mutation just because a host callback fol
   const stack = 'Error\n at persist (plugin:abele:1:1)\n at dispatch (app://obsidian.md/app.js:1:1)'
   expect(writes.isHostPersistence({ path: '.obsidian/workspace.json', stack })).toBe(false)
 })
+
+it('keeps a plugin eval caller outside the adapter write boundary', async () => {
+  const writes = (await import('../scale/writes.cjs')).default
+  const stack =
+    'Error\n at mutate (plugin:abele:1:1)\n at ChangeTracker.around (plugin:abele:1:1)\n at e.eval [as write] (plugin:abele:1:1)\n at eval (plugin:abele:1:1)\n at dispatch (app://obsidian.md/app.js:1:1)'
+  expect(writes.isHostPersistence({ path: '.obsidian/workspace.json', stack })).toBe(false)
+})
