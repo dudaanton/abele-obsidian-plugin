@@ -343,12 +343,19 @@ function onMenu(e: MouseEvent) {
 <style lang="scss">
 .abele-file-view {
   position: relative;
+  flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-4);
   min-width: 0;
+}
+// Keep the card's full contents in the viewport's scroll range. A clipped diff is otherwise
+// allowed to shrink inside this flex column, leaving its remaining lines unreachable.
+.abele-file-view__card {
+  flex-shrink: 0;
 }
 // Obsidian makes its interface unselectable and gives selection back only to a note; a file here
 // is there to be read, quoted and handed to the agent, so it gives it back itself — code and
@@ -392,7 +399,7 @@ function onMenu(e: MouseEvent) {
 // The whole file in the same card as the comparison: header band, then the code viewer.
 .abele-file-view__file {
   min-height: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-l);
@@ -401,7 +408,8 @@ function onMenu(e: MouseEvent) {
   background-color: var(--background-primary);
 }
 .abele-node-main > .abele-file-view > .abele-file-view__file {
-  max-height: 100%;
+  max-height: none;
+  overflow: clip;
 }
 .abele-file-view__header {
   position: sticky;
