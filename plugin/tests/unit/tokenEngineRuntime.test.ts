@@ -1632,16 +1632,36 @@ it.each(['adapter', 'SDK'])(
   async (mode) => {
     const wire = await server('Notes/unused.md', '')
     const fs = new MemoryFileSystem()
-    for (let i = 0; i < 12000; i++)
+    const files = 12000
+    let compared = 0
+    for (let i = 0; i < files; i++)
       await fs.writeAtomic('Notes/sample-' + i + '.md', new Uint8Array([1]), 1000)
-    Object.assign(fs, { fingerprint: async () => ({ size: 1, sha: 'b'.repeat(64) }) })
+    Object.assign(fs, {
+      fingerprint: async () => {
+        // Give fast runners enough buffered CPU work to require host yields.
+        // The fixture itself must not introduce a host task boundary.
+        const until = performance.now() + 0.05
+        while (performance.now() < until) {
+          /* synchronous comparison */
+        }
+        compared++
+        return { size: 1, sha: 'b'.repeat(64) }
+      },
+    })
     const one = runtime(wire, fs)
     const scanning = (one.runtime.engine as unknown as { opts: { fs: FileSystem } }).opts.fs
     let ticks = 0,
+      progressTicks = 0,
+      lastCompared = 0,
+      longestBatch = 0,
       longestMs = 0,
       last = performance.now()
     const started = last
     const timer = setInterval(() => {
+      const batch = compared - lastCompared
+      if (batch > 0) progressTicks++
+      longestBatch = Math.max(longestBatch, batch)
+      lastCompared = compared
       const now = performance.now()
       longestMs = Math.max(longestMs, now - last)
       last = now
@@ -1655,7 +1675,7 @@ it.each(['adapter', 'SDK'])(
           { excluded: () => false },
           { readOnly: true, pairMoves: false }
         )
-        expect(found.ops).toHaveLength(12000)
+        expect(found.ops).toHaveLength(files)
       } else {
         for await (const info of scanning.list()) await scanning.fingerprint!(info.path)
       }
@@ -1663,10 +1683,14 @@ it.each(['adapter', 'SDK'])(
       await new Promise((resolve) => setTimeout(resolve, 0))
       console.info(
         '[comparison responsiveness]',
-        JSON.stringify({ mode, files: 12000, elapsedMs, longestMs, ticks })
+        JSON.stringify({ mode, files, elapsedMs, longestMs, ticks, progressTicks, longestBatch })
       )
-      expect(ticks).toBeGreaterThan(1)
-      expect(longestMs).toBeLessThan(50)
+      expect(compared).toBe(files)
+      // Count only callbacks observing progress, including the final tail.
+      // Runner stalls and GC delay timers but cannot compare more files themselves.
+      // Without yielding there is one progress tick and a batch of all 12,000 files.
+      expect(progressTicks).toBeGreaterThanOrEqual(files / 1000)
+      expect(longestBatch).toBeLessThan(files / 4)
     } finally {
       clearInterval(timer)
       await one.runtime.close()
