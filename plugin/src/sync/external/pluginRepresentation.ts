@@ -9,6 +9,7 @@ import { ExternalRecoveryRequired, type RuntimeFence } from './recovery'
 import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
 import { EXTERNAL_INSPECTION_KEY, inspectionSchema, retiredArtifactPaths } from './pluginSafety'
+import { projectionInspectionIdentity } from './inspectionIdentity'
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
 
@@ -25,6 +26,7 @@ export async function pluginRepresentation(options: {
   fence: RuntimeFence
   fs: FileSystem
   placement?: LocalFolderPlacement
+  inspectionIncludes?(physicalPath: string): boolean
   verify: RepresentationOptions['verify']
   scriptsFolder(): string
   excluded?: RepresentationOptions['excluded']
@@ -40,9 +42,25 @@ export async function pluginRepresentation(options: {
   return ExternalRepresentation.open({
     inspection: {
       entries: cached.success ? cached.data.entries : [],
-      save: (entries) => {
+      cacheKey: (path) => options.placement?.toLocal(path) ?? path,
+      ownsKey: (path) =>
+        options.inspectionIncludes
+          ? options.inspectionIncludes(path)
+          : !options.placement ||
+            path === options.placement.local ||
+            path.startsWith(options.placement.local + '/'),
+      identity: (path) =>
+        projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path),
+      save: (entries, retired) => {
         fence.assertOwned()
-        app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries })
+        // Connections share the vault cache. Keep another scope's completed inspections.
+        const latest = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
+        const merged = new Map(
+          (latest.success ? latest.data.entries : []).map((entry) => [entry.path, entry] as const)
+        )
+        for (const entry of entries) merged.set(entry.path, entry)
+        for (const path of retired ?? []) merged.delete(path)
+        app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [...merged.values()] })
       },
     },
     ...options,

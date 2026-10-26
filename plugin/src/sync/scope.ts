@@ -11,6 +11,12 @@ import {
 import { caseKey } from '@abele/sync-sdk/protocol'
 import { messageOf } from './messages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
+import {
+  cacheableInspectionIdentity,
+  projectionInspectionIdentity,
+  sameInspectionIdentity,
+  type InspectionIdentity,
+} from './external/inspectionIdentity'
 
 /**
  * What this device syncs besides its selective settings: the vault's ignore file, the hidden
@@ -28,6 +34,7 @@ export const DEFAULT_SCRIPTS_FOLDER = 'Scripts'
 
 /** The vault's ignore file, read from its root. */
 export const IGNORE_FILE = '.abele-sync-ignore'
+const IGNORE_CACHE = 'abele-sync-ignore-content-v1'
 
 /** Wire identity comparison only; callers retain physical spellings for I/O. */
 export function withinSyncPath(path: string, prefix: string): boolean {
@@ -150,7 +157,28 @@ export async function scopeKey(
 export async function readIgnore(app: App): Promise<string | null> {
   try {
     if (!(await vaultDisk(app.vault).exists(IGNORE_FILE))) return null
-    return new TextDecoder().decode(await vaultDisk(app.vault).readBinary(IGNORE_FILE))
+    const before = await projectionInspectionIdentity(app, IGNORE_FILE)
+    const cached = app.loadLocalStorage(IGNORE_CACHE) as {
+      identity?: InspectionIdentity
+      text?: unknown
+    } | null
+    if (
+      before &&
+      cacheableInspectionIdentity(before) &&
+      cached?.identity &&
+      sameInspectionIdentity(cached.identity, before) &&
+      typeof cached.text === 'string'
+    ) {
+      const after = await projectionInspectionIdentity(app, IGNORE_FILE)
+      if (after && sameInspectionIdentity(before, after)) return cached.text
+    }
+    const text = new TextDecoder().decode(await vaultDisk(app.vault).readBinary(IGNORE_FILE))
+    const after = await projectionInspectionIdentity(app, IGNORE_FILE)
+    if (before && (!after || !sameInspectionIdentity(before, after)))
+      throw new Error('Ignore file changed while reading')
+    if (after && cacheableInspectionIdentity(after))
+      app.saveLocalStorage(IGNORE_CACHE, { identity: after, text })
+    return text
   } catch (error) {
     console.debug('[abele-sync] cannot read the ignore file', error)
     throw new Error(`${IGNORE_FILE} is there but could not be read: ${messageOf(error)}`)

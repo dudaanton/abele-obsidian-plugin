@@ -202,7 +202,10 @@ interface InventoryPass {
   indexedChildren: InventoryCache<Promise<InventoryChild[]>>
   directoryStamp?: string
   directoryRevision: number
+  /** Distinguishes passes; per-path revisions restart at zero in each one. */
+  id: number
 }
+let inventoryIds = 0
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
 const normalizationPossible = (path: string) =>
@@ -567,11 +570,16 @@ export class ObsidianFileSystem implements FileSystem {
       localRevision: 0,
       pollRevision: 0,
       directoryRevision: 0,
+      id: ++inventoryIds,
       configRevision: this.configRevision(),
       children: cache(),
       indexedChildren: cache(),
     }
     return inventory
+  }
+  /** The current inventory pass, if any. Its per-path revisions are comparable only within it. */
+  [Symbol.for('abele.sync.inventory-id-v1')](): number | undefined {
+    return this.inventory?.id
   }
   [Symbol.for('abele.sync.local-change-revision-v1')](path?: string): number | undefined {
     if (!this.inventory) return undefined

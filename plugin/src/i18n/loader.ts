@@ -27,6 +27,15 @@ function isCatalog(value: unknown): value is Catalog {
   )
 }
 
+/** A catalog is checked at every start, before the script hash is warm. The platform digest
+ * takes milliseconds where a cold script hash of a whole catalog blocks the window. */
+async function digest(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  const subtle = window.crypto?.subtle
+  if (subtle) return bytesToHex(new Uint8Array(await subtle.digest('SHA-256', bytes)))
+  return bytesToHex(sha256(bytes))
+}
+
 /** Transport and storage are injected so the loader works independently of the host. */
 export async function loadCatalog(options: {
   storage: Storage
@@ -40,9 +49,8 @@ export async function loadCatalog(options: {
   const { storage, request, directory, version, language, hash } = options
   const dir = `${directory}/i18n`
   const path = `${dir}/${language}-${version}.json`
-  const validate = (text: string): Catalog => {
-    if (bytesToHex(sha256(new TextEncoder().encode(text))) !== hash)
-      throw new Error('Checksum mismatch')
+  const validate = async (text: string): Promise<Catalog> => {
+    if ((await digest(text)) !== hash) throw new Error('Checksum mismatch')
     const value: unknown = JSON.parse(text)
     if (
       !value ||
@@ -60,7 +68,7 @@ export async function loadCatalog(options: {
   try {
     if (await storage.exists(path)) {
       try {
-        return validate(await storage.read(path))
+        return await validate(await storage.read(path))
       } catch {
         console.debug('[i18n] Invalid cached catalog; downloading again')
       }
@@ -68,7 +76,7 @@ export async function loadCatalog(options: {
     const text = await request(
       `${options.releaseBase ?? 'https://github.com/dudaanton/abele-obsidian-plugin/releases/download'}/${encodeURIComponent(version)}/abele-i18n-${language}.json`
     )
-    const catalog = validate(text)
+    const catalog = await validate(text)
     try {
       if (!(await storage.exists(dir))) await storage.mkdir(dir)
       await storage.write(path, text)

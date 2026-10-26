@@ -362,6 +362,9 @@ describe('native token service', () => {
         ? Promise.reject(new Error('sample locked ignore file'))
         : read(path)
     )
+    // Unchanged rules are reused from their verified cache without a read. Losing access
+    // changes the file's metadata on disk, which forces the read that fails here.
+    await one.app.vault.adapter.write('.abele-sync-ignore', 'Private/\n')
     await expect(one.syncNow()).rejects.toThrow(/ignore|locked/i)
     expect(send).not.toHaveBeenCalled()
     locked = false

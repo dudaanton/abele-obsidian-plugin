@@ -40,6 +40,7 @@ it('settles first sync on a warm 12k-file vault without reading unrelated conten
       path: file.path,
       size: file.stat.size,
       mtime: file.stat.mtime,
+      ctime: file.stat.ctime,
       marker: false,
     })),
   })
@@ -72,6 +73,7 @@ it('uses indexed stats for a warm 12k-file inspection and local scan', async () 
       path: file.path,
       size: file.stat.size,
       mtime: file.stat.mtime,
+      ctime: file.stat.ctime,
       marker: false,
     })),
   })

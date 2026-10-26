@@ -972,14 +972,10 @@ export function nativeOf(
       Array.from(sha256(new TextEncoder().encode(value)), (byte) =>
         byte.toString(16).padStart(2, '0')
       ).join('')
-    const root = recoveryRoot ? at(recoveryRoot) : at('').replace(/\\/g, '/').replace(/\/+$/, '')
-    const folder = recoveryRoot
-      ? root
-      : root.slice(0, root.lastIndexOf('/')) + '/.abele-sync-recovery/' + hex(root)
     const archiveFs = (
       recoveryRoot ? fsp : (nativeOrigins.get(fsp) ?? fsp)
     ) as Partial<NodeFsPromises>
-    const checkArchive = async () => {
+    const checkArchive = async (root: string, folder: string) => {
       if (recoveryRoot) {
         await fsp.mkdir(folder, { recursive: true })
         return
@@ -1008,10 +1004,14 @@ export function nativeOf(
     native.archiveBackup = async (path) => {
       await assertVaultPath(adapter, path)
       assertEffect([path])
+      const root = recoveryRoot ? at(recoveryRoot) : at('').replace(/\\/g, '/').replace(/\/+$/, '')
+      const folder = recoveryRoot
+        ? root
+        : root.slice(0, root.lastIndexOf('/')) + '/.abele-sync-recovery/' + hex(root)
       const pinned = recoveryRoot ? undefined : await rootAccess(adapter).pin?.verify()
       const source = pinned ? physicalPath(pinned.path, path) : at(path),
         destination = folder + '/' + hex(source) + '.old'
-      await checkArchive()
+      await checkArchive(root, folder)
       await assertVaultPath(adapter, path)
       assertEffect([path])
       try {

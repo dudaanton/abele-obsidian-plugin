@@ -35,6 +35,12 @@ import {
 } from './projection'
 import { ExternalRecoveryRequired } from './recovery'
 import { stagingDirectory } from '../stagingDirectory'
+import {
+  cacheableInspectionIdentity,
+  sameInspectionIdentity,
+  type InspectionEntry,
+  type InspectionIdentity,
+} from './inspectionIdentity'
 
 export interface RepresentationOptions {
   retiredPaths?: ReadonlySet<string>
@@ -50,8 +56,11 @@ export interface RepresentationOptions {
   /** Task-3 stat-first projection inspection cache, scoped to this vault. Never authority for
    * owned paths; a changed stat forces fresh inspection. */
   inspection?: {
-    entries: readonly { path: string; size: number; mtime: number; marker: boolean }[]
-    save(entries: readonly { path: string; size: number; mtime: number; marker: boolean }[]): void
+    entries: readonly InspectionEntry[]
+    cacheKey?(path: string): string
+    ownsKey?(path: string): boolean
+    identity?(path: string): Promise<InspectionIdentity | null>
+    save(entries: readonly InspectionEntry[], retired?: readonly string[]): void
   }
   verify(fileId: string, input: ExternalVerifyRequest): Promise<unknown>
   /** Called only with verified bytes and durable intent, inside the sync's own serialized job.
@@ -83,6 +92,9 @@ const terminal = new Set([
   'detached',
 ])
 
+type Verified = { revision: number; size: number; marker: boolean }
+type PassProof = { pass: number; revision: number }
+
 /** Common representation policy over portable ports. It never invents local bytes, identities,
  * or a second head table. Scanner/scope/SHA views omit held representations; the actual ledger
  * keeps the accepted server head and the record keeps the earlier proven local base. */
@@ -90,17 +102,14 @@ export class ExternalRepresentation {
   private document!: ExternalDocument
   private readonly entries = new Map<string, StateEntry>()
   private inspectionDirty = false
-  private readonly inspectionCapacity: number
   private stopped = false
   private readonly unexpected = new Set<string>()
-  private readonly inspected = new Map<
-    string,
-    { path: string; size: number; mtime: number; marker: boolean }
-  >()
+  private readonly inspected = new Map<string, InspectionEntry>()
+  /** Files whose identity was verified in the current inventory pass, by their pass revision. */
+  private verified = { pass: undefined as number | undefined, paths: new Map<string, Verified>() }
   private constructor(private readonly options: RepresentationOptions) {
-    this.inspectionCapacity = (options.inspection?.entries.length ?? 0) + 10000
-    // Keep the complete startup inventory. A smaller rolling cache thrashes when
-    // a scan walks more files than its capacity, rereading every file each cycle.
+    // A scan must retain every inspected file; eviction makes a large vault reread
+    // content on every cycle and on restart.
     for (const entry of options.inspection?.entries ?? []) this.inspected.set(entry.path, entry)
   }
   static async open(options: RepresentationOptions): Promise<ExternalRepresentation> {
@@ -155,10 +164,10 @@ export class ExternalRepresentation {
     this.owned()
     this.flushInspection()
   }
-  private flushInspection(): void {
+  private flushInspection(retired: readonly string[] = []): void {
     if (!this.inspectionDirty) return
     this.owned()
-    this.options.inspection?.save([...this.inspected.values()])
+    this.options.inspection?.save([...this.inspected.values()], retired)
     this.inspectionDirty = false
   }
   private owned(): void {
@@ -215,6 +224,38 @@ export class ExternalRepresentation {
     if (fs.readPrefix) return fs.readPrefix(path, MAX_PROJECTION_BYTES)
     return fs.read(path)
   }
+  /** The inventory pass and this path's change revision in it, when the file system has one.
+   * The pass observes vault and config events, so an unchanged revision means no change was
+   * reported since an earlier verification in the same pass. */
+  private passProof(path: string): PassProof | undefined {
+    const fs = this.options.fs
+    try {
+      const id = Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1')) as unknown
+      const revision = Reflect.get(fs, Symbol.for('abele.sync.local-change-revision-v1')) as unknown
+      if (typeof id !== 'function' || typeof revision !== 'function') return undefined
+      const pass = id.call(fs) as number | undefined
+      if (pass === undefined) return undefined
+      const value = revision.call(fs, path) as number | undefined
+      return value === undefined ? undefined : { pass, revision: value }
+    } catch {
+      return undefined
+    }
+  }
+  private verifiedInPass(path: string, proof: PassProof, size: number): Verified | undefined {
+    if (this.verified.pass !== proof.pass) return undefined
+    const known = this.verified.paths.get(path)
+    return known && known.revision === proof.revision && known.size === size ? known : undefined
+  }
+  private rememberVerified(
+    path: string,
+    proof: PassProof | undefined,
+    size: number,
+    marker: boolean
+  ): void {
+    if (!proof) return
+    if (this.verified.pass !== proof.pass) this.verified = { pass: proof.pass, paths: new Map() }
+    this.verified.paths.set(path, { revision: proof.revision, size, marker })
+  }
   async classify(
     path: string,
     observed?: FileInfo | null,
@@ -270,20 +311,64 @@ export class ExternalRepresentation {
     // stat before readPrefix, since their implementation may allocate the entire file.
     if (this.options.excluded?.(path, info.size) || info.size > MAX_PROJECTION_BYTES)
       return { kind: 'ordinary' }
-    const prior = this.inspected.get(path)
-    if (!supplied && prior?.size === info.size && prior.mtime === info.mtime)
-      return prior.marker
+    const cachePath = this.options.inspection?.cacheKey?.(path) ?? path
+    // Several scans classify every file in one pass. Verify an unchanged identity once per pass;
+    // a vault or config event for the path, or a new pass, verifies it again.
+    const proof = !supplied && this.options.inspection?.identity ? this.passProof(path) : undefined
+    const known = proof && this.verifiedInPass(cachePath, proof, info.size)
+    if (known)
+      return known.marker
         ? { kind: 'hold', reason: 'projection', dirty: false }
         : { kind: 'ordinary' }
+    const identity =
+      !supplied && this.options.inspection?.identity
+        ? await this.options.inspection.identity(path)
+        : null
+    this.owned()
+    const prior = this.inspected.get(cachePath)
+    if (
+      !supplied &&
+      prior &&
+      (this.options.inspection?.identity
+        ? identity !== null &&
+          cacheableInspectionIdentity(identity) &&
+          sameInspectionIdentity(prior, identity)
+        : prior.size === info.size && prior.mtime === info.mtime)
+    ) {
+      const stable = this.options.inspection?.identity
+        ? await this.options.inspection.identity(path)
+        : identity
+      if (
+        !this.options.inspection?.identity ||
+        (identity && stable && sameInspectionIdentity(identity, stable))
+      ) {
+        this.owned()
+        if (stable?.size === info.size)
+          this.rememberVerified(cachePath, proof, info.size, prior.marker)
+        return prior.marker
+          ? { kind: 'hold', reason: 'projection', dirty: false }
+          : { kind: 'ordinary' }
+      }
+    }
     const bytes = supplied ?? (await this.bytes(path, info))
     this.owned()
     const marker = !!bytes && recognizeProjection(bytes)
     if (!supplied) {
-      this.inspected.delete(path)
-      this.inspected.set(path, { path, size: info.size, mtime: info.mtime, marker })
-      if (this.inspected.size > this.inspectionCapacity)
-        this.inspected.delete(this.inspected.keys().next().value)
-      this.inspectionDirty = true
+      const after = this.options.inspection?.identity
+        ? await this.options.inspection.identity(path)
+        : null
+      this.owned()
+      if (
+        !this.options.inspection?.identity ||
+        (identity !== null &&
+          cacheableInspectionIdentity(identity) &&
+          after !== null &&
+          sameInspectionIdentity(identity, after))
+      ) {
+        this.inspected.set(cachePath, { path: cachePath, ...(identity ?? info), marker })
+        this.inspectionDirty = true
+        if (identity?.size === info.size) this.rememberVerified(cachePath, proof, info.size, marker)
+      }
     }
     if (marker) {
       const inspection = inspectProjection(bytes, path, {
@@ -347,12 +432,25 @@ export class ExternalRepresentation {
         }
         if (method === 'list')
           return async function* () {
+            const observed = new Set<string>()
+            let complete = false
             try {
-              for await (const info of fs.list())
+              for await (const info of fs.list()) {
+                observed.add(self.options.inspection?.cacheKey?.(info.path) ?? info.path)
                 if ((await self.classify(info.path, info)).kind === 'ordinary') yield info
+              }
+              complete = true
             } finally {
-              // One bounded persistence write per scan, including interrupted enumerations.
-              self.flushInspection()
+              // Only a completed listing proves that old physical paths disappeared.
+              const retired: string[] = []
+              if (complete && self.options.inspection?.ownsKey)
+                for (const path of self.inspected.keys())
+                  if (self.options.inspection.ownsKey(path) && !observed.has(path)) {
+                    self.inspected.delete(path)
+                    retired.push(path)
+                    self.inspectionDirty = true
+                  }
+              self.flushInspection(retired)
             }
           }
         if (method === 'openRead' || method === 'fingerprint')

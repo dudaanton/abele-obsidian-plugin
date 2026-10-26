@@ -758,6 +758,7 @@ it.each([
         ? []
         : [{ path: 'Fixtures/local.md', content: 'outside the folder token' }]),
       ...(existing ? [{ path: 'Fixtures/Shared/kept.md', content: 'kept' }] : []),
+      ...(native && kind === 'folder' ? [{ path: '.abele-sync-ignore', content: '' }] : []),
     ])
     if (native) {
       withDesktopFs(app)

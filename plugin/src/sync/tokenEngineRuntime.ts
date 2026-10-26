@@ -750,7 +750,7 @@ export class TokenEngineRuntime
             if (this.permitted) options.discoveryScope?.(this.authority.scope)
             return Response.json(this.authority, { headers: response.headers })
           } else if (url.pathname === '/v2/manifest') {
-            const page = V2ManifestSchema.parse(this.received(await response.json()))
+            const page = V2ManifestSchema.parse(await this.received(await response.json()))
             this.assertIncomingPaths(page.items.map((item) => item.path))
             if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
             if (this.pulling) {
@@ -798,7 +798,7 @@ export class TokenEngineRuntime
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
           } else if (url.pathname === '/v2/changes') {
-            const page = V2ChangesSchema.parse(this.received(await response.json()))
+            const page = V2ChangesSchema.parse(await this.received(await response.json()))
             this.assertIncomingPaths(
               page.items.flatMap((event) =>
                 event.type === 'content'
@@ -883,7 +883,7 @@ export class TokenEngineRuntime
             url.pathname === '/v2/trash/restore' ||
             /^\/v2\/files\/[^/]+\/(history|head|restore|external\/verify)$/.test(url.pathname)
           ) {
-            const payload = this.received(await response.clone().json())
+            const payload = await this.received(await response.clone().json())
             this.assertScopedPayload(payload)
             return Response.json(payload, { headers: response.headers })
           }
@@ -2068,9 +2068,9 @@ export class TokenEngineRuntime
     for (const path of paths) this.groupCandidates.add(path)
     this.options.discoveryCandidates?.(paths)
   }
-  private received<T>(value: T): T {
+  private async received<T>(value: T): Promise<T> {
     try {
-      return this.serverPaths ? this.serverPaths.map(value, true) : value
+      return this.serverPaths ? await this.serverPaths.mapAsync(value, true) : value
     } catch (error) {
       this.runFailure = error
       this.engine?.pause()
@@ -2437,7 +2437,7 @@ export class TokenEngineRuntime
         }
         throw new EngineError('protocol', 'Executable departure recovery failed')
       }
-      const page = V2ChangesSchema.parse(this.received(await response.json()))
+      const page = V2ChangesSchema.parse(await this.received(await response.json()))
       this.assertIncomingPaths(
         page.items.flatMap((event) =>
           event.type === 'content'

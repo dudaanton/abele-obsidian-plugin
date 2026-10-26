@@ -142,3 +142,19 @@ it.each([[], { greeting: [] }, { greeting: { one: 'one' } }, { greeting: { other
     ).toBeUndefined()
   }
 )
+it('checks a cached catalog with the platform digest, not a script hash on the main thread', async () => {
+  const digest = vi.spyOn(window.crypto.subtle, 'digest')
+  try {
+    const args = options(host({ 'plugin/i18n/ru-1.0.0.json': payload }))
+    expect(await loadCatalog(args)).toEqual({ greeting: 'Привет' })
+    expect(digest).toHaveBeenCalledOnce()
+    const tampered = options(
+      host({ 'plugin/i18n/ru-1.0.0.json': payload.replace('Привет', 'Пока') })
+    )
+    tampered.request = vi.fn(async () => payload)
+    expect(await loadCatalog(tampered)).toEqual({ greeting: 'Привет' })
+    expect(tampered.request).toHaveBeenCalledOnce()
+  } finally {
+    digest.mockRestore()
+  }
+})

@@ -368,11 +368,18 @@ Device-local `abele-sync-external-activation-v1` holds
 preparing/active bindings and database-instance identity outside the deletable ledger;
 `abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
 connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
-claim, not a filesystem lock. `abele-sync-external-inspection-v1` caches bounded projection
-inspection by physical path, size and mtime. It is device-local optimization data, not account
-adoption or publication authority. Changed candidates are reinspected; files above 16 KiB are
+claim, not a filesystem lock. `abele-sync-external-inspection-v1` caches projection
+inspection by physical path, size, mtime, ctime and available native file identity. It retains
+the complete inspected inventory across restarts, and legacy entries missing current identity fields are
+reinspected once. A completed listing retires paths that disappeared from its connection scope.
+It is device-local optimization data, not account adoption or publication
+authority. Changed candidates are reinspected; files above 16 KiB are
 not read. Departure borrows an existing claim rather than replacing it, so refusal retains
-its retryable runtime. Retained `abele-sync-external-connection-switch-v1` evidence is a
+its retryable runtime. `abele-sync-ignore-content-v1` keeps the root ignore text with its
+size, mtime, ctime and available native file identity so an unchanged restart can reuse the scope
+without a content read. Portable hosts use indexed metadata for ordinary files and adapter
+metadata for hidden files; without either native identity or creation time they inspect again.
+Retained `abele-sync-external-connection-switch-v1` evidence is a
 recovery hold until its recorded credential and descriptor writes are reconciled. Explicit
 disconnect preparation materializes active attachments, verifies local originals and retained
 artifacts, then commits a revision-bound external-disconnect-ready-v1 ledger receipt. The

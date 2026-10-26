@@ -5,6 +5,8 @@ import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalRepresentation } from '@/sync/external/representation'
+import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
+import { RuntimeFence } from '@/sync/external/recovery'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { serializeProjection } from '@/sync/external/projection'
 import { EXTERNAL_INSPECTION_KEY } from '@/sync/external/pluginSafety'
@@ -33,6 +35,53 @@ const entry = {
   mtime: 1000,
 }
 const cleanups: (() => void)[] = []
+it('retains another connection inspection when a group listing completes', async () => {
+  const app = buildFakeVault([
+    { path: 'Notes/member.md', content: 'member' },
+    { path: 'Notes/other.md', content: 'other' },
+  ])
+  const entries = app.vault.getFiles().map((file) => ({
+    path: file.path,
+    ...file.stat,
+    marker: false,
+  }))
+  app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries })
+  const factory = new IDBFactory()
+  const store = await IndexedDbStateStore.open(factory, 'sample-group-inspection')
+  const fence = new RuntimeFence(app, 'sample-group-inspection', () => true)
+  fence.activate()
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  vi.spyOn(fs, 'list').mockImplementation(async function* () {
+    yield { path: 'Notes/member.md', size: 6, mtime: 0 }
+  })
+  try {
+    const representation = await pluginRepresentation({
+      app: app as unknown as App,
+      factory,
+      store,
+      ledgerId: 'sample-ledger',
+      binding,
+      fence,
+      fs,
+      scriptsFolder: () => 'Scripts',
+      inspectionIncludes: (path) => path === 'Notes/member.md',
+      verify: async () => {
+        throw new Error('unexpected verification')
+      },
+    })
+    for await (const _ of representation.fileSystem().list()) {
+      /* inspect group */
+    }
+    const cached = app.loadLocalStorage(EXTERNAL_INSPECTION_KEY) as { entries: { path: string }[] }
+    expect(cached.entries.map((row) => row.path).sort()).toEqual([
+      'Notes/member.md',
+      'Notes/other.md',
+    ])
+  } finally {
+    fence.release()
+    store.close()
+  }
+})
 async function checkStartupInspection(withoutListings: boolean) {
   const app = buildFakeVault(
     Array.from({ length: 12000 }, (_, i) => ({ path: `Notes/${i}.md`, content: 'ordinary' }))
@@ -277,7 +326,7 @@ describe('common external representation and durable remote projection work', ()
     ).toHaveLength(0)
   })
 
-  it('persists one bounded inspection cache for 10000 newly imported files', async () => {
+  it('persists every inspected file when a large vault grows beyond 10000 paths', async () => {
     const fake = buildFakeVault([]),
       save = vi.fn((entries) =>
         fake.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries })
@@ -298,7 +347,7 @@ describe('common external representation and durable remote projection work', ()
       fs,
       assertOwned: () => {},
       scriptsFolder: () => 'Scripts',
-      inspection: { entries: [], save },
+      inspection: { entries: [], ownsKey: () => true, save },
       verify: async () => {
         throw Error('unexpected verify')
       },
@@ -321,11 +370,21 @@ describe('common external representation and durable remote projection work', ()
     expect(read).toHaveBeenCalledTimes(10000)
     count = 10001
     for await (const _ of runtime.fileSystem().list()) {
-      /* bounded growth */
+      /* retain the complete inspected inventory */
     }
     expect(save).toHaveBeenCalledTimes(2)
     expect(storageWrites).toHaveBeenCalledTimes(2)
-    expect(save.mock.calls[1][0]).toHaveLength(10000)
+    expect(save.mock.calls[1][0]).toHaveLength(10001)
+    for await (const _ of runtime.fileSystem().list()) {
+      /* all 10001 cache hits */
+    }
+    expect(read).toHaveBeenCalledTimes(10001)
+    count = 10000
+    for await (const _ of runtime.fileSystem().list()) {
+      /* a complete listing retires the removed path */
+    }
+    expect(save.mock.calls[2][0]).toHaveLength(10000)
+    expect(read).toHaveBeenCalledTimes(10001)
   })
 
   it('intentional absence produces neither a server delete nor dirty; ordinary sidecars still sync', async () => {

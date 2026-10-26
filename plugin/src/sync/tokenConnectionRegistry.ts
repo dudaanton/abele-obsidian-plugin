@@ -372,6 +372,10 @@ export class TokenConnectionRegistry {
   records(): TokenConnectionRecord[] {
     return clone(this.validated().records)
   }
+  /** A read-only check over the validated document; ownership fences call it at every effect. */
+  hasRecord(test: (record: Readonly<TokenConnectionRecord>) => boolean): boolean {
+    return this.validated().records.some(test)
+  }
   private record(doc: Document, localId: string): TokenConnectionRecord {
     const record = doc.records.find((entry) => entry.id === localId)
     if (!record) throw recovery()

@@ -23,6 +23,12 @@ import { BoundedVaultIo } from '../boundedVaultIo'
 import { stagingDirectory, stagingPathReserved } from '../stagingDirectory'
 import { adapterWriteInFlight } from '../vaultWrites'
 import { pathCoordinatorOf } from '../pathCoordinator'
+import {
+  cacheableInspectionIdentity,
+  projectionInspectionIdentity,
+  sameInspectionIdentity,
+  type InspectionEntry,
+} from './inspectionIdentity'
 
 import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 import { z } from 'zod'
@@ -102,7 +108,7 @@ function retiredLedgers(storage: RecoveryStorage): Activation['ledgers'] {
 export async function activeExternalDocuments(storage: RecoveryStorage, factory: IDBFactory) {
   const documents = []
   for (const item of activation(storage)?.ledgers ?? []) {
-    const found = await inspectExistingLedger(factory, item.databaseName)
+    const found = await inspectExistingLedger(factory, item.databaseName, ['plugin:external-files'])
     const raw = found?.metadata.get('plugin:external-files')
     if (
       !found ||
@@ -127,7 +133,9 @@ export async function retiredArtifactPaths(
   for (const retired of retiredLedgers(storage)) {
     if (!factory) throw new ExternalRecoveryRequired('retired ledger storage is unavailable')
     assertOwned()
-    const found = await inspectExistingLedger(factory, retired.databaseName)
+    const found = await inspectExistingLedger(factory, retired.databaseName, [
+      'plugin:external-files',
+    ])
     assertOwned()
     const saved = found?.metadata.get('plugin:external-files')
     if (!found || found.identity !== retired.databaseIdentity || typeof saved !== 'string')
@@ -151,9 +159,12 @@ function persist(storage: RecoveryStorage, key: string, value: unknown): void {
 
 /** Read-only inspection of an explicitly owned name. No global namespace enumeration,
  * schema upgrade, new identity, or empty database allocation is permitted. */
+/** With `keys`, only those rows and the identity are read: a ledger's other metadata
+ * (large indexes among them) is never deserialized for a startup check. */
 export async function inspectExistingLedger(
   factory: IDBFactory,
-  name: string
+  name: string,
+  keys?: readonly string[]
 ): Promise<{
   version: number
   identity: string | null
@@ -173,7 +184,16 @@ export async function inspectExistingLedger(
   try {
     const tx = db.transaction('meta', 'readonly')
     const done = completion(tx, 'cannot inspect external dependencies')
-    const rows = await wait<{ key: string; value: unknown }[]>(tx.objectStore('meta').getAll())
+    const meta = tx.objectStore('meta')
+    const rows = keys
+      ? (
+          await Promise.all(
+            ['database-identity-v1', ...keys].map((key) =>
+              wait<{ key: string; value: unknown } | undefined>(meta.get(key))
+            )
+          )
+        ).filter((row) => row !== undefined)
+      : await wait<{ key: string; value: unknown }[]>(meta.getAll())
     await done
     const metadata = new Map(rows.map((row) => [row.key, row.value]))
     const identity = metadata.get('database-identity-v1')
@@ -193,7 +213,7 @@ export async function checkExternalMigration(app: App, factory: IDBFactory): Pro
     throw new ExternalRecoveryRequired('connection replacement is unfinished')
   const marker = activation(app)
   for (const item of [...(marker?.ledgers ?? []), ...retiredLedgers(app)]) {
-    const found = await inspectExistingLedger(factory, item.databaseName)
+    const found = await inspectExistingLedger(factory, item.databaseName, [])
     if (!found || found.identity !== item.databaseIdentity || found.version < 2)
       throw new ExternalRecoveryRequired(
         'activated ledger is missing or changed; empty bootstrap is refused'
@@ -211,6 +231,8 @@ export const inspectionSchema = z
           path: z.string(),
           size: z.number().int().nonnegative(),
           mtime: z.number(),
+          ctime: z.number().optional(),
+          identity: z.string().optional(),
           marker: z.boolean(),
         })
         .strict()
@@ -328,7 +350,7 @@ export async function recoverOrphanPrivateArtifacts(
       for (const entry of await journal.currentRecovered()) protect(entry.backup)
       for (const name of names) {
         assertCurrent()
-        const found = await inspectExistingLedger(factory, name)
+        const found = await inspectExistingLedger(factory, name, ['plugin:external-files'])
         const raw = found?.metadata.get('plugin:external-files')
         if (raw == null) continue
         if (typeof raw !== 'string')
@@ -446,7 +468,7 @@ export async function projectionEvidence(
   const previous = new Map(
     (cached.success ? cached.data.entries : []).map((entry) => [entry.path, entry])
   )
-  const inspected: { path: string; size: number; mtime: number; marker: boolean }[] = []
+  const inspected: InspectionEntry[] = []
   let dirty = false
   let updated = false
   const checkpoint = () => {
@@ -493,11 +515,19 @@ export async function projectionEvidence(
     assertCurrent()
     const before = await stat(path)
     assertCurrent()
-    if (before?.type === 'file')
-      inventory.set(path, { path, size: before.size, mtime: before.mtime })
-    if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) return
+    if (!before || before.type !== 'file') return
+    const identity = await readOnly(() => projectionInspectionIdentity(app, path))
+    assertCurrent()
+    if (!identity) return
+    inventory.set(path, { path, size: identity.size, mtime: identity.mtime })
+    if (identity.size > MAX_PROJECTION_BYTES) return
     const old = previous.get(path)
-    if (old && old.size === before.size && old.mtime === before.mtime) {
+    const stable =
+      old && cacheableInspectionIdentity(identity) && sameInspectionIdentity(old, identity)
+        ? await readOnly(() => projectionInspectionIdentity(app, path))
+        : null
+    if (stable && sameInspectionIdentity(identity, stable)) {
+      assertCurrent()
       inspected.push(old)
       if (old.marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
       return
@@ -520,10 +550,10 @@ export async function projectionEvidence(
     assertCurrent()
     const marker = recognizeProjection(bytes)
     if (marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
-    const after = await stat(path)
+    const after = await readOnly(() => projectionInspectionIdentity(app, path))
     assertCurrent()
-    if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime) {
-      inspected.push({ path, size: before.size, mtime: before.mtime, marker })
+    if (after && cacheableInspectionIdentity(identity) && sameInspectionIdentity(after, identity)) {
+      inspected.push({ path, ...identity, marker })
       dirty = true
       updated = true
     }
@@ -1010,6 +1040,7 @@ export async function requireExternalLifecycleSafety(
     }
   const ownedPaths = new Set<string>()
   for (const name of names) {
+    // Disconnect and switch checks also read proofs keyed per file: read every row.
     const found = await inspectionRead(inspection, assertCurrent, () =>
       inspectExistingLedger(factory, name)
     )

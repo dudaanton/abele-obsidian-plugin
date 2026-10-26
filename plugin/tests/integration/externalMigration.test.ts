@@ -120,3 +120,17 @@ it('connection-switch evidence is a recovery hold, not permission for a fresh jo
     /replacement|external/i
   )
 })
+it('inspects only the requested journal keys, without loading every ledger row', async () => {
+  const factory = new IDBFactory(),
+    name = stateDatabaseName('sample-ledger')
+  const store = await IndexedDbStateStore.open(factory, name)
+  cleanup.push(() => store.close())
+  await store.setMeta('sample-large-index', 'x'.repeat(1024 * 1024))
+  await store.setMeta('external-files', 'sample-journal')
+  store.close()
+  const found = await inspectExistingLedger(factory, name, ['plugin:external-files'])
+  expect(found?.metadata.get('plugin:external-files')).toBe('sample-journal')
+  // Restart reads this for every connection; a large index must not be deserialized for it.
+  expect(found?.metadata.has('plugin:sample-large-index')).toBe(false)
+  expect(found?.identity).toBe((await inspectExistingLedger(factory, name))?.identity)
+})

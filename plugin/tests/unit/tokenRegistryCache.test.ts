@@ -69,3 +69,20 @@ it('hands out copies a caller cannot use to change the remembered document', () 
   registry.records()[0].paused = true
   expect(registry.records()[0]).toMatchObject({ id, paused: false })
 })
+
+it('answers an ownership check without copying the registry, and sees later writes', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store)
+  const id = registry.add()
+  registry.records()
+  const parse = vi.spyOn(JSON, 'parse')
+  try {
+    for (let i = 0; i < 100; i++) expect(registry.hasRecord((one) => one.id === id)).toBe(true)
+    // Ownership is checked at every sync effect; copying the whole registry each time is the cost.
+    expect(parse).not.toHaveBeenCalled()
+  } finally {
+    parse.mockRestore()
+  }
+  registry.forget(id)
+  expect(registry.hasRecord((one) => one.id === id)).toBe(false)
+})

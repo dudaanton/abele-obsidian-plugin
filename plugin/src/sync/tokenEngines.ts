@@ -566,19 +566,17 @@ export class TokenEngines {
           (!this.closed || this.drainingUploads) &&
           (!stateHandle || stateHandle.permitsEngineEffects) &&
           this.key(record.secretReference) === credential &&
-          this.ui.registry
-            .records()
-            .some(
-              (one) =>
-                one.id === record.id &&
-                one.ledgerId === record.ledgerId &&
-                one.secretReference === record.secretReference &&
-                one.address === record.address &&
-                one.spaceId === record.spaceId &&
-                one.tokenId === record.tokenId &&
-                one.scope?.kind === record.scope?.kind &&
-                one.scope?.id === record.scope?.id
-            )
+          this.ui.registry.hasRecord(
+            (one) =>
+              one.id === record.id &&
+              one.ledgerId === record.ledgerId &&
+              one.secretReference === record.secretReference &&
+              one.address === record.address &&
+              one.spaceId === record.spaceId &&
+              one.tokenId === record.tokenId &&
+              one.scope?.kind === record.scope?.kind &&
+              one.scope?.id === record.scope?.id
+          )
       )
     let starting: Promise<void> | undefined
     let draining: Promise<void> | undefined
@@ -1098,7 +1096,9 @@ export class TokenEngines {
           retirePlacement: (generation, archive) => ordinary.retireGeneration(generation, archive),
           fencePlacement: (head) => ordinary.fenceRecovery(state, head),
           scopeInput: async (selective) => {
-            const text = await readIgnore(connectionApp)
+            // The root ignore file belongs to the vault, outside a folder connection's
+            // native file scope. Read its identity through the vault's own adapter.
+            const text = await readIgnore(this.app)
             return {
               localCandidates:
                 record.scope.kind === 'group'

@@ -116,8 +116,36 @@ describe('the status bar across connections', () => {
     expect(statusText(settled)).toBe('1 conflict')
     expect(statusWarns(settled)).toBe(true)
     expect(statusTooltip(settled)).toContain('1 conflict copy was saved')
-    expect(statusText({ ...settled, conflicts: 0 })).toBe('To review (2)')
-    expect(statusWarns({ ...settled, conflicts: 0 })).toBe(false)
+    // The fixture also refuses one file; settled, that leads before what waits for a decision.
+    expect(statusText({ ...settled, conflicts: 0 })).toBe('1 file not synced')
+    expect(statusText({ ...settled, conflicts: 0, notSynced: 0 })).toBe('To review (2)')
+    expect(statusWarns({ ...settled, conflicts: 0, notSynced: 0 })).toBe(false)
+  })
+  it('never says synced while a settled connection still refuses a file', () => {
+    const ui = tokenUiFixture()
+    const [first, second] = ui.rows.value
+    ui.rows.value = [first, second].map((row) => ({ ...row, status: 'idle' }))
+    ui.candidates.value = []
+    ui.questions.value = []
+    // The refusal is live before the not-synced list has been read back.
+    ui.activity.value = {
+      [first.id]: { refused: [{ path: 'Media/sample.mov', reason: 'too large' }] },
+      [second.id]: { lastSync: Date.now() },
+    }
+    const status = tokenStatus(ui)
+    expect(status.state).toBe('idle')
+    expect(statusText(status)).toBe('1 file not synced')
+    expect(statusWarns(status)).toBe(true)
+    // The list, once read, is the count; the same refusal is not counted twice.
+    ui.activity.value = {
+      [first.id]: {
+        refused: [{ path: 'Media/sample.mov', reason: 'too large' }],
+        notSynced: [
+          { path: 'Media/sample.mov', kind: 'too-large', direction: 'out', since: '2026-01-01' },
+        ],
+      },
+    }
+    expect(statusText(tokenStatus(ui))).toBe('1 file not synced')
   })
   it('is hidden with no connections', () => {
     expect(tokenStatus(tokenUiFixture(true)).state).toBe('disconnected')

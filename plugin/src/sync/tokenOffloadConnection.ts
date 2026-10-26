@@ -65,6 +65,7 @@ export async function tokenOffloadConnection(input: {
     input.placement?.toServer(path, 'tokenOffloadConnection') ?? path
   const representation = await pluginRepresentation({
     ...input,
+    inspectionIncludes: (path) => input.includes(path),
     fs: input.placement?.fileSystem(input.fs) ?? input.fs,
     store: state,
     verify: (id, request) => input.client().verifyExternalFile(id, request),

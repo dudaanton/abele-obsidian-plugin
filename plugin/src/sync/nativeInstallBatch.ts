@@ -62,6 +62,8 @@ export async function nativeInstallBatch<T>(
       created: boolean
       allocated: boolean
       published: boolean
+      /** Publication was attempted; a lost acknowledgement may still have placed the name. */
+      publishing: boolean
       discarded: boolean
     }
   >()
@@ -113,6 +115,7 @@ export async function nativeInstallBatch<T>(
         created: !!previous,
         allocated: false,
         published: false,
+        publishing: false,
         discarded: false,
       })
     }
@@ -163,7 +166,8 @@ export async function nativeInstallBatch<T>(
             plan.allocated = true
             const id = plan.entry.temp
             await beforeCreate?.(id)
-            await host.parents(path)
+            // Destination folders are created at publication. A download interrupted or
+            // paused before then leaves no new vault folder and needs no barrier.
             await host.parents(id)
             check()
             if (plan.previous) {
@@ -202,8 +206,12 @@ export async function nativeInstallBatch<T>(
                 signal?.throwIfAborted()
                 if (!plan.sealed || plan.published)
                   throw new EngineError('conflict', 'batch stage is not ready')
+                await host.parents(path)
+                check()
+                signal?.throwIfAborted()
                 // link is exclusive; even a writer racing the preflight is preserved.
                 try {
+                  plan.publishing = true
                   await host.publish(id, path, signal)
                 } catch (error) {
                   if ((error as { code?: string })?.code === 'EEXIST')
@@ -255,8 +263,11 @@ export async function nativeInstallBatch<T>(
     // A refused cohort can fall back to ordinary adoption. Make any already
     // published names durable before that path can acknowledge their ledger rows.
     // A failed barrier still escapes: an intact read alone cannot acknowledge it.
-    for (const plan of plans.values()) if (plan.created) await native.syncPath(plan.item.path, true)
-    if ([...plans.values()].some((plan) => plan.created))
+    // Unpublished stages are disposable cache owned by the journal; a pause or failure
+    // before publication writes and flushes nothing more.
+    for (const plan of plans.values())
+      if (plan.publishing) await native.syncPath(plan.item.path, true)
+    if ([...plans.values()].some((plan) => plan.publishing))
       await native.syncPath(plans.values().next().value!.entry.temp, true)
     const unused = [...plans.values()].filter((plan) => !plan.previous && !plan.allocated)
     if (unused.length)
