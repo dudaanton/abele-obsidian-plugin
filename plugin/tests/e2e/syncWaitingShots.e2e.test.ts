@@ -131,12 +131,17 @@ it('pictures temporary waits apart from refusals and compares connection and sta
               const result=await screen(${JSON.stringify(layout + '-status')},root.closest('.modal')||root,root);
               result.line=textOf(root.querySelector('.abele-sync-row__line'));
               result.extra.opening=textOf(root).includes('File exchange is opening');
+              const sep=root.querySelector('.abele-sync-row__separator');
+              const range=owner.document.createRange(),length=sep.firstChild.textContent.length;
+              range.setStart(sep.firstChild,length-1);range.setEnd(sep.firstChild,length);
+              result.extra.separatorSpace=range.getBoundingClientRect().width;
               return result;
             `)
             console.log('[waiting summary screenshot]', layout, JSON.stringify(summary))
             expect(summary.error).toBe('')
             expect(summary.line).toBe('1 file not synced · 4 waiting')
             expect(summary.extra.opening).toBe(false)
+            expect(summary.extra.separatorSpace as number).toBeGreaterThan(0)
             run(close + 'return true')
             if (layout === 'desktop') {
               const bar = run<{ shot: string; text: string; visible: boolean }>(`

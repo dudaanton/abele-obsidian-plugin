@@ -62,7 +62,7 @@
             ><span class="abele-sync-row__line" :class="{ 'mod-warning': tone(row) === 'red' }">{{
               line(row)
             }}</span
-            ><span aria-hidden="true"> · </span></span
+            ><span class="abele-sync-row__separator" aria-hidden="true"> · </span></span
           ><span class="abele-sync-row__server abele-sync-row__meta-part">{{
             host(row.address)
           }}</span></template
@@ -460,5 +460,8 @@ onMounted(() => {
 .abele-sync-row__meta-part {
   display: inline-block;
   white-space: nowrap;
+}
+.abele-sync-row__separator {
+  white-space: pre;
 }
 </style>
