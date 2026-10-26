@@ -3885,10 +3885,23 @@ export const lv = {
   'settings.sync.presentation.waiting': {
     one: '{count} file waiting',
     other: '{count} files waiting',
+    zero: '{count} files waiting',
   },
-  'sync.status.filesWaiting': { one: '{count} file waiting', other: '{count} files waiting' },
-  'sync.status.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
-  'settings.sync.presentation.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'sync.status.filesWaiting': {
+    one: '{count} file waiting',
+    other: '{count} files waiting',
+    zero: '{count} files waiting',
+  },
+  'sync.status.waitingCount': {
+    one: '{count} waiting',
+    other: '{count} waiting',
+    zero: '{count} waiting',
+  },
+  'settings.sync.presentation.waitingCount': {
+    one: '{count} waiting',
+    other: '{count} waiting',
+    zero: '{count} waiting',
+  },
   'sync.notSynced.serverOffline': 'server offline',
   'sync.notSynced.serverBusy': 'server busy',
 } satisfies TranslationCatalog

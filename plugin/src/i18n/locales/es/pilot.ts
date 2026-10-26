@@ -3963,10 +3963,23 @@ export const es = {
   'settings.sync.presentation.waiting': {
     one: '{count} file waiting',
     other: '{count} files waiting',
+    many: '{count} files waiting',
   },
-  'sync.status.filesWaiting': { one: '{count} file waiting', other: '{count} files waiting' },
-  'sync.status.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
-  'settings.sync.presentation.waitingCount': { one: '{count} waiting', other: '{count} waiting' },
+  'sync.status.filesWaiting': {
+    one: '{count} file waiting',
+    other: '{count} files waiting',
+    many: '{count} files waiting',
+  },
+  'sync.status.waitingCount': {
+    one: '{count} waiting',
+    other: '{count} waiting',
+    many: '{count} waiting',
+  },
+  'settings.sync.presentation.waitingCount': {
+    one: '{count} waiting',
+    other: '{count} waiting',
+    many: '{count} waiting',
+  },
   'sync.notSynced.serverOffline': 'server offline',
   'sync.notSynced.serverBusy': 'server busy',
 } satisfies TranslationCatalog
