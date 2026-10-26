@@ -34,8 +34,9 @@ exact-path size refusals in both primary status and activity log, no repeated in
 within an engine generation, and no fully-synced claim. Only the harness's deliberate crash,
 quit and plugin-reload interruptions define generation boundaries; a network drop does not.
 Fully-synced claims use visible status-bar and connection-line words, not internal idle rows.
-Snapshots retain `activity.notSynced`; missing visible labels for connected states fail closed,
-while snapshots before any connection exists are counted separately. Total/per-generation
+Snapshots retain `activity.notSynced`. Missing status observations for connected states fail
+closed; an observed empty label set makes no visible completion claim. Snapshots before any
+connection exists are counted separately. Total/per-generation
 upload attempt counts and visible states are retained. Multipart interruption targets the largest eligible file, recorded with size
 and hash. A missing limit or eligible target fails preflight. Quota is recorded without
 inferring remaining capacity. Hidden/settings exclusions remain a separate category.
