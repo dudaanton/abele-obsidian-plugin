@@ -51,13 +51,12 @@ async function inspect(mode: string, fileCards = false) {
       const group = root?.querySelector('.abele-chat-run > .abele-tree-item__self[aria-expanded="false"]')
       if(group) { group.click(); await wait(200) }
       if (${fileCards}) {
-        for (const icon of root.querySelectorAll('.abele-chat-msg__icon[aria-expanded="false"]')) icon.click()
-        await wait(200)
         const cards = [...root.querySelectorAll('.abele-chat-msg_tool-call')]
         if(cards.length!==3) throw Error('Expected node create, node edit and vault write cards')
         for (const [index, card] of cards.entries()) {
           if(!card.querySelector('.abele-diff')) throw Error('Shared file diff is missing')
           if(!card.querySelector('.abele-chat-tool-files')) throw Error('File path chip is missing')
+          if(card.querySelector('[data-find-part="params"]')) throw Error('Raw parameters replaced the primary file card')
           card.scrollIntoView({block:'center'}); await wait(200)
           await capture(['node-create','node-edit','vault-write'][index])
         }

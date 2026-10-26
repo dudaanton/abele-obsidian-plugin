@@ -212,7 +212,7 @@
           class="abele-chat-msg__map"
         />
         <Diff
-          v-if="message.toolDiff && (!compactToolDetails || expanded)"
+          v-if="message.toolDiff"
           :text-left="message.toolDiff.old"
           :text-right="message.toolDiff.new"
           :path="diffPath"
