@@ -566,6 +566,25 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
       returnByValue: true,
     },
   ])
+  const { runInNewContext } = await import('node:vm')
+  const deferred = []
+  let constructed = 0
+  runInNewContext(calls.find((c) => c.name === 'Debugger.evaluateOnCallFrame').params.expression, {
+    SHA256: class {
+      constructor() {
+        constructed++
+      }
+    },
+    queueMicrotask: (work) => deferred.push(work),
+    __scaleEmitEvidence: (event) => events.push(event),
+  })
+  expect(constructed).toBe(0)
+  expect(deferred).toHaveLength(1)
+  deferred[0]()
+  expect(constructed).toBe(1)
+  expect(
+    events.some((e) => e.event === 'javascript-hash-tracepoint-setup' && e.phase === 'warm-up')
+  ).toBe(true)
   expect(calls.at(-1).name).toBe('Debugger.resume')
   expect(events.some((e) => e.event === 'javascript-hash-tracepoint-setup')).toBe(true)
 })
