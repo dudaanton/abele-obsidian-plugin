@@ -509,7 +509,7 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
       for (const name of new Set(names)) {
         const result = await transport.sendCommand('Debugger.evaluateOnCallFrame', {
           callFrameId: params.callFrames[0].callFrameId,
-          expression: `void new ${name}()`,
+          expression: `queueMicrotask(()=>{const startedAt=Date.now();try{new ${name}()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})`,
           returnByValue: true,
         })
         if (result.exceptionDetails) throw new Error('Hash warm-up construction failed')

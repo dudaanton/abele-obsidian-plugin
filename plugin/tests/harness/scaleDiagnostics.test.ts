@@ -553,8 +553,18 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
   expect(
     calls.filter((c) => c.name === 'Debugger.evaluateOnCallFrame').map((c) => c.params)
   ).toEqual([
-    { callFrameId: 'frame-first', expression: 'void new SHA256()', returnByValue: true },
-    { callFrameId: 'frame-reload', expression: 'void new SHA256()', returnByValue: true },
+    {
+      callFrameId: 'frame-first',
+      expression:
+        "queueMicrotask(()=>{const startedAt=Date.now();try{new SHA256()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})",
+      returnByValue: true,
+    },
+    {
+      callFrameId: 'frame-reload',
+      expression:
+        "queueMicrotask(()=>{const startedAt=Date.now();try{new SHA256()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})",
+      returnByValue: true,
+    },
   ])
   expect(calls.at(-1).name).toBe('Debugger.resume')
   expect(events.some((e) => e.event === 'javascript-hash-tracepoint-setup')).toBe(true)
