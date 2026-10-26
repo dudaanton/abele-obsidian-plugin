@@ -250,8 +250,8 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  :deep(p),
-  :deep(div) {
+  p,
+  div {
     display: inline;
   }
 }
