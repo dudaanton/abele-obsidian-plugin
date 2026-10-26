@@ -219,6 +219,7 @@ exports.endReindexCoverage = (channel) => coverageWatches.get(channel)?.end()
 exports.unwatch = (channel) => watches.get(channel)?.()
 exports.watch = async function (id, serializedConfig) {
   const config = JSON.parse(serializedConfig)
+  const watchStartedAt = Date.now()
   // This module is loaded through the host's main-process remote bridge, never product code.
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Main-process host module.
   const { webContents, ipcMain } = require('electron')
@@ -308,6 +309,8 @@ exports.watch = async function (id, serializedConfig) {
         .readFile(controlFile, 'utf8')
         .then(JSON.parse)
         .then((request) => {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports -- Ignore requests belonging to the previous renderer generation.
+          if (!require('./heap.cjs').freshRequest(request, watchStartedAt)) return
           if (request.id === requestId) return
           requestId = request.id
           if (request.kind === 'snapshot') void takeHeap(request).catch(() => {})

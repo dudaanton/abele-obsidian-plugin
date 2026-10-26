@@ -1,4 +1,7 @@
 // Host-side probes remain usable when the renderer's CLI handler cannot answer.
+exports.freshRequest = (request, watchStartedAt) =>
+  Number.isFinite(request.requestedAt ?? request.startedAt) &&
+  (request.requestedAt ?? request.startedAt) >= watchStartedAt
 exports.streamSnapshot = async function (transport, write) {
   let writeError
   const chunk = (_event, method, params) => {

@@ -2,6 +2,12 @@ import { expect, it } from 'vitest'
 import probe from '../scale/heap.cjs'
 import { EventEmitter } from 'node:events'
 
+it('does not replay a settled snapshot request after renderer reload', () => {
+  expect(probe.freshRequest({ startedAt: 100 }, 200)).toBe(false)
+  expect(probe.freshRequest({ startedAt: 199, requestedAt: 201 }, 200)).toBe(true)
+  expect(probe.freshRequest({}, 200)).toBe(false)
+})
+
 it('captures host state before a blocked renderer probe times out', async () => {
   const events: any[] = []
   const pending = probe.probeRenderer({

@@ -96,7 +96,13 @@ export class RealVault {
       if (this.config.heapDiagnostics)
         void writeFile(
           join(this.config.output, 'profiles', `control-${device}.json`),
-          JSON.stringify({ id: nonce, kind: 'slow-cli', startedAt, device })
+          JSON.stringify({
+            id: nonce,
+            kind: 'slow-cli',
+            startedAt,
+            requestedAt: Date.now(),
+            device,
+          })
         ).catch(() => {})
     }, 3000)
     const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
