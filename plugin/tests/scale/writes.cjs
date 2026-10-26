@@ -17,6 +17,31 @@ exports.isHostPersistence = (row) =>
     row.path ?? ''
   )
 
+// Port restoration lives for the observer, but handle restoration must not keep
+// closed native handles alive. Weak-map values may refer back to their own key.
+const openedHandleRestoration = () => {
+  const records = new WeakMap(),
+    references = new Set()
+  let opened = 0
+  return {
+    add(handle) {
+      const undo = []
+      records.set(handle, undo)
+      references.add(new WeakRef(handle))
+      if (++opened % 256 === 0)
+        for (const reference of references) if (!reference.deref()) references.delete(reference)
+      return undo
+    },
+    restore() {
+      for (const reference of references) {
+        const handle = reference.deref()
+        if (handle) for (const undo of records.get(handle).reverse()) undo()
+      }
+      references.clear()
+    },
+  }
+}
+
 // Observe the desktop adapter/native ports before the product binds them. Never replace
 // an operation's arguments, result, error or scheduling with synthetic filesystem behavior.
 exports.observeWrites = function (adapter, emit, nativePorts = []) {
@@ -24,6 +49,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
   const generation = `${Date.now()}-${Math.random()}`
   const restore = []
   const handles = new WeakSet()
+  const handleRestoration = openedHandleRestoration()
   let sequence = 0
   const bytes = (value) =>
     typeof value === 'string' ? Buffer.byteLength(value) : (value?.byteLength ?? null)
@@ -33,7 +59,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
     if (full === root) return '.'
     return full.startsWith(root + path.sep) ? path.relative(root, full) : null
   }
-  const wrap = (object, key, layer, locate, amount) => {
+  const wrap = (object, key, layer, locate, amount, restorers = restore) => {
     const original = object[key]
     if (typeof original !== 'function') return
     const wrapped = function (...args) {
@@ -92,7 +118,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
     }
     object[key] = wrapped
     if (object[key] !== wrapped) throw new Error('Observer port is not writable')
-    restore.push(() => {
+    restorers.push(() => {
       if (object[key] === wrapped) object[key] = original
     })
   }
@@ -182,13 +208,15 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
         if (file != null && !handles.has(handle)) {
           handles.add(handle)
           try {
+            const undo = handleRestoration.add(handle)
             if (mutates)
               wrap(
                 handle,
                 'write',
                 'handle',
                 () => file,
-                (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0]))
+                (a) => (typeof a[2] === 'number' ? a[2] : bytes(a[0])),
+                undo
               )
             if (mutates)
               wrap(
@@ -196,7 +224,8 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
                 'writev',
                 'handle',
                 () => file,
-                (a) => a[0].reduce((sum, b) => sum + bytes(b), 0)
+                (a) => a[0].reduce((sum, b) => sum + bytes(b), 0),
+                undo
               )
             for (const name of mutates ? ['writeFile', 'appendFile'] : [])
               wrap(
@@ -204,7 +233,8 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
                 name,
                 'handle',
                 () => file,
-                (a) => bytes(a[0])
+                (a) => bytes(a[0]),
+                undo
               )
             for (const name of ['sync', 'datasync'])
               wrap(
@@ -212,7 +242,8 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
                 name,
                 'handle',
                 () => file,
-                () => 0
+                () => 0,
+                undo
               )
             if (mutates)
               wrap(
@@ -220,7 +251,8 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
                 'truncate',
                 'handle',
                 () => file,
-                () => 0
+                () => 0,
+                undo
               )
           } catch {
             emit({ event: 'write-observer-error', generation })
@@ -244,6 +276,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
     emit({ event: 'write-observer-error', generation })
   }
   return () => {
+    handleRestoration.restore()
     for (const undo of restore.reverse()) undo()
   }
 }
@@ -254,6 +287,7 @@ exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
   const generation = `${Date.now()}-${Math.random()}`
   const restore = [],
     handles = new WeakSet()
+  const handleRestoration = openedHandleRestoration()
   let sequence = 0
   const relative = (value) => {
     if (typeof value !== 'string') return null
@@ -263,7 +297,7 @@ exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
     return prefix && file.startsWith(prefix + '/') ? file : null
   }
   const size = (value) => (typeof value === 'string' ? Buffer.byteLength(value) : value?.byteLength)
-  const wrap = (object, key, locate, count) => {
+  const wrap = (object, key, locate, count, restorers = restore) => {
     const original = object[key]
     if (typeof original !== 'function') return
     const wrapped = function (...args) {
@@ -300,7 +334,7 @@ exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
     }
     object[key] = wrapped
     if (object[key] !== wrapped) throw new Error('Read observer port unavailable')
-    restore.push(() => {
+    restorers.push(() => {
       if (object[key] === wrapped) object[key] = original
     })
   }
@@ -318,14 +352,16 @@ exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
         if (file != null && !handles.has(handle)) {
           handles.add(handle)
           try {
+            const undo = handleRestoration.add(handle)
             for (const key of ['read', 'readv'])
               wrap(
                 handle,
                 key,
                 () => file,
-                (value) => value?.bytesRead
+                (value) => value?.bytesRead,
+                undo
               )
-            wrap(handle, 'readFile', () => file, size)
+            wrap(handle, 'readFile', () => file, size, undo)
           } catch {
             emit({ event: 'content-read-error', generation })
           }
@@ -343,6 +379,7 @@ exports.observeReads = function (adapter, emit, nativePorts = [], prefix) {
     emit({ event: 'content-read-error', generation })
   }
   return () => {
+    handleRestoration.restore()
     for (const undo of restore.reverse()) undo()
   }
 }

@@ -385,6 +385,10 @@ over ordered IPC to one bounded asynchronous append queue per file in the host p
 Queues survive renderer reloads; planned process exits finish profiler captures and await
 evidence flush acknowledgements before termination. Storage failure or queue overflow fails
 the flush instead of silently passing incomplete evidence. State receipts cover both devices.
+Handle restoration records use weak ownership, so closed or abandoned native handles remain
+collectible while observers stay installed. Still-live handles are restored on unload;
+dead weak references are pruned during later opens. RSS measurements still include the
+observer and host, rather than isolating product allocations.
 
 Synced restarts additionally require zero plugin payload-content read bytes, measured at
 adapter reads, native promise readFile and native FileHandle read/readv/readFile ports.

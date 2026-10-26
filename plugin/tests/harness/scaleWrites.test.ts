@@ -3,7 +3,91 @@ import { expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 const require = createRequire(import.meta.url)
+
+it.each(['write', 'read', 'combined'])(
+  'does not keep closed %s handles alive until observer unload',
+  async (kind) => {
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        '--expose-gc',
+        '-e',
+        String.raw`
+const { observeWrites, observeReads } = require(process.argv[1]);
+const kind = process.argv[2], collected = new Set();
+const registry = new FinalizationRegistry(id => collected.add(id));
+let sequence = 0;
+const native = {
+  open: async () => {
+    const handle = {
+      write: async () => ({ bytesWritten: 1 }),
+      read: async () => ({ bytesRead: 1 }),
+      readFile: async () => Buffer.from('a'),
+      sync: async () => {}, close: async () => {}
+    };
+    registry.register(handle, sequence++);
+    return handle;
+  }, rename: async () => {}
+};
+const adapter = { getBasePath: () => '/sample', fsPromises: native, writeBinary: async () => {} };
+const undo = [];
+if (kind !== 'read') undo.push(observeWrites(adapter, () => {}));
+if (kind !== 'write') undo.push(observeReads(adapter, () => {}, [], 'fixture'));
+async function useHandles() {
+  for (let i = 0; i < 20; i++) {
+    const handle = await native.open('/sample/fixture/sample-' + i, i % 2 ? 'r' : 'w');
+    await handle.close();
+  }
+}
+(async () => {
+  await useHandles();
+  for (let i = 0; i < 40 && collected.size !== 20; i++) {
+    await new Promise(setImmediate);
+    global.gc();
+    await new Promise(setImmediate);
+  }
+  if (collected.size !== 20) throw new Error('Closed handles retained: ' + (20 - collected.size));
+  for (const stop of undo.reverse()) stop();
+  console.log(collected.size);
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`,
+        require.resolve('../scale/writes.cjs'),
+        kind,
+      ],
+      { timeout: 5000 }
+    )
+    expect(stdout.trim()).toBe('20')
+  }
+)
+
+it('restores still-live handles independently when read and write observers unload', async () => {
+  const { observeWrites, observeReads } = require('../scale/writes.cjs')
+  const originalSync = async () => 7,
+    originalRead = async () => ({ bytesRead: 3 })
+  const handle = { sync: originalSync, read: originalRead }
+  const native = { open: async () => handle, rename: async () => {} }
+  const originalOpen = native.open
+  const adapter = { getBasePath: () => '/sample', fsPromises: native, writeBinary: async () => {} }
+  const stopWrites = observeWrites(adapter, () => {})
+  const stopReads = observeReads(adapter, () => {}, [], 'fixture')
+  try {
+    expect(await native.open('/sample/fixture/sample.md', 'r')).toBe(handle)
+    expect(handle.sync).not.toBe(originalSync)
+    expect(handle.read).not.toBe(originalRead)
+    stopReads()
+    expect(handle.read).toBe(originalRead)
+    expect(handle.sync).not.toBe(originalSync)
+    expect(await handle.sync()).toBe(7)
+  } finally {
+    stopReads()
+    stopWrites()
+  }
+  expect(handle.sync).toBe(originalSync)
+  expect(native.open).toBe(originalOpen)
+})
 
 it('records durability barriers on readonly file and directory handles without observing payload reads', async () => {
   const { observeWrites } = require('../scale/writes.cjs')
