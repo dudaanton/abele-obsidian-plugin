@@ -569,10 +569,19 @@ onMounted(
 .abele-node-files {
   display: flex;
   flex-direction: column;
+  // Full-size modal bodies leave scrolling to their content.
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   gap: var(--size-4-3);
   min-width: 0;
   // Obsidian draws control focus rings outside their box, including full-width actions.
   padding: var(--size-4-1);
+  // Code and diff cards clip their own contents; shrinking them would hide lines from this
+  // viewport's scroll range instead of letting the whole dialog body scroll over them.
+  > * {
+    flex-shrink: 0;
+  }
   &__actions {
     display: flex;
     flex-wrap: wrap;
