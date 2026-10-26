@@ -36,9 +36,14 @@ it('restarts a synced 33000-file native representation without reading content',
   const paths = Array.from({ length: 33000 }, (_, i) => `Shared/sample-${i}.md`)
   const bytes = new Uint8Array(4096).fill(37)
   const sha = await sha256(bytes)
-  let contentBytes = 0
+  let contentBytes = 0,
+    lstats = 0
   const native = {
     ...disk,
+    lstat: ((...args: Parameters<typeof disk.lstat>) => {
+      lstats++
+      return disk.lstat(...args)
+    }) as typeof disk.lstat,
     open: async (...args: Parameters<typeof disk.open>) => {
       const handle = await disk.open(...args)
       const read = handle.read.bind(handle)
@@ -110,7 +115,8 @@ it('restarts a synced 33000-file native representation without reading content',
     credentialAssociation: 'sample-slot',
   }
   // A synced restart lists the vault through several scans in one inventory pass.
-  const open = async (expected = paths.length, listings = 1) => {
+  let walksMs = 0
+  const open = async (expected = paths.length, listings = 1, cycles = 0) => {
     const app = makeApp()
     host = await HostSyncStorage.open(factory, 'sample-vault', app)
     prune(Reflect.get(host, 'db'))
@@ -144,6 +150,24 @@ it('restarts a synced 33000-file native representation without reading content',
       await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
         for (let i = 0; i < listings; i++) await list()
       })
+    if (cycles) {
+      // Engine cycles while the vault is watched: each is its own inventory pass and walks the
+      // ledger several times, as the engine's preparation, scope review and scans do.
+      const stop = fs.watch(() => {})
+      const ledger = representation.stateStore()
+      lstats = 0
+      const started = performance.now()
+      for (let cycle = 0; cycle < cycles; cycle++)
+        await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+          for (let walk = 0; walk < 5; walk++) {
+            let walked = 0
+            for await (const _ of ledger.all()) walked++
+            expect(walked).toBe(expected)
+          }
+        })
+      walksMs = performance.now() - started
+      stop()
+    }
     return representation.classificationStats()
   }
   try {
@@ -196,6 +220,28 @@ it('restarts a synced 33000-file native representation without reading content',
     })
     // Alone this takes about 25 s. The bound only catches a collapse, not a busy machine.
     expect(idleMs).toBeLessThan(90000)
+    await host!.flush()
+    host!.close()
+    state!.close()
+    contentBytes = 0
+    const cycles = await open(paths.length, 1, 3)
+    console.log('native synced ledger walks', {
+      files: paths.length,
+      cycles: 3,
+      walksMs,
+      lstats,
+      callers: cycles.callers,
+    })
+    expect(contentBytes).toBe(0)
+    // Every file is verified once while the watcher covers the vault; the other fourteen walks
+    // over three cycles reuse that proof without touching the disk. Before, each cycle verified
+    // every file again and every walk stated it.
+    expect(cycles.callers).toEqual({
+      list: { hit: paths.length },
+      'state.all': { hit: paths.length, pass: paths.length * 14 },
+    })
+    expect(lstats).toBeLessThanOrEqual(paths.length * 2 + 64)
+    expect(walksMs).toBeLessThan(90000)
     await host!.flush()
     host!.close()
     state!.close()

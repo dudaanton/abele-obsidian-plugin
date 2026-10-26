@@ -35,6 +35,7 @@ import {
 } from './projection'
 import { ExternalRecoveryRequired } from './recovery'
 import { stagingDirectory } from '../stagingDirectory'
+import { yieldSyncTask } from '../syncTaskBudget'
 import {
   cacheableInspectionIdentity,
   sameInspectionIdentity,
@@ -108,7 +109,7 @@ export interface ClassificationStats {
 const READ_STACKS = 16
 
 type Verified = { revision: number; size: number; marker: boolean }
-type PassProof = { pass: number; revision: number }
+type PassProof = { pass: string; revision: number }
 
 /** Common representation policy over portable ports. It never invents local bytes, identities,
  * or a second head table. Scanner/scope/SHA views omit held representations; the actual ledger
@@ -120,8 +121,8 @@ export class ExternalRepresentation {
   private stopped = false
   private readonly unexpected = new Set<string>()
   private readonly inspected = new Map<string, InspectionEntry>()
-  /** Files whose identity was verified in the current inventory pass, by their pass revision. */
-  private verified = { pass: undefined as number | undefined, paths: new Map<string, Verified>() }
+  /** Files whose identity was verified in the current proof scope, by their revision in it. */
+  private verified = { pass: undefined as string | undefined, paths: new Map<string, Verified>() }
   private readonly stats: ClassificationStats
   private constructor(private readonly options: RepresentationOptions) {
     this.stats = {
@@ -225,6 +226,20 @@ export class ExternalRepresentation {
     if (this.stopped)
       throw new ExternalRecoveryRequired('external commit outcome requires recovery')
   }
+  private ownedInTask = false
+  /** Ownership for a read-only decision, proven once per host task. A ledger walk classifies
+   * every file, and the full proof reads and validates the connection registry each time;
+   * another runtime's claim lands in a task of its own. Every effect keeps {@link owned}. */
+  private ownedRead(): void {
+    if (this.stopped)
+      throw new ExternalRecoveryRequired('external commit outcome requires recovery')
+    if (this.ownedInTask) return
+    this.owned()
+    this.ownedInTask = true
+    void yieldSyncTask().then(() => {
+      this.ownedInTask = false
+    })
+  }
   private file(id: string): ExternalRecord | undefined {
     return this.document.files.find((file) => file.fileId === id)
   }
@@ -274,19 +289,27 @@ export class ExternalRepresentation {
     if (fs.readPrefix) return fs.readPrefix(path, MAX_PROJECTION_BYTES)
     return fs.read(path)
   }
-  /** The inventory pass and this path's change revision in it, when the file system has one.
-   * The pass observes vault and config events, so an unchanged revision means no change was
-   * reported since an earlier verification in the same pass. */
+  /** The proof scope and this path's change revision in it, when the file system has one: the
+   * watcher's epoch, which spans engine cycles while nothing names the file, or else the
+   * inventory pass. Both observe vault events, so an unchanged revision means no change was
+   * reported since an earlier verification in the same scope. */
   private passProof(path: string): PassProof | undefined {
     const fs = this.options.fs
-    try {
-      const id = Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1')) as unknown
-      const revision = Reflect.get(fs, Symbol.for('abele.sync.local-change-revision-v1')) as unknown
+    const proof = (kind: string, idKey: string, revisionKey: string): PassProof | undefined => {
+      const id = Reflect.get(fs, Symbol.for(idKey)) as unknown
+      const revision = Reflect.get(fs, Symbol.for(revisionKey)) as unknown
       if (typeof id !== 'function' || typeof revision !== 'function') return undefined
       const pass = id.call(fs) as number | undefined
       if (pass === undefined) return undefined
       const value = revision.call(fs, path) as number | undefined
-      return value === undefined ? undefined : { pass, revision: value }
+      return value === undefined ? undefined : { pass: kind + pass, revision: value }
+    }
+    try {
+      // The watcher's clock spans engine cycles; an inventory pass covers one cycle.
+      return (
+        proof('watch:', 'abele.sync.watch-epoch-v1', 'abele.sync.watch-revision-v1') ??
+        proof('pass:', 'abele.sync.inventory-id-v1', 'abele.sync.local-change-revision-v1')
+      )
     } catch {
       return undefined
     }
@@ -312,7 +335,11 @@ export class ExternalRepresentation {
     supplied?: Uint8Array,
     caller = 'direct'
   ): Promise<RepresentationDecision> {
-    this.owned()
+    this.ownedRead()
+    if (observed === undefined && !supplied) {
+      const known = await this.unchanged(path, caller)
+      if (known) return known
+    }
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
     this.owned()
     for (const file of this.document.files) {
@@ -450,6 +477,42 @@ export class ExternalRepresentation {
       }
     }
     return { kind: 'ordinary' }
+  }
+  /** The decision for a file proven unchanged, without a stat: verified earlier in this
+   * inventory pass, or one identity read that matches its cached classification. Ledger walks
+   * ask about every file several times per cycle, so a stat each time made a synced restart
+   * take minutes. Managed originals, artifacts and anything unproven take the full path. */
+  private async unchanged(path: string, caller: string) {
+    const inspection = this.options.inspection
+    if (!inspection?.identity || this.artifact(path)) return undefined
+    for (const file of this.document.files)
+      if (this.managed(file) && this.original(file, path)) return undefined
+    const decision = (marker: boolean): RepresentationDecision =>
+      marker ? { kind: 'hold', reason: 'projection', dirty: false } : { kind: 'ordinary' }
+    const cachePath = inspection.cacheKey?.(path) ?? path
+    const proof = this.passProof(path)
+    const known =
+      proof && this.verified.pass === proof.pass ? this.verified.paths.get(cachePath) : undefined
+    if (known && known.revision === proof?.revision) {
+      if (this.options.excluded?.(path, known.size)) return { kind: 'ordinary' } as const
+      this.count(caller, 'pass')
+      return decision(known.marker)
+    }
+    const prior = this.inspected.get(cachePath)
+    if (!prior) return undefined
+    const identity = await inspection.identity(path)
+    this.ownedRead()
+    if (
+      identity === null ||
+      !cacheableInspectionIdentity(identity) ||
+      !sameInspectionIdentity(prior, identity)
+    )
+      return undefined
+    if (this.options.excluded?.(path, identity.size) || identity.size > MAX_PROJECTION_BYTES)
+      return { kind: 'ordinary' } as const
+    this.rememberVerified(cachePath, proof, identity.size, prior.marker)
+    this.count(caller, 'hit')
+    return decision(prior.marker)
   }
   private guardStage(stage: AtomicStage, path: string, fs = this.options.fs): AtomicStage {
     return new Proxy(stage, {

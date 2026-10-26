@@ -49,6 +49,7 @@ const DELETE_BLOCKED_TIMEOUT_MS = 5000
 /** The engine's own two rows in `meta`; `getMeta`/`setMeta` cannot reach either. */
 const CURSOR_KEY = 'cursor'
 const JOURNAL_KEY = 'journal'
+const PULL_WRITE = 'pull-write:'
 
 /** A plugin key, kept clear of the engine's two: `plugin:<key>`, as the daemon writes `daemon:`. */
 const own = (key: string): string => `plugin:${key}`
@@ -81,17 +82,26 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private normalizationCache: Map<string, Promise<string | null>> | null = null
   private normalizationPassDepth = 0
   private entrySnapshot: Promise<StateEntry[]> | null = null
+  /** The pass snapshot by path, for lookups of every scanned file. Tied to its snapshot. */
+  private entryIndex: {
+    snapshot: Promise<StateEntry[]>
+    paths: Promise<Map<string, StateEntry>>
+  } | null = null
+  /** The pull-write intent keys, read once per pass: a ledger walk asks for each file's. */
+  private pullWrites: Promise<Set<string>> | null = null
 
   async [Symbol.for('abele.sync.normalization-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
     // Overlapping passes never share a snapshot. Only the ordinary single-owner pass caches.
     this.normalizationCache = ++this.normalizationPassDepth === 1 ? new Map() : null
     this.entrySnapshot = null
+    this.pullWrites = null
     try {
       return await work()
     } finally {
       this.normalizationPassDepth--
       this.normalizationCache = null
       this.entrySnapshot = null
+      this.pullWrites = null
     }
   }
   readonly externalDurability = 'durable' as const
@@ -289,6 +299,18 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   async get(path: string): Promise<StateEntry | null> {
     this.assertRecovery()
+    // Inside a pass, a lookup reuses the walk's snapshot; any entry write drops that snapshot.
+    const snapshot = this.entrySnapshot
+    if (this.normalizationCache && !this.transactionPending && snapshot !== null) {
+      if (this.entryIndex?.snapshot !== snapshot)
+        this.entryIndex = {
+          snapshot,
+          paths: snapshot.then((rows) => new Map(rows.map((row) => [row.path, row]))),
+        }
+      const index = this.entryIndex.paths
+      const rows = await index.catch((): null => null)
+      if (rows && this.entrySnapshot === snapshot) return copyEntry(rows.get(path))
+    }
     return this.read(`cannot read the state of ${path}`, [ENTRIES], async (tx) =>
       copyEntry(await wait<StateEntry | undefined>(tx.objectStore(ENTRIES).get(path)))
     )
@@ -468,6 +490,18 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
    */
   async getMeta(key: string): Promise<string | null> {
     this.assertRecovery()
+    // Inside a pass, an absent pull-write intent is answered from one key inventory instead of
+    // one transaction per file. Any write in this store drops the inventory.
+    if (key.startsWith(PULL_WRITE) && this.normalizationCache && !this.transactionPending) {
+      const inventory = (this.pullWrites ??= this.metadataKeys(PULL_WRITE).then(
+        (keys) => new Set(keys)
+      ))
+      const known = await inventory.catch((error) => {
+        if (this.pullWrites === inventory) this.pullWrites = null
+        throw error
+      })
+      if (!known.has(key)) return null
+    }
     const cache =
       !this.transactionPending &&
       (key === 'normalization-collisions' || key === 'normalization-directory-collisions')
@@ -642,6 +676,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   async commitExternalPhase(batch: ExternalPhaseBatch): Promise<void> {
     this.assertExternalBoundary()
     this.entrySnapshot = null
+    this.pullWrites = null
     batch = structuredClone(batch)
     this.externalPhasePending = true
     let tx: IDBTransaction
@@ -707,6 +742,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     } finally {
       this.externalPhasePending = false
       this.entrySnapshot = null
+      this.pullWrites = null
     }
   }
 
@@ -955,6 +991,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   ): Promise<T> {
     const owner = new Error(what).stack ?? what
     if (stores.includes(ENTRIES)) this.entrySnapshot = null
+    this.pullWrites = null
     return this.once(what, async () => {
       const tx = this.begin(
         what,
@@ -984,6 +1021,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       return result
     }).finally(() => {
       if (stores.includes(ENTRIES)) this.entrySnapshot = null
+      // An inventory read while this write was queued may predate its commit.
+      this.pullWrites = null
     })
   }
 

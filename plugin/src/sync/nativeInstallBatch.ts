@@ -126,6 +126,17 @@ export async function nativeInstallBatch<T>(
   host.assertReady()
   for (const plan of plans.values()) reserveSourceStage(plan.entry.temp)
   let active = true
+  // A pause must not wait for the cohort's other downloads before making names it already
+  // published durable: their barrier starts the moment the pull is cancelled.
+  let barrier: Promise<void> | undefined
+  let cancelled: AbortSignal | undefined
+  const publishedBarrier = (): Promise<void> =>
+    (barrier ??= (async () => {
+      const published = [...plans.values()].filter((plan) => plan.publishing)
+      for (const plan of published) await native.syncPath(plan.item.path, true)
+      if (published.length) await native.syncPath(published[0].entry.temp, true)
+    })())
+  const onCancel = (): void => void publishedBarrier().catch(() => {})
   const check = () => {
     if (!active) throw new EngineError('conflict', 'installation batch has expired')
     host.assertReady()
@@ -209,6 +220,10 @@ export async function nativeInstallBatch<T>(
                 await host.parents(path)
                 check()
                 signal?.throwIfAborted()
+                if (signal && !cancelled) {
+                  cancelled = signal
+                  signal.addEventListener('abort', onCancel, { once: true })
+                }
                 // link is exclusive; even a writer racing the preflight is preserved.
                 try {
                   plan.publishing = true
@@ -265,6 +280,7 @@ export async function nativeInstallBatch<T>(
     // A failed barrier still escapes: an intact read alone cannot acknowledge it.
     // Unpublished stages are disposable cache owned by the journal; a pause or failure
     // before publication writes and flushes nothing more.
+    await barrier?.catch(() => {})
     for (const plan of plans.values())
       if (plan.publishing) await native.syncPath(plan.item.path, true)
     if ([...plans.values()].some((plan) => plan.publishing))
@@ -276,6 +292,7 @@ export async function nativeInstallBatch<T>(
       })
     throw error
   } finally {
+    cancelled?.removeEventListener('abort', onCancel)
     active = false
     for (const plan of plans.values()) releaseSourceStage(plan.entry.temp)
     plans.clear()

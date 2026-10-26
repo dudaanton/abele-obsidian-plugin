@@ -120,6 +120,26 @@ export async function vaultPathIsLink(
   }
 }
 
+/** The link check for an advisory metadata read whose leaf is not followed, such as a file
+ * identity's lstat. Inside a metadata inventory it reuses that inventory's root proof and
+ * directory stats, which vault events retire, instead of a root realpath and an lstat per
+ * ancestor on every call. Effects and content opens keep {@link assertVaultPath}. */
+export async function assertVaultMetadataPath(
+  adapter: DataAdapter & LinkAdapter,
+  path: string
+): Promise<void> {
+  // A connection-scoped adapter authorizes first; its own guard checks the chain.
+  if (Reflect.get(adapter, Symbol.for('abele.sync.scoped-adapter-v1')))
+    return assertVaultPath(adapter, path)
+  const pin = rootAccess(adapter).pin
+  if (!pin || !metadataInventories.has(pin)) return assertVaultPath(adapter, path)
+  // The caller reads the leaf itself without following it, so only its folders are checked.
+  const leaf = path.split('/').filter(Boolean).join('/')
+  await assertNoLinkedAncestors(path, async (component) =>
+    component === leaf ? false : vaultPathIsLink(adapter, component)
+  )
+}
+
 export async function assertVaultPath(
   adapter: DataAdapter & LinkAdapter,
   path: string
@@ -910,7 +930,7 @@ export function nativeOf(
   }
   if (fsp.lstat)
     native.fileIdentity = async (path) => {
-      await assertVaultPath(adapter, path)
+      await assertVaultMetadataPath(adapter, path)
       assertEffect([path])
       try {
         const stat = await fsp.lstat(at(path), { bigint: true })

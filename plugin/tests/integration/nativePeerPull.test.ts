@@ -44,6 +44,8 @@ for (const fault of [
   'admission',
   'pause-notification',
   'pause-admission',
+  'pause-mid-batch',
+  'install-fingerprint',
   'second-ledger-abort',
 ] as const)
   it(
@@ -105,6 +107,11 @@ for (const fault of [
       let armed = !normal,
         publications = 0,
         downloads = 0
+      // Directory barriers that started after a pause, in ms after it.
+      const afterPause: number[] = []
+      let pausedAt = 0,
+        linked = 0,
+        contentReads = 0
       // Count acknowledged ledger transactions, rather than calls which may abort.
       const db = Reflect.get(Reflect.get(state, 'connection'), 'db') as IDBDatabase
       const transaction = db.transaction.bind(db)
@@ -166,15 +173,21 @@ for (const fault of [
             armed = false
             throw new Error('sample publication interrupted')
           }
-          return disk.link(from, to)
+          await disk.link(from, to)
+          if (fault === 'pause-mid-batch' && ++linked === 2) {
+            pausedAt = performance.now()
+            stopped.abort()
+          }
         },
         open: async (...args: Parameters<typeof disk.open>) => {
           const handle = await disk.open(...args)
+          const opened = String(args[0])
           return new Proxy(handle, {
             get(target, key) {
               if (key === 'read' || key === 'write')
                 return (bytes: Uint8Array, ...args: [number, number, number]) => {
                   expect(bytes.buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
+                  if (key === 'read' && own(opened) && !opened.endsWith('.tmp')) contentReads++
                   return handle[key](bytes, ...args)
                 }
               if (key === 'sync')
@@ -182,6 +195,8 @@ for (const fault of [
                   if (!own(String(args[0]))) return handle.sync()
                   const path = String(args[0]).slice(root.length + 1)
                   flushes.set(path, (flushes.get(path) ?? 0) + 1)
+                  if (pausedAt && !path.endsWith('.tmp'))
+                    afterPause.push(performance.now() - pausedAt)
                   if (armed && fault === 'directory-flush' && path === 'Notes/Section 0') {
                     armed = false
                     throw new Error('sample directory barrier interrupted')
@@ -360,8 +375,14 @@ for (const fault of [
                 downloads++
                 return {
                   size,
-                  read: async (offset: number, length: number) =>
-                    payload(Number(id.split('-').at(-1))).slice(offset, offset + length),
+                  read: async (offset: number, length: number) => {
+                    const index = Number(id.split('-').at(-1))
+                    // The rest of the cohort is still downloading when the pause comes, and a
+                    // network read does not end the moment it is cancelled.
+                    if (fault === 'pause-mid-batch' && index >= 2)
+                      await new Promise((resolve) => setTimeout(resolve, 300))
+                    return payload(index).slice(offset, offset + length)
+                  },
                   assertUnchanged: async () => {},
                   close: async () => {
                     if (fault === 'live-recovery' && !recoveredLive) {
@@ -397,7 +418,9 @@ for (const fault of [
             state,
             {
               signal:
-                fault === 'pause-notification' || fault === 'pause-admission'
+                fault === 'pause-notification' ||
+                fault === 'pause-admission' ||
+                fault === 'pause-mid-batch'
                   ? AbortSignal.any([stopped.signal, ended])
                   : ended,
               dirty: new Set(),
@@ -481,6 +504,36 @@ for (const fault of [
           expect(await Array.fromAsync(state.all())).toEqual([])
           for (const item of items)
             expect(await disk.stat(join(root, item.path)).catch(() => null)).toBeNull()
+          return
+        }
+        if (fault === 'install-fingerprint') {
+          await run()
+          contentReads = 0
+          // The watcher's own-write check fingerprints every file the pull installed. The batch
+          // verified those bytes before publishing them; reading them again doubled a pull's IO.
+          for (const item of items) expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+          expect(contentReads).toBe(0)
+          // A file changed afterwards is read again.
+          const changed = items[3]
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          await disk.writeFile(join(root, changed.path), 'sample local edit')
+          expect((await files.fingerprint(changed.path)).sha).toBe(
+            await sha256(new TextEncoder().encode('sample local edit'))
+          )
+          expect(contentReads).toBeGreaterThan(0)
+          return
+        }
+        if (fault === 'pause-mid-batch') {
+          await expect(run()).rejects.toBeDefined()
+          expect(linked).toBeGreaterThanOrEqual(2)
+          // Pause stops within one file. Names already published are made durable at once,
+          // not after the rest of the cohort's downloads give up.
+          expect(afterPause.filter((ms) => ms > 100)).toEqual([])
+          for (const item of items)
+            if (await disk.stat(join(root, item.path)).catch(() => null))
+              expect(durableDirectories.has(item.path.slice(0, item.path.lastIndexOf('/')))).toBe(
+                true
+              )
           return
         }
         if (fault === 'pause-notification') {

@@ -111,3 +111,58 @@ it('does not carry a pass proof into a later inventory pass', async () => {
   // A later pass reuses the durable cache, which verifies identity again.
   expect(identity.mock.calls.length).toBeGreaterThan(first)
 })
+
+it('carries a proof across inventory passes while the watcher reports no change', async () => {
+  const { app, raw, identity, list } = await setup(5)
+  const pass = Reflect.get(raw, INVENTORY_PASS)
+  const stop = raw.watch(() => {})
+  try {
+    await pass.call(raw, list)
+    const first = identity.mock.calls.length
+    await pass.call(raw, list)
+    await pass.call(raw, list)
+    // Engine cycles while nothing changed: no file is verified again.
+    expect(identity.mock.calls.length).toBe(first)
+    const target = 'Shared/sample-2.md'
+    await app.vault.modify(app.vault.getFileByPath(target)!, 'changed bytes')
+    await pass.call(raw, list)
+    const again = identity.mock.calls.slice(first).map(([path]) => path)
+    // Only the file the event named is verified again.
+    expect(again.length).toBeGreaterThan(0)
+    expect(new Set(again)).toEqual(new Set([target]))
+  } finally {
+    stop()
+  }
+})
+
+it('lets a watcher proof stand for five minutes at most', async () => {
+  const { raw, identity, list } = await setup(5)
+  const pass = Reflect.get(raw, INVENTORY_PASS)
+  const stop = raw.watch(() => {})
+  const now = vi.spyOn(Date, 'now')
+  try {
+    now.mockReturnValue(1_000_000)
+    await pass.call(raw, list)
+    const first = identity.mock.calls.length
+    now.mockReturnValue(1_000_000 + 299_000)
+    await pass.call(raw, list)
+    expect(identity.mock.calls.length).toBe(first)
+    now.mockReturnValue(1_000_000 + 300_000)
+    await pass.call(raw, list)
+    expect(identity.mock.calls.length).toBeGreaterThan(first)
+  } finally {
+    now.mockRestore()
+    stop()
+  }
+})
+
+it('does not carry a proof past the watcher', async () => {
+  const { raw, identity, list } = await setup(5)
+  const pass = Reflect.get(raw, INVENTORY_PASS)
+  const stop = raw.watch(() => {})
+  await pass.call(raw, list)
+  const first = identity.mock.calls.length
+  stop()
+  await pass.call(raw, list)
+  expect(identity.mock.calls.length).toBeGreaterThan(first)
+})

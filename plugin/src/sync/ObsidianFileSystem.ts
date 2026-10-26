@@ -16,7 +16,7 @@ import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobile
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
 import { isHidden, isWireConfigDir } from './scope'
-import { durableHostOf } from './hostSyncStorage'
+import { durableHostOf, type ScanFingerprint } from './hostSyncStorage'
 import { MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { retainedFileStat } from './vaultPathLinks'
 import {
@@ -206,6 +206,9 @@ interface InventoryPass {
   id: number
 }
 let inventoryIds = 0
+let watchEpochs = 0
+/** How long watcher coverage alone may stand in for a fresh look, as for a skipped scan. */
+const WATCH_PROOF_MS = 300_000
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
 const normalizationPossible = (path: string) =>
@@ -323,7 +326,8 @@ export class ObsidianFileSystem implements FileSystem {
         paths.push(parent)
       return paths
     })
-    return this.withScanMutation(paths, () =>
+    const installed: InstallItem[] = []
+    const batch = this.withScanMutation(paths, () =>
       nativeInstallBatch(
         {
           fs: this,
@@ -354,12 +358,49 @@ export class ObsidianFileSystem implements FileSystem {
             this.writtenStat = { path: item.path, size: item.size, mtime: item.mtime }
             this.awaitingIndex.add(item.path)
             this.wrote([item.path], 'file')
+            installed.push(item)
           },
         },
         items,
         work
       )
     )
+    return batch.then(async (result) => {
+      if (result !== undefined) await this.rememberInstalled(installed)
+      return result
+    })
+  }
+  /** Hashes a batch verified before publishing, by what each installed file is right after its
+   * ledger commit. The watcher's own-write check fingerprints every installed file; without
+   * this it read each one back. Any later mutation of the path changes its scan revision. */
+  private readonly installedFingerprints = new Map<
+    string,
+    { value: ScanFingerprint; revision: number }
+  >()
+  private async rememberInstalled(items: readonly InstallItem[]): Promise<void> {
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host || !this.fileIdentity) return
+    for (const item of items) {
+      if (!this.cacheableScanPath(item.path)) continue
+      const key = this.pathKey(item.path)
+      const revision = host.scanFingerprintRevision(key)
+      const identity = await this.fileIdentity(item.path)
+      const stat = await this.rawStat(item.path)
+      if (
+        !identity ||
+        stat?.type !== 'file' ||
+        stat.size !== item.size ||
+        stamp(stat.mtime) !== item.mtime
+      )
+        continue
+      if (this.installedFingerprints.size >= 4096)
+        this.installedFingerprints.delete(this.installedFingerprints.keys().next().value)
+      this.installedFingerprints.set(key, {
+        value: { identity, size: stat.size, mtime: stat.mtime, ctime: stat.ctime, sha: item.sha },
+        revision,
+      })
+    }
   }
   readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
@@ -1685,6 +1726,14 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
+    // The engine's own changes retire watcher proofs before and after they land.
+    for (const path of paths) this.noteWatchChange(path)
+    const settled = () => {
+      for (const path of paths) this.noteWatchChange(path)
+    }
+    return Promise.resolve(this.withScanCacheMutation(paths, work)).finally(settled)
+  }
+  private withScanCacheMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
     const keys = paths
@@ -2635,6 +2684,10 @@ export class ObsidianFileSystem implements FileSystem {
     const before = await this.rawStat(path)
     if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
     let saved = await host.readScanFingerprint(key)
+    const installed = this.installedFingerprints.get(key)
+    this.installedFingerprints.delete(key)
+    const fromInstall = !saved && installed?.revision === revision
+    if (fromInstall) saved = installed.value
     const legacyKey = !saved && key !== path ? path : undefined
     if (legacyKey) saved = await host.readScanFingerprint(legacyKey)
     signal?.throwIfAborted()
@@ -2658,6 +2711,7 @@ export class ObsidianFileSystem implements FileSystem {
       ) {
         signal?.throwIfAborted()
         this.runtimeFence?.assertReady()
+        if (fromInstall) await host.writeScanFingerprint(key, saved, revision)
         if (legacyKey) {
           await host.writeScanFingerprint(key, saved, revision)
           await host.withScanMutation([legacyKey], async () => {})
@@ -3325,6 +3379,52 @@ export class ObsidianFileSystem implements FileSystem {
   /** Foreground inspection retires a proof even when no file event was available. */
   [Symbol.for('abele.sync.invalidate-local-scan-v1')](): void {
     this.scanWatchRevision++
+    this.watchEpoch = undefined
+  }
+
+  // The watcher's per-path change clock. Unlike an inventory pass it spans engine cycles, so
+  // an advisory decision verified once stands until an event names the file or a folder above
+  // it. Every epoch starts with watching and ends after WATCH_PROOF_MS.
+  private watchEpoch: number | undefined
+  private watchEpochAt = 0
+  private watchClock = 0
+  private watchFloor = 0
+  private readonly watchChanges = new Map<string, number>()
+  private noteWatchChange(path: string): void {
+    const key = this.pathKey(path)
+    if (!this.watchChanges.has(key) && this.watchChanges.size >= 65536) {
+      this.watchChanges.clear()
+      this.watchFloor = this.watchClock + 1
+    }
+    this.watchChanges.set(key, ++this.watchClock)
+  }
+  [Symbol.for('abele.sync.watch-epoch-v1')](): number | undefined {
+    if (!this.scanWatchers) return undefined
+    const now = Date.now()
+    if (
+      this.watchEpoch === undefined ||
+      now < this.watchEpochAt ||
+      now - this.watchEpochAt >= WATCH_PROOF_MS
+    ) {
+      this.watchEpoch = ++watchEpochs
+      this.watchEpochAt = now
+      this.watchChanges.clear()
+      this.watchFloor = ++this.watchClock
+    }
+    return this.watchEpoch
+  }
+  /** The change clock of `path` and its folders in the current epoch. The config folder is
+   * polled rather than watched, so it has none. */
+  [Symbol.for('abele.sync.watch-revision-v1')](path: string): number | undefined {
+    if (!this.scanWatchers || this.watchEpoch === undefined) return undefined
+    const key = this.pathKey(path)
+    if (withinRoot(key, this.pathKey(this.configDir))) return undefined
+    let revision = this.watchFloor
+    for (let current = key; current; current = current.slice(0, current.lastIndexOf('/'))) {
+      revision = Math.max(revision, this.watchChanges.get(current) ?? 0)
+      if (!current.includes('/')) break
+    }
+    return revision
   }
 
   [Symbol.for('abele.sync.local-scan-revision-v1')](): string | undefined {
@@ -3336,8 +3436,10 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     this.scanWatchers++
     this.scanWatchRevision++
+    this.watchEpoch = undefined
     this.rootChain = undefined
     const changed = (file: { path: string }) => {
+      this.noteWatchChange(file.path)
       if (this.inventoryVisible(file.path) && this.withinFileScope(file.path))
         this.scanWatchRevision++
     }
@@ -3385,6 +3487,7 @@ export class ObsidianFileSystem implements FileSystem {
         snapshot: () => this.configSnapshot(),
       },
       (paths) => {
+        for (const path of paths) this.noteWatchChange(path)
         if (
           paths.some(
             (path) =>
@@ -3407,6 +3510,7 @@ export class ObsidianFileSystem implements FileSystem {
       stopped = true
       this.scanWatchers--
       this.scanWatchRevision++
+      this.watchEpoch = undefined
       watcher.stop()
       stopScanChanges()
       this.app.vault.offref(directoryRename)

@@ -106,12 +106,16 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.invalidate-local-scan-v1') ||
         key === Symbol.for('abele.sync.inventory-pass-v1') ||
         key === Symbol.for('abele.sync.inventory-id-v1') ||
+        key === Symbol.for('abele.sync.watch-epoch-v1') ||
         key === Symbol.for('abele.sync.verify-inventory-root-v1') ||
         key === Symbol.for('abele.sync.operation-pass-v1') ||
         key === Symbol.for('abele.sync.retention-idle-v1')
       )
         return value.bind(target)
-      if (key === Symbol.for('abele.sync.local-change-revision-v1'))
+      if (
+        key === Symbol.for('abele.sync.local-change-revision-v1') ||
+        key === Symbol.for('abele.sync.watch-revision-v1')
+      )
         return (path?: string) => {
           if (path !== undefined) assertPath(path)
           return value.call(target, path)

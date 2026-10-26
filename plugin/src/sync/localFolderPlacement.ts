@@ -254,7 +254,10 @@ export class LocalFolderPlacement {
             value.call(target, receipt, placement.toLocal(path), sha)
         if (key === 'recoverConditionalFiles' || key === 'discardInstallation')
           return value.bind(target)
-        if (key === Symbol.for('abele.sync.local-change-revision-v1'))
+        if (
+          key === Symbol.for('abele.sync.local-change-revision-v1') ||
+          key === Symbol.for('abele.sync.watch-revision-v1')
+        )
           return (path?: string) =>
             value.call(target, path === undefined ? undefined : placement.toLocal(path))
         if (
@@ -263,6 +266,7 @@ export class LocalFolderPlacement {
             Symbol.for('abele.sync.invalidate-local-scan-v1'),
             Symbol.for('abele.sync.inventory-pass-v1'),
             Symbol.for('abele.sync.inventory-id-v1'),
+            Symbol.for('abele.sync.watch-epoch-v1'),
             Symbol.for('abele.sync.verify-inventory-root-v1'),
             Symbol.for('abele.sync.operation-pass-v1'),
             Symbol.for('abele.sync.retention-idle-v1'),
