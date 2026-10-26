@@ -35,7 +35,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('opens node and two small MCP groups without contacting a slow paired host, and updates only the changed dropdown', async () => {
+it('opens optional tools and two small MCP groups without contacting a slow paired host, and updates only the changed dropdown', async () => {
   useVault([])
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
@@ -73,7 +73,12 @@ it('opens node and two small MCP groups without contacting a slow paired host, a
   })
   expect(view.findAll('.abele-tool-modes__row')).toHaveLength(0)
   for (const heading of view.findAll('.abele-fold-heading')) await heading.trigger('click')
-  expect(view.text()).toContain('Read files and search')
+  // Node permissions come from folder levels, never this optional-tool editor.
+  const groups = view.findAll('.abele-fold-heading__text').map((heading) => heading.text())
+  expect(groups).not.toContain('Node')
+  expect(groups).not.toContain('Nodes')
+  expect(view.text()).not.toContain('Read files and search')
+  expect(view.find('.abele-tool-modes__action').exists()).toBe(false)
   expect(view.text()).toContain('Sample server 0')
   expect(view.text()).toContain('Sample server 1')
   updated.mockClear()

@@ -32,30 +32,29 @@ const group = (view: ReturnType<typeof mount>, name: string) =>
   view.findAllComponents(TreeItem).find((item) => item.props('text') === name)!
 
 describe('the tools a chat may use', () => {
-  // BUG: the surface displays only saved modes; the executor also enables tools from node scope.
-  it.fails(
-    'shows a scope-enabled node read as enabled in the chat permissions surface',
-    async () => {
-      const session = new ChatSession(ChatService.getInstance())
-      session.overrides.value = {
-        nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
-      }
-      const service = vi
-        .spyOn(ChatService, 'getInstance')
-        .mockReturnValue({ activeSession: shallowRef(session) } as never)
-      const view = mount(AiPermissions)
-      try {
-        expect(session.getToolMode('node_read')).toBe('auto')
-        await group(view, 'Nodes').get('.tree-item-self').trigger('click')
-        const tool = getToolRegistry().find((tool) => tool.name === 'node_read')!
-        expect(group(view, tool.label).classes()).not.toContain('abele-chat-tools__tool_off')
-      } finally {
-        view.unmount()
-        service.mockRestore()
-        session.destroy()
-      }
+  it('enables node reading through folder access without node permission controls', () => {
+    const session = new ChatSession(ChatService.getInstance())
+    session.overrides.value = {
+      nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
     }
-  )
+    const service = vi
+      .spyOn(ChatService, 'getInstance')
+      .mockReturnValue({ activeSession: shallowRef(session) } as never)
+    const view = mount(AiPermissions)
+    try {
+      expect(session.getToolMode('node_read')).toBe('auto')
+      expect(session.getToolMode('node_command_run')).toBe('off')
+      expect(view.find('[data-tool-group="Nodes"]').exists()).toBe(false)
+      const nodeRead = getToolRegistry().find((tool) => tool.name === 'node_read')!
+      expect(
+        view.findAllComponents(TreeItem).some((item) => item.props('text') === nodeRead.label)
+      ).toBe(false)
+    } finally {
+      view.unmount()
+      service.mockRestore()
+      session.destroy()
+    }
+  })
   it('uses the supplied node registry with the same group menu, including controllable core tools', async () => {
     const view = mount(ChatToolModes, {
       props: {
