@@ -28,7 +28,7 @@ describe('chat node file permissions and persistence', () => {
     expect(session.folderToolAccess.value.raisedBy.node_delegate).toBeUndefined()
     session.destroy()
   })
-  it('uses the shared Run level instead of local tool choices for inherited or imported scope', () => {
+  it('requires shared Run access plus Delegate for inherited or imported scope', () => {
     const session = new ChatSession(ChatService.getInstance())
     session.overrides.value = {
       nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
@@ -41,10 +41,20 @@ describe('chat node file permissions and persistence', () => {
     session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
     expect(offered()).not.toContain('node_delegate')
     session.overrides.value.nodeScope![0].access = 'run'
+    expect(offered()).toContain('node_command_run')
+    expect(offered()).not.toContain('node_delegate')
+    session.toolModes.value = { ...session.toolModes.value, delegate: 'ask' }
     expect(offered()).toContain('node_delegate')
     expect(session.needsApproval('node_delegate')).toBe(true)
+    session.toolModes.value = { ...session.toolModes.value, delegate: 'off' }
+    expect(offered()).not.toContain('node_delegate')
+    expect(offered()).toContain('node_command_run')
+    session.toolModes.value = { ...session.toolModes.value, delegate: 'auto' }
+    expect(offered()).toContain('node_delegate')
+    expect(session.needsApproval('node_delegate')).toBe(false)
     session.overrides.value.nodeScope = []
     expect(offered()).not.toContain('node_delegate')
+    expect(offered()).not.toContain('node_command_run')
     session.destroy()
   })
   it('reads delegation status and destinations without asking in every permission mode', () => {

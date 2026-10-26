@@ -58,9 +58,9 @@ beforeEach(() => {
 })
 
 describe('owner node scope actions', () => {
-  it('keeps shared Run access after saving, reopening and copying a chat', async () => {
+  it('keeps shared Run access and Delegate permission after saving, reopening and copying a chat', async () => {
     const session = new ChatSession(ChatService.getInstance())
-    session.toolModes.value = { ...session.toolModes.value, node_delegate: 'ask' }
+    session.toolModes.value = { ...session.toolModes.value, delegate: 'ask' }
     await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'run' })
     expect(session.getToolMode('node_delegate')).toBe('ask')
     const file = session.currentChatFile.value!

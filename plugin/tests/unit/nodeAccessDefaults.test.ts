@@ -42,18 +42,25 @@ it('saves all effective access into independent agent defaults', async () => {
   expect(save).toHaveBeenCalledOnce()
   save.mockRestore()
 })
-it('uses the chat mode for delegation even with a legacy auto switch', () => {
+it('uses Delegate for node instructions despite a legacy auto switch in every chat mode', () => {
   const policy = {
     permissionMode: 'confirm-all',
     toolModes: { node_delegate: 'auto' },
-    getToolMode: () => 'auto',
+    getToolMode: (name: string) => (name === 'delegate' ? 'ask' : 'auto'),
     outOfScopePath: () => null,
     bookAnchored: false,
     skillNeedsApproval: () => false,
   }
-  expect(ordinaryNeedsApproval(policy as never, 'node_delegate')).toBe(true)
-  policy.permissionMode = 'allow-all'
-  expect(ordinaryNeedsApproval(policy as never, 'node_delegate')).toBe(false)
+  for (const permissionMode of ['confirm-all', 'allow-edit', 'allow-all']) {
+    policy.permissionMode = permissionMode
+    for (const delegate of ['off', 'ask', 'auto']) {
+      policy.getToolMode = (name) => (name === 'delegate' ? delegate : 'auto')
+      for (const tool of ['node_delegate', 'node_delegation_send'])
+        expect(ordinaryNeedsApproval(policy as never, tool)).toBe(
+          ordinaryNeedsApproval(policy as never, 'delegate')
+        )
+    }
+  }
 })
 
 it('migrates legacy agent defaults once and preserves a later downgrade', () => {

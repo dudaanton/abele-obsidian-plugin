@@ -201,7 +201,7 @@ describe('tools offered by section', () => {
     reopened.destroy()
   })
 
-  it('opens node files with Read scope and node actions with Run scope', () => {
+  it('opens files at Read, commands at Run, and node instructions with Run plus Delegate', () => {
     session.overrides.value = {
       ...session.overrides.value,
       nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
@@ -230,6 +230,10 @@ describe('tools offered by section', () => {
     }
     expect(names(session)).not.toContain('node_delegate')
     session.overrides.value.nodeScope![0].access = 'run'
+    expect(names(session)).toContain('node_command_run')
+    expect(names(session)).not.toContain('node_delegate')
+    expect(names(session)).not.toContain('node_delegation_send')
+    session.toolModes.value = { ...session.toolModes.value, delegate: 'ask' }
     const enabled = names(session)
     for (const tool of actions) expect(enabled).toContain(tool)
     expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
@@ -259,6 +263,7 @@ describe('tools offered by section', () => {
     AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
     session.toolModes.value = {
       ...session.toolModes.value,
+      delegate: 'auto',
       node_delegate: 'auto',
       node_command_run: 'auto',
     }
