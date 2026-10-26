@@ -13,6 +13,7 @@ import ToolModesEditor from '@/components/ToolModesEditor.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, CORE_TOOLS, type ToolMode } from '@/ai/types'
 import { getToolRegistry } from '@/ai/tools'
+import { NODE_GROUP } from '@/ai/toolSections'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import { vi } from 'vitest'
@@ -59,7 +60,10 @@ function mountHost(initial: Record<string, ToolMode> = {}, hideShowAll = true) {
   return { view, modes }
 }
 
-const optional = () => getToolRegistry().filter((t) => !CORE_TOOLS.has(t.name))
+// Node permissions belong to folder levels, not the optional-tool switches.
+const nodeTool = (tool: { category?: string }) =>
+  [NODE_GROUP, 'Node files', 'Node repositories'].includes(tool.category ?? '')
+const optional = () => getToolRegistry().filter((t) => !CORE_TOOLS.has(t.name) && !nodeTool(t))
 const inCategory = (category: string) => optional().filter((t) => t.category === category)
 
 type View = ReturnType<typeof mountHost>['view']
@@ -84,6 +88,32 @@ const sectionRow = (view: View, category: string) => {
   if (!row.exists()) throw new Error(`no section row ${category}`)
   return row
 }
+
+describe('node access has one home', () => {
+  it('omits node switches and leaves saved node modes untouched by bulk actions', async () => {
+    const { view, modes } = mountHost({ node_read: 'ask', node_command_run: 'off' })
+    expect(
+      view.findAll('.abele-tool-modes__heading').map((heading) => heading.text())
+    ).not.toContain('Node')
+    expect(view.find('.abele-tool-modes__action').exists()).toBe(false)
+    await press(rowNamed(view, 'All tools'), 'Auto')
+    for (const tool of getToolRegistry().filter(nodeTool))
+      expect(modes.value[tool.name], tool.name).toBe(
+        tool.name === 'node_read' ? 'ask' : tool.name === 'node_command_run' ? 'off' : undefined
+      )
+  })
+
+  it('keeps node prompt descriptions available without permission switches', () => {
+    const view = mount(ToolModesEditor, {
+      props: { toolModes: {}, descriptionsOnly: true, showDescriptions: true },
+      global: { stubs: { Dropdown: true } },
+    })
+    expect(view.findAll('.abele-tool-modes__heading').map((heading) => heading.text())).toContain(
+      'Node'
+    )
+    expect(view.find('.abele-tool-modes__action').exists()).toBe(false)
+  })
+})
 
 describe('every tool at once', () => {
   it('turns every optional tool to Auto, then all off again', async () => {

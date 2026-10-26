@@ -350,7 +350,14 @@ const openAction = ref<string | null>(null)
  * Share the catalogue without evaluating dynamic descriptions. Listing permission controls
  * must not scan the vault for skills; descriptions are read only by their editor.
  */
-const registry = computed(() => getToolRegistry())
+// Folder levels own node permissions; this editor only retains node prompt descriptions.
+const registry = computed(() =>
+  getToolRegistry().filter(
+    (tool) =>
+      props.descriptionsOnly ||
+      ![NODE_SECTION, 'Node files', 'Node repositories'].includes(tool.category ?? '')
+  )
+)
 /** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
 /** The old node names: never listed, set with the Read action, whose work they do. */
 const legacyNodeTools = computed<ToolEntry[]>(() =>
