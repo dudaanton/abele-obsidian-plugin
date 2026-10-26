@@ -47,7 +47,8 @@ it('pictures temporary waits apart from refusals and compares connection and sta
       await reloadAs(vault, layout === 'phone')
       run(`
         if(svc.rows.value.length)throw new Error('Screenshot fixture needs an unconnected pool vault');
-        window.__waitingShotRestore={rows:svc.rows.value,activity:svc.activity.value};
+        window.__waitingShotRestore={rows:svc.rows.value,activity:svc.activity.value,available:svc.available.value};
+        svc.available.value=true;
         svc.rows.value=[{id:'sample-waiting',kind:'token',address:'https://sync.example',spaceId:'sample-space',tokenId:'sample-token',scope:{kind:'folder',id:'root',path:'/'},secretReference:'',ledgerId:'sample-ledger',paused:false,status:'idle',state:{}}];
         return true;
       `)
@@ -101,11 +102,13 @@ it('pictures temporary waits apart from refusals and compares connection and sta
               await poll(()=>owner.innerWidth===${width}&&owner.innerHeight===${height});
               const result=await screen(${JSON.stringify(layout + '-status')},root.closest('.modal')||root,root);
               result.line=textOf(root.querySelector('.abele-sync-row__line'));
+              result.extra.opening=textOf(root).includes('File exchange is opening');
               return result;
             `)
             console.log('[waiting summary screenshot]', layout, JSON.stringify(summary))
             expect(summary.error).toBe('')
             expect(summary.line).toBe('1 file not synced · Waiting (4)')
+            expect(summary.extra.opening).toBe(false)
             run(close + 'return true')
             if (layout === 'desktop') {
               const bar = run<{ shot: string; text: string; visible: boolean }>(`
@@ -122,7 +125,7 @@ it('pictures temporary waits apart from refusals and compares connection and sta
         }
       } finally {
         run(
-          `${close}const saved=window.__waitingShotRestore;if(saved){svc.rows.value=saved.rows;svc.activity.value=saved.activity;delete window.__waitingShotRestore}return true`
+          `${close}const saved=window.__waitingShotRestore;if(saved){svc.rows.value=saved.rows;svc.activity.value=saved.activity;svc.available.value=saved.available;delete window.__waitingShotRestore}return true`
         )
       }
     }
