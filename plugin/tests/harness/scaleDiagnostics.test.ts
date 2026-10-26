@@ -520,6 +520,8 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
     removeListener: () => {},
     sendCommand: async (name, params) => {
       calls.push({ name, params })
+      if (name === 'Debugger.getScriptSource')
+        return { scriptSource: 'class SHA256 extends HashMD {}' }
       return { breakpointId: params?.lineNumber === 20 ? 'gate' : 'hash', locations: [] }
     },
   }
@@ -530,7 +532,7 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
   ).toEqual([20])
   await listener(null, 'Debugger.paused', {
     hitBreakpoints: ['gate'],
-    callFrames: [{ location: { scriptId: 'first' } }],
+    callFrames: [{ callFrameId: 'frame-first', location: { scriptId: 'first' } }],
   })
   expect(
     calls.filter((c) => c.name === 'Debugger.setBreakpoint').map((c) => c.params.location)
@@ -540,7 +542,7 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
   ])
   await listener(null, 'Debugger.paused', {
     hitBreakpoints: ['gate'],
-    callFrames: [{ location: { scriptId: 'reload' } }],
+    callFrames: [{ callFrameId: 'frame-reload', location: { scriptId: 'reload' } }],
   })
   expect(
     calls
@@ -548,6 +550,12 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
       .slice(-2)
       .map((c) => c.params.location.scriptId)
   ).toEqual(['reload', 'reload'])
+  expect(
+    calls.filter((c) => c.name === 'Debugger.evaluateOnCallFrame').map((c) => c.params)
+  ).toEqual([
+    { callFrameId: 'frame-first', expression: 'void new SHA256()', returnByValue: true },
+    { callFrameId: 'frame-reload', expression: 'void new SHA256()', returnByValue: true },
+  ])
   expect(calls.at(-1).name).toBe('Debugger.resume')
   expect(events.some((e) => e.event === 'javascript-hash-tracepoint-setup')).toBe(true)
 })
