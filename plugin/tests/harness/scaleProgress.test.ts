@@ -295,3 +295,29 @@ it('retains immutable phase-boundary evidence as newer checkpoints advance', asy
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('attributes rebuild recovery to the explicitly declared device', () => {
+  expect(
+    recoveryTimings(
+      [{ kind: 'reindex', device: '1', at: 100 }],
+      [
+        { device: '0', event: 'start', at: 101, id: 1 },
+        { device: '1', event: 'start', at: 120, id: 2 },
+        { device: '1', event: 'finish', at: 130, id: 2, status: 200 },
+      ],
+      [
+        { device: '0', idle: true, endedAt: 105 },
+        { device: '1', idle: true, endedAt: 150 },
+      ]
+    )
+  ).toEqual([
+    {
+      kind: 'reindex',
+      device: '1',
+      at: 100,
+      firstRequestMs: 20,
+      firstSuccessfulResponseMs: 30,
+      idleMs: 50,
+    },
+  ])
+})

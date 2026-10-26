@@ -25,7 +25,9 @@ export function activeRequestIds(events, at) {
 export function recoveryTimings(interruptions, wire, settles) {
   return interruptions.map((interruption, i) => {
     const end = interruptions[i + 1]?.at ?? Infinity
-    const device = interruption.kind === 'pause mid-pull' ? '1' : '0'
+    const device = String(
+      interruption.device ?? (interruption.kind === 'pause mid-pull' ? '1' : '0')
+    )
     const events = wire.filter(
       (event) => event.device === device && event.at >= interruption.at && event.at < end
     )
