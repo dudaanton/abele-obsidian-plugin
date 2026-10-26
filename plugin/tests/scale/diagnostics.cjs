@@ -471,3 +471,16 @@ exports.watch = async function (id, serializedConfig) {
     return channel
   }
 }
+
+exports.visibleStatus = (document) =>
+  [
+    ...document.querySelectorAll(
+      '.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status'
+    ),
+  ]
+    .filter((el) => el.getClientRects().length > 0)
+    .map((el) => ({
+      text: el.textContent?.trim() ?? '',
+      label: el.getAttribute('aria-label'),
+      selector: el.className,
+    }))

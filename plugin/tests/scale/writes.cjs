@@ -11,11 +11,22 @@ exports.writeOrigin = (stack) =>
       : stack
   )
 
-exports.isHostPersistence = (row) =>
-  exports.writeOrigin(row.stack) === 'host' &&
-  /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(
-    row.path ?? ''
+exports.isHostPersistence = (row) => {
+  // The host saves its recent-files list through the instrumented adapter.
+  // Strip only leading adapter frames; plugin callers below the host remain evidence.
+  const stack =
+    row.path === '.obsidian/workspace.json' && typeof row.stack === 'string'
+      ? row.stack
+          .replace(/^Error\n/, '')
+          .replace(/^(?:\s+at .*?(?:scale-observer|plugin:abele).*\n)+/, '')
+      : row.stack
+  return (
+    exports.writeOrigin(stack) === 'host' &&
+    /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(
+      row.path ?? ''
+    )
   )
+}
 
 // Port restoration lives for the observer, but handle restoration must not keep
 // closed native handles alive. Weak-map values may refer back to their own key.

@@ -21,7 +21,7 @@ it('requires exact visible size reasons in both status and log, intact primary, 
   const snapshots = [
     {
       at: 1,
-      snapshot: { rows: [{ status: 'attention' }] },
+      snapshot: { rows: [{ status: 'attention' }], visibleStatus: [{ text: '1 file not synced' }] },
       activity: [
         {
           refused: [{ path: file.path, reason: 'File too large' }],
@@ -31,7 +31,12 @@ it('requires exact visible size reasons in both status and log, intact primary, 
     },
   ]
   expect(oversizedEvidence([file], [file], snapshots, []).every((row) => row.pass)).toBe(true)
-  const idle = [{ ...snapshots[0], snapshot: { rows: [{ status: 'idle' }] } }]
+  const idle = [
+    {
+      ...snapshots[0],
+      snapshot: { rows: [{ status: 'idle' }], visibleStatus: [{ text: 'Synced' }] },
+    },
+  ]
   expect(oversizedEvidence([file], [file], idle, [])[0].pass).toBe(false)
   expect(oversizedEvidence([file], [], snapshots, [])[0].pass).toBe(false)
   expect(
@@ -140,7 +145,7 @@ it('counts the final synced restart as a generation without allowing retries ins
   const file = { path: 'Attachments/sample.bin', size: 256, sha: 'abc' }
   const state = [
     {
-      snapshot: { rows: [{ status: 'attention' }] },
+      snapshot: { rows: [{ status: 'attention' }], visibleStatus: [{ text: '1 file not synced' }] },
       activity: [
         {
           refused: [{ path: file.path, reason: 'too large' }],
@@ -245,4 +250,33 @@ it('requires observed zero sync content bytes on restart and never exempts an un
     restartReadMetrics([ready, { event: 'renderer-start', device: '0', at: 150 }], '0', 100, 200)
       .complete
   ).toBe(false)
+})
+
+it('recognizes host workspace persistence through an adapter wrapper without exempting plugin-only writes', async () => {
+  const writes = (await import('../scale/writes.cjs')).default
+  const stack =
+    'Error\n at wrapped (/fixture/scale-observer/writes.cjs:1:1)\n at adapterWrite (plugin:abele:1:1)\n at save (app://obsidian.md/app.js:1:1)'
+  expect(writes.isHostPersistence({ path: '.obsidian/workspace.json', stack })).toBe(true)
+  expect(writes.isHostPersistence({ path: 'sample.md', stack })).toBe(false)
+  expect(
+    writes.isHostPersistence({
+      path: '.obsidian/workspace.json',
+      stack: 'Error\n at persist (plugin:abele:1:1)',
+    })
+  ).toBe(false)
+})
+
+it('judges synced claims from visible words rather than internal idle rows', async () => {
+  const { visibleSyncedClaim } = await import('../scale/refusals.mjs')
+  expect(
+    visibleSyncedClaim({
+      rows: [{ status: 'idle' }],
+      visibleStatus: [{ text: '1 file not synced' }],
+    })
+  ).toBe(false)
+  expect(
+    visibleSyncedClaim({ rows: [{ status: 'attention' }], visibleStatus: [{ text: 'Synced' }] })
+  ).toBe(true)
+  expect(visibleSyncedClaim({ visibleStatus: [{ text: 'Syncing 12 files' }] })).toBe(false)
+  expect(visibleSyncedClaim({})).toBe(null)
 })

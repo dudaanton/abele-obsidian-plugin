@@ -33,7 +33,7 @@ module.exports = class extends Plugin {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
     const nativeCrypto = require('node:crypto')
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Reuse stack provenance for hash observations.
-    const { classifyOrigin: classifyHash, stateChunks } = require(config.diagnostics)
+    const { classifyOrigin: classifyHash, stateChunks, visibleStatus } = require(config.diagnostics)
     globalThis.__scaleObserveIncrementalHash = (hash) =>
       reindexObserver.observeIncrementalHash(hash, emit)
     this.register(() => {
@@ -67,6 +67,7 @@ module.exports = class extends Plugin {
       const state = {
         event: config.device === '0' ? 'primary-state' : 'device-state',
         snapshot: {
+          visibleStatus: visibleStatus(document),
           rows: ui.rows.value.map(({ status, paused }) => ({ status, paused })),
           engines: [...host.live.values()].map((e) => ({
             state: e.engine.status.state,
@@ -77,6 +78,8 @@ module.exports = class extends Plugin {
           })),
         },
         activity: Object.entries(ui.activity.value).map(([id, a]) => ({
+          notSynced: a.notSynced ?? null,
+          notSyncedError: a.notSyncedError ?? null,
           refused: a.refused ?? [],
           events: [...(a.events ?? [])].filter((e) => {
             const key = `${id}:${e.at}:${e.text}`

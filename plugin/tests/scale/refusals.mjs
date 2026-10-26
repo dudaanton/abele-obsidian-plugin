@@ -1,4 +1,12 @@
 import writes from './writes.cjs'
+export function visibleSyncedClaim(snapshot) {
+  const labels = snapshot?.visibleStatus
+  if (!Array.isArray(labels) || !labels.length) return null
+  return labels.some(({ text }) =>
+    /^(?:synced|up to date|all files synced)$/i.test(text?.trim() ?? '')
+  )
+}
+
 export function fileExpectations(files, limits) {
   const limit = limits?.max_file_bytes
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('Server file limit unavailable')
@@ -73,7 +81,7 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
     }
     const attemptsByGeneration = [...generations.values()]
     const maxAttemptsPerGeneration = Math.max(0, ...attemptsByGeneration.map((g) => g.attempts))
-    const syncedClaims = snapshots.filter((s) => s.snapshot?.rows?.some((r) => r.status === 'idle'))
+    const syncedClaims = snapshots.filter((s) => visibleSyncedClaim(s.snapshot) === true)
     return {
       ...file,
       status,
@@ -83,6 +91,8 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
       attemptsByGeneration,
       maxAttemptsPerGeneration,
       uploadRequests,
+      visibleStatusCoverage: snapshots.filter((s) => visibleSyncedClaim(s.snapshot) !== null)
+        .length,
       syncedClaims: syncedClaims.map((s) => ({ at: s.at, snapshot: s.snapshot })),
       pass:
         status.length > 0 &&
@@ -90,7 +100,8 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
         intact &&
         maxAttemptsPerGeneration <= 1 &&
         syncedClaims.length === 0 &&
-        snapshots.length > 0,
+        snapshots.length > 0 &&
+        snapshots.every((s) => visibleSyncedClaim(s.snapshot) !== null),
     }
   })
 }

@@ -180,7 +180,7 @@ export class RealVault {
   }
   async snapshot() {
     return this.evaluate(
-      `${host}return !u?null:{job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.values(u.activity.value).map(a=>({notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
   async inFlight(proxy, label, timeout = this.config.timeoutMs) {
@@ -215,7 +215,7 @@ export class RealVault {
   }
   async activityEvidence() {
     return this.evaluate(
-      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,refused:a.refused??[],events:[...(a.events??[])]}))`
+      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,notSynced:a.notSynced??null,refused:a.refused??[],events:[...(a.events??[])]}))`
     )
   }
   async connect(tokenFile) {
@@ -799,7 +799,6 @@ export async function run(config) {
     report.initialUploadMs = firstUploadMs
     report.filesPerSecond = report.uploadedFiles / (firstUploadMs / 1000)
     report.mibPerSecond = report.uploadedBytes / 1024 ** 2 / (firstUploadMs / 1000)
-    if (report.firstUploadSettled) await captureSettledHeap(a, 'first upload')
     phase('second device pull')
     const peerDownloadAt = Date.now()
     await b.ready()
@@ -836,7 +835,6 @@ export async function run(config) {
     report.peerPullSettled = await settle(b, 'second device pull')
     await endReindex('reindex-peer-download', b)
     report.peerInitialDownloadMs = Date.now() - peerDownloadAt
-    if (report.peerPullSettled) await captureSettledHeap(b, 'second device pull')
     phase('edits and settle')
     const edits = [
       { device: a, path: `${prefix}/Notes/Device A.md`, text: '# Device A\n' },
@@ -890,6 +888,8 @@ export async function run(config) {
     report.deviceRestartIdleAt = [idleA, settledB ? Date.now() : null]
     report.restartIdleMs = settledA && settledB ? Date.now() - restartAt : undefined
     report.restartObservedMs = Date.now() - restartAt
+    phase('post-run heap diagnostics')
+    for (const device of devices) await captureSettledHeap(device, 'post-run')
     await stop(false)
     phase('byte verification')
     report.mismatches = []

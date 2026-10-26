@@ -459,3 +459,37 @@ it('attributes observer work separately from the plugin frame that called it', a
   expect(result.samplesBySource).toEqual({ harness: 1 })
   expect(result.coverage).toContain('Continuous')
 })
+
+it('records only visible status words and retains refusal counts in chunked activity', () => {
+  const nodes = [
+    {
+      textContent: '1 file not synced',
+      className: 'abele-sync-status',
+      getClientRects: () => [1],
+      getAttribute: () => 'Sync',
+    },
+    {
+      textContent: 'Synced',
+      className: 'abele-sync-window__line',
+      getClientRects: () => [],
+      getAttribute: () => null,
+    },
+  ]
+  expect(diagnostics.visibleStatus({ querySelectorAll: () => nodes })).toEqual([
+    { text: '1 file not synced', label: 'Sync', selector: 'abele-sync-status' },
+  ])
+  const state = {
+    snapshot: { visibleStatus: [{ text: '1 file not synced' }] },
+    activity: [
+      {
+        notSynced: [{ path: 'sample.md' }],
+        refused: Array.from({ length: 20 }, () => ({ reason: 'x'.repeat(100) })),
+        events: [],
+      },
+    ],
+  }
+  const chunks = diagnostics.stateChunks(state, 1024)
+  expect(chunks.length).toBeGreaterThan(1)
+  for (const chunk of chunks)
+    expect(chunk.activity[0].notSynced).toEqual(state.activity[0].notSynced)
+})
