@@ -44,6 +44,7 @@ it('renders generated worktrees by their own label, with ordinary branches uncha
   const choices = await nodeFolderChoices(host as never)
   const picker = new NodeFolderPicker(app as never, choices, vi.fn())
   const row = document.createElement('div')
+  row.classList.add('suggestion-item')
   picker.renderSuggestion({ item: choices[1] } as never, row)
   expect(row.textContent).toContain('Fix sample parser')
   expect(row.textContent).not.toContain('11111111-2222')
@@ -51,13 +52,20 @@ it('renders generated worktrees by their own label, with ordinary branches uncha
   const note = row.querySelector('.suggestion-note') as HTMLElement
   expect(note.textContent).toBe('Fix sample parser')
   const style = document.createElement('style')
-  style.textContent = readFileSync('src/components/nodeFolderPicker.css', 'utf8')
+  style.textContent =
+    `
+    .suggestion-item.mod-complex .suggestion-aux { flex-shrink: 0; }
+    .suggestion-item.mod-complex .suggestion-flair { display: flex; }
+  ` + readFileSync('src/components/nodeFolderPicker.css', 'utf8')
   document.head.append(style)
   document.body.append(row)
   try {
     expect(getComputedStyle(note).whiteSpace).toBe('nowrap')
     expect(getComputedStyle(note).textOverflow).toBe('ellipsis')
     const flair = row.querySelector('.suggestion-flair') as HTMLElement
+    const aux = row.querySelector('.suggestion-aux') as HTMLElement
+    expect(getComputedStyle(aux).flexShrink).toBe('1')
+    expect(getComputedStyle(flair).display).toBe('block')
     expect(getComputedStyle(flair).whiteSpace).toBe('nowrap')
     expect(getComputedStyle(flair).textOverflow).toBe('ellipsis')
   } finally {

@@ -9,14 +9,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.abele-node-folder-choice .suggestion-aux {
+.suggestion-item.mod-complex.abele-node-folder-choice .suggestion-aux {
   min-width: 0;
   flex-shrink: 1;
   max-width: 40%;
   overflow: hidden;
 }
 
-.abele-node-folder-choice .suggestion-flair {
+.suggestion-item.mod-complex.abele-node-folder-choice .suggestion-flair {
   display: block;
   min-width: 0;
   max-width: 100%;
