@@ -18,6 +18,7 @@ import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { ExternalRepresentation } from '@/sync/external/representation'
 import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { collectHeap } from '../helpers/collectHeap'
 
 function discardFinishedFakeTransactions(db: IDBDatabase): void {
   // The fake retains finished transactions as history, unlike the browser. At
@@ -62,7 +63,7 @@ for (const fault of [
           : fault === 'second-ledger-abort' || fault === 'ordered-operations'
             ? 128
             : normal
-              ? Number(process.env.PEER_PULL_FILES ?? 64)
+              ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
               : 8
       const size = normal ? Number(process.env.PEER_PULL_BYTES ?? 4096) : 4096
       const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-peer-pull-')))
@@ -483,6 +484,12 @@ for (const fault of [
           return
         }
         const report = await run()
+        if (count >= 33000) {
+          await collectHeap()
+          console.log('native settled pull memory', process.memoryUsage())
+          expect(process.memoryUsage().heapUsed).toBeLessThan(512 * 1024 * 1024)
+          expect(process.memoryUsage().arrayBuffers).toBeLessThan(64 * 1024 * 1024)
+        }
         if (fault === 'admission') expect(admissions).toBe(count)
         expect(downloads).toBe(count)
         if (fault === 'coordinated')
@@ -531,5 +538,5 @@ for (const fault of [
         await disk.rm(root, { recursive: true, force: true })
       }
     },
-    process.env.PEER_PULL_FILES ? 3_600_000 : 30_000
+    process.env.PEER_PULL_FILES ? 3_600_000 : fault === 'none' ? 600_000 : 30_000
   )

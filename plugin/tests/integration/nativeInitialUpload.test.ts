@@ -1,6 +1,6 @@
 // @vitest-environment node
 import '../helpers/desktopRequire'
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -87,7 +87,7 @@ it('profiles first payload and multipart restart before hashing a 33000-file nat
       parts = 0,
       firstResumeMs = Infinity,
       cursor = 1
-    const transport = vi.fn<typeof fetch>(async (input, init) => {
+    const transport: typeof fetch = async (input, init) => {
       if (offline) throw new TypeError('sample interrupted multipart')
       const path = new URL(String(input)).pathname
       if (path === '/v2/connection')
@@ -148,7 +148,7 @@ it('profiles first payload and multipart restart before hashing a 33000-file nat
         return new Response(null, { status: 204 })
       }
       return Response.json({ items: [], cursor, next: null })
-    })
+    }
     const open = () => {
       const fs = new ObsidianFileSystem(app as never, {
         ledger: state,
@@ -295,7 +295,7 @@ it('resumes acknowledged content in a 33000-file native tree without a vault-wid
     let acknowledged = 0,
       resumedHeads = 0
     const present = new Set<string>()
-    const transport = vi.fn<typeof fetch>(async (input, init) => {
+    const transport: typeof fetch = async (input, init) => {
       if (offline) throw new TypeError('sample interrupted multipart')
       const path = new URL(String(input)).pathname
       if (path === '/v2/connection')
@@ -368,7 +368,7 @@ it('resumes acknowledged content in a 33000-file native tree without a vault-wid
         return new Response(null, { status: 204 })
       }
       return Response.json({ items: [], cursor, next: null })
-    })
+    }
     const open = () => {
       const fs = new ObsidianFileSystem(app as never, {
         ledger: state,
