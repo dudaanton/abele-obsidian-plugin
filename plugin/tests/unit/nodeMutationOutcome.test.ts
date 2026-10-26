@@ -217,6 +217,46 @@ async function setup(useOwner = false) {
   }
 }
 describe('node mutation identity after admission', () => {
+  it.each(['invented-create', '__proto__', 'constructor', null, 42])(
+    'saves a create with an unissued retry ID %s and publishes its diff',
+    async (operationId) => {
+      const fixture = await setup()
+      try {
+        vi.spyOn(fixture.client(), 'flush').mockImplementation(async () => {
+          await fixture.client().store.transaction((state) => {
+            const entry = state.outbox[0]
+            expect(entry.operation_id).not.toBe(operationId)
+            expect(entry.params).toMatchObject({ text: 'new', expected_content_id: null })
+            state.results[entry.operation_id] = {
+              request: { method: entry.method, params: entry.params },
+              result: FileMutationResultSchema.parse({
+                operation_id: entry.operation_id,
+                workspace_id: 'sample-folder',
+                path: 'sample.txt',
+                state: 'saved',
+                expected_content_id: null,
+                predecessor_content_id: null,
+                content_id: hash('new'),
+                recovery_path: null,
+              }),
+            }
+            state.outbox = []
+          })
+        })
+        const result = await fixture.callTool('node_write', 'sample-create', {
+          ...args,
+          expected_content_id: null,
+          operation_id: operationId,
+        })
+        expect(result.details).toMatchObject({ state: 'saved', diff: { old: '', new: 'new' } })
+        expect(await fixture.client().pending()).toEqual([])
+        expect(fixture.client().readFile).not.toHaveBeenCalled()
+      } finally {
+        fixture.close()
+      }
+    }
+  )
+
   it('recovers a mutation and its scope approval after re-pairing at a nonzero generation and restarting', async () => {
     const fixture = await setup(true)
     try {

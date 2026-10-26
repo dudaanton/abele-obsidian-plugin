@@ -37,7 +37,7 @@ async function exercise(label: string, plain: boolean) {
       await chats.revealSidebar({focus:false});
     })()`)
     const mutations = await turn(`[
-      ()=>({name:'node_write',params:{path:'sample-created.txt',expected_content_id:null,text:'created text\\n'}}),
+      ()=>({name:'node_write',params:{path:'sample-created.txt',expected_content_id:null,operation_id:'sample-invented-create',text:'created text\\n'}}),
       ()=>({name:'node_read',params:{path:'sample-created.txt'}}),
       r=>({name:'node_edit',params:{path:'sample-created.txt',expected_content_id:JSON.parse(r.at(-1)).content_id,old_text:'created',new_text:'edited'}}),
       ()=>({name:'node_read',params:{path:'sample-created.txt'}}),

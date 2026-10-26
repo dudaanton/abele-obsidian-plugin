@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import AiChatMessage from '@/components/AiChatMessage.vue'
+import Diff from '@/components/Diff.vue'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { Menu } from 'obsidian'
@@ -77,6 +78,33 @@ describe('interceptor draft actions', () => {
     wrapper.unmount()
   })
 })
+
+it.each(['write', 'node_write', 'node_edit', 'node_rm'])(
+  '%s uses the shared diff card for creates, edits and removals',
+  (toolName) => {
+    for (const diff of [
+      { old: '', new: 'added\n' },
+      { old: 'old\n', new: 'new\n' },
+      { old: 'removed\n', new: '' },
+    ]) {
+      const wrapper = render({
+        role: 'tool-call',
+        toolName,
+        toolParams: { path: 'sample.ts' },
+        toolStatus: 'approved',
+        toolDiff: diff,
+      })
+      expect(wrapper.getComponent(Diff).props()).toMatchObject({
+        textLeft: diff.old,
+        textRight: diff.new,
+        path: 'sample.ts',
+      })
+      expect(wrapper.get('[role="link"]').text()).toBe('sample.ts')
+      expect(wrapper.find('[data-find-part="params"]').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  }
+)
 
 describe('tool row content', () => {
   it('searches the readable tool name shown in the row', () => {

@@ -136,7 +136,7 @@ const NODE_TOOL_DOING: Record<string, string> = {
 }
 export function nodeToolDescription(name: string): string {
   const writes = NODE_MUTATION_TOOLS.includes(name)
-    ? ' Acts at once on the real file; asks first only when the chat permission mode says so. Never retried automatically: after an unknown outcome repeat the call with its operation_id.'
+    ? ' Acts at once on the real file; asks first only when the chat permission mode says so. Omit operation_id on the first call; never invent one. After an unknown outcome repeat the exact call with the operation_id returned by that call.'
     : ''
   const place = name === 'node_nodes' || name === 'node_folders' ? '' : ` ${PLACE}`
   return `${NODE_TOOL_DOING[name]}${place}${writes} Long results continue with the same tool and cursor alone. Works only on what this chat was given node access to; without it the result says how the person gives it. No shell, staging or push. In Ask mode, committing staged changes and removing a developer worktree each require explicit owner approval; without-asking mode skips that preliminary card.`

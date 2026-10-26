@@ -60,10 +60,10 @@ export class NodeMutationStore {
     return this.store.transaction((raw) => {
       const records = (raw as NodeMutationState).chatMutations ?? {}
       if (operation) {
-        const record = records[operation]
-        if (!record || record.chat_id !== chat || record.key !== key)
+        const record = Object.hasOwn(records, operation) ? records[operation] : undefined
+        if (record && (record.chat_id !== chat || record.key !== key))
           throw new Error('Mutation retry does not match this chat and exact request')
-        return record
+        if (record) return record
       }
       const same = Object.values(records).filter(
         (record) => record.chat_id === chat && record.key === key

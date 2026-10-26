@@ -7,7 +7,7 @@ import { targets } from './helpers/target'
 targets('desktop')
 const shots = shotDir('abele-diff-toggle')
 
-async function inspect(mode: string) {
+async function inspect(mode: string, fileCards = false) {
   const result = JSON.parse(
     await evalLong(`(async () => {
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -20,7 +20,15 @@ async function inspect(mode: string) {
       label:{value:'Sample comparison'}, provider:{value:'claude'}, state:{value:'idle'},
       connection:{state:{value:'connected'},error:{value:''}}, error:{value:''}, isStreaming:{value:false},
       draft:{value:{text:'',attachments:[]}}, queued:{value:[]}, rejected:{value:[]},
-      messages:{value:[{id:'sample-tool',role:'tool-call',content:'',toolName:'Edit',toolParams:{file_path:'sample.txt'},toolResult:'Edited',toolStatus:'approved',toolDiff:{old:before,new:after},timestamp:0}]},
+      messages:{value:${
+        fileCards
+          ? `[
+        {id:'sample-create',toolName:'node_write',toolDiff:{old:'',new:'export const sample = 1\\n'}},
+        {id:'sample-edit',toolName:'node_edit',toolDiff:{old:'export const sample = 1\\n',new:'export const sample = 2\\n'}},
+        {id:'sample-vault',toolName:'write',toolDiff:{old:'',new:'export const sample = 1\\n'}}
+      ].map(message=>({role:'tool-call',content:'',toolParams:{path:'sample.ts'},toolResult:'Saved',toolStatus:'approved',timestamp:0,...message}))`
+          : "[{id:'sample-tool',role:'tool-call',content:'',toolName:'Edit',toolParams:{file_path:'sample.txt'},toolResult:'Edited',toolStatus:'approved',toolDiff:{old:before,new:after},timestamp:0}]"
+      }},
       projection:{value:{activeRuns:[],queuedInputs:[],children:{},artifacts:[],unknown:[],prompts:[]}},
       send:async()=>{},answer:async()=>{},cancelInput:async()=>{},interrupt:async()=>{},openResource:()=>{},destroy:()=>{}
     }
@@ -42,6 +50,19 @@ async function inspect(mode: string) {
       }
       const group = root?.querySelector('.abele-chat-run > .abele-tree-item__self[aria-expanded="false"]')
       if(group) { group.click(); await wait(200) }
+      if (${fileCards}) {
+        for (const icon of root.querySelectorAll('.abele-chat-msg__icon[aria-expanded="false"]')) icon.click()
+        await wait(200)
+        const cards = [...root.querySelectorAll('.abele-chat-msg_tool-call')]
+        if(cards.length!==3) throw Error('Expected node create, node edit and vault write cards')
+        for (const [index, card] of cards.entries()) {
+          if(!card.querySelector('.abele-diff')) throw Error('Shared file diff is missing')
+          if(!card.querySelector('.abele-chat-tool-files')) throw Error('File path chip is missing')
+          card.scrollIntoView({block:'center'}); await wait(200)
+          await capture(['node-create','node-edit','vault-write'][index])
+        }
+        return JSON.stringify({cards:cards.length})
+      }
       if(!root?.querySelector('.abele-diff')) {
         root?.querySelector('.abele-chat-msg__icon')?.click()
         await wait(200)
@@ -80,18 +101,27 @@ async function inspect(mode: string) {
     }
   })()`)
   )
-  expect(result).toEqual({
-    initial: 2,
-    expanded: 0,
-    pressed: 'true',
-    label: 'Collapse unchanged lines',
-    collapsed: 2,
-    unpressed: 'false',
-    same: true,
-  })
+  expect(result).toEqual(
+    fileCards
+      ? { cards: 3 }
+      : {
+          initial: 2,
+          expanded: 0,
+          pressed: 'true',
+          label: 'Collapse unchanged lines',
+          collapsed: 2,
+          unpressed: 'false',
+          same: true,
+        }
+  )
 }
 
 it('toggles the same comparison control on desktop and phone layouts', async () => {
   await inspect('desktop')
   await withEmulatedPhone(() => inspect('phone'))
+})
+
+it('renders node creates and edits beside the ordinary write card on desktop and phone', async () => {
+  await inspect('desktop-files', true)
+  await withEmulatedPhone(() => inspect('phone-files', true))
 })

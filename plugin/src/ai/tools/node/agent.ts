@@ -600,7 +600,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           chat,
           key,
           _id,
-          params.operation_id === undefined ? undefined : z.string().parse(params.operation_id)
+          typeof params.operation_id === 'string' ? params.operation_id : undefined
         )
         mutation = { store, key, chat, retry }
         if (retry && (!candidate.client.connected || candidate.principal() !== retry.principal))

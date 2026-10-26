@@ -211,16 +211,12 @@
           :config="mapConfig"
           class="abele-chat-msg__map"
         />
-        <pre
-          v-if="message.toolDiff && !message.toolDiff.old && (!compactToolDetails || expanded)"
-          class="abele-chat-msg__new-file"
-          data-find-part="newfile"
-        ><code><SyntaxText :text="message.toolDiff.new" :path="diffPath" /></code></pre>
         <Diff
-          v-else-if="message.toolDiff && (!compactToolDetails || expanded)"
+          v-if="message.toolDiff && (!compactToolDetails || expanded)"
           :text-left="message.toolDiff.old"
           :text-right="message.toolDiff.new"
           :path="diffPath"
+          :data-find-part="!message.toolDiff.old ? 'newfile' : undefined"
           class="abele-chat-msg__diff"
         />
       </template>
@@ -448,7 +444,6 @@
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { readableToolName } from '@/ai/toolLine'
 import { t } from '@/i18n'
-import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'
