@@ -377,7 +377,9 @@ verified `pinned-archive` SDK input from a registry pin or an explicit harness o
 Pause write evidence includes caller stacks. Only recognized host settings/workspace
 persistence with a proven host stack is reported separately and excluded from the sync-write
 budget. The host recent-files save to `.obsidian/workspace.json` may pass through leading
-plugin adapter frames; those wrappers do not make the host save a sync write. Plugin callers
+plugin adapter frames in the recognized `ChangeTracker.around` chain; those wrappers do
+not make the host save a sync write. An arbitrary plugin callback followed by a host frame
+is not that adapter chain. Plugin callers
 below a host frame and unknown origins still fail, as do writes to ordinary note paths. Adapter/native layers remain a conservative operation upper bound, not unique
 physical bytes. Native handle `sync`/`datasync` start/finish receipts include elapsed durations
 for phase analysis; these cover observed vault handles, not every filesystem flush by the

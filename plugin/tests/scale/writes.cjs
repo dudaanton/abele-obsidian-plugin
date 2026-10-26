@@ -13,13 +13,25 @@ exports.writeOrigin = (stack) =>
 
 exports.isHostPersistence = (row) => {
   // The host saves its recent-files list through the instrumented adapter.
-  // Strip only leading adapter frames; plugin callers below the host remain evidence.
-  const stack =
-    row.path === '.obsidian/workspace.json' && typeof row.stack === 'string'
-      ? row.stack
-          .replace(/^Error\n/, '')
-          .replace(/^(?:\s+at .*?(?:scale-observer|plugin:abele).*\n)+/, '')
-      : row.stack
+  // Recognize the adapter chain, not arbitrary plugin work dispatched by the host.
+  let stack = row.stack
+  if (row.path === '.obsidian/workspace.json' && typeof stack === 'string') {
+    const frames = stack
+      .split('\n')
+      .filter(
+        (line) =>
+          /^\s+at /.test(line) && !/scale-observer|at new Promise \(<anonymous>\)/.test(line)
+      )
+    let count = 0
+    while (
+      /^\s+at (?:mutate|ChangeTracker\.around|(?:[\w$]+\.)?eval(?: \[as write\])?) \(plugin:abele[:/].*\)$/.test(
+        frames[count] ?? ''
+      )
+    )
+      count++
+    if (frames.slice(0, count).some((line) => /at ChangeTracker\.around /.test(line)))
+      stack = frames.slice(count).join('\n')
+  }
   return (
     exports.writeOrigin(stack) === 'host' &&
     /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(

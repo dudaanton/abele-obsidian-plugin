@@ -255,7 +255,7 @@ it('requires observed zero sync content bytes on restart and never exempts an un
 it('recognizes host workspace persistence through an adapter wrapper without exempting plugin-only writes', async () => {
   const writes = (await import('../scale/writes.cjs')).default
   const stack =
-    'Error\n at wrapped (/fixture/scale-observer/writes.cjs:1:1)\n at adapterWrite (plugin:abele:1:1)\n at save (app://obsidian.md/app.js:1:1)'
+    'Error\n at wrapped (/fixture/scale-observer/writes.cjs:1:1)\n at mutate (plugin:abele:1:1)\n at ChangeTracker.around (plugin:abele:1:1)\n at e.eval [as write] (plugin:abele:1:1)\n at save (app://obsidian.md/app.js:1:1)'
   expect(writes.isHostPersistence({ path: '.obsidian/workspace.json', stack })).toBe(true)
   expect(writes.isHostPersistence({ path: 'sample.md', stack })).toBe(false)
   expect(
@@ -314,4 +314,10 @@ it('distinguishes an observed empty screen from missing status evidence', async 
   const { visibleSyncedClaim } = await import('../scale/refusals.mjs')
   expect(visibleSyncedClaim({ visibleStatus: [] })).toBe(false)
   expect(visibleSyncedClaim({})).toBe(null)
+})
+
+it('does not exempt a plugin workspace mutation just because a host callback follows it', async () => {
+  const writes = (await import('../scale/writes.cjs')).default
+  const stack = 'Error\n at persist (plugin:abele:1:1)\n at dispatch (app://obsidian.md/app.js:1:1)'
+  expect(writes.isHostPersistence({ path: '.obsidian/workspace.json', stack })).toBe(false)
 })
