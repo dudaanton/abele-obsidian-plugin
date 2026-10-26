@@ -33,15 +33,18 @@ it('waits through approval and a slow command and returns its final output and e
   expect(await result).toEqual(final)
 })
 
-it('reads the same run after a transient disconnect without resubmitting it', async () => {
-  vi.useFakeTimers()
-  const final = { ...receipt, state: 'exited', exit_code: 0, stdout: 'finished' }
-  const read = vi.fn().mockRejectedValueOnce(new Error('disconnected')).mockResolvedValue(final)
-  const result = waitNodeCommand(receipt, { read, cancel: vi.fn(), schedule, guard: vi.fn() })
-  await vi.advanceTimersByTimeAsync(2000)
-  expect(await result).toEqual(final)
-  expect(read).toHaveBeenLastCalledWith(receipt)
-})
+it.each(['disconnected', 'connection_closed', 'outcome_unknown'])(
+  'reads the same run after %s without resubmitting it',
+  async (error) => {
+    vi.useFakeTimers()
+    const final = { ...receipt, state: 'exited', exit_code: 0, stdout: 'finished' }
+    const read = vi.fn().mockRejectedValueOnce(new Error(error)).mockResolvedValue(final)
+    const result = waitNodeCommand(receipt, { read, cancel: vi.fn(), schedule, guard: vi.fn() })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await result).toEqual(final)
+    expect(read).toHaveBeenLastCalledWith(receipt)
+  }
+)
 
 it('cancels that run promptly when the chat stops during a status request', async () => {
   const controller = new AbortController()

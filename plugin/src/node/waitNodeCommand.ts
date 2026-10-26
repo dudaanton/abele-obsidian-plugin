@@ -44,7 +44,7 @@ export async function waitNodeCommand<T extends Receipt>(initial: T, options: Wa
       } catch (error) {
         if (options.signal?.aborted) throw error
         if (
-          !/disconnected|not.connected|connection.*(?:closed|failed)|timeout|timed.out/i.test(
+          !/disconnected|not.connected|connection.*(?:closed|failed)|timeout|timed.out|outcome_unknown/i.test(
             String(error)
           )
         )
