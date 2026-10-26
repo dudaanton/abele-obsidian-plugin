@@ -379,6 +379,27 @@ describe('node mutation identity after admission', () => {
     }
   })
 
+  it('fences a replaced client even when principal and authorization generation stay unchanged', async () => {
+    const fixture = await setup(true)
+    try {
+      const connection = fixture.host().connection('sample-node')
+      const principal = connection.principal()
+      const generation = connection.authorizationGeneration
+      vi.mocked(fixture.session.saveForRelease).mockImplementationOnce(async () => {
+        await fixture.restart()
+      })
+      await expect(
+        setObsidianChatNodeScope(fixture.session, fixture.session.overrides.value.nodeScope!)
+      ).rejects.toThrow(/identity|authority/)
+      const replaced = fixture.host().connection('sample-node')
+      expect(replaced.client).not.toBe(connection.client)
+      expect(replaced.principal()).toBe(principal)
+      expect(replaced.authorizationGeneration).toBe(generation)
+    } finally {
+      fixture.close()
+    }
+  })
+
   it('saves shared scope for an offline node without local approval', async () => {
     const fixture = await setup(true)
     try {

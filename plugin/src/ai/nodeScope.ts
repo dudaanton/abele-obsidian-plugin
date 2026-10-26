@@ -114,6 +114,11 @@ export interface NodeScopeStorage {
   write(value: unknown): void
 }
 
+// Configured access travels; revocation still invalidates continuations already in flight.
+const continuationVersions = new WeakMap<NodeScopeChat, number>()
+const fenceContinuations = (chat: NodeScopeChat) =>
+  continuationVersions.set(chat, (continuationVersions.get(chat) ?? 0) + 1)
+
 /** Exact entry approvals stay bound to a local installation. Legacy blanket records fail closed. */
 export class NodeScopeLedger {
   private approvals: Record<string, Approval>
@@ -157,6 +162,7 @@ export class NodeScopeLedger {
   }
   /** Configuration changes fence continuations and prune lost grants, never create new grants. */
   reconcile(chat: NodeScopeChat, fenceUnchanged = true): void {
+    if (fenceUnchanged) fenceContinuations(chat)
     const identity = chat.nodeScopeIdentity
     if (!identity || !this.approvals[identity]) return
     const parsed = NodeScopeEntriesSchema.safeParse(chat.overrides?.value.nodeScope)
@@ -172,6 +178,7 @@ export class NodeScopeLedger {
     this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
   }
   revoke(chat: NodeScopeChat): void {
+    fenceContinuations(chat)
     const next = { ...this.approvals }
     if (chat.nodeScopeIdentity) delete next[chat.nodeScopeIdentity]
     this.commit(next)
@@ -195,6 +202,7 @@ export class NodeScopeLedger {
     return this.approvedEntries(chat, node, principal).length > 0
   }
   guardNode(chat: NodeScopeChat, node: string, principal: string): () => void {
+    const continuation = continuationVersions.get(chat) ?? 0
     const identity = chat.nodeScopeIdentity
     const sources = JSON.stringify(
       (chat.inheritedNodeScopes ?? []).map((source) => source.identity)
@@ -210,6 +218,7 @@ export class NodeScopeLedger {
           { kind: 'not-approved', node_id: node }
         )
       if (
+        (continuationVersions.get(chat) ?? 0) !== continuation ||
         chat.nodeScopeIdentity !== identity ||
         JSON.stringify((chat.inheritedNodeScopes ?? []).map((source) => source.identity)) !==
           sources ||
