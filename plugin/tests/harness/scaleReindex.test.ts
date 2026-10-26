@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest'
 import { budgets } from '../scale/oracles.mjs'
 import {
+  hashTracepointBoundary,
   declaredInterruptions,
   reindexEvidence,
   completedBlobShas,
@@ -365,4 +366,9 @@ it('separates host cache hashes by their actual stack, including intrinsic Promi
       diagnostics.classifyOrigin
     )
   ).toBe('unknown')
+})
+
+it('places the hash instrumentation gate after the evaluation mark, refusing missing marks', () => {
+  expect(hashTracepointBoundary('setup();\nmarkLoad("evalEnd");\nstart();')).toBe(2)
+  expect(() => hashTracepointBoundary('setup();')).toThrow('evaluation boundary')
 })

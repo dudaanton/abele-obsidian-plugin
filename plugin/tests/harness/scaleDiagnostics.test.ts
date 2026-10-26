@@ -13,7 +13,14 @@ it('keeps a large activity snapshot in bounded receipts without dropping refusal
   const state = {
     event: 'primary-state',
     snapshot: { rows: [{ status: 'error' }] },
-    activity: [{ refused, events }],
+    activity: [
+      {
+        refused,
+        events,
+        id: 'sample',
+        classification: { hits: { prepare: 3 }, bytes: 7, firstReads: [{ stack: 'at sample' }] },
+      },
+    ],
   }
   expect(Buffer.byteLength(JSON.stringify(state))).toBeGreaterThan(4 * 1024 ** 2)
   const chunks = diagnostics.stateChunks(state)
@@ -25,6 +32,9 @@ it('keeps a large activity snapshot in bounded receipts without dropping refusal
   expect(chunks.map((chunk) => chunk.activityChunk)).toEqual(
     chunks.map((_, index) => ({ index, total: chunks.length }))
   )
+  expect(
+    chunks.every((chunk) => chunk.activity[0].classification === state.activity[0].classification)
+  ).toBe(true)
   expect(state.activity[0].refused).toHaveLength(33000)
 })
 
@@ -492,4 +502,119 @@ it('records only visible status words and retains refusal counts in chunked acti
   expect(chunks.length).toBeGreaterThan(1)
   for (const chunk of chunks)
     expect(chunk.activity[0].notSynced).toEqual(state.activity[0].notSynced)
+})
+
+it('arms constructor tracepoints only at the synchronous post-evaluation boundary', async () => {
+  const calls = []
+  let listener
+  const transport = {
+    on: (_name, fn) => {
+      listener = fn
+    },
+    removeListener: () => {},
+    sendCommand: async (name, params) => {
+      calls.push({ name, params })
+      return { breakpointId: params?.lineNumber === 20 ? 'gate' : 'hash', locations: [] }
+    },
+  }
+  const events = []
+  await diagnostics.armHashTracepoints(transport, [4, 5], 20, (e) => events.push(e))
+  expect(
+    calls.filter((c) => c.name === 'Debugger.setBreakpointByUrl').map((c) => c.params.lineNumber)
+  ).toEqual([20])
+  await listener(null, 'Debugger.paused', {
+    hitBreakpoints: ['gate'],
+    callFrames: [{ location: { scriptId: 'first' } }],
+  })
+  expect(
+    calls.filter((c) => c.name === 'Debugger.setBreakpoint').map((c) => c.params.location)
+  ).toEqual([
+    { scriptId: 'first', lineNumber: 4 },
+    { scriptId: 'first', lineNumber: 5 },
+  ])
+  await listener(null, 'Debugger.paused', {
+    hitBreakpoints: ['gate'],
+    callFrames: [{ location: { scriptId: 'reload' } }],
+  })
+  expect(
+    calls
+      .filter((c) => c.name === 'Debugger.setBreakpoint')
+      .slice(-2)
+      .map((c) => c.params.location.scriptId)
+  ).toEqual(['reload', 'reload'])
+  expect(calls.at(-1).name).toBe('Debugger.resume')
+  expect(events.some((e) => e.event === 'javascript-hash-tracepoint-setup')).toBe(true)
+})
+
+it('retains connection classification counters and read stacks in restart summaries', () => {
+  const classification = {
+    storage: 'indexeddb',
+    rowsLoaded: 7,
+    hits: { prepare: 9 },
+    misses: { prepare: { identity: 2 } },
+    reads: 2,
+    bytes: 80,
+    firstReads: [{ stack: 'at sample', bytes: 40 }],
+  }
+  expect(diagnostics.classificationSnapshot({ sample: { classification }, other: {} })).toEqual([
+    { id: 'sample', classification },
+    { id: 'other', classification: null },
+  ])
+})
+
+it('retains classification in controller status and settled activity snapshots', async () => {
+  const { RealVault } = await import('../scale/run.mjs')
+  const { runInNewContext } = await import('node:vm')
+  const classification = {
+    hits: { prepare: 4 },
+    misses: { prepare: { absent: 1 } },
+    bytes: 12,
+    firstReads: [{ stack: 'at sample' }],
+  }
+  const context = {
+    window: {},
+    app: {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              live: new Map(),
+              ui: { rows: { value: [] }, activity: { value: { sample: { classification } } } },
+            },
+          },
+        },
+      },
+    },
+  }
+  const vault = new RealVault({}, '/sample-vault')
+  vault.evaluate = (body) => runInNewContext(`(()=>{${body}})()`, context)
+  expect((await vault.snapshot()).activity).toMatchObject([{ id: 'sample', classification }])
+  expect(await vault.activityEvidence()).toMatchObject([{ id: 'sample', classification }])
+})
+
+it('resumes the renderer and reports missing hash coverage if setup fails', async () => {
+  let listener
+  const calls = []
+  const events = []
+  const transport = {
+    on: (_name, fn) => {
+      listener = fn
+    },
+    removeListener() {},
+    sendCommand: async (name) => {
+      calls.push(name)
+      if (name === 'Debugger.setBreakpoint') throw new Error('sample failure')
+      return { breakpointId: 'gate' }
+    },
+  }
+  await diagnostics.armHashTracepoints(transport, [1], 20, (e) => events.push(e))
+  await listener(null, 'Debugger.paused', {
+    hitBreakpoints: ['gate'],
+    callFrames: [{ location: { scriptId: 'sample' } }],
+  })
+  expect(calls.at(-1)).toBe('Debugger.resume')
+  expect(events.map((e) => e.event)).toEqual([
+    'javascript-hash-observer-unavailable',
+    'javascript-hash-tracepoint-setup',
+  ])
 })

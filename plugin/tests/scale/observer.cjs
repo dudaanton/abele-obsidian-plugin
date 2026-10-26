@@ -78,6 +78,8 @@ module.exports = class extends Plugin {
           })),
         },
         activity: Object.entries(ui.activity.value).map(([id, a]) => ({
+          id,
+          classification: a.classification ?? null,
           notSynced: a.notSynced ?? null,
           notSyncedError: a.notSyncedError ?? null,
           refused: a.refused ?? [],

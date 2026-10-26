@@ -245,3 +245,11 @@ export function digestCoverage(operation, entries, endAt) {
     bindings.some((row) => row.at > operation.at && row.at <= endAt)
   return { complete, startedAt, reloadAt, observedBefore, observedAfter }
 }
+
+// CDP uses zero-based lines. The next statement runs after the mark and before
+// plugin startup; pausing there avoids an asynchronous observer/IPC receipt gap.
+export function hashTracepointBoundary(source) {
+  const mark = /\bmarkLoad(?:\$\d+)?\(["']evalEnd["']\);[^\S\n]*\n/.exec(source)
+  if (!mark) throw new Error('JavaScript hash evaluation boundary unavailable')
+  return source.slice(0, mark.index + mark[0].length).split('\n').length - 1
+}

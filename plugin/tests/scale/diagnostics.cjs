@@ -336,26 +336,12 @@ exports.watch = async function (id, serializedConfig) {
     emit({ event: 'cpu-profile-unavailable', reason: 'debugger clock unavailable' })
     return channel
   }
-  const hashBreakpoints = new Set()
-  const debuggerMessage = (_event, method, params) => {
-    if (method === 'Debugger.breakpointResolved' && hashBreakpoints.has(params.breakpointId))
-      emit({ event: 'javascript-hash-observer-ready', location: params.location })
-  }
-  if (config.javascriptHashTracepoints?.length) {
-    transport.on('message', debuggerMessage)
-    await transport.sendCommand('Debugger.enable')
-    for (const lineNumber of config.javascriptHashTracepoints) {
-      const binding = await transport.sendCommand('Debugger.setBreakpointByUrl', {
-        url: 'plugin:abele',
-        lineNumber,
-        condition:
-          '(()=>{try{globalThis.__scaleObserveIncrementalHash?.(this)}catch{}return false})()',
-      })
-      hashBreakpoints.add(binding.breakpointId)
-      for (const location of binding.locations ?? [])
-        emit({ event: 'javascript-hash-observer-ready', location })
-    }
-  }
+  const closeHashTracepoints = await exports.armHashTracepoints(
+    transport,
+    config.javascriptHashTracepoints,
+    config.javascriptHashBoundary,
+    emit
+  )
   const profiler = exports.createStallProfiler({
     clock,
     continuous: config.continuousCpu === true,
@@ -418,8 +404,7 @@ exports.watch = async function (id, serializedConfig) {
     closing = (async () => {
       watches.delete(channel)
       coverageWatches.delete(channel)
-      if (config.javascriptHashTracepoints?.length)
-        transport.removeListener('message', debuggerMessage)
+      closeHashTracepoints()
       wc.removeListener('destroyed', destroyed)
       wc.removeListener('did-start-navigation', navigating)
       clearInterval(timer)
@@ -484,3 +469,50 @@ exports.visibleStatus = (document) =>
       label: el.getAttribute('aria-label'),
       selector: el.className,
     }))
+
+exports.classificationSnapshot = (activity) =>
+  Object.entries(activity ?? {}).map(([id, value]) => ({
+    id,
+    classification: value.classification ?? null,
+  }))
+
+exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
+  if (!lines?.length) return () => {}
+  if (!Number.isInteger(boundary)) throw new Error('Hash evaluation boundary unavailable')
+  const breakpoints = new Set()
+  let gate
+  const message = async (_event, method, params) => {
+    if (method === 'Debugger.breakpointResolved' && breakpoints.has(params.breakpointId))
+      emit({ event: 'javascript-hash-observer-ready', location: params.location })
+    if (method !== 'Debugger.paused' || !params.hitBreakpoints?.includes(gate)) return
+    const startedAt = Date.now()
+    try {
+      const scriptId = params.callFrames?.[0]?.location?.scriptId
+      if (!scriptId) throw new Error('Hash script identity unavailable')
+      for (const lineNumber of lines) {
+        const binding = await transport.sendCommand('Debugger.setBreakpoint', {
+          location: { scriptId, lineNumber },
+          condition:
+            '(()=>{try{globalThis.__scaleObserveIncrementalHash?.(this)}catch{}return false})()',
+        })
+        breakpoints.add(binding.breakpointId)
+        for (const location of binding.actualLocation ? [binding.actualLocation] : [])
+          emit({ event: 'javascript-hash-observer-ready', location })
+      }
+    } catch (error) {
+      emit({ event: 'javascript-hash-observer-unavailable', reason: String(error) })
+    } finally {
+      // This is harness latency, retained separately rather than hidden in startup.
+      emit({ event: 'javascript-hash-tracepoint-setup', startedAt, endedAt: Date.now() })
+      await transport.sendCommand('Debugger.resume')
+    }
+  }
+  transport.on('message', message)
+  await transport.sendCommand('Debugger.enable')
+  const binding = await transport.sendCommand('Debugger.setBreakpointByUrl', {
+    url: 'plugin:abele',
+    lineNumber: boundary,
+  })
+  gate = binding.breakpointId
+  return () => transport.removeListener('message', message)
+}

@@ -346,6 +346,14 @@ kind/occurrence must trigger; repeating another occurrence cannot replace one.
 Native hash observation preserves hash inputs/results and records stack provenance separately
 for host, plugin and unknown calls. Debugger tracepoints in recognized bundled incremental
 hash constructors attach digest observers without rehashing content or changing digest results.
+Constructor tracepoints are armed at a synchronous debugger gate on the first statement
+following `abele:eval-end`, after imported module initialization. Each binding targets that
+script instance only; reloading the plugin re-arms the gate without instrumenting the next
+bundle's module setup. Startup cannot run past the gate until bindings are installed.
+The short debugger setup intervals are retained in `hashTracepointSetup`; raw startup clocks
+and long tasks include those intervals and are never silently corrected. A missing evaluation
+boundary fails setup. Module initialization is outside JavaScript digest observation; all
+post-boundary digests remain observed, including startup and subsequent reloads.
 Receipts retain the actual SHA, byte count and stack. Activation must be proved by bindings
 and observed JavaScript digests in both renderer generations; missing proof fails the oracle.
 The observer correlates digests with fixture file SHAs and prior observations, retaining raw
@@ -395,6 +403,13 @@ Handle restoration records use weak ownership, so closed or abandoned native han
 collectible while observers stay installed. Still-live handles are restored on unload;
 dead weak references are pruned during later opens. RSS measurements still include the
 observer and host, rather than isolating product allocations.
+
+Every periodic state receipt, controller snapshot and settled activity snapshot retains each
+connection's complete `classification` diagnostic (or null when unavailable). The synced
+restart's `restartClassification` section records one final snapshot per device and connection,
+including cache storage/loaded rows, hits and misses by caller and reason, read counts/bytes,
+and the diagnostic's first-read stacks. These are cumulative diagnostics for that runtime,
+not sums of periodic snapshots or replacements for independent read-port receipts.
 
 Synced restarts additionally require zero plugin payload-content read bytes, measured at
 adapter reads, native promise readFile and native FileHandle read/readv/readFile ports.

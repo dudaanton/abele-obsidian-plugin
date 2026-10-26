@@ -274,6 +274,14 @@ export function* markdownChunks(report) {
     report.serverReceipt ? [report.serverReceipt] : []
   )
   yield* details('Synced restart content read evidence', report.restartReadEvidence)
+  yield* details(
+    'Synced restart classification (cache, hits, misses by caller/reason, read bytes and stacks)',
+    report.restartClassification
+  )
+  yield* details(
+    'Harness hash tracepoint setup intervals (included in raw startup clocks)',
+    report.hashTracepointSetup
+  )
   yield* details('Renderer long-task sampled CPU attribution', report.longTaskAttribution)
   yield* details('Sampled peak app RSS', [
     {
