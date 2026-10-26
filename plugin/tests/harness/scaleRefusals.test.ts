@@ -298,7 +298,7 @@ it('requires visible labels for connected snapshots without treating pre-connect
     oversizedEvidence(
       [file],
       [file],
-      [{ ...connected, snapshot: { rows: [{ status: 'idle' }], visibleStatus: [] } }],
+      [{ ...connected, snapshot: { rows: [{ status: 'idle' }] } }],
       []
     )[0].pass
   ).toBe(false)
@@ -308,4 +308,10 @@ it('requires visible labels for connected snapshots without treating pre-connect
 it('recognizes the full visible completion label', async () => {
   const { visibleSyncedClaim } = await import('../scale/refusals.mjs')
   expect(visibleSyncedClaim({ visibleStatus: [{ text: 'Fully synced' }] })).toBe(true)
+})
+
+it('distinguishes an observed empty screen from missing status evidence', async () => {
+  const { visibleSyncedClaim } = await import('../scale/refusals.mjs')
+  expect(visibleSyncedClaim({ visibleStatus: [] })).toBe(false)
+  expect(visibleSyncedClaim({})).toBe(null)
 })

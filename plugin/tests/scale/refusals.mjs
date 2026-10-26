@@ -1,7 +1,7 @@
 import writes from './writes.cjs'
 export function visibleSyncedClaim(snapshot) {
   const labels = snapshot?.visibleStatus
-  if (!Array.isArray(labels) || !labels.length) return null
+  if (!Array.isArray(labels)) return null
   return labels.some(({ text }) =>
     /^(?:synced|fully synced|up to date|all files synced)$/i.test(text?.trim() ?? '')
   )
