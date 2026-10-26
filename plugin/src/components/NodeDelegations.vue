@@ -57,20 +57,27 @@ import { computed, ref } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { ChatService } from '@/ai/ChatService'
 import NodeDelegationCard from './NodeDelegationCard.vue'
-const props = defineProps<{ parentId: string; include?: string[]; exclude?: string[] }>()
+const props = defineProps<{
+  parentId: string
+  include?: string[]
+  exclude?: string[]
+  commands?: 'finished' | 'live'
+}>()
 const visible = (key: string) =>
   props.include ? props.include.includes(key) : !props.exclude?.includes(key)
 const service = NodeService.getInstance()
 const cards = computed(() =>
-  service.nodes.value.flatMap((node) => {
-    try {
-      return (service.connection(node.id).delegationCards.value[props.parentId] ?? [])
-        .filter((card) => visible(`task:${card.taskKey}`))
-        .map((card) => ({ node, card }))
-    } catch {
-      return []
-    }
-  })
+  props.commands === 'finished'
+    ? []
+    : service.nodes.value.flatMap((node) => {
+        try {
+          return (service.connection(node.id).delegationCards.value[props.parentId] ?? [])
+            .filter((card) => visible(`task:${card.taskKey}`))
+            .map((card) => ({ node, card }))
+        } catch {
+          return []
+        }
+      })
 )
 const error = ref('')
 const errorNode = ref('')
@@ -97,7 +104,20 @@ const runs = computed(() =>
   service.nodes.value.flatMap((node) => {
     try {
       return (service.connection(node.id).managerCards.value[props.parentId] ?? [])
-        .filter((card) => visible(`operation:${card.operation}`))
+        .filter((card) => {
+          const live = ['pending_approval', 'running', 'outcome_unknown'].includes(card.run.state)
+          return !props.commands || (props.commands === 'live' ? live : !live)
+        })
+        .filter((card) => {
+          const keys = [
+            `operation:${card.operation}`,
+            `run:${card.run.session_id}:${card.run.run_id}`,
+          ]
+          const include = props.include
+          return include
+            ? keys.some((key) => include.includes(key))
+            : !keys.some((key) => props.exclude?.includes(key))
+        })
         .map((card) => ({
           node,
           card,

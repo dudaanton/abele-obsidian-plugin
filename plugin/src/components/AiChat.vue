@@ -216,6 +216,12 @@
               v-bind="messageProps(msg)"
               v-on="messageHandlers"
             />
+            <NodeDelegations
+              v-if="session?.delegationParentId && nodePlacements[block.id]"
+              :parent-id="session.delegationParentId"
+              :include="nodePlacements[block.id]"
+              commands="finished"
+            />
           </ChatToolRun>
           <AiChatMessage
             v-else
@@ -231,6 +237,7 @@
             "
             :parent-id="session.delegationParentId"
             :include="nodePlacements[block.kind === 'run' ? block.id : block.message.id]"
+            :commands="block.kind === 'run' ? 'live' : undefined"
           />
         </template>
 
