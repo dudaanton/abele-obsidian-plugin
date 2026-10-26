@@ -1,6 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { h, ref } from 'vue'
 import { Menu, MarkdownRenderer, Platform } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
 import NodeSidebarChat from '@/components/NodeSidebarChat.vue'
@@ -296,7 +296,7 @@ it('read-only message rows never enable local draft actions while local drafts s
   }
 })
 
-it('folds the calls into one line of work, nested work inside it, diffs and thinking closed', async () => {
+it('folds calls and nested work, then shows diffs like vault cards while thinking stays closed', async () => {
   useVault([])
   const wrapper = mount(NodeMessageTree, {
     props: {
@@ -322,6 +322,7 @@ it('folds the calls into one line of work, nested work inside it, diffs and thin
   try {
     // The call is a line of work, folded as in the regular chat; its nested work is inside.
     expect(wrapper.find('.abele-node-child-work').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(false)
     wrapper.findComponent(ChatToolRun).vm.$emit('update:open', true)
     await flushPromises()
     expect(
@@ -331,7 +332,8 @@ it('folds the calls into one line of work, nested work inside it, diffs and thin
         .map((c) => c.props('message').id)
     ).toEqual(['child'])
     expect(wrapper.get('.abele-chat-msg__thinking').attributes('open')).toBeUndefined()
-    expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(true)
+    expect(wrapper.find('[data-find-part="params"]').exists()).toBe(false)
     expect(wrapper.find('p.abele-node-message-note').exists()).toBe(false)
     await wrapper.get('.abele-chat-msg__icon').trigger('click')
     expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(true)
@@ -339,3 +341,50 @@ it('folds the calls into one line of work, nested work inside it, diffs and thin
     wrapper.unmount()
   }
 })
+
+it.each(['write', 'edit'])(
+  'shows the same %s diff in vault and node runs before opening raw details',
+  async (toolName) => {
+    useVault([])
+    const message = {
+      id: 'sample-file-call',
+      role: 'tool-call' as const,
+      content: '',
+      toolName,
+      toolParams: { path: 'sample.txt' },
+      toolResult: 'Saved',
+      toolStatus: 'approved' as const,
+      toolDiff: { old: 'before', new: 'after' },
+      timestamp: 0,
+    }
+    // Match AiChat's run slot: the ordinary message has no compactToolDetails override.
+    const vault = mount(ChatToolRun, {
+      props: { id: message.id, calls: [message], open: false },
+      slots: { default: () => h(AiChatMessage, { message }) },
+      global: { stubs: { Markdown: true, Diff: true } },
+    })
+    const node = mount(NodeMessageTree, {
+      props: {
+        messages: [{ ...message, toolName: `node_${toolName}` }],
+        children: {},
+        openResource: vi.fn(),
+      },
+      global: { stubs: { Markdown: true, Diff: true } },
+    })
+    try {
+      for (const wrapper of [vault, node])
+        expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(false)
+      await vault.setProps({ open: true })
+      node.findComponent(ChatToolRun).vm.$emit('update:open', true)
+      await flushPromises()
+      for (const wrapper of [vault, node]) {
+        expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(true)
+        expect(wrapper.find('[data-find-part="params"]').exists()).toBe(false)
+        expect(wrapper.get('.abele-chat-msg__icon').attributes('aria-expanded')).toBe('false')
+      }
+    } finally {
+      vault.unmount()
+      node.unmount()
+    }
+  }
+)
