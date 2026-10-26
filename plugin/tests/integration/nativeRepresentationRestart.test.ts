@@ -192,8 +192,9 @@ it('restarts a synced 33000-file native representation without reading content',
     state!.close()
     await disk.rm(join(root, paths[0]))
     await open(paths.length - 1)
-    const cached = local.get(EXTERNAL_INSPECTION_KEY) as { entries: unknown[] }
-    expect(cached.entries).toHaveLength(paths.length - 1)
+    // The cache lives in the host database: the host's local storage cannot hold 33000 rows.
+    expect(local.has(EXTERNAL_INSPECTION_KEY)).toBe(false)
+    expect(await host!.readInspections()).toHaveLength(paths.length - 1)
   } finally {
     host?.close()
     state?.close()

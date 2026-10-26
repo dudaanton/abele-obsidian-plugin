@@ -306,6 +306,10 @@ it('shows normalization collisions as pending refusals while unrelated files syn
       expect(fixture.ui.activity.value[fixture.id].pending).toBe(activity.pending)
       expect(fixture.ui.activity.value[fixture.id].refused).toEqual(activity.refused)
     }
+    // Diagnostics: every status carries how classification used its cache, by caller.
+    const classification = fixture.ui.activity.value[fixture.id].classification
+    expect(classification?.callers.list?.['miss-absent']).toBeGreaterThan(0)
+    expect(classification?.contentReads).toBeGreaterThan(0)
     expect(await app.vault.adapter.read(path)).toBe('composed bytes')
     expect(await app.vault.adapter.read(path.normalize('NFD'))).toBe('decomposed bytes')
     expect(

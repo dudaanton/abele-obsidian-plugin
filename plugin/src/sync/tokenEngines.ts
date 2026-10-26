@@ -1492,6 +1492,8 @@ export class TokenEngines {
       deferred: status.deferred ?? 0,
       reconciliation: status.reconciliation,
     }
+    const classification = this.offloadPorts.get(id)?.classification()
+    if (classification) activity.classification = classification
     if (runtime) this.refreshNotSynced(id, runtime)
     const unsent = status.state === 'offline' ? await runtime?.pendingLocalDetails() : undefined
     if (unsent) activity.pending = unsent.count

@@ -24,6 +24,7 @@ const recordKey = (namespace: string, key: string, id: string): string =>
 const PATHS_MIGRATED = '!paths-migrated'
 const RECORDS_MIGRATED = '!records-migrated'
 const MIGRATED = '!migrated'
+const INSPECTION = '!inspection-v1:'
 export interface ScanFingerprint {
   identity: string
   size: number
@@ -206,6 +207,54 @@ export class HostSyncStorage implements LocalStorage {
       key: '!scan-fingerprint-v1:' + path,
       value,
     })
+    await done
+  }
+  /** The projection classification cache, one row per physical path. It grows with the vault,
+   * so it lives here rather than in the host's small local-storage quota. */
+  async readInspections(): Promise<unknown[]> {
+    const tx = this.db.transaction(STORE, 'readonly')
+    const done = completion(tx, 'read inspection cache')
+    // One ranged request where the host has key ranges; a seeking cursor otherwise.
+    if (typeof IDBKeyRange !== 'undefined') {
+      const range = IDBKeyRange.bound(
+        [this.namespace, INSPECTION],
+        [this.namespace, INSPECTION + '\uffff']
+      )
+      const rows = await wait<{ value: unknown }[]>(tx.objectStore(STORE).getAll(range))
+      await done
+      return rows.map((row) => row.value)
+    }
+    const rows = await new Promise<unknown[]>((resolve, reject) => {
+      const values: unknown[] = []
+      const request = tx.objectStore(STORE).openCursor()
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) return resolve(values)
+        const [namespace, name] = cursor.key as [string, string]
+        if (namespace < this.namespace || (namespace === this.namespace && name < INSPECTION)) {
+          cursor.continue([this.namespace, INSPECTION])
+          return
+        }
+        if (namespace !== this.namespace || !name.startsWith(INSPECTION)) return resolve(values)
+        values.push((cursor.value as { value: unknown }).value)
+        cursor.continue()
+      }
+    })
+    await done
+    return rows
+  }
+  async writeInspections(
+    entries: readonly { path: string }[],
+    retired: readonly string[] = []
+  ): Promise<void> {
+    if (!entries.length && !retired.length) return
+    const tx = this.db.transaction(STORE, 'readwrite')
+    const done = completion(tx, 'write inspection cache')
+    const store = tx.objectStore(STORE)
+    for (const path of retired) store.delete([this.namespace, INSPECTION + path])
+    for (const entry of entries)
+      store.put({ namespace: this.namespace, key: INSPECTION + entry.path, value: entry })
     await done
   }
   retentionIndex(root: string): IndexedRetention {

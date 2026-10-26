@@ -60,7 +60,9 @@ export interface RepresentationOptions {
     cacheKey?(path: string): string
     ownsKey?(path: string): boolean
     identity?(path: string): Promise<InspectionIdentity | null>
-    save(entries: readonly InspectionEntry[], retired?: readonly string[]): void
+    /** Where the cache is kept, for diagnostics. */
+    storage?: string
+    save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
   }
   verify(fileId: string, input: ExternalVerifyRequest): Promise<unknown>
   /** Called only with verified bytes and durable intent, inside the sync's own serialized job.
@@ -92,6 +94,19 @@ const terminal = new Set([
   'detached',
 ])
 
+/** How classification decided, per caller: the harness reads it to attribute a content read.
+ * `hit` and `pass` read no content; every `miss-*` reason is followed by one bounded read. */
+export interface ClassificationStats {
+  storage: string
+  loaded: number
+  callers: Record<string, Record<string, number>>
+  contentReads: number
+  contentBytes: number
+  persistFailures: number
+  readStacks: { caller: string; reason: string; path: string; stack: string }[]
+}
+const READ_STACKS = 16
+
 type Verified = { revision: number; size: number; marker: boolean }
 type PassProof = { pass: number; revision: number }
 
@@ -107,7 +122,17 @@ export class ExternalRepresentation {
   private readonly inspected = new Map<string, InspectionEntry>()
   /** Files whose identity was verified in the current inventory pass, by their pass revision. */
   private verified = { pass: undefined as number | undefined, paths: new Map<string, Verified>() }
+  private readonly stats: ClassificationStats
   private constructor(private readonly options: RepresentationOptions) {
+    this.stats = {
+      storage: options.inspection ? (options.inspection.storage ?? 'memory') : 'none',
+      loaded: options.inspection?.entries.length ?? 0,
+      callers: {},
+      contentReads: 0,
+      contentBytes: 0,
+      persistFailures: 0,
+      readStacks: [],
+    }
     // A scan must retain every inspected file; eviction makes a large vault reread
     // content on every cycle and on restart.
     for (const entry of options.inspection?.entries ?? []) this.inspected.set(entry.path, entry)
@@ -162,13 +187,38 @@ export class ExternalRepresentation {
       else this.entries.delete(file.fileId)
     }
     this.owned()
-    this.flushInspection()
+    await this.flushInspection()
   }
-  private flushInspection(retired: readonly string[] = []): void {
+  private async flushInspection(retired: readonly string[] = []): Promise<void> {
     if (!this.inspectionDirty) return
     this.owned()
-    this.options.inspection?.save([...this.inspected.values()], retired)
     this.inspectionDirty = false
+    try {
+      await this.options.inspection?.save([...this.inspected.values()], retired)
+    } catch (error) {
+      this.inspectionDirty = true
+      // Lost ownership still stops the caller. Otherwise the cache only saves reads, and a
+      // failed save is retried with the next change.
+      this.owned()
+      this.stats.persistFailures++
+      console.debug('[Abele Sync] inspection cache was not saved', error)
+    }
+  }
+  classificationStats(): ClassificationStats {
+    return structuredClone(this.stats)
+  }
+  private count(caller: string, outcome: string): void {
+    const counts = (this.stats.callers[caller] ??= {})
+    counts[outcome] = (counts[outcome] ?? 0) + 1
+  }
+  private missReason(prior: InspectionEntry | undefined, identity: InspectionIdentity | null) {
+    if (!prior) return 'miss-absent'
+    if (!this.options.inspection?.identity) return 'miss-changed'
+    if (identity === null) return 'miss-identity-unavailable'
+    if (!cacheableInspectionIdentity(identity)) return 'miss-identity-uncacheable'
+    for (const field of ['size', 'mtime', 'ctime', 'identity'] as const)
+      if (prior[field] !== identity[field]) return 'miss-changed:' + field
+    return 'miss-unstable'
   }
   private owned(): void {
     this.options.assertOwned()
@@ -259,7 +309,8 @@ export class ExternalRepresentation {
   async classify(
     path: string,
     observed?: FileInfo | null,
-    supplied?: Uint8Array
+    supplied?: Uint8Array,
+    caller = 'direct'
   ): Promise<RepresentationDecision> {
     this.owned()
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
@@ -316,10 +367,12 @@ export class ExternalRepresentation {
     // a vault or config event for the path, or a new pass, verifies it again.
     const proof = !supplied && this.options.inspection?.identity ? this.passProof(path) : undefined
     const known = proof && this.verifiedInPass(cachePath, proof, info.size)
-    if (known)
+    if (known) {
+      this.count(caller, 'pass')
       return known.marker
         ? { kind: 'hold', reason: 'projection', dirty: false }
         : { kind: 'ordinary' }
+    }
     const identity =
       !supplied && this.options.inspection?.identity
         ? await this.options.inspection.identity(path)
@@ -345,12 +398,27 @@ export class ExternalRepresentation {
         this.owned()
         if (stable?.size === info.size)
           this.rememberVerified(cachePath, proof, info.size, prior.marker)
+        this.count(caller, 'hit')
         return prior.marker
           ? { kind: 'hold', reason: 'projection', dirty: false }
           : { kind: 'ordinary' }
       }
     }
+    let reason = 'supplied'
+    if (!supplied) {
+      reason = this.options.inspection ? this.missReason(prior, identity) : 'no-cache'
+      this.stats.contentReads++
+      if (this.stats.readStacks.length < READ_STACKS)
+        this.stats.readStacks.push({
+          caller,
+          reason,
+          path,
+          stack: (new Error().stack ?? '').split('\n').slice(2, 10).join('\n'),
+        })
+    }
+    this.count(caller, reason)
     const bytes = supplied ?? (await this.bytes(path, info))
+    if (!supplied && bytes) this.stats.contentBytes += bytes.byteLength
     this.owned()
     const marker = !!bytes && recognizeProjection(bytes)
     if (!supplied) {
@@ -388,7 +456,9 @@ export class ExternalRepresentation {
       get: (stage, key) => {
         if (key === 'commit')
           return async (signal?: AbortSignal) => {
-            if ((await this.classify(path)).kind !== 'ordinary')
+            if (
+              (await this.classify(path, undefined, undefined, 'stage-commit')).kind !== 'ordinary'
+            )
               throw new ExternalRecoveryRequired(
                 'held representation cannot be mutated by ordinary sync'
               )
@@ -424,7 +494,11 @@ export class ExternalRepresentation {
             work: (view: FileSystem, flush: () => Promise<void>) => Promise<unknown>
           ) => {
             for (const item of items)
-              if ((await self.classify(item.path)).kind !== 'ordinary') return undefined
+              if (
+                (await self.classify(item.path, undefined, undefined, 'install')).kind !==
+                'ordinary'
+              )
+                return undefined
             return install.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
               work(self.fileSystem(view), flush)
             )
@@ -437,7 +511,8 @@ export class ExternalRepresentation {
             try {
               for await (const info of fs.list()) {
                 observed.add(self.options.inspection?.cacheKey?.(info.path) ?? info.path)
-                if ((await self.classify(info.path, info)).kind === 'ordinary') yield info
+                if ((await self.classify(info.path, info, undefined, 'list')).kind === 'ordinary')
+                  yield info
               }
               complete = true
             } finally {
@@ -450,19 +525,24 @@ export class ExternalRepresentation {
                     retired.push(path)
                     self.inspectionDirty = true
                   }
-              self.flushInspection(retired)
+              await self.flushInspection(retired)
             }
           }
         if (method === 'openRead' || method === 'fingerprint')
           return async (path: string, ...args: unknown[]) => {
-            if ((await self.classify(path)).kind !== 'ordinary')
+            if (
+              (await self.classify(path, undefined, undefined, String(method))).kind !== 'ordinary'
+            )
               throw new ExternalRecoveryRequired('held representation is not ordinary content')
             return Reflect.get(target, method).call(target, path, ...args)
           }
         if (method === 'beginAtomicWrite' && fs.beginAtomicWrite)
           return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
             const path = args[0]
-            if ((await self.classify(path)).kind !== 'ordinary')
+            if (
+              (await self.classify(path, undefined, undefined, 'beginAtomicWrite')).kind !==
+              'ordinary'
+            )
               throw new ExternalRecoveryRequired(
                 'held representation cannot be mutated by ordinary sync'
               )
@@ -487,7 +567,10 @@ export class ExternalRepresentation {
           return async (...args: unknown[]) => {
             const paths = args.slice(0, method === 'move' ? 2 : 1) as string[]
             for (const path of paths)
-              if ((await self.classify(path)).kind !== 'ordinary')
+              if (
+                (await self.classify(path, undefined, undefined, String(method))).kind !==
+                'ordinary'
+              )
                 throw new ExternalRecoveryRequired(
                   'held representation cannot be mutated by ordinary sync'
                 )
@@ -515,7 +598,8 @@ export class ExternalRepresentation {
               const file = self.file(entry.fileId)
               if (
                 (!file || !self.managed(file)) &&
-                (await self.classify(entry.path)).kind === 'ordinary'
+                (await self.classify(entry.path, undefined, undefined, 'state.all')).kind ===
+                  'ordinary'
               )
                 yield entry
             }
@@ -542,7 +626,10 @@ export class ExternalRepresentation {
         )
       const source = op.file_id ? await this.options.ledger.byFileId(op.file_id) : null
       for (const path of [op.path, op.to_path, source?.path])
-        if (path && (await this.classify(path)).kind !== 'ordinary')
+        if (
+          path &&
+          (await this.classify(path, undefined, undefined, 'publication')).kind !== 'ordinary'
+        )
           throw new ExternalRecoveryRequired('projection publication requires recovery')
     }
     this.owned()

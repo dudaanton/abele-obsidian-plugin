@@ -368,8 +368,12 @@ Device-local `abele-sync-external-activation-v1` holds
 preparing/active bindings and database-instance identity outside the deletable ledger;
 `abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
 connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
-claim, not a filesystem lock. `abele-sync-external-inspection-v1` caches projection
-inspection by physical path, size, mtime, ctime and available native file identity. It retains
+claim, not a filesystem lock. The projection inspection cache keeps, per physical path, size,
+mtime, ctime, available native file identity and whether the file is a projection. It lives in
+the sync host database (`abele-sync-host-v1`, one row per path under `!inspection-v1:`), because
+a large vault's cache does not fit the host's local-storage quota; an earlier copy under the
+local-storage key `abele-sync-external-inspection-v1` is moved there and removed. Hosts without
+that database keep it under the local-storage key. It retains
 the complete inspected inventory across restarts, and legacy entries missing current identity fields are
 reinspected once. A completed listing retires paths that disappeared from its connection scope.
 It is device-local optimization data, not account adoption or publication

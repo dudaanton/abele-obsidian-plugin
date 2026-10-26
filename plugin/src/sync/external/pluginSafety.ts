@@ -49,6 +49,7 @@ import { SCOPED_CONNECTION_KEY, SCOPED_JOIN_KEY } from '../scoped/scopedJoin'
 import { ConnectionBindingSchema, sameConnection, type ConnectionBinding } from './records'
 import { decodeExternalDocument, ExternalState } from './state'
 import { MAX_PROJECTION_BYTES, recognizeProjection } from './projection'
+import { inspectionCache } from './inspectionCache'
 import {
   EXTERNAL_ACTIVATION_KEY,
   EXTERNAL_SWITCH_KEY,
@@ -221,24 +222,7 @@ export async function checkExternalMigration(app: App, factory: IDBFactory): Pro
   }
 }
 
-export const EXTERNAL_INSPECTION_KEY = 'abele-sync-external-inspection-v1'
-export const inspectionSchema = z
-  .object({
-    schema: z.literal(1),
-    entries: z.array(
-      z
-        .object({
-          path: z.string(),
-          size: z.number().int().nonnegative(),
-          mtime: z.number(),
-          ctime: z.number().optional(),
-          identity: z.string().optional(),
-          marker: z.boolean(),
-        })
-        .strict()
-    ),
-  })
-  .strict()
+export { EXTERNAL_INSPECTION_KEY, inspectionSchema } from './inspectionSchema'
 
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
@@ -463,20 +447,17 @@ export async function projectionEvidence(
     }
   } else await walk('')
   inspection.stage?.('Checking the vault')
-  const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
+  const cache = inspectionCache(app)
   // The index is an optimization, never authority: damaged/missing cache triggers inspection.
-  const previous = new Map(
-    (cached.success ? cached.data.entries : []).map((entry) => [entry.path, entry])
-  )
+  const previous = new Map((await cache.load()).map((entry) => [entry.path, entry]))
+  assertCurrent()
   const inspected: InspectionEntry[] = []
-  let dirty = false
-  let updated = false
-  const checkpoint = () => {
-    if (!dirty) return
-    const entries = new Map(previous)
-    for (const entry of inspected) entries.set(entry.path, entry)
-    persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [...entries.values()] })
-    dirty = false
+  let pending: InspectionEntry[] = []
+  const checkpoint = async () => {
+    if (!pending.length) return
+    const entries = pending
+    pending = []
+    await cache.save(entries)
   }
   let evidence: string | null = null
   const stat = async (path: string, forceDisk = false) => {
@@ -553,9 +534,9 @@ export async function projectionEvidence(
     const after = await readOnly(() => projectionInspectionIdentity(app, path))
     assertCurrent()
     if (after && cacheableInspectionIdentity(identity) && sameInspectionIdentity(after, identity)) {
-      inspected.push({ path, ...identity, marker })
-      dirty = true
-      updated = true
+      const entry = { path, ...identity, marker }
+      inspected.push(entry)
+      pending.push(entry)
     }
   }
   // Preserve hidden-file coverage, but cap concurrent adapter work instead of serial iOS stats.
@@ -573,7 +554,7 @@ export async function projectionEvidence(
       if (completed >= nextCheckpoint) {
         // Each checkpoint serializes the accumulated cache. Fixed-size intervals
         // repeatedly copy a growing vault and make a cold inspection quadratic.
-        checkpoint()
+        await checkpoint()
         nextCheckpoint *= 2
       }
       if (completed <= 8 || completed % 128 === 0 || completed === remaining.length)
@@ -585,7 +566,7 @@ export async function projectionEvidence(
   } catch (error) {
     stopped = true
     // Completed entries remain a cache, never permission to skip the next full inventory.
-    checkpoint()
+    await checkpoint().catch(() => {})
     console.debug(
       '[Abele Sync]',
       'checking vault stopped',
@@ -597,14 +578,14 @@ export async function projectionEvidence(
     throw error
   }
   assertCurrent()
-  if (updated || !cached.success || cached.data.entries.length !== inspected.length)
-    persist(app, EXTERNAL_INSPECTION_KEY, {
-      schema: 1,
-      entries: [
-        ...(cached.success ? cached.data.entries.filter((entry) => !included(entry.path)) : []),
-        ...inspected,
-      ],
-    })
+  // Paths of this inventory that were not inspected again have disappeared.
+  const kept = new Set(inspected.map((entry) => entry.path))
+  const retired = [...previous.keys()].filter((path) => included(path) && !kept.has(path))
+  if (pending.length || retired.length) {
+    const entries = pending
+    pending = []
+    await cache.save(entries, retired)
+  }
   directories.attach(inventory)
   inspection.inventory?.(inventory)
   console.debug(
@@ -689,16 +670,13 @@ export async function recoverExternalState(
 ): Promise<void> {
   fence.assertOwned()
   if (inspection.inventory) {
-    const cached = app.loadLocalStorage(EXTERNAL_INSPECTION_KEY) as {
-      schema?: unknown
-      entries?: unknown
-    } | null
-    if (cached?.schema === 1 && Array.isArray(cached.entries)) {
+    const cached = await inspectionCache(app).load()
+    fence.assertOwned()
+    if (cached.length) {
       const inventory = new Map<string, { path: string; size: number; mtime: number }>()
       const budget = new SyncTaskBudget()
-      for (const value of cached.entries) {
-        const row = inspectionSchema.shape.entries.element.safeParse(value)
-        if (row.success) inventory.set(row.data.path, row.data)
+      for (const row of cached) {
+        inventory.set(row.path, row)
         await budget.account(4096, inspection.signal)
         fence.assertOwned()
       }

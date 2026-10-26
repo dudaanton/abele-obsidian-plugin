@@ -315,6 +315,8 @@ export async function tokenOffloadConnection(input: {
   manager.hydrator(ledgerId, hydrate)
   await refresh()
   return {
+    /** Diagnostics: how file classification used its cache since the connection started. */
+    classification: () => representation.classificationStats(),
     includes: (path: string) => input.includes(path),
     pinned: async (path: string) => {
       const entry = await head(path)

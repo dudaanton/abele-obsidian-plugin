@@ -47,3 +47,7 @@ export function sameInspectionIdentity(
 export function cacheableInspectionIdentity(identity: InspectionIdentity): boolean {
   return identity.identity !== undefined || identity.ctime !== undefined
 }
+
+export function sameInspectionEntry(a: InspectionEntry, b: InspectionEntry): boolean {
+  return a.path === b.path && a.marker === b.marker && sameInspectionIdentity(a, b)
+}

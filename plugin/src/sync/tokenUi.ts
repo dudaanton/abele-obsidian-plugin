@@ -225,6 +225,8 @@ export interface ConnectionActivity {
     outcome: 'complete' | 'failed' | 'cancelled'
   }[]
   inspection?: { completed: number; total: number }
+  /** Diagnostics only: classification cache hits and the reason for each content read. */
+  classification?: import('./external/representation').ClassificationStats
   heldDeletes?: number
   deferred?: number
   pending?: number

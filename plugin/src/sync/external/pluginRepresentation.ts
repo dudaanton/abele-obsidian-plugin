@@ -8,8 +8,9 @@ import { ExternalFileHost } from './ObsidianExternalFileHost'
 import { ExternalRecoveryRequired, type RuntimeFence } from './recovery'
 import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
-import { EXTERNAL_INSPECTION_KEY, inspectionSchema, retiredArtifactPaths } from './pluginSafety'
-import { projectionInspectionIdentity } from './inspectionIdentity'
+import { retiredArtifactPaths } from './pluginSafety'
+import { inspectionCache } from './inspectionCache'
+import { projectionInspectionIdentity, sameInspectionEntry } from './inspectionIdentity'
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
 
@@ -38,10 +39,14 @@ export async function pluginRepresentation(options: {
       ? null
       : await ExternalState.open(store, ledgerId, binding)
   fence.assertOwned()
-  const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
+  const cache = inspectionCache(app)
+  const entries = await cache.load()
+  fence.assertOwned()
+  const persisted = new Map(entries.map((entry) => [entry.path, entry] as const))
   return ExternalRepresentation.open({
     inspection: {
-      entries: cached.success ? cached.data.entries : [],
+      entries,
+      storage: cache.storage,
       cacheKey: (path) => options.placement?.toLocal(path) ?? path,
       ownsKey: (path) =>
         options.inspectionIncludes
@@ -51,16 +56,17 @@ export async function pluginRepresentation(options: {
             path.startsWith(options.placement.local + '/'),
       identity: (path) =>
         projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path),
-      save: (entries, retired) => {
+      save: async (current, retired = []) => {
         fence.assertOwned()
-        // Connections share the vault cache. Keep another scope's completed inspections.
-        const latest = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
-        const merged = new Map(
-          (latest.success ? latest.data.entries : []).map((entry) => [entry.path, entry] as const)
-        )
-        for (const entry of entries) merged.set(entry.path, entry)
-        for (const path of retired ?? []) merged.delete(path)
-        app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [...merged.values()] })
+        // Write only rows that changed. Rows are per path, so another connection's completed
+        // inspections stay as they are.
+        const changed = current.filter((entry) => {
+          const known = persisted.get(entry.path)
+          return !known || !sameInspectionEntry(known, entry)
+        })
+        await cache.save(changed, retired)
+        for (const entry of changed) persisted.set(entry.path, entry)
+        for (const path of retired) persisted.delete(path)
       },
     },
     ...options,
