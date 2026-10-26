@@ -46,11 +46,11 @@ async function sequence(layout: string, stopped: boolean) {
       ) as { cards: number; folded: boolean; next: boolean }
     expect(await inspect()).toMatchObject({ cards: 0, folded: true })
     columnShot(`${shots}/${layout}-${stopped}-first-turn.png`)
-    await evalLong('window.__commandTurnsProbe.next(); true')
+    await evalLong('(()=>{window.__commandTurnsProbe.next();return true})()')
     expect(await inspect()).toEqual({ cards: 0, folded: true, next: true })
     columnShot(`${shots}/${layout}-${stopped}-next-turn.png`)
     await evalLong(
-      `document.querySelector('[data-run-ids~="sample-command-0"] > .tree-item-self').click(); true`
+      `(()=>{document.querySelector('[data-run-ids~="sample-command-0"] > .tree-item-self').click();return true})()`
     )
     expect(await inspect()).toMatchObject({ cards: 2, folded: false })
     columnShot(`${shots}/${layout}-${stopped}-original-open.png`)
