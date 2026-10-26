@@ -191,6 +191,63 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+describe('editing a user message into a sibling branch', () => {
+  it.each(['first', 'middle'])(
+    'replaces the %s question in the visible path and provider history',
+    async (position) => {
+      const sent = recordProvider()
+      const restore = vi.spyOn(session.rewind, 'apply')
+      if (position === 'middle') await session.sendMessage('Original sample follow-up')
+      const originalLeaf = session.branchLeafId!
+      const original = [...session.messages.value]
+      const question = position === 'first' ? original[0] : original.at(-2)!
+      const prefix = original.slice(
+        0,
+        original.findIndex((m) => m.id === question.id)
+      )
+      const before = await app.vault.read(
+        app.vault.getAbstractFileByPath('SampleBranch/sample-memo.md') as TFile
+      )
+      sent.length = 0
+
+      session.createBranch(question.parentId ?? null)
+      expect(session.messages.value).toEqual(prefix)
+      expect(session.messagesForModel().map((m) => m.chatMessageId)).toEqual(
+        history
+          .filter((m) => prefix.some((p) => p.id === m.chatMessageId))
+          .map((m) => m.chatMessageId)
+      )
+      await session.sendMessage('Revised sample question')
+      expect(sent).toHaveLength(1)
+      expect(sent[0].filter((m) => m.role === 'user').map((m) => m.content)).toEqual([
+        ...prefix.filter((m) => m.role === 'user').map((m) => m.content),
+        'Revised sample question',
+      ])
+      const revised = session.messages.value.at(-2)!
+      expect(revised.parentId).toBe(question.parentId)
+      expect(session.messages.value.map((m) => m.content)).toEqual([
+        ...prefix.map((m) => m.content),
+        'Revised sample question',
+        'Sample continuation',
+      ])
+      const revisedLeaf = session.branchLeafId!
+      await session.save()
+      await session.load(app.vault.getAbstractFileByPath(path) as TFile)
+      expect(session.branchLeafId).toBe(revisedLeaf)
+      expect(session.messages.value.some((m) => m.id === question.id)).toBe(false)
+      expect(session.switchBranch(originalLeaf, false)).toBe(true)
+      expect(session.messages.value).toEqual(original)
+      expect(restore).not.toHaveBeenCalled()
+      expect(executed).not.toHaveBeenCalled()
+      expect(
+        await app.vault.read(
+          app.vault.getAbstractFileByPath('SampleBranch/sample-memo.md') as TFile
+        )
+      ).toBe(before)
+    }
+  )
+})
+
 describe('a completed-call branch in the real session', () => {
   it('cuts an intermediate answer before its bundled calls and persists that choice', async () => {
     const sent = recordProvider()

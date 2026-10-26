@@ -95,6 +95,37 @@ it('cancels back to the exact selected continuation and restores the previous un
   expect(session.draft.value.text).toBe('Sample unsent follow-up')
 })
 
+it('starts an edit of the first question before the root message', async () => {
+  const visible = ref([...messages])
+  const createBranch = vi.fn(() => {
+    visible.value = []
+  })
+  const session = fakeChatSession({
+    kind: 'chat',
+    messages: visible,
+    overrides: { createBranch, allMessages: ref([...messages]), branchLeafId: null },
+  })
+  const chats = ChatService.getInstance()
+  vi.spyOn(chats, 'ensureInitialized').mockImplementation(() => {})
+  vi.spyOn(chats, 'activeSession', 'get').mockReturnValue({ value: session } as never)
+  wrapper = mount(AiChat, { attachTo: document.body })
+  await flushPromises()
+  wrapper
+    .findAllComponents(AiChatMessage)
+    .find((m) => m.props('message').id === 'q1')!
+    .vm.$emit('edit-message', 'q1')
+  await flushPromises()
+  expect(createBranch).toHaveBeenCalledExactlyOnceWith(null)
+  expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe(messages[0].content)
+  expect(wrapper.get('[aria-label="Cancel editing"]').exists()).toBe(true)
+  Object.assign(session, { branchLeafId: 'sample-revised-root' })
+  visible.value = [
+    { id: 'sample-revised-root', role: 'user', content: 'Revised garden', timestamp: 4000 },
+  ]
+  await flushPromises()
+  expect(wrapper.find('[aria-label="Cancel editing"]').exists()).toBe(false)
+})
+
 it('drops the editing affordance when the conversation changes', async () => {
   const active = shallowRef(fakeChatSession({ kind: 'chat', messages: ref([...messages]) }))
   const chats = ChatService.getInstance()

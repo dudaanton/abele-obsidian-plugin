@@ -1114,8 +1114,10 @@ const cancelEdit = () => {
 }
 watch([() => session.value?.id, () => attachmentOwner.value?.version], clearEdit, { flush: 'sync' })
 // Sent, or the chat moved on another way: the edit is over.
-watch(branchingAfter, (after) => {
-  if (!after) clearEdit()
+watch(messages, () => {
+  if (!editingId.value) return
+  const message = session.value?.allMessages.value.find((m) => m.id === editingId.value)
+  if (session.value?.branchLeafId !== (message?.parentId ?? null)) clearEdit()
 })
 
 const onEditMessage = (messageId: string) => {
@@ -1130,11 +1132,7 @@ const onEditMessage = (messageId: string) => {
   editingId.value = messageId
 
   // Branch from parent so user message and everything below disappears
-  if (msg.parentId) {
-    s.createBranch(msg.parentId)
-  } else {
-    s.createBranch(messageId)
-  }
+  s.createBranch(msg.parentId ?? null)
   chatInput.value?.setText(composerText(msg.content, msg.replyTo))
 }
 

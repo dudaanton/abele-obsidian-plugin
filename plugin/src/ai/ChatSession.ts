@@ -1927,17 +1927,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   // ── Agent loop execution ──────────────────────────────────────
 
   private getBranchInternalMessages(): Message[] {
-    const path = this.activeLeafId
-      ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
-      : this.allChatMessages
+    const path = this.activeLeafId ? getPathToLeaf(this.allChatMessages, this.activeLeafId) : []
+    if (!path.length) return []
     const projected = projectBranchCuts(path, this.allInternalMessages, this.pendingBranchCut)
     return getInternalMessagesForPath(path, projected)
   }
 
   private getMessagesForModel(): Message[] {
-    const path = this.activeLeafId
-      ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
-      : this.allChatMessages
+    const path = this.activeLeafId ? getPathToLeaf(this.allChatMessages, this.activeLeafId) : []
     const internal = projectInterruptedTools(
       this.getBranchInternalMessages(),
       new Map(
@@ -4685,7 +4682,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return cloneChatPath(this.snapshot(), messageId)
   }
 
-  createBranch(messageId: string): void {
+  /** null starts a sibling of the first message, with no conversation prefix. */
+  createBranch(messageId: string | null): void {
     if (
       this.isDestroyed ||
       this.kind === 'run' ||
@@ -4696,9 +4694,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       return
     }
     const target = this.allChatMessages.find((message) => message.id === messageId)
-    if (!target || target.draft) return
+    if (messageId !== null && (!target || target.draft)) return
     const bundled =
-      target.role === 'assistant' &&
+      target?.role === 'assistant' &&
       this.allInternalMessages.some(
         (message) =>
           message.role === 'assistant' &&
@@ -4706,9 +4704,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           Array.isArray(message.content) &&
           message.content.some((part) => part.type === 'toolCall')
       )
-    const cut = target.role === 'tool-call' || bundled ? target.id : undefined
+    const cut = target?.role === 'tool-call' || bundled ? target.id : undefined
     if (
-      target.role === 'tool-call' &&
+      target?.role === 'tool-call' &&
       (target.toolStatus === 'pending' || target.toolResult === undefined)
     ) {
       new Notice(t('streamB.waitForTheCallToReturnBefore.01692d'))
