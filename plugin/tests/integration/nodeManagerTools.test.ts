@@ -6,15 +6,22 @@ import { NodeService } from '@/node/NodeService'
 import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 it('runs a command in the sole granted plain folder without widening workspace scope', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(0)
   const command = vi.fn(async (_parent: string, _params: Record<string, unknown>) => ({
     run_id: 'sample-run',
-    state: 'running',
+    session_id: 'sample-context',
+    state: 'pending_approval',
   }))
   const status = vi.fn(async () => ({
     run_id: 'sample-run',
-    state: 'exited',
+    state: Date.now() < 30_000 ? 'pending_approval' : Date.now() < 90_000 ? 'running' : 'exited',
+    exit_code: Date.now() < 90_000 ? null : 7,
     stdout: '/sample/plain',
   }))
   const workspace = {
@@ -67,7 +74,20 @@ it('runs a command in the sole granted plain folder without widening workspace s
     operation_id: 'sample-operation',
     justification: 'Check the sample folder.',
   }
-  await tool.execute('sample-call', args)
+  let settled = false
+  const pending = tool.execute('sample-call', args).then((result) => {
+    settled = true
+    return result
+  })
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(30_000)
+  const completed = await pending
+  expect(JSON.parse(completed.content[0].text)).toMatchObject({
+    state: 'exited',
+    stdout: '/sample/plain',
+    exit_code: 7,
+  })
   expect(command.mock.calls[0][1]).toEqual({ project_id: 'sample-project', argv: ['pwd'] })
   expect(client.repository.worktrees).not.toHaveBeenCalled()
   const result = await createNodeManagerTools(owner)[1].execute('sample-status', {
@@ -97,7 +117,11 @@ it('runs a command in the sole granted plain folder without widening workspace s
 it.each(['node_command_run', 'node_git_integrate'])(
   'scopes model aliases to the chat, tool and exact intended action while preserving retries for %s',
   async (name) => {
-    const context = vi.fn(async () => ({ run_id: 'sample-run', state: 'running' }))
+    const context = vi.fn(async () => ({
+      session_id: 'sample-session',
+      run_id: 'sample-run',
+      state: 'exited',
+    }))
     vi.spyOn(NodeService, 'getInstance').mockReturnValue({
       nodes: { value: [{ id: 'sample-node' }] },
       connection: () => ({
@@ -367,13 +391,25 @@ it('refuses every manager operation on an older node without sending a mutation'
 it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
   'uses the effective owner mode %s even when a model supplies bypass',
   async (mode) => {
-    const command = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
+    const command = vi.fn(async () => ({
+      session_id: 'sample-session',
+      run_id: 'sample-run',
+      state: 'pending_approval',
+    }))
     vi.spyOn(NodeService, 'getInstance').mockReturnValue({
       nodes: { value: [{ id: 'sample-node' }] },
       connection: () => ({
         connect: async () => {},
         refreshDelegations: async () => {},
-        manager: { command },
+        manager: {
+          command,
+          status: async () => ({
+            session_id: 'sample-session',
+            run_id: 'sample-run',
+            state: 'exited',
+            exit_code: 0,
+          }),
+        },
         client: {
           describe: async () => ({
             capabilities: { capabilities: { command_context_v1: { status: 'supported' } } },
@@ -464,7 +500,11 @@ it('refuses a command for a project outside the chat node chips', async () => {
 })
 it('routes only fixed manager APIs, binding runs to the executing parent and keeping prompt answers out of tools', async () => {
   const mutate = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
-  const command = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
+  const command = vi.fn(async () => ({
+    session_id: 'sample-session',
+    run_id: 'sample-run',
+    state: 'pending_approval',
+  }))
   const status = vi.fn(async () => ({ run_id: 'sample-run', state: 'exited', exit_code: 0 }))
   const refresh = vi.fn(async () => {})
   const connection = {
@@ -542,7 +582,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     rebase: true,
   })
   expect(mutate.mock.calls[0][1]).toBe('git.v1.integrate')
-  expect(refresh).toHaveBeenCalledTimes(3)
+  expect(refresh).toHaveBeenCalledTimes(4)
   status.mockResolvedValueOnce({
     run_id: 'sample-run',
     method: 'git.v1.integrate',

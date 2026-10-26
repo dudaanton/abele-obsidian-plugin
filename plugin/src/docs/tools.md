@@ -1373,6 +1373,12 @@ by an older node is still pending; never answer it automatically or claim execut
 `node_command_status` reads this parent's run using `session_id` and `run_id`, including
 exit code, bounded stdout/stderr and their truncation flags. `node_command_cancel`
 cancels that run with a retained `operation_id`. Output streams live in the manager card.
+The command tool waits through owner approval and execution, returning the final status,
+exit code and output tails. It keeps reading the same run after a transient disconnect.
+Approval has no automatic deadline. After ten minutes of execution, an unfinished run
+returns `wait_expired: true` with its IDs and explicit instructions to read
+`node_command_status`; it is not success and must not be replaced by a new command.
+Stopping the chat cancels the pending or running command.
 For context commands `session_id` identifies the context journal, not a provider session;
 never pass it to session APIs. Status, cancel and reconnect replay use context APIs
 with the original parent binding. A failed preparation is reported as not submitted

@@ -188,7 +188,11 @@ async function runLive(label: string) {
       const args={node:${JSON.stringify(node.registration)},worktree_id:tree.worktree_id,argv:['node','--version'],operation_id:crypto.randomUUID(),justification:'Check the runtime version.'};
       window.__sampleCommandArgs=args;
       const tool=session.getTools().find(t=>t.name==='node_command_run');if(!tool)throw Error('Command tool is missing');
-      const result=JSON.parse((await tool.execute('sample-command',args,undefined,{session})).content[0].text);
+      window.__sampleCommandSettled=false;
+      window.__sampleCommandCompletion=tool.execute('sample-command',args,undefined,{session}).then(result=>{window.__sampleCommandSettled=true;return JSON.parse(result.content[0].text)});
+      const parent=await session.ensureDelegationParentId();
+      let result;for(let i=0;i<200;i++){result=(await connection.manager.cards(parent))[0]?.run;if(result?.state==='pending_approval')break;await new Promise(r=>setTimeout(r,50))}
+      if(window.__sampleCommandSettled)throw Error('Command returned before approval');
       window.__sampleCommandRun=result;
       for(let i=0;i<100&&!document.querySelector('.abele-tool-approval');i++)await new Promise(r=>setTimeout(r,50));
       const argv=document.querySelector('.abele-tool-approval [data-manager-command]');
@@ -217,8 +221,7 @@ async function runLive(label: string) {
     const completed = JSON.parse(
       await evalLong(
         `(async()=>{${setup}
-      const session=chats.getSession(window.__sampleCommandChat),run=window.__sampleCommandRun,parent=await session.ensureDelegationParentId();
-      for(let i=0;i<200;i++){const status=await connection.manager.status(parent,run.session_id,run.run_id);if(status.state==='exited')return JSON.stringify(status);await new Promise(r=>setTimeout(r,50))}throw Error('Command did not settle');
+      return JSON.stringify(await window.__sampleCommandCompletion);
     })()`,
         60000
       )
@@ -235,7 +238,7 @@ async function runLive(label: string) {
       const session=chats.getSession(window.__sampleCommandChat),args={...window.__sampleCommandArgs,argv:['node','-e','process.stdout.write(process.cwd())'],justification:'Check the command working folder.',operation_id:crypto.randomUUID()};
       session.permissionMode.value='allow-all';const tool=session.getTools().find(t=>t.name==='node_command_run');
       const bypass=JSON.parse((await tool.execute('sample-bypass',args,undefined,{session})).content[0].text);
-      let final;for(let i=0;i<200;i++){final=await connection.manager.status(await session.ensureDelegationParentId(),bypass.session_id,bypass.run_id);if(final.state==='exited')break;await new Promise(r=>setTimeout(r,50))}
+      if(bypass.state!=='exited'||bypass.exit_code!==0)throw Error('Command returned before completion');const final=bypass;
       session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'edit'}))};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
@@ -283,7 +286,7 @@ async function runLive(label: string) {
     columnShot(`${shots}/${label}-live-error.png`)
   } finally {
     await evalLong(
-      `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun})()`
+      `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun;delete window.__sampleCommandCompletion;delete window.__sampleCommandSettled})()`
     )
     await node.close()
   }
