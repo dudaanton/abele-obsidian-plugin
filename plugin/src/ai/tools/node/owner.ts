@@ -221,6 +221,23 @@ async function saveNodeScope(
     ...NodeScopeEntrySchema.parse(entry),
     node_id: host.nodeId?.(entry.node_id) ?? entry.node_id,
   }))
+  // Shared grants do not need a connected node, but a known authority must stay the same
+  // across persistence. Re-pairing or reconnecting during this save requires a fresh choice.
+  const authorities = [...new Set(normalized.map((entry) => entry.node_id))].flatMap((id) => {
+    try {
+      const connection = host.connection(id, session)
+      return [
+        {
+          id,
+          client: connection.client,
+          principal: connection.principal(),
+          generation: connection.authorizationGeneration,
+        },
+      ]
+    } catch {
+      return []
+    }
+  })
   if (session.conversationVersion.value !== version)
     throw new Error('Chat changed while saving node scope')
   session.overrides.value = {
@@ -231,6 +248,22 @@ async function saveNodeScope(
     ],
   }
   await session.saveForRelease()
+  if (session.conversationVersion.value !== version)
+    throw new Error('Chat changed while saving node scope')
+  for (const authority of authorities) {
+    try {
+      const current = host.connection(authority.id, session)
+      if (
+        current.client === authority.client &&
+        current.principal() === authority.principal &&
+        current.authorizationGeneration === authority.generation
+      )
+        continue
+    } catch {
+      /* Removal or replacement also invalidates the authority captured before saving. */
+    }
+    throw new Error('Node identity or authority changed while saving scope')
+  }
 }
 
 /** Public Node-panel row-menu action. C supplies the explicitly chosen chat and immutable row identity.

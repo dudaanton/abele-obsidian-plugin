@@ -363,6 +363,35 @@ describe('node mutation identity after admission', () => {
     }
   })
 
+  it('fences a shared scope save when the registration is replaced during persistence', async () => {
+    const fixture = await setup(true)
+    try {
+      const principal = fixture.host().connection('sample-node').principal()
+      vi.mocked(fixture.session.saveForRelease).mockImplementationOnce(async () => {
+        await fixture.rePair()
+      })
+      await expect(
+        setObsidianChatNodeScope(fixture.session, fixture.session.overrides.value.nodeScope!)
+      ).rejects.toThrow(/identity|authority/)
+      expect(fixture.host().connection('sample-node').principal()).not.toBe(principal)
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('saves shared scope for an offline node without local approval', async () => {
+    const fixture = await setup(true)
+    try {
+      fixture.connected(false)
+      await expect(
+        setObsidianChatNodeScope(fixture.session, fixture.session.overrides.value.nodeScope!)
+      ).resolves.toBeUndefined()
+      expect(fixture.session.overrides.value.nodeScope).toHaveLength(1)
+    } finally {
+      fixture.close()
+    }
+  })
+
   for (const [tool, method] of [
     ['node_mv', 'fileMove'],
     ['node_cp', 'fileCopy'],
