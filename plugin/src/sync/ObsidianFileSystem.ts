@@ -306,6 +306,23 @@ export interface ObsidianFileSystemOptions {
  */
 export class ObsidianFileSystem implements FileSystem {
   private readonly promotedInstallations = new WeakSet<object>()
+  private readonly bufferedInstallations = new Map<string, InstallItem>()
+  private async installationBarrier<T>(path: string, work: () => Promise<T>): Promise<T> {
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host) return work()
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const clear = host.deferScanInstallation(this.pathKey(path), ready)
+    try {
+      return await work()
+    } finally {
+      clear()
+      release()
+    }
+  }
   readonly [PORTABLE_CANDIDATES] = true
   get [INSTALL_BATCH]() {
     const native = this.native
@@ -336,6 +353,11 @@ export class ObsidianFileSystem implements FileSystem {
     const pending: (() => void)[] = []
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
+    // Publication can await host reconciliation after linking the public name. Its
+    // watcher can run in that interval, before installed() is called below.
+    if (host)
+      for (const item of items)
+        pending.push(host.deferScanInstallation(this.pathKey(item.path), receiptsReady))
     const batch = this.withScanMutation(paths, () =>
       nativeInstallBatch(
         {
@@ -364,8 +386,6 @@ export class ObsidianFileSystem implements FileSystem {
             }
           },
           installed: (item) => {
-            if (host)
-              pending.push(host.deferScanInstallation(this.pathKey(item.path), receiptsReady))
             this.writtenStat = { path: item.path, size: item.size, mtime: item.mtime }
             this.awaitingIndex.add(item.path)
             this.wrote([item.path], 'file')
@@ -1567,7 +1587,13 @@ export class ObsidianFileSystem implements FileSystem {
         this.runtimeFence?.assertReady()
         this.validateConditionalPath(operation.path)
         const { bytes, mtime, receipt } = operation.effect
-        const applied = await this.writer.publishAbsent(operation.path, bytes, mtime, receipt)
+        const applied = await this.installationBarrier(operation.path, () =>
+          this.writer.publishAbsent(operation.path, bytes, mtime, receipt, async (sha) => {
+            const item = { path: operation.path, size: bytes.length, mtime, sha }
+            await this.rememberInstalled([item])
+            if (receipt) this.bufferedInstallations.set(receipt, item)
+          })
+        )
         if (applied) this.writtenStat = { path: operation.path, size: bytes.length, mtime }
         return applied
       }
@@ -1618,7 +1644,31 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
   async discardInstallation(receipt: string): Promise<void> {
-    if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
+    const item = this.bufferedInstallations.get(receipt)
+    const discard = async () => {
+      const local = storageOf(this.app)
+      const host = local ? durableHostOf(local) : undefined
+      const key = item ? this.pathKey(item.path) : undefined
+      const saved = key ? host?.scanInstallation(key) : undefined
+      // Cleanup cannot certify bytes edited since publication. Only a still-live
+      // native content clock may carry the proof across our own alias removal.
+      const unchanged =
+        item &&
+        saved?.sha === item.sha &&
+        saved.contentRevision &&
+        saved.contentRevision === (await nativeOf(this.disk)?.fileContentRevision?.(item.path))
+      if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
+      // Removing the private hard-link alias advances the inode change clock.
+      // Capture the final public identity after that acknowledged cleanup too.
+      else if (item && unchanged && key && host?.scanInstallation(key) === saved)
+        await this.rememberInstalled([item])
+    }
+    try {
+      if (item) await this.installationBarrier(item.path, discard)
+      else await discard()
+    } finally {
+      this.bufferedInstallations.delete(receipt)
+    }
   }
   recoverConditionalFiles(): Promise<void> {
     const root = this.privateRoot

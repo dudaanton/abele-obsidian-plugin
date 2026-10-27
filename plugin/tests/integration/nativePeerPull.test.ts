@@ -51,6 +51,9 @@ for (const fault of [
   'install-fingerprint-notification',
   'install-fingerprint-repeat',
   'install-fingerprint-inflight',
+  'install-fingerprint-publication',
+  'install-fingerprint-single',
+  'install-fingerprint-single-edited',
   'install-fingerprint-own-event',
   'install-fingerprint-invalidated',
   'second-ledger-abort',
@@ -68,8 +71,9 @@ for (const fault of [
         'occupied-target',
         'second-ledger-abort',
       ].includes(fault)
-      const count =
-        fault === 'install-fingerprint-backlog'
+      const count = fault.startsWith('install-fingerprint-single')
+        ? 1
+        : fault === 'install-fingerprint-backlog'
           ? 4200
           : fault === 'batch-tail'
             ? 65
@@ -183,6 +187,12 @@ for (const fault of [
             throw new Error('sample publication interrupted')
           }
           await disk.link(from, to)
+          if (fault === 'install-fingerprint-publication' && to.endsWith('.bin')) {
+            const path = to.slice(root.length + 1)
+            inflight.push(files.fingerprint(path, undefined, true))
+            // The host can deliver its watcher while publication still awaits reconciliation.
+            await new Promise((resolve) => setTimeout(resolve, 10))
+          }
           if (fault === 'pause-mid-batch' && ++linked === 2) {
             pausedAt = performance.now()
             stopped.abort()
@@ -541,6 +551,9 @@ for (const fault of [
           fault === 'install-fingerprint-notification' ||
           fault === 'install-fingerprint-repeat' ||
           fault === 'install-fingerprint-inflight' ||
+          fault === 'install-fingerprint-publication' ||
+          fault === 'install-fingerprint-single' ||
+          fault === 'install-fingerprint-single-edited' ||
           fault === 'install-fingerprint-own-event' ||
           fault === 'install-fingerprint-invalidated'
         ) {
@@ -556,8 +569,28 @@ for (const fault of [
               return result
             })
           }
+          if (fault === 'install-fingerprint-single-edited') {
+            const discard = files.discardInstallation.bind(files)
+            files.discardInstallation = async (receipt) => {
+              const path = join(root, items[0].path)
+              const before = await disk.stat(path)
+              await disk.writeFile(path, payload(0).fill(91))
+              await disk.utimes(path, before.atime, before.mtime)
+              await discard(receipt)
+            }
+          }
           await run()
-          if (fault === 'install-fingerprint-inflight') {
+          if (fault === 'install-fingerprint-single-edited') {
+            expect((await files.fingerprint(items[0].path, undefined, true)).sha).toBe(
+              await sha256(payload(0).fill(91))
+            )
+            expect(contentReads).toBeGreaterThan(0)
+            return
+          }
+          if (
+            fault === 'install-fingerprint-inflight' ||
+            fault === 'install-fingerprint-publication'
+          ) {
             await Promise.all(inflight)
             expect(inflight.length).toBeGreaterThan(0)
             expect(contentReads).toBe(0)
@@ -623,7 +656,7 @@ for (const fault of [
           }
           if (fault === 'install-fingerprint-notification') {
             // A stale index can retain size/mtime and object identity after an edit.
-            const changed = items[3]
+            const changed = items[Math.min(3, items.length - 1)]
             const rawStat = Reflect.get(files, 'rawStat').bind(files)
             const priorStat = await rawStat(changed.path)
             const edited = payload(3).fill(91)
@@ -641,7 +674,7 @@ for (const fault of [
             }
           }
           // A file changed afterwards is read again.
-          const changed = items[3]
+          const changed = items[Math.min(3, items.length - 1)]
           await new Promise((resolve) => setTimeout(resolve, 5))
           await disk.writeFile(join(root, changed.path), 'sample local edit')
           expect((await files.fingerprint(changed.path)).sha).toBe(

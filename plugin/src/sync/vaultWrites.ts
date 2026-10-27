@@ -77,7 +77,8 @@ export class VaultWriter {
     path: string,
     bytes: Uint8Array,
     mtime: number,
-    receipt?: string
+    receipt?: string,
+    verified?: (sha: string) => Promise<void>
   ): Promise<boolean> {
     const id = receipt ?? crypto.randomUUID(),
       temp = this.receiptPath(id)
@@ -121,6 +122,7 @@ export class VaultWriter {
         this.consumed.add(temp)
         this.deps.installed?.(path)
         if (!receipt) await this.finishAnonymous(entry)
+        await verified?.(entry.replacementSha)
         return true
       }
       // This is an owned private path, never a public overwrite. Publication remains exclusive.
@@ -158,6 +160,7 @@ export class VaultWriter {
       if (this.deps.native) await this.deps.native.syncPath(path)
       this.deps.installed?.(path)
       if (!receipt) await this.finishAnonymous(entry)
+      await verified?.(entry.replacementSha)
       return true
     } catch (error) {
       if (error instanceof EngineError && Reflect.get(error, 'leaseExpired') === true) return false

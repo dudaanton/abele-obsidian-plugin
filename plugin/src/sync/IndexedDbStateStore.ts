@@ -13,6 +13,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
 import { SyncTaskBudget } from './syncTaskBudget'
+import { readIdbSnapshot } from './idbSnapshot'
 import { STATE_PROJECTION_PASS } from './stateProjectionPass'
 import {
   initializeDatabaseIdentity,
@@ -427,11 +428,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
 
   async *all(): AsyncIterable<StateEntry> {
     this.assertRecovery()
-    // Every row up front: the caller may await between steps, and an IDB cursor held across an
-    // await sees its transaction commit out from under the walk.
+    // Finish the snapshot before exposing rows: consumers can await between steps.
+    // Native result deserialization is paged inside that single transaction too.
     const read = () =>
       this.read('cannot read the state', [ENTRIES], async (tx) =>
-        wait<StateEntry[]>(tx.objectStore(ENTRIES).getAll())
+        readIdbSnapshot<StateEntry>(tx.objectStore(ENTRIES), (row) => row.path)
       )
     const rows = await (this.normalizationCache
       ? (this.entrySnapshot ??= read().catch((error) => {
@@ -612,6 +613,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           const result = create()
           const store = tx.objectStore(META)
           if (typeof IDBKeyRange !== 'undefined') {
+            // Values can contain recovery documents. Bound deserialization more
+            // tightly than key-only inventories, before any visitor can yield.
+            const pageSize = keysOnly ? 256 : 8
             let lower = scoped,
               exclusive = false
             const page = () => {
@@ -622,7 +626,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
               upper =
                 upper.slice(0, -1) + String.fromCharCode(upper.charCodeAt(upper.length - 1) + 1)
               const range = IDBKeyRange.bound(lower, upper, exclusive, true)
-              const request = keysOnly ? store.getAllKeys(range, 256) : store.getAll(range, 256)
+              const request = keysOnly
+                ? store.getAllKeys(range, pageSize)
+                : store.getAll(range, pageSize)
               request.onerror = () => reject(request.error)
               request.onsuccess = () => {
                 try {
@@ -634,7 +640,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
                     visit(result, key.slice(7), keysOnly ? undefined : (row as MetaRow).value)
                     last = key
                   }
-                  if (rows.length < 256 || last === undefined) return resolve(result)
+                  if (rows.length < pageSize || last === undefined) return resolve(result)
                   lower = last
                   exclusive = true
                   page()

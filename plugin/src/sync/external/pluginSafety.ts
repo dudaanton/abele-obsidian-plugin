@@ -1,5 +1,6 @@
 import { InspectionDirectories } from '../inspectionDirectories'
 import { SyncTaskBudget } from '../syncTaskBudget'
+import { readIdbSnapshot } from '../idbSnapshot'
 import { nativeChunkPort } from '../vaultPathLinks'
 import { vaultDisk } from '../vaultPathLinks'
 import { guardedVaultAdapter, assertVaultPath, nativeOf } from '../vaultPathLinks'
@@ -194,7 +195,7 @@ export async function inspectExistingLedger(
             )
           )
         ).filter((row) => row !== undefined)
-      : await wait<{ key: string; value: unknown }[]>(meta.getAll())
+      : await readIdbSnapshot<{ key: string; value: unknown }>(meta, (row) => row.key)
     await done
     const metadata = new Map<string, unknown>()
     const budget = new SyncTaskBudget()

@@ -47,7 +47,7 @@ export function assertItemSet(items: SetItem[]): void {
   if (items.length > 20) throw new Error('A share holds up to 20 items')
   const ids = new Set<string>()
   for (const item of items) {
-    itemSchema.parse({ ...item, paused: false, detached: false })
+    itemSchema.parse({ ...item, paused: false, detached: false }, { jitless: true })
     if (ids.has(item.id)) throw new Error('Duplicate share item')
     ids.add(item.id)
     const covering = items.find(
@@ -70,7 +70,9 @@ export class ConnectionSets {
   private read(): Document {
     const raw = this.storage.loadLocalStorage(SETS_KEY)
     if (raw == null) return { version: 1, connections: [] }
-    const result = documentSchema.safeParse(raw)
+    // Progress publication reads this synchronously. Interpret the small registry
+    // instead of compiling generated object parsers inside that renderer task.
+    const result = documentSchema.safeParse(raw, { jitless: true })
     if (!result.success) throw new Error('Connection sets require recovery')
     const connections = new Set<string>()
     for (const connection of result.data.connections) {
@@ -84,7 +86,7 @@ export class ConnectionSets {
     return result.data
   }
   private save(doc: Document): void {
-    const value = documentSchema.parse(doc)
+    const value = documentSchema.parse(doc, { jitless: true })
     this.storage.saveLocalStorage(SETS_KEY, clone(value))
     if (JSON.stringify(this.read()) !== JSON.stringify(value))
       throw new Error('Connection sets could not be saved')

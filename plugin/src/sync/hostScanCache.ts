@@ -1,5 +1,6 @@
 import { completion, wait } from './idbRequests'
 import { STORE } from './hostSyncSchema'
+import { readIdbSnapshot } from './idbSnapshot'
 
 const INSPECTION = '!inspection-v1:'
 export interface ScanFingerprint {
@@ -177,13 +178,19 @@ export class HostScanCache {
   async readInspections(): Promise<unknown[]> {
     const tx = this.db.transaction(STORE, 'readonly')
     const done = completion(tx, 'read inspection cache')
-    // One ranged request where the host has key ranges; a seeking cursor otherwise.
+    // Bounded ranged requests where the host has key ranges; a seeking cursor otherwise.
     if (typeof IDBKeyRange !== 'undefined') {
       const range = IDBKeyRange.bound(
         [this.namespace, INSPECTION],
-        [this.namespace, INSPECTION + '￿']
+        [this.namespace, '!inspection-v1;'],
+        false,
+        true
       )
-      const rows = await wait<{ value: unknown }[]>(tx.objectStore(STORE).getAll(range))
+      const rows = await readIdbSnapshot<{ namespace: string; key: string; value: unknown }>(
+        tx.objectStore(STORE),
+        (row) => [row.namespace, row.key],
+        range
+      )
       await done
       return rows.map((row) => row.value)
     }
