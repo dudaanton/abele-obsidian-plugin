@@ -13,7 +13,7 @@
       :target="lspTarget"
       :path="file.path"
       :text="analysisText ?? ''"
-      :disabled-reason="analysisText === undefined ? 'contentUnavailable' : undefined"
+      :disabled-reason="analysisDisabledReason"
       :map-position="mapPosition"
     />
     <div
@@ -219,6 +219,9 @@ const editorEl = ref<HTMLElement>()
 const expanded = ref(props.initiallyOpen || !!props.anchor)
 const analysisHost = ref<HTMLElement>()
 const analysisText = ref<string>()
+const analysisDisabledReason = computed(() =>
+  analysisText.value === undefined ? 'contentUnavailable' : undefined
+)
 const lspTarget = computed<PathTarget | undefined>(() => {
   const identity = source.value?.identity
   if (identity?.provider !== 'node') return undefined
