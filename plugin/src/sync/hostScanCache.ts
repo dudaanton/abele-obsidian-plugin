@@ -1,6 +1,7 @@
 import { completion, wait } from './idbRequests'
 import { STORE } from './hostSyncSchema'
 import { readIdbSnapshot } from './idbSnapshot'
+import { SyncTaskBudget } from './syncTaskBudget'
 
 const INSPECTION = '!inspection-v1:'
 export interface ScanFingerprint {
@@ -27,6 +28,7 @@ export class HostScanCache {
    * unrelated installations or revive a changed one. Shared across filesystem instances. */
   private readonly installations = new Map<string, ScanFingerprint>()
   private readonly installing = new Map<string, Promise<void>>()
+  private inspectionWrites: Promise<void> = Promise.resolve()
   pendingScanInstallation(path: string): Promise<void> | undefined {
     return this.installing.get(path)
   }
@@ -219,12 +221,32 @@ export class HostScanCache {
     retired: readonly string[] = []
   ): Promise<void> {
     if (!entries.length && !retired.length) return
-    const tx = this.db.transaction(STORE, 'readwrite')
-    const done = completion(tx, 'write inspection cache')
-    const store = tx.objectStore(STORE)
-    for (const path of retired) store.delete([this.namespace, INSPECTION + path])
-    for (const entry of entries)
-      store.put({ namespace: this.namespace, key: INSPECTION + entry.path, value: entry })
-    await done
+    const pendingEntries = [...entries]
+    const pendingRetired = [...retired]
+    const write = this.inspectionWrites.then(async () => {
+      const budget = new SyncTaskBudget()
+      let removed = 0
+      let saved = 0
+      while (removed < pendingRetired.length || saved < pendingEntries.length) {
+        const tx = this.db.transaction(STORE, 'readwrite')
+        const done = completion(tx, 'write inspection cache')
+        const store = tx.objectStore(STORE)
+        let count = 0
+        while (count < 256 && removed < pendingRetired.length) {
+          store.delete([this.namespace, INSPECTION + pendingRetired[removed++]])
+          count++
+        }
+        while (count < 256 && saved < pendingEntries.length) {
+          const entry = pendingEntries[saved++]
+          store.put({ namespace: this.namespace, key: INSPECTION + entry.path, value: entry })
+          count++
+        }
+        await done
+        await budget.account(count * 512)
+      }
+    })
+    // Preserve call order across the short transactions, including after a failed save.
+    this.inspectionWrites = write.catch(() => {})
+    return write
   }
 }

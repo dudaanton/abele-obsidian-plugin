@@ -613,9 +613,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           const result = create()
           const store = tx.objectStore(META)
           if (typeof IDBKeyRange !== 'undefined') {
-            // Values can contain recovery documents. Bound deserialization more
-            // tightly than key-only inventories, before any visitor can yield.
-            const pageSize = keysOnly ? 256 : 8
+            // Small value snapshots keep native result objects tiny. A sustained
+            // inventory amortizes callbacks while keeping each result bounded.
+            let pageSize = keysOnly ? 256 : 32
+            let loaded = 0
             let lower = scoped,
               exclusive = false
             const page = () => {
@@ -640,9 +641,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
                     visit(result, key.slice(7), keysOnly ? undefined : (row as MetaRow).value)
                     last = key
                   }
+                  loaded += rows.length
                   if (rows.length < pageSize || last === undefined) return resolve(result)
                   lower = last
                   exclusive = true
+                  if (!keysOnly && loaded >= 128) pageSize = 256
                   page()
                 } catch (error) {
                   reject(asEngineError('cannot inventory plugin metadata', error))

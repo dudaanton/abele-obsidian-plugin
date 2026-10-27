@@ -606,14 +606,25 @@ export class ExternalRepresentation {
             } finally {
               // Only a completed listing proves that old physical paths disappeared.
               const retired: string[] = []
-              if (complete && self.options.inspection?.ownsKey)
-                for (const path of self.inspected.keys())
-                  if (self.options.inspection.ownsKey(path) && !observed.has(path)) {
+              if (complete && self.options.inspection?.ownsKey) {
+                const budget = new SyncTaskBudget()
+                let checked = 0
+                // A watcher may refresh a path while this walk yields. Retire only the
+                // entry observed at the listing boundary, never its replacement.
+                for (const [path, entry] of [...self.inspected]) {
+                  if (
+                    self.inspected.get(path) === entry &&
+                    self.options.inspection.ownsKey(path) &&
+                    !observed.has(path)
+                  ) {
                     self.inspected.delete(path)
                     self.verified.delete(path)
                     retired.push(path)
                     self.inspectionDirty = true
                   }
+                  if ((++checked & 63) === 0) await budget.account(64 * 256)
+                }
+              }
               await self.flushInspection(retired)
             }
           }

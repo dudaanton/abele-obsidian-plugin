@@ -19,14 +19,19 @@ export function readIdbSnapshot<T>(
       }
       return
     }
+    let loaded = 0
     const page = (bounds?: IDBKeyRange) => {
-      const request = store.getAll(bounds, 32)
+      // Small snapshots keep tiny native result objects. A sustained inventory
+      // amortizes request callbacks without ever cloning the whole store at once.
+      const pageSize = loaded < 128 ? 32 : 384
+      const request = store.getAll(bounds, pageSize)
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {
         try {
           const found = request.result as T[]
           rows.push(...found)
-          if (found.length < 32) return resolve(rows)
+          loaded += found.length
+          if (found.length < pageSize) return resolve(rows)
           const last = keyOf(found[found.length - 1])
           // The last row can equal a closed upper bound. No valid empty range
           // can be constructed with an exclusive lower bound in that case.
