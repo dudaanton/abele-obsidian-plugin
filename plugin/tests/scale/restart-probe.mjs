@@ -11,6 +11,7 @@ import { RealVault, manifest, setupVault } from './run.mjs'
 import { WireProxy } from './proxy.mjs'
 import { controlTiming } from './restart.mjs'
 import { validateBuildReceipt } from './build.mjs'
+import { restartModes } from './restart-probe-plan.mjs'
 
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
 async function until(label, test, timeout = 180000) {
@@ -136,8 +137,8 @@ export async function runProbe(config) {
     }
     await checkpoint('initial upload settled')
     await stop()
-    for (let number = 1; number <= 4; number++) {
-      const mode = number === 4 ? 'profile-only' : 'control'
+    for (const [index, mode] of restartModes(config.controlRestarts).entries()) {
+      const number = index + 1
       const controlReceipt = join(config.output, `restart-${number}.json`)
       const profileReceipt = join(config.output, `restart-${number}.cpuprofile.json`)
       await writeFile(
