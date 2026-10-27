@@ -174,7 +174,7 @@ it('routes relative links through node navigation, keeps anchors local and web l
   const repo = source()
   vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _text, el) => {
     el.innerHTML =
-      '<a href="other.md">File</a><a href="#sample">Anchor</a><a href="https://example.test/guide">Web</a>'
+      '<a href="other.md">File</a><a href="#sample">Anchor</a><a href="https://example.test/guide">Web</a><a href="sample.ts#L3-L7">Range</a>'
   })
   const navigate = vi.fn(() => true)
   const ordinaryNavigation = vi.fn(() => true)
@@ -201,6 +201,10 @@ it('routes relative links through node navigation, keeps anchors local and web l
   expect(navigate).toHaveBeenCalledTimes(1)
   expect(ordinaryNavigation).not.toHaveBeenCalled()
   expect(links[2].attributes('href')).toBe('https://example.test/guide')
+  await links[3].trigger('click')
+  expect(navigate).toHaveBeenLastCalledWith(
+    repo.navigation.blobLink(HEAD, 'docs/sample.ts', { from: 3, to: 7 }).url
+  )
   repo.dispose()
 })
 it('retains the explicit markdown mode in a saved file tab', () => {

@@ -35,14 +35,14 @@ export function nodeCodeLink(
 
 export function resolveNodeCodeLink(
   resource: string,
-  target: PathTarget,
+  target: PathTarget | undefined,
   root?: string
 ): CodeDestination | undefined {
   try {
     let destination: CodeDestination
     if (resource.startsWith(prefix)) {
       const parsed = JSON.parse(decodeURIComponent(resource.slice(prefix.length)))
-      if (JSON.stringify(parsed.scope) !== JSON.stringify(identity(target))) return
+      if (!target || JSON.stringify(parsed.scope) !== JSON.stringify(identity(target))) return
       destination = { path: parsed.path, line: parsed.line, endLine: parsed.endLine ?? parsed.line }
       if (parsed.match !== undefined) {
         if (

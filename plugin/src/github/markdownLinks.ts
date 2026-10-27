@@ -88,7 +88,9 @@ export function anchorSlug(hash: string): string {
 
 /** What a link in the rendered file does. */
 export function hrefAction(href: string, file: RepoFile): HrefAction {
-  const h = href.trim()
+  let h = href.trim()
+  if (!file.host && !/^[a-z][a-z0-9+.-]*:\/\//i.test(h))
+    h = h.replace(/:(\d+)(?:-(\d+))?$/, (_, start, end) => `#L${start}${end ? `-L${end}` : ''}`)
   if (!h) return { kind: 'blocked' }
   if (h.startsWith('#')) return { kind: 'anchor', slug: anchorSlug(h) }
   if (h.startsWith('//')) return { kind: 'external', url: `https:${h}` }

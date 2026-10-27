@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolveNodeCodeLink } from '@/node/codeLinks'
 import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Component, Platform, setIcon } from 'obsidian'
@@ -276,8 +277,18 @@ const onClick = (event: MouseEvent) => {
     const href = a.getAttribute('href') ?? ''
     const node = source.value
     if (data.abeleNodePath !== undefined && node?.identity.provider === 'node') {
-      const path = data.abeleNodePath.split('#')[0]
-      emit('open', node.navigation.file(props.file.ref, path))
+      const destination = resolveNodeCodeLink(data.abeleNodePath, undefined)
+      if (destination?.line) {
+        emit(
+          'open',
+          node.navigation.blobLink(props.file.ref, destination.path, {
+            from: destination.line,
+            to: destination.endLine ?? destination.line,
+          }).url
+        )
+      } else if (destination) emit('open', node.navigation.file(props.file.ref, destination.path))
+      else if (!/#L|:\d/.test(data.abeleNodePath))
+        emit('open', node.navigation.file(props.file.ref, data.abeleNodePath.split('#')[0]))
     } else emit('open', href)
   }
 }
