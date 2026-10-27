@@ -13,10 +13,27 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
-    if (config.mode === 'control') {
+    if (config.mode === 'control' || config.mode === 'profile-only') {
       const receipt = { observerStartedAt: Date.now() }
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
       save()
+      let profile
+      if (config.mode === 'profile-only') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-only profiler bridge.
+          const remote = require('@electron/remote')
+          // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
+          const { startProfileOnly } = require('./profile-only.cjs')
+          profile = startProfileOnly(remote.getCurrentWebContents().debugger)
+          profile.catch(() => {
+            receipt.profileUnavailable = true
+            save()
+          })
+        } catch {
+          receipt.profileUnavailable = true
+          save()
+        }
+      }
       try {
         const marks = new PerformanceObserver((list) => {
           for (const entry of list.getEntries())
@@ -61,6 +78,18 @@ module.exports = class extends Plugin {
         ) {
           receipt.firstIdleAt = Date.now()
           save()
+          if (profile)
+            void profile
+              .then((capture) => capture.stop())
+              .then((result) => {
+                fs.writeFileSync(config.profileReceipt, JSON.stringify(result))
+                receipt.profileComplete = true
+                save()
+              })
+              .catch(() => {
+                receipt.profileUnavailable = true
+                save()
+              })
         }
       }, 100)
       this.register(() => clearInterval(timer))

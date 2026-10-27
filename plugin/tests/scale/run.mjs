@@ -282,7 +282,7 @@ async function raw(token, route, init = {}) {
   return response
 }
 
-async function manifest(token) {
+export async function manifest(token) {
   const result = []
   let next = null
   do {
@@ -295,7 +295,7 @@ async function manifest(token) {
   return result
 }
 
-async function setupVault(config, root, device) {
+export async function setupVault(config, root, device) {
   await mkdir(join(root, '.obsidian/plugins/abele'), { recursive: true })
   for (const name of ['main.js', 'manifest.json', 'styles.css']) {
     const from = join(config.buildDir, name === 'styles.css' ? 'main.css' : name)
@@ -309,6 +309,7 @@ async function setupVault(config, root, device) {
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
+  await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
