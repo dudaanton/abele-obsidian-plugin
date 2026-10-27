@@ -1,4 +1,5 @@
 import type { RenderPolicy } from '@/markdown/renderUntrusted'
+import { ZWSP } from '@/markdown/untrustedCode'
 
 /** Node-relative links/embeds cannot read or navigate the vault by coincidentally equal paths. */
 export const nodeMarkdownPolicy: RenderPolicy = {
@@ -73,18 +74,23 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
     if (!text.parentElement?.closest('a, pre, script, style, textarea')) texts.push(text)
   }
   for (const text of texts) {
+    const content = text.textContent ?? ''
+    // Markdown preparation puts the inline-code guard in the parser's text node.
+    // Match past it, but keep it in the DOM until all processors have finished.
+    const offset = content.startsWith(ZWSP) ? ZWSP.length : 0
+    const source = content.slice(offset)
     const bare =
       text.parentElement?.closest('code') &&
-      /^(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+$/.test(text.textContent ?? '')
+      /^(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+$/.test(source)
     const pattern = bare
       ? /.+/g
       : /abele-node-code:%7B[\w%!'()*~.-]*%7D|(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+(?::[1-9]\d*(?:-[1-9]\d*)?|#L[1-9]\d*(?:-L[1-9]\d*)?)/g
     const fragment = createFragment()
     let end = 0
-    for (const match of (text.textContent ?? '').matchAll(pattern)) {
-      const index = match.index
-      if (index && /[\w/:]/.test(text.textContent![index - 1])) continue
-      fragment.append(text.textContent!.slice(end, index))
+    for (const match of source.matchAll(pattern)) {
+      const index = match.index + offset
+      if (index && /[\w/:]/.test(content[index - 1])) continue
+      fragment.append(content.slice(end, index))
       const link = root.ownerDocument.win.createEl('a')
       link.textContent = match[0]
       link.setAttribute('href', '#')
@@ -94,7 +100,7 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
       end = index + match[0].length
     }
     if (end) {
-      fragment.append(text.textContent!.slice(end))
+      fragment.append(content.slice(end))
       text.replaceWith(fragment)
     }
   }

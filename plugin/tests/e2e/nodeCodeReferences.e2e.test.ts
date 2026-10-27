@@ -19,7 +19,7 @@ async function scenario(layout: string) {
       await until(()=>chat()?.querySelector('.abele-chat-msg_assistant a[data-node-resource]'),'Code citation');
       const root=chat().querySelector('.abele-chat-msg_assistant');
       const links=[...root.querySelectorAll('a[data-node-resource]')];
-      if(links.length!==2||links.some(a=>!a.classList.contains('internal-link')||a.classList.contains('external-link')))throw Error('Citations must look internal');
+      if(links.length!==2||links.some(a=>!a.classList.contains('internal-link')||a.classList.contains('external-link')))throw Error('Citations must look internal: '+JSON.stringify({links:links.map(a=>a.outerHTML),content:root.textContent}));
       if([...root.querySelectorAll('a')].some(a=>a.textContent==='Outside'))throw Error('Outside path is linked');
       const shot=async name=>{require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(layout)}+'-'+name+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())};
       await shot('answer');links[0].click();

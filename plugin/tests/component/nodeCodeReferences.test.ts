@@ -7,6 +7,7 @@ import { resolveNodeCodeLink } from '@/node/codeLinks'
 import { useVault } from '../helpers/testEnv'
 import { untrustedGuard } from '@/markdown/renderUntrusted'
 import { ref } from 'vue'
+import { ZWSP } from '@/markdown/untrustedCode'
 
 const target = {
   nodeId: 'node',
@@ -20,7 +21,8 @@ it('renders saved code references as internal links and routes taps with their r
   useVault([])
   vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _text, el) => {
     el.innerHTML =
-      '<p><a class="external-link" href="src/sample.ts#L3-L7">Sample</a> <code>src/other.ts</code> <a href="/outside/secret.ts:4">Private</a></p>'
+      '<p><a class="external-link" href="src/sample.ts#L3-L7">Sample</a> <code></code> <a href="/outside/secret.ts:4">Private</a></p>'
+    el.querySelector('code')!.textContent = ZWSP + 'src/other.ts'
     untrustedGuard(el, {} as never)
   })
   const open = Object.assign(vi.fn(), {

@@ -6,6 +6,22 @@ import { markUntrusted, untrustedGuard } from '@/markdown/renderUntrusted'
 import { useVault } from '../helpers/testEnv'
 import { guardExternalLinks } from '@/markdown/externalLinks'
 import { nodeCodeLink } from '@/node/codeLinks'
+import { finishCode, ZWSP } from '@/markdown/untrustedCode'
+
+it('links bare inline paths while retaining the inline-code guard through processing', () => {
+  const root = document.createElement('div')
+  const code = root.createEl('code')
+  // Real markdown parsing keeps the preparation guard in the same text node as the path.
+  code.textContent = ZWSP + 'src/sample.ts'
+  nodeMarkdownPolicy.before!(root)
+  const link = code.querySelector('a')
+  expect(link?.getAttribute('data-node-resource')).toBe('src/sample.ts')
+  expect(link?.classList.contains('internal-link')).toBe(true)
+  expect(code.textContent).toBe(ZWSP + 'src/sample.ts')
+  finishCode(root)
+  expect(code.textContent).toBe('src/sample.ts')
+  expect(link?.textContent).toBe('src/sample.ts')
+})
 
 it('recognises a copied raw node code URI pasted into a chat', () => {
   const root = document.createElement('div')
