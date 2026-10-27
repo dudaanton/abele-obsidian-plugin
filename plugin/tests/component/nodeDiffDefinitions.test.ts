@@ -8,7 +8,8 @@ import { LSP_CONNECTION } from '@/node/lspConnection'
 import { FILE_DESTINATION } from '@/node/fileNavigation'
 import { useVault } from '../helpers/testEnv'
 import { Menu } from 'obsidian'
-import { provideCodeNav } from '@/github/search/navAddon'
+import { navFor, provideCodeNav } from '@/github/search/navAddon'
+import { lspFor } from '@/node/lspContext'
 
 enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
@@ -122,6 +123,15 @@ it.each(['working-sample', 'sample-commit', 'index-sample', 'untrusted'])(
         line + 1
       )
     }
+    const references = vi.fn(async () => {})
+    lspFor(content)!.references = references
+    const navigation = navFor(content)!
+    navigation.findReferences('sample', { line: 2, character: 6 })
+    await flushPromises()
+    expect(references).toHaveBeenCalledWith('sample', { line: 19, character: 6 })
+    navigation.findReferences('previous', { line: 1, character: 6 })
+    await flushPromises()
+    expect(references).toHaveBeenCalledOnce()
     // Phone long press uses the shared symbol menu.
     const show = vi.spyOn(Menu.prototype, 'showAtPosition')
     vi.spyOn(editor, 'posAtCoords').mockReturnValue(
