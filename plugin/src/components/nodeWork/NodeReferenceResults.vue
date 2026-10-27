@@ -93,6 +93,8 @@ function open(key: string) {
 }
 .abele-node-references .abele-fold-heading {
   display: flex;
+  margin-inline: 0;
+  padding-inline: var(--size-4-2);
 }
 .abele-node-references .abele-fold-heading__text {
   flex: 1 1 auto;
@@ -124,8 +126,10 @@ function open(key: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.abele-node-references__more {
+.abele-node-references button.abele-node-references__more {
   align-self: flex-start;
+  color: var(--text-accent);
+  cursor: pointer;
 }
 body.is-phone .abele-node-references_phone .abele-disclosure__control.abele-fold-heading {
   min-height: 0;

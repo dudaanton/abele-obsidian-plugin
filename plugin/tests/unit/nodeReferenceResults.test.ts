@@ -10,6 +10,26 @@ const hit = (path: string, line = 0): LspLocation => ({
   path,
   range: { start: { line, character: 2 }, end: { line, character: 8 } },
 })
+it('anchors ordering to the search origin while preview navigation only changes the active mark', async () => {
+  const f = fixture([hit('a.ts'), hit('origin.ts'), hit('z.ts')], [hit('z.ts')])
+  const state = createReferenceResults()
+  f.query.mockImplementation(async (kind) => {
+    Object.assign(f.document, { path: 'a.ts' })
+    return kind === 'definition' ? [hit('z.ts')] : [hit('a.ts'), hit('origin.ts'), hit('z.ts')]
+  })
+  await findNodeReferences(
+    state,
+    f.document,
+    { line: 0, character: 2 },
+    '  sample()',
+    async () => '  sample()',
+    () => ''
+  )
+  expect(state.files.map((file) => file.path)).toEqual(['origin.ts', 'a.ts', 'z.ts'])
+  state.active = referenceLocationKey(hit('a.ts'))
+  expect(state.files.map((file) => file.path)).toEqual(['origin.ts', 'a.ts', 'z.ts'])
+  expect(state.active).toBe(referenceLocationKey(hit('a.ts')))
+})
 it('retains same-file usages first and adds a declaration omitted by the references response', async () => {
   const declaration = hit('origin.ts')
   const f = fixture([hit('other.ts'), hit('origin.ts', 1)], [declaration])
@@ -49,7 +69,7 @@ function fixture(hits: LspLocation[], definitions: LspLocation[] = []) {
   const query = vi.fn(async (kind: string) => (kind === 'definition' ? definitions : hits))
   return { query, document: { path: 'origin.ts', query } as unknown as NodeLspDocument }
 }
-it('puts definition files first, deduplicates, trims snippets and caps preview reads', async () => {
+it('orders other files by path, deduplicates, trims snippets and caps preview reads', async () => {
   const hits = [
     ...Array.from({ length: 110 }, (_, i) => hit(`sample-${String(i).padStart(3, '0')}.ts`)),
     hit('sample-000.ts'),
@@ -58,13 +78,15 @@ it('puts definition files first, deduplicates, trims snippets and caps preview r
   const state = createReferenceResults()
   const read = vi.fn(async () => '  sample()  ')
   await findNodeReferences(state, f.document, { line: 0, character: 0 }, '', read, () => '')
-  expect(state.files[0].path).toBe('sample-109.ts')
-  expect(state.files[1].path).toBe('sample-000.ts')
+  expect(state.files[0].path).toBe('sample-000.ts')
+  expect(state.files[1].path).toBe('sample-001.ts')
   expect(state.count).toBe(110)
   expect(state.omitted).toBe(10)
   expect(read).toHaveBeenCalledTimes(100)
-  expect(state.definitions).toEqual([referenceLocationKey(hits[109])])
+  expect(state.definitions).toEqual([])
   expect(state.files[0].lines[0]).toMatchObject({ text: 'sample()', column: 0, length: 6 })
+  await state.more!()
+  expect(state.definitions).toEqual([referenceLocationKey(hits[109])])
 })
 it('never lets a superseded query overwrite newer results', async () => {
   const f = fixture([hit('new.ts')])

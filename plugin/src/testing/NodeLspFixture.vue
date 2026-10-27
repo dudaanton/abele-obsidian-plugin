@@ -4,7 +4,7 @@
       class="abele-lsp-fixture-header"
       data-lsp-settle
       @lsp-settle="settle?.()"
-      @reference-mode="referencesMode = $event.detail"
+      @reference-mode="changeReferencesMode"
     >
       <span>{{ state === 'off' ? 'sample.txt' : 'sample.ts' }}</span>
       <span ref="headerHost" class="abele-analysis-header">
@@ -107,6 +107,12 @@ const previewText = ref(text)
 const destination = ref('')
 const installed = ref(false)
 const referencesMode = ref('one')
+function changeReferencesMode(event: Event) {
+  referencesMode.value = (event as CustomEvent<string>).detail
+  previewPath.value = 'sample.ts'
+  previewText.value = text
+  line.value = undefined
+}
 let referenceQuery = false
 const client = new NodeClient(
   { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: '0'.repeat(64) },

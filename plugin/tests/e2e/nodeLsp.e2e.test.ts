@@ -167,6 +167,10 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               for (const heading of list.querySelectorAll('.abele-fold-heading')) {
                 const count = heading.querySelector('.abele-fold-heading__count');
                 if (!count || Math.abs(count.getBoundingClientRect().right - heading.getBoundingClientRect().right) > 12) throw Error('Reference file count is not aligned at the right edge');
+                const card = heading.closest('[data-reference-file]').getBoundingClientRect();
+                const arrow = heading.querySelector('.abele-fold-heading__arrow').getBoundingClientRect();
+                const rightInset = card.right - count.getBoundingClientRect().right;
+                if (Math.abs(rightInset - 8) > 2 || Math.abs(rightInset - (arrow.left - card.left)) > 2) throw Error('Reference count inset does not match the chevron');
               }
               for (const group of list.querySelectorAll('[data-reference-file]')) {
                 const rows = [...group.querySelectorAll('[data-reference-row]')];
@@ -174,7 +178,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
                 if (starts.some(left => Math.abs(left - starts[0]) > 1)) throw Error('Definition glyph shifts the line text');
                 if (${mobile} && rows.length === 1 && group.getBoundingClientRect().height > 56) throw Error('Phone reference group is too tall');
               }
-              if (mode === 'several' && list.querySelector('[data-reference-file]').dataset.referenceFile !== 'sample.ts') throw Error('Current file references are missing or not first');
+              if (mode !== 'empty' && list.querySelector('[data-reference-file]').dataset.referenceFile !== 'sample.ts') throw Error('Search origin references are missing or not first');
               if (mode !== 'empty') {
                 const origin = list.querySelector('[data-reference-file="sample.ts"]');
                 if (!origin?.textContent.includes('export const sample: string = 42') || !origin.textContent.includes('console.log(sample)')) throw Error('Original-file reference snippets do not match its source');
@@ -185,18 +189,24 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
                 const preview = viewer.querySelector('.abele-file-view__file');
                 if (preview.getBoundingClientRect().bottom < viewer.getBoundingClientRect().bottom - 4) throw Error('File preview leaves unused space below it');
               }
-              if (!${mobile} && mode === 'several') {
+              const orderBeforeClick = [...list.querySelectorAll('[data-reference-file]')].map(group => group.dataset.referenceFile).join('|');
+              if (!${mobile} && mode !== 'empty') {
                 const target = [...list.querySelectorAll('[data-reference-row]')].find(row => JSON.parse(row.dataset.referenceRow)[0] === 'src/sample-001.ts');
                 target.click();
                 await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'src/sample-001.ts:1' && document.querySelector('.abele-lsp-root .abele-file-view__path')?.textContent === 'src/sample-001.ts');
                 if (!target.classList.contains('is-active')) throw Error('Opened reference is not active');
+                if ([...list.querySelectorAll('[data-reference-file]')].map(group => group.dataset.referenceFile).join('|') !== orderBeforeClick) throw Error('Preview navigation reordered the search');
               }
               await shot('references-' + mode);
               if (mode === 'long') {
                 const more = [...list.querySelectorAll('button')].find(button => button.textContent.includes('Show 10 more'));
                 if (!more) throw Error('Show more action is missing');
+                const accent = document.createElement('span'); accent.style.color = 'var(--text-accent)'; list.append(accent);
+                if (getComputedStyle(more).color !== getComputedStyle(accent).color || getComputedStyle(more).cursor !== 'pointer') throw Error('Show more is not styled as an accent link');
+                accent.remove();
                 more.click();
                 await until(() => list.querySelectorAll('[data-reference-file]').length === 109 && !list.textContent.includes('Show 10 more'));
+                if (list.querySelector('[data-reference-file]').dataset.referenceFile !== 'sample.ts' || (!${mobile} && !list.querySelector('[data-reference-row].is-active'))) throw Error('Loading more changed the origin or active mark');
               }
               if (${mobile}) {
                 if (mode === 'several') {

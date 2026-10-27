@@ -124,8 +124,17 @@ it('keeps original-file snippets accurate after navigating to a different refere
   const row = [...document.querySelectorAll<HTMLElement>('[data-reference-row]')].find((row) =>
     row.dataset.referenceRow!.includes('src/sample-001.ts')
   )!
+  const before = [...document.querySelectorAll<HTMLElement>('[data-reference-file]')].map(
+    (group) => group.dataset.referenceFile
+  )
   row.click()
   await flushPromises()
+  expect(
+    [...document.querySelectorAll<HTMLElement>('[data-reference-file]')].map(
+      (group) => group.dataset.referenceFile
+    )
+  ).toEqual(before)
+  expect(row.classList.contains('is-active')).toBe(true)
   await lspFor(document.querySelector('.cm-content')!)!.references!('sample', {
     line: 0,
     character: 2,

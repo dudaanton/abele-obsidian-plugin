@@ -58,6 +58,7 @@ export async function findNodeReferences(
   unavailable: () => string,
   symbol = ''
 ) {
+  const originPath = document.path
   const generation = ++state.generation
   const current = () => generation === state.generation
   Object.assign(state, {
@@ -86,11 +87,9 @@ export async function findNodeReferences(
       ...new Map([...hits, ...definitions].map((hit) => [referenceLocationKey(hit), hit])).values(),
     ]
     const definitionKeys = new Set(definitions.map(referenceLocationKey))
-    const definitionFiles = new Set(definitions.map((hit) => hit.path))
     unique.sort(
       (a, b) =>
-        Number(b.path === document.path) - Number(a.path === document.path) ||
-        Number(definitionFiles.has(b.path)) - Number(definitionFiles.has(a.path)) ||
+        Number(b.path === originPath) - Number(a.path === originPath) ||
         a.path.localeCompare(b.path) ||
         a.range.start.line - b.range.start.line ||
         a.range.start.character - b.range.start.character
@@ -112,7 +111,7 @@ export async function findNodeReferences(
         if (!lines) {
           let source = ''
           try {
-            source = hit.path === document.path ? text : await read(hit.path)
+            source = hit.path === originPath ? text : await read(hit.path)
           } catch (error) {
             console.debug('[node] Reference preview unavailable', error)
           }
