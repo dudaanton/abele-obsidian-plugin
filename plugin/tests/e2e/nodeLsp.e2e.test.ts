@@ -170,7 +170,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
                 const card = heading.closest('[data-reference-file]').getBoundingClientRect();
                 const arrow = heading.querySelector('.abele-fold-heading__arrow').getBoundingClientRect();
                 const rightInset = card.right - count.getBoundingClientRect().right;
-                if (Math.abs(rightInset - 8) > 2 || Math.abs(rightInset - (arrow.left - card.left)) > 2) throw Error('Reference count inset does not match the chevron');
+                if (Math.abs(rightInset - 8) > 2 || Math.abs(rightInset - (arrow.left - card.left)) > 2) throw Error('Reference count inset does not match the chevron: ' + JSON.stringify({rightInset, leftInset:arrow.left-card.left}));
               }
               for (const group of list.querySelectorAll('[data-reference-file]')) {
                 const rows = [...group.querySelectorAll('[data-reference-row]')];

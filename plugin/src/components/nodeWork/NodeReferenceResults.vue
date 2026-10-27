@@ -93,8 +93,10 @@ function open(key: string) {
 }
 .abele-node-references .abele-fold-heading {
   display: flex;
-  margin-inline: 0;
   padding-inline: var(--size-4-2);
+}
+.abele-node-references .abele-fold-heading.is-collapsible.is-inline {
+  margin-inline: 0;
 }
 .abele-node-references .abele-fold-heading__text {
   flex: 1 1 auto;
