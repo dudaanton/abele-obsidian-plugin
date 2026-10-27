@@ -261,7 +261,7 @@ async function runLive(label: string) {
       session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'edit'}))};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
-      document.querySelector('.abele-chat-run.is-collapsed > .tree-item-self')?.click();await new Promise(r=>setTimeout(r,150));
+      document.querySelectorAll('.abele-chat-run.is-collapsed > .tree-item-self').forEach(row=>row.click());await new Promise(r=>setTimeout(r,150));
       return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
     })()`,
         60000
@@ -294,6 +294,7 @@ async function runLive(label: string) {
       const tool=session.getTools().find(t=>t.name==='node_command_run');
       let reason='';try{await window.__sampleExecuteCommand('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder',justification:'Check access to the selected subfolder.'})}catch(error){reason=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
+      document.querySelectorAll('.abele-chat-run.is-collapsed > .tree-item-self').forEach(row=>row.click());await new Promise(r=>setTimeout(r,150));
       const cards=[...document.querySelectorAll('.abele-tool-approval')],runs=[...document.querySelectorAll('.abele-node-manager-run')];
       return JSON.stringify({reason,cards:cards.length,text:runs.at(-1)?.textContent});
     })()`,
