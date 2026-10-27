@@ -1333,10 +1333,14 @@ when needed, and the command `abele-node lsp install --popular` when a server is
 Installing a language server does not install or configure ESLint in the project.
 
 When discussing code on a node, cite the relevant lines without waiting for a commit or upload.
-In a chat bound to one worktree, use `[src/sample.ts:42-48](src/sample.ts:42-48)`.
+In a chat bound to one worktree, use `[src/sample.ts:42-48](src/sample.ts#L42-L48)`.
 The destination opens current working-tree content, including uncommitted changes.
 Node chats also recognise plain `src/sample.ts:42`, absolute paths beneath their worktree,
-and `file:///...#L42-L48`. Relative paths are rooted at the chat's worktree, never the vault.
+and `file:///...#L42-L48`, as well as backticked file paths without line numbers.
+Ordinary vault chats with node access accept the same formats. Paths must stay inside an
+accessible node folder. Relative paths prefer the current folder when several are available;
+use an explicit scoped link when the destination could otherwise be ambiguous.
+Relative paths are rooted at the node folder, never the vault.
 For an unambiguous link to paste into another chat, use the file selection's copy-link action.
 The link is `abele-node-code:` followed by URI-encoded JSON with `scope` equal to
 `[node_id, project_id, "worktree", worktree_id]`, `path`, `line`, and `endLine`.

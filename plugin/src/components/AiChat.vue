@@ -545,6 +545,7 @@ import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { NODE_CODE_LINK_OPENER } from '@/node/codeLinkContext'
 import { chatCodeLinkTarget, openChatCodeLink } from '@/node/openChatCodeLink'
+import { chatCodePlaces } from '@/node/chatCodePlaces'
 import { streamBAgentDescription } from '@/i18n/streamBLabels'
 import { ASK_EVENT } from '@/views/agentView'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
@@ -1285,13 +1286,25 @@ provide(
   NODE_CODE_LINK_OPENER,
   Object.assign(
     (resource: string) => {
-      void openChatCodeLink(resource, nodeAccess.value).catch((error) =>
-        console.debug('[node] Code link unavailable', error)
-      )
+      void openChatCodeLink(
+        resource,
+        nodeAccess.value,
+        chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget)
+      ).catch((error) => console.debug('[node] Code link unavailable', error))
     },
     {
       active: () => nodeAccess.value.length > 0,
-      canOpen: (resource: string) => !!chatCodeLinkTarget(resource, nodeAccess.value),
+      context: () =>
+        JSON.stringify([
+          nodeAccess.value,
+          chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget),
+        ]),
+      canOpen: (resource: string) =>
+        !!chatCodeLinkTarget(
+          resource,
+          nodeAccess.value,
+          chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget)
+        ),
     }
   )
 )

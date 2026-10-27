@@ -123,6 +123,7 @@ let parts: Part[] = []
 let shownText = ''
 let shownPath = ''
 let shownResourceOpener: typeof props.resourceOpener
+let shownCodeContext: unknown
 let shownPartial = false
 
 const ownersOf = (list: Part[]) => new Set(list.map((p) => p.owner))
@@ -145,6 +146,7 @@ const renderContent = async () => {
   if (!target.value || !component) return
 
   const resourceOpener = props.resourceOpener
+  const codeContext = codeOpener?.context?.()
   if (!props.trusted) markUntrusted(target.value, resourceOpener ? nodeMarkdownPolicy : {})
   const mine = ++generation
   const source = props.text || ''
@@ -194,6 +196,7 @@ const renderContent = async () => {
   let same = 0
   while (
     path === shownPath &&
+    codeContext === shownCodeContext &&
     resourceOpener === shownResourceOpener &&
     same < fresh.length &&
     same < parts.length &&
@@ -234,6 +237,7 @@ const renderContent = async () => {
   shownText = source
   shownPath = path
   shownResourceOpener = resourceOpener
+  shownCodeContext = codeContext
   shownPartial = pending !== null
   // For whoever draws over the result — comments on an answer — since this replaced it.
   emit('rendered')
@@ -309,7 +313,14 @@ const renderQueue = createRenderQueue(renderContent, {
 })
 
 watch(
-  () => [props.text, props.filePath, props.streaming, props.resourceOpener, codeOpener?.active?.()],
+  () => [
+    props.text,
+    props.filePath,
+    props.streaming,
+    props.resourceOpener,
+    codeOpener?.active?.(),
+    codeOpener?.context?.(),
+  ],
   () => renderQueue.request(!!props.streaming),
   { deep: true }
 )

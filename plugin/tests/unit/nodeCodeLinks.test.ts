@@ -39,3 +39,17 @@ it('resolves natural citations and confines absolute paths to a known root', () 
   ])
     expect(resolveNodeCodeLink(path, scope, '/sample/tree')).toBeUndefined()
 })
+
+it.each([
+  'src/sample.ts:3-7',
+  'src/sample.ts#L3-L7',
+  '/sample/tree/src/sample.ts:3-7',
+  'file:///sample/tree/src/sample.ts:3-7',
+  'file:///sample/tree/src/sample.ts#L3-L7',
+])('resolves the common citation format %s', (resource) => {
+  expect(resolveNodeCodeLink(resource, scope, '/sample/tree')).toEqual({
+    path: 'src/sample.ts',
+    line: 3,
+    endLine: 7,
+  })
+})

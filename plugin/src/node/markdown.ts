@@ -38,6 +38,13 @@ export function nodeMarkdownClick(event: MouseEvent, open: (path: string) => voi
 }
 
 export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): void {
+  const internal = (link: Element) => {
+    link.classList.remove('external-link')
+    link.classList.add('internal-link')
+    link.removeAttribute('target')
+    link.removeAttribute('rel')
+    link.querySelectorAll('.external-link-icon').forEach((icon) => icon.remove())
+  }
   // Preserve node citations before the common URL guard strips non-web protocols.
   for (const link of Array.from(root.querySelectorAll('a'))) {
     const path =
@@ -49,11 +56,14 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
     if (
       /^(?:abele-node-code:|file:\/\/\/)/.test(path) ||
       (!/^(?:https?|mailto):|^\/\//i.test(path) &&
-        (citation || (!citationsOnly && !/^[a-z][a-z0-9+.-]*:/i.test(path))))
+        (citation ||
+          /(?:^|\/)\.?[\w.-]+\.[\w-]+$/.test(path) ||
+          (!citationsOnly && !/^[a-z][a-z0-9+.-]*:/i.test(path))))
     ) {
       link.setAttribute('data-node-resource', path)
       link.setAttribute('href', '#')
       link.removeAttribute('data-href')
+      internal(link)
     }
   }
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -63,8 +73,12 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
     if (!text.parentElement?.closest('a, pre, script, style, textarea')) texts.push(text)
   }
   for (const text of texts) {
-    const pattern =
-      /abele-node-code:%7B[\w%!'()*~.-]*%7D|(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+(?::[1-9]\d*(?:-[1-9]\d*)?|#L[1-9]\d*(?:-L[1-9]\d*)?)/g
+    const bare =
+      text.parentElement?.closest('code') &&
+      /^(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+$/.test(text.textContent ?? '')
+    const pattern = bare
+      ? /.+/g
+      : /abele-node-code:%7B[\w%!'()*~.-]*%7D|(?:file:\/\/\/|\/|\.?\.?\/)?[\w.-]+(?:\/[\w.-]+)*\.[\w-]+(?::[1-9]\d*(?:-[1-9]\d*)?|#L[1-9]\d*(?:-L[1-9]\d*)?)/g
     const fragment = createFragment()
     let end = 0
     for (const match of (text.textContent ?? '').matchAll(pattern)) {
@@ -75,6 +89,7 @@ export function prepareNodeCodeLinks(root: HTMLElement, citationsOnly = false): 
       link.textContent = match[0]
       link.setAttribute('href', '#')
       link.setAttribute('data-node-resource', match[0])
+      internal(link)
       fragment.append(link)
       end = index + match[0].length
     }
