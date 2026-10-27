@@ -78,6 +78,7 @@ import { tokenScope } from './v2/client'
 import { RetainedShareCopies } from './retainedShareCopies'
 import type { ConnectionItem } from './shareSets'
 import { UploadQuietPeriod } from './uploadQuietPeriod'
+import type { SyncStartupPhase } from './startupTimeline'
 
 export interface TokenEngineOptions {
   mobile?: boolean
@@ -93,7 +94,7 @@ export interface TokenEngineOptions {
   state: StateStore
   reviews: DeviceReviews
   fetch: typeof fetch
-  startupMark?(phase: 'engine-construct' | 'reconcile-start' | 'idle'): void
+  startupMark?(phase: SyncStartupPhase): void
   transferBudget?: TransferBudget
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
@@ -985,7 +986,13 @@ export class TokenEngineRuntime
       this.pullPaths.clear()
       this.pulledPaths.clear()
       this.pullProgress('Reading server inventory')
-      await prepare(inventoryFs(fs), state, excluded, signal, deferLocalScan)
+      options.startupMark?.('reconcile:inventory:begin')
+      try {
+        await prepare(inventoryFs(fs), state, excluded, signal, deferLocalScan)
+      } finally {
+        options.startupMark?.('reconcile:inventory:end')
+      }
+      options.startupMark?.('reconcile:server-head:begin')
       const generation = await options.state.getMeta(GENERATION_KEY)
       if (generation !== this.generation) {
         this.wholeReadUploads.clear()
@@ -996,6 +1003,7 @@ export class TokenEngineRuntime
       options.changed({ ...this.engine.status, reconciliation })
       // state() includes an effects-capable changes decoder; replay stays fenced here.
       const head = await this.client.state()
+      options.startupMark?.('reconcile:server-head:end')
       await fenceRestoredJournal(options.state, head.head_seq, fs, undefined, this.client)
       await options.fencePlacement?.(head.head_seq)
       await this.outbox.restore()
@@ -1550,6 +1558,9 @@ export class TokenEngineRuntime
                 for await (const entry of options.state.all()) this.nameCandidates([entry.path])
               }
               return async function* () {
+                options.startupMark?.(
+                  `reconcile:${name === 'list' ? 'file-list' : 'directory-list'}:begin`
+                )
                 const run = generation()
                 const managed = syncing()
                 const current = () => {
@@ -1576,6 +1587,9 @@ export class TokenEngineRuntime
                     yield info
                   }
                 } finally {
+                  options.startupMark?.(
+                    `reconcile:${name === 'list' ? 'file-list' : 'directory-list'}:end`
+                  )
                   if (managed && generation() === run) {
                     inventoried(completed)
                     trace.inventory(completed)
@@ -1690,6 +1704,7 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        options.startupMark?.('reconcile:report:begin')
         this.notSyncedState.invalidate()
         this.pathCollisions = this.placement?.localMetadata(report.collisions) ?? report.collisions
         this.notSyncedState.collisions(report.collisions)
@@ -1733,6 +1748,7 @@ export class TokenEngineRuntime
         this.trace.finishFirstSync()
         options.changed(this.engine.status, this.placement?.localMetadata(report) ?? report)
         void this.outbox.drain().catch(() => options.publicationChanged?.())
+        options.startupMark?.('reconcile:report:end')
       },
       onFail: (error) => {
         this.notSyncedState.invalidate()
@@ -1790,8 +1806,12 @@ export class TokenEngineRuntime
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
-      if (this.startupReconciliationStarted && status.state === 'idle')
+      if (this.startupReconciliationStarted && status.state === 'syncing')
+        options.startupMark?.('reconcile:cycle:begin')
+      if (this.startupReconciliationStarted && status.state === 'idle') {
+        options.startupMark?.('reconcile:cycle:end')
         options.startupMark?.('idle')
+      }
       this.quiet.pause(status.state === 'paused')
       const retention = Reflect.get(options.fs, Symbol.for('abele.sync.retention-idle-v1'))
       if (typeof retention === 'function')

@@ -28,6 +28,26 @@ it('records each startup phase once and replays early phases with their original
   expect(first).toHaveLength(3)
 })
 
+it('closes a failed preparation span without hiding the failure', async () => {
+  const timeline = new SyncStartupTimeline(
+    () => 0,
+    () => 0
+  )
+  const phases: string[] = []
+  timeline.subscribe((mark) => phases.push(mark.phase))
+  timeline.mark('layout-ready')
+  await expect(
+    timeline.stage('connection', 'Checking recovery records', async () => {
+      throw new Error('sample failure')
+    })
+  ).rejects.toThrow('sample failure')
+  expect(phases).toEqual([
+    'layout-ready',
+    'connection:Checking recovery records:begin',
+    'connection:Checking recovery records:end',
+  ])
+})
+
 it('keeps diagnostics subscribers from delaying a startup request when one fails', async () => {
   const timeline = new SyncStartupTimeline(
     () => 0,

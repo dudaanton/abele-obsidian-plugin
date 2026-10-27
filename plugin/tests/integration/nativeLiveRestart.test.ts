@@ -20,6 +20,11 @@ import { withMetadataInventory } from '@/sync/vaultPathLinks'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalRepresentation } from '@/sync/external/representation'
+import {
+  SyncStartupTimeline,
+  timedSyncTransport,
+  type SyncStartupMark,
+} from '@/sync/startupTimeline'
 
 // Elapsed union of outstanding operations, not their overlapping sum. These are
 // wait envelopes; CPU and callbacks may run while another operation is pending.
@@ -53,6 +58,7 @@ type Measurement = {
   beforeRequest: number
   walks: { phase: string; caller: string; rows: number }[]
   interrupted: boolean
+  timeline: SyncStartupMark[]
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -251,9 +257,11 @@ async function measure() {
     })
     state.close()
     await storage.flush()
+    let timeline: SyncStartupTimeline
     const open = () =>
       new TokenEngines(f.app as never, f.ui, (key) => f.keys.get(key) ?? null, {
-        fetch: transport,
+        fetch: timedSyncTransport(transport, timeline),
+        startupTimeline: timeline,
         indexedDB: f.factory,
         pollMs: 60000,
         fallbackMs: 60000,
@@ -266,6 +274,11 @@ async function measure() {
     const measurements = []
     for (let generation = 0; generation < 2; generation++) {
       requests.length = 0
+      timeline = new SyncStartupTimeline()
+      const marks: SyncStartupMark[] = []
+      timeline.subscribe((mark) => marks.push(mark))
+      timeline.mark('onload')
+      timeline.mark('layout-ready')
       ordinaryBytes = polledBytes = 0
       counted.calls.clear()
       transactions.readonly = transactions.readwrite = 0
@@ -322,6 +335,7 @@ async function measure() {
         walks: walks.map((walk) => ({ ...walk })),
         beforeRequest,
         interrupted,
+        timeline: marks,
         firstRequestMs: requests[0] - started,
         native: Object.fromEntries(counted.calls),
         transactions: { ...transactions },
@@ -375,6 +389,23 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
     expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)
     expect(result.ordinaryBytes).toBe(0)
     expect(result.polledBytes).toBe(0)
+    const order = result.timeline.map((mark) => mark.phase)
+    const before = (a: string, b: string) => {
+      expect(order.indexOf(a), `${a} present`).toBeGreaterThanOrEqual(0)
+      expect(order.indexOf(b), `${b} present`).toBeGreaterThanOrEqual(0)
+      expect(order.indexOf(a), `${a} before ${b}`).toBeLessThan(order.indexOf(b))
+    }
+    before('layout-ready', 'connection:Flushing registry:begin')
+    before('connection:Flushing registry:end', 'connection:Checking recovery records:begin')
+    before('connection:Checking saved sync state:end', 'connection:Preparing file access:begin')
+    before('connection:Preparing file access:end', 'engine-construct')
+    before('engine-construct', 'reconcile-start')
+    before('reconcile-start', 'first-request')
+    before('first-request', 'first-response')
+    before('first-response', 'idle')
+    const at = (phase: string) => result.timeline.find((mark) => mark.phase === phase)!.elapsedMs
+    expect(at('first-request') - at('layout-ready')).toBeLessThan(1000)
+    expect(at('idle') - at('first-response')).toBeLessThan(10000)
     expect(result.cycles).toHaveLength(result.interrupted ? 2 : 1)
     for (const cycle of result.cycles) expect(cycle).toContain('start')
     for (let i = 1; i <= result.cycles.length; i++)

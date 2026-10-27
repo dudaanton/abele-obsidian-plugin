@@ -7,6 +7,8 @@ export type SyncStartupPhase =
   | 'first-request'
   | 'first-response'
   | 'reconcile-start'
+  | `connection:${string}:${'begin' | 'end'}`
+  | `reconcile:${string}:${'begin' | 'end'}`
   | 'idle'
 
 export interface SyncStartupMark {
@@ -32,6 +34,19 @@ export class SyncStartupTimeline {
     const mark = { phase, elapsedMs: Math.round(now - this.origin), at: this.wall() }
     this.marks.set(phase, mark)
     for (const listener of this.listeners) this.deliver(listener, mark)
+  }
+
+  async stage<T>(
+    area: 'connection' | 'reconcile',
+    name: string,
+    work: () => Promise<T>
+  ): Promise<T> {
+    this.mark(`${area}:${name}:begin`)
+    try {
+      return await work()
+    } finally {
+      this.mark(`${area}:${name}:end`)
+    }
   }
 
   subscribe(listener: (mark: SyncStartupMark) => void): () => void {

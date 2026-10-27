@@ -607,75 +607,80 @@ export class TokenEngines {
       work: () => Promise<T>,
       progressing = false
     ): Promise<T> => {
-      assertActive()
-      this.ui.startupStage(record.id, name)
-      let timer: number | undefined
-      let cancelWait: (() => void) | undefined
-      try {
-        let result: T
-        if (!progressing) {
-          let workError: unknown
-          try {
-            result = await connectStage(
-              name,
-              `${name} could not finish starting sync. Try Sync now again.`,
-              async () => {
-                assertActive()
-                let value: T
-                try {
-                  value = await work()
-                } catch (error) {
-                  assertActive()
-                  workError = error
-                  throw error
-                }
-                assertActive()
-                return value
-              },
-              startup.signal
-            )
-          } catch (error) {
-            // Keep the diagnostic failure for recovery callers; timeout/cancel
-            // still wins over a late failure from revoked work.
-            if (workError !== undefined && !startup.signal.aborted) throw workError
-            throw error
-          }
-        } else {
-          result = await Promise.race([
-            work(),
-            new Promise<never>((_, reject) => {
-              cancelWait = () => {
-                const reason: unknown = startup.signal.reason
-                reject(reason instanceof Error ? reason : new Error('Sync startup cancelled'))
-              }
-              startup.signal.addEventListener('abort', cancelWait, { once: true })
-              if (startup.signal.aborted) cancelWait()
-              const check = () => {
-                const current = this.ui.activity.value[record.id]?.startup
-                const remaining = 120000 - (Date.now() - (current?.progressAt ?? Date.now()))
-                if (remaining <= 0) {
-                  const error = Object.assign(
-                    new Error(`${current?.stage ?? name} stalled. Try Sync now again.`),
-                    { code: 'startup-stage' }
-                  )
-                  startup.abort(error)
-                  reject(error)
-                } else timer = window.setTimeout(check, Math.min(1000, remaining))
-              }
-              timer = window.setTimeout(check, 1000)
-            }),
-          ])
-        }
+      const run = async (): Promise<T> => {
         assertActive()
-        this.ui.finishStartup(record.id, 'complete')
-        return result
-      } finally {
-        window.clearTimeout(timer)
-        if (cancelWait) startup.signal.removeEventListener('abort', cancelWait)
+        this.ui.startupStage(record.id, name)
+        let timer: number | undefined
+        let cancelWait: (() => void) | undefined
+        try {
+          let result: T
+          if (!progressing) {
+            let workError: unknown
+            try {
+              result = await connectStage(
+                name,
+                `${name} could not finish starting sync. Try Sync now again.`,
+                async () => {
+                  assertActive()
+                  let value: T
+                  try {
+                    value = await work()
+                  } catch (error) {
+                    assertActive()
+                    workError = error
+                    throw error
+                  }
+                  assertActive()
+                  return value
+                },
+                startup.signal
+              )
+            } catch (error) {
+              // Keep the diagnostic failure for recovery callers; timeout/cancel
+              // still wins over a late failure from revoked work.
+              if (workError !== undefined && !startup.signal.aborted) throw workError
+              throw error
+            }
+          } else {
+            result = await Promise.race([
+              work(),
+              new Promise<never>((_, reject) => {
+                cancelWait = () => {
+                  const reason: unknown = startup.signal.reason
+                  reject(reason instanceof Error ? reason : new Error('Sync startup cancelled'))
+                }
+                startup.signal.addEventListener('abort', cancelWait, { once: true })
+                if (startup.signal.aborted) cancelWait()
+                const check = () => {
+                  const current = this.ui.activity.value[record.id]?.startup
+                  const remaining = 120000 - (Date.now() - (current?.progressAt ?? Date.now()))
+                  if (remaining <= 0) {
+                    const error = Object.assign(
+                      new Error(`${current?.stage ?? name} stalled. Try Sync now again.`),
+                      { code: 'startup-stage' }
+                    )
+                    startup.abort(error)
+                    reject(error)
+                  } else timer = window.setTimeout(check, Math.min(1000, remaining))
+                }
+                timer = window.setTimeout(check, 1000)
+              }),
+            ])
+          }
+          assertActive()
+          this.ui.finishStartup(record.id, 'complete')
+          return result
+        } finally {
+          window.clearTimeout(timer)
+          if (cancelWait) startup.signal.removeEventListener('abort', cancelWait)
+        }
       }
+      return this.deps.startupTimeline?.stage('connection', name, run) ?? run()
     }
     const start = async () => {
-      await this.ui.registry.flush()
+      await (this.deps.startupTimeline?.stage('connection', 'Flushing registry', () =>
+        this.ui.registry.flush()
+      ) ?? this.ui.registry.flush())
       await stage('Waiting for previous sync', () => beforeOpening.teardown)
       this.ui.startupStage(record.id, 'Waiting for vault index')
       await waitForStartupIndex(this.app.workspace, startup.signal)
