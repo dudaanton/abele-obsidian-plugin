@@ -1238,7 +1238,8 @@ export async function run(config) {
         report.primaryStateObservations,
         report.wire,
         report.interruptions,
-        report.restartAt
+        report.restartAt,
+        report.controlRestart?.devices?.[0]?.launchAt
       )
       if (report.pauseActionAt && report.pauseWindowEndAt)
         Object.assign(

@@ -94,6 +94,47 @@ it('requires exact visible size reasons in both status and log, intact primary, 
   ).toMatchObject({ attempts: 2, maxAttemptsPerGeneration: 1, pass: true })
 })
 
+it('counts the later control restart as a separate oversized-upload generation', () => {
+  const file = { path: 'Attachments/sample.pdf', size: 256, sha: 'abc' }
+  const snapshots = [
+    {
+      snapshot: { rows: [{ status: 'attention' }], visibleStatus: [{ text: '1 file not synced' }] },
+      activity: [
+        {
+          refused: [{ path: file.path, reason: 'File too large' }],
+          events: [{ text: `too_large: ${file.path}` }],
+        },
+      ],
+    },
+  ]
+  const attempts = [30, 50].map((at) => ({
+    at,
+    device: '0',
+    event: 'start',
+    method: 'POST',
+    route: '/v2/uploads/abc/begin',
+  }))
+  expect(oversizedEvidence([file], [file], snapshots, attempts, [], 20, 40)[0]).toMatchObject({
+    attempts: 2,
+    maxAttemptsPerGeneration: 1,
+    pass: true,
+  })
+  expect(
+    oversizedEvidence(
+      [file],
+      [file],
+      snapshots,
+      [...attempts, { ...attempts[1], at: 51 }],
+      [],
+      20,
+      40
+    )[0]
+  ).toMatchObject({
+    maxAttemptsPerGeneration: 2,
+    pass: false,
+  })
+})
+
 it('admits only the approved pause grace and requires a healthy write observer with no late writes', () => {
   const measured = pauseMetrics(
     [

@@ -21,7 +21,15 @@ export function fileExpectations(files, limits) {
   }
 }
 
-export function oversizedEvidence(files, primary, snapshots, wire, interruptions = [], restartAt) {
+export function oversizedEvidence(
+  files,
+  primary,
+  snapshots,
+  wire,
+  interruptions = [],
+  restartAt,
+  controlRestartAt
+) {
   const restarts = [
     ...interruptions.filter((e) =>
       [
@@ -32,6 +40,7 @@ export function oversizedEvidence(files, primary, snapshots, wire, interruptions
       ].includes(e.kind)
     ),
     ...(Number.isFinite(restartAt) ? [{ at: restartAt }] : []),
+    ...(Number.isFinite(controlRestartAt) ? [{ at: controlRestartAt }] : []),
   ].sort((a, b) => a.at - b.at)
   const sizeReason = /too_large|too large|larger than|size.*limit|limit.*size/i
   const namesPath = (text, path) => {
