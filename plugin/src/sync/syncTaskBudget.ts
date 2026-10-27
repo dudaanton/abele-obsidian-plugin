@@ -3,6 +3,11 @@ export class SyncTaskBudget {
   private bytes = 0
   private since = performance.now()
 
+  /** A path/stat row is metadata, not a file-content read. Keep the time limit. */
+  metadataRow(signal?: AbortSignal): Promise<void> {
+    return this.account(256, signal)
+  }
+
   async account(bytes: number, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted()
     this.bytes += bytes

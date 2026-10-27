@@ -683,7 +683,7 @@ export async function recoverExternalState(
       const budget = new SyncTaskBudget()
       for (const row of cached) {
         inventory.set(row.path, row)
-        await budget.account(4096, inspection.signal)
+        await budget.metadataRow(inspection.signal)
         fence.assertOwned()
       }
       // Metadata hints carry no directory-absence proof and never recognize bytes.
@@ -1024,13 +1024,13 @@ export async function requireExternalLifecycleSafety(
     }
   const ownedPaths = new Set<string>()
   for (const name of names) {
-    // Disconnect and switch checks also read proofs keyed per file: read every row.
+    // Read only the journal and departure proof first. Materialized files request
+    // their own installation proofs after the journal names them.
     const found = await inspectionRead(inspection, assertCurrent, () =>
-      inspectExistingLedger(
-        factory,
-        name,
-        metadataOnly ? ['plugin:external-files', 'plugin:' + DISCONNECT_PROOF_KEY] : undefined
-      )
+      inspectExistingLedger(factory, name, [
+        'plugin:external-files',
+        'plugin:' + DISCONNECT_PROOF_KEY,
+      ])
     )
     const activated = activatedLedgers.find((item) => item.databaseName === name)
     // An active marker always keeps original-byte protection, even if also retired.
@@ -1104,6 +1104,18 @@ export async function requireExternalLifecycleSafety(
           throw new ExternalRecoveryRequired('operation is unresolved')
       // Enrollment checks durable recovery metadata only. Byte verification belongs to startup.
       if (metadataOnly) continue
+      const proofKeys = retiredOnly
+        ? []
+        : doc.files
+            .filter((file) => file.representation === 'hydrated')
+            .map((file) => 'plugin:' + installationProofKey(file.fileId))
+      const proofs = proofKeys.length
+        ? await inspectionRead(inspection, assertCurrent, () =>
+            inspectExistingLedger(factory, name, proofKeys)
+          )
+        : undefined
+      if (proofKeys.length && (!proofs || proofs.identity !== found?.identity))
+        throw new ExternalRecoveryRequired('ledger identity changed during inspection')
       const verifyLocal = async (path: string, sha: string, size: number) => {
         const scope = inspection.scope ?? connectionRoot(app)
         if (scope && !withinRoot(path, scope)) return
@@ -1143,7 +1155,7 @@ export async function requireExternalLifecycleSafety(
           throw new ExternalRecoveryRequired('materialization is incomplete')
         if (!retiredOnly) {
           const rawProof =
-            found?.metadata.get('plugin:' + installationProofKey(file.fileId)) ?? null
+            proofs?.metadata.get('plugin:' + installationProofKey(file.fileId)) ?? null
           if (rawProof !== null && typeof rawProof !== 'string')
             throw new ExternalRecoveryRequired('installation proof is unreadable')
           const base = installationBase(typeof rawProof === 'string' ? rawProof : null, doc, file)

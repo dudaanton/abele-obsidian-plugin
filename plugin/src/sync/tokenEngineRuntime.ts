@@ -1004,6 +1004,7 @@ export class TokenEngineRuntime
       // state() includes an effects-capable changes decoder; replay stays fenced here.
       const head = await this.client.state()
       options.startupMark?.('reconcile:server-head:end')
+      options.startupMark?.('reconcile:post-head:begin')
       await fenceRestoredJournal(options.state, head.head_seq, fs, undefined, this.client)
       await options.fencePlacement?.(head.head_seq)
       await this.outbox.restore()
@@ -1068,6 +1069,7 @@ export class TokenEngineRuntime
             this.assetPaths.set(local.path, identity.fileId)
         }
       }
+      options.startupMark?.('reconcile:post-head:end')
     }
     this.client.onRemoval = async (id) => {
       const entry = await options.state.byFileId(id)
@@ -1076,16 +1078,26 @@ export class TokenEngineRuntime
     }
     const manifest = this.client.manifest.bind(this.client)
     this.client.manifest = async (...args) => {
-      const page = await manifest(...args)
-      this.finishFolderPreparation()
-      return page
+      options.startupMark?.('reconcile:manifest:begin')
+      try {
+        const page = await manifest(...args)
+        this.finishFolderPreparation()
+        return page
+      } finally {
+        options.startupMark?.('reconcile:manifest:end')
+      }
     }
     const changes = this.client.changes.bind(this.client)
     this.client.changes = async (...args) => {
-      const page = await changes(...args)
-      this.finishFolderPreparation()
-      await this.publishRetainedCopies()
-      return page
+      options.startupMark?.('reconcile:changes:begin')
+      try {
+        const page = await changes(...args)
+        this.finishFolderPreparation()
+        await this.publishRetainedCopies()
+        return page
+      } finally {
+        options.startupMark?.('reconcile:changes:end')
+      }
     }
     const openVersion = this.client.openVersion.bind(this.client)
     this.client.openVersion = async (fileId, versionId, expected, signal) => {
@@ -1125,12 +1137,17 @@ export class TokenEngineRuntime
     }
     const finishPull = this.client.finishPull.bind(this.client)
     this.client.finishPull = async () => {
-      await finishPull()
-      const resume = this.resumePendingUploads
-      this.resumePendingUploads = undefined
-      await resume?.()
-      this.progress.clear()
-      comparing()
+      options.startupMark?.('reconcile:finish-pull:begin')
+      try {
+        await finishPull()
+        const resume = this.resumePendingUploads
+        this.resumePendingUploads = undefined
+        await resume?.()
+        this.progress.clear()
+        comparing()
+      } finally {
+        options.startupMark?.('reconcile:finish-pull:end')
+      }
     }
     const putBlob = this.client.putBlob.bind(this.client)
     this.client.putBlob = async (sha, bytes) => {

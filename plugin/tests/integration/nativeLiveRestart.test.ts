@@ -403,6 +403,10 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
     before('reconcile-start', 'first-request')
     before('first-request', 'first-response')
     before('first-response', 'idle')
+    before('reconcile:server-head:end', 'reconcile:post-head:end')
+    before('reconcile:post-head:end', 'reconcile:file-list:begin')
+    before('reconcile:finish-pull:begin', 'reconcile:finish-pull:end')
+    before('reconcile:finish-pull:end', 'reconcile:cycle:end')
     const at = (phase: string) => result.timeline.find((mark) => mark.phase === phase)!.elapsedMs
     expect(at('first-request') - at('layout-ready')).toBeLessThan(1000)
     expect(at('idle') - at('first-response')).toBeLessThan(10000)

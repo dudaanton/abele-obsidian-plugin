@@ -18,3 +18,16 @@ it('uses the worker timer when message channels are unavailable', async () => {
     vi.unstubAllGlobals()
   }
 })
+
+it('bounds host yields for a large metadata inventory while still yielding', async () => {
+  const yieldHost = vi.fn(async () => {})
+  vi.stubGlobal('window', { scheduler: { yield: yieldHost } })
+  const budget = new SyncTaskBudget()
+  try {
+    for (let i = 0; i < 33000; i++) await budget.metadataRow()
+    expect(yieldHost.mock.calls.length).toBeGreaterThan(0)
+    expect(yieldHost.mock.calls.length).toBeLessThan(80)
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})

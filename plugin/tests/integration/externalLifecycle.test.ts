@@ -72,6 +72,31 @@ describe('token connection external dependency lifecycle', () => {
     ).rejects.toThrow(/external|recovery|preparation/i)
     expect(all.mock.contexts.filter((store) => store.name === 'meta')).toHaveLength(0)
   })
+  it('checks retained-byte safety without deserializing unrelated ledger metadata', async () => {
+    const s = tokenHostFixture(vi.fn() as never)
+    close.push(() => s.host.close())
+    const record = s.registry.records()[0]
+    const raw = await openTokenLedger(s.factory, s.registry, record, () => {})
+    close.push(async () => raw.close())
+    await raw.setMeta('unrelated-large-record', 'x'.repeat(1024 * 1024))
+    const all = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    const cursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor')
+    await requireExternalLifecycleSafety(
+      s.app as never,
+      s.factory,
+      record.ledgerId,
+      true,
+      undefined,
+      () => {},
+      {},
+      false,
+      false,
+      false,
+      true
+    )
+    expect(all.mock.contexts.filter((store) => store.name === 'meta')).toHaveLength(0)
+    expect(cursor.mock.contexts.filter((store) => store.name === 'meta')).toHaveLength(0)
+  })
   it.each(['active', 'deleted', 'detached', 'unavailable'] as const)(
     'disconnect retains %s dependencies and its credential before preparation',
     async (availability) => {
