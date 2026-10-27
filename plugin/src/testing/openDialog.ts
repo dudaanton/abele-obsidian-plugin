@@ -27,7 +27,11 @@ import AiToolApproval from '@/components/AiToolApproval.vue'
 
 export interface DialogFixtureOptions {
   lspAdmission?: string
-  lspFile?: { target: import('@/node/NodePathModel').PathTarget; text: string }
+  lspFile?: {
+    target: import('@/node/NodePathModel').PathTarget
+    text: string
+    comparison?: boolean
+  }
   delegationCommand?: string | string[]
   managerLegacyIntegration?: boolean
   managerCodexApproval?: boolean

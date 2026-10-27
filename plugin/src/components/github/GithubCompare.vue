@@ -45,6 +45,7 @@
           :files="data.files"
           :complete="data.filesComplete"
           :anchor="anchor"
+          :analysis-ref="data.headSha"
           :refs="
             data.mode === 'staged' || data.mode === 'unstaged'
               ? undefined

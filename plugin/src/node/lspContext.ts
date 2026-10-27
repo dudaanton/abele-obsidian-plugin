@@ -5,6 +5,11 @@ import { beginCodeSurface } from '@/github/search/codeSurface'
 export interface LspContext {
   document: NodeLspDocument
   text?: () => string
+  /** Patch rows to current-file coordinates; removed rows have no current position. */
+  mapPosition?: (position: {
+    line: number
+    character: number
+  }) => { line: number; character: number } | undefined
   navigate(locations: LspLocation[], origin?: { line: number; character: number }): void
   closeNavigation?(): void
   references?(name: string, position: { line: number; character: number }): Promise<void>
@@ -33,13 +38,15 @@ export function lspNavigation(el: Element, fallback: CodeNav | null): CodeNav | 
     position?: { line: number; character: number }
   ) => {
     const current = beginCodeSurface(el.ownerDocument, () => context.closeNavigation?.())
-    if (kind === 'references' && position && context.references) {
-      await context.references(name, position)
+    const mapped = position && (context.mapPosition ? context.mapPosition(position) : position)
+    if (context.mapPosition && !mapped) return
+    if (kind === 'references' && mapped && context.references) {
+      await context.references(name, mapped)
       return
     }
-    const hits = position ? await context.document.query(kind, position, context.text?.()) : []
+    const hits = mapped ? await context.document.query(kind, mapped, context.text?.()) : []
     if (!current() || lspFor(el) !== context) return
-    if (hits.length) context.navigate(hits, position)
+    if (hits.length) context.navigate(hits, mapped)
     else if (kind === 'definition') await fallback?.goToDefinition(name, path, position)
     else fallback?.findReferences(name, position)
   }

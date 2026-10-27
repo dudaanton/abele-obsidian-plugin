@@ -18,6 +18,7 @@
       :anchor="file.hash === anchor?.hash ? anchor : undefined"
       :comment-anchor="commentAnchor"
       :refs="refs"
+      :analysis-ref="analysisRef"
       @loaded="patchEpoch++"
       @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
     />
@@ -49,8 +50,15 @@ const props = withDefaults(
     complete?: boolean
     /** The commits the change is between, for opening a file whole. */
     refs?: { head?: string; base?: string }
+    analysisRef?: string
   }>(),
-  { anchor: undefined, commentAnchor: undefined, complete: true, refs: undefined }
+  {
+    anchor: undefined,
+    commentAnchor: undefined,
+    complete: true,
+    refs: undefined,
+    analysisRef: undefined,
+  }
 )
 
 const emit = defineEmits<{

@@ -6,6 +6,16 @@
     :data-diff="file.hash"
     :data-path="file.path"
   >
+    <NodeLspTools
+      v-if="lspTarget && expanded"
+      :root="root"
+      :glyph-host="analysisHost"
+      :target="lspTarget"
+      :path="file.path"
+      :text="analysisText ?? ''"
+      :disabled-reason="analysisText === undefined ? 'contentUnavailable' : undefined"
+      :map-position="mapPosition"
+    />
     <div
       ref="head"
       class="abele-github-file__head"
@@ -64,6 +74,7 @@
               : t('streamB.edited.7117f0')
       }}</span>
       <Badge v-if="file.status !== 'modified'" :text="streamBLabel(file.status)" />
+      <span ref="analysisHost" @click.stop @keydown.stop />
       <Icon
         v-if="openUrl"
         class="abele-github-file__open"
@@ -163,6 +174,9 @@ import { ancestors, treeUrl } from '@/github/tree/fileTree'
 import { useRepositorySource } from '@/repository/context'
 
 import type { PaneType } from 'obsidian'
+import NodeLspTools from '../nodeWork/NodeLspTools.vue'
+import { NodeService } from '@/node/NodeService'
+import type { PathTarget } from '@/node/NodePathModel'
 
 const props = withDefaults(
   defineProps<{
@@ -178,8 +192,10 @@ const props = withDefaults(
      * change deleted it. Without them there is no "Open file".
      */
     refs?: { head?: string; base?: string }
+    /** New-side snapshot, including index comparisons which have no whole-file link. */
+    analysisRef?: string
   }>(),
-  { anchor: undefined, commentAnchor: undefined, refs: undefined }
+  { anchor: undefined, commentAnchor: undefined, refs: undefined, analysisRef: undefined }
 )
 
 const emit = defineEmits<{
@@ -201,6 +217,48 @@ useResizeObserver(head, () => {
 })
 const editorEl = ref<HTMLElement>()
 const expanded = ref(props.initiallyOpen || !!props.anchor)
+const analysisHost = ref<HTMLElement>()
+const analysisText = ref<string>()
+const lspTarget = computed<PathTarget | undefined>(() => {
+  const identity = source.value?.identity
+  if (identity?.provider !== 'node') return undefined
+  return {
+    nodeId: NodeService.connectionIfKnown?.(identity.node)?.client.target?.expected_node_id ?? '',
+    registrationId: identity.node,
+    projectId: identity.project,
+    kind: 'worktree',
+    id: identity.workspace,
+  }
+})
+watch(
+  [
+    source,
+    expanded,
+    () => props.analysisRef ?? props.refs?.head,
+    () => props.file.path,
+    () => props.file.status,
+  ],
+  async ([repository, open, revision, path, status], _previous, cleanup) => {
+    analysisText.value = undefined
+    if (!open || repository?.identity.provider !== 'node' || !revision || status === 'removed')
+      return
+    let cancelled = false
+    cleanup(() => {
+      cancelled = true
+    })
+    try {
+      const text = await repository.text(revision, path)
+      if (!cancelled) analysisText.value = text
+    } catch (error) {
+      console.debug('[node] Diff language document unavailable', error)
+    }
+  },
+  { immediate: true }
+)
+function mapPosition(position: { line: number; character: number }) {
+  const line = lines.value[position.line]?.new
+  return line === undefined ? undefined : { line: line - 1, character: position.character }
+}
 
 const patchBusy = ref(false)
 const patchError = ref('')

@@ -37,6 +37,18 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
         cwd: project,
       })
     await git('init', '--initial-branch=main')
+    await git(
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'initial'
+    )
     await git('-c', 'core.excludesFile=/dev/null', 'add', '.')
     await git(
       '-c',
@@ -186,7 +198,41 @@ it('returns real TypeScript hover documentation and a root-local dependency decl
         if(cm.state.selection!==selection)throw Error('Option click changed source selection');
         if(document.querySelector('.menu, .suggestion-container'))throw Error('Option click opened an extra menu');
         inputChecks.push('trusted Option click opens the definition without changing source selection');
+        document.querySelector('[data-lsp-close]').click();
+        await until(()=>!document.querySelector('[data-lsp-close]'),'Close file viewer');
+        const catalog=await client.repository.worktrees({project_id:project.project_id});
+        const worktree=catalog.entries.find(row=>row.workspace_id===workspace.workspace_id);
+        if(!worktree)throw Error('Workspace worktree missing');
+        const bounds=require('@electron/remote').getCurrentWindow().getContentSize();
+        try {
+        for(const mobile of [false,true]) {
+          app.emulateMobile(mobile);
+          require('@electron/remote').getCurrentWindow().setContentSize(...(mobile?[390,844]:[1000,800]));
+          await api.openDialog('node-lsp-live',{lspFile:{text:${JSON.stringify(source)},comparison:true,target:{kind:'worktree',id:worktree.worktree_id,projectId:project.project_id,registrationId:${JSON.stringify(node.registration)},nodeId:${JSON.stringify(node.node)}}}});
+          await until(()=>document.querySelector('.abele-github-file .abele-lsp-root') || document.querySelector('.abele-github-file.abele-lsp-root .cm-content'),'Changes language viewer');
+          await until(()=>document.querySelector('.abele-github-file [data-lsp-analysis]')?.dataset.state==='ready' || document.querySelector('.abele-github-file [data-lsp-analysis]')?.dataset.state==='degraded','Changes language analysis');
+          const symbol=point('sample',2);
+          await shot(mobile?'phone-changes':'desktop-changes');
+          if(mobile) {
+            const finger=new Touch({identifier:1,target:symbol.target,clientX:symbol.x,clientY:symbol.y});
+            symbol.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[finger],changedTouches:[finger]}));
+            await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('Go to definition')),'Changes long press');
+            symbol.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[finger]}));
+            await shot('phone-changes-definition-menu');
+            [...document.querySelectorAll('.menu-item-title')].find(el=>el.textContent.includes('Go to definition')).closest('.menu-item').click();
+          } else {
+            for(const type of ['mouseDown','mouseUp'])web.sendInputEvent({type,x:Math.round(symbol.x),y:Math.round(symbol.y),button:'left',clickCount:1,modifiers:['alt']});
+          }
+          await until(()=>app.workspace.getLeavesOfType('abele-node-file').some(leaf=>leaf.view.getState().target?.kind==='worktree' && leaf.view.getState().path==='node_modules/sample-types/index.d.ts'),'Changes definition destination');
+          inputChecks.push(mobile?'changes long press opens definition':'changes Option click opens definition');
+          for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.kind==='worktree')leaf.detach();
+          document.querySelector('[data-lsp-close]').click();
+          await until(()=>!document.querySelector('[data-lsp-close]'),'Close changes viewer');
+        }
+        } finally { require('@electron/remote').getCurrentWindow().setContentSize(...bounds); }
+        app.emulateMobile(false);
         } finally {
+          app.emulateMobile(false);
           alt(false);
           for(const type of ['keydown','keyup','mousemove'])document.removeEventListener(type,trace,true);
           document.body.classList.toggle('theme-dark',originalTheme);document.body.classList.toggle('theme-light',!originalTheme);

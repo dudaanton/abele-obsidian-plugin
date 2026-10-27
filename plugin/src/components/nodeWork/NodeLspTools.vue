@@ -76,6 +76,10 @@ const props = defineProps<{
   target: PathTarget
   path: string
   text: string
+  mapPosition?: (position: {
+    line: number
+    character: number
+  }) => { line: number; character: number } | undefined
   offline?: boolean
   disabledReason?: 'pastRevision' | 'comparison' | 'noConnection' | 'contentUnavailable'
 }>()
@@ -551,6 +555,7 @@ watch(
     removeContext = provideLsp(props.root, {
       document: doc,
       text: () => props.text,
+      mapPosition: props.mapPosition,
       navigate,
       closeNavigation: () => picker?.close(),
       references: findReferences,

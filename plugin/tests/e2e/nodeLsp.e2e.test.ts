@@ -258,6 +258,33 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           results.push({ state: admission, text: reason, fits: rect.left >= -1 && rect.right <= innerWidth + 1 });
           await close();
         }
+        phase = 'changes-definition';
+        await window.__abeleTest.openDialog('node-lsp-ready', { lspAdmission: 'changes' });
+        await until(() => document.querySelector('.abele-github-file.abele-lsp-root .cm-content'));
+        await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === 'ready');
+        const content=document.querySelector('.abele-github-file .cm-content');
+        const word=[...content.querySelectorAll('.cm-line')].find(el=>el.textContent.includes('console.log'));
+        const walker=document.createTreeWalker(word,NodeFilter.SHOW_TEXT);
+        let point;
+        for(let node;node=walker.nextNode();) {
+          const at=node.textContent.indexOf('sample');if(at<0)continue;
+          const range=document.createRange();range.setStart(node,at+1);range.setEnd(node,at+2);
+          const box=range.getBoundingClientRect();point={x:box.left+box.width/2,y:box.top+box.height/2,target:node.parentElement};break;
+        }
+        if(!point)throw Error('Changes symbol not drawn');
+        await shot('changes');
+        if(${mobile}) {
+          const finger=new Touch({identifier:1,target:point.target,clientX:point.x,clientY:point.y});
+          point.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[finger],changedTouches:[finger]}));
+          await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('Go to definition')));
+          point.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[finger]}));
+          await shot('changes-menu');
+          [...document.querySelectorAll('.menu-item-title')].find(el=>el.textContent.includes('Go to definition')).closest('.menu-item').click();
+        } else point.target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,altKey:true,clientX:point.x,clientY:point.y}));
+        await until(()=>document.querySelector('[data-lsp-destination]')?.textContent==='node_modules/sample-types/index.d.ts:3');
+        await shot('changes-definition');
+        results.push({state:'changes-navigation',text:'changes definition',fits:true});
+        await close();
         return JSON.stringify(results);
         } catch (error) { await shot('failure-' + phase); throw Error(phase + ': ' + (error.stack ?? error.message ?? error)); }
         finally { window.removeEventListener('unhandledrejection', onError); window.removeEventListener('error', onError); }

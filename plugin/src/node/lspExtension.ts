@@ -188,6 +188,9 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       const context = lspFor(view.dom)
       if (!context?.document.supported) return null
       const line = view.state.doc.lineAt(pos)
+      const raw = { line: line.number - 1, character: pos - line.from }
+      const position = context.mapPosition ? context.mapPosition(raw) : raw
+      if (!position) return null
       const problems = view.state.field(diagnostics).filter((d) => {
         const start = lspOffset(view.state.doc, d.range.start),
           end = lspOffset(view.state.doc, d.range.end)
@@ -198,13 +201,7 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
       if (!modifier?.overEditor) return null
       if (!modifier?.active && !problems.length) return null
       const text = modifier?.active
-        ? await context.document.hover(
-            {
-              line: line.number - 1,
-              character: pos - line.from,
-            },
-            view.state.doc.toString()
-          )
+        ? await context.document.hover(position, context.text?.() ?? view.state.doc.toString())
         : ''
       // Releasing the key or leaving the editor invalidates an in-flight response.
       if (modifier?.revision !== revision) return null
@@ -228,9 +225,13 @@ export function nodeLspExtension(tooltipParent: HTMLElement = document.body): Ex
               if (
                 !this.destroyed &&
                 JSON.stringify(view.state.field(diagnostics)) !==
-                  JSON.stringify(context.document.diagnostics)
+                  JSON.stringify(context.mapPosition ? [] : context.document.diagnostics)
               )
-                view.dispatch({ effects: updateDiagnostics.of(context.document.diagnostics) })
+                view.dispatch({
+                  effects: updateDiagnostics.of(
+                    context.mapPosition ? [] : context.document.diagnostics
+                  ),
+                })
             }
             context.document.listeners.add(refresh)
             this.stop = () => context.document.listeners.delete(refresh)

@@ -188,8 +188,14 @@ function showNavMenu(
     return
   }
   const text = view.state.doc
+  const raw = positionAt(view, offset)
+  const position = context.mapPosition ? context.mapPosition(raw) : raw
+  if (!position) {
+    display(navMenu(nav, view, name, offset))
+    return
+  }
   void context.document
-    .hover(positionAt(view, offset), view.state.doc.toString())
+    .hover(position, context.text?.() ?? view.state.doc.toString())
     .then((message) => {
       if (
         !current() ||

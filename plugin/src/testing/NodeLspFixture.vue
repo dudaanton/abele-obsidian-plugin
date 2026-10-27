@@ -17,7 +17,23 @@
         />
       </span>
     </div>
+    <GithubDiffFile
+      v-if="admission === 'changes'"
+      :file="{
+        path: 'sample.ts',
+        hash: 'sample',
+        status: 'modified',
+        additions: 1,
+        deletions: 1,
+        reviewComments: [],
+        patch:
+          '@@ -1,2 +1,2 @@\n-export const previous = 1\n+export const sample: string = 42\n console.log(sample)\n',
+      }"
+      :refs="{ head: 'working-sample' }"
+      initially-open
+    />
     <FileView
+      v-else
       :path="state === 'off' ? 'sample.txt' : previewPath"
       :text="previewText"
       :mode="admission === 'comparison' ? 'diff' : 'file'"
@@ -56,12 +72,15 @@
   </Modal>
 </template>
 <script setup lang="ts">
-import { provide, ref } from 'vue'
+import { computed, provide, ref } from 'vue'
 import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import Modal from '@/components/obsidian/Modal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { t } from '@/i18n'
 import FileView from '@/components/nodeWork/FileView.vue'
+import GithubDiffFile from '@/components/github/GithubDiffFile.vue'
+import { REPOSITORY_SOURCE } from '@/repository/context'
+import type { RepositorySource } from '@/repository/source'
 import { LSP_CONNECTION } from '@/node/lspConnection'
 import { ANALYSIS_HEADER } from '@/node/analysisHeader'
 import Icon from '@/components/obsidian/Icon.vue'
@@ -101,6 +120,24 @@ const text =
   props.admission === 'fileTooLarge'
     ? '/*' + 'x'.repeat(512 * 1024) + '*/'
     : 'export const sample: string = 42\nconsole.log(sample)\n'
+if (props.admission === 'changes')
+  provide(
+    REPOSITORY_SOURCE,
+    computed(
+      () =>
+        ({
+          identity: {
+            provider: 'node',
+            installation: 'sample-installation',
+            node: target.registrationId,
+            project: target.projectId,
+            workspace: target.id,
+          },
+          text: async () => text,
+          navigation: { file: () => 'sample://file' },
+        }) as unknown as RepositorySource
+    )
+  )
 const line = ref<number>()
 const previewPath = ref('sample.ts')
 const previewText = ref(text)
