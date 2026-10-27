@@ -8,7 +8,45 @@ import {
   completedBlobShas,
   previouslyHashedShas,
   payloadUploadEvents,
+  classifyReindexHashes,
 } from '../scale/reindex.mjs'
+
+it('counts reindex hashes only before completion and reports later install payload digests separately', () => {
+  const operation = { id: 'sample', device: '1', at: 100 }
+  const rows = [
+    {
+      event: 'renderer-hash',
+      device: '1',
+      at: 150,
+      source: 'abele',
+      sha: 'known',
+      stack: 'at scan',
+    },
+    { event: 'reindex-complete', device: '1', id: 'sample', at: 200 },
+    {
+      event: 'renderer-hash',
+      device: '1',
+      at: 210,
+      source: 'abele',
+      sha: 'known',
+      stack: 'at async Object.seal (plugin:abele:1:1)',
+    },
+    {
+      event: 'renderer-hash',
+      device: '1',
+      at: 220,
+      source: 'abele',
+      sha: 'known',
+      stack: 'at inspect',
+    },
+    { event: 'renderer-hash', device: '0', at: 160, source: 'abele', sha: 'known' },
+  ]
+  const result = classifyReindexHashes(operation, rows, 300, new Set(['known']))
+  expect(result.reindexHashes).toHaveLength(1)
+  expect(result.payloadDigests).toHaveLength(1)
+  expect(result.otherPostReindexHashes).toHaveLength(1)
+  expect(result.reindexHashes[0].at).toBe(150)
+})
 
 it('checks direct small-file PUTs as well as multipart payloads for redundant upload', () => {
   const root = '/v2/uploads/' + 'a'.repeat(64)

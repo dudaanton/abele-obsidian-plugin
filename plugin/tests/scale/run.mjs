@@ -23,6 +23,7 @@ import {
   completedBlobShas,
   previouslyHashedShas,
   payloadUploadEvents,
+  classifyReindexHashes,
 } from './reindex.mjs'
 import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import diagnostics from './diagnostics.cjs'
@@ -1108,14 +1109,14 @@ export async function run(config) {
           (row) =>
             row.device === saved.operation.device &&
             row.at >= saved.operation.at &&
-            row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
+            row.at <= (end?.at ?? Infinity) &&
             row.event === 'renderer-hash'
         )
         const coverage = entries.some(
           (row) =>
             row.device === saved.operation.device &&
             row.at >= saved.operation.at &&
-            row.at <= (saved.settledAt ?? end?.at ?? Infinity) &&
+            row.at <= (end?.at ?? Infinity) &&
             row.event === 'hash-observer-ready'
         )
         const previouslyHashed = previouslyHashedShas(
@@ -1126,13 +1127,19 @@ export async function run(config) {
         const fileHashes = new Set(
           [...expected, ...saved.before, ...saved.serverBefore].map((file) => file.sha)
         )
-        const extraHashes = hashes.filter(
-          (row) =>
-            row.source === 'abele' &&
-            fileHashes.has(row.sha) &&
-            (previouslyHashed.has(row.sha) ||
-              knownServer.has(row.sha) ||
-              (saved.operation.device === '1' && knownLocal.has(row.sha)))
+        const knownShas = new Set(
+          [...fileHashes].filter(
+            (sha) =>
+              previouslyHashed.has(sha) ||
+              knownServer.has(sha) ||
+              (saved.operation.device === '1' && knownLocal.has(sha))
+          )
+        )
+        const classifiedHashes = classifyReindexHashes(
+          saved.operation,
+          entries,
+          saved.settledAt ?? end?.at ?? Infinity,
+          knownShas
         )
         const hashUnknown = hashes.some(
           (row) => row.source === 'unknown' && fileHashes.has(row.sha)
@@ -1164,8 +1171,12 @@ export async function run(config) {
             ? undefined
             : reads.filter((row) => knownLocal.has(proxy.versions.get(row.version))).length,
           extraRendererHashes:
-            coverage && !hashUnknown && digestProof.complete ? extraHashes.length : undefined,
+            coverage && !hashUnknown && digestProof.complete
+              ? classifiedHashes.reindexHashes.length
+              : undefined,
         })
+        result.postReindexPayloadDigests = classifiedHashes.payloadDigests.length
+        result.otherPostReindexHashes = classifiedHashes.otherPostReindexHashes.length
         result.settledAt = saved.settledAt ?? null
         result.afterIndexUntilSettle = {
           requests: proxy.events.filter(

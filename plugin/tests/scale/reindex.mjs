@@ -84,6 +84,33 @@ export function declaredInterruptions(full) {
   ]
 }
 
+export function classifyReindexHashes(operation, entries, settledAt, knownShas) {
+  const completedAt = entries.find(
+    (row) =>
+      row.event === 'reindex-complete' && row.id === operation.id && row.device === operation.device
+  )?.at
+  const relevant = entries.filter(
+    (row) =>
+      row.device === operation.device &&
+      row.event === 'renderer-hash' &&
+      row.source === 'abele' &&
+      knownShas.has(row.sha) &&
+      row.at >= operation.at &&
+      row.at <= settledAt
+  )
+  const reindexHashes = relevant.filter((row) => row.at <= (completedAt ?? Infinity))
+  const after = relevant.filter((row) => row.at > (completedAt ?? Infinity))
+  const isPayloadDigest = (row) =>
+    /\b(?:Object\.seal|nativeInstallBatch|Puller\.sha256\S* \[as hash\]|VaultWriter\.publishAbsent)/.test(
+      row.stack ?? ''
+    )
+  return {
+    reindexHashes,
+    payloadDigests: after.filter(isPayloadDigest),
+    otherPostReindexHashes: after.filter((row) => !isPayloadDigest(row)),
+  }
+}
+
 export function reindexEvidence(operation, renderer, wire, evidence) {
   const end = renderer.find(
     (row) =>

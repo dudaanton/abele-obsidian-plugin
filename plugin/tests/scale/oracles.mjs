@@ -252,6 +252,8 @@ export function* markdownChunks(report) {
       extraUploads: row.extraUploads,
       extraDownloads: row.extraDownloads,
       extraRendererHashes: row.extraRendererHashes,
+      postReindexPayloadDigests: row.postReindexPayloadDigests,
+      otherPostReindexHashes: row.otherPostReindexHashes,
       notices: row.notices,
       longTasks: row.longTasks?.map(({ startedAt, durationMs, source, samplesBySource }) => ({
         startedAt,
