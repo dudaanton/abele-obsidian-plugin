@@ -2855,6 +2855,44 @@ it('shows a structured refusal while the cycle is still uploading', async () => 
 })
 
 it.each(['/', 'Notes'])(
+  'reuses the settled foreground proof for %s, but inspects a changed path and an expired proof',
+  async (folder) => {
+    const f = inspectionFixture(false, folder)
+    f.release()
+    try {
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await f.ui.sync(id)
+      const runtime = Reflect.get(f.host, 'live').get(id)
+      const sync = vi.spyOn(runtime.engine, 'sync')
+      await f.host.foreground(true)
+      expect(sync).not.toHaveBeenCalled()
+      // A real local revision change must prevent reuse even without a background gap.
+      await f.app.vault.modify(
+        f.app.vault.getFileByPath('Notes/slow.txt')!,
+        'changed ordinary note'
+      )
+      f.app.emit('vault', 'modify', f.app.vault.getFileByPath('Notes/slow.txt')!)
+      await f.host.foreground(true)
+      expect(Reflect.get(f.host, 'live').get(id)).toBe(runtime)
+      expect(f.ui.activity.value[id]?.error).toBeUndefined()
+      expect(sync).toHaveBeenCalledOnce()
+      sync.mockClear()
+      const now = Date.now()
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 300001)
+      try {
+        await f.host.foreground(true)
+        expect(sync).toHaveBeenCalledOnce()
+      } finally {
+        clock.mockRestore()
+      }
+    } finally {
+      await f.host.close()
+    }
+  }
+)
+
+it.each(['/', 'Notes'])(
   'keeps startup watcher coverage on the initial visible event for %s, but retires it after a background gap',
   async (folder) => {
     const f = inspectionFixture(false, folder)
@@ -2880,7 +2918,7 @@ it.each(['/', 'Notes'])(
 )
 
 it.each(['/', 'Notes'])(
-  'requests a real ordinary inspection on foreground for %s without resuming paused connections',
+  'requests a real ordinary inspection after a coverage gap for %s without resuming paused connections',
   async (folder) => {
     const f = inspectionFixture(false, folder)
     f.release()
@@ -2895,6 +2933,7 @@ it.each(['/', 'Notes'])(
         Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1')).call(fs)
       const before = revision()
       const list = vi.spyOn(ObsidianFileSystem.prototype, 'list')
+      await f.host.foreground(false)
       await f.host.foreground(true)
       expect(inspect).toHaveBeenCalledOnce()
       expect(revision()).not.toBe(before)

@@ -3,6 +3,7 @@ import { desktopFsPort } from '../helpers/desktopRequire'
 import { promises as disk } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { performance as nodePerformance } from 'node:perf_hooks'
 import { expect, it, vi } from 'vitest'
 import { sha256 } from '@abele/sync-sdk/core'
 import { TokenEngines } from '@/sync/tokenEngines'
@@ -17,6 +18,28 @@ import { defaultSelective } from '@/sync/connection'
 import { projectionInspectionIdentity } from '@/sync/external/inspectionIdentity'
 import { withMetadataInventory } from '@/sync/vaultPathLinks'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { ExternalRepresentation } from '@/sync/external/representation'
+
+// Elapsed union of outstanding operations, not their overlapping sum. These are
+// wait envelopes; CPU and callbacks may run while another operation is pending.
+function waitEnvelope() {
+  let pending = 0,
+    since = 0,
+    elapsed = 0
+  return {
+    begin() {
+      if (pending++ === 0) since = performance.now()
+      let done = false
+      return () => {
+        if (done) return
+        done = true
+        if (--pending === 0) elapsed += performance.now() - since
+      }
+    },
+    read: () => elapsed + (pending ? performance.now() - since : 0),
+  }
+}
 
 type Measurement = {
   idleMs: number
@@ -27,6 +50,9 @@ type Measurement = {
   cycles: string[]
   ordinaryBytes: number
   polledBytes: number
+  beforeRequest: number
+  walks: { phase: string; caller: string; rows: number }[]
+  interrupted: boolean
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -44,17 +70,31 @@ async function measure() {
     polledBytes = 0
   const ordinaryPaths = new Set<string>()
   const polledPath = join(root, '.obsidian/sample.json')
+  const diskWait = waitEnvelope(),
+    idbWait = waitEnvelope()
   const counted = countedDisk((path, bytes) => {
     if (ordinaryPaths.has(path)) ordinaryBytes += bytes
     if (path === polledPath) polledBytes += bytes
-  })
+  }, diskWait.begin)
   desktopFsPort(counted.port)
   const requests: number[] = []
+  let suspendConnection: (() => void) | undefined
   const scope = { kind: 'folder', id: 'sample-root', path: '/' }
   const transport: typeof fetch = async (input, init) => {
     const path = new URL(String(input)).pathname
     if (['/v2/connection', '/v2/changes', '/v2/manifest'].includes(path))
       requests.push(performance.now())
+    if (path === '/v2/connection' && suspendConnection) {
+      const entered = suspendConnection
+      suspendConnection = undefined
+      entered()
+      const signal = init?.signal
+      await new Promise<void>((_, reject) => {
+        const aborted = () => reject(new DOMException('Interrupted request', 'AbortError'))
+        if (signal?.aborted) aborted()
+        else signal?.addEventListener('abort', aborted, { once: true })
+      })
+    }
     if (path === '/v2/connection')
       return Response.json({
         protocol: 2,
@@ -92,13 +132,43 @@ async function measure() {
   }
   const app = nativeVault(root, counted.port)
   const factory = new IDBFactory()
-  const transactions = countTransactions(factory)
+  const transactions = countTransactions(factory, idbWait.begin)
   const storage = await HostSyncStorage.open(factory, 'sample-vault', app)
   const f = tokenHostFixture(transport, [], { app, factory })
   let cycleReceipts: string[] | undefined
+  let walks: { phase: string; caller: string; rows: number }[] = []
+  let phase = 'setup',
+    classifications = 0,
+    beforeRequest = 0
+  const classify = ExternalRepresentation.prototype.classify
+  const classification = vi
+    .spyOn(ExternalRepresentation.prototype, 'classify')
+    .mockImplementation(function (...args) {
+      classifications++
+      return classify.apply(this, args)
+    })
+  const all = IndexedDbStateStore.prototype.all
+  const ledger = vi.spyOn(IndexedDbStateStore.prototype, 'all').mockImplementation(function () {
+    const walk = {
+      phase,
+      caller: new Error().stack?.split('\n').slice(2, 8).join(' <- ') ?? '',
+      rows: 0,
+    }
+    walks.push(walk)
+    const rows = all.call(this)
+    return (async function* () {
+      for await (const row of rows) {
+        walk.rows++
+        yield row
+      }
+    })()
+  })
   const log = ExchangeTrace.prototype.log
   const trace = vi.spyOn(ExchangeTrace.prototype, 'log').mockImplementation(function (line) {
-    if (line.startsWith('sync: cycle ')) cycleReceipts?.push(line)
+    if (line.startsWith('sync: cycle ')) {
+      cycleReceipts?.push(line)
+      phase = `cycle ${cycleReceipts?.length}`
+    }
     log.call(this, line)
   })
   const progress = setInterval(
@@ -200,10 +270,37 @@ async function measure() {
       counted.calls.clear()
       transactions.readonly = transactions.readwrite = 0
       const started = performance.now()
+      const cpu = process.cpuUsage(),
+        diskBefore = diskWait.read(),
+        idbBefore = idbWait.read()
+      const eventLoop = nodePerformance.eventLoopUtilization()
+      walks = []
+      classifications = 0
+      beforeRequest = 0
+      phase = 'startup'
+      const first = requests.push.bind(requests)
+      requests.push = (...times) => {
+        if (!requests.length) beforeRequest = classifications
+        return first(...times)
+      }
       host = open()
       cycleReceipts = []
+      const interrupted = generation === 0
+      let entered: Promise<void> | undefined
+      if (interrupted)
+        entered = new Promise<void>((resolve) => {
+          suspendConnection = resolve
+        })
       host.start()
       await f.ui.connectionsChanged()
+      if (entered) {
+        await entered
+        // Rebuild while the first useful server request is still in flight. Closing
+        // must cancel it, drain old work and leave the durable ledger reusable.
+        await Reflect.get(host, 'engines').reset()
+        host.start()
+        await f.ui.connectionsChanged()
+      }
       // Observe start's own exchange; an explicit Sync now here would add an extra cycle
       // that is absent from the restart/foreground sequence being reproduced.
       await vi.waitFor(
@@ -218,6 +315,13 @@ async function measure() {
       await host.foreground(true)
       measurements.push({
         idleMs: performance.now() - started,
+        cpuMs: Object.values(process.cpuUsage(cpu)).reduce((a, b) => a + b, 0) / 1000,
+        eventLoop: nodePerformance.eventLoopUtilization(eventLoop),
+        diskWaitMs: diskWait.read() - diskBefore,
+        idbWaitMs: idbWait.read() - idbBefore,
+        walks: walks.map((walk) => ({ ...walk })),
+        beforeRequest,
+        interrupted,
         firstRequestMs: requests[0] - started,
         native: Object.fromEntries(counted.calls),
         transactions: { ...transactions },
@@ -245,6 +349,8 @@ async function measure() {
     expect(polledBytes).toBe(beforePolledRead + bytes.length)
   } finally {
     trace.mockRestore()
+    ledger.mockRestore()
+    classification.mockRestore()
     clearInterval(progress)
     await host?.close()
     await f.host.close()
@@ -264,24 +370,24 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
   expect(results).toHaveLength(2)
   for (const result of results) {
     expect(result.firstRequestMs).toBeLessThan(2000)
+    expect(result.beforeRequest).toBe(0)
     expect(result.classification?.contentReads).toBe(0)
+    expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)
     expect(result.ordinaryBytes).toBe(0)
     expect(result.polledBytes).toBe(0)
-    expect(result.cycles).toHaveLength(2)
-    expect(result.cycles[0]).toContain('start')
-    expect(result.cycles[1]).toContain('inspect')
+    expect(result.cycles).toHaveLength(result.interrupted ? 2 : 1)
+    for (const cycle of result.cycles) expect(cycle).toContain('start')
+    for (let i = 1; i <= result.cycles.length; i++)
+      expect(result.walks.filter((walk) => walk.phase === `cycle ${i}`).length).toBeLessThanOrEqual(
+        8
+      )
   }
 }, 240000)
 
-// BUG: The full host composition still spends too long walking an unchanged ledger.
-it.fails(
-  'settles a 33000-file host restart and inspection within ten seconds with one verification per path',
-  async () => {
-    await ensureMeasured()
-    for (const result of results) {
-      expect(result.idleMs).toBeLessThan(10000)
-      expect(result.classification!.callers['state.all']?.hit ?? 0).toBeLessThanOrEqual(33008)
-    }
-  },
-  240000
-)
+it('settles a 33000-file host restart and inspection within ten seconds with one verification per path', async () => {
+  await ensureMeasured()
+  for (const result of results) {
+    expect(result.idleMs).toBeLessThan(10000)
+    expect(result.classification!.callers['state.all']?.hit ?? 0).toBeLessThanOrEqual(33008)
+  }
+}, 240000)

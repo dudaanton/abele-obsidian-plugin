@@ -65,7 +65,10 @@ export function nativeVault(root: string, disk: typeof import('node:fs').promise
 }
 
 /** The native promise port, counting each call by name. */
-export function countedDisk(observeRead?: (path: string, bytes: number) => void) {
+export function countedDisk(
+  observeRead?: (path: string, bytes: number) => void,
+  observeWait?: () => () => void
+) {
   const calls = new Map<string, number>()
   const port = new Proxy(nodeDisk, {
     get(target, key) {
@@ -73,7 +76,9 @@ export function countedDisk(observeRead?: (path: string, bytes: number) => void)
       if (typeof value !== 'function' || typeof key !== 'string') return value
       return (...args: unknown[]) => {
         calls.set(key, (calls.get(key) ?? 0) + 1)
-        const result = Reflect.apply(value, target, args)
+        const finish = observeWait?.()
+        const pending = Reflect.apply(value, target, args)
+        const result = finish ? Promise.resolve(pending).finally(finish) : pending
         if (!observeRead) return result
         if (key === 'readFile')
           return Promise.resolve(result).then((bytes) => {
@@ -101,7 +106,7 @@ export function countedDisk(observeRead?: (path: string, bytes: number) => void)
 }
 
 /** Counts the transactions every database opened through `factory` creates, by mode. */
-export function countTransactions(factory: IDBFactory) {
+export function countTransactions(factory: IDBFactory, observeWait?: () => () => void) {
   const counts = { readonly: 0, readwrite: 0 }
   const open = factory.open.bind(factory)
   factory.open = ((...args: Parameters<IDBFactory['open']>) => {
@@ -115,7 +120,13 @@ export function countTransactions(factory: IDBFactory) {
         const raw = Reflect.get(db, '_rawDatabase') as { transactions: { _state: string }[] }
         raw.transactions = raw.transactions.filter((tx) => tx._state !== 'finished')
         counts[values[1] === 'readwrite' ? 'readwrite' : 'readonly']++
-        return transaction(...values)
+        const tx = transaction(...values)
+        const finish = observeWait?.()
+        if (finish) {
+          tx.addEventListener('complete', finish, { once: true })
+          tx.addEventListener('abort', finish, { once: true })
+        }
+        return tx
       }) as IDBDatabase['transaction']
     })
     return request

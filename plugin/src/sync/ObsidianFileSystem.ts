@@ -187,6 +187,7 @@ class InventoryProofs extends Set<string> {
   }
 }
 interface InventoryPass {
+  ledgerRows?: { revision: unknown; rows: StateEntry[] }
   indexedNames?: InventoryCache<Set<string>>
   parentFolders?: Set<string>
   publishedParents?: Set<string>
@@ -928,6 +929,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly awaitingIndex = new Set<string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
+  private inspectPoll: (() => Promise<boolean>) | null = null
   private readonly writer: VaultWriter
   private readonly io: BoundedVaultIo
   private readonly conditional: ConditionalFiles
@@ -2238,6 +2240,31 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
+  /** Read-only fallback consumers share one committed ledger snapshot per inventory.
+   * Entry changes and unknown writers retire it; metadata-only commits do not. */
+  private async *ledgerEntries(): AsyncIterable<StateEntry> {
+    const ledger = this.ledger
+    if (!ledger) return
+    const inventory = this.inventory
+    const clock = Reflect.get(ledger, Symbol.for('abele.sync.local-scan-state-revision-v1'))
+    const revision = inventory && typeof clock === 'function' ? await clock.call(ledger) : undefined
+    if (!inventory || revision === undefined) {
+      yield* ledger.all()
+      return
+    }
+    let snapshot = inventory.ledgerRows
+    if (!snapshot || snapshot.revision !== revision) {
+      snapshot = { revision, rows: await Array.fromAsync(ledger.all()) }
+      if (revision === (await clock.call(ledger))) inventory.ledgerRows = snapshot
+      else inventory.ledgerRows = undefined
+    }
+    const budget = new SyncTaskBudget()
+    for (const row of snapshot.rows) {
+      await budget.account(4096)
+      yield row
+    }
+  }
+
   async *list(): AsyncIterable<FileInfo> {
     const own = this.inventory === null && this.inventoryDepth === 0
     const inventory = own ? this.createInventory() : this.inventory
@@ -2284,7 +2311,7 @@ export class ObsidianFileSystem implements FileSystem {
     // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
     const candidates = new Set(this.awaitingIndex)
     if (this.ledger !== null) {
-      for await (const entry of this.ledger.all()) {
+      for await (const entry of this.ledgerEntries()) {
         await budget.account(4096)
         candidates.add(entry.path)
       }
@@ -2575,7 +2602,7 @@ export class ObsidianFileSystem implements FileSystem {
       remember(file.path)
     }
     if (this.ledger)
-      for await (const entry of this.ledger.all()) {
+      for await (const entry of this.ledgerEntries()) {
         await budget.account(4096)
         if (this.withinFileScope(entry.path)) remember(entry.path)
       }
@@ -3577,6 +3604,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
     )
     this.pollNow = watcher.kick
+    this.inspectPoll = watcher.inspect
     let stopped = false
     return () => {
       if (stopped) return
@@ -3593,6 +3621,7 @@ export class ObsidianFileSystem implements FileSystem {
       for (const ref of rootChanges) this.app.vault.offref(ref)
       stopMutations()
       if (this.pollNow === watcher.kick) this.pollNow = null
+      if (this.inspectPoll === watcher.inspect) this.inspectPoll = null
     }
   }
 
@@ -3605,6 +3634,10 @@ export class ObsidianFileSystem implements FileSystem {
    */
   kick(): void {
     this.pollNow?.()
+  }
+  /** Watcher proofs cover ordinary files; settings and ignore metadata need a fresh poll. */
+  [Symbol.for('abele.sync.inspect-polled-v1')](): Promise<boolean> {
+    return this.inspectPoll?.() ?? Promise.resolve(false)
   }
 
   /* ── The disk underneath ─────────────────────────────────────────────── */

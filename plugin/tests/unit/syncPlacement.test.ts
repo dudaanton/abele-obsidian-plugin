@@ -48,6 +48,152 @@ it('shares scope ledger walks only while the host proves the same filtered state
   await entries.call(scope, {})
   expect(walks).toBe(5)
 })
+it('defers only unchanged host constructor scope inventory and repairs marks in the active cycle', async () => {
+  const source = sample(version, 'scope.js')
+  const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input
+  const method = code.slice(
+    code.indexOf('record(fs, scope,'),
+    code.indexOf('    /**\n     * Mark what the scope excludes now, and settle')
+  )
+  const record = new Function(
+    'serially',
+    'ScanWork',
+    'parseRecord',
+    'canonical',
+    'isEngineOwn',
+    'checkCancellation',
+    'SCOPE_KEY',
+    `return ({${method}}).record`
+  )(
+    (_: unknown, run: () => unknown) => run(),
+    class {
+      async step() {}
+    },
+    JSON.parse,
+    JSON.stringify,
+    () => false,
+    () => {},
+    'marked-scope'
+  )
+  let walks = 0,
+    saved = 0
+  const scope = { scriptsFolder: 'Scripts' }
+  const state = {
+    [Symbol.for('abele.sync.defer-unchanged-scope-v1')]: true,
+    getMeta: async () => JSON.stringify(scope),
+    setMeta: async () => {},
+  }
+  const marks = {
+    state,
+    load: async () => new Set(),
+    save: async () => {
+      saved++
+    },
+    entries: async () => {
+      walks++
+      return [{ fileId: 'sample', wirePath: 'sample.md', size: 1 }]
+    },
+  }
+  const filter = { excluded: () => true }
+  await record.call(marks, {}, scope, filter)
+  expect(walks).toBe(0)
+  await record.call(marks, {}, scope, filter, { signal: new AbortController().signal })
+  expect(walks).toBe(1)
+  expect(saved).toBe(1)
+  Reflect.deleteProperty(state, Symbol.for('abele.sync.defer-unchanged-scope-v1'))
+  await record.call(marks, {}, scope, filter)
+  expect(walks).toBe(2)
+})
+
+it('shares the prepared inventory while its host revision is stable and cancels a racing snapshot', async () => {
+  const source = sample(version, 'scanSnapshot.js')
+  const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input
+  class Cancelled extends Error {}
+  const snapshot = new Function(
+    'ScanWork',
+    'checkCancellation',
+    'SyncCancelled',
+    code
+      .replace(/^import .*;$/gm, '')
+      .replace('export function scanSnapshot', 'return function scanSnapshot')
+  )(
+    class {
+      async step() {}
+    },
+    () => {},
+    Cancelled
+  )
+  let revision = 0,
+    walks = 0,
+    race = false
+  const fs = {
+    [Symbol.for('abele.sync.local-scan-revision-v1')]: () => revision,
+    async *list() {
+      walks++
+      yield { path: 'sample.md' }
+      if (race) revision++
+    },
+  }
+  const inventory = snapshot(fs, () => undefined)
+  expect(await Array.fromAsync(inventory.fs.list())).toEqual([{ path: 'sample.md' }])
+  await Array.fromAsync(inventory.fs.list())
+  expect(walks).toBe(1)
+  revision++
+  await Array.fromAsync(inventory.fs.list())
+  expect(walks).toBe(2)
+  inventory.invalidate()
+  race = true
+  await expect(Array.fromAsync(inventory.fs.list())).rejects.toBeInstanceOf(Cancelled)
+  race = false
+  await Array.fromAsync(inventory.fs.list())
+  expect(walks).toBe(4)
+})
+
+it('probes remote settlement without consuming changes and rejects head, generation or access changes', async () => {
+  const source = sample(version, 'v2Client.js')
+  const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input
+  const method = code.slice(
+    code.indexOf("async [Symbol.for('abele.sync.inspect-remote-head-v1')]"),
+    code.indexOf('    async state() {')
+  )
+  const probe = new Function(
+    'V2ConnectionSchema',
+    'V2ChangesSchema',
+    `return ({${method}})[Symbol.for('abele.sync.inspect-remote-head-v1')]`
+  )({}, {})
+  const original = { status: 'active', scope: { path: '/' }, limits: { max_file_bytes: 1000000 } }
+  let reply = structuredClone(original),
+    head = 4,
+    generation = 1
+  const queries: unknown[] = []
+  const http = {
+    generation: 1,
+    observedGeneration: 1,
+    async json(_schema: unknown, method: string, path: string, options: { query?: unknown }) {
+      expect(method).toBe('GET')
+      http.observedGeneration = generation
+      if (path === '/v2/connection') return reply
+      expect(path).toBe('/v2/changes')
+      queries.push(options.query)
+      return { cursor: head, items: [], next: null }
+    },
+  }
+  const ctx = { http, connectionInfo: original }
+  expect(await probe.call(ctx, 4)).toBe(true)
+  expect(queries[0]).toEqual({ since: Number.MAX_SAFE_INTEGER, limit: 1 })
+  head++
+  expect(await probe.call(ctx, 4)).toBe(false)
+  head = 4
+  generation++
+  expect(await probe.call(ctx, 4)).toBe(false)
+  generation = 1
+  reply = { ...reply, scope: { path: 'Shared' } }
+  expect(await probe.call(ctx, 4)).toBe(false)
+  reply = { ...structuredClone(original), status: 'revoked' }
+  expect(await probe.call(ctx, 4)).toBe(false)
+  expect(ctx.connectionInfo).toBe(original)
+})
+
 it('leaves the external state module outside the memory-store integration', () => {
   const id = join(root, 'dist/internal/core/external/state.js')
   expect(syncPlacementPlugin().transform(readFileSync(id, 'utf8'), id)).toBeNull()

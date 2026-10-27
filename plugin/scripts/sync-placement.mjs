@@ -106,6 +106,33 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
+          '    /* ── Status ──────────────────────────────────────────────────────────── */',
+          `    async [Symbol.for('abele.sync.fresh-inspection-v1')]() {
+          // Idle is published before the run's final bookkeeping promise settles.
+          // Drain that tail rather than queueing another cycle behind a completed proof.
+          if (this.current.state === 'idle' && this.running !== null && this.queued === null)
+            await this.running.catch(noop);
+          if (this.running !== null || !this.started || this.paused || this.halted ||
+              this.current.state !== 'idle' || this.current.lastError ||
+              this.current.pending || this.current.deferred || this.current.heldDeletes) {
+            this.log('sync: inspection proof unavailable ' + JSON.stringify({ running: this.running !== null, started: this.started, paused: this.paused, halted: this.halted, state: this.current.state, pending: this.current.pending, deferred: this.current.deferred, held: this.current.heldDeletes }));
+            return false;
+          }
+          const poll = this.opts.fs[Symbol.for('abele.sync.inspect-polled-v1')];
+          if (typeof poll !== 'function' || !await poll.call(this.opts.fs)) return false;
+          if (!await this.cycle.freshInspection()) return false;
+          const remote = this.opts.client[Symbol.for('abele.sync.inspect-remote-head-v1')];
+          try {
+            if (typeof remote !== 'function' ||
+                !await remote.call(this.opts.client, this.current.cursor, this.cancellation.signal)) return false;
+          } catch { return false; }
+          return await this.cycle.freshInspection() && this.running === null &&
+            this.current.state === 'idle' && !this.paused && !this.halted;
+        }
+    /* ── Status ──────────────────────────────────────────────────────────── */`
+        )
+        code = replaceOnce(
+          code,
           'sync() {',
           `sync(reason = 'direct') {
           const caller = new Error().stack?.split('\\n').slice(2, 7).join(' <- ') ?? 'unknown';
@@ -134,6 +161,21 @@ export function syncPlacementPlugin() {
             return (fresh ? await fresh.call(this.ctx.fs, path) : await fingerprintFile(this.ctx.fs, path, sha256)).sha;`
         )
       } else if (file.endsWith('/scope.js')) {
+        code = replaceOnce(
+          code,
+          `            const entries = await this.entries(opts);
+            const raw = this.state.getMeta ? await this.state.getMeta(SCOPE_KEY) : null;
+            const previous = raw === null ? null : parseRecord(raw);`,
+          `            const raw = this.state.getMeta ? await this.state.getMeta(SCOPE_KEY) : null;
+            const previous = raw === null ? null : parseRecord(raw);
+            // An unchanged host scope needs no constructor/start inventory. The cycle
+            // still repairs every mark after preparing the server and before effects.
+            if (opts.signal === undefined && previous !== null &&
+                canonical(previous) === canonical(scope) &&
+                this.state[Symbol.for('abele.sync.defer-unchanged-scope-v1')] === true)
+              return;
+            const entries = await this.entries(opts);`
+        )
         code = replaceOnce(
           code,
           `record(fs, scope, filter, opts = {}) {
@@ -184,6 +226,37 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          'await client.prepare?.(fs, state,',
+          `await client.prepare?.(fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() !== undefined ? scanningFs : fs, state,`
+        )
+        code = replaceOnce(
+          code,
+          '    async countStaged() {',
+          `    async freshInspection() {
+          const { fs, state } = this.ctx.opts;
+          const local = fs[Symbol.for('abele.sync.local-scan-revision-v1')];
+          const epoch = fs[Symbol.for('abele.sync.watch-epoch-v1')]?.();
+          const age = this.ctx.now() - this.settledInspectionAt;
+          if (typeof local !== 'function' || !Number.isFinite(age) || age < 0 || age >= 300_000 ||
+              this.settledLocalRevision === undefined || this.settledEntryRevision === undefined ||
+              epoch === undefined || epoch !== this.settledWatchEpoch ||
+              this.unscanned || this.rewind || !this.ctx.watching() ||
+              this.ctx.watch.noticed.size || this.ctx.watch.reported.size ||
+              this.kept.size || this.unsettled.size || this.retries.list().length ||
+              local.call(fs) !== this.settledLocalRevision) {
+            this.ctx.log('sync: inspection proof unavailable ' + JSON.stringify({ age, local: typeof local === 'function' ? local.call(fs) : undefined, settled: this.settledLocalRevision, unscanned: this.unscanned, rewind: this.rewind, watching: this.ctx.watching(), noticed: this.ctx.watch.noticed.size, reported: this.ctx.watch.reported.size, kept: this.kept.size, unsettled: this.unsettled.size, retries: this.retries.list().length }));
+            return false;
+          }
+          const entry = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
+          const directories = await state.getMeta?.('v2-directories');
+          return entry === this.settledEntryRevision && directories === this.settledDirectoryRevision &&
+            local.call(fs) === this.settledLocalRevision && epoch === fs[Symbol.for('abele.sync.watch-epoch-v1')]?.() &&
+            this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0;
+        }
+    async countStaged() {`
+        )
+        code = replaceOnce(
+          code,
           '        await this.scanWork(() => refreshLocalPaths(scanningFs, state, {',
           `        for (const row of this.retries.list()) {
           if (row.phase !== 'push' || row.local || !row.reason.startsWith('too_large:')) continue;
@@ -231,6 +304,7 @@ export function syncPlacementPlugin() {
             this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0) {
           this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
           this.settledLocalRevision = localRevision;
+          this.settledWatchEpoch = fs[Symbol.for('abele.sync.watch-epoch-v1')]?.();
           this.settledEntryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
           this.settledCollisions = found.collisions;
           // Only an ordinary inspection renews the deadline. Frequent feed/idle cycles
@@ -271,6 +345,35 @@ export function syncPlacementPlugin() {
           // Failure/cancellation cannot leave an earlier pass's proof reusable.
           this.settledLocalRevision = undefined;
           this.settledEntryRevision = undefined;`
+        )
+      } else if (file.endsWith('/scanSnapshot.js')) {
+        code = replaceOnce(
+          code,
+          'import { checkCancellation }',
+          'import { checkCancellation, SyncCancelled }'
+        )
+        code = replaceOnce(
+          code,
+          'const snapshots = new Map();',
+          'const snapshots = new Map();\n    let revision;'
+        )
+        code = replaceOnce(
+          code,
+          'let snapshot = snapshots.get(key);',
+          `const clock = fs[Symbol.for('abele.sync.local-scan-revision-v1')];
+                    const current = typeof clock === 'function' ? clock.call(fs) : undefined;
+                    if (revision !== current) { snapshots.clear(); revision = current; }
+                    let snapshot = snapshots.get(key);`
+        )
+        code = replaceOnce(
+          code,
+          'for (const item of await snapshot) {',
+          `const rows = await snapshot;
+                    if (current !== (typeof clock === 'function' ? clock.call(fs) : undefined)) {
+                      snapshots.clear();
+                      throw new SyncCancelled();
+                    }
+                    for (const item of rows) {`
         )
       } else if (file.endsWith('/pullWrite.js')) {
         code = replaceOnce(
@@ -1547,6 +1650,23 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         for (const membership of memberships) {`
         )
       } else if (file.endsWith('/v2Client.js')) {
+        code = replaceOnce(
+          code,
+          '    async state() {',
+          `    async [Symbol.for('abele.sync.inspect-remote-head-v1')](cursor, signal) {
+          const before = JSON.stringify(this.connectionInfo);
+          const generation = this.http.generation;
+          // Read-only head probe: no feed decoding, cursor advancement or ownership effects.
+          const info = await this.http.json(V2ConnectionSchema, 'GET', '/v2/connection', { signal });
+          const feed = await this.http.json(V2ChangesSchema, 'GET', '/v2/changes', {
+            query: { since: Number.MAX_SAFE_INTEGER, limit: 1 }, signal,
+          });
+          return info.status === 'active' && before === JSON.stringify(info) &&
+            generation === this.http.observedGeneration && feed.cursor === cursor &&
+            feed.items.length === 0 && feed.next === null;
+        }
+    async state() {`
+        )
         code = replaceOnce(
           code,
           'async fileItem(item, seq, readback) {',

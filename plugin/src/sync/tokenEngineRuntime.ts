@@ -2688,6 +2688,11 @@ export class TokenEngineRuntime
   private runFailure: unknown
   /** Inspect on host resume without retrying held decisions or bypassing upload pacing. */
   async inspect(watchGap = true): Promise<void> {
+    const fresh = Reflect.get(this.engine, Symbol.for('abele.sync.fresh-inspection-v1'))
+    if (!watchGap && typeof fresh === 'function' && (await fresh.call(this.engine))) {
+      this.trace.log('sync: inspection reuses settled watcher proof')
+      return
+    }
     const invalidate = Reflect.get(
       this.options.fs,
       Symbol.for('abele.sync.invalidate-local-scan-v1')

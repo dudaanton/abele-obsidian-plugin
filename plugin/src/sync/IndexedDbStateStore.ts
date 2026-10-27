@@ -78,6 +78,8 @@ class RevisionConflict extends EngineError {
 }
 
 /** Durable ledger with private revocable transaction handles and native revision CAS. */
+const DEFER_UNCHANGED_SCOPE = Symbol.for('abele.sync.defer-unchanged-scope-v1')
+
 export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private normalizationCache: Map<string, Promise<string | null>> | null = null
   private normalizationPassDepth = 0
@@ -150,9 +152,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     { key: string | null; owner: string; entries: boolean }
   >()
   private scanStateRevision = 0
-  private scanStateReadRevision: number | undefined;
+  private scanStateReadRevision: number | undefined
 
-  /** Only committed entry writes retire a local scan. Unknown writers retire it conservatively. */
+  /** Unchanged scope publication is repaired by the active cycle before its effects. */
+  readonly [DEFER_UNCHANGED_SCOPE] = true;
   [Symbol.for('abele.sync.scope-state-revision-v1')](): Promise<number | undefined> {
     return this.localScanStateRevision()
   }

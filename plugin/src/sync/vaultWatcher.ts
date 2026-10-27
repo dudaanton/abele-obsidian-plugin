@@ -30,6 +30,8 @@ export interface WatchHost {
 /** A running watch: look at the config folder now, or stop. */
 export interface VaultWatch {
   kick: () => void
+  /** Await a poll newer than this request; false means coverage failed or stopped. */
+  inspect: () => Promise<boolean>
   stop: () => void
 }
 
@@ -78,6 +80,7 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
   let seen: Map<string, string> | null = null
   let walking = false
   let again = false
+  const inspections = new Set<(covered: boolean) => void>()
   const poll = async (): Promise<void> => {
     if (stopped) return
     // One walk at a time: a `kick` during a walk is answered by the walk after it, which
@@ -87,15 +90,18 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
       return
     }
     walking = true
+    let covered = false
     try {
       do {
         again = false
         let taken: Map<string, string>
         try {
           taken = await host.snapshot()
+          covered = true
         } catch (error) {
           // A folder that would not be listed is not a reason to say its files are gone.
           console.debug('[abele-sync] cannot read the settings folder', error)
+          covered = false
           continue
         }
         if (stopped) return
@@ -112,10 +118,19 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
       } while (again)
     } finally {
       walking = false
+      for (const resolve of inspections) resolve(covered && !stopped)
+      inspections.clear()
     }
   }
 
   const kick = (): void => void poll()
+  const inspect = (): Promise<boolean> => {
+    if (stopped) return Promise.resolve(false)
+    return new Promise((resolve) => {
+      inspections.add(resolve)
+      void poll()
+    })
+  }
 
   const refs: EventRef[] = [
     host.app.vault.on('create', (file) => add(pathsOf(file))),
@@ -136,6 +151,8 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
 
   const stop = (): void => {
     stopped = true
+    for (const resolve of inspections) resolve(false)
+    inspections.clear()
     if (timer !== undefined) window.clearTimeout(timer)
     timer = undefined
     window.clearInterval(ticker)
@@ -144,7 +161,7 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
     console.debug('[abele-sync] stopped watching the vault')
   }
 
-  return { kick, stop }
+  return { kick, inspect, stop }
 }
 
 /**
