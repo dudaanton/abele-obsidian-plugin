@@ -75,14 +75,17 @@ export function nodeChatPlace(
 }
 
 /** A file the agent named, opened from the chat in a node file tab of the same place. */
-export function nodeChatResource(resource: string, target: PathTarget) {
+export function nodeChatRoot(target: PathTarget): string | undefined {
   const model = NodePathService.getInstance().model(target.registrationId)
-  const root =
+  return (
     model.copy(target)?.path ??
     (target.kind === 'workspace'
       ? model.folders.value.find((folder) => folder.id === target.projectId)?.path
       : undefined)
-  return resolveNodeCodeLink(resource, target, root)
+  )
+}
+export function nodeChatResource(resource: string, target: PathTarget) {
+  return resolveNodeCodeLink(resource, target, nodeChatRoot(target))
 }
 export async function openNodeChatResource(resource: string, target: PathTarget): Promise<void> {
   const destination = nodeChatResource(resource, target)

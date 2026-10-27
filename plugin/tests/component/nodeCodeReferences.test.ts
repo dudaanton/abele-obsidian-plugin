@@ -6,6 +6,7 @@ import { NODE_CODE_LINK_OPENER } from '@/node/codeLinkContext'
 import { resolveNodeCodeLink } from '@/node/codeLinks'
 import { useVault } from '../helpers/testEnv'
 import { untrustedGuard } from '@/markdown/renderUntrusted'
+import { ref } from 'vue'
 
 const target = {
   nodeId: 'node',
@@ -37,5 +38,21 @@ it('renders saved code references as internal links and routes taps with their r
   await view.find('a').trigger('click')
   expect(open).toHaveBeenCalledWith('src/sample.ts#L3-L7')
   expect(resolveNodeCodeLink(open.mock.calls[0][0], target)).toMatchObject({ line: 3, endLine: 7 })
+  view.unmount()
+})
+
+it('resolves saved references again when node folder metadata arrives', async () => {
+  useVault([])
+  const ready = ref(false)
+  vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _text, el) => {
+    el.innerHTML = '<a href="/sample/tree/src/sample.ts:3">Sample</a>'
+    untrustedGuard(el, {} as never)
+  })
+  const open = Object.assign(vi.fn(), { context: () => ready.value, canOpen: () => ready.value })
+  const view = mount(Markdown, { props: { text: 'saved answer', resourceOpener: open } })
+  await flushPromises()
+  expect(view.find('a').exists()).toBe(false)
+  ready.value = true
+  await vi.waitFor(() => expect(view.find('a.internal-link').exists()).toBe(true))
   view.unmount()
 })

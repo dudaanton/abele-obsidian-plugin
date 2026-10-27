@@ -47,6 +47,8 @@ const props = defineProps<{
 
 let component: Component | null = null
 const codeOpener = inject(NODE_CODE_LINK_OPENER, undefined)
+const resourceContext = () =>
+  (props.resourceOpener as CodeLinkOpener | undefined)?.context?.() ?? codeOpener?.context?.()
 const codePolicy = codeOpener
   ? { before: (root: HTMLElement) => prepareNodeCodeLinks(root, true) }
   : undefined
@@ -146,7 +148,7 @@ const renderContent = async () => {
   if (!target.value || !component) return
 
   const resourceOpener = props.resourceOpener
-  const codeContext = codeOpener?.context?.()
+  const codeContext = resourceContext()
   if (!props.trusted) markUntrusted(target.value, resourceOpener ? nodeMarkdownPolicy : {})
   const mine = ++generation
   const source = props.text || ''
@@ -319,7 +321,7 @@ watch(
     props.streaming,
     props.resourceOpener,
     codeOpener?.active?.(),
-    codeOpener?.context?.(),
+    resourceContext(),
   ],
   () => renderQueue.request(!!props.streaming),
   { deep: true }
