@@ -85,8 +85,18 @@ function open(key: string) {
   align-items: center;
   justify-content: space-between;
 }
+.abele-node-references .abele-fold-heading {
+  display: flex;
+}
+.abele-node-references .abele-fold-heading__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .abele-node-references .abele-fold-heading__count {
   margin-inline-start: auto;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 .abele-node-references .abele-github-search__line.is-active {
   background: var(--background-modifier-hover);

@@ -45,6 +45,7 @@
       v-if="$slots.code || !comparison"
       v-show="!comparison"
       class="abele-file-view__card abele-file-view__file"
+      :class="{ 'abele-file-view__file_fill': !image && !metadataNote }"
     >
       <div class="abele-file-view__header">
         <span class="abele-file-view__title">
@@ -410,6 +411,9 @@ function onMenu(e: MouseEvent) {
 .abele-node-main > .abele-file-view > .abele-file-view__file {
   max-height: none;
   overflow: clip;
+}
+.abele-file-view__file_fill {
+  flex-grow: 1;
 }
 .abele-file-view__header {
   position: sticky;

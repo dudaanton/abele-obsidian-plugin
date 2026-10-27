@@ -6,7 +6,15 @@ import NodeLspFixture from '@/testing/NodeLspFixture.vue'
 import { lspFor } from '@/node/lspContext'
 import NodeReferenceResults from '@/components/nodeWork/NodeReferenceResults.vue'
 import { createReferenceResults, referenceLocationKey } from '@/node/referenceResults'
+import { readFileSync } from 'node:fs'
 enableAutoUnmount(afterEach)
+it('stretches reference headings so the muted counts can align at the far edge', () => {
+  const source = readFileSync('src/components/nodeWork/NodeReferenceResults.vue', 'utf8')
+  expect(source).toMatch(/\.abele-node-references \.abele-fold-heading\s*\{[^}]*display: flex/s)
+  expect(source).toMatch(
+    /\.abele-node-references \.abele-fold-heading__count\s*\{[^}]*color: var\(--text-muted\)/s
+  )
+})
 afterEach(() => {
   vi.restoreAllMocks()
   Object.assign(Platform, { isMobile: false, isPhone: false })

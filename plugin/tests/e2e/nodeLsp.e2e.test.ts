@@ -146,6 +146,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             if (!${mobile} && !document.querySelector('[data-reference-row].is-active')) throw Error('Desktop references disappeared after navigation');
             if (${mobile}) await until(() => !document.querySelector('[data-node-references]'));
             for (const mode of ['several', 'long', 'empty']) {
+              phase = 'references-' + mode;
               document.querySelector('[data-lsp-settle]').dispatchEvent(new CustomEvent('reference-mode', {detail:mode}));
               await wait(50);
               p=point();p.target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:p.x,clientY:p.y}));
@@ -162,9 +163,29 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               if (mode === 'several' && !list.querySelector('[title="Definition"]')) throw Error('Definition marker missing');
               if (mode === 'long' && (list.querySelectorAll('[data-reference-row]').length !== 12 || !list.textContent.includes('10 more'))) throw Error('Long references are not folded and capped');
               if (${mobile} && !list.closest('.modal.mod-lg')) throw Error('Phone references do not use a tall modal');
+              for (const heading of list.querySelectorAll('.abele-fold-heading')) {
+                const count = heading.querySelector('.abele-fold-heading__count');
+                if (!count || Math.abs(count.getBoundingClientRect().right - heading.getBoundingClientRect().right) > 12) throw Error('Reference file count is not aligned at the right edge');
+              }
+              if (!${mobile}) {
+                const viewer = list.closest('.abele-file-view');
+                const preview = viewer.querySelector('.abele-file-view__file');
+                if (preview.getBoundingClientRect().bottom < viewer.getBoundingClientRect().bottom - 4) throw Error('File preview leaves unused space below it');
+              }
               await shot('references-' + mode);
               if (${mobile}) {
-                list.closest('.modal').querySelector('.modal-close-button').click();
+                if (mode === 'several') {
+                  phase = 'references-definition-tap';
+                  const definition = list.querySelector('[title="Definition"]')?.closest('[data-reference-row]');
+                  if (!definition) throw Error('Definition result is missing');
+                  definition.click();
+                  await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'node_modules/sample-types/index.d.ts:3');
+                } else {
+                  phase = 'references-' + mode + '-close';
+                  const closeButton = list.closest('.modal').querySelector('.modal-close-button, .modal-header-button.mod-raised');
+                  if (!closeButton) throw Error('Host modal close control is missing');
+                  closeButton.click();
+                }
                 await until(() => !document.querySelector('[data-node-references]'));
               }
             }
@@ -203,7 +224,8 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await close();
         }
         return JSON.stringify(results);
-        } finally { window.removeEventListener('unhandledrejection', onError); window.removeEventListener('error', onError); }
+        } catch (error) { await shot('failure-' + phase); throw Error(phase + ': ' + (error.stack ?? error.message ?? error)); }
+        finally { window.removeEventListener('unhandledrejection', onError); window.removeEventListener('error', onError); }
       })()`,
           90000
         )
