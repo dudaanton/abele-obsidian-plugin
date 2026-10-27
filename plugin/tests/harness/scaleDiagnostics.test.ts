@@ -702,3 +702,38 @@ it('reports task durations with setup interval unions removed without changing r
   ])
   expect(tasks[0].durationMs).toBe(200)
 })
+
+it('retains seeded and live sync request/cycle reasons, callers and queued evidence', () => {
+  const received = [],
+    originalLines = []
+  const original = function (line) {
+    originalLines.push([this, line])
+    return 'logged'
+  }
+  const trace = {
+    lines: [
+      'sync: cycle direct caller: sample-start',
+      '',
+      'sync: request start caller: sample-start (queued)',
+    ],
+    lineCount: 2,
+    lineNext: 1,
+    log: original,
+  }
+  const close = diagnostics.observeSyncTrace(trace, (event) => received.push(event))
+  expect(received.map((e) => [e.line, e.seeded])).toEqual([
+    ['sync: request start caller: sample-start (queued)', true],
+    ['sync: cycle direct caller: sample-start', true],
+  ])
+  expect(trace.log('sync: cycle start, direct caller: sample-a | sample-b')).toBe('logged')
+  expect(received.at(-1)).toEqual({
+    event: 'engine-sync-diagnostic',
+    line: 'sync: cycle start, direct caller: sample-a | sample-b',
+    seeded: false,
+  })
+  trace.log('ordinary file activity')
+  expect(received).toHaveLength(3)
+  expect(originalLines[0][0]).toBe(trace)
+  close()
+  expect(trace.log).toBe(original)
+})

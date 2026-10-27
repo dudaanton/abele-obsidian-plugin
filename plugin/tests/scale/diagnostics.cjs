@@ -531,3 +531,25 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
   gate = binding.breakpointId
   return () => transport.removeListener('message', message)
 }
+
+// Preserve the original scheduling receipts before the bounded runtime ring rotates.
+exports.observeSyncTrace = function (trace, emit) {
+  const record = (line, seeded) => {
+    if (/^sync: (?:request |cycle )/.test(line))
+      emit({ event: 'engine-sync-diagnostic', line, seeded })
+  }
+  for (let i = 0; i < trace.lineCount; i++)
+    record(
+      trace.lines[(trace.lineNext - trace.lineCount + i + trace.lines.length) % trace.lines.length],
+      true
+    )
+  const original = trace.log
+  const wrapped = function (line) {
+    record(line, false)
+    return original.call(this, line)
+  }
+  trace.log = wrapped
+  return () => {
+    if (trace.log === wrapped) trace.log = original
+  }
+}

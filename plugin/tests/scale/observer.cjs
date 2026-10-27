@@ -33,7 +33,9 @@ module.exports = class extends Plugin {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
     const nativeCrypto = require('node:crypto')
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Reuse stack provenance for hash observations.
-    const { classifyOrigin: classifyHash, stateChunks, visibleStatus } = require(config.diagnostics)
+    const { classifyOrigin: classifyHash, stateChunks, visibleStatus, observeSyncTrace } = require(
+      config.diagnostics
+    )
     globalThis.__scaleObserveIncrementalHash = (hash) =>
       reindexObserver.observeIncrementalHash(hash, emit)
     this.register(() => {
@@ -58,12 +60,18 @@ module.exports = class extends Plugin {
       undoReads?.()
       undoWrites()
     })
+    const cycleTraces = new WeakSet()
     let previous = ''
     const seenActivity = new Set()
     const stateTimer = setInterval(() => {
       const host = this.app.plugins?.plugins?.abele?.tokenEngines
       const ui = host?.ui
       if (!ui) return
+      for (const runtime of host.live.values()) {
+        if (!runtime.trace || cycleTraces.has(runtime.trace)) continue
+        cycleTraces.add(runtime.trace)
+        this.register(observeSyncTrace(runtime.trace, emit))
+      }
       const state = {
         event: config.device === '0' ? 'primary-state' : 'device-state',
         snapshot: {
