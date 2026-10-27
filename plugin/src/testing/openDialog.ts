@@ -30,7 +30,7 @@ export interface DialogFixtureOptions {
   lspFile?: {
     target: import('@/node/NodePathModel').PathTarget
     text: string
-    comparison?: boolean
+    comparison?: { base: string }
   }
   delegationCommand?: string | string[]
   managerLegacyIntegration?: boolean

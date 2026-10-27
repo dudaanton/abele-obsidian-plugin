@@ -1,5 +1,6 @@
 <template>
   <Modal title="sample.ts" size="tall" close-in-footer @close="$emit('close')">
+    <div v-if="error" role="alert">{{ error }}</div>
     <GithubFiles
       v-if="comparison && changes"
       :files="changes.files.filter((file) => file.path === 'sample.ts')"
@@ -21,12 +22,12 @@ import Modal from '@/components/obsidian/Modal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import FileView from '@/components/nodeWork/FileView.vue'
 import GithubFiles from '@/components/github/GithubFiles.vue'
-import { computed, onMounted, onBeforeUnmount, provide, shallowRef } from 'vue'
-import { NodeRepositorySource } from '@/repository/node'
+import { computed, onMounted, onBeforeUnmount, provide, shallowRef, ref } from 'vue'
+import { WORKING_TREE, NodeRepositorySource } from '@/repository/node'
 import { NodeService } from '@/node/NodeService'
 import { REPOSITORY_SOURCE } from '@/repository/context'
 import type { CompareData } from '@/repository/model'
-const props = defineProps<{ target: PathTarget; text: string; comparison?: boolean }>()
+const props = defineProps<{ target: PathTarget; text: string; comparison?: { base: string } }>()
 const source = props.comparison
   ? new NodeRepositorySource(
       NodeService.connectionIfKnown(props.target.registrationId).client,
@@ -37,7 +38,8 @@ const source = props.comparison
         project: props.target.projectId,
         workspace: props.target.id,
       },
-      { node: 'Sample node', project: 'Sample project' }
+      { node: 'Sample node', project: 'Sample project' },
+      { kind: 'commit', commit: props.comparison.base }
     )
   : undefined
 provide(
@@ -45,8 +47,14 @@ provide(
   computed(() => source ?? null)
 )
 const changes = shallowRef<CompareData>()
+const error = ref('')
 onMounted(async () => {
-  if (source) changes.value = await source.compare('HEAD~1', 'HEAD')
+  try {
+    if (source && props.comparison)
+      changes.value = await source.compare(props.comparison.base, WORKING_TREE)
+  } catch (failure) {
+    error.value = String(failure)
+  }
 })
 onBeforeUnmount(() => source?.dispose())
 defineEmits<{ close: [] }>()
