@@ -262,6 +262,8 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
         await window.__abeleTest.openDialog('node-lsp-ready', { lspAdmission: 'changes' });
         await until(() => document.querySelector('.abele-github-file.abele-lsp-root .cm-content'));
         await until(() => document.querySelector('[data-lsp-analysis]')?.dataset.state === 'ready');
+        // Let the phone sheet and CodeMirror finish layout before measuring the gesture.
+        await shot('changes');
         const content=document.querySelector('.abele-github-file .cm-content');
         const word=[...content.querySelectorAll('.cm-line')].find(el=>el.textContent.includes('console.log'));
         const walker=document.createTreeWalker(word,NodeFilter.SHOW_TEXT);
@@ -272,7 +274,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           const box=range.getBoundingClientRect();point={x:box.left+box.width/2,y:box.top+box.height/2,target:node.parentElement};break;
         }
         if(!point)throw Error('Changes symbol not drawn');
-        await shot('changes');
+        if (!point.target.contains(document.elementFromPoint(point.x, point.y))) throw Error('Changes symbol gesture misses its rendered target');
         if(${mobile}) {
           const finger=new Touch({identifier:1,target:point.target,clientX:point.x,clientY:point.y});
           point.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[finger],changedTouches:[finger]}));
