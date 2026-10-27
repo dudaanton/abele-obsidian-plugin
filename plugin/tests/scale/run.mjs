@@ -882,26 +882,28 @@ export async function run(config) {
     report.restartAt = restartAt
     if (config.reindex === true || config.shape === 'scale') await triggered(p, 'comparison', start)
     else await start()
-    await reindex('reindex-restart-comparison', a, p)
-    await wait(
-      'restart first server request',
-      () =>
-        proxies.every((proxy) =>
-          proxy.events.some((e) => e.event === 'start' && e.at >= restartAt)
-        ),
-      60000
-    ).catch(() => {})
-    report.deviceRestartRequestMs = proxies.map((proxy) => {
-      const first = proxy.events.find((e) => e.event === 'start' && e.at >= restartAt)
-      return first ? first.at - restartAt : null
-    })
-    report.restartRequestMs = report.deviceRestartRequestMs.every((value) => value !== null)
-      ? Math.max(...report.deviceRestartRequestMs)
-      : undefined
     report.deviceRestartIdleAt = await settleRestartDevices(
       devices,
       settle,
-      report.settleTimings ?? []
+      report.settleTimings ?? [],
+      async () => {
+        await reindex('reindex-restart-comparison', a, p)
+        await wait(
+          'restart first server request',
+          () =>
+            proxies.every((proxy) =>
+              proxy.events.some((e) => e.event === 'start' && e.at >= restartAt)
+            ),
+          60000
+        ).catch(() => {})
+        report.deviceRestartRequestMs = proxies.map((proxy) => {
+          const first = proxy.events.find((e) => e.event === 'start' && e.at >= restartAt)
+          return first ? first.at - restartAt : null
+        })
+        report.restartRequestMs = report.deviceRestartRequestMs.every((value) => value !== null)
+          ? Math.max(...report.deviceRestartRequestMs)
+          : undefined
+      }
     )
     await endReindex('reindex-restart-comparison', a)
     report.restartIdleMs = report.deviceRestartIdleAt.every(Number.isFinite)

@@ -26,6 +26,26 @@ it('starts both restart settle checks before either finishes and keeps each idle
   expect(await work).toEqual([5000, 1200])
 })
 
+it('starts peer settlement before primary comparison work and preserves its own idle time', async () => {
+  const entered: string[] = []
+  const timings: Array<{ step: string; idle: boolean; endedAt: number }> = []
+  const work = settleRestartDevices(
+    ['primary', 'peer'],
+    async (device, step) => {
+      entered.push(device)
+      timings.push({ step, idle: true, endedAt: device === 'peer' ? 1200 : 5000 })
+      return true
+    },
+    timings,
+    async () => {
+      expect(entered).toEqual(['peer'])
+      await Promise.resolve()
+    }
+  )
+  expect(await work).toEqual([5000, 1200])
+  expect(entered).toEqual(['peer', 'primary'])
+})
+
 it('derives control request and idle from each device receipt', () => {
   expect(
     controlTiming(

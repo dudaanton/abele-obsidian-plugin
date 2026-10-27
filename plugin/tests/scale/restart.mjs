@@ -1,6 +1,13 @@
-export async function settleRestartDevices(devices, settle, timings) {
+export async function settleRestartDevices(devices, settle, timings, beforePrimarySettle) {
   const steps = devices.map((_, index) => `restart device ${index === 0 ? 'A' : 'B'}`)
-  const settled = await Promise.all(devices.map((device, index) => settle(device, steps[index])))
+  let settled
+  if (beforePrimarySettle) {
+    const peer = settle(devices[1], steps[1])
+    await beforePrimarySettle()
+    settled = await Promise.all([settle(devices[0], steps[0]), peer])
+  } else {
+    settled = await Promise.all(devices.map((device, index) => settle(device, steps[index])))
+  }
   return steps.map((step, index) =>
     settled[index]
       ? (timings.findLast((row) => row.step === step && row.idle)?.endedAt ?? null)
