@@ -18,6 +18,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { isDeviceLocalPluginState } from '@/sync/deviceLocalState'
@@ -591,6 +592,47 @@ describe('ObsidianFileSystem writes on the desktop', () => {
       await write
     }
     expect(read(await fs.read('Note.md'))).toBe('remote')
+  })
+
+  it('retries a live backup after releasing recovery coordination for a queued edit', async () => {
+    const backup = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcd1234.old'
+    const app = buildFakeVault([...VAULT, { path: backup, content: 'retained old bytes' }])
+    withDesktopFs(app, { fenced: false })
+    app.saveLocalStorage(JOURNAL_KEY, [{ target: 'Note.md', backup }])
+    const disk = new ObsidianFileSystem(app as unknown as App)
+    const writer = Reflect.get(disk, 'writer') as {
+      holding<T>(path: string, run: () => Promise<T>): Promise<T>
+      recover(...args: unknown[]): Promise<void>
+    }
+    let entered!: () => void
+    const recovering = new Promise<void>((resolve) => (entered = resolve))
+    const recover = writer.recover.bind(writer)
+    writer.recover = async (...args) => {
+      entered()
+      return recover(...args)
+    }
+    let proceed!: () => void
+    const queued = new Promise<void>((resolve) => (proceed = resolve))
+    const held = writer.holding(backup, async () => {
+      await queued
+      await pathCoordinatorOf(app.vault).run(['Note.md'], async () => {
+        await app.vault.adapter.writeBinary('Note.md', text('local edit').buffer as ArrayBuffer)
+      })
+    })
+    const scan = listed(disk).then(
+      () => 'settled',
+      (error: unknown) => error
+    )
+    await recovering
+    proceed()
+    const outcome = await Promise.race([
+      scan,
+      new Promise((resolve) => setTimeout(() => resolve('deadlocked'), 1000)),
+    ])
+    expect(outcome).toBe('settled')
+    await held
+    expect(read(await disk.read('Note.md'))).toBe('local edit')
+    expect(await app.vault.adapter.exists(backup)).toBe(true)
   })
 
   it('publishes the complete file once after retaining the displaced inode', async () => {

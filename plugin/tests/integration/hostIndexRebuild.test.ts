@@ -160,6 +160,67 @@ it('keeps a sealed indexed snapshot when rebuilding starts after its first resul
   expect(paths.sort()).toEqual(['a.md', 'b.md'])
 })
 
+it('retries from disk when the host index changes inside an inventory', async () => {
+  const app = buildFakeVault([
+    { path: 'a.md', content: 'a' },
+    { path: 'b.md', content: 'b' },
+  ])
+  let clean = true
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never)
+  const physical = Reflect.get(fs, 'physicalPaths').bind(fs)
+  let interrupted = false
+  Reflect.set(fs, 'physicalPaths', async (...args: unknown[]) => {
+    const result = await physical(...args)
+    if (!interrupted) {
+      interrupted = true
+      clean = false
+    }
+    return result
+  })
+  const paths = []
+  for await (const file of fs.list()) paths.push(file.path)
+  expect(interrupted).toBe(true)
+  expect(paths.sort()).toEqual(['a.md', 'b.md'])
+})
+
+it('waits through repeated metadata changes while reading one file stat', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'sample' }])
+  Object.assign(app.metadataCache, { initialized: false, isCacheClean: () => false })
+  const fs = new ObsidianFileSystem(app as never)
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  const update = Reflect.get(fs, 'updateInventory').bind(fs)
+  let changed = 0
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    const result = await stat(path)
+    if (path === 'sample.md' && changed < 3) {
+      changed++
+      update(['sample.md'])
+    }
+    return result
+  })
+  const inventory = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).bind(fs)
+  const result = await inventory(() => fs.stat('sample.md'))
+  expect(changed).toBe(3)
+  expect(result?.size).toBe(6)
+})
+
+it('waits through repeated directory changes before publishing their inventory', async () => {
+  const app = buildFakeVault([])
+  const fs = new ObsidianFileSystem(app as never)
+  let changed = 0
+  Reflect.set(fs, 'listDirectories', async function* () {
+    if (changed < 3) {
+      changed++
+      Reflect.get(fs, 'inventory').directoryRevision++
+    }
+  })
+  const inventory = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).bind(fs)
+  const directories = Reflect.get(fs, Symbol.for('abele.sync.inventory-directories-v1')).bind(fs)
+  expect(await inventory(() => directories())).toEqual([])
+  expect(changed).toBe(3)
+})
+
 it.each(['partial', 'finishes', 'stale', 'unknown', 'layout', 'initializing'])(
   'uses disk membership and stats throughout a %s index pass without content reads',
   async (mode) => {

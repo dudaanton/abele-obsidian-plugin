@@ -1,6 +1,6 @@
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
-import { SyncTaskBudget } from './syncTaskBudget'
+import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
 import { INSTALL_BATCH, nativeInstallBatch, type InstallItem } from './nativeInstallBatch'
 import { PORTABLE_CANDIDATES } from './ledgerPathCandidates'
@@ -56,6 +56,7 @@ import { BoundedVaultIo } from './boundedVaultIo'
 import {
   ConditionalFiles,
   ScanInterrupted,
+  ConditionalEntryActive,
   type ConditionalFileOperation,
 } from './conditionalFiles'
 import type { JournalEntry } from './writeJournal'
@@ -80,6 +81,8 @@ import {
   WriteJournal,
   reserveSourceStage,
   releaseSourceStage,
+  RecoveryHeld,
+  waitForAdapterWrite,
   type NativeFs,
 } from './vaultWrites'
 
@@ -151,15 +154,13 @@ class InventoryCache<T> extends Map<string, T> {
     if (super.get(path) === value) this.revisions.set(path, this.revision(path))
   }
   async stable(path: string, read: () => T): Promise<Awaited<T>> {
-    for (let attempt = 0; attempt < INVENTORY_READ_ATTEMPTS; attempt++) {
+    for (let attempt = 0; ; attempt++) {
       const value = this.get(path) ?? this.observe(path, read)
       const revision = this.revisions.get(path)
       const result = await value
       if (revision === this.revision(path)) return result
+      if ((attempt + 1) % INVENTORY_READ_ATTEMPTS === 0) await yieldSyncTask()
     }
-    // An unstable snapshot proves neither presence nor absence. Stop this pass
-    // before adoption or download can act on it; a later pass can retry.
-    throw new EngineError('io', 'Directory inventory kept changing; retry sync later')
   }
   override delete(path: string): boolean {
     this.revisions.delete(path)
@@ -728,7 +729,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (!this.inventory) return read()
     const inventory = this.inventory
-    for (let attempt = 0; attempt < INVENTORY_READ_ATTEMPTS; attempt++) {
+    for (let attempt = 0; ; attempt++) {
       this.syncInventoryConfig(inventory)
       const revision = `${inventory.directoryRevision}`
       if (inventory.directories === undefined || inventory.directoryStamp !== revision) {
@@ -739,8 +740,8 @@ export class ObsidianFileSystem implements FileSystem {
       this.syncInventoryConfig(inventory)
       if (revision === `${inventory.directoryRevision}`) return directories
       inventory.directories = undefined
+      if ((attempt + 1) % INVENTORY_READ_ATTEMPTS === 0) await yieldSyncTask()
     }
-    throw new EngineError('io', 'Directory inventory kept changing; retry sync later')
   }
   async [Symbol.for('abele.sync.inventory-children-v1')](
     parent: string,
@@ -1668,8 +1669,18 @@ export class ObsidianFileSystem implements FileSystem {
         await this.rememberInstalled([item])
     }
     try {
-      if (item) await this.installationBarrier(item.path, discard)
-      else await discard()
+      for (;;) {
+        try {
+          if (item) await this.installationBarrier(item.path, discard)
+          else await discard()
+          break
+        } catch (error) {
+          if (!(error instanceof ConditionalEntryActive)) throw error
+          // Retained-copy maintenance owns this receipt. Wait after releasing the
+          // installation barrier, then recheck cleanup against current evidence.
+          await this.conditional.waitInactive(error.receipt)
+        }
+      }
     } finally {
       this.bufferedInstallations.delete(receipt)
     }
@@ -2104,6 +2115,19 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async recover(): Promise<void> {
+    for (;;) {
+      try {
+        await this.recoverOnce()
+        return
+      } catch (error) {
+        if (!(error instanceof RecoveryHeld)) throw error
+        // The writer must release its path lease before the edit can finish.
+        // Reinspect the journal only after leaving recovery's root lease.
+        await waitForAdapterWrite(error.path)
+      }
+    }
+  }
+  private async recoverOnce(): Promise<void> {
     this.runtimeFence?.assertOwned()
     if (
       this.scopedRoot() &&
@@ -2651,7 +2675,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     for (const path of (await this.physicalPaths(scope)).files) {
       if (readiness === true && this.indexReady() !== true)
-        throw new EngineError('io', 'Host index changed during inventory; retry using disk')
+        throw new ScanInterrupted('Host index changed during inventory; retry using disk')
       if (isHidden(path, '')) continue
       const file = indexed.get(path)
       // An indexed row keeps the index's own stat: the caller compares it with the disk to

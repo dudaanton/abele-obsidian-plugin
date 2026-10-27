@@ -87,6 +87,11 @@ const missing = (error: unknown) =>
 const operationRevisions = new WeakMap<Set<string>, { value: number }>()
 /** A listing interrupted by a local effect is retried before any entries are published. */
 export class ScanInterrupted extends Error {}
+export class ConditionalEntryActive extends Error {
+  constructor(readonly receipt: string) {
+    super('conditional entry is active; retry cleanup later')
+  }
+}
 function revisionOf(active: Set<string>): { value: number } {
   let revision = operationRevisions.get(active)
   if (!revision) operationRevisions.set(active, (revision = { value: 0 }))
@@ -165,6 +170,14 @@ export class ConditionalFiles {
   }
   async waitSettled(): Promise<void> {
     while (this.host.active.size)
+      await new Promise<void>((resolve) => {
+        if (typeof window !== 'undefined') window.setTimeout(resolve, 10)
+        else self.setTimeout(resolve, 10)
+      })
+  }
+  async waitInactive(receipt: string): Promise<void> {
+    const key = this.host.root + '/' + idOf(receipt)
+    while (this.host.active.has(key))
       await new Promise<void>((resolve) => {
         if (typeof window !== 'undefined') window.setTimeout(resolve, 10)
         else self.setTimeout(resolve, 10)
@@ -1225,8 +1238,11 @@ export class ConditionalFiles {
     if (await h.stat(retiring)) {
       for (const marker of (await h.list(retiring)).files) {
         try {
-          await this.discard(idOf(marker.slice(retiring.length + 1).replace(/\.json$/, '')))
+          const receipt = idOf(marker.slice(retiring.length + 1).replace(/\.json$/, ''))
+          if (h.active.has(h.root + '/' + receipt)) continue
+          await this.discard(receipt)
         } catch (error) {
+          if (error instanceof ConditionalEntryActive) continue
           failed ??= error
         }
       }
@@ -1305,8 +1321,7 @@ export class ConditionalFiles {
   }
   async discard(receipt: string): Promise<void> {
     const key = this.host.root + '/' + idOf(receipt)
-    if (this.host.active.has(key))
-      throw new EngineError('conflict', 'conditional entry is active; retry cleanup later')
+    if (this.host.active.has(key)) throw new ConditionalEntryActive(receipt)
     this.host.active.add(key)
     try {
       await this.discardOwned(receipt)

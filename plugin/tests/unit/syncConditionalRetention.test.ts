@@ -31,7 +31,7 @@ async function fixture(legacy = false) {
 async function sweep(disk: ObsidianFileSystem) {
   for (let i = 0; i < 8; i++) await Reflect.get(disk, 'conditional').maintenanceStep()
 }
-it('refuses receipt cleanup while eviction owns the same retained entry', async () => {
+it('waits for eviction before cleaning up the same receipt', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)
   const { disk } = await fixture()
   clock.mockReturnValue(100000 + week)
@@ -48,16 +48,40 @@ it('refuses receipt cleanup while eviction owns the same retained entry', async 
     return remove(path)
   }
   const eviction = sweep(disk)
+  let cleanup: Promise<void> | undefined
   try {
     await entered.promise
-    await expect(disk.discardInstallation('sample-retained')).rejects.toMatchObject({
-      code: 'conflict',
-    })
+    cleanup = disk.discardInstallation('sample-retained')
+    await Promise.resolve()
+    expect(
+      await Promise.race([
+        cleanup.then(
+          () => 'done',
+          () => 'failed'
+        ),
+        Promise.resolve('waiting'),
+      ])
+    ).toBe('waiting')
   } finally {
     resume.resolve()
     await eviction
   }
-  await disk.discardInstallation('sample-retained')
+  await expect(cleanup).resolves.toBeUndefined()
+})
+it('does not stop recovery while receipt cleanup is active', async () => {
+  const { app, disk } = await fixture()
+  const conditional = Reflect.get(disk, 'conditional')
+  const active = (Reflect.get(conditional, 'host') as { active: Set<string> }).active
+  const key = root + '/sample-retained'
+  await app.vault.adapter.mkdir(root + '/retiring')
+  await app.vault.adapter.write(root + '/retiring/sample-retained.json', '{}')
+  active.add(key)
+  try {
+    await expect(disk.recoverConditionalFiles()).resolves.toBeUndefined()
+  } finally {
+    active.delete(key)
+  }
+  await disk.recoverConditionalFiles()
 })
 it('retains displaced bytes independently of receipt cleanup for seven days', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100000)

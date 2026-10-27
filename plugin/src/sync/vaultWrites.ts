@@ -17,6 +17,26 @@ export { nativeOf, type NativeFs } from './nativeVaultFs'
  * second one (the join dialog counts files with its own) must not tidy away a live write.
  */
 const inFlight = new Set<string>()
+const inFlightWaiters = new Map<string, Set<() => void>>()
+export class RecoveryHeld extends Error {
+  constructor(readonly path: string) {
+    super('scan held while a journalled replacement has a live backup')
+  }
+}
+export async function waitForAdapterWrite(path: string): Promise<void> {
+  while (inFlight.has(path))
+    await new Promise<void>((resolve) => {
+      let waiters = inFlightWaiters.get(path)
+      if (!waiters) inFlightWaiters.set(path, (waiters = new Set()))
+      waiters.add(resolve)
+    })
+}
+function releaseInFlight(path: string): void {
+  inFlight.delete(path)
+  const waiters = inFlightWaiters.get(path)
+  inFlightWaiters.delete(path)
+  for (const wake of waiters ?? []) wake()
+}
 const reservedSources = new Set<string>()
 /** Reserved before journal publication; released only after creation failure or stage retirement. */
 export function reserveSourceStage(path: string): void {
@@ -167,7 +187,7 @@ export class VaultWriter {
       console.debug('[abele-sync] buffered conditional publication remains pending', path, error)
       throw error
     } finally {
-      inFlight.delete(temp)
+      releaseInFlight(temp)
     }
   }
 
@@ -339,8 +359,7 @@ export class VaultWriter {
         if (!(await this.deps.journal.currentProtects(retained.backup))) continue
         if (!isAdapterTemp(retained.backup) || !retained.backup.endsWith('.old'))
           throw new EngineError('io', 'Retained recovery locator is not an owned private artifact')
-        if (inFlight.has(retained.backup))
-          throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
+        if (inFlight.has(retained.backup)) throw new RecoveryHeld(retained.backup)
         const archived = await this.deps.native.archiveBackup(retained.backup)
         await this.deps.journal.persist(() =>
           this.deps.journal.relocateRecovered(retained.backup, archived)
@@ -415,9 +434,8 @@ export class VaultWriter {
         console.debug('[abele-sync] retired interrupted disposable placement source')
         continue
       }
-      if (entry.backup !== undefined && inFlight.has(entry.backup)) {
-        throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
-      }
+      if (entry.backup !== undefined && inFlight.has(entry.backup))
+        throw new RecoveryHeld(entry.backup)
       if (
         (entry.temp !== undefined && inFlight.has(entry.temp)) ||
         (entry.backup !== undefined && inFlight.has(entry.backup))
@@ -488,7 +506,7 @@ export class VaultWriter {
     try {
       return await run()
     } finally {
-      inFlight.delete(name)
+      releaseInFlight(name)
     }
   }
 
