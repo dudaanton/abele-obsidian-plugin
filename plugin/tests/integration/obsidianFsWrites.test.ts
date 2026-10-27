@@ -444,20 +444,25 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     }
     expect(paths.sort()).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
   })
-  it('rejects a partial scan when a conditional replacement completes between its yields', async () => {
+  it('keeps a sealed scan intact when a conditional replacement completes between its results', async () => {
     const app = buildFakeVault(VAULT)
     withDesktopFs(app)
     const reader = new ObsidianFileSystem(app as unknown as App)
     const writer = new ObsidianFileSystem(app as unknown as App)
     const listing = reader.list()[Symbol.asyncIterator]()
-    expect((await listing.next()).done).toBe(false)
+    const first = await listing.next()
+    expect(first.done).toBe(false)
     await writer.writeAtomic('Note.md', text('new complete bytes'), 9000)
-    const finish = async () => {
-      while (!(await listing.next()).done) {
-        /* Drain the same snapshot. */
-      }
+    const sealed = [first.value!.path]
+    for (;;) {
+      const next = await listing.next()
+      if (next.done) break
+      sealed.push(next.value.path)
     }
-    await expect(finish()).rejects.toMatchObject({ code: 'io' })
+    expect(sealed.sort()).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
+    expect((await listed(reader)).find((file) => file.path === 'Note.md')?.size).toBe(
+      text('new complete bytes').length
+    )
     expect(read(await writer.read('Note.md'))).toBe('new complete bytes')
   })
   it('preserves an independent edit made at the native rename boundary', async () => {
@@ -565,7 +570,22 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     await waiting
     try {
       expect(await app.vault.adapter.exists('Note.md')).toBe(false)
-      expect(await codeOf(listed(new ObsidianFileSystem(app as unknown as App)))).toBe('io')
+      let settled = false
+      const scan = listed(new ObsidianFileSystem(app as unknown as App)).then(
+        (files) => {
+          settled = true
+          return files
+        },
+        (error: unknown) => {
+          settled = true
+          throw error
+        }
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(settled).toBe(false)
+      release()
+      await write
+      expect((await scan).map((file) => file.path)).toContain('Note.md')
     } finally {
       release()
       await write

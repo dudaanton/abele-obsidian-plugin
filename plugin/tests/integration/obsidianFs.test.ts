@@ -619,7 +619,7 @@ describe('ObsidianFileSystem — listing', () => {
     }
   })
 
-  it('aborts a listing if a folder deletion starts after the listing already yielded a file', async () => {
+  it('keeps a sealed listing intact if folder deletion starts after its first result', async () => {
     const fs = useVault(VAULT)
     app.vault.delete = async () => {
       await app.vault.adapter.remove('Notes/Deep/second.md')
@@ -627,14 +627,18 @@ describe('ObsidianFileSystem — listing', () => {
     const stop = fs.watch(() => undefined)
     try {
       const listing = fs.list()[Symbol.asyncIterator]()
-      expect((await listing.next()).done).toBe(false)
+      const first = await listing.next()
+      expect(first.done).toBe(false)
       await app.vault.delete(app.vault.getAbstractFileByPath('Notes') as never)
-      const remainder = async () => {
-        while (!(await listing.next()).done) {
-          /* finish the scan */
-        }
+      const sealed = [first.value!.path]
+      for (;;) {
+        const next = await listing.next()
+        if (next.done) break
+        sealed.push(next.value.path)
       }
-      await expect(codeOf(remainder())).resolves.toBe('io')
+      expect(sealed).toContain('Notes/Deep/second.md')
+      expect(sealed.length).toBe(new Set(sealed).size)
+      expect((await listed(fs)).map((file) => file.path)).not.toContain('Notes/Deep/second.md')
     } finally {
       stop()
     }

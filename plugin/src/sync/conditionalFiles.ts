@@ -85,6 +85,8 @@ const missing = (error: unknown) =>
   /^ENOENT\b/.test((error as { message?: string })?.message ?? '')
 
 const operationRevisions = new WeakMap<Set<string>, { value: number }>()
+/** A listing interrupted by a local effect is retried before any entries are published. */
+export class ScanInterrupted extends Error {}
 function revisionOf(active: Set<string>): { value: number } {
   let revision = operationRevisions.get(active)
   if (!revision) operationRevisions.set(active, (revision = { value: 0 }))
@@ -158,8 +160,15 @@ export class ConditionalFiles {
   assertSettled(previous?: number): number {
     const revision = revisionOf(this.host.active).value
     if (this.host.active.size || (previous !== undefined && previous !== revision))
-      throw new EngineError('io', 'scan held while conditional file effects are in flight')
+      throw new ScanInterrupted('scan held while conditional file effects are in flight')
     return revision
+  }
+  async waitSettled(): Promise<void> {
+    while (this.host.active.size)
+      await new Promise<void>((resolve) => {
+        if (typeof window !== 'undefined') window.setTimeout(resolve, 10)
+        else self.setTimeout(resolve, 10)
+      })
   }
   private async record(path: string, value: unknown) {
     await this.host.create(path, new TextEncoder().encode(JSON.stringify(value)), 0)

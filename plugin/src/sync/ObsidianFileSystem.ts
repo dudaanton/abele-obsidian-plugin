@@ -53,7 +53,11 @@ import {
   type SourceStamp,
 } from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from './boundedVaultIo'
-import { ConditionalFiles, type ConditionalFileOperation } from './conditionalFiles'
+import {
+  ConditionalFiles,
+  ScanInterrupted,
+  type ConditionalFileOperation,
+} from './conditionalFiles'
 import type { JournalEntry } from './writeJournal'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
@@ -2317,10 +2321,36 @@ export class ObsidianFileSystem implements FileSystem {
 
   async *list(): AsyncIterable<FileInfo> {
     const own = this.inventory === null && this.inventoryDepth === 0
-    const inventory = own ? this.createInventory() : this.inventory
+    let inventory = own ? this.createInventory() : this.inventory
     if (own) this.inventory = inventory
     try {
-      yield* this.listUnlocked()
+      for (;;) {
+        await this.conditional.waitSettled()
+        const files: FileInfo[] = []
+        try {
+          for await (const file of this.listUnlocked()) files.push(file)
+        } catch (error) {
+          if (!(error instanceof ScanInterrupted)) throw error
+          // A conditional effect or folder mutation crossed this inventory. None of
+          // its entries has escaped to the engine, so start with a fresh view.
+          if (own) this.inventory = inventory = this.createInventory()
+          else if (inventory) {
+            inventory.ledgerRows = undefined
+            inventory.indexedNames = undefined
+            inventory.parentFolders = undefined
+            inventory.publishedParents = undefined
+            inventory.directories = undefined
+            inventory.listings.clear()
+            inventory.stats.clear()
+            inventory.children.clear()
+            inventory.indexedChildren.clear()
+          }
+          this.configInventory = null
+          continue
+        }
+        yield* files
+        break
+      }
     } finally {
       if (own && this.inventory === inventory) this.inventory = null
     }
@@ -2401,10 +2431,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     this.conditional.assertSettled(conditionalRevision)
     if (mutations.revision !== revision) {
-      throw new EngineError(
-        'io',
-        'a folder deletion started during the scan; scan again after it finishes'
-      )
+      throw new ScanInterrupted('a folder deletion started during the scan')
     }
   }
 

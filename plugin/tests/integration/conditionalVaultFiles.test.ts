@@ -5,6 +5,38 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const data = (text: string) => new TextEncoder().encode(text)
+it('waits for conditional effects encountered by a scan and retries its inventory', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'before' }])
+  const disk = new ObsidianFileSystem(app as never)
+  const conditional = Reflect.get(disk, 'conditional')
+  const active = (Reflect.get(conditional, 'host') as { active: Set<string> }).active
+  const getFiles = app.vault.getFiles.bind(app.vault)
+  let inventories = 0
+  let edit: Promise<unknown> | undefined
+  app.vault.getFiles = () => {
+    inventories++
+    if (inventories === 1) {
+      const prior = getFiles()
+      active.add('held-effect')
+      edit = app.vault
+        .create('during.md', 'during')
+        .then(() => new Promise<void>((resolve) => setTimeout(resolve, 20)))
+        .finally(() => active.delete('held-effect'))
+      return prior
+    }
+    return getFiles()
+  }
+  const listed: string[] = []
+  const scan = (async () => {
+    for await (const file of disk.list()) listed.push(file.path)
+  })()
+  await expect(scan).resolves.toBeUndefined()
+  await edit
+  expect(listed).toContain('sample.md')
+  expect(listed).toContain('during.md')
+  expect(listed).toHaveLength(2)
+  expect(inventories).toBeGreaterThan(1)
+})
 const destructiveHostCase = (name: string, run: (desktop: boolean) => Promise<void>) => {
   it(name.replace('%s', 'false'), () => run(false))
   it(name.replace('%s', 'true'), () => run(true))

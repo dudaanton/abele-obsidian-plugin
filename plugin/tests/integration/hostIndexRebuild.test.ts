@@ -136,7 +136,7 @@ it('uses disk when the indexed count moves while taking the startup snapshot', a
   expect(paths.sort()).toEqual(['a.md', 'b.md'])
 })
 
-it('abandons an indexed scan when rebuilding starts and retries from disk', async () => {
+it('keeps a sealed indexed snapshot when rebuilding starts after its first result', async () => {
   const app = buildFakeVault([
     { path: 'a.md', content: 'a' },
     { path: 'b.md', content: 'b' },
@@ -145,9 +145,16 @@ it('abandons an indexed scan when rebuilding starts and retries from disk', asyn
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
   const fs = new ObsidianFileSystem(app as never)
   const listing = fs.list()[Symbol.asyncIterator]()
-  expect((await listing.next()).done).toBe(false)
+  const first = await listing.next()
+  expect(first.done).toBe(false)
   clean = false
-  await expect(listing.next()).rejects.toThrow('Host index changed')
+  const sealed = [first.value!.path]
+  for (;;) {
+    const next = await listing.next()
+    if (next.done) break
+    sealed.push(next.value.path)
+  }
+  expect(sealed.sort()).toEqual(['a.md', 'b.md'])
   const paths = []
   for await (const file of fs.list()) paths.push(file.path)
   expect(paths.sort()).toEqual(['a.md', 'b.md'])
