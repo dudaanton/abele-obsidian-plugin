@@ -1445,6 +1445,8 @@ run is interrupted without executing tools locally.
 Completed node command and integration tool-call records may carry `nodeCommandRun`
 (`session_id`, `run_id`), retained from the full result so a paged output preview cannot
 detach the command card from its original work line after completion or reload.
+Older chats recover this identity from the full stored tool result using its call ID;
+an intact identity at the start of a paged preview also anchors the card without rewriting history.
 
 Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
 `details.imagePath` only after successful execution. Generation and editing set that detail

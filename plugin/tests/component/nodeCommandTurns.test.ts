@@ -10,8 +10,87 @@ import { useVault } from '../helpers/testEnv'
 import { ResultStore } from '@/ai/resultStore'
 import { nodeCommandIdentity } from '@/node/commandIdentity'
 import type { AgentToolResult } from '@/ai/client'
+import { parseChat, serializeChat } from '@/ai/ChatLog'
 
 const state = vi.hoisted(() => ({ connection: undefined as unknown }))
+
+it.each([false, true])('restores old saved command placement with stored result=%s', (stored) => {
+  useVault([])
+  const card = nodeManagerFixture('exited')
+  card.operation = 'wire-operation'
+  card.run.stdout = 'sample output '.repeat(16000)
+  // With output first, the preview contains no identity: recovery must use the call ID.
+  const { stdout, ...remainingRun } = card.run
+  const run = stored ? { stdout, ...remainingRun } : card.run
+  const result: AgentToolResult = { content: [{ type: 'text', text: JSON.stringify(run) }] }
+  new ResultStore({ messages: () => [] }).keep('node_command_run', 'old-call', result)
+  const messages: ChatMessage[] = [
+    { id: 'question', role: 'user', content: 'Check sample project', timestamp: 1 },
+    {
+      id: 'command',
+      role: 'tool-call',
+      content: '',
+      timestamp: 2,
+      toolCallId: 'old-call',
+      toolName: 'node_command_run',
+      toolParams: { operation_id: 'model-alias' },
+      toolStatus: 'approved',
+      toolResult: result.content[0].text,
+    },
+    { id: 'answer', role: 'assistant', content: 'Sample checks finished', timestamp: 3 },
+  ]
+  const parsed = parseChat(
+    serializeChat({
+      metadata: { type: 'abele-chat', title: 'Sample chat', created: '2023-11-14' },
+      messages,
+      internalMessages: stored
+        ? [
+            {
+              role: 'toolResult',
+              toolCallId: 'old-call',
+              toolName: 'node_command_run',
+              content: result.content,
+              stored: result.stored,
+              timestamp: 2,
+            },
+          ]
+        : [],
+    })
+  )
+  const original = nodeCardPlacement(chatBlocks(parsed.messages), parsed.messages)
+  expect(original.command).toContain('run:sample-session:sample-command')
+  if (stored)
+    expect(parsed.messages[1].nodeCommandRun).toEqual({
+      session_id: 'sample-session',
+      run_id: 'sample-command',
+    })
+  state.connection = {
+    state: ref('connected'),
+    delegationCards: ref({}),
+    managerCards: ref({ 'sample-chat': [card] }),
+  }
+  const footer = mount(NodeDelegations, {
+    props: { parentId: 'sample-chat', exclude: Object.values(original).flat() },
+  })
+  try {
+    expect(footer.findAll('.abele-node-manager-run')).toHaveLength(0)
+  } finally {
+    footer.unmount()
+  }
+  parsed.messages.push(
+    { id: 'next-question', role: 'user', content: 'Read sample file', timestamp: 4 },
+    {
+      id: 'next-read',
+      role: 'tool-call',
+      toolName: 'node_read',
+      toolResult: 'Sample text',
+      content: '',
+      timestamp: 5,
+    },
+    { id: 'next-answer', role: 'assistant', content: 'Sample file is ready', timestamp: 6 }
+  )
+  expect(nodeCardPlacement(chatBlocks(parsed.messages), parsed.messages)).toEqual(original)
+})
 
 it.each([1, 2])('anchors %s paged completions before the final answer across reload', (count) => {
   useVault([])

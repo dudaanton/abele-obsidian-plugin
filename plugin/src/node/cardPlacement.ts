@@ -1,5 +1,6 @@
 import type { ChatMessage } from '@/ai/types'
 import { chatBlocks } from '@/ai/toolRuns'
+import { nodeCommandIdentity } from './commandIdentity'
 
 /** A retry updates the original card instead of appending it under the latest reply. */
 export function nodeCardPlacement(
@@ -35,7 +36,11 @@ export function nodeCardPlacement(
         (call.nodeCommandRun || call.toolResult)
       ) {
         try {
-          const receipt: unknown = call.nodeCommandRun ?? JSON.parse(call.toolResult ?? '')
+          const receipt: unknown =
+            call.nodeCommandRun ??
+            nodeCommandIdentity(call.toolName ?? '', {
+              content: [{ type: 'text', text: call.toolResult ?? '' }],
+            })
           if (
             receipt &&
             typeof receipt === 'object' &&

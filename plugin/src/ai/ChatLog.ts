@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatMetadata } from './types'
 import type { Message } from './client'
+import { nodeCommandIdentity } from '@/node/commandIdentity'
 /** Kept self-contained with the log codec: only positive records retire an identity. */
 function settledAttention(state: NonNullable<ChatMetadata['attention']> = {}): Set<string> {
   return new Set([
@@ -124,7 +125,28 @@ export function parseChat(content: string): ParsedChat {
     (head as { k?: string }).k === 'meta' &&
     typeof (head as { v?: number }).v === 'number'
 
-  return isLog ? parseLog(content) : parseLegacy(content)
+  const parsed = isLog ? parseLog(content) : parseLegacy(content)
+  const storedRuns = new Map(
+    parsed.internalMessages.flatMap((message) => {
+      if (message.role !== 'toolResult' || !message.stored) return []
+      const identity = nodeCommandIdentity(message.toolName, {
+        content: message.content,
+        stored: message.stored,
+      })
+      return identity ? [[message.toolCallId, identity] as const] : []
+    })
+  )
+  parsed.messages = parsed.messages.map((message) => {
+    if (
+      message.nodeCommandRun ||
+      !message.toolCallId ||
+      !['node_command_run', 'node_git_integrate'].includes(message.toolName ?? '')
+    )
+      return message
+    const identity = storedRuns.get(message.toolCallId)
+    return identity ? { ...message, nodeCommandRun: identity } : message
+  })
+  return parsed
 }
 
 /**
