@@ -1201,7 +1201,7 @@ export async function run(config) {
         result.javascriptDigestCoverage = digestProof
         result.extraUploadRequests = redundantUploads
         result.extraUploadBytes = redundantUploads.reduce((sum, row) => sum + row.sent, 0)
-        result.extraRendererHashEvidence = extraHashes.map((row) => ({
+        result.extraRendererHashEvidence = classifiedHashes.reindexHashes.map((row) => ({
           ...row,
           paths: [...expected, ...saved.before]
             .filter((file) => file.sha === row.sha)
