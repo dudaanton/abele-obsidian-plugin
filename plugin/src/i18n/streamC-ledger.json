@@ -119,6 +119,11 @@
     "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
+  "sync.activity.startupPhase": {
+    "englishHash": "1363f7c06dce5fa7c8e9382887fe46e34bebf1c086b7cb3120cd403728669e70",
+    "context": "Startup activity label; phase codes and elapsed milliseconds remain raw diagnostic values",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
   "sync.status.disconnected": {
     "englishHash": "8d4ffdaa1e2a4dd322147ddd678e6fdf623f52230c85ffd7d72447e3d2d9e61f",
     "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",

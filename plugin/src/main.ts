@@ -132,6 +132,7 @@ import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { prepareHostSyncStorage } from './sync/hostSyncStorage'
 import { recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
+import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
 import { watchTheFront, watchSyncQuit } from './sync/phone'
@@ -158,6 +159,7 @@ const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
   private tokenEngines: TokenEngines | null = null
+  private readonly syncTimeline = new SyncStartupTimeline()
   readonly tokenHostStartup: { state: 'starting' | 'ready' | 'failed'; error?: string } = {
     state: 'starting',
   }
@@ -217,6 +219,9 @@ export default class AbelePlugin extends Plugin {
   private initSync(): void {
     this.syncStarted = true
     this.tokenEngines?.start()
+    void tokenUi.value?.refreshReviews().catch((error) => {
+      console.debug('[Abele Sync] review panel refresh deferred', error)
+    })
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')
@@ -320,6 +325,7 @@ export default class AbelePlugin extends Plugin {
 
   async onload() {
     markLoad('onloadStart')
+    this.syncTimeline.mark('onload')
     try {
       // Every step below runs on its own: one that throws is named in the console and the rest of
       // the start goes on, instead of leaving the sidebars and everything after it unregistered.
@@ -329,7 +335,10 @@ export default class AbelePlugin extends Plugin {
         initializePluginLocale(this, currentLocale().format)
       )
       // First, so it runs before every other layout-ready callback registered below.
-      this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))
+      this.app.workspace.onLayoutReady(() => {
+        markLoad('layoutStart')
+        this.syncTimeline.mark('layout-ready')
+      })
       dayjs.extend(weekday)
       dayjs.extend(updateLocale)
       dayjs.extend(dayOfYear)
@@ -384,6 +393,7 @@ export default class AbelePlugin extends Plugin {
             window.indexedDB
           )
           hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
+          this.syncTimeline.mark('db-open')
           if (loaded !== null) {
             config.acknowledgeSyncMigration()
             await config.rewrite()
@@ -402,6 +412,7 @@ export default class AbelePlugin extends Plugin {
             configRoots: [this.app.vault.configDir],
             scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
           })
+          const transport = timedSyncTransport(transportOf({}), this.syncTimeline)
           const ui = new TokenUi(
             registry,
             {
@@ -409,15 +420,21 @@ export default class AbelePlugin extends Plugin {
               set: (id, value) => secretStore.setLocal(id, value),
               remove: (id) => secretStore.forgetLocal(id),
             },
-            (input, init) => transportOf({})(input, init),
+            transport,
             reviews
           )
           tokenUi.value = ui
+          this.register(
+            this.syncTimeline.subscribe(({ phase, elapsedMs, at }) => {
+              for (const record of registry.records())
+                ui.recordEvent(record.id, t('sync.activity.startupPhase', { phase, elapsedMs }), at)
+            })
+          )
           this.tokenEngines = new TokenEngines(
             this.app,
             ui,
             (reference) => secretStore.getLocal(reference) || null,
-            {},
+            { fetch: transport, startupTimeline: this.syncTimeline },
             AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
             {
               path: `${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/data.json`,
@@ -491,7 +508,6 @@ export default class AbelePlugin extends Plugin {
                   )
             })
           )
-          await ui.refreshReviews()
         } catch (error) {
           if (!this.tokenEngines) {
             hostStorage?.close()

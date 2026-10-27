@@ -3,6 +3,7 @@ import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { wsFor } from './transport'
 import { mobileTransport } from './mobileTransport'
 import { desktopTransport } from './desktopTransport'
+import type { SyncStartupTimeline } from './startupTimeline'
 
 /**
  * What a test replaces to run the service against a server in its own process.
@@ -15,6 +16,7 @@ import { desktopTransport } from './desktopTransport'
  */
 export interface SyncServiceDeps {
   fetch?: typeof fetch
+  startupTimeline?: SyncStartupTimeline
   WebSocket?: typeof WebSocket
   indexedDB?: IDBFactory
   /** How often the engine syncs with nothing prompting it. */

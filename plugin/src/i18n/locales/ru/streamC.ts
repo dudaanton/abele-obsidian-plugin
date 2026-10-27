@@ -38,6 +38,7 @@ export const streamC = {
   'sync.window.shareTip':
     'Предоставить доступ к папке или группе либо подключить ещё одно своё устройство',
   'sync.window.error': 'Не удалось завершить действие. Ожидающие изменения сохранены.',
+  'sync.activity.startupPhase': 'Запуск {phase}: +{elapsedMs} мс',
   'sync.status.disconnected': 'Не подключено',
   'sync.status.joining': 'Подключение',
   'sync.status.idle': 'Всё синхронизировано',

@@ -36,6 +36,7 @@ export const streamC = {
   'sync.window.share': 'Kopīgot…',
   'sync.window.shareTip': 'Kopīgot mapi vai grupu ar kādu vai pievienot vēl vienu savu ierīci',
   'sync.window.error': 'Darbību nevarēja pabeigt. Gaidošās izmaiņas ir saglabātas.',
+  'sync.activity.startupPhase': 'Palaišana {phase}: +{elapsedMs} ms',
   'sync.status.disconnected': 'Nav savienojuma',
   'sync.status.joining': 'Savienojas',
   'sync.status.idle': 'Viss sinhronizēts',

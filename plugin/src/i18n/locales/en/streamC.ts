@@ -35,6 +35,7 @@ export const streamC = {
   'sync.window.share': 'Share…',
   'sync.window.shareTip': 'Give a folder or group to someone, or connect another device of yours',
   'sync.window.error': 'The action could not finish. Pending changes have been kept.',
+  'sync.activity.startupPhase': 'Startup {phase}: +{elapsedMs} ms',
   'sync.status.disconnected': 'Not connected',
   'sync.status.joining': 'Connecting',
   'sync.status.idle': 'Fully synced',

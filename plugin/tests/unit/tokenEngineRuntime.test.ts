@@ -35,6 +35,25 @@ import { deferred } from '../helpers/deferred'
 import { PreparedUploads } from '@/sync/preparedUploads'
 import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
 
+it('marks construction, reconciliation and first idle from the running engine', async () => {
+  const wire = await server('Notes/sample.md', 'remote')
+  const marks: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    startupMark: (phase) => marks.push(phase),
+  })
+  try {
+    expect(marks).toEqual(['engine-construct'])
+    await one.runtime.start()
+    await one.runtime.sync()
+    expect(marks).toContain('reconcile-start')
+    expect(marks).toContain('idle')
+    expect(marks.indexOf('engine-construct')).toBeLessThan(marks.indexOf('reconcile-start'))
+    expect(marks.indexOf('reconcile-start')).toBeLessThan(marks.indexOf('idle'))
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it.each(['receipt', 'head'] as const)(
   'expires a cached %s entitlement without restarting',
   async (mode) => {

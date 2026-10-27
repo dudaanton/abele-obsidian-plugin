@@ -93,6 +93,7 @@ export interface TokenEngineOptions {
   state: StateStore
   reviews: DeviceReviews
   fetch: typeof fetch
+  startupMark?(phase: 'engine-construct' | 'reconcile-start' | 'idle'): void
   transferBudget?: TransferBudget
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
@@ -269,6 +270,7 @@ export class TokenEngineRuntime
   private readonly outbox: TokenAssetOutbox
   private readonly transferBudget: TransferBudget
   private active = true
+  private startupReconciliationStarted = false
   private serverAvailable = true
   private rootIssue: ScopeRootIssue | undefined
   private unroot: (() => void) | undefined
@@ -1361,6 +1363,7 @@ export class TokenEngineRuntime
     }
     // Returned batch views retain these same progress, trace and cancellation hooks.
     let runtimeFsHandler: ProxyHandler<FileSystem>
+    options.startupMark?.('engine-construct')
     this.engine = new SyncEngine({
       placementConcurrency: 16,
       yieldTask: yieldSyncTask,
@@ -1787,6 +1790,8 @@ export class TokenEngineRuntime
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
+      if (this.startupReconciliationStarted && status.state === 'idle')
+        options.startupMark?.('idle')
       this.quiet.pause(status.state === 'paused')
       const retention = Reflect.get(options.fs, Symbol.for('abele.sync.retention-idle-v1'))
       if (typeof retention === 'function')
@@ -2667,6 +2672,8 @@ export class TokenEngineRuntime
     await this.refreshHolds()
     this.assertHeld()
     await this.outbox.restore()
+    this.startupReconciliationStarted = true
+    this.options.startupMark?.('reconcile-start')
     this.engine.start()
   }
   /** Starting a retry does not prove reachability; only a completed exchange clears offline. */

@@ -68,7 +68,12 @@ describe('startup mark boundaries', () => {
       const load = new Function(...Object.keys(names), `${js}; return load`)(
         ...Object.values(names)
       )
-      const instance = { app: { workspace }, starting: true, addSettingTab: noop }
+      const instance = {
+        app: { workspace },
+        starting: true,
+        addSettingTab: noop,
+        syncTimeline: { mark: (phase: string) => events.push(`sync:${phase}`) },
+      }
       await load.call(instance)
       expect(events.at(-1)).toBe('onloadEnd')
       callbacks.forEach((fn) => fn())
@@ -99,6 +104,7 @@ describe('startup mark boundaries', () => {
       before('locale', 'initializeLocale:de')
       before('initializeLocale:de', 'settings')
       before('layoutStart', 'layoutEnd')
+      before('sync:onload', 'sync:layout-ready')
       before('links', 'onloadEnd')
       before('time tracking index', 'layoutEnd')
       before(ready ? 'layoutEnd' : 'onloadEnd', ready ? 'onloadEnd' : 'layoutStart')

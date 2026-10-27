@@ -35,6 +35,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+it('translates the startup activity label while preserving phase codes and elapsed time', () => {
+  const english = t('sync.activity.startupPhase', { phase: 'db-open', elapsedMs: 25 })
+  expect(english).toBe('Startup db-open: +25 ms')
+  for (const language of ['ru', 'lv', 'es', 'de']) {
+    initializeLocale(language)
+    const localized = t('sync.activity.startupPhase', { phase: 'db-open', elapsedMs: 25 })
+    expect(localized).toContain('db-open')
+    expect(localized).toContain('25')
+    expect(localized).not.toBe(english)
+  }
+})
+
 it('keeps trace-note exceptions stable for agent callers in every language', async () => {
   const path = '/sample-outside'
   for (const adapter of [

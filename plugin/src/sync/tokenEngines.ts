@@ -1030,6 +1030,7 @@ export class TokenEngines {
         fence.assertReady()
         this.localOnly.refresh()
         runtime = new TokenEngineRuntime({
+          startupMark: (phase) => this.deps.startupTimeline?.mark(phase),
           transferBudget: transferBudgetOf(this.app.vault),
           mobile: Platform.isMobile,
           id: record.id,

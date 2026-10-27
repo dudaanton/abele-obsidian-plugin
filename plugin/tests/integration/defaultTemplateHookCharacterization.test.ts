@@ -7,6 +7,7 @@ import { gate } from '../helpers/taskHarness'
 import { configureAbele, dailyJournal } from '../helpers/testEnv'
 import { confirmTemplate, templateHarness } from '../helpers/templateHarness'
 import { TemplateService } from '@/templates/TemplateService'
+import { SyncStartupTimeline } from '@/sync/startupTimeline'
 
 const enabledSteps = vi.hoisted(() => ({ workspaceEvents: false }))
 const disposals: (() => void)[] = []
@@ -62,6 +63,7 @@ async function setup(workspaceEvents = false) {
   const on = vi.spyOn(env.app.vault, 'on')
   const plugin = Object.assign(Object.create(AbelePlugin.prototype) as AbelePlugin, {
     app: env.app,
+    syncTimeline: new SyncStartupTimeline(),
     addSettingTab: vi.fn(),
     registerView: vi.fn(),
     registerExtensions: vi.fn(),

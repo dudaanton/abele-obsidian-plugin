@@ -590,13 +590,13 @@ export class TokenUi {
     }
     console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
-  recordEvent(id: string, text: string): void {
+  recordEvent(id: string, text: string, at = Date.now()): void {
     const binding = this.itemSets.store.forRecord(id)
     const parent = binding && !binding.item.detached ? binding.connection.id : undefined
-    if (parent && parent !== id) this.recordEvent(parent, text)
+    if (parent && parent !== id) this.recordEvent(parent, text, at)
     const previous = this.activity.value[id]?.events
     const events = previous instanceof ActivityHistory ? previous : new ActivityHistory(previous)
-    events.append({ at: Date.now(), text })
+    events.append({ at, text })
     this.activity.value = {
       ...this.activity.value,
       [id]: {

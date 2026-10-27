@@ -37,6 +37,7 @@ export const streamC = {
     'Einen Ordner oder eine Gruppe mit jemandem teilen oder ein weiteres eigenes Gerät verbinden',
   'sync.window.error':
     'Die Aktion konnte nicht abgeschlossen werden. Ausstehende Änderungen bleiben erhalten.',
+  'sync.activity.startupPhase': 'Start {phase}: +{elapsedMs} ms',
   'sync.status.disconnected': 'Nicht verbunden',
   'sync.status.joining': 'Verbindung wird hergestellt',
   'sync.status.idle': 'Vollständig synchronisiert',

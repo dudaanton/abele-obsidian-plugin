@@ -96,8 +96,9 @@ it.each(['modify', 'create'] as const)(
         })
         expect(attempts).toBe(1)
       } else {
-        await expect(fs.listChildren('notes')).rejects.toMatchObject({ code: 'io' })
-        expect(attempts).toBeLessThanOrEqual(3)
+        expect(await fs.listChildren('notes')).toEqual([{ path: 'notes/sibling.md', kind: 'file' }])
+        // Eight synthetic create events each retire the observation. One final read suffices.
+        expect(attempts).toBe(9)
       }
     })
     console.log('[inventory stability]', { event, attempts })
