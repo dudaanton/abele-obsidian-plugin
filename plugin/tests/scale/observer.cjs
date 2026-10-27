@@ -23,14 +23,16 @@ module.exports = class extends Plugin {
           // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-only profiler bridge.
           const remote = require('@electron/remote')
           // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
-          const { startProfileOnly } = require('./profile-only.cjs')
+          const { startProfileOnly } = require(config.profileOnly)
           profile = startProfileOnly(remote.getCurrentWebContents().debugger)
-          profile.catch(() => {
+          profile.catch((error) => {
             receipt.profileUnavailable = true
+            receipt.profileUnavailableReason = String(error?.message ?? error).slice(0, 300)
             save()
           })
-        } catch {
+        } catch (error) {
           receipt.profileUnavailable = true
+          receipt.profileUnavailableReason = String(error?.message ?? error).slice(0, 300)
           save()
         }
       }
@@ -86,8 +88,9 @@ module.exports = class extends Plugin {
                 receipt.profileComplete = true
                 save()
               })
-              .catch(() => {
+              .catch((error) => {
                 receipt.profileUnavailable = true
+                receipt.profileUnavailableReason = String(error?.message ?? error).slice(0, 300)
                 save()
               })
         }

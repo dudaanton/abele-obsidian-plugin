@@ -343,6 +343,7 @@ export async function setupVault(config, root, device) {
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
+      profileOnly: join(observer, 'profile-only.cjs'),
       profileDirectory: join(config.output, 'profiles'),
       continuousCpu: config.continuousCpu === true,
       heapDiagnostics: config.heapDiagnostics === true,
