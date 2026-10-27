@@ -1,6 +1,29 @@
 import { expect, it } from 'vitest'
 import { nodeCardPlacement } from '@/node/cardPlacement'
 import { chatBlocks } from '@/ai/toolRuns'
+import { nodeMutationKey } from '@/ai/tools/node/mutations'
+
+it.each(['node', 'command', 'project_id'])(
+  'does not recover another command when %s differs',
+  (key) => {
+    const request = { command: 'printf sample', project_id: 'sample-project' }
+    const operation = nodeMutationKey('sample-parent', 'node_command_run', 'sample-alias', request)
+    const params = {
+      node: 'sample-node',
+      operation_id: 'sample-alias',
+      ...request,
+      [key]: 'different-sample',
+    }
+    const calls = [
+      { id: 'sample-call', role: 'tool-call', toolName: 'node_command_run', toolParams: params },
+    ]
+    const placement = nodeCardPlacement(chatBlocks(calls as never), calls as never, {
+      parentId: 'sample-parent',
+      operations: [{ nodeIds: ['sample-node'], operation, placementParams: request }],
+    })
+    expect(Object.values(placement).flat()).not.toContain(`operation:${operation}`)
+  }
+)
 it('keeps older cards anchored when only the newest messages are visible after reload', () => {
   const history = [
     {

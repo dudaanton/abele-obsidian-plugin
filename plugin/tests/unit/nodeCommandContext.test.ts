@@ -62,6 +62,7 @@ it('retains the full target folder for a bypass receipt without an approval payl
     expect(card.prompts).toEqual([])
     expect(card.folderLabel).toBe('sample-project')
     expect(card.folder).toBe('/workspace/sample-project')
+    expect(card.placementParams).toEqual({ worktree_id: 'sample-tree', command: 'pwd' })
     await f.controller.command(
       'sample-parent',
       { worktree_id: 'sample-tree', command: 'pwd' },

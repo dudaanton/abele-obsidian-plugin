@@ -12,124 +12,143 @@ import { nodeCommandIdentity } from '@/node/commandIdentity'
 import type { AgentToolResult } from '@/ai/client'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { getPathToLeaf } from '@/ai/chatTree'
+import { nodeMutationKey } from '@/ai/tools/node/mutations'
 
 const state = vi.hoisted(() => ({ connection: undefined as unknown }))
 
-it('keeps later pending, running and paged commands on their branch when branching early', async () => {
-  useVault([])
-  const cards = (['exited', 'pending_approval', 'running'] as const).map((status, index) => {
-    const card = nodeManagerFixture(status)
-    card.operation = `wire-${index}`
-    card.run.run_id = `run-${index}`
-    return card
-  })
-  const result: AgentToolResult = {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify({ ...cards[0].run, stdout: 'sample output '.repeat(16000) }),
-      },
-    ],
-  }
-  new ResultStore({ messages: () => [] }).keep('node_command_run', 'call-0', result)
-  const tree: ChatMessage[] = [
-    { id: 'first', role: 'user', content: 'Check sample project', timestamp: 1 },
-    {
-      id: 'first-answer',
-      parentId: 'first',
-      role: 'assistant',
-      content: 'Sample plan',
-      timestamp: 2,
-    },
-    {
-      id: 'later',
-      parentId: 'first-answer',
-      role: 'user',
-      content: 'Run sample checks',
-      timestamp: 3,
-    },
-    ...cards.map(
-      (card, index): ChatMessage => ({
-        id: `command-${index}`,
-        parentId: index ? `command-${index - 1}` : 'later',
-        role: 'tool-call',
-        content: '',
-        timestamp: 4 + index,
-        toolName: 'node_command_run',
-        toolParams: { operation_id: `alias-${index}` },
-        toolStatus: 'approved',
-        ...(index === 0
-          ? { toolResult: result.content[0].text }
-          : { nodeCommandOperation: card.operation }),
-      })
-    ),
-    {
-      id: 'sibling',
-      parentId: 'first',
-      role: 'assistant',
-      content: 'New sample branch',
-      timestamp: 10,
-    },
-  ]
-  state.connection = {
-    state: ref('connected'),
-    delegationCards: ref({}),
-    managerCards: ref({ 'sample-chat': cards }),
-  }
-  const leaf = ref('command-2')
-  const view = mount(
-    defineComponent({
-      setup() {
-        return () => {
-          const path = getPathToLeaf(tree, leaf.value)
-          const placement = nodeCardPlacement(chatBlocks(path), path)
-          return h('div', [
-            ...Object.entries(placement).map(([id, include]) =>
-              h('section', { 'data-owner': id }, [
-                h(
-                  'div',
-                  { class: 'folded' },
-                  h(NodeDelegations, { parentId: 'sample-chat', include, commands: 'finished' })
-                ),
-                h(
-                  'div',
-                  { class: 'live' },
-                  h(NodeDelegations, { parentId: 'sample-chat', include, commands: 'live' })
-                ),
-              ])
-            ),
-            h(
-              'footer',
-              h(NodeDelegations, {
-                parentId: 'sample-chat',
-                exclude: Object.values(placement).flat(),
-                commands: 'none',
-              })
-            ),
-          ])
-        }
-      },
+it.each([false, true])(
+  'keeps later commands on their branch with recorded operation=%s',
+  async (recorded) => {
+    useVault([])
+    const cards = (['exited', 'pending_approval', 'running'] as const).map((status, index) => {
+      const card = nodeManagerFixture(status)
+      card.placementParams = { project_id: 'sample-project', command: `printf sample-${index}` }
+      card.operation = nodeMutationKey(
+        'sample-chat',
+        'node_command_run',
+        `alias-${index}`,
+        card.placementParams
+      )
+      card.run.run_id = `run-${index}`
+      return card
     })
-  )
-  try {
-    for (const target of ['sibling', 'command-2', 'sibling', 'command-2']) {
-      leaf.value = target
-      await view.vm.$nextTick()
-      expect(view.findAll('footer .abele-node-manager-run')).toHaveLength(0)
-      expect(view.findAll('.abele-node-manager-run')).toHaveLength(target === 'sibling' ? 0 : 3)
-      if (target !== 'sibling') {
-        expect(
-          view.findAll('[data-owner="command-0"] .folded .abele-node-manager-run')
-        ).toHaveLength(1)
-        expect(view.findAll('[data-owner="command-0"] .live .abele-node-manager-run')).toHaveLength(
-          2
-        )
-      }
+    const result: AgentToolResult = {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ ...cards[0].run, stdout: 'sample output '.repeat(16000) }),
+        },
+      ],
     }
-  } finally {
-    view.unmount()
+    new ResultStore({ messages: () => [] }).keep('node_command_run', 'call-0', result)
+    const tree: ChatMessage[] = [
+      { id: 'first', role: 'user', content: 'Check sample project', timestamp: 1 },
+      {
+        id: 'first-answer',
+        parentId: 'first',
+        role: 'assistant',
+        content: 'Sample plan',
+        timestamp: 2,
+      },
+      {
+        id: 'later',
+        parentId: 'first-answer',
+        role: 'user',
+        content: 'Run sample checks',
+        timestamp: 3,
+      },
+      ...cards.map(
+        (card, index): ChatMessage => ({
+          id: `command-${index}`,
+          parentId: index ? `command-${index - 1}` : 'later',
+          role: 'tool-call',
+          content: '',
+          timestamp: 4 + index,
+          toolName: 'node_command_run',
+          toolParams: {
+            node: 'sample-node',
+            command: `printf sample-${index}`,
+            operation_id: `alias-${index}`,
+          },
+          toolStatus: 'approved',
+          ...(index === 0
+            ? { toolResult: result.content[0].text }
+            : recorded
+              ? { nodeCommandOperation: card.operation }
+              : {}),
+        })
+      ),
+      {
+        id: 'sibling',
+        parentId: 'first',
+        role: 'assistant',
+        content: 'New sample branch',
+        timestamp: 10,
+      },
+    ]
+    state.connection = {
+      state: ref('connected'),
+      delegationCards: ref({}),
+      managerCards: ref({ 'sample-chat': cards }),
+    }
+    const leaf = ref('command-2')
+    const view = mount(
+      defineComponent({
+        setup() {
+          return () => {
+            const path = getPathToLeaf(tree, leaf.value)
+            const placement = nodeCardPlacement(chatBlocks(path), path, {
+              parentId: 'sample-chat',
+              operations: cards.map((card) => ({ ...card, nodeIds: ['sample-node'] })),
+            })
+            return h('div', [
+              ...Object.entries(placement).map(([id, include]) =>
+                h('section', { 'data-owner': id }, [
+                  h(
+                    'div',
+                    { class: 'folded' },
+                    h(NodeDelegations, { parentId: 'sample-chat', include, commands: 'finished' })
+                  ),
+                  h(
+                    'div',
+                    { class: 'live' },
+                    h(NodeDelegations, { parentId: 'sample-chat', include, commands: 'live' })
+                  ),
+                ])
+              ),
+              h(
+                'footer',
+                h(NodeDelegations, {
+                  parentId: 'sample-chat',
+                  exclude: Object.values(placement).flat(),
+                  commands: 'none',
+                })
+              ),
+            ])
+          }
+        },
+      })
+    )
+    try {
+      for (const target of ['sibling', 'command-2', 'sibling', 'command-2']) {
+        leaf.value = target
+        await view.vm.$nextTick()
+        expect(view.findAll('footer .abele-node-manager-run')).toHaveLength(0)
+        expect(view.findAll('.abele-node-manager-run')).toHaveLength(target === 'sibling' ? 0 : 3)
+        if (target !== 'sibling') {
+          expect(
+            view.findAll('[data-owner="command-0"] .folded .abele-node-manager-run')
+          ).toHaveLength(1)
+          expect(
+            view.findAll('[data-owner="command-0"] .live .abele-node-manager-run')
+          ).toHaveLength(2)
+        }
+      }
+    } finally {
+      view.unmount()
+    }
   }
-})
+)
 
 it.each([false, true])('restores old saved command placement with stored result=%s', (stored) => {
   useVault([])

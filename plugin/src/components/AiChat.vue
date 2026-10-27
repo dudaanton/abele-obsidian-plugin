@@ -596,6 +596,7 @@ import EmptyState from './obsidian/EmptyState.vue'
 import NodeSidebarChat from './NodeSidebarChat.vue'
 import NodeDelegations from './NodeDelegations.vue'
 import { nodeCardPlacement } from '@/node/cardPlacement'
+import { NodeService } from '@/node/NodeService'
 import AiToolApproval from './AiToolApproval.vue'
 import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
@@ -797,7 +798,23 @@ const runForks = (block: ChatBlock) =>
         .find((count) => count > 1)
     : undefined
 const blocks = computed(() => chatBlocks(visibleMessages.value))
-const nodePlacements = computed(() => nodeCardPlacement(blocks.value, messages.value))
+const nodePlacements = computed(() => {
+  const parentId = session.value?.delegationParentId
+  if (!parentId) return nodeCardPlacement(blocks.value, messages.value)
+  const service = NodeService.getInstance()
+  const operations = service.nodes.value.flatMap((node) => {
+    try {
+      return (service.connection(node.id).managerCards.value[parentId] ?? []).map((card) => ({
+        operation: card.operation,
+        placementParams: card.placementParams,
+        nodeIds: [node.id, ...(node.expectedNodeId ? [node.expectedNodeId] : [])],
+      }))
+    } catch {
+      return []
+    }
+  })
+  return nodeCardPlacement(blocks.value, messages.value, { parentId, operations })
+})
 const runChoice = reactive(new Map<string, boolean>())
 const runsShowing = reactive(new Set<string>())
 watch(

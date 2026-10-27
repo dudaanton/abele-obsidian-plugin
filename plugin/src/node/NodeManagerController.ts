@@ -797,6 +797,13 @@ export class NodeManagerController {
         return [
           {
             operation,
+            placementParams: entry.request
+              ? Object.fromEntries(
+                  Object.entries(entry.request).filter(
+                    ([key]) => !['target_label', 'target_path'].includes(key)
+                  )
+                )
+              : undefined,
             command: typeof display.command === 'string' ? display.command : undefined,
             argv: Array.isArray(display.argv)
               ? display.argv.filter((v): v is string => typeof v === 'string')

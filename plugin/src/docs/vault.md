@@ -1450,6 +1450,8 @@ an intact identity at the start of a paged preview also anchors the card without
 Command calls also retain `nodeCommandOperation` before submission, so pending and running
 cards belong to their call while the tool waits. Command cards render only at calls on the
 selected branch, never in the chat-wide footer; switching branches does not change their state.
+Older waiting calls can recover their operation from the node's retained exact request and
+the chat-scoped operation hash, including a target folder inferred when the call ran.
 
 Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
 `details.imagePath` only after successful execution. Generation and editing set that detail

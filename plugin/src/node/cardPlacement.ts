@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@/ai/types'
 import { chatBlocks } from '@/ai/toolRuns'
 import { nodeCommandIdentity } from './commandIdentity'
+import { nodeMutationKey } from '@/ai/tools/node/mutations'
 
 /** A retry updates the original card instead of appending it under the latest reply. */
 export function nodeCardPlacement(
@@ -8,7 +9,15 @@ export function nodeCardPlacement(
     | { kind: 'run'; id: string; calls: ChatMessage[] }
     | { kind: 'message'; message: ChatMessage }
   )[],
-  history?: readonly ChatMessage[]
+  history?: readonly ChatMessage[],
+  retained?: {
+    parentId: string
+    operations: readonly {
+      nodeIds: string[]
+      operation: string
+      placementParams?: Record<string, unknown>
+    }[]
+  }
 ): Record<string, string[]> {
   const seen = new Set<string>()
   const placement: Record<string, string[]> = {}
@@ -34,6 +43,45 @@ export function nodeCardPlacement(
         if (!seen.has(operationKey)) {
           seen.add(operationKey)
           keys.push(operationKey)
+        }
+      }
+      // Pre-upgrade waiting calls have no receipt. The retained exact request can
+      // prove their wire operation, including a folder inferred at execution time.
+      if (
+        retained &&
+        !call.nodeCommandOperation &&
+        !call.nodeCommandRun &&
+        typeof params?.operation_id === 'string' &&
+        ['node_command_run', 'node_git_integrate'].includes(call.toolName ?? '')
+      ) {
+        for (const operation of retained.operations) {
+          const request = operation.placementParams
+          if (
+            !request ||
+            typeof params.node !== 'string' ||
+            !operation.nodeIds.includes(params.node)
+          )
+            continue
+          const matches = Object.entries(params).every(
+            ([key, value]) =>
+              ['node', 'operation_id', 'justification'].includes(key) ||
+              JSON.stringify(value) === JSON.stringify(request[key])
+          )
+          if (
+            !matches ||
+            nodeMutationKey(
+              retained.parentId,
+              call.toolName ?? '',
+              params.operation_id,
+              request
+            ) !== operation.operation
+          )
+            continue
+          const operationKey = `operation:${operation.operation}`
+          if (!seen.has(operationKey)) {
+            seen.add(operationKey)
+            keys.push(operationKey)
+          }
         }
       }
       // The model's operation alias differs from the chat-scoped wire identity.

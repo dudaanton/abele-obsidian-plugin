@@ -74,6 +74,7 @@ export function nodeManagerFixture(
   }
   return {
     operation: 'sample-operation',
+    placementParams: undefined,
     justification: presentation?.managerJustification,
     command: presentation?.managerCommand,
     argv: presentation?.managerCommand !== undefined ? undefined : ['npm', 'test'],
