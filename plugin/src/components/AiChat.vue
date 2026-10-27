@@ -245,6 +245,7 @@
           v-if="session?.delegationParentId"
           :parent-id="session.delegationParentId"
           :exclude="Object.values(nodePlacements).flat()"
+          commands="none"
         />
 
         <!-- Streaming indicator -->

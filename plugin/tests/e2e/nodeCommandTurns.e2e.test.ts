@@ -25,11 +25,24 @@ async function sequence(layout: string, stopped: boolean) {
       nodes.nodes.value = [...originalNodes,{id:'sample-command-node',label:'Sample node'}];
       const append = (message) => session.appendChatMessage({content:'',timestamp:1700000000000,...message});
       append({id:'sample-question-a',role:'user',content:'Check the sample project'});
-      cards.forEach((card,i) => append({id:'sample-command-'+i,role:'tool-call',toolName:'node_command_run',toolParams:{operation_id:'model-alias-'+i},toolStatus:'approved',toolResult:JSON.stringify(card.run)}));
+      cards.forEach((card,i) => append({id:'sample-command-'+i,role:'tool-call',toolName:'node_command_run',toolParams:{operation_id:'model-alias-'+i},nodeCommandOperation:card.operation,toolStatus:'approved',toolResult:JSON.stringify(card.run)}));
       append({id:'sample-delegate',role:'tool-call',toolName:'node_delegate',toolStatus:${JSON.stringify(stopped ? 'rejected' : 'approved')},toolResult:${JSON.stringify(stopped ? 'User rejected this action' : 'Sample task finished')}});
       append({id:'sample-answer-a',role:'assistant',content:${JSON.stringify(stopped ? 'Stopped by you. The task may be unfinished.' : 'The sample checks finished.')}});
       session.updateVisibleMessages();
       window.__commandTurnsProbe = {next() {append({id:'sample-question-b',role:'user',content:'Read the sample file'});append({id:'sample-read-b',role:'tool-call',toolName:'node_read',toolStatus:'approved',toolResult:'Sample file contents'});append({id:'sample-answer-b',role:'assistant',content:'The sample file is ready.'});session.updateVisibleMessages()},async cleanup(){nodes.connection=originalConnection;nodes.nodes.value=originalNodes;await chats.deleteChat(session.id)}};
+      let previousLeaf;
+      window.__commandTurnsProbe.fork = () => {
+        previousLeaf = session.branchLeafId;
+        if (!session.switchBranch('sample-question-a',false)) throw Error('Cannot branch');
+        append({id:'sample-sibling',role:'assistant',content:'A different sample branch.'});
+        session.updateVisibleMessages();
+      };
+      window.__commandTurnsProbe.restore = () => session.switchBranch(previousLeaf,false);
+      window.__commandTurnsProbe.liveSibling = () => {
+        cards[0].run.state='pending_approval';cards[1].run.state='running';
+        nodes.nodes.value=[...nodes.nodes.value];
+        return session.switchBranch('sample-sibling',false);
+      };
       return true;
     } catch(error) {nodes.connection=originalConnection;nodes.nodes.value=originalNodes;await app.vault.delete(file);throw error}
   })()`)
@@ -54,6 +67,17 @@ async function sequence(layout: string, stopped: boolean) {
     )
     expect(await inspect()).toMatchObject({ cards: 2, folded: false })
     columnShot(`${shots}/${layout}-${stopped}-original-open.png`)
+    await evalLong('(()=>{window.__commandTurnsProbe.fork();return true})()')
+    expect(await inspect()).toEqual({ cards: 0, folded: false, next: false })
+    columnShot(`${shots}/${layout}-${stopped}-sibling.png`)
+    expect(await evalLong('window.__commandTurnsProbe.restore()')).toBe('true')
+    expect(await inspect()).toMatchObject({ cards: 2, next: true })
+    expect(await evalLong('window.__commandTurnsProbe.liveSibling()')).toBe('true')
+    expect(await inspect()).toEqual({ cards: 0, folded: false, next: false })
+    columnShot(`${shots}/${layout}-${stopped}-live-sibling.png`)
+    expect(await evalLong('window.__commandTurnsProbe.restore()')).toBe('true')
+    expect(await inspect()).toMatchObject({ cards: 2, next: true })
+    columnShot(`${shots}/${layout}-${stopped}-live-original.png`)
   } finally {
     await evalLong(
       '(async()=>{await window.__commandTurnsProbe.cleanup();delete window.__commandTurnsProbe;return true})()'

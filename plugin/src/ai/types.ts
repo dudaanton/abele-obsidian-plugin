@@ -739,6 +739,8 @@ export interface ChatMessage {
   toolResult?: string
   /** Command identity retained independently of a paged result preview. */
   nodeCommandRun?: { session_id: string; run_id: string }
+  /** Submitted wire operation, attached before approval or command completion. */
+  nodeCommandOperation?: string
   /** A successfully saved image, copied from the tool's own result details, never model text. */
   toolImagePath?: string
   toolDiff?: ChatMessageDiff

@@ -29,6 +29,13 @@ export function nodeCardPlacement(
         seen.add(key)
         keys.push(key)
       }
+      if (call.nodeCommandOperation) {
+        const operationKey = `operation:${call.nodeCommandOperation}`
+        if (!seen.has(operationKey)) {
+          seen.add(operationKey)
+          keys.push(operationKey)
+        }
+      }
       // The model's operation alias differs from the chat-scoped wire identity.
       // Receipts retain the run identity across reloads and command status updates.
       if (

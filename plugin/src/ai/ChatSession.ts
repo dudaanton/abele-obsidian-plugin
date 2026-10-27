@@ -1870,6 +1870,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.allInternalMessages.push(...messages)
   }
 
+  recordNodeCommandOperation(callId: string, operation: string): void {
+    this.updateChatMessage(
+      (message) => message.role === 'tool-call' && message.toolCallId === callId,
+      (message) => ({ ...message, nodeCommandOperation: operation })
+    )
+    this.markDirty()
+  }
+
   updateVisibleMessages(): void {
     this.localRevision++
     if (!this.activeLeafId) {

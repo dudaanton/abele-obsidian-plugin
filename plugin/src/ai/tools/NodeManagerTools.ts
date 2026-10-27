@@ -260,11 +260,13 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       else if (name === 'node_command_run' || modernIntegration) {
         if (!operation_id) throw new Error('A stable operation_id is required')
         const mode = parent.permissionMode?.value === 'allow-all' ? 'bypass' : 'ask'
+        const operation = nodeMutationKey(parentId, name, operation_id, params)
+        parent.recordNodeCommandOperation(_call, operation)
         try {
           value = await connection.manager[modernIntegration ? 'integration' : 'command'](
             parentId,
             params,
-            nodeMutationKey(parentId, name, operation_id, params),
+            operation,
             operation_id,
             mode,
             justification!,
@@ -284,13 +286,15 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         }
       } else {
         if (!operation_id) throw new Error('A stable operation_id is required')
+        const operation = nodeMutationKey(parentId, name, operation_id, params)
+        if (name === 'node_git_integrate') parent.recordNodeCommandOperation(_call, operation)
         value = await connection.manager.mutate(
           parentId,
           name === 'node_git_integrate' ? 'git.v1.integrate' : 'command.v1.cancel',
           name === 'node_command_cancel'
             ? { session_id: sessionId, run_id: params.run_id }
             : params,
-          nodeMutationKey(parentId, name, operation_id, params),
+          operation,
           operation_id,
           justification
         )

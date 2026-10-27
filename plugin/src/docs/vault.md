@@ -1447,6 +1447,9 @@ Completed node command and integration tool-call records may carry `nodeCommandR
 detach the command card from its original work line after completion or reload.
 Older chats recover this identity from the full stored tool result using its call ID;
 an intact identity at the start of a paged preview also anchors the card without rewriting history.
+Command calls also retain `nodeCommandOperation` before submission, so pending and running
+cards belong to their call while the tool waits. Command cards render only at calls on the
+selected branch, never in the chat-wide footer; switching branches does not change their state.
 
 Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
 `details.imagePath` only after successful execution. Generation and editing set that detail

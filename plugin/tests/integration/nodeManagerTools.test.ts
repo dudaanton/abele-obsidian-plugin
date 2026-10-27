@@ -65,6 +65,7 @@ it('runs a command in the sole granted plain folder without widening workspace s
     }),
     permissionMode: ref('allow-all'),
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as unknown as ChatSession
   const tool = createNodeManagerTools(owner)[0]
@@ -81,6 +82,13 @@ it('runs a command in the sole granted plain folder without widening workspace s
   })
   await vi.advanceTimersByTimeAsync(60_000)
   expect(settled).toBe(false)
+  expect(owner.recordNodeCommandOperation).toHaveBeenCalledWith(
+    'sample-call',
+    nodeMutationKey('sample-parent', 'node_command_run', 'sample-operation', {
+      project_id: 'sample-project',
+      argv: ['pwd'],
+    })
+  )
   await vi.advanceTimersByTimeAsync(30_000)
   const completed = await pending
   expect(JSON.parse(completed.content[0].text)).toMatchObject({
@@ -145,6 +153,7 @@ it.each(['node_command_run', 'node_git_integrate'])(
       createNodeManagerTools({
         overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
         getToolMode: () => 'auto',
+        recordNodeCommandOperation: vi.fn(),
         ensureDelegationParentId: async () => parent,
       } as ChatSession)
     const args = {
@@ -217,6 +226,7 @@ it.each(['confirm-all', 'allow-all'] as const)(
       overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
       permissionMode: ref(mode),
       getToolMode: () => 'auto',
+      recordNodeCommandOperation: vi.fn(),
       ensureDelegationParentId: async () => 'sample-parent',
     } as unknown as ChatSession
     await createNodeManagerTools(owner)
@@ -268,6 +278,7 @@ it.each(['confirm-all', 'allow-all'] as const)(
       overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
       permissionMode: ref(mode),
       getToolMode: () => 'auto',
+      recordNodeCommandOperation: vi.fn(),
       ensureDelegationParentId: async () => 'sample-parent',
     } as unknown as ChatSession
     await createNodeManagerTools(chat)
@@ -315,6 +326,7 @@ it('retains the inferred scoped folder in an old-node refusal', async () => {
       ],
     }),
     getToolMode: () => 'ask',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as unknown as ChatSession
   await expect(
@@ -330,6 +342,7 @@ it('retains the inferred scoped folder in an old-node refusal', async () => {
 it('requires justification in both command-like tool schemas', async () => {
   const owner = {
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as unknown as ChatSession
   for (const tool of createNodeManagerTools(owner).filter((tool) =>
@@ -366,6 +379,7 @@ it('refuses every manager operation on an older node without sending a mutation'
   const tools = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
   for (const tool of tools.filter((t) =>
@@ -436,6 +450,7 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
       }),
       permissionMode: ref(mode),
       getToolMode: () => 'auto',
+      recordNodeCommandOperation: vi.fn(),
       ensureDelegationParentId: async () => 'sample-parent',
     } as unknown as ChatSession
     await createNodeManagerTools(chat)[0].execute('sample-call', {
@@ -484,6 +499,7 @@ it('refuses a command for a project outside the chat node chips', async () => {
       ],
     }),
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]
   await expect(
@@ -538,6 +554,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
   const tools = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
   expect(tools.map((tool) => tool.name)).toEqual([
@@ -610,6 +627,7 @@ it('never enqueues execution after the parent stops while connecting', async () 
   const tool = createNodeManagerTools({
     overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'run' }] }),
     getToolMode: () => 'auto',
+    recordNodeCommandOperation: vi.fn(),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]
   await expect(

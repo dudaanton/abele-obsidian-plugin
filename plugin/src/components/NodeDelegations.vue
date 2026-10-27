@@ -61,7 +61,7 @@ const props = defineProps<{
   parentId: string
   include?: string[]
   exclude?: string[]
-  commands?: 'finished' | 'live'
+  commands?: 'finished' | 'live' | 'none'
 }>()
 const visible = (key: string) =>
   props.include ? props.include.includes(key) : !props.exclude?.includes(key)
@@ -101,31 +101,35 @@ async function answerQuestionnaire(
   }
 }
 const runs = computed(() =>
-  service.nodes.value.flatMap((node) => {
-    try {
-      return (service.connection(node.id).managerCards.value[props.parentId] ?? [])
-        .filter((card) => {
-          const live = ['pending_approval', 'running', 'outcome_unknown'].includes(card.run.state)
-          return !props.commands || (props.commands === 'live' ? live : !live)
-        })
-        .filter((card) => {
-          const keys = [
-            `operation:${card.operation}`,
-            `run:${card.run.session_id}:${card.run.run_id}`,
-          ]
-          const include = props.include
-          return include
-            ? keys.some((key) => include.includes(key))
-            : !keys.some((key) => props.exclude?.includes(key))
-        })
-        .map((card) => ({
-          node,
-          card,
-        }))
-    } catch {
-      return []
-    }
-  })
+  props.commands === 'none'
+    ? []
+    : service.nodes.value.flatMap((node) => {
+        try {
+          return (service.connection(node.id).managerCards.value[props.parentId] ?? [])
+            .filter((card) => {
+              const live = ['pending_approval', 'running', 'outcome_unknown'].includes(
+                card.run.state
+              )
+              return !props.commands || (props.commands === 'live' ? live : !live)
+            })
+            .filter((card) => {
+              const keys = [
+                `operation:${card.operation}`,
+                `run:${card.run.session_id}:${card.run.run_id}`,
+              ]
+              const include = props.include
+              return include
+                ? keys.some((key) => include.includes(key))
+                : !keys.some((key) => props.exclude?.includes(key))
+            })
+            .map((card) => ({
+              node,
+              card,
+            }))
+        } catch {
+          return []
+        }
+      })
 )
 async function ownerAction(node: string, action: () => Promise<unknown>) {
   errorNode.value = node
