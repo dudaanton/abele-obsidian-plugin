@@ -44,6 +44,7 @@ import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
+import { settleRestartDevices, controlTiming } from './restart.mjs'
 import { validateBuildReceipt } from './build.mjs'
 import {
   requireTime,
@@ -489,11 +490,11 @@ export async function run(config) {
       checkpoint(true)
     }
   }
-  const stop = async (hard) => {
+  const stop = async (hard, { minimal = false } = {}) => {
     clearInterval(memoryTimer)
     await memoryPending
     if (!appProcess) return
-    for (const device of devices) {
+    for (const device of minimal ? [] : devices) {
       const at = Date.now()
       const flushed = await device
         .evaluate(
@@ -519,7 +520,7 @@ export async function run(config) {
     ).catch(() => appProcess.kill('SIGKILL'))
     appProcess = null
   }
-  const start = async () => {
+  const start = async ({ passive = false } = {}) => {
     const at = Date.now()
     appProcess = spawn(config.app, config.appArgs ?? [], { stdio: 'ignore' })
     appProcess.on('error', () => {})
@@ -546,13 +547,17 @@ export async function run(config) {
           sampling = false
         })
     }
-    sample()
-    memoryTimer = setInterval(sample, 1000)
-    for (const device of devices) {
-      await wait('disposable vault window', () => device.evaluate('return true').catch(() => false))
-      await device.evaluate('await app.plugins.setEnable(true);return true')
+    if (!passive) {
+      sample()
+      memoryTimer = setInterval(sample, 1000)
+      for (const device of devices) {
+        await wait('disposable vault window', () =>
+          device.evaluate('return true').catch(() => false)
+        )
+        await device.evaluate('await app.plugins.setEnable(true);return true')
+      }
+      await devices[0].ready()
     }
-    await devices[0].ready()
     return at
   }
   await mkdir(config.output, { recursive: true })
@@ -893,12 +898,15 @@ export async function run(config) {
     report.restartRequestMs = report.deviceRestartRequestMs.every((value) => value !== null)
       ? Math.max(...report.deviceRestartRequestMs)
       : undefined
-    const settledA = await settle(a, 'restart device A')
+    report.deviceRestartIdleAt = await settleRestartDevices(
+      devices,
+      settle,
+      report.settleTimings ?? []
+    )
     await endReindex('reindex-restart-comparison', a)
-    const idleA = settledA ? Date.now() : null
-    const settledB = await settle(b, 'restart device B')
-    report.deviceRestartIdleAt = [idleA, settledB ? Date.now() : null]
-    report.restartIdleMs = settledA && settledB ? Date.now() - restartAt : undefined
+    report.restartIdleMs = report.deviceRestartIdleAt.every(Number.isFinite)
+      ? Math.max(...report.deviceRestartIdleAt) - restartAt
+      : undefined
     report.restartObservedMs = Date.now() - restartAt
     report.restartClassification = await Promise.all(
       devices.map(async (device, index) => {
@@ -970,6 +978,43 @@ export async function run(config) {
     report.verificationComplete = true
     if (report.failures.length)
       report.failure = 'Device settle checks failed; byte evidence was still collected'
+    phase('control restart')
+    for (const [index, device] of devices.entries()) {
+      const file = join(device.root, '.scale-observer.json')
+      const observerConfig = await loadEvidence(file)
+      await writeEvidenceJson(file, {
+        ...observerConfig,
+        mode: 'control',
+        controlReceipt: join(config.output, `control-restart-${index}.json`),
+      })
+    }
+    const controlAt = await start({ passive: true })
+    const controlRows = await Promise.all(
+      devices.map(async (_, index) => {
+        const receiptFile = join(config.output, `control-restart-${index}.json`)
+        return wait(
+          `control restart device ${index} idle`,
+          async () => {
+            const receipt = await readFile(receiptFile, 'utf8')
+              .then(JSON.parse)
+              .catch(() => null)
+            if (receipt?.fatal) throw new Error('Fatal sync state in control restart')
+            const timing = controlTiming(controlAt, proxies[index].events, receipt)
+            return Number.isFinite(timing.pluginLoadToFirstRequestMs) &&
+              timing.firstIdleAt >= timing.firstRequestAt
+              ? { device: String(index), ...timing }
+              : false
+          },
+          120000
+        )
+      })
+    )
+    report.controlRestart = {
+      mode: 'observer load/idle marks and proxy requests only',
+      forcedReindex: false,
+      devices: controlRows,
+    }
+    await stop(false, { minimal: true })
     phase('complete')
   } catch (error) {
     if (error.scaleFatalSnapshot && Number.isInteger(error.scaleFatalDevice))

@@ -430,6 +430,15 @@ coverage or unknown/incomplete sync reads. Write observation, pause attribution 
 and rebuild oracles remain active throughout. Reports declare this measurement window;
 comparisons with recordings that observed every initial read must retain that distinction.
 
+Both devices' strict restart settle checks start together. Each device's first request and
+first settled idle are timestamped against its own plugin-load mark; one device cannot gain
+time merely because the controller waited for the other. After the strict phases and full
+byte verification, a separate control restart makes no forced reindex. Its observer records
+only plugin-load and first-idle marks, while the existing server proxy records requests.
+The control does not install read, write or hash wrappers, debugger tracepoints, CPU profiles,
+coverage, heartbeat, deep activity snapshots or notice wrappers. Control timing is reported
+separately and does not replace the strict restart or its read/hash oracles.
+
 Growing JSON checkpoints/final reports and Markdown details are written incrementally to
 atomic temporary files. This includes nested restart read evidence; a large row is not
 serialized as one string. Snapshot copies use structured cloning, not JSON round trips.

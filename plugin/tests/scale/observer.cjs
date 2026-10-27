@@ -13,6 +13,59 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
+    if (config.mode === 'control') {
+      const receipt = { observerStartedAt: Date.now() }
+      const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
+      save()
+      try {
+        const marks = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries())
+            if (entry.name === 'abele:onload-start' && receipt.pluginLoadAt === undefined) {
+              receipt.pluginLoadAt = Math.round(performance.timeOrigin + entry.startTime)
+              save()
+            }
+        })
+        marks.observe({ type: 'mark', buffered: true })
+        this.register(() => marks.disconnect())
+      } catch {
+        receipt.pluginLoadUnavailable = true
+        save()
+      }
+      let sawActive = false
+      const timer = setInterval(() => {
+        const host = this.app.plugins?.plugins?.abele?.tokenEngines
+        const ui = host?.ui
+        if (!ui) return
+        const rows = ui.rows.value
+        const engines = [...host.live.values()].map((runtime) => runtime.engine.status)
+        if (
+          rows.some((row) => row.status === 'error') ||
+          engines.some((engine) => engine.state === 'error')
+        ) {
+          receipt.fatal = true
+          save()
+          return
+        }
+        if (
+          rows.some((row) => row.status !== 'idle') ||
+          engines.some((engine) => engine.state !== 'idle')
+        )
+          sawActive = true
+        if (
+          sawActive &&
+          receipt.firstIdleAt === undefined &&
+          rows.length &&
+          engines.length &&
+          rows.every((row) => row.status === 'idle') &&
+          engines.every((engine) => engine.state === 'idle' && engine.lastSyncAt)
+        ) {
+          receipt.firstIdleAt = Date.now()
+          save()
+        }
+      }, 100)
+      this.register(() => clearInterval(timer))
+      return
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-owned asynchronous evidence survives renderer reloads.
     const evidenceRemote = require('@electron/remote')
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Ordered, nonblocking evidence delivery.
