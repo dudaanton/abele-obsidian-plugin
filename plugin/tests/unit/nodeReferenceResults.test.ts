@@ -10,6 +10,41 @@ const hit = (path: string, line = 0): LspLocation => ({
   path,
   range: { start: { line, character: 2 }, end: { line, character: 8 } },
 })
+it('retains same-file usages first and adds a declaration omitted by the references response', async () => {
+  const declaration = hit('origin.ts')
+  const f = fixture([hit('other.ts'), hit('origin.ts', 1)], [declaration])
+  const state = createReferenceResults()
+  await findNodeReferences(
+    state,
+    f.document,
+    { line: 1, character: 2 },
+    '  sample()\n  sample()',
+    async () => '  sample()',
+    () => ''
+  )
+  expect(state.files.map((file) => file.path)).toEqual(['origin.ts', 'other.ts'])
+  expect(state.files[0].lines.map((line) => line.label)).toEqual(['1', '2'])
+  expect(state.definitions).toEqual([referenceLocationKey(declaration)])
+  expect(state.count).toBe(3)
+  expect(state.active).toBe('')
+})
+it('loads the capped locations when Show more is activated', async () => {
+  const f = fixture(Array.from({ length: 110 }, (_, i) => hit(`sample-${i}.ts`)))
+  const state = createReferenceResults()
+  await findNodeReferences(
+    state,
+    f.document,
+    { line: 0, character: 2 },
+    '',
+    async () => '  sample()',
+    () => ''
+  )
+  expect(state.more).toBeTypeOf('function')
+  await state.more!()
+  expect(state.files).toHaveLength(110)
+  expect(state.omitted).toBe(0)
+  expect(state.more).toBeUndefined()
+})
 function fixture(hits: LspLocation[], definitions: LspLocation[] = []) {
   const query = vi.fn(async (kind: string) => (kind === 'definition' ? definitions : hits))
   return { query, document: { path: 'origin.ts', query } as unknown as NodeLspDocument }

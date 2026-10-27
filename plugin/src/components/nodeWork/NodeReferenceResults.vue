@@ -12,7 +12,10 @@
       data-node-references
     >
       <div class="abele-node-references__header">
-        <span class="abele-github-search__summary">{{ summary }}</span>
+        <span v-if="state.count" class="abele-github-search__summary">{{ summary }}</span>
+        <span v-else-if="!state.loading && !state.message" class="abele-github-search__summary">{{
+          t('repository.noReferencesTo', { name: state.symbol })
+        }}</span>
         <Icon
           v-if="!Platform.isMobile"
           icon="x"
@@ -21,9 +24,6 @@
         />
       </div>
       <div v-if="state.message" role="status">{{ state.message }}</div>
-      <div v-else-if="!state.loading && !state.count" class="search-empty-state">
-        {{ t('repository.noReferences') }}
-      </div>
       <CodeSearchResults
         :files="state.files"
         references
@@ -31,14 +31,19 @@
         :definitions="state.definitions"
         @open="open"
       />
-      <div v-if="state.omitted" class="abele-github-search__summary">
-        {{
-          t('repository.referencesMore', {
+      <Button
+        v-if="state.omitted"
+        quiet
+        class="abele-node-references__more"
+        :disabled="state.loading"
+        :text="
+          t('repository.showReferencesMore', {
             count: state.omitted,
             number: state.omitted.toLocaleString(),
           })
-        }}
-      </div>
+        "
+        @click="state.more?.()"
+      />
       <div v-if="state.loading" class="abele-github-search__progress" role="status">
         {{ t('repository.findingReferences') }}
       </div>
@@ -54,6 +59,7 @@ import type { LspLocation } from '@/node/NodeLspDocument'
 import CodeSearchResults from '../github/CodeSearchResults.vue'
 import Modal from '../obsidian/Modal.vue'
 import Icon from '../obsidian/Icon.vue'
+import Button from '../obsidian/Button.vue'
 const props = defineProps<{ state: ReferenceResults }>()
 const emit = defineEmits<{ open: [location: LspLocation] }>()
 const summary = computed(() =>
@@ -99,7 +105,30 @@ function open(key: string) {
   font-size: var(--font-ui-smaller);
 }
 .abele-node-references .abele-github-search__line.is-active {
-  background: var(--background-modifier-hover);
+  background: var(--nav-item-background-active);
+}
+.abele-node-references .abele-github-search__line {
+  display: grid;
+  grid-template-columns: 3em var(--icon-xs) minmax(0, 1fr);
+  align-items: center;
+}
+.abele-reference-glyph {
+  width: var(--icon-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.abele-node-references .abele-path-label {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.abele-node-references__more {
+  align-self: flex-start;
+}
+body.is-phone .abele-node-references_phone .abele-disclosure__control.abele-fold-heading {
+  min-height: 0;
 }
 .abele-node-references .abele-github-search__text {
   white-space: pre;

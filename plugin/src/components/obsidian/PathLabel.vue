@@ -1,6 +1,6 @@
 <template>
   <Disclosure
-    v-if="mode !== 'full' && expandable"
+    v-if="mode !== 'full' && mode !== 'file' && expandable"
     v-model="opened"
     class="abele-path-label abele-path-label_expandable"
     :class="{ 'abele-path-label_missing': missing }"
@@ -39,9 +39,15 @@
     ><span v-if="workspace" class="abele-path-label__workspace">{{
       t('kit.workspace', { name: workspace })
     }}</span
-    ><span class="abele-path-label__path" :class="{ 'abele-path-label__full': mode === 'full' }">{{
-      mode === 'full' ? path : compact
-    }}</span
+    ><template v-if="mode === 'file'"
+      ><span v-if="folder" class="abele-path-label__folder">{{ folder }}</span
+      ><span class="abele-path-label__filename">{{ filename }}</span></template
+    >
+    <span
+      v-else
+      class="abele-path-label__path"
+      :class="{ 'abele-path-label__full': mode === 'full' }"
+      >{{ mode === 'full' ? path : compact }}</span
     ><span v-if="missing" class="abele-path-label__state">{{ t('kit.deviceMissing') }}</span></span
   >
 </template>
@@ -53,7 +59,7 @@ import Icon from './Icon.vue'
 const props = withDefaults(
   defineProps<{
     path: string
-    mode?: 'basename' | 'context' | 'full'
+    mode?: 'basename' | 'context' | 'full' | 'file'
     workspace?: string
     missing?: boolean
     copyable?: boolean
@@ -66,6 +72,10 @@ const emit = defineEmits<{ copy: [path: string]; reveal: [path: string] }>()
 // Folded to its folder, unfolded to the whole path and what can be done with it: the kit's own
 // fold, as every list title's, not one of its own.
 const opened = ref(false)
+const folder = computed(() =>
+  props.path.slice(0, Math.max(props.path.lastIndexOf('/'), props.path.lastIndexOf('\\')) + 1)
+)
+const filename = computed(() => props.path.slice(folder.value.length))
 const compact = computed(() => {
   const index = Math.max(props.path.lastIndexOf('/'), props.path.lastIndexOf('\\'))
   return props.mode === 'basename'
@@ -76,6 +86,13 @@ const compact = computed(() => {
 })
 </script>
 <style>
+.abele-path-label__folder {
+  color: var(--text-muted);
+  margin-inline-end: var(--size-4-1);
+}
+.abele-path-label__filename {
+  color: var(--text-normal);
+}
 .abele-path-label {
   min-width: 0;
   color: var(--abele-text-meta-color);

@@ -10,14 +10,16 @@
     @keydown.enter="emit('open', $event)"
   >
     <span class="abele-github-search__number">{{ line.label }}</span>
-    <Icon
-      v-if="definition"
-      icon="locate"
-      size="xs"
-      :interactive="false"
-      :tooltip="t('repository.referenceDefinition')"
-      :title="t('repository.referenceDefinition')"
-    />
+    <span v-if="references" class="abele-reference-glyph">
+      <Icon
+        v-if="definition"
+        icon="locate"
+        size="xs"
+        :interactive="false"
+        :tooltip="t('repository.referenceDefinition')"
+        :title="t('repository.referenceDefinition')"
+      />
+    </span>
     <code class="abele-github-search__text"
       >{{ before
       }}<mark

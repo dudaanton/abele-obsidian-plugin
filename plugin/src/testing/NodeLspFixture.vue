@@ -18,8 +18,8 @@
       </span>
     </div>
     <FileView
-      :path="state === 'off' ? 'sample.txt' : 'sample.ts'"
-      :text="text"
+      :path="state === 'off' ? 'sample.txt' : previewPath"
+      :text="previewText"
       :mode="admission === 'comparison' ? 'diff' : 'file'"
       :change="
         admission === 'comparison' || admission === 'contentUnavailable'
@@ -102,9 +102,12 @@ const text =
     ? '/*' + 'x'.repeat(512 * 1024) + '*/'
     : 'export const sample: string = 42\nconsole.log(sample)\n'
 const line = ref<number>()
+const previewPath = ref('sample.ts')
+const previewText = ref(text)
 const destination = ref('')
 const installed = ref(false)
 const referencesMode = ref('one')
+let referenceQuery = false
 const client = new NodeClient(
   { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: '0'.repeat(64) },
   new MemoryClientStore()
@@ -180,12 +183,20 @@ client.lsp.diagnostics = async (_root, _path, signal) => {
     : []
 }
 client.lsp.hover = async () => ({ text: 'const sample: string\nSample documentation.' })
-client.lsp.definition = async () => [
-  {
-    path: 'node_modules/sample-types/index.d.ts',
-    range: { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } },
-  },
-]
+client.lsp.definition = async () =>
+  !referenceQuery
+    ? [
+        {
+          path: 'node_modules/sample-types/index.d.ts',
+          range: { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } },
+        },
+      ]
+    : [
+        {
+          path: 'sample.ts',
+          range: { start: { line: 0, character: 13 }, end: { line: 0, character: 19 } },
+        },
+      ]
 client.readFile = async (workspace_id, path) => ({
   workspace_id,
   path,
@@ -199,8 +210,9 @@ client.readContent = async () => {
   const source = '  sample()\n\nexport declare const sample: string\n'
   return { offset: 0, total: source.length, base64: btoa(source) }
 }
-client.lsp.references = async () =>
-  referencesMode.value === 'empty'
+client.lsp.references = async () => {
+  referenceQuery = true
+  return referencesMode.value === 'empty'
     ? []
     : referencesMode.value === 'one'
       ? [
@@ -209,16 +221,27 @@ client.lsp.references = async () =>
             range: { start: { line: 1, character: 12 }, end: { line: 1, character: 18 } },
           },
         ]
-      : Array.from({ length: referencesMode.value === 'long' ? 110 : 4 }, (_, index) => ({
-          path:
-            index === 0
-              ? 'node_modules/sample-types/index.d.ts'
-              : `src/sample-${String(index).padStart(3, '0')}.ts`,
-          range:
-            index === 0
-              ? { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } }
-              : { start: { line: 0, character: 2 }, end: { line: 0, character: 8 } },
-        }))
+      : [
+          {
+            path: 'sample.ts',
+            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 19 } },
+          },
+          {
+            path: 'sample.ts',
+            range: { start: { line: 1, character: 12 }, end: { line: 1, character: 18 } },
+          },
+          ...Array.from({ length: referencesMode.value === 'long' ? 108 : 4 }, (_, index) => ({
+            path:
+              index === 0
+                ? 'node_modules/sample-types/index.d.ts'
+                : `src/sample-${String(index).padStart(3, '0')}.ts`,
+            range:
+              index === 0
+                ? { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } }
+                : { start: { line: 0, character: 2 }, end: { line: 0, character: 8 } },
+          })),
+        ]
+}
 if (props.admission !== 'noConnection')
   provide(LSP_CONNECTION, {
     client,
@@ -226,6 +249,10 @@ if (props.admission !== 'noConnection')
     navigate(locations) {
       line.value = locations[0].range.start.line + 1
       destination.value = `${locations[0].path}:${line.value}`
+      if (referencesMode.value !== 'one') {
+        previewPath.value = locations[0].path
+        previewText.value = locations[0].path === 'sample.ts' ? text : '  sample()\n'
+      }
     },
   })
 </script>

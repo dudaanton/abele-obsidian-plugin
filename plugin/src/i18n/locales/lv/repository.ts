@@ -1,4 +1,10 @@
 export const repository = {
+  'repository.noReferencesTo': 'Nav {name} lietojumu.',
+  'repository.showReferencesMore': {
+    zero: 'Rādīt vēl {number}',
+    one: 'Rādīt vēl {number}',
+    other: 'Rādīt vēl {number}',
+  },
   'repository.referenceDefinition': 'Definīcija',
   'repository.referencesTitle': 'Atrast lietojumus',
   'repository.noReferences': 'Nav lietojumu',

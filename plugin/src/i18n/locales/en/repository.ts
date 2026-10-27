@@ -1,4 +1,6 @@
 export const repository = {
+  'repository.noReferencesTo': 'No references to {name}.',
+  'repository.showReferencesMore': { one: 'Show {number} more', other: 'Show {number} more' },
   'repository.referenceDefinition': 'Definition',
   'repository.referencesTitle': 'Find references',
   'repository.noReferences': 'No references',

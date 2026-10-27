@@ -194,7 +194,10 @@ describe('node language diagnostics in the shared file viewer', () => {
       await flushPromises()
       if (kind === 'references') {
         expect(destination).not.toHaveBeenCalled()
-        await navigationTools.get('[data-reference-row]').trigger('click')
+        await navigationTools
+          .findAll('[data-reference-row]')
+          .find((row) => row.attributes('data-reference-row')?.includes('destination.ts'))!
+          .trigger('click')
       }
       expect(destination).toHaveBeenCalledWith(
         {

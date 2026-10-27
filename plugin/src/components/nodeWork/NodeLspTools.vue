@@ -154,7 +154,8 @@ watch(
                     ? t('node.analysis.untrusted')
                     : doc.unavailableReason
                       ? t(`node.analysis.${doc.unavailableReason}`)
-                      : doc.error
+                      : doc.error,
+                symbol.name
               )
             }
           } finally {
@@ -187,7 +188,8 @@ async function findReferences(_name: string, position: { line: number; character
     position,
     props.text,
     referencePreviewReader(connection.client, { ...props.target }),
-    () => (untrusted.value ? t('node.analysis.untrusted') : offReason.value || failureReason.value)
+    () => (untrusted.value ? t('node.analysis.untrusted') : offReason.value || failureReason.value),
+    _name
   )
 }
 const analysisButton = ref<InstanceType<typeof Icon>>()

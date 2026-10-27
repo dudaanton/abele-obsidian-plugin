@@ -7,6 +7,29 @@ import { lspFor } from '@/node/lspContext'
 import NodeReferenceResults from '@/components/nodeWork/NodeReferenceResults.vue'
 import { createReferenceResults, referenceLocationKey } from '@/node/referenceResults'
 import { readFileSync } from 'node:fs'
+import PathLabel from '@/components/obsidian/PathLabel.vue'
+it('shows a muted folder before the filename in file path labels', () => {
+  const wrapper = mount(PathLabel, { props: { path: 'src/module/sample.ts', mode: 'file' } })
+  expect(wrapper.get('.abele-path-label__folder').text()).toBe('src/module/')
+  expect(wrapper.get('.abele-path-label__filename').text()).toBe('sample.ts')
+  expect(wrapper.find('.abele-disclosure').exists()).toBe(false)
+})
+it('shows a single named empty message and activates the Show more link', async () => {
+  const state = createReferenceResults()
+  state.shown = true
+  state.symbol = 'sample'
+  const wrapper = mount(NodeReferenceResults, { props: { state } })
+  expect(wrapper.text()).toBe('No references to sample.')
+  state.count = 110
+  state.omitted = 10
+  state.more = vi.fn(async () => {})
+  await flushPromises()
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === 'Show 10 more')!
+    .trigger('click')
+  expect(state.more).toHaveBeenCalledOnce()
+})
 enableAutoUnmount(afterEach)
 it('stretches reference headings so the muted counts can align at the far edge', () => {
   const source = readFileSync('src/components/nodeWork/NodeReferenceResults.vue', 'utf8')

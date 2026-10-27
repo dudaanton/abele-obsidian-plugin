@@ -13,7 +13,7 @@
         :count="file.lines.length"
         @update:model-value="toggle(file.path, $event)"
       >
-        <template #label><PathLabel :path="file.path" mode="full" :expandable="false" /></template>
+        <template #label><PathLabel :path="file.path" mode="file" :expandable="false" /></template>
         <template v-for="line in file.lines" :key="line.url">
           <ResultRow
             :line="line"

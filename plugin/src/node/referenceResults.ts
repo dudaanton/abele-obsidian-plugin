@@ -3,6 +3,8 @@ import type { NodeLspDocument, LspLocation, LspPosition } from './NodeLspDocumen
 import type { ResultFile } from '@/repository/model'
 
 export interface ReferenceResults {
+  symbol: string
+  more?: () => Promise<void>
   presenter?: symbol
   shown: boolean
   loading: boolean
@@ -18,6 +20,7 @@ export interface ReferenceResults {
 }
 export function createReferenceResults(): ReferenceResults {
   return reactive({
+    symbol: '',
     shown: false,
     loading: false,
     message: '',
@@ -52,11 +55,15 @@ export async function findNodeReferences(
   position: LspPosition,
   text: string,
   read: (path: string) => Promise<string>,
-  unavailable: () => string
+  unavailable: () => string,
+  symbol = ''
 ) {
   const generation = ++state.generation
   const current = () => generation === state.generation
   Object.assign(state, {
+    symbol,
+    more: undefined,
+    locations: {},
     shown: true,
     loading: true,
     message: '',
@@ -75,11 +82,14 @@ export async function findNodeReferences(
     if (!hits.length) return
     const definitions = await document.query('definition', position, text)
     if (!current()) return
-    const unique = [...new Map(hits.map((hit) => [referenceLocationKey(hit), hit])).values()]
+    const unique = [
+      ...new Map([...hits, ...definitions].map((hit) => [referenceLocationKey(hit), hit])).values(),
+    ]
     const definitionKeys = new Set(definitions.map(referenceLocationKey))
     const definitionFiles = new Set(definitions.map((hit) => hit.path))
     unique.sort(
       (a, b) =>
+        Number(b.path === document.path) - Number(a.path === document.path) ||
         Number(definitionFiles.has(b.path)) - Number(definitionFiles.has(a.path)) ||
         a.path.localeCompare(b.path) ||
         a.range.start.line - b.range.start.line ||
@@ -87,45 +97,54 @@ export async function findNodeReferences(
     )
     state.count = unique.length
     state.fileCount = new Set(unique.map((hit) => hit.path)).size
-    state.locations = Object.fromEntries(
-      unique.slice(0, 100).map((hit) => [referenceLocationKey(hit), hit])
-    )
-    state.omitted = Math.max(0, unique.length - 100)
     const files = new Map<string, ResultFile>()
-    for (const hit of unique.slice(0, 100)) {
-      let file = files.get(hit.path)
-      if (!file) files.set(hit.path, (file = { path: hit.path, url: hit.path, lines: [] }))
-      const url = referenceLocationKey(hit)
-      file.lines.push({
-        url,
-        label: String(hit.range.start.line + 1),
-        text: '',
-        column: hit.range.start.character,
-        length:
-          hit.range.end.line === hit.range.start.line
-            ? hit.range.end.character - hit.range.start.character
-            : 0,
-      })
-      if (definitionKeys.has(url)) state.definitions.push(url)
-    }
-    // Sequential bounded reads keep large reference sets from flooding the node transport.
-    for (const file of files.values()) {
-      if (!current()) return
-      let source = ''
-      try {
-        source = file.path === document.path ? text : await read(file.path)
-      } catch (error) {
-        console.debug('[node] Reference preview unavailable', error)
-      }
-      const lines = source.split('\n')
-      for (const line of file.lines) {
-        const raw = lines[Number(line.label) - 1] ?? ''
+    const sources = new Map<string, string[]>()
+    let shown = 0
+    let reading = false
+    const load = async () => {
+      if (!current() || reading) return
+      reading = true
+      state.loading = true
+      const end = Math.min(shown + 100, unique.length)
+      for (const hit of unique.slice(shown, end)) {
+        if (!current()) return
+        let lines = sources.get(hit.path)
+        if (!lines) {
+          let source = ''
+          try {
+            source = hit.path === document.path ? text : await read(hit.path)
+          } catch (error) {
+            console.debug('[node] Reference preview unavailable', error)
+          }
+          if (!current()) return
+          sources.set(hit.path, (lines = source.split('\n')))
+        }
+        let file = files.get(hit.path)
+        if (!file) files.set(hit.path, (file = { path: hit.path, url: hit.path, lines: [] }))
+        const url = referenceLocationKey(hit)
+        const raw = lines[hit.range.start.line] ?? ''
         const trim = raw.length - raw.trimStart().length
-        line.text = raw.trim()
-        line.column = Math.max(0, line.column - trim)
+        state.locations[url] = hit
+        file.lines.push({
+          url,
+          label: String(hit.range.start.line + 1),
+          text: raw.trim(),
+          column: Math.max(0, hit.range.start.character - trim),
+          length:
+            hit.range.end.line === hit.range.start.line
+              ? hit.range.end.character - hit.range.start.character
+              : 0,
+        })
+        if (definitionKeys.has(url)) state.definitions.push(url)
       }
+      shown = end
+      state.files = [...files.values()]
+      state.omitted = unique.length - shown
+      state.more = state.omitted ? load : undefined
+      state.loading = false
+      reading = false
     }
-    if (current()) state.files = [...files.values()]
+    await load()
   } finally {
     if (current()) state.loading = false
   }

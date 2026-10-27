@@ -138,10 +138,11 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Find references')));
             await shot('references-menu');
             [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Find references')).closest('.menu-item').click();
-            await until(() => document.querySelectorAll('[data-reference-row]').length === 1);
+            await until(() => document.querySelectorAll('[data-reference-row]').length === 2);
+            if (document.querySelector('[data-reference-row].is-active')) throw Error('Reference is active before the first click');
             document.querySelector('[data-node-references]').scrollIntoView({block:'start'});
             await shot('references-one');
-            document.querySelector('[data-reference-row]').click();
+            [...document.querySelectorAll('[data-reference-row]')].find(row => JSON.parse(row.dataset.referenceRow)[1] === 1).click();
             await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'sample.ts:2');
             if (!${mobile} && !document.querySelector('[data-reference-row].is-active')) throw Error('Desktop references disappeared after navigation');
             if (${mobile}) await until(() => !document.querySelector('[data-node-references]'));
@@ -154,32 +155,52 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
               [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Find references')).closest('.menu-item').click();
               await until(() => {
                 const list = document.querySelector('[data-node-references]');
-                return list && !list.textContent.includes('Finding references') && (mode === 'empty' ? list.textContent.includes('No references') : list.querySelectorAll('[data-reference-file]').length === (mode === 'long' ? 100 : 4));
+                return list && !list.textContent.includes('Finding references') && (mode === 'empty' ? list.textContent.includes('No references to sample.') : list.querySelectorAll('[data-reference-file]').length === (mode === 'long' ? 99 : 5));
               });
               const list = document.querySelector('[data-node-references]');
               list.scrollIntoView({block:'start'});
               const listBox = list.getBoundingClientRect();
               if (listBox.left < -1 || listBox.right > innerWidth + 1) throw Error('References list overflows the screen');
               if (mode === 'several' && !list.querySelector('[title="Definition"]')) throw Error('Definition marker missing');
-              if (mode === 'long' && (list.querySelectorAll('[data-reference-row]').length !== 12 || !list.textContent.includes('10 more'))) throw Error('Long references are not folded and capped');
+              if (mode === 'long' && (list.querySelectorAll('[data-reference-row]').length !== 13 || !list.textContent.includes('Show 10 more'))) throw Error('Long references are not folded and capped');
               if (${mobile} && !list.closest('.modal.mod-lg')) throw Error('Phone references do not use a tall modal');
               for (const heading of list.querySelectorAll('.abele-fold-heading')) {
                 const count = heading.querySelector('.abele-fold-heading__count');
                 if (!count || Math.abs(count.getBoundingClientRect().right - heading.getBoundingClientRect().right) > 12) throw Error('Reference file count is not aligned at the right edge');
               }
+              for (const group of list.querySelectorAll('[data-reference-file]')) {
+                const rows = [...group.querySelectorAll('[data-reference-row]')];
+                const starts = rows.map(row => row.querySelector('code').getBoundingClientRect().left);
+                if (starts.some(left => Math.abs(left - starts[0]) > 1)) throw Error('Definition glyph shifts the line text');
+                if (${mobile} && rows.length === 1 && group.getBoundingClientRect().height > 56) throw Error('Phone reference group is too tall');
+              }
+              if (mode === 'several' && list.querySelector('[data-reference-file]').dataset.referenceFile !== 'sample.ts') throw Error('Current file references are missing or not first');
+              if (mode === 'empty' && list.textContent.includes('0 references')) throw Error('Empty references repeats the count');
               if (!${mobile}) {
                 const viewer = list.closest('.abele-file-view');
                 const preview = viewer.querySelector('.abele-file-view__file');
                 if (preview.getBoundingClientRect().bottom < viewer.getBoundingClientRect().bottom - 4) throw Error('File preview leaves unused space below it');
               }
+              if (!${mobile} && mode === 'several') {
+                const target = [...list.querySelectorAll('[data-reference-row]')].find(row => JSON.parse(row.dataset.referenceRow)[0] === 'src/sample-001.ts');
+                target.click();
+                await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'src/sample-001.ts:1' && document.querySelector('.abele-lsp-root .abele-file-view__path')?.textContent === 'src/sample-001.ts');
+                if (!target.classList.contains('is-active')) throw Error('Opened reference is not active');
+              }
               await shot('references-' + mode);
+              if (mode === 'long') {
+                const more = [...list.querySelectorAll('button')].find(button => button.textContent.includes('Show 10 more'));
+                if (!more) throw Error('Show more action is missing');
+                more.click();
+                await until(() => list.querySelectorAll('[data-reference-file]').length === 109 && !list.textContent.includes('Show 10 more'));
+              }
               if (${mobile}) {
                 if (mode === 'several') {
                   phase = 'references-definition-tap';
                   const definition = list.querySelector('[title="Definition"]')?.closest('[data-reference-row]');
                   if (!definition) throw Error('Definition result is missing');
                   definition.click();
-                  await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'node_modules/sample-types/index.d.ts:3');
+                  await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'sample.ts:1');
                 } else {
                   phase = 'references-' + mode + '-close';
                   const closeButton = list.closest('.modal').querySelector('.modal-close-button, .modal-header-button.mod-raised');

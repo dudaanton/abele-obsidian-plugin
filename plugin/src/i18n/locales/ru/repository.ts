@@ -1,4 +1,11 @@
 export const repository = {
+  'repository.noReferencesTo': 'Использований {name} нет.',
+  'repository.showReferencesMore': {
+    one: 'Показать ещё {number}',
+    few: 'Показать ещё {number}',
+    many: 'Показать ещё {number}',
+    other: 'Показать ещё {number}',
+  },
   'repository.referenceDefinition': 'Определение',
   'repository.referencesTitle': 'Найти использования',
   'repository.noReferences': 'Использований нет',
