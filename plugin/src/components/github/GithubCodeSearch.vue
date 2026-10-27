@@ -76,36 +76,7 @@
         {{ presentUiField(results, 'note') }}
       </div>
       <div class="abele-github-search__summary">{{ summary }}</div>
-      <div class="abele-github-search__results">
-        <div v-for="file in results.files" :key="file.path" class="abele-github-search__file">
-          <div
-            class="abele-github-search__path"
-            role="button"
-            tabindex="0"
-            @click="open(file.url, $event)"
-            @keydown.enter="open(file.url, $event)"
-          >
-            <span>{{ file.path }}</span>
-            <Badge v-if="file.lines.length" :text="String(file.lines.length)" />
-          </div>
-          <div
-            v-for="(line, i) in file.lines"
-            :key="i"
-            class="abele-github-search__line"
-            role="button"
-            tabindex="0"
-            @click="open(line.url, $event)"
-            @keydown.enter="open(line.url, $event)"
-          >
-            <span class="abele-github-search__number">{{ line.label }}</span>
-            <code class="abele-github-search__text"
-              >{{ parts(line).before
-              }}<mark class="abele-github-search__match">{{ parts(line).match }}</mark
-              >{{ parts(line).after }}</code
-            >
-          </div>
-        </div>
-      </div>
+      <CodeSearchResults :files="results.files" @open="open" />
       <Button
         v-if="results.next"
         :text="t('repository.loadMoreResults')"
@@ -129,15 +100,9 @@ import { Keymap } from 'obsidian'
 import Input from '../obsidian/Input.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
-import Badge from '../obsidian/Badge.vue'
+import CodeSearchResults from './CodeSearchResults.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
-import {
-  STAGE_TEXT,
-  type CodeResults,
-  type ResultLine,
-  type Scope,
-  type TabCode,
-} from '@/github/search/tabCode'
+import { STAGE_TEXT, type CodeResults, type Scope, type TabCode } from '@/github/search/tabCode'
 
 /** A search asked for from elsewhere — "Find references" — with a nonce so the same one reruns. */
 export interface SearchRequest {
@@ -245,15 +210,6 @@ const summary = computed(() => {
   })
   return r.capped ? t('streamB.theFirstOfMoreNarrowTheSearch.712c6f', { v0: String(shown) }) : shown
 })
-
-const parts = (line: ResultLine) => {
-  if (line.column < 0 || !line.length) return { before: line.text, match: '', after: '' }
-  return {
-    before: line.text.slice(0, line.column),
-    match: line.text.slice(line.column, line.column + line.length),
-    after: line.text.slice(line.column + line.length),
-  }
-}
 
 const run = async () => {
   window.clearTimeout(nameTimer)

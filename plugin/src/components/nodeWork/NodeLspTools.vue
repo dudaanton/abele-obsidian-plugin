@@ -35,6 +35,13 @@
       />
     </Teleport>
   </template>
+  <NodeReferenceResults
+    v-if="
+      referencesState && (!Platform.isMobile || referencesState.presenter === referencesPresenter)
+    "
+    :state="referencesState"
+    @open="navigate([$event], referencesOrigin)"
+  />
 </template>
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
@@ -58,6 +65,10 @@ import { lspMenuLabel } from '@/node/lspMenu'
 import { lspLanguage } from '@/node/lspLanguage'
 import { FILE_DESTINATION } from '@/node/fileNavigation'
 import { ANALYSIS_HEADER } from '@/node/analysisHeader'
+import NodeReferenceResults from './NodeReferenceResults.vue'
+import { referenceResultsFor, findNodeReferences } from '@/node/referenceResults'
+import { referencePreviewReader } from '@/node/referencePreview'
+import { installDiffReferences } from '@/node/diffReferences'
 
 const props = defineProps<{
   root?: HTMLElement
@@ -75,6 +86,110 @@ const analysisHost = computed(() => header?.host ?? props.glyphHost)
 const connectionForTarget = () =>
   injectedConnection ?? NodeService.connectionIfKnown?.(props.target.registrationId)
 const document = shallowRef<NodeLspDocument>()
+const referencesState = computed(() => {
+  const client = connectionForTarget()?.client
+  return client
+    ? referenceResultsFor(
+        client,
+        JSON.stringify([props.target.registrationId, props.target.kind, props.target.id])
+      )
+    : undefined
+})
+let referencesOrigin: { line: number; character: number } | undefined
+const referencesPresenter = Symbol('references-presenter')
+watch(
+  [
+    () => props.root,
+    () => props.disabledReason,
+    () => props.offline,
+    () => props.path,
+    () => JSON.stringify(props.target),
+  ],
+  (_values, _old, cleanup) => {
+    const root = props.root
+    if (!root || props.disabledReason !== 'comparison' || props.offline || !lspLanguage(props.path))
+      return
+    const connection = connectionForTarget()
+    if (!connection) return
+    const target = { ...props.target }
+    const path = props.path
+    let stopped = false
+    const leases = new Set<() => Promise<void>>()
+    const remove = installDiffReferences(
+      root,
+      () => props.text,
+      (kind, symbol) => {
+        void (async () => {
+          await connection.connect()
+          if (stopped) return
+          const lease = acquireLspDocument(
+            connection.client,
+            target.kind === 'worktree' ? { worktree_id: target.id } : { workspace_id: target.id },
+            path
+          )
+          leases.add(lease.release)
+          try {
+            const doc = lease.document
+            const text = props.text
+            await doc.open(text)
+            if (stopped) return
+            if (kind === 'definition') {
+              const hits = await doc.query(kind, symbol.position, text)
+              if (!stopped && hits.length) navigate(hits, symbol.position)
+            } else {
+              const state = referenceResultsFor(
+                connection.client,
+                JSON.stringify([target.registrationId, target.kind, target.id])
+              )
+              referencesOrigin = symbol.position
+              state.presenter = referencesPresenter
+              await findNodeReferences(
+                state,
+                doc,
+                symbol.position,
+                text,
+                referencePreviewReader(connection.client, target),
+                () =>
+                  doc.status.some((s) => s.reason === 'untrusted_folder')
+                    ? t('node.analysis.untrusted')
+                    : doc.unavailableReason
+                      ? t(`node.analysis.${doc.unavailableReason}`)
+                      : doc.error
+              )
+            }
+          } finally {
+            leases.delete(lease.release)
+            await lease.release()
+          }
+        })().catch((error) =>
+          console.debug('[node] Comparison language navigation unavailable', error)
+        )
+      }
+    )
+    cleanup(() => {
+      stopped = true
+      remove()
+      for (const release of leases) void release()
+    })
+  },
+  { immediate: true, flush: 'post' }
+)
+async function findReferences(_name: string, position: { line: number; character: number }) {
+  const doc = document.value
+  const state = referencesState.value
+  const connection = connectionForTarget()
+  if (!doc || !state || !connection) return
+  referencesOrigin = position
+  state.presenter = referencesPresenter
+  await findNodeReferences(
+    state,
+    doc,
+    position,
+    props.text,
+    referencePreviewReader(connection.client, { ...props.target }),
+    () => (untrusted.value ? t('node.analysis.untrusted') : offReason.value || failureReason.value)
+  )
+}
 const analysisButton = ref<InstanceType<typeof Icon>>()
 const diagnosticsButton = ref<InstanceType<typeof Icon>>()
 const revision = ref(0)
@@ -436,6 +551,7 @@ watch(
       text: () => props.text,
       navigate,
       closeNavigation: () => picker?.close(),
+      references: findReferences,
     })
     let stopped = false
     cleanup(() => {

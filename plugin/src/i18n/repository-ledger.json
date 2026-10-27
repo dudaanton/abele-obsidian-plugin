@@ -43,5 +43,29 @@
   },
   "repository.searchOmitted": {
     "englishHash": "b06418ee71aa4ecf72990994a76ff81be1c8c2697cd746087d7410ef61c4df6a"
+  },
+  "repository.referenceDefinition": {
+    "englishHash": "fb36d281cb801d912876ed3c38789ced6548de4ea3cad05bbe093335b8d8d015"
+  },
+  "repository.referencesTitle": {
+    "englishHash": "170a5cf663c8379c76db64cd0178fa703c5542a139e3dd9efd16eb5d5041d23b"
+  },
+  "repository.noReferences": {
+    "englishHash": "90e4f64dc2f6a2f36081f2824b6ccf24d508d1b8a56c61a3ca5657c2911138d2"
+  },
+  "repository.findingReferences": {
+    "englishHash": "f0b28de067e7f83ffd6db71efed60fefd333cec9d4783e6fdd8b11e2ec624756"
+  },
+  "repository.referencesSummary": {
+    "englishHash": "091325a52cee3ddb1ae5ff00d98c6fff67f699d18daaa0e293fc3097e68a89d1"
+  },
+  "repository.referencesCount": {
+    "englishHash": "2454cb839411eb706d8346140edf7a2ae24bf28d71835e38c0c6015e8b695141"
+  },
+  "repository.referencesFiles": {
+    "englishHash": "650981afa03d717cd3eeba109dc457e109d039cfb9b9c7582d05b42692c8bee9"
+  },
+  "repository.referencesMore": {
+    "englishHash": "6cab7f20917e476bc93c3cf221769e350f010de861019aadf34cc0eb18b30395"
   }
 }

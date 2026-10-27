@@ -1,4 +1,27 @@
 export const repository = {
+  'repository.referenceDefinition': 'Определение',
+  'repository.referencesTitle': 'Найти использования',
+  'repository.noReferences': 'Использований нет',
+  'repository.findingReferences': 'Поиск использований…',
+  'repository.referencesSummary': '{references} в {files}',
+  'repository.referencesCount': {
+    one: '{number} использование',
+    few: '{number} использования',
+    many: '{number} использований',
+    other: '{number} использования',
+  },
+  'repository.referencesFiles': {
+    one: '{number} файле',
+    few: '{number} файлах',
+    many: '{number} файлах',
+    other: '{number} файла',
+  },
+  'repository.referencesMore': {
+    one: 'Ещё {number}',
+    few: 'Ещё {number}',
+    many: 'Ещё {number}',
+    other: 'Ещё {number}',
+  },
   'repository.loadMoreResults': 'Загрузить ещё результаты',
   'repository.searchOmitted':
     'Некоторые файлы или совпадения пропущены: нода достигла ограничения поиска или не смогла их прочитать. Уточните запрос, чтобы увидеть больше результатов.',

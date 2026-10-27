@@ -1,4 +1,20 @@
 export const repository = {
+  'repository.referenceDefinition': 'Definīcija',
+  'repository.referencesTitle': 'Atrast lietojumus',
+  'repository.noReferences': 'Nav lietojumu',
+  'repository.findingReferences': 'Meklē lietojumus…',
+  'repository.referencesSummary': '{references} — {files}',
+  'repository.referencesCount': {
+    zero: '{number} lietojumu',
+    one: '{number} lietojums',
+    other: '{number} lietojumi',
+  },
+  'repository.referencesFiles': {
+    zero: '{number} failu',
+    one: '{number} fails',
+    other: '{number} faili',
+  },
+  'repository.referencesMore': { zero: 'Vēl {number}', one: 'Vēl {number}', other: 'Vēl {number}' },
   'repository.loadMoreResults': 'Ielādēt vairāk rezultātu',
   'repository.searchOmitted':
     'Daži faili vai atbilstības tika izlaistas, jo mezgls sasniedza meklēšanas ierobežojumu vai nevarēja tos nolasīt. Sašauriniet meklēšanu, lai redzētu vairāk.',

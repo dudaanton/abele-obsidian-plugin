@@ -177,7 +177,7 @@ describe('node language diagnostics in the shared file viewer', () => {
       ])
       const root = document.createElement('div')
       const destination = vi.fn()
-      mount(NodeLspTools, {
+      const navigationTools = mount(NodeLspTools, {
         props: { ...tools.props(), root, glyphHost: null },
         global: {
           provide: {
@@ -192,6 +192,10 @@ describe('node language diagnostics in the shared file viewer', () => {
         await nav.goToDefinition('sample', 'sample.ts', { line: 1, character: 13 })
       else nav.findReferences('sample', { line: 1, character: 13 })
       await flushPromises()
+      if (kind === 'references') {
+        expect(destination).not.toHaveBeenCalled()
+        await navigationTools.get('[data-reference-row]').trigger('click')
+      }
       expect(destination).toHaveBeenCalledWith(
         {
           kind: 'file',

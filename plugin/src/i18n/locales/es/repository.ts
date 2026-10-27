@@ -1,4 +1,20 @@
 export const repository = {
+  'repository.referenceDefinition': 'Definición',
+  'repository.referencesTitle': 'Buscar referencias',
+  'repository.noReferences': 'No hay referencias',
+  'repository.findingReferences': 'Buscando referencias…',
+  'repository.referencesSummary': '{references} en {files}',
+  'repository.referencesCount': {
+    one: '{number} referencia',
+    many: '{number} referencias',
+    other: '{number} referencias',
+  },
+  'repository.referencesFiles': {
+    one: '{number} archivo',
+    many: '{number} archivos',
+    other: '{number} archivos',
+  },
+  'repository.referencesMore': { one: '{number} más', many: '{number} más', other: '{number} más' },
   'repository.loadMoreResults': 'Cargar más resultados',
   'repository.searchOmitted':
     'Se omitieron algunos archivos o coincidencias porque el nodo alcanzó un límite de búsqueda o no pudo leerlos. Acota la búsqueda para ver más.',

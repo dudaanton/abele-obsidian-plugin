@@ -1,6 +1,11 @@
 <template>
   <Modal :title="'sample.ts'" size="tall" close-in-footer @close="emit('close')">
-    <div class="abele-lsp-fixture-header" data-lsp-settle @lsp-settle="settle?.()">
+    <div
+      class="abele-lsp-fixture-header"
+      data-lsp-settle
+      @lsp-settle="settle?.()"
+      @reference-mode="referencesMode = $event.detail"
+    >
       <span>{{ state === 'off' ? 'sample.txt' : 'sample.ts' }}</span>
       <span ref="headerHost" class="abele-analysis-header">
         <Icon
@@ -99,6 +104,7 @@ const text =
 const line = ref<number>()
 const destination = ref('')
 const installed = ref(false)
+const referencesMode = ref('one')
 const client = new NodeClient(
   { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: '0'.repeat(64) },
   new MemoryClientStore()
@@ -180,12 +186,39 @@ client.lsp.definition = async () => [
     range: { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } },
   },
 ]
-client.lsp.references = async () => [
-  {
-    path: 'sample.ts',
-    range: { start: { line: 1, character: 12 }, end: { line: 1, character: 18 } },
-  },
-]
+client.readFile = async (workspace_id, path) => ({
+  workspace_id,
+  path,
+  content_id: path,
+  size: 100,
+  binary: false,
+  large: false,
+  too_large: false,
+})
+client.readContent = async () => {
+  const source = '  sample()\n\nexport declare const sample: string\n'
+  return { offset: 0, total: source.length, base64: btoa(source) }
+}
+client.lsp.references = async () =>
+  referencesMode.value === 'empty'
+    ? []
+    : referencesMode.value === 'one'
+      ? [
+          {
+            path: 'sample.ts',
+            range: { start: { line: 1, character: 12 }, end: { line: 1, character: 18 } },
+          },
+        ]
+      : Array.from({ length: referencesMode.value === 'long' ? 110 : 4 }, (_, index) => ({
+          path:
+            index === 0
+              ? 'node_modules/sample-types/index.d.ts'
+              : `src/sample-${String(index).padStart(3, '0')}.ts`,
+          range:
+            index === 0
+              ? { start: { line: 2, character: 21 }, end: { line: 2, character: 27 } }
+              : { start: { line: 0, character: 2 }, end: { line: 0, character: 8 } },
+        }))
 if (props.admission !== 'noConnection')
   provide(LSP_CONNECTION, {
     client,

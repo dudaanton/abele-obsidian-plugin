@@ -11,7 +11,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
     ? undefined
     : evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
   try {
-    for (const mobile of onPhone() ? [true] : [false]) {
+    for (const mobile of onPhone() ? [true] : [false, true]) {
       await reloadApp(`app.emulateMobile(${mobile})`)
       if (!onPhone())
         evalRaw(
@@ -88,6 +88,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             await until(() => !document.querySelector('.abele-lsp-menu-message'));
             const point = () => {
               const content = document.querySelector('.modal.abele-modal .abele-lsp-root .cm-content'), walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+              content.querySelector('.cm-line')?.scrollIntoView({block:'center'});
               for(let node; node=walker.nextNode();) { const at=node.textContent.indexOf('sample'); if(at<0)continue; const range=document.createRange(); range.setStart(node,at+1);range.setEnd(node,at+2); const b=range.getBoundingClientRect();return {x:b.left+b.width/2,y:b.top+b.height/2,target:node.parentElement}; }
               throw Error('Identifier not drawn');
             };
@@ -135,8 +136,38 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             phase = 'references';
             p=point();p.target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:p.x,clientY:p.y}));
             await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Find references')));
+            await shot('references-menu');
             [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Find references')).closest('.menu-item').click();
+            await until(() => document.querySelectorAll('[data-reference-row]').length === 1);
+            document.querySelector('[data-node-references]').scrollIntoView({block:'start'});
+            await shot('references-one');
+            document.querySelector('[data-reference-row]').click();
             await until(() => document.querySelector('[data-lsp-destination]')?.textContent === 'sample.ts:2');
+            if (!${mobile} && !document.querySelector('[data-reference-row].is-active')) throw Error('Desktop references disappeared after navigation');
+            if (${mobile}) await until(() => !document.querySelector('[data-node-references]'));
+            for (const mode of ['several', 'long', 'empty']) {
+              document.querySelector('[data-lsp-settle]').dispatchEvent(new CustomEvent('reference-mode', {detail:mode}));
+              await wait(50);
+              p=point();p.target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:p.x,clientY:p.y}));
+              await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Find references')));
+              [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Find references')).closest('.menu-item').click();
+              await until(() => {
+                const list = document.querySelector('[data-node-references]');
+                return list && !list.textContent.includes('Finding references') && (mode === 'empty' ? list.textContent.includes('No references') : list.querySelectorAll('[data-reference-file]').length === (mode === 'long' ? 100 : 4));
+              });
+              const list = document.querySelector('[data-node-references]');
+              list.scrollIntoView({block:'start'});
+              const listBox = list.getBoundingClientRect();
+              if (listBox.left < -1 || listBox.right > innerWidth + 1) throw Error('References list overflows the screen');
+              if (mode === 'several' && !list.querySelector('[title="Definition"]')) throw Error('Definition marker missing');
+              if (mode === 'long' && (list.querySelectorAll('[data-reference-row]').length !== 12 || !list.textContent.includes('10 more'))) throw Error('Long references are not folded and capped');
+              if (${mobile} && !list.closest('.modal.mod-lg')) throw Error('Phone references do not use a tall modal');
+              await shot('references-' + mode);
+              if (${mobile}) {
+                list.closest('.modal').querySelector('.modal-close-button').click();
+                await until(() => !document.querySelector('[data-node-references]'));
+              }
+            }
             results.push({state:'navigation', text:'definition and references', fits:true});
           }
           await close();

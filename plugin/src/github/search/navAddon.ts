@@ -216,6 +216,16 @@ export function codeNavAddon(): Extension {
   return [
     linkField,
     EditorView.domEventHandlers({
+      keydown(e, view) {
+        if (e.key !== 'F12' || !e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return false
+        const nav = navFor(view.dom)
+        const word = nav && wordAt(view, view.state.selection.main.head)
+        if (!nav || !word) return false
+        e.preventDefault()
+        e.stopPropagation()
+        references(nav, view, word.text, word.from)
+        return true
+      },
       mousedown(e, view) {
         navigated.delete(view)
         if (!isMod(e, view) || e.button !== 0) return false

@@ -1,4 +1,12 @@
 export const repository = {
+  'repository.referenceDefinition': 'Definition',
+  'repository.referencesTitle': 'Referenzen suchen',
+  'repository.noReferences': 'Keine Referenzen',
+  'repository.findingReferences': 'Referenzen werden gesucht…',
+  'repository.referencesSummary': '{references} in {files}',
+  'repository.referencesCount': { one: '{number} Referenz', other: '{number} Referenzen' },
+  'repository.referencesFiles': { one: '{number} Datei', other: '{number} Dateien' },
+  'repository.referencesMore': { one: '{number} weitere', other: '{number} weitere' },
   'repository.loadMoreResults': 'Weitere Ergebnisse laden',
   'repository.searchOmitted':
     'Einige Dateien oder Treffer wurden ausgelassen, weil der Knoten eine Suchgrenze erreicht hat oder sie nicht lesen konnte. Grenze die Suche ein, um mehr Ergebnisse zu sehen.',

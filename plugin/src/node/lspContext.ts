@@ -7,6 +7,7 @@ export interface LspContext {
   text?: () => string
   navigate(locations: LspLocation[], origin?: { line: number; character: number }): void
   closeNavigation?(): void
+  references?(name: string, position: { line: number; character: number }): Promise<void>
 }
 const contexts = new WeakMap<Element, LspContext>()
 export function provideLsp(root: HTMLElement, context: LspContext): () => void {
@@ -32,6 +33,10 @@ export function lspNavigation(el: Element, fallback: CodeNav | null): CodeNav | 
     position?: { line: number; character: number }
   ) => {
     const current = beginCodeSurface(el.ownerDocument, () => context.closeNavigation?.())
+    if (kind === 'references' && position && context.references) {
+      await context.references(name, position)
+      return
+    }
     const hits = position ? await context.document.query(kind, position, context.text?.()) : []
     if (!current() || lspFor(el) !== context) return
     if (hits.length) context.navigate(hits, position)
