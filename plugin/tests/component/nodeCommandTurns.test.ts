@@ -7,8 +7,78 @@ import NodeDelegations from '@/components/NodeDelegations.vue'
 import { nodeManagerFixture } from '@/testing/nodeManagerFixture'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { ResultStore } from '@/ai/resultStore'
+import { nodeCommandIdentity } from '@/node/commandIdentity'
+import type { AgentToolResult } from '@/ai/client'
 
 const state = vi.hoisted(() => ({ connection: undefined as unknown }))
+
+it.each([1, 2])('anchors %s paged completions before the final answer across reload', (count) => {
+  useVault([])
+  const messages: ChatMessage[] = []
+  const cards = []
+  for (let index = 0; index < count; index++) {
+    const card = nodeManagerFixture('exited')
+    card.run.run_id = `sample-run-${index}`
+    card.run.stdout = 'sample output '.repeat(16000)
+    cards.push(card)
+    const result: AgentToolResult = { content: [{ type: 'text', text: JSON.stringify(card.run) }] }
+    new ResultStore({ messages: () => [] }).keep('node_command_run', `call-${index}`, result)
+    expect(result.stored).toBeDefined()
+    messages.push({
+      id: `command-${index}`,
+      role: 'tool-call',
+      content: '',
+      timestamp: index,
+      toolName: 'node_command_run',
+      toolParams: { operation_id: `alias-${index}` },
+      toolStatus: 'approved',
+      toolResult: result.content.map((c) => c.text).join(''),
+      nodeCommandRun: nodeCommandIdentity('node_command_run', result),
+    })
+  }
+  messages.push({ id: 'answer', role: 'assistant', content: 'Sample final answer', timestamp: 10 })
+  state.connection = {
+    state: ref('connected'),
+    delegationCards: ref({}),
+    managerCards: ref({ 'sample-chat': cards }),
+  }
+  for (const history of [messages, JSON.parse(JSON.stringify(messages)) as ChatMessage[]]) {
+    const placement = nodeCardPlacement(chatBlocks(history), history)
+    for (let index = 0; index < count; index++)
+      expect(placement['command-0']).toContain(`run:sample-session:sample-run-${index}`)
+    expect(placement.answer).toBeUndefined()
+    const view = mount(
+      defineComponent({
+        setup: () => () =>
+          h('div', [
+            h(
+              'section',
+              h(NodeDelegations, {
+                parentId: 'sample-chat',
+                include: Object.values(placement).flat(),
+                commands: 'finished',
+              })
+            ),
+            h('p', 'Sample final answer'),
+            h(
+              'footer',
+              h(NodeDelegations, {
+                parentId: 'sample-chat',
+                exclude: Object.values(placement).flat(),
+              })
+            ),
+          ]),
+      })
+    )
+    try {
+      expect(view.findAll('footer .abele-node-manager-run')).toHaveLength(0)
+      expect(view.findAll('section .abele-node-manager-run')).toHaveLength(count)
+    } finally {
+      view.unmount()
+    }
+  }
+})
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     peekConnection: () => undefined,

@@ -737,6 +737,8 @@ export interface ChatMessage {
   /** Stop outcome is separate from the result: an unfinished call has no fake result. */
   toolExecution?: import('./client/toolInterruption').ToolInterruption
   toolResult?: string
+  /** Command identity retained independently of a paged result preview. */
+  nodeCommandRun?: { session_id: string; run_id: string }
   /** A successfully saved image, copied from the tool's own result details, never model text. */
   toolImagePath?: string
   toolDiff?: ChatMessageDiff

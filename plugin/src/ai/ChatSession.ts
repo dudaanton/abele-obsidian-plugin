@@ -6,6 +6,7 @@ import {
 } from './nodeActionPermissions'
 import { ordinaryNeedsApproval, ORDINARY_SCOPED_TOOLS } from './ordinaryToolPolicy'
 import { NODE_COMMAND_TOOLS } from './tools/NodeManagerTools'
+import { nodeCommandIdentity } from '@/node/commandIdentity'
 import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
@@ -1831,6 +1832,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             return {
               ...m,
               toolResult: resultText,
+              nodeCommandRun: nodeCommandIdentity(event.toolName, event.result),
               toolExecution: undefined,
               toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
               toolMap: (event.result.details as ToolMapDetails)?.map,
@@ -2533,6 +2535,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           ...m,
           toolParams: copyToolArgs(args),
           toolResult: resultText,
+          nodeCommandRun: nodeCommandIdentity(tc.name, toolResult),
           toolExecution: undefined,
           toolImagePath: !isError && typeof imagePath === 'string' ? imagePath : undefined,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,

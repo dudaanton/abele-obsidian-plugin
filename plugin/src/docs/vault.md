@@ -1442,6 +1442,10 @@ cancellation retains its real completed result. Stop does not restore files or r
 Node chats retain completed work in the daemon journal; replay marks unfinished calls when a
 run is interrupted without executing tools locally.
 
+Completed node command and integration tool-call records may carry `nodeCommandRun`
+(`session_id`, `run_id`), retained from the full result so a paged output preview cannot
+detach the command card from its original work line after completion or reload.
+
 Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
 `details.imagePath` only after successful execution. Generation and editing set that detail
 after saving the image; text-only responses set no saved path. The field survives normal log

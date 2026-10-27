@@ -32,10 +32,10 @@ export function nodeCardPlacement(
       // Receipts retain the run identity across reloads and command status updates.
       if (
         ['node_command_run', 'node_git_integrate'].includes(call.toolName ?? '') &&
-        call.toolResult
+        (call.nodeCommandRun || call.toolResult)
       ) {
         try {
-          const receipt: unknown = JSON.parse(call.toolResult)
+          const receipt: unknown = call.nodeCommandRun ?? JSON.parse(call.toolResult ?? '')
           if (
             receipt &&
             typeof receipt === 'object' &&
