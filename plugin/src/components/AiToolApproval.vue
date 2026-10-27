@@ -197,6 +197,18 @@
       ><code><SyntaxText :text="String(params.content || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
     </template>
 
+    <template v-else-if="nodeFileApproval">
+      <ChatToolFiles :message="message" />
+      <Diff
+        v-if="nodeFileDiff"
+        :text-left="nodeFileDiff.old"
+        :text-right="nodeFileDiff.new"
+        :path="String(params.path || '')"
+        class="abele-tool-approval__diff"
+      />
+      <p v-if="nodeFilePreviewError" role="status">{{ nodeErrorWords(nodeFilePreviewError) }}</p>
+    </template>
+
     <template v-else-if="message.toolName === 'node_git_commit'">
       <p>{{ params.message }}</p>
       <p v-if="commitPreviewError" role="status" :title="commitPreviewError">
@@ -513,6 +525,7 @@ import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Diff from './Diff.vue'
+import ChatToolFiles from './chat/ChatToolFiles.vue'
 import RequestCard from './obsidian/RequestCard.vue'
 import Disclosure from './obsidian/Disclosure.vue'
 import { ChatService } from '@/ai/ChatService'
@@ -710,6 +723,64 @@ watch(
 )
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const nodeFileApproval = computed(
+  () =>
+    !props.nodePrompt &&
+    ['node_write', 'node_edit', 'node_replace', 'node_rm'].includes(props.message.toolName ?? '')
+)
+const nodeFileBefore = ref<string | null>(null)
+const nodeFilePreviewError = ref('')
+const nodeFileDiff = computed(() => {
+  const p = params.value
+  const name = props.message.toolName
+  if (name === 'node_edit' || name === 'node_replace')
+    return { old: promptString(p.old_text), new: promptString(p.new_text) }
+  if (name === 'node_write' && (p.expected_content_id === null || nodeFileBefore.value !== null))
+    return { old: nodeFileBefore.value ?? '', new: promptString(p.text) }
+  if (name === 'node_rm' && nodeFileBefore.value !== null)
+    return { old: nodeFileBefore.value, new: '' }
+  return null
+})
+watch(
+  () => [props.message.toolName, params.value] as const,
+  async ([name, p], _, onCleanup) => {
+    nodeFileBefore.value = null
+    nodeFilePreviewError.value = ''
+    if (
+      !nodeFileApproval.value ||
+      !['node_write', 'node_rm'].includes(name ?? '') ||
+      p.expected_content_id === null
+    )
+      return
+    const session = ChatService.getInstance().activeSession.value
+    if (!session) return
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    try {
+      const { createNodeTools } = await import('@/ai/tools/node')
+      const reader = createNodeTools().find((tool) => tool.name === 'node_read')!
+      const result = await reader.execute('owner-file-preview', p, controller.signal, {
+        session,
+        scope: session.scopeResolver,
+        interactive: true,
+        approved: false,
+      })
+      const value = JSON.parse(result.content.map((part) => part.text).join('')) as {
+        text: string
+        content_id: string
+      }
+      if (value.content_id !== p.expected_content_id || typeof value.text !== 'string')
+        throw new Error('stale_resource')
+      if (!controller.signal.aborted) nodeFileBefore.value = value.text
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        console.debug('[Abele node tools] File approval preview unavailable', error)
+        nodeFilePreviewError.value = error instanceof Error ? error.message : String(error)
+      }
+    }
+  },
+  { immediate: true }
+)
 const justificationOpen = ref(false)
 const integrationLine = computed(() => {
   const input = props.nodePrompt?.input
@@ -783,6 +854,8 @@ const letterAuthority = computed(
     }) ?? []
 )
 const contentKey = computed(() => {
+  if (['node_edit', 'node_replace'].includes(props.message.toolName ?? '')) return 'new_text'
+  if (props.message.toolName === 'node_write') return 'text'
   if (props.message.toolName === 'edit') return 'new_string'
   if (['create', 'write', 'create_script'].includes(props.message.toolName ?? '')) return 'content'
   if (props.message.toolName === 'eval_js') return 'code'

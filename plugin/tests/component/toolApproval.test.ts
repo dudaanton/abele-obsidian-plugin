@@ -31,6 +31,10 @@ import {
 } from '../helpers/approvalCard'
 
 const EXISTING = 'Notes/Existing.md'
+const nodeRead = vi.hoisted(() => vi.fn())
+vi.mock('@/ai/tools/node', () => ({
+  createNodeTools: () => [{ name: 'node_read', execute: nodeRead }],
+}))
 
 it('edits replacement text rather than escaped JSON', async () => {
   const approveToolCall = vi.fn()
@@ -280,6 +284,98 @@ describe('presentation write preview', () => {
     expect(wrapper.findComponent(Diff).props('textRight')).toBe(content)
     expect(app.stats.create).toBe(0)
     wrapper.unmount()
+  })
+})
+
+describe('node file approvals', () => {
+  it('edits only the proposed replacement while retaining mutation identity', async () => {
+    const approveToolCall = vi.fn()
+    vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+      value: { approveToolCall, getToolMode: () => 'ask', permissionMode: ref('confirm-all') },
+    } as never)
+    const params = {
+      path: 'src/sample.ts',
+      old_text: 'before',
+      new_text: 'after',
+      expected_content_id: 'a'.repeat(64),
+    }
+    const wrapper = approval('node_edit', params)
+    try {
+      await chooseApproval(wrapper, 'Edit before allowing')
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('after')
+      await wrapper.find('textarea').setValue('revised')
+      await buttonSaying(wrapper, 'Allow as edited')!.find('button').trigger('click')
+      expect(approveToolCall).toHaveBeenCalledWith(
+        { ...params, new_text: 'revised' },
+        false,
+        undefined
+      )
+    } finally {
+      wrapper.unmount()
+    }
+  })
+  it.each(['node_write', 'node_rm'])('reads the scoped current file for %s', async (name) => {
+    const scopeResolver = { isInScope: () => true }
+    vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+      value: { scopeResolver },
+    } as never)
+    nodeRead.mockResolvedValue({
+      content: [{ text: JSON.stringify({ text: 'original', content_id: 'a'.repeat(64) }) }],
+    })
+    const wrapper = approval(name, {
+      path: 'src/sample.ts',
+      text: 'replacement',
+      expected_content_id: 'a'.repeat(64),
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.findComponent(Diff).props('textLeft')).toBe('original')
+      expect(wrapper.findComponent(Diff).props('textRight')).toBe(
+        name === 'node_rm' ? '' : 'replacement'
+      )
+      expect(nodeRead).toHaveBeenLastCalledWith(
+        'owner-file-preview',
+        expect.objectContaining({ path: 'src/sample.ts' }),
+        expect.any(AbortSignal),
+        expect.objectContaining({ scope: scopeResolver, approved: false })
+      )
+    } finally {
+      wrapper.unmount()
+    }
+  })
+  it.each(['node_edit', 'node_replace'])('previews %s without raw fields', async (name) => {
+    const wrapper = approval(name, {
+      path: 'src/sample.ts',
+      old_text: 'before',
+      new_text: 'after',
+      expected_content_id: 'a'.repeat(64),
+      operation_id: 'sample-operation',
+    })
+    try {
+      expect(wrapper.findComponent(Diff).exists()).toBe(true)
+      expect(wrapper.findComponent(Diff).props('textLeft')).toBe('before')
+      expect(wrapper.findComponent(Diff).props('textRight')).toBe('after')
+      expect(wrapper.find('.abele-chat-tool-files').text()).toBe('src/sample.ts')
+      for (const field of ['old_text', 'new_text', 'expected_content_id', 'operation_id'])
+        expect(wrapper.text()).not.toContain(field)
+      for (const label of ['Allow', 'Deny', 'Stop'])
+        expect(buttonSaying(wrapper, label)).toBeDefined()
+    } finally {
+      wrapper.unmount()
+    }
+  })
+  it('previews a new node file as added content', () => {
+    const wrapper = approval('node_write', {
+      path: 'src/new.ts',
+      text: 'new content',
+      expected_content_id: null,
+    })
+    try {
+      expect(wrapper.findComponent(Diff).props('textLeft')).toBe('')
+      expect(wrapper.findComponent(Diff).props('textRight')).toBe('new content')
+    } finally {
+      wrapper.unmount()
+    }
   })
 })
 

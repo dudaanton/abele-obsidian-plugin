@@ -23,6 +23,7 @@ import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
 import MapPlaceCard from '@/components/mapBase/MapPlaceCard.vue'
 import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
+import AiToolApproval from '@/components/AiToolApproval.vue'
 
 export interface DialogFixtureOptions {
   lspAdmission?: string
@@ -204,6 +205,45 @@ const mountNodeQuestion = (kind: 'select' | 'input') =>
   )
 
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'file-approval-comparison': () =>
+    mountAlone(
+      defineComponent({
+        setup(_, { emit }) {
+          const message = (node: boolean): ChatMessage => ({
+            id: node ? 'sample-node-edit' : 'sample-vault-edit',
+            role: 'tool-call',
+            content: '',
+            timestamp: 1,
+            toolStatus: 'pending',
+            toolName: node ? 'node_edit' : 'edit',
+            toolParams: node
+              ? {
+                  path: 'src/sample.ts',
+                  old_text: 'const value = 1\n',
+                  new_text: 'const value = 2\n',
+                  expected_content_id: 'a'.repeat(64),
+                  operation_id: 'sample-operation',
+                }
+              : {
+                  path: 'src/sample.ts',
+                  old_string: 'const value = 1\n',
+                  new_string: 'const value = 2\n',
+                },
+          })
+          return () =>
+            h(
+              Modal,
+              { title: 'File approvals', size: 'tall', onClose: () => emit('close') },
+              () => [
+                h(AiToolApproval, { message: message(true) }),
+                h(AiToolApproval, { message: message(false) }),
+              ]
+            )
+        },
+      }),
+      {},
+      'file-approval-comparison'
+    ),
   'debugger-launch': () =>
     mountAlone(ProgramLaunchDialog, {
       program: 'dist/main.js',
