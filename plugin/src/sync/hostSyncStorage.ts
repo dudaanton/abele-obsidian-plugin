@@ -77,6 +77,18 @@ export class HostSyncStorage implements LocalStorage {
   ): Promise<void> {
     return this.scan.writeScanFingerprint(path, value, revision)
   }
+  scanInstallation(path: string): ScanFingerprint | undefined {
+    return this.scan.scanInstallation(path)
+  }
+  rememberScanInstallation(path: string, value: ScanFingerprint, revision: number): void {
+    this.scan.rememberScanInstallation(path, value, revision)
+  }
+  forgetScanInstallation(path: string): void {
+    this.scan.forgetScanInstallation(path)
+  }
+  invalidateScanInstallations(paths: readonly string[]): void {
+    this.scan.invalidateScanInstallations(paths)
+  }
   readInspections(): Promise<unknown[]> {
     return this.scan.readInspections()
   }

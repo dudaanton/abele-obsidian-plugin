@@ -18,6 +18,32 @@ const binding = {
 }
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 
+it('keeps watched proofs when a polled path uses the inventory clock', async () => {
+  const { raw, identity, list } = await setup(40)
+  const revision = Symbol.for('abele.sync.watch-revision-v1')
+  const original = Reflect.get(raw, revision).bind(raw)
+  Reflect.set(raw, revision, (path: string) =>
+    path === 'Shared/sample-20.md' ? undefined : original(path)
+  )
+  const stop = raw.watch(() => {})
+  try {
+    const pass = Reflect.get(raw, INVENTORY_PASS)
+    await pass.call(raw, list)
+    const before = identity.mock.calls.length
+    await pass.call(raw, async () => {
+      await list()
+      await list()
+    })
+    // Only the polled path needs a new identity check in the next inventory pass.
+    expect(identity.mock.calls.slice(before).map(([path]) => path)).toEqual([
+      'Shared/sample-20.md',
+      'Shared/sample-20.md',
+    ])
+  } finally {
+    stop()
+  }
+})
+
 async function setup(count: number, placed = false) {
   const app = buildFakeVault(
     Array.from({ length: count }, (_, i) => ({
@@ -34,10 +60,11 @@ async function setup(count: number, placed = false) {
     return { size: stat.size, mtime: stat.mtime, ctime: stat.ctime }
   })
   const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  const ledger = new MemoryStateStore()
   const representation = await ExternalRepresentation.open({
     state: null,
     emptyView: { ledgerId: 'sample-ledger', binding },
-    ledger: new MemoryStateStore(),
+    ledger,
     fs,
     assertOwned: () => {},
     scriptsFolder: () => 'Scripts',
@@ -69,8 +96,49 @@ async function setup(count: number, placed = false) {
     identity,
     read,
     list,
+    ledger,
   }
 }
+
+it('replays classification within a watched inventory, retiring it on a mid-walk edit', async () => {
+  const { app, raw, representation, ledger, list } = await setup(5)
+  for (let i = 0; i < 5; i++)
+    await ledger.put({
+      path: `Shared/sample-${i}.md`,
+      wirePath: `Shared/sample-${i}.md`,
+      fileId: `sample-${i}`,
+      versionId: 'v1',
+      sha: 'a'.repeat(64),
+      size: 8,
+      mtime: 1,
+    })
+  const stop = raw.watch(() => {})
+  const state = representation.stateStore()
+  try {
+    await Reflect.get(raw, INVENTORY_PASS).call(raw, async () => {
+      await list()
+      expect(await Array.fromAsync(state.all())).toHaveLength(5)
+      expect(await Array.fromAsync(state.all())).toHaveLength(5)
+      expect(representation.classificationStats().callers['state.all'].pass).toBe(5)
+      const iterator = state.all()[Symbol.asyncIterator]()
+      await iterator.next()
+      await app.vault.modify(
+        app.vault.getFileByPath('Shared/sample-3.md')!,
+        JSON.stringify({ format: 'abele.external', schema: 1 })
+      )
+      app.emit('vault', 'modify', app.vault.getFileByPath('Shared/sample-3.md')!)
+      const remaining = []
+      for (;;) {
+        const next = await iterator.next()
+        if (next.done) break
+        remaining.push(next.value.path)
+      }
+      expect(remaining).not.toContain('Shared/sample-3.md')
+    })
+  } finally {
+    stop()
+  }
+})
 
 it.each([false, true])(
   'verifies an unchanged file once per inventory pass however many listings classify it (placed %s)',

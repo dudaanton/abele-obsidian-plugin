@@ -108,7 +108,7 @@ export interface ClassificationStats {
 }
 const READ_STACKS = 16
 
-type Verified = { revision: number; size: number; marker: boolean }
+type Verified = { pass: string; revision: number; size: number; marker: boolean }
 type PassProof = { pass: string; revision: number }
 
 /** Common representation policy over portable ports. It never invents local bytes, identities,
@@ -122,7 +122,7 @@ export class ExternalRepresentation {
   private readonly unexpected = new Set<string>()
   private readonly inspected = new Map<string, InspectionEntry>()
   /** Files whose identity was verified in the current proof scope, by their revision in it. */
-  private verified = { pass: undefined as string | undefined, paths: new Map<string, Verified>() }
+  private readonly verified = new Map<string, Verified>()
   private readonly stats: ClassificationStats
   private constructor(private readonly options: RepresentationOptions) {
     this.stats = {
@@ -315,9 +315,13 @@ export class ExternalRepresentation {
     }
   }
   private verifiedInPass(path: string, proof: PassProof, size: number): Verified | undefined {
-    if (this.verified.pass !== proof.pass) return undefined
-    const known = this.verified.paths.get(path)
-    return known && known.revision === proof.revision && known.size === size ? known : undefined
+    const known = this.verified.get(path)
+    return known &&
+      known.pass === proof.pass &&
+      known.revision === proof.revision &&
+      known.size === size
+      ? known
+      : undefined
   }
   private rememberVerified(
     path: string,
@@ -326,8 +330,7 @@ export class ExternalRepresentation {
     marker: boolean
   ): void {
     if (!proof) return
-    if (this.verified.pass !== proof.pass) this.verified = { pass: proof.pass, paths: new Map() }
-    this.verified.paths.set(path, { revision: proof.revision, size, marker })
+    this.verified.set(path, { pass: proof.pass, revision: proof.revision, size, marker })
   }
   async classify(
     path: string,
@@ -491,9 +494,8 @@ export class ExternalRepresentation {
       marker ? { kind: 'hold', reason: 'projection', dirty: false } : { kind: 'ordinary' }
     const cachePath = inspection.cacheKey?.(path) ?? path
     const proof = this.passProof(path)
-    const known =
-      proof && this.verified.pass === proof.pass ? this.verified.paths.get(cachePath) : undefined
-    if (known && known.revision === proof?.revision) {
+    const known = this.verified.get(cachePath)
+    if (proof && known && known.pass === proof.pass && known.revision === proof.revision) {
       if (this.options.excluded?.(path, known.size)) return { kind: 'ordinary' } as const
       this.count(caller, 'pass')
       return decision(known.marker)
@@ -585,6 +587,7 @@ export class ExternalRepresentation {
                 for (const path of self.inspected.keys())
                   if (self.options.inspection.ownsKey(path) && !observed.has(path)) {
                     self.inspected.delete(path)
+                    self.verified.delete(path)
                     retired.push(path)
                     self.inspectionDirty = true
                   }
@@ -653,18 +656,46 @@ export class ExternalRepresentation {
   stateStore(store = this.options.ledger): StateStore {
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- The stored coordinator survives proxy method calls.
     const self = this
+    let replayKey: string | undefined
+    const ordinary = new Set<string>()
+    const clock = () => {
+      const fs = self.options.fs
+      const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1'))?.call(fs)
+      const revision = Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1'))?.call(fs)
+      const local = Reflect.get(fs, Symbol.for('abele.sync.local-change-revision-v1'))?.call(fs)
+      const epoch = Reflect.get(fs, Symbol.for('abele.sync.watch-epoch-v1'))?.call(fs)
+      return pass === undefined ||
+        revision === undefined ||
+        local === undefined ||
+        epoch === undefined
+        ? undefined
+        : `${pass}:${revision}:${local}:${epoch}:${self.document.revision}`
+    }
     return new Proxy(store, {
       get(target, method) {
         if (method === 'all')
           return async function* () {
             for await (const entry of store.all()) {
               const file = self.file(entry.fileId)
-              if (
-                (!file || !self.managed(file)) &&
-                (await self.classify(entry.path, undefined, undefined, 'state.all')).kind ===
-                  'ordinary'
-              )
+              if (file && self.managed(file)) continue
+              // Repeated walks in one inventory see the same classification. Recheck the
+              // clocks per row: a consumer may await a local edit between yielded entries.
+              const key = clock()
+              if (key !== replayKey) {
+                ordinary.clear()
+                replayKey = key
+              }
+              self.ownedRead()
+              if (key !== undefined && ordinary.has(entry.path)) {
+                self.count('state.replay', 'pass')
                 yield entry
+              } else if (
+                (await self.classify(entry.path, undefined, undefined, 'state.all')).kind ===
+                'ordinary'
+              ) {
+                if (key !== undefined && key === clock()) ordinary.add(entry.path)
+                yield entry
+              }
             }
           }
         if (method === 'getJournal')

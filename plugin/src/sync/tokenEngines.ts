@@ -1485,6 +1485,7 @@ export class TokenEngines {
     if (this.ui.registry.records().find((one) => one.id === id)?.status !== 'needs-token')
       this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
+      ...(status.state === 'syncing' ? {} : { total: undefined }),
       pending: Math.max(status.pending, status.waiting ?? 0),
       waiting: status.waiting ?? 0,
       waitingFiles: status.waitingFiles ?? [],
@@ -1545,7 +1546,9 @@ export class TokenEngines {
       activity.error = undefined
       activity.startup = undefined
       activity.completed = report.pull.applied + (report.secondPull?.applied ?? 0)
-      activity.total = activity.completed + status.pending
+      if (status.state === 'syncing') {
+        activity.total = activity.completed + status.pending
+      }
       // A completion is an event, not a replaceable status snapshot. Directory,
       // retry and publication status updates may overtake the awaited path lookups.
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(
@@ -1615,7 +1618,10 @@ export class TokenEngines {
           completed: activity.completed,
           pending: Math.max(current?.pending ?? 0, report.collisions.length),
           total:
-            (activity.completed ?? 0) + Math.max(current?.pending ?? 0, report.collisions.length),
+            runtime.engine.status.state === 'syncing'
+              ? (activity.completed ?? 0) +
+                Math.max(current?.pending ?? 0, report.collisions.length)
+              : undefined,
           conflicts: activity.conflicts,
           refused,
           ...(activity.lastSync === undefined ? {} : { lastSync: activity.lastSync }),

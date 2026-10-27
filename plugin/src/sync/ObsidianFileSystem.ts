@@ -16,7 +16,7 @@ import { FINGERPRINT_UPLOAD, UPLOAD_READ, MOBILE_WHOLE_READ_MAX } from './mobile
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { isDeviceLocalPluginState } from './deviceLocalState'
 import { isHidden, isWireConfigDir } from './scope'
-import { durableHostOf, type ScanFingerprint } from './hostSyncStorage'
+import { durableHostOf } from './hostSyncStorage'
 import { MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { retainedFileStat } from './vaultPathLinks'
 import {
@@ -310,22 +310,21 @@ export class ObsidianFileSystem implements FileSystem {
       ? this.installBatch.bind(this)
       : undefined
   }
-  private installBatch<T>(
+  private async installBatch<T>(
     items: readonly InstallItem[],
     work: (fs: FileSystem, flush: () => Promise<void>) => Promise<T>
   ): Promise<T | undefined> {
     const native = this.native
     if (!native) return Promise.resolve(undefined)
-    const paths = items.flatMap((item) => {
-      const paths = [item.path]
-      for (
-        let parent = folderOf(item.path).replace(/^\/$/, '');
-        parent;
-        parent = folderOf(parent).replace(/^\/$/, '')
-      )
-        paths.push(parent)
-      return paths
-    })
+    // Publishing a sibling does not mutate an existing file. Actual parent creation is
+    // fenced by makeParents; fencing every ancestor here invalidated all earlier siblings.
+    const paths = items.map((item) => item.path)
+    // Include only parents this cohort may create. Their invalidation shares the cohort's
+    // durability transaction; existing parents must not retire installed siblings.
+    const parents = new Set(
+      items.map((item) => folderOf(item.path).replace(/^\/$/, '')).filter(Boolean)
+    )
+    for (const parent of parents) if ((await this.rawStat(parent)) === null) paths.push(parent)
     const installed: InstallItem[] = []
     const batch = this.withScanMutation(paths, () =>
       nativeInstallBatch(
@@ -372,11 +371,9 @@ export class ObsidianFileSystem implements FileSystem {
   }
   /** Hashes a batch verified before publishing, by what each installed file is right after its
    * ledger commit. The watcher's own-write check fingerprints every installed file; without
-   * this it read each one back. Any later mutation of the path changes its scan revision. */
-  private readonly installedFingerprints = new Map<
-    string,
-    { value: ScanFingerprint; revision: number }
-  >()
+   * this it read each one back. Receipts live until examined, not until an arbitrary file
+   * count; a watcher may collect a whole pull before its debounce expires. Mutations retire
+   * affected receipts before and after the write; identity and timestamps are checked too. */
   private async rememberInstalled(items: readonly InstallItem[]): Promise<void> {
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
@@ -385,21 +382,28 @@ export class ObsidianFileSystem implements FileSystem {
       if (!this.cacheableScanPath(item.path)) continue
       const key = this.pathKey(item.path)
       const revision = host.scanFingerprintRevision(key)
+      const watched = this.watchPathRevision(key)
       const identity = await this.fileIdentity(item.path)
       const stat = await this.rawStat(item.path)
       if (
         !identity ||
         stat?.type !== 'file' ||
         stat.size !== item.size ||
-        stamp(stat.mtime) !== item.mtime
+        stamp(stat.mtime) !== item.mtime ||
+        watched !== this.watchPathRevision(key)
       )
         continue
-      if (this.installedFingerprints.size >= 4096)
-        this.installedFingerprints.delete(this.installedFingerprints.keys().next().value)
-      this.installedFingerprints.set(key, {
-        value: { identity, size: stat.size, mtime: stat.mtime, ctime: stat.ctime, sha: item.sha },
-        revision,
-      })
+      host.rememberScanInstallation(
+        key,
+        {
+          identity,
+          size: stat.size,
+          mtime: stat.mtime,
+          ctime: stat.ctime,
+          sha: item.sha,
+        },
+        revision
+      )
     }
   }
   readonly fileIdentity?: (path: string) => Promise<string | null>
@@ -1726,9 +1730,12 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
+    const visible = paths.some((path) => this.inventoryVisible(path) && this.withinFileScope(path))
+    if (visible) this.scanWatchRevision++
     // The engine's own changes retire watcher proofs before and after they land.
     for (const path of paths) this.noteWatchChange(path)
     const settled = () => {
+      if (visible) this.scanWatchRevision++
       for (const path of paths) this.noteWatchChange(path)
     }
     return Promise.resolve(this.withScanCacheMutation(paths, work)).finally(settled)
@@ -2684,16 +2691,17 @@ export class ObsidianFileSystem implements FileSystem {
     const before = await this.rawStat(path)
     if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
     let saved = await host.readScanFingerprint(key)
-    const installed = this.installedFingerprints.get(key)
-    this.installedFingerprints.delete(key)
-    const fromInstall = !saved && installed?.revision === revision
-    if (fromInstall) saved = installed.value
+    const installed = host.scanInstallation(key)
+    // A fresh watcher check bypasses durable scan hints, but not bytes just verified by
+    // installation. Bind that receipt to the current identity below before using it.
+    const fromInstall = installed !== undefined
+    if (fromInstall) saved = installed
     const legacyKey = !saved && key !== path ? path : undefined
     if (legacyKey) saved = await host.readScanFingerprint(legacyKey)
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
     if (
-      !fresh &&
+      (!fresh || fromInstall) &&
       saved?.identity === beforeIdentity &&
       saved.size === before.size &&
       saved.mtime === before.mtime &&
@@ -2707,11 +2715,15 @@ export class ObsidianFileSystem implements FileSystem {
         after.size === before.size &&
         after.mtime === before.mtime &&
         after.ctime === before.ctime &&
-        (await this.fileIdentity(path)) === beforeIdentity
+        (await this.fileIdentity(path)) === beforeIdentity &&
+        (!fromInstall || host.scanInstallation(key) === installed)
       ) {
         signal?.throwIfAborted()
         this.runtimeFence?.assertReady()
-        if (fromInstall) await host.writeScanFingerprint(key, saved, revision)
+        if (fromInstall) {
+          await host.writeScanFingerprint(key, saved, revision)
+          host.forgetScanInstallation(key)
+        }
         if (legacyKey) {
           await host.writeScanFingerprint(key, saved, revision)
           await host.withScanMutation([legacyKey], async () => {})
@@ -2727,6 +2739,7 @@ export class ObsidianFileSystem implements FileSystem {
         }
       }
     }
+    host.forgetScanInstallation(key)
     const result = await this.fingerprintFresh(path, signal)
     const after = await this.rawStat(path)
     const afterIdentity = await this.fileIdentity(path)
@@ -3419,6 +3432,9 @@ export class ObsidianFileSystem implements FileSystem {
     if (!this.scanWatchers || this.watchEpoch === undefined) return undefined
     const key = this.pathKey(path)
     if (withinRoot(key, this.pathKey(this.configDir))) return undefined
+    return this.watchPathRevision(key)
+  }
+  private watchPathRevision(key: string): number {
     let revision = this.watchFloor
     for (let current = key; current; current = current.slice(0, current.lastIndexOf('/'))) {
       revision = Math.max(revision, this.watchChanges.get(current) ?? 0)
@@ -3439,6 +3455,8 @@ export class ObsidianFileSystem implements FileSystem {
     this.watchEpoch = undefined
     this.rootChain = undefined
     const changed = (file: { path: string }) => {
+      const local = storageOf(this.app)
+      if (local) durableHostOf(local)?.invalidateScanInstallations([this.pathKey(file.path)])
       this.noteWatchChange(file.path)
       if (this.inventoryVisible(file.path) && this.withinFileScope(file.path))
         this.scanWatchRevision++

@@ -154,6 +154,13 @@ it('restarts a synced 33000-file native representation without reading content',
       // Engine cycles while the vault is watched: each is its own inventory pass and walks the
       // ledger several times, as the engine's preparation, scope review and scans do.
       const stop = fs.watch(() => {})
+      // A config path is polled rather than watched. Interleave that proof scope with the
+      // watched paths, as a real ledger does, instead of testing a vault with one clock only.
+      const revision = Symbol.for('abele.sync.watch-revision-v1')
+      const watchRevision = Reflect.get(fs, revision).bind(fs)
+      Reflect.set(fs, revision, (path: string) =>
+        path === paths[16000] ? undefined : watchRevision(path)
+      )
       const ledger = representation.stateStore()
       lstats = 0
       const started = performance.now()
@@ -238,10 +245,11 @@ it('restarts a synced 33000-file native representation without reading content',
     // every file again and every walk stated it.
     expect(cycles.callers).toEqual({
       list: { hit: paths.length },
-      'state.all': { hit: paths.length, pass: paths.length * 14 },
+      'state.all': { hit: paths.length + 2, pass: paths.length * 2 - 2 },
+      'state.replay': { pass: paths.length * 12 },
     })
     expect(lstats).toBeLessThanOrEqual(paths.length * 2 + 64)
-    expect(walksMs).toBeLessThan(90000)
+    expect(walksMs).toBeLessThan(15000)
     await host!.flush()
     host!.close()
     state!.close()

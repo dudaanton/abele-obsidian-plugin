@@ -19,6 +19,7 @@ import { ExternalRepresentation } from '@/sync/external/representation'
 import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { collectHeap } from '../helpers/collectHeap'
+import { WatchReports } from '../../node_modules/@abele/sync-sdk/dist/internal/core/watchReports.js'
 
 function discardFinishedFakeTransactions(db: IDBDatabase): void {
   // The fake retains finished transactions as history, unlike the browser. At
@@ -46,6 +47,8 @@ for (const fault of [
   'pause-admission',
   'pause-mid-batch',
   'install-fingerprint',
+  'install-fingerprint-backlog',
+  'install-fingerprint-invalidated',
   'second-ledger-abort',
 ] as const)
   it(
@@ -62,13 +65,15 @@ for (const fault of [
         'second-ledger-abort',
       ].includes(fault)
       const count =
-        fault === 'batch-tail'
-          ? 65
-          : fault === 'second-ledger-abort' || fault === 'ordered-operations'
-            ? 128
-            : normal
-              ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
-              : 8
+        fault === 'install-fingerprint-backlog'
+          ? 4200
+          : fault === 'batch-tail'
+            ? 65
+            : fault === 'second-ledger-abort' || fault === 'ordered-operations'
+              ? 128
+              : normal
+                ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
+                : 8
       const size = normal ? Number(process.env.PEER_PULL_BYTES ?? 4096) : 4096
       const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-peer-pull-')))
       const app = buildFakeVault([])
@@ -323,6 +328,7 @@ for (const fault of [
         console.log('[peer-pull-rss]', JSON.stringify(row))
       }
       sample()
+      const expected = new ExpectedWrites()
       try {
         const run = () =>
           pull(
@@ -424,7 +430,7 @@ for (const fault of [
                   ? AbortSignal.any([stopped.signal, ended])
                   : ended,
               dirty: new Set(),
-              expected: new ExpectedWrites(),
+              expected: fault === 'install-fingerprint-backlog' ? expected : new ExpectedWrites(),
               filter: { excluded: () => false },
               placementConcurrency: 16,
               onApplied: () => {
@@ -506,12 +512,54 @@ for (const fault of [
             expect(await disk.stat(join(root, item.path)).catch(() => null)).toBeNull()
           return
         }
-        if (fault === 'install-fingerprint') {
+        if (
+          fault === 'install-fingerprint' ||
+          fault === 'install-fingerprint-backlog' ||
+          fault === 'install-fingerprint-invalidated'
+        ) {
+          if (fault === 'install-fingerprint') {
+            const identity = files.fileIdentity!.bind(files)
+            Reflect.set(files, 'fileIdentity', async (path: string) => {
+              const result = await identity(path)
+              // Another path's watcher event can arrive while this identity is being read.
+              Reflect.get(files, 'noteWatchChange').call(files, 'Unrelated/sample.md')
+              return result
+            })
+          }
           await run()
           contentReads = 0
+          if (fault === 'install-fingerprint-invalidated') {
+            // Another filesystem instance shares the host's mutation fence. Even a write
+            // that restores the same stat must retire the earlier installation receipt.
+            const item = items[0]
+            await host.withScanMutation([files.pathKey(item.path)], async () => {})
+            expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+            expect(contentReads).toBeGreaterThan(0)
+            return
+          }
           // The watcher's own-write check fingerprints every file the pull installed. The batch
           // verified those bytes before publishing them; reading them again doubled a pull's IO.
-          for (const item of items) expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+          if (fault === 'install-fingerprint-backlog') {
+            // A debounced watcher may examine the whole pull after all batches finish.
+            const watcher = new WatchReports({
+              fs: files,
+              expected,
+              debounceMs: 60000,
+              onChange: () => {},
+            })
+            watcher.notice(items.map((item) => item.path))
+            expect(await watcher.examine()).toBe(false)
+            expect(watcher.reported.size).toBe(0)
+          } else
+            for (const item of items)
+              expect(
+                (
+                  await Reflect.get(files, Symbol.for('abele.sync.fingerprint-fresh-v1')).call(
+                    files,
+                    item.path
+                  )
+                ).sha
+              ).toBe(item.sha)
           expect(contentReads).toBe(0)
           // A file changed afterwards is read again.
           const changed = items[3]
@@ -599,5 +647,11 @@ for (const fault of [
       }
     },
     // Alone the 33000-file case takes about six minutes; this only stops a hang.
-    process.env.PEER_PULL_FILES ? 3_600_000 : fault === 'none' ? 1_200_000 : 30_000
+    process.env.PEER_PULL_FILES
+      ? 3_600_000
+      : fault === 'none'
+        ? 1_200_000
+        : fault === 'install-fingerprint-backlog'
+          ? 120_000
+          : 30_000
   )

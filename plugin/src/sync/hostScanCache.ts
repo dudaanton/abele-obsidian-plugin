@@ -19,6 +19,33 @@ export class HostScanCache {
   private readonly scanInvalidations = new Map<string, number>()
   private scanGeneration = 0
   private scanRevisionFloor = 0
+  /** Unexamined installation proofs span the pull's watcher backlog. Every writer retires
+   * affected proofs directly, so eviction of the bounded revision clock cannot invalidate
+   * unrelated installations or revive a changed one. Shared across filesystem instances. */
+  private readonly installations = new Map<string, ScanFingerprint>()
+  private readonly installationParents = new Set<string>()
+  scanInstallation(path: string): ScanFingerprint | undefined {
+    return this.scanMutationActive(path) ? undefined : this.installations.get(path)
+  }
+  rememberScanInstallation(path: string, value: ScanFingerprint, revision: number): void {
+    if (this.scanMutationActive(path) || revision !== this.scanFingerprintRevision(path)) return
+    this.installations.set(path, value)
+    for (let end = path.lastIndexOf('/'); end > 0; end = path.lastIndexOf('/', end - 1))
+      this.installationParents.add(path.slice(0, end))
+  }
+  forgetScanInstallation(path: string): void {
+    this.installations.delete(path)
+    if (!this.installations.size) this.installationParents.clear()
+  }
+  invalidateScanInstallations(paths: readonly string[]): void {
+    for (const path of paths) {
+      this.installations.delete(path)
+      if (this.installationParents.has(path))
+        for (const key of this.installations.keys())
+          if (key.startsWith(path + '/')) this.installations.delete(key)
+    }
+    if (!this.installations.size) this.installationParents.clear()
+  }
   constructor(
     private readonly db: IDBDatabase,
     private readonly namespace: string
@@ -45,6 +72,7 @@ export class HostScanCache {
   }
   async withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const keys = [...new Set(paths)]
+    this.invalidateScanInstallations(keys)
     const invalidated = keys.every((key) => this.scanMutationActive(key, this.scanInvalidations))
     for (const key of keys) {
       this.reviseScan(key)
@@ -61,6 +89,17 @@ export class HostScanCache {
           tx.objectStore(STORE).delete([this.namespace, '!scan-fingerprint-v1:' + key])
           // Seek just this subtree; directory moves never enumerate unrelated records.
           const prefix = '!scan-fingerprint-v1:' + key + '/'
+          if (typeof IDBKeyRange !== 'undefined') {
+            tx.objectStore(STORE).delete(
+              IDBKeyRange.bound(
+                [this.namespace, prefix],
+                [this.namespace, '!scan-fingerprint-v1:' + key + '0'],
+                false,
+                true
+              )
+            )
+            continue
+          }
           const request = tx.objectStore(STORE).openKeyCursor()
           request.onsuccess = () => {
             const cursor = request.result
@@ -83,6 +122,7 @@ export class HostScanCache {
       committed = true
       return await work()
     } finally {
+      this.invalidateScanInstallations(keys)
       for (const key of keys) {
         if (committed) {
           const remaining = (this.scanInvalidations.get(key) ?? 1) - 1

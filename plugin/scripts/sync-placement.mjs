@@ -103,7 +103,30 @@ export function syncPlacementPlugin() {
       }
       const replaceOnce = (code, before, after) => replaceBoundary(code, before, after, id)
       let code = input
-      if (file.endsWith('/cycle.js')) {
+      if (file.endsWith('/engine.js')) {
+        code = replaceOnce(
+          code,
+          'sync() {',
+          `sync(reason = 'direct') {
+          const caller = new Error().stack?.split('\\n').slice(2, 7).join(' <- ') ?? 'unknown';
+          const request = reason + ' caller: ' + caller;
+          (this.cycleRequests ??= []).push(request);
+          this.log('sync: request ' + request + (this.running !== null ? ' (queued)' : ''));`
+        )
+        code = replaceOnce(
+          code,
+          'beginRun() {',
+          `beginRun() {
+          const requests = this.cycleRequests?.splice(0) ?? [];
+          this.log('sync: cycle ' + (requests.map(request => request.split(' caller: ')[0]).join(', ') || 'internal') +
+            ' caller: ' + (requests.join(' | ') || new Error().stack));`
+        )
+        code = replaceOnce(
+          code,
+          'this.log(`sync: ${why}`);\n        void this.sync().catch(noop);',
+          'this.log(`sync: ${why}`);\n        void this.sync(why).catch(noop);'
+        )
+      } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
           '        await this.scanWork(() => refreshLocalPaths(scanningFs, state, {',
@@ -1194,6 +1217,31 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
       } else if (file.endsWith('/pushSources.js')) {
         code = replaceOnce(
           code,
+          'export function sourcesFromScan(fs, scan, state) {',
+          `export function sourcesFromScan(fs, scan, state) {
+            const steps = scanSourceSteps(fs, scan, state);
+            let next;
+            while (!(next = steps.next()).done) {}
+            return next.value;
+          }
+          export async function sourcesFromScanCooperative(fs, scan, state) {
+            const work = new ScanWork(scanScheduling(state));
+            const steps = scanSourceSteps(fs, scan, state);
+            for (;;) {
+              const next = steps.next();
+              if (next.done) return next.value;
+              await work.step();
+            }
+          }
+          function* scanSourceSteps(fs, scan, state) {`
+        )
+        code = replaceOnce(
+          code,
+          'for (const [wirePath, sha] of scan.hashes) {',
+          'for (const [wirePath, sha] of scan.hashes) { yield;'
+        )
+        code = replaceOnce(
+          code,
           `const inventory = await LocalPaths.read(fs, state);
     for (const [sha, local] of paths) {
         await work.step();
@@ -1234,6 +1282,24 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
+        code = replaceOnce(
+          code,
+          'import { sourcesFromOps, sourcesFromScan }',
+          'import { sourcesFromOps, sourcesFromScanCooperative }'
+        )
+        code = replaceOnce(
+          code,
+          'const sources = sourcesFromScan(fs, scan, state);',
+          'const sources = await sourcesFromScanCooperative(fs, scan, state);'
+        )
+        code = replaceOnce(
+          code,
+          'async refresh(scan) {\n        for (const [wirePath, sha] of scan.hashes) {',
+          `async refresh(scan) {
+            const work = new ScanWork(scanScheduling(this.state));
+            for (const [wirePath, sha] of scan.hashes) {
+              await work.step();`
+        )
         code = replaceOnce(
           code,
           'await this.uploadOne(sha, sources);',

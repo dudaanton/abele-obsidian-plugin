@@ -29,6 +29,7 @@ import { bumpGeneration } from '@abele/sync-server/src/restoreGeneration.js'
 import { GENERATION_KEY, readReconciliation } from '@abele/sync-sdk/core'
 import { JOURNAL_KEY } from '@/sync/writeJournal'
 import { holdTokenDownload } from '@/testing/holdTokenDownload'
+import { connectionLine } from '@/sync/connectionLine'
 
 it('handshakes before startup write recovery and resumes ordinary sync with retired artifacts retained', async () => {
   const server = await v2Server(),
@@ -294,6 +295,9 @@ it('shows normalization collisions as pending refusals while unrelated files syn
     await fixture.ui.sync(fixture.id)
     const activity = fixture.ui.activity.value[fixture.id]
     expect(activity.pending).toBeGreaterThan(0)
+    expect(
+      connectionLine(fixture.ui.rows.value.find((row) => row.id === fixture!.id)!, activity)
+    ).toBe('1 file not synced')
     expect(activity.refused).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ reason: expect.stringMatching(/normalization collision.*U\+/i) }),

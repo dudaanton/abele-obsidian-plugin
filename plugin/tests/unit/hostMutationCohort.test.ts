@@ -1,7 +1,33 @@
 import { expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore, IDBKeyRange } from 'fake-indexeddb'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { deferred } from '../helpers/deferred'
+
+it('invalidates a known file without opening subtree cursors', async () => {
+  vi.stubGlobal('IDBKeyRange', IDBKeyRange)
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-file-invalidation', {
+    loadLocalStorage: () => null,
+    saveLocalStorage: () => {},
+  })
+  const value = { identity: 'sample-inode', size: 1, mtime: 1, ctime: 1, sha: 'a'.repeat(64) }
+  const cursors = vi.spyOn(IDBObjectStore.prototype, 'openKeyCursor')
+  try {
+    await host.writeScanFingerprint('Notes/sample.md', value)
+    await host.writeScanFingerprint('Notes/other.md', value)
+    await host.writeScanFingerprint('Notes/sample.md/part.md', value)
+    await host.writeScanFingerprint('Notes/sample.md/\uffff-tail.md', value)
+    await host.withScanMutation(['Notes/sample.md'], async () => {})
+    expect(cursors).not.toHaveBeenCalled()
+    expect(await host.readScanFingerprint('Notes/sample.md')).toBeUndefined()
+    expect(await host.readScanFingerprint('Notes/sample.md/part.md')).toBeUndefined()
+    expect(await host.readScanFingerprint('Notes/sample.md/\uffff-tail.md')).toBeUndefined()
+    expect(await host.readScanFingerprint('Notes/other.md')).toEqual(value)
+  } finally {
+    cursors.mockRestore()
+    host.close()
+    vi.unstubAllGlobals()
+  }
+})
 
 it.each([
   { paths: ['Notes'] },

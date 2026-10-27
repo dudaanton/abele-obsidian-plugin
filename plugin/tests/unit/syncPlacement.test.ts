@@ -14,6 +14,94 @@ it('leaves the external state module outside the memory-store integration', () =
   const id = join(root, 'dist/internal/core/external/state.js')
   expect(syncPlacementPlugin().transform(readFileSync(id, 'utf8'), id)).toBeNull()
 })
+
+it('yields while indexing scan sources and refreshing unchanged entries', async () => {
+  let steps = 0
+  class ScanWork {
+    async step() {
+      steps++
+    }
+  }
+  const scanScheduling = () => ({})
+  const hashes = new Map(Array.from({ length: 1024 }, (_, i) => [`sample-${i}.md`, `sha-${i}`]))
+  const scan = { hashes, diskPaths: new Map(), dirty: new Set(), infos: new Map() }
+  const sources = sample(version, 'pushSources.js')
+  const sourceCode = syncPlacementPlugin().transform(sources.input, sources.id)!.code
+  const fromScan = new Function(
+    'ScanWork',
+    'scanScheduling',
+    sourceCode.replace(/^import .*;$/gm, '').replaceAll('export ', '') +
+      '; return typeof sourcesFromScanCooperative === "function" ? sourcesFromScanCooperative : sourcesFromScan'
+  )(ScanWork, scanScheduling)
+  await fromScan({}, scan, {})
+  expect(steps).toBe(hashes.size)
+  steps = 0
+  const pusher = sample(version, 'pusher.js')
+  const pushCode = syncPlacementPlugin().transform(pusher.input, pusher.id)!.code
+  const method = pushCode.slice(
+    pushCode.indexOf('async refresh(scan) {'),
+    pushCode.indexOf('/* ── Uploads')
+  )
+  const refresh = new Function('ScanWork', 'scanScheduling', `return ({${method}}).refresh`)(
+    ScanWork,
+    scanScheduling
+  )
+  let reads = 0
+  await refresh.call(
+    {
+      state: {
+        get: async () => {
+          reads++
+          return null
+        },
+      },
+    },
+    scan
+  )
+  expect(reads).toBe(hashes.size)
+  expect(steps).toBe(hashes.size)
+})
+
+it('records direct and queued cycle callers before every run', () => {
+  const { id, input } = sample(version, 'engine.js')
+  const code = syncPlacementPlugin().transform(input, id)?.code ?? input
+  const sync = code.slice(code.indexOf('sync('), code.indexOf('/**\n     * Walk the manifest'))
+  const begin = code.slice(code.indexOf('beginRun() {'), code.indexOf('/**\n     * Make `work`'))
+  const occupy = code.slice(code.indexOf('occupy(work) {'), code.indexOf("/** A host's job"))
+  const log: string[] = []
+  const engine = new Function(
+    'deferred',
+    'noop',
+    `return new class {${sync}\n${begin}\n${occupy}}`
+  )(
+    () => ({ promise: Promise.resolve() }),
+    () => {}
+  )
+  Object.assign(engine, {
+    opts: {},
+    running: null,
+    queued: null,
+    cancellation: new AbortController(),
+    log: (line: string) => log.push(line),
+    run: () => Promise.resolve(),
+    launch() {
+      return this.beginRun()
+    },
+  })
+  engine.sync('manual')
+  engine.running = Promise.resolve()
+  engine.sync('events')
+  engine.sync('watch')
+  engine.beginRun()
+  expect(log.filter((line) => line.startsWith('sync: cycle '))).toEqual([
+    expect.stringContaining('manual'),
+    expect.stringContaining('events, watch'),
+  ])
+  expect(log.filter((line) => line.startsWith('sync: request '))).toHaveLength(3)
+  expect(log.some((line) => line.includes('caller:') && line.includes('syncPlacement.test'))).toBe(
+    true
+  )
+})
 it('keeps retained-answer filesystem settlement under the placement lease', () => {
   const { id, input } = sample(version, 'pusher.js')
   const output = syncPlacementPlugin().transform(input, id)!
@@ -48,6 +136,7 @@ function sample(installedVersion = version, module = 'cycle.js') {
   return { id, input, temp, pkg }
 }
 it.each([
+  'engine.js',
   'cycle.js',
   'fileRetry.js',
   'state.js',

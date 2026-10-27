@@ -305,7 +305,15 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       if (this.entryIndex?.snapshot !== snapshot)
         this.entryIndex = {
           snapshot,
-          paths: snapshot.then((rows) => new Map(rows.map((row) => [row.path, row]))),
+          paths: snapshot.then(async (rows) => {
+            const paths = new Map<string, StateEntry>()
+            const budget = new SyncTaskBudget()
+            for (const row of rows) {
+              paths.set(row.path, row)
+              await budget.account(4096)
+            }
+            return paths
+          }),
         }
       const index = this.entryIndex.paths
       const rows = await index.catch((): null => null)

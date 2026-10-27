@@ -3,6 +3,47 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { expect, it, vi } from 'vitest'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 
+it('lets a host task run while indexing an already loaded ledger snapshot', async () => {
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-snapshot-yield')
+  let ticks = 0
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => ticks)
+  let heartbeat = false
+  let task: Promise<void> | undefined
+  try {
+    await Reflect.get(state, Symbol.for('abele.sync.normalization-pass-v1')).call(
+      state,
+      async () => {
+        // Model a slow device's map construction without spending CPU or loading a large DB.
+        const rows = Array.from({ length: 1024 }, (_, i) => ({
+          get path() {
+            ticks++
+            return `sample-${i}.md`
+          },
+          wirePath: `sample-${i}.md`,
+          fileId: `sample-${i}`,
+          versionId: 'v1',
+          sha: 'a'.repeat(64),
+          size: 1,
+          mtime: 1,
+        }))
+        Reflect.set(state, 'entrySnapshot', Promise.resolve(rows))
+        task = new Promise((resolve) =>
+          setTimeout(() => {
+            heartbeat = true
+            resolve()
+          }, 0)
+        )
+        expect((await state.get('sample-999.md'))?.fileId).toBe('sample-999')
+        expect(heartbeat).toBe(true)
+      }
+    )
+  } finally {
+    await task
+    clock.mockRestore()
+    state.close()
+  }
+})
+
 it('loads entries once per pass and retires the snapshot after writes and rollback', async () => {
   const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-startup-bulk')
   const read = async () => {
