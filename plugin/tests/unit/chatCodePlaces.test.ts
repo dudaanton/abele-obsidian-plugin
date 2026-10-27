@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { chatCodePlaces } from '@/node/chatCodePlaces'
+import { NodeService } from '@/node/NodeService'
 const { model } = vi.hoisted(() => ({
   model: {
     targets: {
@@ -20,6 +21,16 @@ vi.mock('@/node/NodeService', () => ({
 vi.mock('@/node/NodePathService', () => ({
   NodePathService: { getInstance: () => ({ model: () => model }) },
 }))
+
+it('does not initialize node services for a chat without node access', () => {
+  const initialize = vi.spyOn(NodeService, 'getInstance')
+  try {
+    expect(chatCodePlaces([])).toEqual([])
+    expect(initialize).not.toHaveBeenCalled()
+  } finally {
+    initialize.mockRestore()
+  }
+})
 
 it('uses the chat selection, excludes inaccessible places and never borrows a missing worktree root', () => {
   const target = {

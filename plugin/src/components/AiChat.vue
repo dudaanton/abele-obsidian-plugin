@@ -1289,7 +1289,7 @@ provide(
       void openChatCodeLink(
         resource,
         nodeAccess.value,
-        chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget)
+        chatCodePlaces(nodeAccess.value, session.value?.overrides?.value?.nodeTarget)
       ).catch((error) => console.debug('[node] Code link unavailable', error))
     },
     {
@@ -1297,13 +1297,13 @@ provide(
       context: () =>
         JSON.stringify([
           nodeAccess.value,
-          chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget),
+          chatCodePlaces(nodeAccess.value, session.value?.overrides?.value?.nodeTarget),
         ]),
       canOpen: (resource: string) =>
         !!chatCodeLinkTarget(
           resource,
           nodeAccess.value,
-          chatCodePlaces(nodeAccess.value, session.value?.overrides.value.nodeTarget)
+          chatCodePlaces(nodeAccess.value, session.value?.overrides?.value?.nodeTarget)
         ),
     }
   )

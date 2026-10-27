@@ -14,6 +14,7 @@ export function chatCodePlaces(
   scopes: NodeScopeEntry[],
   current?: NodeScopeTarget
 ): ChatCodePlace[] {
+  if (!scopes.length) return []
   const places: ChatCodePlace[] = []
   const selected = (target: NodeScopeTarget) =>
     !!current &&
