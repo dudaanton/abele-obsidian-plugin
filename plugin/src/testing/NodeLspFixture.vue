@@ -206,8 +206,9 @@ client.readFile = async (workspace_id, path) => ({
   large: false,
   too_large: false,
 })
-client.readContent = async () => {
-  const source = '  sample()\n\nexport declare const sample: string\n'
+client.readContent = async (_workspaceId, contentId) => {
+  const source =
+    contentId === 'sample.ts' ? text : '  sample()\n\nexport declare const sample: string\n'
   return { offset: 0, total: source.length, base64: btoa(source) }
 }
 client.lsp.references = async () => {

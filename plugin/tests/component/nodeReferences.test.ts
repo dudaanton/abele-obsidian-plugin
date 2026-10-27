@@ -109,6 +109,32 @@ it('finds references with Shift+F12 and shows the empty result', async () => {
   expect(query).toHaveBeenCalledWith('references', { line: 0, character: 13 }, expect.any(String))
   expect(document.querySelector('[data-node-references]')?.textContent).toContain('No references')
 })
+it('keeps original-file snippets accurate after navigating to a different reference file', async () => {
+  mount(NodeLspFixture, { props: { state: 'ready' }, attachTo: document.body })
+  await flushPromises()
+  document
+    .querySelector('[data-lsp-settle]')!
+    .dispatchEvent(new CustomEvent('reference-mode', { detail: 'several' }))
+  await flushPromises()
+  await lspFor(document.querySelector('.cm-content')!)!.references!('sample', {
+    line: 0,
+    character: 13,
+  })
+  await flushPromises()
+  const row = [...document.querySelectorAll<HTMLElement>('[data-reference-row]')].find((row) =>
+    row.dataset.referenceRow!.includes('src/sample-001.ts')
+  )!
+  row.click()
+  await flushPromises()
+  await lspFor(document.querySelector('.cm-content')!)!.references!('sample', {
+    line: 0,
+    character: 2,
+  })
+  await flushPromises()
+  const group = document.querySelector('[data-reference-file="sample.ts"]')!
+  expect(group.textContent).toContain('export const sample: string = 42')
+  expect(group.textContent).toContain('console.log(sample)')
+})
 
 it('folds after twelve files and closes the tall phone modal on navigation', async () => {
   Object.assign(Platform, { isMobile: true, isPhone: true })

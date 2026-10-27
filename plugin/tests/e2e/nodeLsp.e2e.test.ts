@@ -175,6 +175,10 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
                 if (${mobile} && rows.length === 1 && group.getBoundingClientRect().height > 56) throw Error('Phone reference group is too tall');
               }
               if (mode === 'several' && list.querySelector('[data-reference-file]').dataset.referenceFile !== 'sample.ts') throw Error('Current file references are missing or not first');
+              if (mode !== 'empty') {
+                const origin = list.querySelector('[data-reference-file="sample.ts"]');
+                if (!origin?.textContent.includes('export const sample: string = 42') || !origin.textContent.includes('console.log(sample)')) throw Error('Original-file reference snippets do not match its source');
+              }
               if (mode === 'empty' && list.textContent.includes('0 references')) throw Error('Empty references repeats the count');
               if (!${mobile}) {
                 const viewer = list.closest('.abele-file-view');
