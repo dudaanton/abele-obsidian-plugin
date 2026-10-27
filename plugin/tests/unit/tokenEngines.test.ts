@@ -2855,6 +2855,31 @@ it('shows a structured refusal while the cycle is still uploading', async () => 
 })
 
 it.each(['/', 'Notes'])(
+  'keeps startup watcher coverage on the initial visible event for %s, but retires it after a background gap',
+  async (folder) => {
+    const f = inspectionFixture(false, folder)
+    f.release()
+    try {
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await f.ui.sync(id)
+      const runtime = Reflect.get(f.host, 'live').get(id)
+      const fs = Reflect.get(runtime, 'options').fs
+      const epoch = () => Reflect.get(fs, Symbol.for('abele.sync.watch-epoch-v1')).call(fs)
+      const before = epoch()
+      expect(before).toBeDefined()
+      await f.host.foreground(true)
+      expect(epoch()).toBe(before)
+      await f.host.foreground(false)
+      await f.host.foreground(true)
+      expect(epoch()).not.toBe(before)
+    } finally {
+      await f.host.close()
+    }
+  }
+)
+
+it.each(['/', 'Notes'])(
   'requests a real ordinary inspection on foreground for %s without resuming paused connections',
   async (folder) => {
     const f = inspectionFixture(false, folder)

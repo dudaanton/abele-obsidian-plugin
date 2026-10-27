@@ -18,6 +18,84 @@ const binding = {
 }
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 
+it('hands continuous watcher coverage between subscribers without rechecking every identity', async () => {
+  const { raw, list, identity } = await setup(3)
+  const first = raw.watch(() => {})
+  let second: (() => void) | undefined
+  try {
+    await list()
+    identity.mockClear()
+    second = raw.watch(() => {})
+    await list()
+    expect(identity).not.toHaveBeenCalled()
+    first()
+    await list()
+    expect(identity).not.toHaveBeenCalled()
+    second()
+    second = undefined
+    const resumed = raw.watch(() => {})
+    try {
+      await list()
+      expect(identity).toHaveBeenCalled()
+    } finally {
+      resumed()
+    }
+  } finally {
+    first()
+    second?.()
+  }
+})
+
+it('retires a scope snapshot for entry commits, representation changes and local events', async () => {
+  const { app, raw, ledger, representation } = await setup(1)
+  const clock = Symbol.for('abele.sync.scope-state-revision-v1')
+  let revision = 0
+  Reflect.set(ledger, clock, async () => revision)
+  const stop = raw.watch(() => {})
+  const state = representation.stateStore()
+  const read = () => Reflect.get(state, clock).call(state)
+  try {
+    const initial = await read()
+    expect(await read()).toBe(initial)
+    revision++
+    const committed = await read()
+    expect(committed).not.toBe(initial)
+    Reflect.get(representation, 'document').revision++
+    const managed = await read()
+    expect(managed).not.toBe(committed)
+    app.emit('vault', 'modify', app.vault.getFileByPath('Shared/sample-0.md'))
+    expect(await read()).not.toBe(managed)
+    const racing = read()
+    app.emit('vault', 'modify', app.vault.getFileByPath('Shared/sample-0.md'))
+    expect(await racing).toBeUndefined()
+  } finally {
+    stop()
+  }
+})
+
+it('opens an ordinary representation without walking the ledger before the handshake', async () => {
+  const all = vi.spyOn(MemoryStateStore.prototype, 'all')
+  try {
+    const { list } = await setup(1)
+    expect(all).not.toHaveBeenCalled()
+    expect(await list()).toHaveLength(1)
+  } finally {
+    all.mockRestore()
+  }
+})
+
+it('loads advisory inspection records only when reconciliation first classifies a path', async () => {
+  const { representation, list } = await setup(1)
+  const options = Reflect.get(representation, 'options')
+  const load = vi.fn(async () => [])
+  options.inspection.load = load
+  expect(load).not.toHaveBeenCalled()
+  await list()
+  expect(load).toHaveBeenCalledOnce()
+  await list()
+  expect(load).toHaveBeenCalledOnce()
+})
+
 it('keeps watched proofs when a polled path uses the inventory clock', async () => {
   const { raw, identity, list } = await setup(40)
   const revision = Symbol.for('abele.sync.watch-revision-v1')

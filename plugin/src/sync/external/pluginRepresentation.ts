@@ -13,6 +13,8 @@ import { inspectionCache } from './inspectionCache'
 import { projectionInspectionIdentity, sameInspectionEntry } from './inspectionIdentity'
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
+import { SyncTaskBudget } from '../syncTaskBudget'
+import type { InspectionEntry } from './inspectionIdentity'
 
 /** Called only after the startup fence/journal inspection, before engine activation.
  * During receive/recovery this callback runs inside the owning sync job; it does not enqueue
@@ -40,12 +42,20 @@ export async function pluginRepresentation(options: {
       : await ExternalState.open(store, ledgerId, binding)
   fence.assertOwned()
   const cache = inspectionCache(app)
-  const entries = await cache.load()
-  fence.assertOwned()
-  const persisted = new Map(entries.map((entry) => [entry.path, entry] as const))
+  const persisted = new Map<string, InspectionEntry>()
   return ExternalRepresentation.open({
     inspection: {
-      entries,
+      entries: [],
+      load: async () => {
+        const entries = await cache.load()
+        const budget = new SyncTaskBudget()
+        for (const entry of entries) {
+          persisted.set(entry.path, entry)
+          await budget.account(4096)
+        }
+        fence.assertOwned()
+        return entries
+      },
       storage: cache.storage,
       cacheKey: (path) => options.placement?.toLocal(path) ?? path,
       ownsKey: (path) =>

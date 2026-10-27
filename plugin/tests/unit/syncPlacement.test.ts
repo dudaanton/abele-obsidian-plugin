@@ -10,6 +10,44 @@ import { analyze } from 'eslint-scope'
 const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
+it('shares scope ledger walks only while the host proves the same filtered state', async () => {
+  const source = sample(version, 'scope.js')
+  const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input
+  const method = code.slice(
+    code.indexOf('async entries(opts) {'),
+    code.indexOf('/** Read afresh each time:')
+  )
+  const entries = new Function('ScanWork', 'checkCancellation', `return ({${method}}).entries`)(
+    class {
+      async step() {}
+    },
+    () => {}
+  )
+  let revision = 'entries:0:representation:0',
+    walks = 0
+  const row = { path: 'sample.md' }
+  const state = {
+    [Symbol.for('abele.sync.scope-state-revision-v1')]: async () => revision,
+    async *all() {
+      walks++
+      yield row
+    },
+  }
+  const scope = { state }
+  expect(await entries.call(scope, {})).toEqual([row])
+  expect(await entries.call(scope, {})).toEqual([row])
+  expect(walks).toBe(1)
+  revision = 'entries:1:representation:0'
+  await entries.call(scope, {})
+  expect(walks).toBe(2)
+  revision = 'entries:1:representation:1'
+  await entries.call(scope, {})
+  expect(walks).toBe(3)
+  Reflect.deleteProperty(state, Symbol.for('abele.sync.scope-state-revision-v1'))
+  await entries.call(scope, {})
+  await entries.call(scope, {})
+  expect(walks).toBe(5)
+})
 it('leaves the external state module outside the memory-store integration', () => {
   const id = join(root, 'dist/internal/core/external/state.js')
   expect(syncPlacementPlugin().transform(readFileSync(id, 'utf8'), id)).toBeNull()
@@ -137,6 +175,8 @@ function sample(installedVersion = version, module = 'cycle.js') {
 }
 it.each([
   'engine.js',
+  'scope.js',
+  'watchReports.js',
   'cycle.js',
   'fileRetry.js',
   'state.js',

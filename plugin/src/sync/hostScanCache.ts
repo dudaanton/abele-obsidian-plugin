@@ -8,6 +8,8 @@ export interface ScanFingerprint {
   mtime: number
   ctime: number
   sha: string
+  /** Native content-change clock, distinct from stable object identity. */
+  contentRevision?: string
 }
 
 /** Per-path scan fingerprints and the projection classification cache, kept in the host
@@ -23,6 +25,16 @@ export class HostScanCache {
    * affected proofs directly, so eviction of the bounded revision clock cannot invalidate
    * unrelated installations or revive a changed one. Shared across filesystem instances. */
   private readonly installations = new Map<string, ScanFingerprint>()
+  private readonly installing = new Map<string, Promise<void>>()
+  pendingScanInstallation(path: string): Promise<void> | undefined {
+    return this.installing.get(path)
+  }
+  deferScanInstallation(path: string, until: Promise<void>): () => void {
+    this.installing.set(path, until)
+    return () => {
+      if (this.installing.get(path) === until) this.installing.delete(path)
+    }
+  }
   private readonly installationParents = new Set<string>()
   scanInstallation(path: string): ScanFingerprint | undefined {
     return this.scanMutationActive(path) ? undefined : this.installations.get(path)

@@ -48,6 +48,10 @@ for (const fault of [
   'pause-mid-batch',
   'install-fingerprint',
   'install-fingerprint-backlog',
+  'install-fingerprint-notification',
+  'install-fingerprint-repeat',
+  'install-fingerprint-inflight',
+  'install-fingerprint-own-event',
   'install-fingerprint-invalidated',
   'second-ledger-abort',
 ] as const)
@@ -226,9 +230,25 @@ for (const fault of [
         recoveredLive = false,
         admissions = 0
       const stopped = new AbortController()
+      const inflight: Promise<unknown>[] = []
       let files = new ObsidianFileSystem(app as unknown as App, {
         storage: host,
         ledger: state,
+        ...(fault === 'install-fingerprint-inflight'
+          ? {
+              onEngineWrite: (path) => {
+                if (!path.endsWith('.bin')) return
+                const watcher = new WatchReports({
+                  fs: files,
+                  expected,
+                  debounceMs: 60000,
+                  onChange: () => {},
+                })
+                watcher.noticed.add(path)
+                inflight.push(watcher.examine().then((changed) => expect(changed).toBe(false)))
+              },
+            }
+          : {}),
         ...(fault === 'admission' || fault === 'pause-admission'
           ? {
               beforeEngineMutation: async () => {
@@ -430,7 +450,10 @@ for (const fault of [
                   ? AbortSignal.any([stopped.signal, ended])
                   : ended,
               dirty: new Set(),
-              expected: fault === 'install-fingerprint-backlog' ? expected : new ExpectedWrites(),
+              expected:
+                fault === 'install-fingerprint-backlog' || fault === 'install-fingerprint-inflight'
+                  ? expected
+                  : new ExpectedWrites(),
               filter: { excluded: () => false },
               placementConcurrency: 16,
               onApplied: () => {
@@ -515,52 +538,108 @@ for (const fault of [
         if (
           fault === 'install-fingerprint' ||
           fault === 'install-fingerprint-backlog' ||
+          fault === 'install-fingerprint-notification' ||
+          fault === 'install-fingerprint-repeat' ||
+          fault === 'install-fingerprint-inflight' ||
+          fault === 'install-fingerprint-own-event' ||
           fault === 'install-fingerprint-invalidated'
         ) {
-          if (fault === 'install-fingerprint') {
+          if (fault === 'install-fingerprint' || fault === 'install-fingerprint-own-event') {
             const identity = files.fileIdentity!.bind(files)
             Reflect.set(files, 'fileIdentity', async (path: string) => {
               const result = await identity(path)
               // Another path's watcher event can arrive while this identity is being read.
-              Reflect.get(files, 'noteWatchChange').call(files, 'Unrelated/sample.md')
+              Reflect.get(files, 'noteWatchChange').call(
+                files,
+                fault === 'install-fingerprint-own-event' ? path : 'Unrelated/sample.md'
+              )
               return result
             })
           }
           await run()
-          contentReads = 0
-          if (fault === 'install-fingerprint-invalidated') {
-            // Another filesystem instance shares the host's mutation fence. Even a write
-            // that restores the same stat must retire the earlier installation receipt.
-            const item = items[0]
-            await host.withScanMutation([files.pathKey(item.path)], async () => {})
-            expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
-            expect(contentReads).toBeGreaterThan(0)
-            return
+          if (fault === 'install-fingerprint-inflight') {
+            await Promise.all(inflight)
+            expect(inflight.length).toBeGreaterThan(0)
+            expect(contentReads).toBe(0)
           }
-          // The watcher's own-write check fingerprints every file the pull installed. The batch
-          // verified those bytes before publishing them; reading them again doubled a pull's IO.
-          if (fault === 'install-fingerprint-backlog') {
-            // A debounced watcher may examine the whole pull after all batches finish.
-            const watcher = new WatchReports({
-              fs: files,
-              expected,
-              debounceMs: 60000,
-              onChange: () => {},
+          contentReads = 0
+          const receiptTimers = [
+            'setTimeout',
+            'clearTimeout',
+            'setInterval',
+            'clearInterval',
+          ] as const
+          const previousTimers = receiptTimers.map((key) =>
+            Object.getOwnPropertyDescriptor(window, key)
+          )
+          for (const key of receiptTimers)
+            Object.defineProperty(window, key, { configurable: true, value: globalThis[key] })
+          const stopReceiptWatch = files.watch(() => {})
+          try {
+            if (fault === 'install-fingerprint-notification')
+              for (const item of items) app.emit('vault', 'modify', { path: item.path })
+            if (fault === 'install-fingerprint-repeat')
+              for (const item of items)
+                expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+            if (fault === 'install-fingerprint-invalidated') {
+              // Another filesystem instance shares the host's mutation fence. Even a write
+              // that restores the same stat must retire the earlier installation receipt.
+              const item = items[0]
+              await host.withScanMutation([files.pathKey(item.path)], async () => {})
+              expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+              expect(contentReads).toBeGreaterThan(0)
+              return
+            }
+            // The watcher's own-write check fingerprints every file the pull installed. The batch
+            // verified those bytes before publishing them; reading them again doubled a pull's IO.
+            if (fault === 'install-fingerprint-backlog') {
+              // A debounced watcher may examine the whole pull after all batches finish.
+              const watcher = new WatchReports({
+                fs: files,
+                expected,
+                debounceMs: 60000,
+                onChange: () => {},
+              })
+              watcher.notice(items.map((item) => item.path))
+              expect(await watcher.examine()).toBe(false)
+              expect(watcher.reported.size).toBe(0)
+            } else
+              for (const item of items)
+                expect(
+                  (
+                    await Reflect.get(files, Symbol.for('abele.sync.fingerprint-fresh-v1')).call(
+                      files,
+                      item.path
+                    )
+                  ).sha
+                ).toBe(item.sha)
+            expect(contentReads).toBe(0)
+          } finally {
+            stopReceiptWatch()
+            receiptTimers.forEach((key, i) => {
+              if (previousTimers[i]) Object.defineProperty(window, key, previousTimers[i]!)
+              else Reflect.deleteProperty(window, key)
             })
-            watcher.notice(items.map((item) => item.path))
-            expect(await watcher.examine()).toBe(false)
-            expect(watcher.reported.size).toBe(0)
-          } else
-            for (const item of items)
-              expect(
-                (
-                  await Reflect.get(files, Symbol.for('abele.sync.fingerprint-fresh-v1')).call(
-                    files,
-                    item.path
-                  )
-                ).sha
-              ).toBe(item.sha)
-          expect(contentReads).toBe(0)
+          }
+          if (fault === 'install-fingerprint-notification') {
+            // A stale index can retain size/mtime and object identity after an edit.
+            const changed = items[3]
+            const rawStat = Reflect.get(files, 'rawStat').bind(files)
+            const priorStat = await rawStat(changed.path)
+            const edited = payload(3).fill(91)
+            await disk.writeFile(join(root, changed.path), edited)
+            Reflect.set(files, 'rawStat', async (path: string) =>
+              path === changed.path ? priorStat : rawStat(path)
+            )
+            try {
+              expect((await files.fingerprint(changed.path, undefined, true)).sha).toBe(
+                await sha256(edited)
+              )
+              expect(contentReads).toBeGreaterThan(0)
+            } finally {
+              Reflect.set(files, 'rawStat', rawStat)
+            }
+          }
           // A file changed afterwards is read again.
           const changed = items[3]
           await new Promise((resolve) => setTimeout(resolve, 5))

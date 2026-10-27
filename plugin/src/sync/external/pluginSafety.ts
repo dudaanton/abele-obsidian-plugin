@@ -196,7 +196,12 @@ export async function inspectExistingLedger(
         ).filter((row) => row !== undefined)
       : await wait<{ key: string; value: unknown }[]>(meta.getAll())
     await done
-    const metadata = new Map(rows.map((row) => [row.key, row.value]))
+    const metadata = new Map<string, unknown>()
+    const budget = new SyncTaskBudget()
+    for (const row of rows) {
+      metadata.set(row.key, row.value)
+      await budget.account(4096)
+    }
     const identity = metadata.get('database-identity-v1')
     return {
       version: db.version,
@@ -1020,7 +1025,11 @@ export async function requireExternalLifecycleSafety(
   for (const name of names) {
     // Disconnect and switch checks also read proofs keyed per file: read every row.
     const found = await inspectionRead(inspection, assertCurrent, () =>
-      inspectExistingLedger(factory, name)
+      inspectExistingLedger(
+        factory,
+        name,
+        metadataOnly ? ['plugin:external-files', 'plugin:' + DISCONNECT_PROOF_KEY] : undefined
+      )
     )
     const activated = activatedLedgers.find((item) => item.databaseName === name)
     // An active marker always keeps original-byte protection, even if also retired.

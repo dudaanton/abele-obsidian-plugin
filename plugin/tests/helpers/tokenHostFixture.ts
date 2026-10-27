@@ -6,13 +6,14 @@ import { TokenUi } from '@/sync/tokenUi'
 import { TokenEngines } from '@/sync/tokenEngines'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
-import { buildFakeVault } from './fakeVault'
+import { buildFakeVault, type FakeApp } from './fakeVault'
 
 export function tokenHostFixture(
   fetcher: typeof fetch,
-  files: Parameters<typeof buildFakeVault>[0] = []
+  files: Parameters<typeof buildFakeVault>[0] = [],
+  native: { app: FakeApp; factory: IDBFactory } | undefined = undefined
 ) {
-  const app = buildFakeVault(files),
+  const app = native?.app ?? buildFakeVault(files),
     registry = TokenConnectionRegistry.open(app),
     keys = new Map<string, string>()
   const secrets = {
@@ -39,7 +40,7 @@ export function tokenHostFixture(
     close: () => {},
   }
   const ui = new TokenUi(registry, secrets, fetcher, reviews),
-    factory = new IDBFactory()
+    factory = native?.factory ?? new IDBFactory()
   const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
     fetch: fetcher,
     indexedDB: factory,

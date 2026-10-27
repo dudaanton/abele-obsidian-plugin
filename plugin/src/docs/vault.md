@@ -3259,6 +3259,10 @@ files are recognized lazily by the representation guards before scanning, upload
 writes; copied projection markers remain held. Cached inspection metadata may seed startup
 inventory hints, but carries no directory-absence proof. Explicit lifecycle operations retain
 their full evidence inspection.
+Advisory inspection records load lazily during representation classification, with cooperative
+validation. Native installation fingerprints may also retain a content-change revision
+alongside object identity, timestamps and hash. Delayed index notifications do not discard
+that proof; every reuse checks the native change revision, and observed mutations retire it.
 
 Before startup recovery or publication, the host handshakes the server generation. A changed
 generation archives old publication authority under `retired-host-generation:` in the ledger,

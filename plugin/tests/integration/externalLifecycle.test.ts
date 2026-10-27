@@ -6,6 +6,7 @@ import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 import { ExternalState } from '@/sync/external/state'
 import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
 import { EXTERNAL_STATE_KEY } from '@abele/sync-sdk/core'
+import { IDBObjectStore } from 'fake-indexeddb'
 
 const close: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -51,6 +52,26 @@ async function fixture(availability: 'active' | 'deleted' | 'detached' | 'unavai
   return { ...s, raw, state, record: s.registry.records()[0], fetcher }
 }
 describe('token connection external dependency lifecycle', () => {
+  it('checks startup dependencies without loading unrelated per-file metadata', async () => {
+    const s = await fixture()
+    await s.raw.setMeta('unrelated-large-record', 'x'.repeat(1024 * 1024))
+    const all = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    await expect(
+      requireExternalLifecycleSafety(
+        s.app as never,
+        s.factory,
+        undefined,
+        true,
+        undefined,
+        () => {},
+        {},
+        false,
+        true,
+        true
+      )
+    ).rejects.toThrow(/external|recovery|preparation/i)
+    expect(all.mock.contexts.filter((store) => store.name === 'meta')).toHaveLength(0)
+  })
   it.each(['active', 'deleted', 'detached', 'unavailable'] as const)(
     'disconnect retains %s dependencies and its credential before preparation',
     async (availability) => {

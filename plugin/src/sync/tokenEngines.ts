@@ -400,21 +400,24 @@ export class TokenEngines {
     }
   }
   /** Resume/pocket events share the same engine operations as explicit Sync now. */
+  private backgrounded = typeof document !== 'undefined' && document.visibilityState === 'hidden'
   async foreground(visible: boolean): Promise<void> {
     if (this.closed) return
+    const watchGap = this.backgrounded
+    this.backgrounded = !visible
     if (visible && (await this.ui.itemSets.refreshAll((id) => this.live.has(id)))) {
       this.start()
       await this.engines.settled()
     }
     if (visible) this.presentReviews()
-    await this.flushUploads(visible)
+    await this.flushUploads(visible, watchGap)
   }
-  private async flushUploads(inspect = false): Promise<void> {
+  private async flushUploads(inspect = false, watchGap = true): Promise<void> {
     await Promise.all(
       [...this.live].map(async ([id, runtime]) => {
         if (this.ui.registry.records().find((record) => record.id === id)?.paused) return
         try {
-          if (inspect) await runtime.inspect()
+          if (inspect) await runtime.inspect(watchGap)
           else await runtime.sync()
         } catch (error) {
           this.failed(id, error)

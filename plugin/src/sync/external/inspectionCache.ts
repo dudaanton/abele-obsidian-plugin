@@ -3,6 +3,7 @@ import { durableHostOf } from '../hostSyncStorage'
 import { ExternalRecoveryRequired } from './recovery'
 import type { InspectionEntry } from './inspectionIdentity'
 import { EXTERNAL_INSPECTION_KEY, inspectionSchema } from './inspectionSchema'
+import { SyncTaskBudget } from '../syncTaskBudget'
 
 const entrySchema = inspectionSchema.shape.entries.element
 
@@ -17,11 +18,16 @@ export interface InspectionCache {
   save(entries: readonly InspectionEntry[], retired?: readonly string[]): Promise<void>
 }
 
-const valid = (values: readonly unknown[]): InspectionEntry[] =>
-  values.flatMap((value) => {
+const valid = async (values: readonly unknown[]): Promise<InspectionEntry[]> => {
+  const result: InspectionEntry[] = []
+  const budget = new SyncTaskBudget()
+  for (const value of values) {
     const row = entrySchema.safeParse(value)
-    return row.success ? [row.data] : []
-  })
+    if (row.success) result.push(row.data)
+    await budget.account(4096)
+  }
+  return result
+}
 
 function legacy(app: App): InspectionEntry[] | null {
   const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
@@ -34,7 +40,7 @@ export function inspectionCache(app: App): InspectionCache {
     return {
       storage: 'host',
       async load() {
-        const rows = valid(await host.readInspections())
+        const rows = await valid(await host.readInspections())
         // An earlier version kept the cache in local storage. Move what it holds, then free it.
         const earlier = legacy(app)
         if (earlier) {

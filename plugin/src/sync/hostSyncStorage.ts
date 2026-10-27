@@ -80,6 +80,12 @@ export class HostSyncStorage implements LocalStorage {
   scanInstallation(path: string): ScanFingerprint | undefined {
     return this.scan.scanInstallation(path)
   }
+  pendingScanInstallation(path: string): Promise<void> | undefined {
+    return this.scan.pendingScanInstallation(path)
+  }
+  deferScanInstallation(path: string, until: Promise<void>): () => void {
+    return this.scan.deferScanInstallation(path, until)
+  }
   rememberScanInstallation(path: string, value: ScanFingerprint, revision: number): void {
     this.scan.rememberScanInstallation(path, value, revision)
   }

@@ -130,7 +130,7 @@ export async function assertVaultMetadataPath(
 ): Promise<void> {
   // A connection-scoped adapter authorizes first; its own guard checks the chain.
   if (Reflect.get(adapter, Symbol.for('abele.sync.scoped-adapter-v1')))
-    return assertVaultPath(adapter, path)
+    return Reflect.get(adapter, Symbol.for('abele.sync.scoped-metadata-path-guard-v1'))(path)
   const pin = rootAccess(adapter).pin
   if (!pin || !metadataInventories.has(pin)) return assertVaultPath(adapter, path)
   // The caller reads the leaf itself without following it, so only its folders are checked.
@@ -827,6 +827,9 @@ interface NodeFsPromises {
     dev?: unknown
     ino?: unknown
     birthtimeNs?: unknown
+    ctimeNs?: unknown
+    mtimeNs?: unknown
+    size?: unknown
   }>
   mkdir(path: string, options: { recursive: boolean }): Promise<unknown>
   unlink(path: string): Promise<void>
@@ -851,6 +854,7 @@ interface NodeFsPromises {
 }
 export interface NativeFs {
   fileIdentity?(path: string): Promise<string | null>
+  fileContentRevision?(path: string): Promise<string | null>
   restoreDirectoryExclusive?(from: string, to: string): Promise<void>
   sameObject?(a: string, b: string): Promise<boolean>
   syncPath?(path: string, parentsOnly?: boolean): Promise<void>
@@ -936,6 +940,26 @@ export function nativeOf(
         const stat = await fsp.lstat(at(path), { bigint: true })
         assertEffect([path])
         return stat.isFile?.() ? desktopFileIdentity(stat) : null
+      } catch (error) {
+        if ((error as { code?: string }).code === 'ENOENT') return null
+        throw error
+      }
+    }
+  if (fsp.lstat)
+    native.fileContentRevision = async (path) => {
+      await assertVaultMetadataPath(adapter, path)
+      assertEffect([path])
+      try {
+        const stat = await fsp.lstat(at(path), { bigint: true })
+        assertEffect([path])
+        const identity = desktopFileIdentity(stat)
+        return stat.isFile?.() &&
+          identity &&
+          typeof stat.ctimeNs === 'bigint' &&
+          typeof stat.mtimeNs === 'bigint' &&
+          typeof stat.size === 'bigint'
+          ? `${identity}:${stat.ctimeNs}:${stat.mtimeNs}:${stat.size}`
+          : null
       } catch (error) {
         if ((error as { code?: string }).code === 'ENOENT') return null
         throw error
@@ -2111,6 +2135,11 @@ export function connectionAdapter(
         }
       }
       if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink
+      if (key === Symbol.for('abele.sync.scoped-metadata-path-guard-v1'))
+        return (path: string) => {
+          check(path, 'stat')
+          return assertVaultMetadataPath(adapter, path)
+        }
       if (key === Symbol.for('abele.sync.scoped-path-guard-v1'))
         return (path: string) => {
           check(path, 'stat')

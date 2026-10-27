@@ -126,6 +126,61 @@ export function syncPlacementPlugin() {
           'this.log(`sync: ${why}`);\n        void this.sync().catch(noop);',
           'this.log(`sync: ${why}`);\n        void this.sync(why).catch(noop);'
         )
+      } else if (file.endsWith('/watchReports.js')) {
+        code = replaceOnce(
+          code,
+          `return (await fingerprintFile(this.ctx.fs, path, sha256)).sha;`,
+          `const fresh = this.ctx.fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
+            return (fresh ? await fresh.call(this.ctx.fs, path) : await fingerprintFile(this.ctx.fs, path, sha256)).sha;`
+        )
+      } else if (file.endsWith('/scope.js')) {
+        code = replaceOnce(
+          code,
+          `record(fs, scope, filter, opts = {}) {
+        return serially(this.state, async () => {`,
+          `record(fs, scope, filter, opts = {}) {
+        const run = async () => {`
+        )
+        code = replaceOnce(
+          code,
+          `            await this.state.setMeta?.(SCOPE_KEY, JSON.stringify(scope));
+        });`,
+          `            await this.state.setMeta?.(SCOPE_KEY, JSON.stringify(scope));
+        };
+        const pass = fs[Symbol.for('abele.sync.operation-pass-v1')];
+        return serially(this.state, () => typeof pass === 'function' ? pass.call(fs, run) : run());`
+        )
+        code = replaceOnce(
+          code,
+          `return serially(this.state, () => this.reviewNow(fs, filter, opts));`,
+          `const pass = fs[Symbol.for('abele.sync.operation-pass-v1')];
+        return serially(this.state, () => typeof pass === 'function'
+          ? pass.call(fs, () => this.reviewNow(fs, filter, opts)) : this.reviewNow(fs, filter, opts));`
+        )
+        code = replaceOnce(
+          code,
+          `async entries(opts) {
+        const entries = [];`,
+          `async entries(opts) {
+        checkCancellation(opts.signal);
+        const clock = this.state[Symbol.for('abele.sync.scope-state-revision-v1')];
+        const revision = typeof clock === 'function' ? await clock.call(this.state) : undefined;
+        if (revision !== undefined && this.scopeEntries?.revision === revision)
+          return this.scopeEntries.rows;
+        this.scopeEntries = undefined;
+        const entries = [];`
+        )
+        code = replaceOnce(
+          code,
+          `        return entries;
+    }
+    /** Read afresh each time:`,
+          `        if (revision !== undefined && revision === await clock.call(this.state))
+          this.scopeEntries = { revision, rows: entries };
+        return entries;
+    }
+    /** Read afresh each time:`
+        )
       } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,

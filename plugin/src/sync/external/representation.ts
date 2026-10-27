@@ -35,7 +35,7 @@ import {
 } from './projection'
 import { ExternalRecoveryRequired } from './recovery'
 import { stagingDirectory } from '../stagingDirectory'
-import { yieldSyncTask } from '../syncTaskBudget'
+import { SyncTaskBudget, yieldSyncTask } from '../syncTaskBudget'
 import {
   cacheableInspectionIdentity,
   sameInspectionIdentity,
@@ -58,6 +58,7 @@ export interface RepresentationOptions {
    * owned paths; a changed stat forces fresh inspection. */
   inspection?: {
     entries: readonly InspectionEntry[]
+    load?(): Promise<readonly InspectionEntry[]>
     cacheKey?(path: string): string
     ownsKey?(path: string): boolean
     identity?(path: string): Promise<InspectionIdentity | null>
@@ -124,6 +125,22 @@ export class ExternalRepresentation {
   /** Files whose identity was verified in the current proof scope, by their revision in it. */
   private readonly verified = new Map<string, Verified>()
   private readonly stats: ClassificationStats
+  private inspectionLoading?: Promise<void>
+  private async loadInspection(): Promise<void> {
+    if (!this.options.inspection?.load) return
+    const load = this.options.inspection.load.bind(this.options.inspection)
+    this.inspectionLoading ??= (async () => {
+      const rows = await load()
+      const budget = new SyncTaskBudget()
+      for (const row of rows) {
+        this.inspected.set(row.path, row)
+        await budget.account(4096)
+      }
+      this.stats.loaded = this.inspected.size
+      this.owned()
+    })()
+    await this.inspectionLoading
+  }
   private constructor(private readonly options: RepresentationOptions) {
     this.stats = {
       storage: options.inspection ? (options.inspection.storage ?? 'memory') : 'none',
@@ -155,7 +172,12 @@ export class ExternalRepresentation {
         (await options.ledger.getMeta(unexpectedKey(file.fileId))) !== null
       )
         runtime.unexpected.add(file.fileId)
-    for await (const entry of options.ledger.all()) runtime.entries.set(entry.fileId, entry)
+    // Ordinary heads are not representation authority. Only managed identities need their
+    // current head here; walking the whole ledger delays the first server handshake.
+    for (const file of runtime.document.files) {
+      const entry = await options.ledger.byFileId(file.fileId)
+      if (entry) runtime.entries.set(file.fileId, entry)
+    }
     // Upgrade earlier blockers/scoped dirty evidence to the independent provenance bit
     // before subsequent metadata can replace the display reason.
     const metadata = []
@@ -338,6 +360,7 @@ export class ExternalRepresentation {
     supplied?: Uint8Array,
     caller = 'direct'
   ): Promise<RepresentationDecision> {
+    await this.loadInspection()
     this.ownedRead()
     if (observed === undefined && !supplied) {
       const known = await this.unchanged(path, caller)
@@ -673,6 +696,26 @@ export class ExternalRepresentation {
     }
     return new Proxy(store, {
       get(target, method) {
+        if (method === Symbol.for('abele.sync.scope-state-revision-v1'))
+          return async () => {
+            const read = Reflect.get(target, method)
+            const fs = self.options.fs
+            const scan = Reflect.get(fs, Symbol.for('abele.sync.local-scan-revision-v1'))
+            const epoch = Reflect.get(fs, Symbol.for('abele.sync.watch-epoch-v1'))?.call(fs)
+            const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1'))?.call(fs)
+            const document = self.document.revision
+            const local = typeof scan === 'function' ? scan.call(fs) : undefined
+            const revision = typeof read === 'function' ? await read.call(target) : undefined
+            return revision === undefined ||
+              local === undefined ||
+              epoch === undefined ||
+              document !== self.document.revision ||
+              local !== scan.call(fs) ||
+              epoch !== Reflect.get(fs, Symbol.for('abele.sync.watch-epoch-v1'))?.call(fs) ||
+              pass !== Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1'))?.call(fs)
+              ? undefined
+              : JSON.stringify([revision, local, document, epoch, pass ?? null])
+          }
         if (method === 'all')
           return async function* () {
             for await (const entry of store.all()) {

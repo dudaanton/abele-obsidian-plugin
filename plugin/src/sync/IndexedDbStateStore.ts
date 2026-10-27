@@ -150,10 +150,19 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     { key: string | null; owner: string; entries: boolean }
   >()
   private scanStateRevision = 0
-  private scanStateReadRevision: number | undefined
+  private scanStateReadRevision: number | undefined;
+
+  /** Only committed entry writes retire a local scan. Unknown writers retire it conservatively. */
+  [Symbol.for('abele.sync.scope-state-revision-v1')](): Promise<number | undefined> {
+    return this.localScanStateRevision()
+  }
 
   /** Only committed entry writes retire a local scan. Unknown writers retire it conservatively. */
   async [Symbol.for('abele.sync.local-scan-state-revision-v1')](): Promise<number | undefined> {
+    return this.localScanStateRevision()
+  }
+
+  private async localScanStateRevision(): Promise<number | undefined> {
     this.assertRecovery()
     const revision = (await this.metaValue('revision')) ?? 0
     if (typeof revision !== 'number' || !Number.isSafeInteger(revision)) return undefined
@@ -603,7 +612,13 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
             let lower = scoped,
               exclusive = false
             const page = () => {
-              const range = IDBKeyRange.lowerBound(lower, exclusive)
+              // A lower bound alone also clones the next unrelated page, which can hold
+              // large recovery documents even when this prefix has no rows at all.
+              let upper = scoped
+              while (upper.endsWith('\uffff')) upper = upper.slice(0, -1)
+              upper =
+                upper.slice(0, -1) + String.fromCharCode(upper.charCodeAt(upper.length - 1) + 1)
+              const range = IDBKeyRange.bound(lower, upper, exclusive, true)
               const request = keysOnly ? store.getAllKeys(range, 256) : store.getAll(range, 256)
               request.onerror = () => reject(request.error)
               request.onsuccess = () => {

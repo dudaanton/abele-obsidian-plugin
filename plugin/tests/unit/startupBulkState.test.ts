@@ -1,7 +1,26 @@
 // @vitest-environment node
-import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore, IDBKeyRange } from 'fake-indexeddb'
 import { expect, it, vi } from 'vitest'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+
+it('never deserializes unrelated metadata when seeking an empty prefix', async () => {
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-prefix-range')
+  vi.stubGlobal('IDBKeyRange', IDBKeyRange)
+  const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+  try {
+    await state.setMeta('unrelated-large-record', 'x'.repeat(1024 * 1024))
+    expect(
+      await Reflect.get(state, Symbol.for('abele.sync.metadata-prefix-v1')).call(state, 'absent:')
+    ).toEqual(new Map())
+    const ranges = getAll.mock.calls.map(([range]) => range as IDBKeyRange)
+    expect(ranges.length).toBeGreaterThan(0)
+    expect(ranges.every((range) => !range.includes('plugin:unrelated-large-record'))).toBe(true)
+  } finally {
+    getAll.mockRestore()
+    vi.unstubAllGlobals()
+    state.close()
+  }
+})
 
 it('lets a host task run while indexing an already loaded ledger snapshot', async () => {
   const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-snapshot-yield')
