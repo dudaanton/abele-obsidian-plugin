@@ -25,7 +25,8 @@ async function scenario(layout: string) {
       await shot('answer');links[0].click();
       const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='sample.txt'),'Opened node file');
       if(leaf.view.getState().line!==1)throw Error('Citation lost its line');
-      await until(()=>leaf.view.contentEl.textContent.includes('Sample project'),'File contents');
+      await until(()=>[...leaf.view.contentEl.querySelectorAll('.cm-line')].some(line=>line.textContent.includes('Sample project')&&line.getBoundingClientRect().height>0),'Rendered source line');
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       await shot('file-line');leaf.detach();return 'passed'
     })()`)
   } finally {
