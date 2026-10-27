@@ -188,8 +188,21 @@ async function runLive(label: string) {
       const args={node:${JSON.stringify(node.registration)},worktree_id:tree.worktree_id,argv:['node','--version'],operation_id:crypto.randomUUID(),justification:'Check the runtime version.'};
       window.__sampleCommandArgs=args;
       const tool=session.getTools().find(t=>t.name==='node_command_run');if(!tool)throw Error('Command tool is missing');
+      // Direct tool execution bypasses the agent loop. Keep its real message lifecycle:
+      // command cards are owned by calls on the selected branch, never a chat-wide footer.
+      window.__sampleExecuteCommand=async(call,args)=>{
+        session.handleAgentEvent({type:'tool_start',toolCallId:call,toolName:tool.name,args});
+        try {
+          const result=await tool.execute(call,args,undefined,{session});
+          session.handleAgentEvent({type:'tool_end',toolCallId:call,toolName:tool.name,result,isError:false});
+          return result;
+        } catch(error) {
+          session.handleAgentEvent({type:'tool_end',toolCallId:call,toolName:tool.name,result:{content:[{type:'text',text:error.message}]},isError:true});
+          throw error;
+        }
+      };
       window.__sampleCommandSettled=false;
-      window.__sampleCommandCompletion=tool.execute('sample-command',args,undefined,{session}).then(result=>{window.__sampleCommandSettled=true;return JSON.parse(result.content[0].text)});
+      window.__sampleCommandCompletion=window.__sampleExecuteCommand('sample-command',args).then(result=>{window.__sampleCommandSettled=true;return JSON.parse(result.content[0].text)});
       const parent=await session.ensureDelegationParentId();
       let result;for(let i=0;i<200;i++){result=(await connection.manager.cards(parent))[0]?.run;if(result?.state==='pending_approval')break;await new Promise(r=>setTimeout(r,50))}
       if(window.__sampleCommandSettled)throw Error('Command returned before approval');
@@ -231,17 +244,25 @@ async function runLive(label: string) {
     await evalLong(
       `(async()=>{${setup}await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150))})()`
     )
+    const folded = JSON.parse(
+      await evalLong(
+        `(()=>{const runs=[...document.querySelectorAll('.abele-chat-run')];return JSON.stringify({folded:runs.length===1&&runs[0].classList.contains('is-collapsed'),cards:document.querySelectorAll('.abele-node-manager-run').length})})()`
+      )
+    )
+    expect(folded).toEqual({ folded: true, cards: 0 })
     columnShot(`${shots}/${label}-live-finished.png`)
     const other = JSON.parse(
       await evalLong(
         `(async()=>{${setup}
       const session=chats.getSession(window.__sampleCommandChat),args={...window.__sampleCommandArgs,argv:['node','-e','process.stdout.write(process.cwd())'],justification:'Check the command working folder.',operation_id:crypto.randomUUID()};
       session.permissionMode.value='allow-all';const tool=session.getTools().find(t=>t.name==='node_command_run');
-      const bypass=JSON.parse((await tool.execute('sample-bypass',args,undefined,{session})).content[0].text);
+      const bypass=JSON.parse((await window.__sampleExecuteCommand('sample-bypass',args)).content[0].text);
       if(bypass.state!=='exited'||bypass.exit_code!==0)throw Error('Command returned before completion');const final=bypass;
       session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'edit'}))};
       let refused='';try{await tool.execute('sample-off',{...args,operation_id:crypto.randomUUID()},undefined,{session})}catch(error){refused=error.message}
-      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
+      await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
+      document.querySelector('.abele-chat-run.is-collapsed > .tree-item-self')?.click();await new Promise(r=>setTimeout(r,150));
+      return JSON.stringify({cards:document.querySelectorAll('.abele-tool-approval').length,mode:bypass.permission_mode,approval:bypass.approval,refused,cwd:final.stdout,expectedCwd:window.__sampleCommandRun.approval.input.cwd,reused:bypass.context_id===window.__sampleCommandRun.context_id,gap:(()=>{const r=[...document.querySelectorAll('.abele-node-manager-run')];return r[1].getBoundingClientRect().top-r[0].getBoundingClientRect().bottom})(),emptyNotices:[...document.querySelectorAll('.abele-chat-msg_line')].filter(e=>!e.textContent.trim()).length});
     })()`,
         60000
       )
@@ -271,7 +292,7 @@ async function runLive(label: string) {
       const session=chats.getSession(window.__sampleCommandChat);
       session.overrides.value={...session.overrides.value,nodeScope:session.overrides.value.nodeScope.map(e=>({...e,access:'run'}))};session.permissionMode.value='confirm-all';session.toolModes.value={...session.toolModes.value,node_command_run:'ask'};
       const tool=session.getTools().find(t=>t.name==='node_command_run');
-      let reason='';try{await tool.execute('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder',justification:'Check access to the selected subfolder.'},undefined,{session})}catch(error){reason=error.message}
+      let reason='';try{await window.__sampleExecuteCommand('sample-missing-cwd',{...window.__sampleCommandArgs,operation_id:crypto.randomUUID(),cwd:'sample-missing-folder',justification:'Check access to the selected subfolder.'})}catch(error){reason=error.message}
       await connection.refreshDelegations();await new Promise(r=>setTimeout(r,150));
       const cards=[...document.querySelectorAll('.abele-tool-approval')],runs=[...document.querySelectorAll('.abele-node-manager-run')];
       return JSON.stringify({reason,cards:cards.length,text:runs.at(-1)?.textContent});
@@ -286,7 +307,7 @@ async function runLive(label: string) {
     columnShot(`${shots}/${label}-live-error.png`)
   } finally {
     await evalLong(
-      `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun;delete window.__sampleCommandCompletion;delete window.__sampleCommandSettled})()`
+      `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();if(window.__sampleCommandChat)await chats.deleteChat(window.__sampleCommandChat);delete window.__sampleCommandChat;delete window.__sampleCommandArgs;delete window.__sampleCommandRun;delete window.__sampleCommandCompletion;delete window.__sampleCommandSettled;delete window.__sampleExecuteCommand})()`
     )
     await node.close()
   }
