@@ -31,12 +31,7 @@ import {
   retryDebuggerAccessFixture,
   openDebuggerGrantsFixture,
 } from './debuggerAccessScreen'
-import { createTraceTools } from '@/ai/tools/TraceTools'
-import { activeTraceContext } from '@/debugger/trace/agentContext'
-const readAgentTraceTimeline = (run: string) =>
-  createTraceTools(activeTraceContext)
-    .find((tool) => tool.name === 'trace_timeline')
-    .execute('sample-analysis', { run })
+import { readAgentTraceTimeline } from './readAgentTraceTimeline'
 import { RequestsService } from '@/requests/RequestsService'
 import { openRequestTab } from '@/requests/actions'
 import { openRequestsView } from '@/requests/views'

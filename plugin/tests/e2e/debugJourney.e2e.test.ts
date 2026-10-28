@@ -531,8 +531,9 @@ it.each(['desktop', 'phone'])(
       await leaf.setViewState({type:'empty',active:true});
       await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/edited.cjs'}});
       await until(()=>leaf.containerEl.textContent.includes('sample edit'),'edited bytes loaded');
-      await until(()=>leaf.containerEl.querySelector('[role="status"]')?.textContent.includes('changed'),'changed source refused');
-      const notice=leaf.containerEl.querySelector('[role="status"]'),card=leaf.containerEl.querySelector('.abele-file-view');
+      const admission=()=>leaf.containerEl.querySelector('.abele-node-main_file > .setting-item-description[role="status"]');
+      await until(()=>admission()?.textContent.includes('changed'),'changed source refused');
+      const notice=admission(),card=leaf.containerEl.querySelector('.abele-file-view');
       if(notice.scrollHeight>notice.clientHeight+1||notice.getBoundingClientRect().bottom>card.getBoundingClientRect().top+1)throw Error('Source notice is clipped or overlaps the file');
       const revision=binding.controller.snapshot.breakpoint_revision;
       press(await until(()=>marginAt(4,leaf.containerEl),'pending margin on refused source'));
@@ -547,8 +548,9 @@ it.each(['desktop', 'phone'])(
       await until(()=>service.active.value?.sessionId&&service.active.value.sessionId!==previousSession&&service.active.value.controller.session.status==='paused','edited program restarted');
       binding=service.active.value;
       await app.workspace.revealLeaf(leaf);
-      await until(()=>marginAt(4,leaf.containerEl),'edited source admitted after restart');
-      await until(()=>binding.controller.session.breakpoints.some(point=>point.line===4),'edited breakpoint set');
+      await until(()=>binding.controller.session.breakpoints.some(point=>point.line===4&&point.state==='set'),'edited breakpoint set');
+      await until(()=>leaf.containerEl.querySelector('.abele-breakpoint-mark_set'),'applied breakpoint visible after restart');
+      if(service.pendingBreakpoints(${JSON.stringify(folder)},'src/edited.cjs').includes(4))throw Error('Applied breakpoint remains locally pending');
       await binding.controller.command('continue');
       await until(()=>binding.controller.session.status==='paused'&&binding.controller.session.frames.some(frame=>frame.file==='src/edited.cjs'&&frame.line===4),'edited breakpoint hit');
       service.reveal(binding,'src/edited.cjs',4);
@@ -838,10 +840,15 @@ it.each(['desktop', 'phone'])(
           await shot('admission-${device}-update-node');
           return {supported:false,margin:false,refusal:'update node'};
         }
-        await until(()=>later.containerEl.querySelector('.abele-debug-source__point'),'later source margin');
+        await until(()=>api.DebuggerService.instance.debugFor(${JSON.stringify(folder)},'src/later.cjs')&&later.containerEl.querySelector('.abele-debug-source__point'),'later source admitted with margin');
         await shot('admission-${device}-later-source');
         const refused=await open('src/unmapped.ts');
-        await until(()=>refused.containerEl.textContent.includes('Build with source maps'),'unmapped TypeScript explanation');
+        await until(()=>refused.containerEl.querySelector('.abele-node-main_file > .setting-item-description[role="status"]')?.textContent.includes('Breakpoints stay pending'),'unmapped TypeScript explanation');
+        if(api.DebuggerService.instance.debugFor(${JSON.stringify(folder)},'src/unmapped.ts'))throw Error('Unmapped source was admitted');
+        const revision=binding.controller.snapshot.breakpoint_revision;
+        press(await until(()=>marginAt(1,refused.containerEl),'unmapped pending gutter'));
+        await until(()=>refused.containerEl.querySelector('.abele-breakpoint-mark_pending')&&api.DebuggerService.instance.pendingBreakpoints(${JSON.stringify(folder)},'src/unmapped.ts').includes(1),'unmapped pending breakpoint');
+        if(binding.controller.snapshot.breakpoint_revision!==revision)throw Error('Unmapped source changed live breakpoints');
         await shot('admission-${device}-unmapped-source');
         return {supported:true,margin:!!later.containerEl.querySelector('.abele-debug-source__point'),refusal:refused.containerEl.textContent};
       } finally {
@@ -852,7 +859,7 @@ it.each(['desktop', 'phone'])(
     })()`)
       if (result.supported) {
         expect(result.margin).toBe(true)
-        expect(result.refusal).toContain('Build with source maps')
+        expect(result.refusal).toContain('Breakpoints stay pending')
       } else {
         expect(result.refusal).toBe('update node')
         console.log(
