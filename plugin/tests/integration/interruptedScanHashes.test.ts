@@ -37,6 +37,29 @@ it('trusts a settled unchanged host stat without disk identity or stat calls', a
   }
 })
 
+it('accepts an unseen same-size and same-time replacement under the trusted host index', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000, ctime: 1000 }])
+  withDesktopFs(app)
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+  try {
+    const fs = new ObsidianFileSystem(app as never)
+    const before = await fs.fingerprint('sample.bin')
+    await app.vault.adapter.writeBinary('sample.bin', new TextEncoder().encode('edited').buffer, {
+      mtime: 1000,
+      ctime: 1000,
+    })
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const identity = vi.spyOn(fs, 'fileIdentity')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    expect((await fs.fingerprint('sample.bin')).sha).toBe(before.sha)
+    expect(stat).not.toHaveBeenCalled()
+    expect(identity).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
+  } finally {
+    host.close()
+  }
+})
+
 it.each(['size', 'mtime', 'ctime', 'hidden'] as const)(
   'uses disk verification when the host stat differs or the path is %s',
   async (change) => {

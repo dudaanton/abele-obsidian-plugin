@@ -1950,8 +1950,23 @@ export class ObsidianFileSystem implements FileSystem {
       await this.waitForStartupIndex()
       if (this.inventoryDepth === 0) this.indexFallback = false
     }
-    for await (const directory of this.listDirectoriesUnlocked())
-      if (this.inventoryVisible(directory.path)) yield directory
+    for (;;) {
+      const directories: { path: string; identity: string; mtime: number }[] = []
+      try {
+        for await (const directory of this.listDirectoriesUnlocked())
+          if (this.inventoryVisible(directory.path)) directories.push(directory)
+        if (this.prepareStartupInventory && this.indexReady() === false)
+          throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
+      } catch (error) {
+        if (!(error instanceof ScanInterrupted) || !this.prepareStartupInventory) throw error
+        await this.waitForStartupIndex()
+        this.indexFallback = false
+        this.directories.invalidateInventory()
+        continue
+      }
+      yield* directories
+      return
+    }
   }
   private async *listDirectoriesUnlocked() {
     this.runtimeFence?.assertReady()

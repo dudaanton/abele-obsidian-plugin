@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import ConnectionWindow from '@/components/sync/ConnectionWindow.vue'
+import SyncSettings from '@/components/settings/SyncSettings.vue'
+import { Platform } from 'obsidian'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { historyConnection } from '@/sync/tokenHistory'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
@@ -10,6 +12,41 @@ import { compileString } from 'sass-embedded'
 import { shareSetSource, type ConnectionItem } from '@/sync/shareSets'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
 import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
+
+it.each([
+  ['desktop', false, 1024],
+  ['phone', true, 390],
+] as const)('shows the index wait in the %s connection row and window', async (_, phone, width) => {
+  const platform = Platform as { isPhone: boolean }
+  const previous = platform.isPhone
+  platform.isPhone = phone
+  const ui = tokenUiFixture()
+  const id = ui.rows.value[0].id
+  ui.rows.value = ui.rows.value.map((row) => ({ ...row, status: 'idle' }))
+  ui.publish(id, { indexWaiting: true })
+  const row = mount(SyncSettings, {
+    props: { model: ui },
+    global: { stubs: { ConnectionWindow: true, TokenDialogs: true, ShareDialog: true } },
+  })
+  const window = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    document.body.style.width = `${width}px`
+    expect(row.get('.abele-sync-row__line').text()).toBe('Waiting for Obsidian')
+    expect(window.get('.abele-sync-window__line[role=status]').text()).toBe('Waiting for Obsidian')
+    ui.publish(id, { indexWaiting: false })
+    await flushPromises()
+    expect(row.get('.abele-sync-row__line').text()).not.toBe('Waiting for Obsidian')
+    expect(window.get('.abele-sync-window__line').text()).not.toBe('Waiting for Obsidian')
+  } finally {
+    window.unmount()
+    row.unmount()
+    platform.isPhone = previous
+    document.body.style.width = ''
+  }
+})
 
 it('prints comparison progress once with locale-grouped counters', () => {
   const ui = tokenUiFixture(),
