@@ -145,6 +145,32 @@ function fixture(supported = true, refused: { path: string; code: string }[] = [
   service.trackFolder(owner, 'sample-session', target)
   return { service, binding, request }
 }
+it('attaches a source to a chat debug session without a file tab or folder panel', async () => {
+  const { service, binding: folder, request } = fixture()
+  const binding = service.binding({
+    reference: { registrationId: 'sample-node', sessionId: 'sample-chat' },
+    connection: folder.connection,
+  } as never)
+  binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+  expect(service.sourceFor(binding, 'lib/helper.ts')).toBeUndefined()
+  expect((await service.admitSessionFile(binding, 'lib/helper.ts')).message).toBe('')
+  expect(service.sourceFor(binding, 'lib/helper.ts')).toBe('sample-added')
+  expect(request).toHaveBeenCalledWith(
+    'debugger.v1.addSources',
+    expect.objectContaining({
+      debug_session_id: 'sample-debug',
+      sources: ['lib/helper.ts'],
+    })
+  )
+})
+it.each(['../outside.ts', '/outside.ts', '.git/sample.ts'])(
+  'refuses an unsafe source before admission: %s',
+  async (path) => {
+    const { service, binding, request } = fixture()
+    expect((await service.admitSessionFile(binding, path)).message).toMatch(/outside/i)
+    expect(request).not.toHaveBeenCalled()
+  }
+)
 it('admits a later-opened file once and retains it for restart', async () => {
   const { service, binding, request } = fixture()
   expect((await service.admitFile(target, 'lib/helper.ts')).message).toBe('')

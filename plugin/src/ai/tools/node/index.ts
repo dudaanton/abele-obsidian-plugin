@@ -228,6 +228,7 @@ export function createNodeTools(
     worktrees: 'list_node_worktrees',
     read: 'node_read',
     file: 'node_read',
+    open: 'node_read',
     tree: 'node_ls',
     search: 'node_search',
     grep: 'node_search',
@@ -279,7 +280,7 @@ export function createNodeTools(
         ? `${shared.description} A chat without node access reads a repository tab open in Obsidian instead (node_views lists them).`
         : kind === 'propose_edit'
           ? 'Propose an edit to one current working file. Requires a separate per-edit owner approval and an existing chat repository read grant. Supply exact path, expected_content_id from node_file, and complete proposed text. Retains a device-local draft only; the owner must explicitly Save in the repository tab. Historical versions, Git actions and automatic uncertain retries are not supported.'
-          : `With chat node scope, supply opaque node/project/workspace IDs (or omit them for the selected target), target_kind (worktree or workspace), and path for file text. node_read returns file bytes and content identity; node_search accepts literal/regex/filename modes. Without node scope, this is legacy read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
+          : `With chat node scope, supply opaque node/project/workspace IDs (or omit them for the selected target), target_kind (worktree or workspace), and path for file text. node_open loads the source in memory without an open tab. node_read returns file bytes and content identity; node_search accepts literal/regex/filename modes. Without node scope, this is legacy read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
       parameters: {
         type: 'object',
         properties: {

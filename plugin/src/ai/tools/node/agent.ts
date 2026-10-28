@@ -309,6 +309,47 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         return entry.text ? page(entry) : entry.next!()
       }
       const host = await factory()
+      // Resolve display labels only when unambiguous; permission still uses the stable ID.
+      const entries = nodeScopeEntries(session)
+      const requestedNode = text(params, 'node').trim()
+      const nodes = [...new Set(entries.map((entry) => entry.node_id))]
+      const selectedTarget = session.overrides.value.nodeTarget
+      if (!requestedNode && selectedTarget) params.node = selectedTarget.node_id
+      else if (!requestedNode && nodes.length === 1) params.node = nodes[0]
+      else if (requestedNode) {
+        const matches = host
+          .nodes()
+          .filter((node) => [node.id, node.node_id, node.label].includes(requestedNode))
+        const ids = [
+          ...new Set(matches.map((node) => host.nodeId?.(node.id) ?? node.node_id ?? node.id)),
+        ]
+        params.node = ids.length === 1 ? ids[0] : (host.nodeId?.(requestedNode) ?? requestedNode)
+      }
+      const candidates = entries.filter((entry) => entry.node_id === params.node)
+      const projects = [
+        ...new Set(
+          candidates.flatMap((entry) => (entry.kind === 'node' ? [] : [entry.project_id]))
+        ),
+      ]
+      if (!params.project && selectedTarget && selectedTarget.node_id === params.node)
+        params.project = selectedTarget.project_id
+      else if (!params.project && projects.length === 1) params.project = projects[0]
+      if (!params.workspace) {
+        const selected = session.overrides.value.nodeTarget
+        const targets = candidates.filter(
+          (entry) => entry.kind === 'target' && entry.project_id === params.project
+        )
+        const target =
+          selected && selected.node_id === params.node && selected.project_id === params.project
+            ? selected.target
+            : targets.length === 1 && targets[0].kind === 'target'
+              ? targets[0].target
+              : undefined
+        if (target) {
+          params.workspace = nodeTargetId(target)
+          params.target_kind = target.kind
+        }
+      }
       let childReadGuard: (() => Promise<void>) | undefined
       const checks: (() => void)[] = []
       const guard = () => {
@@ -568,6 +609,14 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         }
         throw new Error('Worktree catalogue exceeds bounded listing limit')
       }
+      if (!params.workspace) {
+        if (!entries.length)
+          throw new NodeAccessRefusalError(NO_NODE_ACCESS, {
+            kind: 'no-access',
+            node_id: text(params, 'node'),
+          })
+        throw new Error(`Choose a worktree or folder. ${CHOOSE_TARGET}`)
+      }
       const target = targetOf(session, params)
       target.node_id = host.nodeId?.(target.node_id) ?? target.node_id
       const managerOperation = () => {
@@ -799,7 +848,21 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         console.debug('[Abele node tools] Worktree removal receipt', operation, result.state)
         return answer(managerReceipt(result))
       }
-      const path = pathSchema.parse(text(params, 'path'))
+      let requestedPath = text(params, 'path')
+      if (requestedPath.startsWith('/')) {
+        const root = git
+          ? (
+              await safe(() => repo.worktrees({ project_id: target.project_id, limit: 256 }))
+            ).entries.find((entry) => entry.worktree_id === id)?.path_label
+          : (await safe(() => client.getWorkspace(id))).path
+        const prefix = root?.replace(/\/+$/, '') + '/'
+        if (!root || !requestedPath.startsWith(prefix))
+          throw new Error(
+            'Path is outside the selected node folder; use node_folders to choose a granted target'
+          )
+        requestedPath = requestedPath.slice(prefix.length)
+      }
+      const path = pathSchema.parse(requestedPath.replace(/^\.\//, ''))
       const revision = async (): Promise<RepositoryRevision> =>
         text(params, 'ref')
           ? safe(() => repo.resolve({ worktree_id: id, ref: text(params, 'ref') }))

@@ -19,7 +19,7 @@ export interface TraceToolContext {
   workspaceId?: string
   /** The newest run first. */
   runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
-  addPoint(file: string, line: number, edit: PointEdit): Promise<void>
+  addPoint(file: string, line: number, edit: PointEdit, guard?: () => void): Promise<void>
   writeNote(runId: string): Promise<string>
 }
 
@@ -75,7 +75,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     const c = resolve()
     if (!c)
       throw new Error(
-        'No debugger session that records runs is open. Ask the person to open Debug from a node chat.'
+        'No debugger session that records runs is open. Use the node debugger tools to start or attach to a program, then retry.'
       )
     return c
   }
@@ -108,7 +108,18 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         undefined,
         ctx?.interactive === true && ctx?.approved === true
       )
-      const result = await run(c, params)
+      _signal?.throwIfAborted()
+      const result = await run(
+        {
+          ...c,
+          addPoint: (file, line, edit) =>
+            c.addPoint(file, line, edit, () => {
+              _signal?.throwIfAborted()
+              guard()
+            }),
+        },
+        params
+      )
       guard()
       return text(result)
     },
@@ -339,7 +350,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     tool(
       'trace_point_add',
       'Add record point',
-      'Set a record point in the open debug session: on a line of a source file open from the node, take the named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. The session records a run from then on, whether the person started its program or attached to it. Optional when (condition) and note (why the point is there).',
+      'Set a record point in the selected debug session. A source inside its granted node folder is attached automatically; no open file tab is required. Take named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. Optional when (condition) and note (why the point is there).',
       {
         file: { type: 'string', description: 'The source path as the debugger shows it.' },
         line: { type: 'number' },

@@ -213,10 +213,15 @@ describe('the agent reading a recorded run', () => {
       take: ['sample'],
       note: 'Sample read',
     })
-    expect(s.context.addPoint).toHaveBeenCalledWith('src/sample.ts', 4, {
-      take: ['sample'],
-      note: 'Sample read',
-    })
+    expect(s.context.addPoint).toHaveBeenCalledWith(
+      'src/sample.ts',
+      4,
+      {
+        take: ['sample'],
+        note: 'Sample read',
+      },
+      expect.any(Function)
+    )
     expect(await s.call('trace_point_add', { file: 'src/sample.ts', line: 5, take: [] })).toBe(
       'Record point set at src/sample.ts:5, taking nothing: name what to take for it to record values.'
     )

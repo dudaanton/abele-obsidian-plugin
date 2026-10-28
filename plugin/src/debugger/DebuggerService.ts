@@ -467,14 +467,35 @@ export class DebuggerService {
     }
     return undefined
   }
-  async admitFile(target: PathTarget, path: string, recheck = false): Promise<SourceAdmission> {
-    const binding = this.folderBinding(target)
+  async admitSessionFile(binding: DebuggerBinding, path: string): Promise<SourceAdmission> {
+    const snapshot = binding.controller.snapshot
+    const target =
+      this.folder(binding) ??
+      (snapshot && {
+        registrationId: binding.registrationId,
+        nodeId: snapshot.target.node_id,
+        projectId: snapshot.target.project_id,
+        kind: snapshot.target.worktree_id ? ('worktree' as const) : ('workspace' as const),
+        id: snapshot.target.worktree_id ?? snapshot.target.workspace_id ?? '',
+      })
+    if (!target?.id) return { message: t('debug.sourceUnavailable') }
+    return this.admitFile(target, path, true, binding)
+  }
+  async admitFile(
+    target: PathTarget,
+    path: string,
+    recheck = false,
+    sessionBinding?: DebuggerBinding
+  ): Promise<SourceAdmission> {
+    const binding = sessionBinding ?? this.folderBinding(target)
     if (
       !binding ||
       !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) ||
       (!recheck && this.debugFor(target, path))
     )
       return { message: '' }
+    if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(path))
+      return { message: t('debug.sourceOutside') }
     if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
     const sessionId = binding.sessionId
     const incarnation = binding.controller.snapshot?.incarnation
@@ -492,7 +513,7 @@ export class DebuggerService {
     const pending = this.admissions.get(key)
     if (pending !== undefined) return pending
     const current = () =>
-      this.folderBinding(target) === binding &&
+      (sessionBinding ? binding.controller.current : this.folderBinding(target) === binding) &&
       binding.connection.authorizationGeneration === generation &&
       binding.connection.client === client &&
       binding.sessionId === sessionId &&

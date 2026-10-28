@@ -9,6 +9,16 @@ export function activeTraceContext(): TraceToolContext | undefined {
   const trace = binding?.trace
   const projectId = trace?.projectId
   if (!binding || !trace || !projectId) return undefined
+  const sessionId = binding.sessionId
+  const incarnation = binding.controller.snapshot?.incarnation
+  const current = () => {
+    if (
+      binding.trace !== trace ||
+      binding.sessionId !== sessionId ||
+      binding.controller.snapshot?.incarnation !== incarnation
+    )
+      throw new Error('Debug session changed; retry trace_point_add')
+  }
   return {
     rpc: trace.rpc,
     projectId,
@@ -22,12 +32,23 @@ export function activeTraceContext(): TraceToolContext | undefined {
         steps: r.steps,
         state: r.state,
       })),
-    addPoint: async (file, line, edit) => {
-      const source = service.sourceFor(binding, file)
+    addPoint: async (file, line, edit, guard = () => {}) => {
+      guard()
+      current()
+      let source = service.sourceFor(binding, file)
+      if (!source) {
+        const admission = await service.admitSessionFile(binding, file)
+        guard()
+        current()
+        source = service.sourceFor(binding, file)
+        if (!source && admission.message) throw new Error(admission.message)
+      }
       if (!source)
         throw new Error(
-          `${file} is not open from the node in this debug session; ask the person to open it first.`
+          `Cannot attach ${file} to this debug session. Use a source path inside the session's node folder and retry trace_point_add.`
         )
+      guard()
+      current()
       await trace.savePoint(source, line, edit)
     },
     writeNote: (runId) =>
