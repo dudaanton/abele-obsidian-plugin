@@ -76,6 +76,11 @@ async function measure() {
   vi.stubGlobal('IDBKeyRange', IDBKeyRange)
   let ordinaryBytes = 0,
     polledBytes = 0
+  const paths = Array.from(
+    { length: 33000 },
+    (_, i) => `Sample/Section ${i % 40}/Nested/sample-${i}.md`
+  )
+  paths[16000] = '.obsidian/sample.json'
   const ordinaryPaths = new Set<string>()
   const polledPath = join(root, '.obsidian/sample.json')
   const diskWait = waitEnvelope(),
@@ -138,7 +143,9 @@ async function measure() {
     }
     throw new Error('Unexpected request: ' + path + ' ' + String(init?.body).slice(0, 1000))
   }
-  const app = nativeVault(root, counted.port)
+  const app = nativeVault(root, counted.port, paths)
+  let indexClean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => indexClean })
   const factory = new IDBFactory()
   const transactions = countTransactions(factory, idbWait.begin)
   const storage = await HostSyncStorage.open(factory, 'sample-vault', app)
@@ -192,16 +199,12 @@ async function measure() {
     10000
   )
   let host: TokenEngines | undefined
+  let indexTimer: ReturnType<typeof setTimeout> | undefined
   try {
     // Exercise the parsed ignore policy on every nested file without excluding the
     // synced corpus. A missing rule makes the native fixture understate live path work.
     const ignoreText = '**/sample-absent-*.tmp\nSample/Section 39/Absent/**\n'
-    const paths = Array.from(
-      { length: 33000 },
-      (_, i) => `Sample/Section ${i % 40}/Nested/sample-${i}.md`
-    )
     // Include a genuinely polled configuration path in the same ledger.
-    paths[16000] = '.obsidian/sample.json'
     for (const path of paths)
       if (path !== '.obsidian/sample.json') ordinaryPaths.add(join(root, path))
     for (const folder of new Set(paths.map(dirname)))
@@ -217,6 +220,13 @@ async function measure() {
     await state.transaction(async (tx) => {
       for (const path of paths) {
         const stat = await disk.stat(join(root, path))
+        const indexed = app.vault.getFileByPath(path)
+        if (indexed)
+          indexed.stat = {
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            ctime: stat.birthtimeMs,
+          }
         await tx.put({
           path,
           wirePath: path,
@@ -309,7 +319,13 @@ async function measure() {
         }
         return first(...times)
       }
+      indexClean = false
       host = open()
+      // The host has indexed the vault, but its metadata cache finishes shortly after layout.
+      indexTimer = setTimeout(() => {
+        indexClean = true
+        app.emit('metadataCache', 'resolved')
+      }, 150)
       cycleReceipts = []
       const interrupted = generation === 0
       let entered: Promise<void> | undefined
@@ -361,6 +377,8 @@ async function measure() {
       })
       cycleReceipts = undefined
       await host.close()
+      clearTimeout(indexTimer)
+      indexTimer = undefined
     }
     console.log('native live restart', JSON.stringify(measurements))
     results.push(...measurements)
@@ -377,6 +395,7 @@ async function measure() {
     }
     expect(polledBytes).toBe(beforePolledRead + bytes.length)
   } finally {
+    clearTimeout(indexTimer)
     trace.mockRestore()
     ledger.mockRestore()
     classification.mockRestore()

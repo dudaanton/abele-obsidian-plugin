@@ -13,6 +13,37 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { selectiveFrom } from '@/sync/connection'
 
+it('waits for the host index to settle shortly after layout readiness', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+  })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const settled = setTimeout(() => {
+    clean = true
+    app.emit('metadataCache', 'resolved')
+  }, 150)
+  try {
+    expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toEqual(['sample.md'])
+    expect(diskWalk).not.toHaveBeenCalled()
+  } finally {
+    clearTimeout(settled)
+  }
+})
+
+it('falls back to the physical inventory when the host index stays dirty', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => false })
+  const fs = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+  })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toEqual(['sample.md'])
+  expect(diskWalk).toHaveBeenCalled()
+})
+
 it('reuses a settled disk listing within an inventory and retires it on a vault event', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
   app.metadataCache.isCacheClean = () => false

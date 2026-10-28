@@ -217,6 +217,8 @@ let inventoryIds = 0
 let watchEpochs = 0
 /** How long watcher coverage alone may stand in for a fresh look, as for a skipped scan. */
 const WATCH_PROOF_MS = 300_000
+const STARTUP_INDEX_WAIT_MS = 2_000
+const STARTUP_INDEX_POLL_MS = 50
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
 const normalizationPossible = (path: string) =>
@@ -463,6 +465,36 @@ export class ObsidianFileSystem implements FileSystem {
   private indexProbe = 0
   private indexFallback = false
   private layoutReady = false
+  private startupIndexWait?: Promise<void>
+
+  /** A dirty cache at layout-ready is often a short final indexing window. Wait once before
+   * the first startup inventory chooses its source; a timeout keeps physical discovery. */
+  private async waitForStartupIndex(): Promise<void> {
+    if (
+      !this.prepareStartupInventory ||
+      (this.app.workspace?.layoutReady ?? this.layoutReady) !== true
+    )
+      return
+    this.startupIndexWait ??= (async () => {
+      const cache = this.app.metadataCache as typeof this.app.metadataCache & {
+        initialized?: boolean
+        isCacheClean?: () => boolean
+      }
+      const ready = () => {
+        try {
+          return cache.initialized !== false && cache.isCacheClean?.() === true
+        } catch {
+          return false
+        }
+      }
+      const deadline = performance.now() + STARTUP_INDEX_WAIT_MS
+      while (performance.now() < deadline) {
+        if (ready()) return
+        await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
+      }
+    })()
+    await this.startupIndexWait
+  }
 
   private indexReady(): boolean {
     const cache = this.app.metadataCache as typeof this.app.metadataCache & {
@@ -546,6 +578,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private async inventoryPass<T>(work: () => Promise<T>): Promise<T> {
     if (this.inventoryDepth === 0) {
+      await this.waitForStartupIndex()
       this.indexFallback = false
       this.indexReady()
     }
@@ -2349,6 +2382,14 @@ export class ObsidianFileSystem implements FileSystem {
 
   async *list(): AsyncIterable<FileInfo> {
     const own = this.inventory === null && this.inventoryDepth === 0
+    if (
+      own &&
+      this.prepareStartupInventory &&
+      (this.app.workspace?.layoutReady ?? this.layoutReady) === true
+    ) {
+      await this.waitForStartupIndex()
+      this.indexFallback = false
+    }
     let inventory = own ? this.createInventory() : this.inventory
     if (own) this.inventory = inventory
     try {

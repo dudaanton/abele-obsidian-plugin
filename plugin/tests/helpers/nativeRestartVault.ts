@@ -4,8 +4,12 @@ import { IDBFactory } from 'fake-indexeddb'
 import { buildFakeVault, type FakeApp } from './fakeVault'
 
 /** The adapter of a desktop vault: every call reaches the real disk under `root`. */
-export function nativeVault(root: string, disk: typeof import('node:fs').promises): FakeApp {
-  const app = buildFakeVault([])
+export function nativeVault(
+  root: string,
+  disk: typeof import('node:fs').promises,
+  indexedPaths: readonly string[] = []
+): FakeApp {
+  const app = buildFakeVault(indexedPaths.map((path) => ({ path, content: 'x' })))
   const full = (path: string) => join(root, path)
   const missing = (error: unknown) => (error as { code?: string }).code === 'ENOENT'
   Object.assign(app.vault.adapter, {
