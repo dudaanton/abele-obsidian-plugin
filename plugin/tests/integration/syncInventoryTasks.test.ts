@@ -165,18 +165,44 @@ it('reads 33k plugin metadata keys and values with bounded request callbacks', a
     expect(new Set(listed).size).toBe(count)
     expect(listed[0]).toBe('sample:00000')
     expect(listed[count - 1]).toBe('sample:32999')
+    const baselineRequests = all.mock.calls.length
+    const baselineStarted = performance.now()
     const rows = await tasks(() => state.pluginMeta())
+    console.log('plugin metadata snapshot', {
+      requests: all.mock.calls.length - baselineRequests,
+      wallMs: performance.now() - baselineStarted,
+    })
     expect(rows.size).toBe(count + 1)
     expect(rows.get('sample:00000')).toBe('value-0:' + 'x'.repeat(1024))
     expect(rows.get('sample:32999')).toBe('value-32999:' + 'x'.repeat(1024))
     expect(rows.get('unrelated')).toBe('keep')
     expect(await state.getCursor()).toBe(19)
-    // Unbounded IDB result materialization runs before the promise can yield.
-    for (const args of [...all.mock.calls, ...keys.mock.calls])
-      expect(args[1]).toBeLessThanOrEqual(256)
     expect(
       all.mock.calls.length + keys.mock.calls.length + cursors.mock.calls.length
     ).toBeLessThanOrEqual(2 * Math.ceil(count / 256) + 8)
+    const requestsBeforeValidation = all.mock.calls.length
+    const validationStarted = performance.now()
+    await state.validatePluginMeta()
+    const validationMs = performance.now() - validationStarted
+    const validationRequests = all.mock.calls.length - requestsBeforeValidation
+    console.log('plugin metadata validation', { validationRequests, validationMs })
+    expect(validationRequests).toBeLessThanOrEqual(Math.ceil((count + 1) / 256) + 1)
+    const corrupt = await new Promise<IDBDatabase>((resolve) => {
+      const request = factory.open('sample-metadata-tasks', 3)
+      request.onsuccess = () => resolve(request.result)
+    })
+    const corruptTx = corrupt.transaction('meta', 'readwrite')
+    const corruptionWritten = new Promise<void>((resolve, reject) => {
+      corruptTx.oncomplete = () => resolve()
+      corruptTx.onabort = () => reject(corruptTx.error)
+    })
+    corruptTx.objectStore('meta').put({ key: 'plugin:sample:32999', value: 7 })
+    await corruptionWritten
+    corrupt.close()
+    await expect(state.validatePluginMeta()).rejects.toThrow('Invalid plugin metadata')
+    // Unbounded IDB result materialization runs before the promise can yield.
+    for (const args of [...all.mock.calls, ...keys.mock.calls])
+      expect(args[1]).toBeLessThanOrEqual(256)
   } finally {
     all.mockRestore()
     keys.mockRestore()

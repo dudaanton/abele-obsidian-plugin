@@ -71,7 +71,8 @@ export function nativeVault(
 /** The native promise port, counting each call by name. */
 export function countedDisk(
   observeRead?: (path: string, bytes: number) => void,
-  observeWait?: () => () => void
+  observeWait?: () => () => void,
+  observeCall?: (method: string, path: string) => void
 ) {
   const calls = new Map<string, number>()
   const port = new Proxy(nodeDisk, {
@@ -80,6 +81,7 @@ export function countedDisk(
       if (typeof value !== 'function' || typeof key !== 'string') return value
       return (...args: unknown[]) => {
         calls.set(key, (calls.get(key) ?? 0) + 1)
+        observeCall?.(key, String(args[0]))
         const finish = observeWait?.()
         const pending = Reflect.apply(value, target, args)
         const result = finish ? Promise.resolve(pending).finally(finish) : pending

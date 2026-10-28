@@ -561,6 +561,20 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     )
   }
 
+  /** Validate recovery metadata without retaining a second copy of every value. */
+  async validatePluginMeta(): Promise<void> {
+    this.assertRecovery()
+    await this.readMetadata(
+      '',
+      false,
+      (): void => {},
+      (_result, _key, value) => {
+        if (typeof value !== 'string') throw new EngineError('io', 'Invalid plugin metadata')
+      },
+      256
+    )
+  }
+
   /**
    * Plugin metadata keys under `prefix`, as `getMeta` spells them, the open transaction's writes
    * included. The core retires every durable download intent after a server restore through it.
@@ -601,7 +615,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     prefix: string,
     keysOnly: boolean,
     create: () => T,
-    visit: (result: T, key: string, value: unknown) => void
+    visit: (result: T, key: string, value: unknown) => void,
+    initialValuePageSize = 32
   ): Promise<T> {
     const scoped = own(prefix)
     return this.read(
@@ -615,7 +630,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           if (typeof IDBKeyRange !== 'undefined') {
             // Small value snapshots keep native result objects tiny. A sustained
             // inventory amortizes callbacks while keeping each result bounded.
-            let pageSize = keysOnly ? 256 : 32
+            let pageSize = keysOnly ? 256 : initialValuePageSize
             let loaded = 0
             let lower = scoped,
               exclusive = false

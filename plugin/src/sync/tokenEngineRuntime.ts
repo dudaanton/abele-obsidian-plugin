@@ -225,7 +225,7 @@ export class TokenEngineRuntime
         !this.options.localOnly?.(row.path) &&
         this.client.includes(row.path) &&
         !this.ignore?.ignores(this.placement?.toLocal(row.path) ?? row.path) &&
-        !isExcluded(row.path, 0, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
+        !this.selectiveExcluded(row.path, 0)
     )
     const local = this.placement?.localMetadata(included) ?? included
     this.notSyncedLocal = { source: rows, root, rows: local }
@@ -2115,6 +2115,7 @@ export class TokenEngineRuntime
     await this.engine.runExclusive(async () => {
       this.assertHeld()
       Object.assign(this.selective, structuredClone(selective))
+      this.selectiveExclusions.clear()
     })
     if (this.engine.status.state !== 'paused') await this.engine.rescan()
   }
@@ -2698,7 +2699,7 @@ export class TokenEngineRuntime
         (this.options.uploadAllowed && !this.options.uploadAllowed(path)) ||
         this.blocked(path) ||
         !this.client.includes(path) ||
-        isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts'),
+        this.selectiveExcluded(path, size),
     })
     this.assertHeld()
     const paths = await Promise.all(
@@ -3087,8 +3088,24 @@ export class TokenEngineRuntime
     return (
       (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
-      isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
+      this.selectiveExcluded(path, size)
     )
+  }
+  private readonly selectiveExclusions = new Map<string, Map<number, boolean>>()
+  private selectiveExcluded(path: string, size: number): boolean {
+    const known = this.selectiveExclusions.get(path)?.get(size)
+    if (known !== undefined) return known
+    const result = isExcluded(
+      path,
+      size,
+      this.selective,
+      this.options.paths?.scriptsFolder ?? 'Scripts'
+    )
+    if (this.selectiveExclusions.size >= 131_072) this.selectiveExclusions.clear()
+    let sizes = this.selectiveExclusions.get(path)
+    if (!sizes) this.selectiveExclusions.set(path, (sizes = new Map()))
+    sizes.set(size, result)
+    return result
   }
   async pathFor(fileId: string): Promise<string | null> {
     const path = (await this.options.state.byFileId(fileId))?.path

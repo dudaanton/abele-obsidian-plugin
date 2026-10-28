@@ -9,6 +9,7 @@ import {
   sha256,
   scan,
   type FileSystem,
+  type SelectiveSettings,
 } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
@@ -49,6 +50,38 @@ it('marks construction, reconciliation and first idle from the running engine', 
     expect(marks).toContain('idle')
     expect(marks.indexOf('engine-construct')).toBeLessThan(marks.indexOf('reconcile-start'))
     expect(marks.indexOf('reconcile-start')).toBeLessThan(marks.indexOf('idle'))
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('reuses unchanged selective exclusions across a 33k-file reconciliation', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const one = runtime(wire, new MemoryFileSystem())
+  const internals = one.runtime as unknown as {
+    selective: SelectiveSettings
+    localExcluded(path: string, size: number): boolean
+  }
+  let evaluations = 0
+  internals.selective.excludedFolders = new Proxy(['Other'], {
+    get(target, key, receiver) {
+      if (key === Symbol.iterator)
+        return () => {
+          evaluations++
+          return target[Symbol.iterator]()
+        }
+      return Reflect.get(target, key, receiver)
+    },
+  })
+  try {
+    for (let pass = 0; pass < 2; pass++)
+      for (let i = 0; i < 33_000; i++)
+        expect(internals.localExcluded(`Notes/sample-${i}.md`, 1)).toBe(false)
+    expect(evaluations).toBe(33_000)
+    expect(internals.localExcluded('Notes/sample-0.md', 2)).toBe(false)
+    expect(evaluations).toBe(33_001)
+    await one.runtime.updateSelective({ ...internals.selective, excludedFolders: ['Notes'] })
+    expect(internals.localExcluded('Notes/sample-0.md', 1)).toBe(true)
   } finally {
     await one.runtime.close()
   }

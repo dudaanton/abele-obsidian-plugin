@@ -34,6 +34,10 @@ function configurationRoots(path: string, options: ExecutablePaths = {}): string
   return [...new Set([...(main ? [first] : []), ...(options.configRoots ?? [])])]
 }
 const within = (path: string, root: string) => path === root || path.startsWith(root + '/')
+const configurationDecisions = new WeakMap<
+  ExecutablePaths,
+  { roots: string; paths: Map<string, boolean> }
+>()
 function executablePluginId(path: string, roots: string[]): string | null {
   for (const root of roots) {
     const prefix = root.replace(/\/+$/, '') + '/plugins/'
@@ -45,9 +49,20 @@ function executablePluginId(path: string, roots: string[]): string | null {
   return null
 }
 export function configurationPath(path: string, options: ExecutablePaths = {}): boolean {
-  return configurationRoots(path, options).some((root) =>
+  const roots = JSON.stringify(options.configRoots ?? [])
+  let cached = configurationDecisions.get(options)
+  if (!cached || cached.roots !== roots) {
+    cached = { roots, paths: new Map() }
+    configurationDecisions.set(options, cached)
+  }
+  const known = cached.paths.get(path)
+  if (known !== undefined) return known
+  const result = configurationRoots(path, options).some((root) =>
     within(caseKey(path), caseKey(root.replace(/\/+$/, '')))
   )
+  if (cached.paths.size >= 131_072) cached.paths.clear()
+  cached.paths.set(path, result)
+  return result
 }
 /** Includes this plugin's code, both move endpoints, and directories containing executable code. */
 export function executablePath(

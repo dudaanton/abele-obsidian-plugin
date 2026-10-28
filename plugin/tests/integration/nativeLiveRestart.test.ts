@@ -58,6 +58,7 @@ type Measurement = {
   beforeRequest: number
   inspectionReads: number
   inspectionReadsBeforeRequest: number
+  indexedFileProbes: number
   walks: { phase: string; caller: string; rows: number }[]
   interrupted: boolean
   timeline: SyncStartupMark[]
@@ -86,10 +87,19 @@ async function measure() {
   const polledPath = join(root, '.obsidian/sample.json')
   const diskWait = waitEnvelope(),
     idbWait = waitEnvelope()
-  const counted = countedDisk((path, bytes) => {
-    if (ordinaryPaths.has(path)) ordinaryBytes += bytes
-    if (path === polledPath) polledBytes += bytes
-  }, diskWait.begin)
+  let indexedFileProbes = 0
+  const counted = countedDisk(
+    (path, bytes) => {
+      if (ordinaryPaths.has(path)) ordinaryBytes += bytes
+      if (path === polledPath) polledBytes += bytes
+    },
+    diskWait.begin,
+    (method, path) => {
+      if (ordinaryPaths.has(path) && ['lstat', 'open', 'readFile'].includes(method)) {
+        indexedFileProbes++
+      }
+    }
+  )
   desktopFsPort(counted.port)
   const requests: number[] = []
   let suspendConnection: (() => void) | undefined
@@ -300,6 +310,7 @@ async function measure() {
       timeline.mark('onload')
       timeline.mark('layout-ready')
       ordinaryBytes = polledBytes = 0
+      indexedFileProbes = 0
       counted.calls.clear()
       transactions.readonly = transactions.readwrite = 0
       const started = performance.now()
@@ -366,6 +377,7 @@ async function measure() {
         beforeRequest,
         inspectionReads: inspectionReads.mock.calls.length,
         inspectionReadsBeforeRequest,
+        indexedFileProbes,
         interrupted,
         timeline: marks,
         firstRequestMs: requests[0] - started,
@@ -426,7 +438,11 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
     expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)
     expect(result.ordinaryBytes).toBe(0)
     expect(result.polledBytes).toBe(0)
-    expect(result.native.lstat ?? 0).toBeLessThan(1000)
+    // The 33k unchanged indexed rows are trusted. Native probes are limited to
+    // directories, hidden configuration and recovery artifacts.
+    expect(result.native.lstat ?? 0).toBeLessThan(500)
+    expect(result.native.open ?? 0).toBeLessThan(10)
+    expect(result.inspectionReads).toBeLessThanOrEqual(1)
     const order = result.timeline.map((mark) => mark.phase)
     const before = (a: string, b: string) => {
       expect(order.indexOf(a), `${a} present`).toBeGreaterThanOrEqual(0)
@@ -456,6 +472,15 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
       )
   }
 }, 240000)
+
+it.fails(
+  'BUG: unchanged indexed files need no native probes during a restart cycle',
+  async () => {
+    await ensureMeasured()
+    for (const result of results) expect(result.indexedFileProbes).toBe(0)
+  },
+  240000
+)
 
 it('settles a 33000-file host restart and inspection within ten seconds with one verification per path', async () => {
   await ensureMeasured()

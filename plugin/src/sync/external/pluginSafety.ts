@@ -828,7 +828,7 @@ export async function recoverExternalState(
       publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
   )
     throw new ExternalRecoveryRequired('publication journal is unreadable')
-  await stage('plugin-metadata', () => store.pluginMeta())
+  await stage('plugin-metadata', () => store.validatePluginMeta())
   fence.assertOwned()
   if (item?.phase === 'preparing') {
     item.phase = 'active'

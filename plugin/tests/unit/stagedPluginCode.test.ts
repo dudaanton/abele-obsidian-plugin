@@ -4,10 +4,15 @@ import { codePluginIds, configurationPath, pluginCodeNames } from '@/sync/staged
 import type { App } from 'obsidian'
 import type { EngineClient } from '@abele/sync-sdk/core'
 import { settingsCategory, sha256 } from '@abele/sync-sdk/core'
+import { caseKey } from '@abele/sync-sdk/protocol'
 
 vi.mock('@abele/sync-sdk/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@abele/sync-sdk/core')>()
   return { ...actual, settingsCategory: vi.fn(actual.settingsCategory) }
+})
+vi.mock('@abele/sync-sdk/protocol', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@abele/sync-sdk/protocol')>()
+  return { ...actual, caseKey: vi.fn(actual.caseKey) }
 })
 
 const change = (path: string, prev_path: string | null = null): ChangeItem =>
@@ -16,10 +21,21 @@ const change = (path: string, prev_path: string | null = null): ChangeItem =>
 describe('the separate plugin code lane', () => {
   it('classifies a shared top-level folder once across a large inventory', () => {
     const category = vi.mocked(settingsCategory)
+    const folded = vi.mocked(caseKey)
     category.mockClear()
+    folded.mockClear()
+    const options = { configRoots: ['.obsidian'] }
     for (let i = 0; i < 33_000; i++)
-      expect(configurationPath(`Notes/sample-${i}.md`, { configRoots: ['.obsidian'] })).toBe(false)
+      expect(configurationPath(`Notes/sample-${i}.md`, options)).toBe(false)
+    const firstPass = folded.mock.calls.length
+    for (let i = 0; i < 33_000; i++)
+      expect(configurationPath(`Notes/sample-${i}.md`, options)).toBe(false)
     expect(category).toHaveBeenCalledTimes(1)
+    expect(folded).toHaveBeenCalledTimes(firstPass)
+    options.configRoots.push('Notes')
+    expect(configurationPath('Notes/sample-0.md', options)).toBe(true)
+    options.configRoots.pop()
+    expect(configurationPath('Notes/sample-0.md', options)).toBe(false)
   })
   it.each(['main.js', 'manifest.json', 'styles.css', 'lib/helper.js'])(
     'reviews %s, including new folders',
