@@ -56,6 +56,7 @@ export class DebuggerBinding {
   private stopConnection: WatchStopHandle
   private disposed = false
   private refreshing?: Promise<void>
+  private reconnectTimer?: number
   private openingSessionId?: string
   private loadedEpoch?: number
   private stopExceptionText = false
@@ -96,6 +97,7 @@ export class DebuggerBinding {
         if (state !== 'connected') {
           this.stopWatch()
           this.controller.invalidate()
+          this.scheduleReconnect()
         } else if (
           !this.disposed &&
           !this.controller.disconnectRequested &&
@@ -138,6 +140,8 @@ export class DebuggerBinding {
       const result = await this.connection.client.debugger.status(sessionId)
       console.debug('[debugger] Snapshot read', sessionId, result.snapshot.lifecycle)
       if (abort.signal.aborted || this.disposed) return
+      // Publish the status before optional capability/recording reads can stall.
+      this.controller.observe(this.connection.client.debugger.current(sessionId))
       const recordsRuns = await this.recordsRuns()
       if (!this.trace && recordsRuns) {
         this.trace = new TraceSession(
@@ -155,12 +159,9 @@ export class DebuggerBinding {
       }
       if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
-      this.controller.session.unavailable = [
-        'connection-lost',
-        'terminated',
-        'detached',
-        'failed',
-      ].includes(result.snapshot.lifecycle)
+      this.controller.session.unavailable = ['terminated', 'detached', 'failed'].includes(
+        result.snapshot.lifecycle
+      )
       if (this.controller.session.unavailable) this.controller.session.status = 'exited'
       ++this.revision.value
       if (this.controller.current || this.controller.session.unavailable) this.controller.error = ''
@@ -189,6 +190,7 @@ export class DebuggerBinding {
       }
     } finally {
       if (this.abort === abort && !this.controller.current) this.abort = undefined
+      this.scheduleReconnect()
     }
   }
   /** Whether the node records runs. A node that cannot say is treated as one that does not: the
@@ -300,6 +302,7 @@ export class DebuggerBinding {
       if (result.reason === 'connection_lost' || !result.snapshot) {
         this.controller.disconnected()
         if (this.abort === abort) this.abort = undefined
+        this.scheduleReconnect()
         await this.lastRuns()
         return
       }
@@ -385,8 +388,43 @@ export class DebuggerBinding {
     this.fail(error)
     this.stopWatch()
     this.controller.disconnected()
+    this.scheduleReconnect()
+  }
+  private scheduleReconnect() {
+    if (
+      this.disposed ||
+      this.controller.disconnectRequested ||
+      this.controller.current ||
+      this.controller.session.unavailable ||
+      this.abort ||
+      !this.observationId ||
+      this.reconnectTimer
+    )
+      return
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = undefined
+      if (this.disposed || this.controller.disconnectRequested) return
+      const id = this.observationId
+      if (!id) return
+      console.debug('[debugger] Retrying observation', id)
+      void (async () => {
+        await this.connection.connect()
+        if (
+          !this.disposed &&
+          !this.controller.disconnectRequested &&
+          !this.abort &&
+          !this.controller.current
+        )
+          await this.open(id)
+      })().catch((error) => {
+        this.fail(error)
+        this.scheduleReconnect()
+      })
+    }, 2000)
   }
   private stopWatch() {
+    window.clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
     ++this.grantGeneration
     this.abort?.abort()
     this.abort = undefined

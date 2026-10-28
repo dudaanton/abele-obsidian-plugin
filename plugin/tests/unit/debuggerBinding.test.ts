@@ -261,3 +261,92 @@ it('does not let an abandoned cursor wait disable a newly opened fresh observati
     binding.destroy()
   }
 })
+
+it('retries a failed initial observation on a channel that stays connected', async () => {
+  vi.useFakeTimers()
+  let reads = 0
+  const rpc = vi.fn(async (method: string) => {
+    if (method === 'debugger.v1.status') {
+      if (++reads === 1) throw new Error('sample timeout')
+      return debuggerStatus()
+    }
+    if (method === 'debugger.v1.wait') return new Promise(() => {})
+    return { cancelled: true }
+  })
+  const binding = new DebuggerBinding(
+    {
+      state: ref('connected'),
+      connect: async () => {},
+      client: { request: rpc, debugger: new DebuggerClient(rpc) },
+    } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-node'
+  )
+  vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+  try {
+    await binding.open('sample-debug')
+    expect(binding.controller.current).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(reads).toBe(2)
+    expect(binding.controller.current).toBe(true)
+    expect(
+      rpc.mock.calls.every(([method]) =>
+        ['debugger.v1.status', 'debugger.v1.wait', 'debugger.v1.cancelWait'].includes(method)
+      )
+    ).toBe(true)
+  } finally {
+    binding.destroy()
+    vi.useRealTimers()
+  }
+})
+it('treats a connection-lost snapshot as unavailable observation rather than program exit', async () => {
+  const rpc = vi.fn(async () => debuggerStatus({ lifecycle: 'connection-lost' }))
+  const binding = new DebuggerBinding(
+    {
+      state: ref('connected'),
+      client: {
+        request: rpc,
+        debugger: new DebuggerClient(rpc),
+      },
+    } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-node'
+  )
+  vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+  try {
+    await binding.open('sample-debug')
+    expect(binding.controller.session.status).toBe('lost')
+    expect(binding.controller.session.unavailable).toBe(false)
+  } finally {
+    binding.destroy()
+  }
+})
+
+it.each(['destroy', 'disconnect'] as const)('cancels observation retries on %s', async (action) => {
+  vi.useFakeTimers()
+  const rpc = vi.fn(async (_method: string) => {
+    throw new Error('sample timeout')
+  })
+  const binding = new DebuggerBinding(
+    {
+      state: ref('connected'),
+      connect: async () => {},
+      client: { request: rpc, debugger: new DebuggerClient(rpc) },
+    } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-node'
+  )
+  try {
+    await binding.open('sample-debug')
+    if (action === 'destroy') binding.destroy()
+    else {
+      binding.controller.observe({ observation: 'current', snapshot: debuggerStatus().snapshot })
+      await binding.controller.command('stop').catch(() => {})
+    }
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(rpc.mock.calls.filter(([method]) => method === 'debugger.v1.status')).toHaveLength(1)
+  } finally {
+    binding.destroy()
+    vi.useRealTimers()
+  }
+})

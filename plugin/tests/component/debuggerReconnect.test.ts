@@ -143,6 +143,10 @@ it.each(['survived', 'request-failed', 'adapter-ended', 'missing'] as const)(
       if (outcome === 'survived' || outcome === 'request-failed') {
         expect(binding.controller.current).toBe(true)
         expect(view.find('.abele-debug-panel_paused').exists()).toBe(true)
+      } else if (outcome === 'adapter-ended') {
+        expect(binding.controller.session.status).toBe('lost')
+        expect(view.find('[aria-label="Try to reconnect"]').exists()).toBe(true)
+        expect(rerun).not.toHaveBeenCalled()
       } else {
         expect(view.text()).toContain('Debug session ended. Start a new run.')
         expect(view.find('[aria-label="Try to reconnect"]').exists()).toBe(false)
