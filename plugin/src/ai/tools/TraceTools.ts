@@ -1,7 +1,6 @@
 // Tools over a run the debugger recorded, for the agent to read it a little at a time. The run
 // lives on the node; every answer is one of its bounded views, at the agent's ceiling (80 lines,
 // 6 KB), which no parameter lifts. There is no tool that shows a run or a value whole.
-import { t } from '@/i18n'
 import { nodeProjectGuard } from './node/projectAccess'
 import type { AgentTool, AgentToolResult } from '../client'
 import type { TraceRpc, WireStep } from '@/debugger/trace/wire'
@@ -400,7 +399,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     ),
     tool(
       'trace_point_remove',
-      t('requests.trace.removePoint'),
+      'Remove record point',
       'Remove the record point and its breakpoint at the requested source line in the selected debug session. Requires the same edit access and approval as trace_point_add. Other points are kept.',
       { file: { type: 'string' }, line: { type: 'integer', minimum: 1 } },
       ['file', 'line'],

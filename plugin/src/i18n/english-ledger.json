@@ -28708,5 +28708,15 @@
       "es",
       "de"
     ]
+  },
+  "settings.metadata.tracePointRemove": {
+    "englishHash": "6fad213a4793b9ec32cf4554f44737a56a4961e607a1b25fa4b8e8085b8bef6d",
+    "context": "Built-in record point removal tool display label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

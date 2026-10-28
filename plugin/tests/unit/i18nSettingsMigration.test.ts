@@ -28,6 +28,25 @@ function files(dir: string): string[] {
 }
 
 describe('complete settings migration', () => {
+  it('keeps record point removal metadata stable and translates its settings label in every locale', () => {
+    try {
+      for (const [locale, label] of Object.entries({
+        en: 'Remove record point',
+        ru: 'Удалить точку записи',
+        lv: 'Dzēst ieraksta punktu',
+        es: 'Eliminar punto de registro',
+        de: 'Aufzeichnungspunkt entfernen',
+      })) {
+        initializeLocale(locale)
+        const tool = getToolRegistry().find((entry) => entry.name === 'trace_point_remove')!
+        expect(tool.label).toBe('Remove record point')
+        expect(settingsToolLabel(tool)).toBe(label)
+      }
+    } finally {
+      initializeLocale('en')
+    }
+  })
+
   it('retains literal property-template tokens and date formats in translated help', () => {
     const missing: string[] = []
     for (const [key, message] of Object.entries(catalogs.en)) {

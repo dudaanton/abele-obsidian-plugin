@@ -1,5 +1,5 @@
 export const en = {
-  'requests.trace.removePoint': 'Remove record point',
+  'settings.metadata.tracePointRemove': 'Remove record point',
   'requests.file.formUnsupported': 'This form field cannot be represented in a Bruno file',
   'requests.file.secretPending':
     'The environment save conflicted or its outcome is pending; refresh before retrying',

@@ -1,6 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
-  'requests.trace.removePoint': 'Удалить точку записи',
+  'settings.metadata.tracePointRemove': 'Удалить точку записи',
   'requests.file.formUnsupported': 'Это поле формы нельзя записать в файл Bruno',
   'requests.file.secretPending':
     'При сохранении окружения возник конфликт или результат ещё неизвестен; обновите перед повтором',
