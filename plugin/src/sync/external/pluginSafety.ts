@@ -675,8 +675,17 @@ export async function recoverExternalState(
   binding: ConnectionBinding,
   fence: RuntimeFence,
   factory?: IDBFactory,
-  inspection: ProjectionInspection = {}
+  inspection: ProjectionInspection = {},
+  mark?: (phase: `connection:Recovery ${string}:${'begin' | 'end'}`) => void
 ): Promise<void> {
+  const stage = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    mark?.(`connection:Recovery ${name}:begin`)
+    try {
+      return await work()
+    } finally {
+      mark?.(`connection:Recovery ${name}:end`)
+    }
+  }
   fence.assertOwned()
   if (inspection.inventory && !inspection.deferCache) {
     const cached = await inspectionCache(app).load()
@@ -694,7 +703,10 @@ export async function recoverExternalState(
       inspection.inventory(inventory)
     }
   }
-  if (factory) await recoverOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
+  if (factory)
+    await stage('private-artifacts', () =>
+      recoverOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
+    )
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
   if (
@@ -704,7 +716,7 @@ export async function recoverExternalState(
       !sameConnection(item.binding, binding))
   )
     throw new ExternalRecoveryRequired('activation binding changed')
-  let raw = await store.getExternalState()
+  let raw = await stage('external-state', () => store.getExternalState())
   fence.assertOwned()
   if (raw === null && item?.phase === 'preparing') {
     // This exact database instance never received active deletion permission. Complete only
@@ -714,9 +726,13 @@ export async function recoverExternalState(
   }
   if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
   const recoveryPaths = new Set<string>()
-  const ownedProjectionPaths = await retiredArtifactPaths(app, factory, () => fence.assertOwned())
+  const ownedProjectionPaths = await stage('retired-artifacts', () =>
+    retiredArtifactPaths(app, factory, () => fence.assertOwned())
+  )
   if (factory && item?.phase !== 'preparing')
-    for (const document of await activeExternalDocuments(app, factory)) {
+    for (const document of await stage('active-documents', () =>
+      activeExternalDocuments(app, factory)
+    )) {
       for (const file of document.files)
         if (file.projectionPath)
           ownedProjectionPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
@@ -798,9 +814,11 @@ export async function recoverExternalState(
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.
-  await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentEntries()
-  await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentRecovered()
-  const publication = await store.getJournal()
+  const publication = await stage('journals', async () => {
+    await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentEntries()
+    await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentRecovered()
+    return store.getJournal()
+  })
   if (
     publication !== null &&
     (!publication.batchId ||
@@ -810,7 +828,7 @@ export async function recoverExternalState(
       publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
   )
     throw new ExternalRecoveryRequired('publication journal is unreadable')
-  await store.pluginMeta()
+  await stage('plugin-metadata', () => store.pluginMeta())
   fence.assertOwned()
   if (item?.phase === 'preparing') {
     item.phase = 'active'

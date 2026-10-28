@@ -21,14 +21,17 @@ export interface ExecutablePaths {
   configRoots?: string[]
 }
 /** Ask the retained protocol classifier; host configuration roots are supplied separately. */
+const configurationFirst = new Map<string, boolean>()
 function configurationRoots(path: string, options: ExecutablePaths = {}): string[] {
-  const first = path.split('/')[0]
-  return [
-    ...new Set([
-      ...(settingsCategory(caseKey(first) + '/app.json') === 'main' ? [first] : []),
-      ...(options.configRoots ?? []),
-    ]),
-  ]
+  const slash = path.indexOf('/')
+  const first = slash < 0 ? path : path.slice(0, slash)
+  let main = configurationFirst.get(first)
+  if (main === undefined) {
+    main = settingsCategory(caseKey(first) + '/app.json') === 'main'
+    if (configurationFirst.size >= 2048) configurationFirst.clear()
+    configurationFirst.set(first, main)
+  }
+  return [...new Set([...(main ? [first] : []), ...(options.configRoots ?? [])])]
 }
 const within = (path: string, root: string) => path === root || path.startsWith(root + '/')
 function executablePluginId(path: string, roots: string[]): string | null {

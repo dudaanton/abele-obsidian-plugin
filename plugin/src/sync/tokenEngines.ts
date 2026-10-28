@@ -1006,7 +1006,8 @@ export class TokenEngines {
             binding,
             fence,
             factoryOf(this.deps),
-            scopedInspection
+            scopedInspection,
+            (phase) => this.deps.startupTimeline?.mark(phase)
           )
         },
         true

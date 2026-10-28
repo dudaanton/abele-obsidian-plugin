@@ -21,6 +21,7 @@ it('starts a fresh connection after private projection staging loses its ledger 
   await makeParents(s.app.vault.adapter, path)
   await s.app.vault.adapter.write(path, '{"format":"abele.external"}')
   const fence = new RuntimeFence(s.app, s.record.ledgerId, () => true)
+  const marks: string[] = []
   try {
     await expect(
       recoverExternalState(
@@ -30,9 +31,25 @@ it('starts a fresh connection after private projection staging loses its ledger 
         s.record.ledgerId,
         s.binding,
         fence,
-        s.factory
+        s.factory,
+        {},
+        (mark) => marks.push(mark)
       )
     ).resolves.toBeUndefined()
+    for (const stage of [
+      'private-artifacts',
+      'external-state',
+      'retired-artifacts',
+      'active-documents',
+      'journals',
+      'plugin-metadata',
+    ])
+      expect(marks).toEqual(
+        expect.arrayContaining([
+          `connection:Recovery ${stage}:begin`,
+          `connection:Recovery ${stage}:end`,
+        ])
+      )
     expect(await s.app.vault.adapter.exists(path)).toBe(false)
     expect(await s.app.vault.adapter.read(path.replace('/sync-staging/', '/sync-recovery/'))).toBe(
       '{"format":"abele.external"}'

@@ -1,14 +1,26 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChangeItem } from '@abele/sync-sdk/protocol'
-import { codePluginIds, pluginCodeNames } from '@/sync/stagedPluginCode'
+import { codePluginIds, configurationPath, pluginCodeNames } from '@/sync/stagedPluginCode'
 import type { App } from 'obsidian'
 import type { EngineClient } from '@abele/sync-sdk/core'
-import { sha256 } from '@abele/sync-sdk/core'
+import { settingsCategory, sha256 } from '@abele/sync-sdk/core'
+
+vi.mock('@abele/sync-sdk/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@abele/sync-sdk/core')>()
+  return { ...actual, settingsCategory: vi.fn(actual.settingsCategory) }
+})
 
 const change = (path: string, prev_path: string | null = null): ChangeItem =>
   ({ path, prev_path, op: 'modify' }) as ChangeItem
 
 describe('the separate plugin code lane', () => {
+  it('classifies a shared top-level folder once across a large inventory', () => {
+    const category = vi.mocked(settingsCategory)
+    category.mockClear()
+    for (let i = 0; i < 33_000; i++)
+      expect(configurationPath(`Notes/sample-${i}.md`, { configRoots: ['.obsidian'] })).toBe(false)
+    expect(category).toHaveBeenCalledTimes(1)
+  })
   it.each(['main.js', 'manifest.json', 'styles.css', 'lib/helper.js'])(
     'reviews %s, including new folders',
     (file) => {
