@@ -1,7 +1,71 @@
 import { expect, it, vi } from 'vitest'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
-import { NodeClientStore } from '@/node/NodeClientStore'
+import { NodeClientStore, type NodeClientState } from '@/node/NodeClientStore'
+import { plain } from '@/node/storeDraft'
 import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
+
+it.each(['transaction', 'read'] as const)(
+  'enumerates and clones retained legacy artifacts with %s as the first access',
+  async (firstAccess) => {
+    const factory = new IDBFactory()
+    const namespace = 'sample-legacy-artifacts-' + firstAccess
+    const artifacts = Object.fromEntries(
+      Array.from({ length: 160 }, (_, i) => [
+        'sample-' + i,
+        { text: ('sample artifact ' + i + ' ').repeat(8000) },
+      ])
+    )
+    await new Promise<void>((resolve, reject) => {
+      const opening = factory.open('abele-node-' + namespace, 2)
+      opening.onupgradeneeded = () => {
+        opening.result.createObjectStore('client')
+        opening.result.createObjectStore('journal')
+      }
+      opening.onerror = () => reject(opening.error)
+      opening.onsuccess = () => {
+        const db = opening.result
+        const tx = db.transaction('client', 'readwrite')
+        tx.objectStore('client').put(
+          { cursors: {}, events: {}, outbox: [], results: {}, artifactData: artifacts },
+          'state'
+        )
+        tx.oncomplete = () => {
+          db.close()
+          resolve()
+        }
+        tx.onabort = () => {
+          db.close()
+          reject(tx.error)
+        }
+      }
+    })
+    const store = new NodeClientStore(namespace, factory)
+    const inspect = (state: NodeClientState) => {
+      expect(Object.keys(state)).toContain('artifactData')
+      expect(Object.keys(state.artifactData!)).toEqual(Object.keys(artifacts))
+      expect({ ...state.artifactData }).toEqual(artifacts)
+      expect(JSON.stringify(state.artifactData)).toBe(JSON.stringify(artifacts))
+      // Native structuredClone cannot accept proxies; normalize transaction drafts first.
+      expect(structuredClone(plain(state.artifactData))).toEqual(artifacts)
+      return state.artifactData
+    }
+    try {
+      expect(await store[firstAccess](inspect)).toEqual(artifacts)
+      expect(await store.transaction(inspect)).toEqual(artifacts)
+      await store.read((state) => {
+        inspect(state)
+        expect(Object.isFrozen(state.artifactData)).toBe(true)
+        expect(structuredClone(state.artifactData)).toEqual(artifacts)
+      })
+      await store.transaction((state) => {
+        state.artifactData!['sample-0'].text = 'updated'
+      })
+      expect(await store.read((state) => state.artifactData!['sample-0'].text)).toBe('updated')
+    } finally {
+      store.close()
+    }
+  }
+)
 
 it('reuses frozen metadata and records without reading or serializing unchanged payloads', async () => {
   const store = new NodeClientStore('sample-allocation', new IDBFactory())

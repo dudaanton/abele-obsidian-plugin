@@ -17,11 +17,14 @@ export class ClientArtifacts {
     const store = tx.objectStore('client')
     const legacy = state.artifactData
     const revision = (await read(store.get('artifact-revision'))) as string | undefined
-    const snapshot =
+    // Legacy metadata is a transaction draft. Detach it before freezing the cache;
+    // freezing a proxy would make its empty target non-extensible.
+    const snapshot = plain(
       legacy ??
-      (revision === this.revision
-        ? this.snapshot
-        : (((await read(store.get('artifacts'))) ?? {}) as Artifacts))
+        (revision === this.revision
+          ? this.snapshot
+          : (((await read(store.get('artifacts'))) ?? {}) as Artifacts))
+    )
     frozen(snapshot)
     const draft = storeDraft(snapshot)
     let copy: Artifacts | undefined

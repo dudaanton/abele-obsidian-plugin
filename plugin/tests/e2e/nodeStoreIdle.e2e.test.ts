@@ -63,8 +63,11 @@ it('measures idle polling before and after migrating a large synthetic client st
   expect(report.bytes).toBeGreaterThan(20_000_000)
   expect(report.kept).toBe(400)
   expect(report.before.reads).toBeGreaterThan(report.before.ticks)
-  expect(report.after.reads).toBe(report.after.ticks)
-  expect(report.awaited.reads).toBe(report.awaited.ticks)
+  expect(report.after.ticks).toBeGreaterThan(0)
+  expect(report.awaited.ticks).toBeGreaterThan(0)
+  // Unchanged metadata comes from the revision cache, including across awaited callbacks.
+  expect(report.after.reads).toBe(0)
+  expect(report.awaited.reads).toBe(0)
 }, 240000)
 
 it.skipIf(onPhone())(
