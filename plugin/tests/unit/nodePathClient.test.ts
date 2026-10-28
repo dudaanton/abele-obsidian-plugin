@@ -70,7 +70,9 @@ describe('validated node path reads', () => {
     async (operation) => {
       const root = mkdtempSync(join(tmpdir(), 'code-link-'))
       const env = {
-        ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))),
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))
+        ),
         GIT_CONFIG_GLOBAL: '/dev/null',
         GIT_CONFIG_NOSYSTEM: '1',
       }
