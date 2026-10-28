@@ -35,14 +35,14 @@ export function projectOfTab(state: unknown): RequestsContext | undefined {
 export function distinctProjects(contexts: RequestsContext[]): RequestsContext[] {
   const seen = new Set<string>()
   const unique = contexts.filter((c) => {
-    const key = JSON.stringify([c.registrationId, c.projectId])
+    const key = JSON.stringify([c.registrationId, c.projectId, c.worktreeId ?? null])
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
   return unique.map((c) =>
     unique.some((other) => other !== c && other.label === c.label && other.node === c.node)
-      ? { ...c, label: `${c.label ?? 'Project'} · ${c.projectId}` }
+      ? { ...c, label: `${c.label ?? 'Project'} · ${c.worktreeId ?? c.projectId}` }
       : c
   )
 }

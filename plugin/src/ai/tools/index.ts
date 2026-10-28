@@ -59,7 +59,7 @@ import { createNodeTools } from './node'
 import { createTraceTools } from './TraceTools'
 import { activeTraceContext } from '@/debugger/trace/agentContext'
 import { createRequestTools } from './RequestTools'
-import { activeRequestsContext } from '@/requests/agentContext'
+import { scopedRequestsContext } from '@/requests/agentContext'
 import { createBookTools } from './BookTools'
 import { createDeckTools } from './DeckTools'
 import { createDocxTools } from './DocxTools'
@@ -375,7 +375,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createNodeTools(undefined, options.nodeRepositoryApproval))
   // A run the debugger recorded, read a little at a time; each tool's mode decides whether it asks.
   tools.push(...createTraceTools(activeTraceContext))
-  tools.push(...createRequestTools(activeRequestsContext))
+  tools.push(...createRequestTools(scopedRequestsContext))
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

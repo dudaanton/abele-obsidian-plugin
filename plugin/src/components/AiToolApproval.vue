@@ -551,7 +551,9 @@ import { nodeErrorDetails, nodeErrorWords } from '@/node/errorWords'
 import { providerLabel } from '@/node/providers'
 /** A saved request as an agent's send would put it on the wire, for its card. */
 const readHttpSend = (id: string, environment?: string) =>
-  import('@/requests/agentContext').then((m) => m.sendPreview(id, environment))
+  import('@/requests/agentContext').then((m) =>
+    m.sendPreview(id, environment, params.value, session.value)
+  )
 
 const props = defineProps<{
   message: ChatMessage

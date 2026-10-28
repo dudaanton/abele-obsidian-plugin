@@ -251,7 +251,13 @@ export class RequestsService {
     const projectId = binding?.controller.snapshot?.target.project_id
     const c =
       projectOfTab(state) ??
-      (binding && projectId ? { registrationId: binding.registrationId, projectId } : undefined)
+      (binding && projectId
+        ? {
+            registrationId: binding.registrationId,
+            projectId,
+            worktreeId: binding.controller.snapshot?.target.worktree_id ?? undefined,
+          }
+        : undefined)
     if (c && nodeKnown(c.registrationId)) {
       this.choose({ ...c, label: c.projectId })
       // Fill in the friendly project name without undoing a later manual selection.
@@ -264,7 +270,10 @@ export class RequestsService {
           )
             return
           const named = contexts.find(
-            (p) => p.registrationId === c.registrationId && p.projectId === c.projectId
+            (p) =>
+              p.registrationId === c.registrationId &&
+              p.projectId === c.projectId &&
+              p.worktreeId === c.worktreeId
           )
           if (named)
             this.choose({ ...named, ...(c.worktreeId ? { worktreeId: c.worktreeId } : {}) })
@@ -357,13 +366,34 @@ export class RequestsService {
         let after: string | undefined
         for (let page = 0; page < 64; page++) {
           const batch = await connection.client.listProjects(after)
-          for (const p of batch)
-            out.push({
+          for (const p of batch) {
+            const context = {
               registrationId: node.id,
               projectId: p.project_id,
               label: p.root_path.split(/[\\/]/).filter(Boolean).pop() ?? p.root_path,
               node: node.label,
-            })
+            }
+            if (!p.repository_path) out.push(context)
+            else {
+              let cursor: string | undefined
+              for (let page = 0; page < 64; page++) {
+                const trees = await connection.client.repository.worktrees({
+                  project_id: p.project_id,
+                  cursor,
+                })
+                for (const tree of trees.entries) {
+                  if (tree.availability !== 'available') continue
+                  out.push({
+                    ...context,
+                    worktreeId: tree.worktree_id,
+                    label: `${context.label} · ${tree.branch?.replace(/^refs\/heads\//, '') || tree.path_label}`,
+                  })
+                }
+                if (!trees.cursor || trees.cursor === cursor) break
+                cursor = trees.cursor
+              }
+            }
+          }
           if (batch.length < 100) break
           const next = batch.at(-1).project_id
           if (next === after) break

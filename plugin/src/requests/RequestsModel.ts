@@ -31,6 +31,7 @@ import {
 import type { RequestsPorts, SendOptions } from './ports'
 import { HeldSecrets } from './secrets'
 import { answerOf, wholeBody } from './history'
+import { untilAborted } from './lifetime'
 export { forgetRequestSecrets, outcomeOf, requestIdFor, sentAtWords } from './shapes'
 export type { RequestScriptInput, RequestScriptResult, RequestsPorts, SendOptions } from './ports'
 import type { EnvironmentDoc, HttpRpc, RequestDoc, RequestList, SendSummary } from './wire'
@@ -96,6 +97,49 @@ export class RequestsModel {
 
   entry(id: string): RequestEntry {
     return (this.state.entries[id] ??= { history: [], runs: new Map() })
+  }
+
+  /** Invocation-local cancellation; the view and concurrent tools keep their own lifetimes. */
+  forAgent(signal: AbortSignal, guard: () => void, onSend?: (id: string) => void): RequestsModel {
+    const check = () => {
+      signal.throwIfAborted()
+      guard()
+    }
+    const rpc = new Proxy(this.rpc, {
+      get(target, key) {
+        const value: unknown = Reflect.get(target, key)
+        if (typeof value !== 'function') return value
+        return (...args: unknown[]) => {
+          check()
+          return untilAborted(Promise.resolve(value.apply(target, args)), signal).then(
+            (result: unknown) => {
+              if (
+                key === 'send' &&
+                result &&
+                typeof result === 'object' &&
+                'send_id' in result &&
+                typeof result.send_id === 'string'
+              )
+                onSend?.(result.send_id)
+              return result
+            }
+          )
+        }
+      },
+    })
+    const wait = this.wait
+    return new Proxy(this, {
+      get(target, key, receiver) {
+        if (key === 'rpc') return rpc
+        if (key === 'wait') return (ms: number) => untilAborted(wait(ms), signal)
+        const value: unknown = Reflect.get(target, key, receiver)
+        if (typeof value !== 'function') return value
+        return (...args: unknown[]) => {
+          check()
+          return value.apply(receiver, args)
+        }
+      },
+    })
   }
 
   timeout(id: string): number {

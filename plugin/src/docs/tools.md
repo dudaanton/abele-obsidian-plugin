@@ -1060,7 +1060,8 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 - `trace_mark(step, name?, path?, comment, tags?)` marks something for the person; the tag
   `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
-  the person opened from the node in this session; the session records from then on. Only what `take`
+  inside this session's granted node folder. The agent attaches the source itself; an open
+  file tab is unnecessary. The session records from then on. Only what `take`
   names is taken; an empty list takes nothing.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
@@ -1072,6 +1073,16 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 `http_import`.
 
 The project's saved HTTP requests: files on the node, in collections, with environments.
+All HTTP tools accept `node`, `project` and `workspace` (the worktree ID from `node_folders`).
+They select the granted project/worktree directly, without opening Requests. Omit the IDs for
+the chat's selected or sole granted place. If several places are available, list them with
+`node_folders` and pass the IDs. The Requests project picker also lists each available worktree.
+Read needs Read, saving needs Edit, and sending needs Edit and run, with the chat's asking mode.
+Metadata calls end after 30 seconds without a result. A send uses its saved request timeout
+(five minutes by default) and a short allowance for the last status read. Stop ends this tool
+call and further polling. The current node protocol cannot cancel an HTTP send already under
+way: it can still reach the service until its timeout. Read `http_send_result` before retrying;
+never repeat a send just because waiting stopped.
 The Requests view also offers live project file collections; the tools below continue to list
 saved collections. Their environment choices may include adjacent project environment files,
 labelled by file and environment, such as `http-client.env.json · dev`. Selecting one reads its
@@ -1252,7 +1263,12 @@ A model starts with `node_nodes`, then `node_folders` for one node, which lists 
 or worktree, or after `node_worktree_switch` chose one; a chat that may reach more is told to
 name one. A Git folder's workspace ID reads its worktree, and a plain folder's workspace ID
 works with the default `worktree` kind. An ID the folder does not have is answered with the
-worktrees the chat may use. Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
+worktrees the chat may use. An empty or omitted node defaults to the sole granted node; a unique
+node display name is accepted too. Paths may be relative to the selected target or absolute
+inside that target. Traversal, `.git` paths and paths outside the target remain forbidden.
+`node_open(path)` with chat node access loads a bounded in-memory source without requiring an
+open repository tab; it returns the same content and identity as `node_read`.
+No arbitrary filesystem
 picker, shell, stage or push is exposed by this toolset. Delegation tools use the same chat node chips.
 
 | Tool | Purpose |

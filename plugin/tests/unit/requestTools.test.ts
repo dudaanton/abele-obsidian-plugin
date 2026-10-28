@@ -110,7 +110,7 @@ describe('the agent’s tools over saved requests', () => {
     expect(answer).toMatch(/^Send s\d+ in local\.\n201 Created · 12 ms/)
     expect(answer).toContain('Checks: ✓ status == 201')
     expect(answer).toContain('tok-from-answer')
-    expect(p.keys.prepare).toHaveBeenCalledWith(expect.anything(), false, undefined)
+    expect(p.keys.prepare).toHaveBeenCalledWith(expect.anything(), false, expect.any(AbortSignal))
     expect(node.sent).toHaveLength(1)
     const sendId = /Send (s\d+)/.exec(answer)![1]
     expect(

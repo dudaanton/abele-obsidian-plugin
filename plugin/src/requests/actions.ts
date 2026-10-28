@@ -259,7 +259,8 @@ export async function projectMenu(event: MouseEvent) {
         .setTitle(c.node ? `${c.label} · ${c.node}` : (c.label ?? c.projectId))
         .setChecked(
           service.context.value?.projectId === c.projectId &&
-            service.context.value.registrationId === c.registrationId
+            service.context.value.registrationId === c.registrationId &&
+            service.context.value.worktreeId === c.worktreeId
         )
         .onClick(() => service.choose(c))
     )

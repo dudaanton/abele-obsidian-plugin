@@ -7,12 +7,15 @@ import { nodeProjectGuard } from './node/projectAccess'
 import type { AgentTool, AgentToolResult } from '../client'
 import type { RequestsModel } from '@/requests/RequestsModel'
 import type { RequestDoc } from '@/requests/wire'
+import type { ChatSession } from '../ChatSession'
+import { requestLifetime, untilAborted } from '@/requests/lifetime'
 import { TRACE_AGENT_BYTES, TRACE_AGENT_LINES } from './TraceTools'
 
 /** The saved requests the tools work on: the project the Requests view shows. */
 export interface RequestToolContext {
   registrationId?: string
   worktreeId?: string
+  workspaceId?: string
   model: RequestsModel
   /** The project's name, to say which one. */
   project: string
@@ -100,12 +103,17 @@ function collectionName(v: unknown): string {
   return parts.join('/')
 }
 
-export function createRequestTools(resolve: () => RequestToolContext | undefined): AgentTool[] {
-  const context = () => {
-    const c = resolve()
+export function createRequestTools(
+  resolve: (
+    params: Record<string, unknown>,
+    session?: ChatSession
+  ) => RequestToolContext | undefined | Promise<RequestToolContext | undefined>
+): AgentTool[] {
+  const context = async (params: Record<string, unknown>, session?: ChatSession) => {
+    const c = await resolve(params, session)
     if (!c)
       throw new Error(
-        'No project’s saved requests are open. Ask the person to open Requests and choose a project.'
+        'No node project selected. Call node_folders, then pass node, project and workspace to http_requests; no need to open Requests.'
       )
     return c
   }
@@ -130,22 +138,68 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
     label,
     category: 'Nodes',
     description,
-    parameters: { type: 'object', properties, required, additionalProperties: false },
-    execute: async (_id, params, signal, ctx) => {
-      const c = context()
-      const guard = await nodeProjectGuard(
-        ctx?.session,
-        name,
-        {
-          ...c,
-          projectId: c.model.projectId,
+    parameters: {
+      type: 'object',
+      properties: {
+        node: {
+          type: 'string',
+          description: 'Node ID or unique name; omit for the sole granted node.',
         },
-        undefined,
-        ctx?.interactive === true && ctx?.approved === true
-      )
-      const result = await run(c, params, signal)
-      guard()
-      return text(result)
+        project: {
+          type: 'string',
+          description: 'Project ID from node_folders; omit for the sole granted project.',
+        },
+        workspace: {
+          type: 'string',
+          description:
+            'Worktree ID from node_folders; omit for the selected or sole granted worktree.',
+        },
+        ...properties,
+      },
+      required,
+      additionalProperties: false,
+    },
+    execute: async (_id, params, signal, ctx) => {
+      const lifetime = requestLifetime(signal, name === 'http_send')
+      let sendId: string | undefined
+      try {
+        lifetime.signal.throwIfAborted()
+        const c = await untilAborted(context(params, ctx?.session), lifetime.signal)
+        const guard = await untilAborted(
+          nodeProjectGuard(
+            ctx?.session,
+            name,
+            {
+              ...c,
+              ...(c.workspaceId ? { worktreeId: undefined } : {}),
+              projectId: c.model.projectId,
+            },
+            undefined,
+            ctx?.interactive === true && ctx?.approved === true
+          ),
+          lifetime.signal
+        )
+        lifetime.signal.throwIfAborted()
+        if (name === 'http_send') lifetime.deadline(c.model.timeout(req(params.id)) + 1000)
+        const model = c.model.forAgent(lifetime.signal, guard, (id) => {
+          sendId = id
+        })
+        const result = await untilAborted(
+          run({ ...c, model }, params, lifetime.signal),
+          lifetime.signal
+        )
+        guard()
+        return text(result)
+      } catch (error) {
+        if (sendId && error instanceof Error)
+          throw new Error(
+            `${error.message} Send ID: ${sendId}; use http_send_result with this ID.`,
+            { cause: error }
+          )
+        throw error
+      } finally {
+        lifetime.dispose()
+      }
     },
   })
 
@@ -153,7 +207,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
     tool(
       'http_requests',
       'Saved requests',
-      'List the saved HTTP requests of the project the Requests view shows, by collection: id, method, address as written, the status of the last send. Also the environments and the one in use. Read-only.',
+      'List saved HTTP requests in a granted node project/worktree, without opening Requests. Pass node, project and workspace to select one; omit for the sole granted place. Lists collections, request ids, methods, addresses, last sends and environments. Read-only.',
       {},
       [],
       async (c) => {

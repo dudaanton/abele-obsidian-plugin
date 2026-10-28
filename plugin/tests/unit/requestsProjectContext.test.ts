@@ -1,5 +1,25 @@
 import { expect, it, vi } from 'vitest'
 const saved = vi.hoisted(() => new Map<string, unknown>())
+const catalogue = vi.hoisted(() => ({
+  connect: async () => {},
+  client: {
+    describe: async () => ({
+      capabilities: { capabilities: { http_v1: { status: 'supported' } } },
+    }),
+    listProjects: async () => [
+      { project_id: 'project-1', root_path: '/sample', repository_path: '/sample' },
+    ],
+    repository: {
+      worktrees: async () => ({
+        entries: [
+          { worktree_id: 'tree-a', availability: 'available', branch: 'refs/heads/main' },
+          { worktree_id: 'tree-b', availability: 'available', branch: 'refs/heads/feature' },
+        ],
+        cursor: null,
+      }),
+    },
+  },
+}))
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: {
     getInstance: () => ({
@@ -14,6 +34,7 @@ vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
       nodes: { value: [{ id: 'node-1' }] },
+      connection: () => catalogue,
     }),
   },
 }))
@@ -59,6 +80,25 @@ it('removes repeated projects and distinguishes projects with identical display 
   const choices = distinctProjects([first, first, second])
   expect(choices).toHaveLength(2)
   expect(choices[0]!.label).not.toEqual(choices[1]!.label)
+})
+
+it('keeps every worktree selectable in the Requests project picker', () => {
+  const base = { registrationId: 'node-1', projectId: 'project-1', label: 'Sample' }
+  const choices = distinctProjects([
+    { ...base, worktreeId: 'tree-a' },
+    { ...base, worktreeId: 'tree-b' },
+  ])
+  expect(choices.map((choice) => choice.worktreeId)).toEqual(['tree-a', 'tree-b'])
+  expect(choices[0]!.label).not.toEqual(choices[1]!.label)
+})
+
+it('lists available worktrees from the node in the Requests picker', async () => {
+  RequestsService.destroy()
+  const service = RequestsService.instance()
+  const choices = await service.contexts()
+  expect(choices.map((choice) => choice.worktreeId)).toEqual(['tree-a', 'tree-b'])
+  expect(choices.map((choice) => choice.label)).toEqual(['sample · main', 'sample · feature'])
+  RequestsService.destroy()
 })
 
 it('offers the last local server address printed by the program', () => {
