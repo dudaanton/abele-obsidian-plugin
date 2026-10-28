@@ -70,7 +70,7 @@ export function programSuggestions(
           ? t('debug.outsideFolder')
           : t('streamC.dfd5c6aac1c2399b'),
       title: p.command,
-      note: `${where} · pid ${p.pid} · port ${p.port}`,
+      note: `${where}${p.cwd && where !== shortPath(p.cwd) ? ` · ${shortPath(p.cwd)}` : ''} · pid ${p.pid} · port ${p.port}`,
     }
   })
 }

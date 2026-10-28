@@ -1,4 +1,5 @@
 export const extra = {
+  'debug.writingRunNote': 'Tiek rakstīta piezīme par šo izpildi…',
   'debug.sessionEnded': 'Atkļūdošanas sesija beigusies. Sāciet jaunu palaišanu.',
   'debug.newRun': 'Sākt jaunu palaišanu',
 
@@ -1292,7 +1293,7 @@ export const extra = {
   'streamC.805240eb7f8a5941': 'Vērtības redzamas apturēšanas laikā.',
   'streamC.f4ccae29e1bb0c20': 'Darbojas',
   'streamC.bbe5fc3b9ef39f99': 'Palaiž…',
-  'streamC.4fc04649a9497a39': 'Atvienots · Programmas stāvoklis nav zināms',
+  'streamC.4fc04649a9497a39': 'Atvienots',
   'streamC.a35ec6a4c0b7f680': 'Beidzies · Izejas kods nav zināms',
   'streamC.ccf9d42ad6750fd2': 'pirms kāda laika',
   'streamC.06905f2ac0915241': 'Ieraksta punkts',

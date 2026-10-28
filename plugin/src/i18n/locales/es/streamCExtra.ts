@@ -1,4 +1,5 @@
 export const extra = {
+  'debug.writingRunNote': 'Escribiendo una nota sobre esta ejecución…',
   'debug.sessionEnded': 'La sesión de depuración terminó. Inicia una nueva ejecución.',
   'debug.newRun': 'Iniciar una nueva ejecución',
 
@@ -1312,7 +1313,7 @@ export const extra = {
   'streamC.805240eb7f8a5941': 'Los valores se muestran en pausa.',
   'streamC.f4ccae29e1bb0c20': 'En ejecución',
   'streamC.bbe5fc3b9ef39f99': 'Iniciando…',
-  'streamC.4fc04649a9497a39': 'Desconectado · Estado del programa desconocido',
+  'streamC.4fc04649a9497a39': 'Desconectado',
   'streamC.a35ec6a4c0b7f680': 'Finalizado · Código de salida desconocido',
   'streamC.ccf9d42ad6750fd2': 'hace un rato',
   'streamC.06905f2ac0915241': 'Punto de registro',

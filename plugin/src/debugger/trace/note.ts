@@ -71,7 +71,7 @@ export function buildRunNote(input: RunNoteInput): string {
         ? 'still recording'
         : 'ended'
   out.push(
-    `Recorded run [${cell(r.name)}](${link({})}), started ${r.started_at.replace('T', ' ').slice(0, 19)} UTC, ${run.steps.length} steps, ${ended}.`
+    `Recorded run [${cell(r.name)}](${link({})}), started ${new Date(r.started_at).toLocaleString()}, ${run.steps.length} steps, ${ended}.`
   )
   out.push('')
 

@@ -134,3 +134,11 @@ describe('a note about a run', () => {
     expect(note).toContain('> b')
   })
 })
+
+it('uses local time for the start time shown beside the run name', () => {
+  const run = sampleRun(0, 0)
+  expect(buildRunNote({ run, values: new Map(), link }).split('\n')[0]).toContain(
+    `started ${new Date(run.run.started_at).toLocaleString()}`
+  )
+  expect(buildRunNote({ run, values: new Map(), link }).split('\n')[0]).not.toContain(' UTC')
+})

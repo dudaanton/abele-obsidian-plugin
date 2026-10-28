@@ -46,6 +46,19 @@ const elsewhere: WaitingProgram = {
   in_chat_folder: false,
 }
 
+it('distinguishes package working folders inside the same project', () => {
+  const rows = programSuggestions(
+    ['gateway', 'rates'].map((name, i) => ({
+      ...inFolder,
+      pid: 5000 + i,
+      cwd: `/work/sample-app/packages/${name}`,
+    })),
+    true
+  )
+  expect(rows[0].note).toContain('packages/gateway')
+  expect(rows[1].note).toContain('packages/rates')
+})
+
 function fileLeaf(path: string) {
   let state: Record<string, unknown> = { kind: 'file', target, path }
   return {
@@ -269,7 +282,7 @@ describe('attaching the debugger to a running program', () => {
         icon: 'plug',
         kind: "Runs from this chat's folder",
         title: 'node --inspect src/server.js',
-        note: "This chat's folder · pid 4101 · port 9229",
+        note: "This chat's folder · /work/sample-app · pid 4101 · port 9229",
       },
       {
         id: '4202:9230',
@@ -282,7 +295,7 @@ describe('attaching the debugger to a running program', () => {
     expect(
       programSuggestions([{ ...elsewhere, project: { project_id: 'p', path: '/work/kit' } }])[0]!
         .note
-    ).toBe('Project kit · pid 4202 · port 9230')
+    ).toBe('Project kit · /work/other-tool · pid 4202 · port 9230')
     // A long folder by its last names; the confirmation names it whole.
     expect(
       programSuggestions([{ ...elsewhere, cwd: '/home/someone/work/tools/other-tool' }])[0]!.note

@@ -1,4 +1,5 @@
 export const extra = {
+  'debug.writingRunNote': 'Writing a note about this run…',
   'debug.sessionEnded': 'Debug session ended. Start a new run.',
   'debug.newRun': 'Start a new run',
 
@@ -1280,7 +1281,7 @@ export const extra = {
   'streamC.805240eb7f8a5941': 'Values show while it is paused.',
   'streamC.f4ccae29e1bb0c20': 'Running',
   'streamC.bbe5fc3b9ef39f99': 'Starting…',
-  'streamC.4fc04649a9497a39': 'Detached · Program state unknown',
+  'streamC.4fc04649a9497a39': 'Detached',
   'streamC.a35ec6a4c0b7f680': 'Ended · Exit code unknown',
   'streamC.ccf9d42ad6750fd2': 'a while ago',
   'streamC.06905f2ac0915241': 'Record point',

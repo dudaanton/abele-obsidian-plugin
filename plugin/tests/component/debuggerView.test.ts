@@ -226,7 +226,7 @@ describe('debugger panel', () => {
       w.unmount()
     }
   )
-  it('names unknown agent authority and explains the disabled mode switch', () => {
+  it('omits the agent mode control when the node cannot read its authority', () => {
     const w = mount(DebugPanel, {
       props: {
         session: { ...session('paused'), mode: 'unknown' },
@@ -234,11 +234,7 @@ describe('debugger panel', () => {
         modeUnavailableReason: 'This node has no live-grant read API',
       },
     })
-    const mode = w.get('.abele-debug-panel__mode')
-    expect(mode.attributes('disabled')).toBeDefined()
-    expect(mode.attributes('aria-label')).toContain('Unknown')
-    expect(mode.attributes('aria-label')).toContain('no live-grant read API')
-    expect(mode.attributes('aria-label')).not.toContain('asks before each action')
+    expect(w.find('.abele-debug-panel__mode').exists()).toBe(false)
     w.unmount()
   })
   it('does not paint last-known Allow all as current permission after connection loss', () => {
@@ -350,7 +346,7 @@ describe('debugger panel', () => {
     })
     expect(w.findAll('.nav-action-button')).toHaveLength(6)
     expect(w.findAll('.nav-action-button')[4].attributes('disabled')).toBeDefined()
-    expect(w.get('.abele-debug-panel__mode').attributes('disabled')).toBeDefined()
+    expect(w.find('.abele-debug-panel__mode').exists()).toBe(false)
     w.unmount()
   })
   it('detaches from an attached program and leaves its later process state unknown', async () => {
@@ -365,9 +361,7 @@ describe('debugger panel', () => {
     await last.trigger('click')
     expect(w.emitted('command')?.at(-1)).toEqual(['stop'])
     await w.setProps({ session: { ...session('exited'), attached: true, detached: true } })
-    expect(w.get('[role="status"]').attributes('aria-label')).toBe(
-      'Detached · Program state unknown'
-    )
+    expect(w.get('[role="status"]').attributes('aria-label')).toBe('Detached')
     expect(w.text()).not.toContain('Exit code unknown')
     w.unmount()
     // A program the node started keeps its Stop.

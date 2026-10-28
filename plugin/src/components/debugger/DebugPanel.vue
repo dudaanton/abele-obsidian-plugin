@@ -34,6 +34,7 @@
         >{{ fileName(top.file) }}:{{ top.line }}</a
       >
       <Icon
+        v-if="modeAvailable"
         class="abele-debug-panel__mode"
         :class="{ 'is-active': modeKnown && session.mode === 'allow' }"
         :icon="

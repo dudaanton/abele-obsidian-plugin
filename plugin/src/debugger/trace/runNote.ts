@@ -9,6 +9,7 @@ import { buildRunNote, NOTE_STEPS, traceLink, type NoteValue } from './note'
 import type { TraceRunState } from './TraceTabs'
 import { TraceRpc } from './wire'
 import { saveRunNote } from './notesFolder'
+import { runName } from './mapping'
 
 const HEAD_LINES = 12
 
@@ -43,7 +44,22 @@ const safeName = (name: string) =>
     .trim()
     .slice(0, 120) || 'Run'
 
-export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promise<string> {
+const pendingNotes = new Map<string, Promise<string>>()
+
+export function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promise<string> {
+  const key = JSON.stringify([state.registrationId, state.projectId, state.runId])
+  const existing = pendingNotes.get(key)
+  if (existing !== undefined) return existing
+  const notice = new Notice(t('debug.writingRunNote'), 0)
+  const pending = writeNote(state, rpc).finally(() => {
+    pendingNotes.delete(key)
+    notice.hide()
+  })
+  pendingNotes.set(key, pending)
+  return pending
+}
+
+async function writeNote(state: TraceRunState, rpc?: TraceRpc): Promise<string> {
   const connection = NodeService.getInstance().connection(state.registrationId)
   rpc ??= new TraceRpc(async (method, params) => {
     await connection.connect()
@@ -59,7 +75,7 @@ export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promis
   const { path, outside } = await saveRunNote(
     app,
     AbeleConfig.getInstance().traceNotesFolder,
-    safeName(run.run.name),
+    safeName(runName(run.run)),
     text
   )
   // A note outside the vault cannot open in a tab; the notice says where it is.

@@ -5910,8 +5910,8 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "streamC.4fc04649a9497a39": {
-    "englishHash": "5b1ffbc1f9a42826d64a4f4a15a25c46898187a34661abb84e01db2ee469a12e",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
+    "englishHash": "09e4f0e822555d5a19cde91f69efad0202f987c8a682bddffd999cb2f7c9d414",
+    "context": "Debugger observation and run note progress",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "streamC.a35ec6a4c0b7f680": {
@@ -7732,6 +7732,11 @@
   "debug.newRun": {
     "englishHash": "82101139dbf933edf751c37472d26b1b70127f8c3a0c2a5f7a055c468313558c",
     "context": "Debugger recovery after a fresh node reply confirms the adapter session ended",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.writingRunNote": {
+    "englishHash": "3966ce611295b2a083078d752484ac2595c748e1a02287efaaf0c398f405e364",
+    "context": "Debugger observation and run note progress",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }
