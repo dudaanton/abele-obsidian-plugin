@@ -11,6 +11,54 @@ remove generated vaults, and release resources even if the transport disappears.
 supervisor writes a lease file containing `{"pid":12345,"exclusive":true}`. The runner
 checks its liveness; this file is a contract with the supervisor, not a security boundary.
 
+## Durable attempt ownership
+
+`attempt.py` is a portable Unix supervisor using Python 3 and `tar`. Launch it on the
+execution host after preparation. It detaches with its own session and closed stdin;
+transport or controller exit does not stop its command. The external command still
+owns the desktop locks, resource reservation and platform cleanup. Give each new
+attempt an immutable directory and an absolute deadline shared with that command.
+
+```json
+{
+  "command": ["python3", "/test-run/guardian.py", "/test-run/plan.json"],
+  "cleanupCommand": ["python3", "/test-run/finalize.py", "/test-run/plan.json"],
+  "cwd": "/test-run",
+  "deadlineAt": 1800000000000,
+  "terminateGraceSeconds": 120,
+  "cleanupTimeoutSeconds": 240,
+  "evidenceTimeoutSeconds": 180,
+  "progressFile": "/test-run/phase-status.json",
+  "evidence": {
+    "root": "/test-run/results",
+    "paths": ["."],
+    "exclude": ["*.private"]
+  }
+}
+```
+
+Start with `python3 attempt.py start /test-attempts/sample /test-run/attempt.json`.
+The reply contains the persisted attempt identity. Repeating this command with the same
+specification reads the existing attempt; changed inputs fail. A lost reply does not
+authorize a replacement. Use `list /test-attempts`, `status /test-attempts/sample`,
+or `wait /test-attempts/sample --timeout 30` to attach later. Scripts use `--json`;
+the default output is short plain text. Waiting can be interrupted independently.
+
+The supervisor enforces the workload deadline, terminates its owned process group, then
+runs bounded cleanup and evidence export on success, error, cancellation or timeout.
+Allow those bounded stages time beyond the workload cutoff. Terminal status records
+each result and the archive SHA-256; a cleanup or export failure remains a failed attempt.
+`collect /test-attempts/sample /saved/sample.tgz` verifies the checksum and supports retries.
+`export /test-attempts/sample` streams that verified archive for a transport client.
+Keep the remote attempt and its source evidence until a verified collection succeeds.
+`stop /test-attempts/sample` requests explicit cancellation without bypassing cleanup.
+
+Status distinguishes a live supervisor by its kernel lock, rather than trusting a PID
+that could have been reused. A dead remote supervisor is reported as orphaned; attaching
+never reruns its command or invents completion. Host loss or a direct uncatchable kill
+of the remote supervisor requires inspecting its retained state. Platform-specific
+launchers and recovery instructions remain outside this repository.
+
 The default worker plan is five hours from `workerStartedAt` (Unix milliseconds), with
 15 minutes reserved for evidence copying and cleanup. The external supervisor must receive
 that same absolute worker start before preparation/builds, not reset it when the app starts.
