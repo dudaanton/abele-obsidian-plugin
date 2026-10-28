@@ -25,8 +25,28 @@ vi.mock('@/requests/RequestsService', async () => {
 })
 vi.mock('@/views/revealSidebarView', () => ({ revealSidebarView: vi.fn(async () => {}) }))
 import { RequestTab, openRequestsView, importFromClipboard } from '@/requests/views'
+import { flushPromises } from '@vue/test-utils'
 
 beforeEach(() => useVault([]))
+
+it('shows a restored request read failure and retries when the same tab is opened again', async () => {
+  const node = fakeNode()
+  const model = new RequestsModel(node.rpc, 'project-1', ports())
+  host.model = model
+  vi.spyOn(model, 'load').mockRejectedValueOnce(new Error('outcome_unknown'))
+  const tab = new RequestTab({} as WorkspaceLeaf)
+  const state = {
+    registrationId: 'node-1',
+    projectId: 'project-1',
+    id: 'Samples/Create sample.http',
+  }
+  await tab.setState(state, {} as never)
+  await flushPromises()
+  expect(model.entry(state.id).error).toContain('outcome_unknown')
+  await tab.setState(state, {} as never)
+  await flushPromises()
+  expect(model.entry(state.id).doc?.name).toBe('Create sample')
+})
 
 it('shows import progress immediately and prevents a second import until it finishes', async () => {
   let finish!: (value: string) => void

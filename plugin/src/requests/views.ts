@@ -50,7 +50,7 @@ import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPic
 import { assignRequestScript, requestScriptProblems, type ScriptMoment } from './scripts'
 import { SECRET_NAME } from './importers/shared'
 import { NodeRequestFiles } from './nodeFiles'
-import { collectionOf, originOf, sentAtWords } from './shapes'
+import { collectionOf, originOf, sentAtWords, reasonOf } from './shapes'
 import { DebuggerService } from '@/debugger/DebuggerService'
 
 export const REQUESTS_VIEW = 'abele-requests'
@@ -291,6 +291,8 @@ type TabState = z.infer<typeof TabState>
 export class RequestTab extends ItemView {
   private readonly current = shallowRef<TabState>()
   private vue?: KitMount
+  private reading?: Promise<void>
+  private retryRead = false
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     // Obsidian puts each action before the last: added right to left, they read terminal,
@@ -362,7 +364,8 @@ export class RequestTab extends ItemView {
       if (
         was?.id !== parsed.data.id ||
         was.projectId !== parsed.data.projectId ||
-        was.worktreeId !== parsed.data.worktreeId
+        was.worktreeId !== parsed.data.worktreeId ||
+        !RequestsService.instance().model(parsed.data).entry(parsed.data.id).doc
       )
         this.read()
     }
@@ -374,7 +377,25 @@ export class RequestTab extends ItemView {
       watch(
         this.current,
         (s, _was, cleanup) => {
-          if (s) cleanup(RequestsService.instance().model(s).followFiles())
+          if (s) {
+            const model = RequestsService.instance().model(s)
+            cleanup(model.followFiles())
+            try {
+              const connection = NodeService.getInstance().connection(s.registrationId)
+              cleanup(
+                watch([connection.state, connection.healthEpoch], () => {
+                  if (
+                    this.retryRead &&
+                    connection.state.value === 'connected' &&
+                    !model.entry(s.id).doc
+                  )
+                    this.read()
+                })
+              )
+            } catch (error) {
+              console.debug('[requests] Request connection unavailable', error)
+            }
+          }
         },
         { immediate: true }
       )
@@ -397,17 +418,37 @@ export class RequestTab extends ItemView {
   }
   private read() {
     const s = this.current.value
-    if (!s) return
+    if (!s || this.reading) return
+    this.retryRead = false
     RequestsService.instance().openRequest.value = s
     const model = RequestsService.instance().model(s)
     const ready =
       model.state.environments.length || model.state.collections.length
         ? Promise.resolve()
         : model.load()
-    void ready
+    this.reading = ready
       .then(() => model.open(s.id))
       .then(() => this.header())
-      .catch((e) => console.debug('[requests] Request not read', e))
+      .catch((e) => {
+        this.retryRead =
+          /outcome_unknown|disconnected|timeout|timed_out|unreachable|connection_failed/.test(
+            `${(e as { code?: string })?.code ?? ''} ${e instanceof Error ? e.message : String(e)}`
+          )
+        model.entry(s.id).error = reasonOf(e)
+        console.debug('[requests] Request not read', e)
+      })
+      .finally(() => {
+        this.reading = undefined
+        const current = this.current.value
+        if (
+          current &&
+          (current.id !== s.id ||
+            current.projectId !== s.projectId ||
+            current.registrationId !== s.registrationId ||
+            current.worktreeId !== s.worktreeId)
+        )
+          this.read()
+      })
   }
   private draw() {
     this.contentEl.replaceChildren()
