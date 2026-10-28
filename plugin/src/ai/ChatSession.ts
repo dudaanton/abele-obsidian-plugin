@@ -330,7 +330,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
   /** Attachment preparation owns no visible bubbles or history until the batch commits. */
-  private queuePreparation: AbortSignal | null = null
+  private queuePreparation: AbortController | null = null
   /** A stopped batch stays available until an explicit send or the composer takes it back. */
   private stoppedQueuePreparation = false
   /** Changes before replacing a conversation; saving its first file does not change it. */
@@ -3016,9 +3016,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     review = true,
     replyTo?: ChatReplyTo[],
     fromChat?: LetterChat,
-    automaticNotice = false
+    automaticNotice = false,
+    deferPublication?: (bubble: ChatMessage) => void
   ): Promise<Message> {
     const bubble = this.userBubble(content, attachments, replyTo, fromChat, automaticNotice)
+    if (deferPublication) {
+      deferPublication(bubble)
+      return this.modelMessage(bubble, false)
+    }
     this.publishUserMessage(bubble, review)
     return this.modelMessage(bubble)
   }
@@ -3066,7 +3071,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * Preparation is transactional: keep the batch queued until all attachment reads finish.
    * Stop can then return it to the composer without publishing incomplete bubbles.
    */
-  private async takeQueued(signal: AbortSignal): Promise<Message[]> {
+  private async takeQueued(externalSignal?: AbortSignal): Promise<Message[]> {
     const queued = this.currentQueuedMessages()
     // Only the run of messages at the front that the interceptor would not look at: one it
     // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
@@ -3075,20 +3080,32 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const taken = cut === -1 ? queued : queued.slice(0, cut)
     if (!taken.length) return []
     const generation = this.generation
-    this.queuePreparation = signal
+    const controller = new AbortController()
+    const signal = controller.signal
+    const abort = () => controller.abort()
+    if (externalSignal?.aborted) abort()
+    else externalSignal?.addEventListener('abort', abort, { once: true })
+    this.queuePreparation = controller
     try {
       const prepared = []
       for (const q of taken) {
         signal.throwIfAborted()
         if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
-        const bubble = this.userBubble(
-          q.content,
-          q.attachments,
-          q.replyTo,
-          undefined,
-          !!q.delegationWake
+        let bubble: ChatMessage | undefined
+        const message = await abortable(
+          this.userMessage(
+            q.content,
+            q.attachments,
+            !q.delegationWake,
+            q.replyTo,
+            undefined,
+            !!q.delegationWake,
+            (prepared) => {
+              bubble = prepared
+            }
+          ),
+          signal
         )
-        const message = await abortable(this.modelMessage(bubble, false), signal)
         prepared.push({ q, bubble, message })
       }
       signal.throwIfAborted()
@@ -3103,7 +3120,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake))
         )
           continue
-        this.publishUserMessage(bubble, !q.delegationWake)
+        if (bubble) this.publishUserMessage(bubble, !q.delegationWake)
         this.readGuard.note(message.role === 'user' ? (message.reads ?? []) : [])
         for (const path of q.attachments ?? []) {
           if (isImagePath(path) || isHeicImport(path)) this.scopeResolver.addFile(path)
@@ -3113,8 +3130,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const consumed = new Set(taken.map((q) => q.id))
       this.queuedMessages.value = this.queuedMessages.value.filter((q) => !consumed.has(q.id))
       return messages
+    } catch (error) {
+      if (signal.aborted) return []
+      throw error
     } finally {
-      if (this.queuePreparation === signal) this.queuePreparation = null
+      externalSignal?.removeEventListener('abort', abort)
+      if (this.queuePreparation === controller) this.queuePreparation = null
     }
   }
 
@@ -3432,6 +3453,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.cancelAutoRetry()
     this.abortQuestions()
     this.turnAbortController?.abort()
+    this.queuePreparation?.abort()
     this.agentLoop?.abort()
     this.toolAbortController?.abort()
     // A script deciding about a message stops too; the message is kept back as a draft.
@@ -3469,7 +3491,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.queuedMessages.value.length && !this.destroyed) this.markDirty()
     // A batch preparing attachments still belongs to the queue. Direct Stop callers may
     // not have taken it back to the composer; keep it recoverable and do not auto-send it.
-    if (!this.queuePreparation && !wasAborted) this.queuedMessages.value = []
+    if (this.destroyed || (!this.queuePreparation && !wasAborted)) this.queuedMessages.value = []
+    else this.currentQueuedMessages()
   }
 
   // ── Reset (new chat within this session / tab) ─────────────────
