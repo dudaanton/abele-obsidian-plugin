@@ -3771,14 +3771,14 @@ export const de = {
     '{command} läuft in {path}, außerhalb des ausgewählten Ordners. Der Debugger kann es anhalten und seine Werte lesen. Nach dem Trennen läuft es weiter.',
   'debug.sourceUpdate': 'Aktualisiere den Knoten, um Haltepunkte in dieser Datei zu setzen',
   'debug.sourceMap':
-    'Der Knoten hat diese Datei noch nicht mit dem laufenden Programm verknüpft. Haltepunkte bleiben ausstehend. Starte das Programm neu oder verbinde dich erneut; falls es weiterhin fehlschlägt, prüfe die Source Maps des Programms.',
+    'Der Knoten hat diese Datei noch nicht mit dem laufenden Programm verknüpft. Haltepunkte bleiben ausstehend. Starte das Programm neu oder verbinde den Debugger erneut, um es noch einmal zu versuchen. Falls es weiterhin fehlschlägt, prüfe die Source Maps des Programms.',
   'debug.sourceChanged':
     'Diese Datei wurde seit dem Programmstart geändert. Stellen Sie den damaligen Inhalt wieder her oder erstellen und starten Sie das Programm neu.',
   'debug.sourceOutside': 'Die Datei liegt außerhalb des Debug-Ordners',
   'debug.filePending':
-    'Klicke auf eine Zeilennummer, um einen ausstehenden Haltepunkt zu setzen. Starte oder verbinde eine Debugsitzung für diesen Ordner, um ihn anzuwenden.',
+    'Klicke auf eine Zeilennummer, um einen ausstehenden Haltepunkt zu setzen. Starte eine Debugsitzung für diesen Ordner oder verbinde den Debugger mit einem laufenden Programm, um ihn anzuwenden.',
   'debug.sourceUnavailable':
-    'Die Datei konnte nicht zum Debugger hinzugefügt werden. Prüfe die Verbindung zum Knoten und öffne die Datei erneut, um es noch einmal zu versuchen.',
+    'Diese Datei konnte nicht zum Debugger hinzugefügt werden. Prüfe die Verbindung zum Knoten und öffne die Datei danach erneut, um es noch einmal zu versuchen.',
   'debug.entryPlaceholder':
     'Einstiegsdateien oder Paketskripte suchen; oder einen kompilierten JavaScript-Pfad eingeben',
   'debug.entryEmpty':

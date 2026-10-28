@@ -25930,8 +25930,8 @@
     ]
   },
   "debug.sourceMap": {
-    "englishHash": "d68c9362c4ca66623d21eaa64785de35a4e7ced8c5480d63155bfd1422464492",
-    "context": "Debugger breakpoint controls and source refusal explanation",
+    "englishHash": "eb77cecdab5d142965d9ba79446051fac9c628f40238d51e116193eff1cf6c4d",
+    "context": "Debugger pending file breakpoints, source admission and retry guidance; reviewed in all four translated catalogs",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -25941,7 +25941,7 @@
   },
   "debug.sourceChanged": {
     "englishHash": "1d6158392ee0acabdc3e90bd046dae674fa4a999fe11b23fb55eb17df76e37cf",
-    "context": "Debugger breakpoint controls and source refusal explanation",
+    "context": "Debugger pending file breakpoints, source admission and retry guidance; reviewed in all four translated catalogs",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -25960,8 +25960,8 @@
     ]
   },
   "debug.sourceUnavailable": {
-    "englishHash": "73faedb42720627fcfb0f0a02a6ccd7ebbbce474c38eb74eea6dc77170f815a7",
-    "context": "Debugger source admission refusal or node update explanation",
+    "englishHash": "9971efdd512d59d481b4d8a08866e2f5638318fe31f6463ef31ca7711fec460c",
+    "context": "Debugger pending file breakpoints, source admission and retry guidance; reviewed in all four translated catalogs",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -28610,8 +28610,8 @@
     ]
   },
   "debug.filePending": {
-    "englishHash": "d1e1fe63329f91eaf101996bcf178bb630cd8d1c6ad57c42b6440d0d88887e31",
-    "context": "Node file breakpoint gutter before source admission; session start or attach guidance",
+    "englishHash": "5a56b4e12d2a70c567ec7ad4e2edfafa57eb5fac40c15577914d151a6e3e6c05",
+    "context": "Debugger pending file breakpoints, source admission and retry guidance; reviewed in all four translated catalogs",
     "reviewedLocales": [
       "ru",
       "lv",

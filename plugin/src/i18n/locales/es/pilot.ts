@@ -3805,14 +3805,14 @@ export const es = {
     '{command} se ejecuta en {path}, fuera de la carpeta seleccionada. El depurador puede pausarlo y leer sus valores. Al desconectarlo, el programa sigue ejecutándose.',
   'debug.sourceUpdate': 'Actualiza el nodo para poner puntos de interrupción en este archivo',
   'debug.sourceMap':
-    'El nodo aún no ha vinculado este archivo con el programa en ejecución. Los puntos de interrupción siguen pendientes. Reinicia o conecta de nuevo; si sigue fallando, comprueba los mapas de código fuente del programa.',
+    'El nodo aún no ha vinculado este archivo con el programa en ejecución. Los puntos de interrupción siguen pendientes. Reinicia el programa o vuelve a conectar el depurador para reintentarlo; si sigue fallando, comprueba los mapas de código fuente del programa.',
   'debug.sourceChanged':
     'Este archivo cambió desde que se inició el programa. Restaure ese contenido o vuelva a compilar y reiniciar el programa.',
   'debug.sourceOutside': 'El archivo está fuera de la carpeta de depuración',
   'debug.filePending':
-    'Haz clic en un número de línea para añadir un punto de interrupción pendiente. Inicia o conecta una sesión de depuración para esta carpeta para aplicarlo.',
+    'Haz clic en un número de línea para establecer un punto de interrupción pendiente. Inicia una sesión de depuración para esta carpeta o conecta el depurador a un programa en ejecución para aplicarlo.',
   'debug.sourceUnavailable':
-    'No se pudo añadir el archivo al depurador. Comprueba la conexión al nodo y vuelve a abrir el archivo para reintentarlo.',
+    'No se pudo añadir este archivo al depurador. Comprueba la conexión al nodo y después vuelve a abrir el archivo para reintentarlo.',
   'debug.entryPlaceholder':
     'Buscar archivos de entrada o scripts del paquete; o escribir una ruta JavaScript compilada',
   'debug.entryEmpty': 'Sin coincidencias. Puede escribir la ruta del JavaScript compilado.',

@@ -3731,14 +3731,14 @@ export const lv = {
     '{command} darbojas mapē {path}, nevis atlasītajā mapē. Atkļūdotājs var to apturēt un nolasīt vērtības. Pēc atvienošanas programma turpinās darboties.',
   'debug.sourceUpdate': 'Atjauniniet mezglu, lai šajā failā iestatītu pārtraukumpunktus',
   'debug.sourceMap':
-    'Mezgls vēl nav sasaistījis šo failu ar palaisto programmu. Pārtraukumpunkti paliek gaidīšanas režīmā. Pārstartējiet programmu vai pievienojieties vēlreiz; ja tas nepalīdz, pārbaudiet programmas pirmkoda kartes.',
+    'Mezgls vēl nav sasaistījis šo failu ar palaisto programmu. Pārtraukumpunkti paliek gaidīšanas režīmā. Lai mēģinātu vēlreiz, pārstartējiet programmu vai pievienojiet atkļūdotāju no jauna. Ja tas nepalīdz, pārbaudiet programmas pirmkoda kartes.',
   'debug.sourceChanged':
     'Fails mainījās pēc programmas palaišanas. Atjaunojiet iepriekšējo saturu vai izveidojiet un palaidiet programmu no jauna.',
   'debug.sourceOutside': 'Fails atrodas ārpus atkļūdošanas mapes',
   'debug.filePending':
-    'Noklikšķiniet uz rindas numura, lai pievienotu gaidošu pārtraukumpunktu. Sāciet vai pievienojiet šīs mapes atkļūdošanas sesiju, lai to lietotu.',
+    'Noklikšķiniet uz rindas numura, lai iestatītu gaidošu pārtraukumpunktu. Lai to lietotu, sāciet šīs mapes atkļūdošanas sesiju vai pievienojiet atkļūdotāju jau palaistai programmai.',
   'debug.sourceUnavailable':
-    'Failu neizdevās pievienot atkļūdotājam. Pārbaudiet savienojumu ar mezglu un atveriet failu vēlreiz, lai mēģinātu no jauna.',
+    'Failu neizdevās pievienot atkļūdotājam. Pārbaudiet savienojumu ar mezglu, pēc tam atveriet failu vēlreiz, lai mēģinātu no jauna.',
   'debug.entryPlaceholder':
     'Meklēt sākuma failus vai pakotnes skriptus; vai ievadīt kompilēta JavaScript ceļu',
   'debug.entryEmpty': 'Nav atbilstību. Varat ievadīt kompilēta JavaScript ceļu.',
