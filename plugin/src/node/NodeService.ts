@@ -233,7 +233,7 @@ export class NodeConnection {
         }))
         const managerCards = Object.fromEntries(
           await Promise.all(
-            parents.map(async (parent) => [parent, await this.manager.cards(parent)])
+            parents.map(async (parent) => [parent, await this.manager.cards(parent)] as const)
           )
         )
         const cards = await this.delegation.snapshot()
