@@ -287,18 +287,26 @@ export class NodeConnection {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
     if (this.connecting) return this.connecting
     if (this.client.connected) {
-      return this.enableExecutionPolicy().then(async () => {
-        this.admitObsidianTools()
-        if (this.client.describe) {
-          const description = await this.client.describe()
-          this.recordVersion(description)
-          await this.obsidian?.connectionChanged(description)
-        }
-        nodeLogAvailable(this)
-        this.state.value = 'connected'
-        uiField(this.error, 'value', uiErrorMessage(''))
-        ++this.healthEpoch.value
-      })
+      const generation = this.generation
+      this.connecting = this.enableExecutionPolicy()
+        .then(async () => {
+          if (this.disposed || generation !== this.generation) return
+          this.admitObsidianTools()
+          if (this.client.describe) {
+            const description = await this.client.describe()
+            this.recordVersion(description)
+            await this.obsidian?.connectionChanged(description)
+          }
+          if (this.disposed || generation !== this.generation) return
+          nodeLogAvailable(this)
+          this.state.value = 'connected'
+          uiField(this.error, 'value', uiErrorMessage(''))
+          ++this.healthEpoch.value
+        })
+        .finally(() => {
+          if (generation === this.generation) this.connecting = undefined
+        })
+      return this.connecting
     }
     console.debug('[Abele node] connect/reconnect', {
       reason,

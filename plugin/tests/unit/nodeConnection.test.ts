@@ -630,6 +630,37 @@ it('retires a panel connection banner after a health probe without reloading the
   }
 })
 
+it('shares concurrent capability refreshes on an already admitted connection', async () => {
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const client = {
+    connected: true,
+    describe: vi.fn(async () => {
+      await pending
+      return {}
+    }),
+    disconnect: async () => {},
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  try {
+    const first = connection.connect()
+    const second = connection.connect()
+    expect(second).toBe(first)
+    expect(client.describe).toHaveBeenCalledTimes(1)
+    release()
+    await Promise.all([first, second])
+    // Initial policy discovery plus the fresh capability response, shared by both callers.
+    expect(client.describe).toHaveBeenCalledTimes(2)
+    await connection.connect()
+    expect(client.describe).toHaveBeenCalledTimes(3)
+  } finally {
+    release()
+    connection.destroy()
+  }
+})
+
 it('keeps a connection banner until an already admitted peer answers again', async () => {
   const memory = new MemoryClientStore()
   const client = {
