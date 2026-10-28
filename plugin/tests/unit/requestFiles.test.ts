@@ -1,9 +1,69 @@
 import { describe, expect, it, vi } from 'vitest'
 import { parseRequestFile, replaceRequestBlock } from '@/requests/files'
 import { FileCollections } from '@/requests/FileCollections'
+import { validateParams } from '@abele/node-protocol'
 
 const source =
   '# @name create\nPOST https://example.test/items\n\n{}\n### Read\nGET https://example.test/items/{{create.response.body.$.id}}\n### Broken\nnot an address\n'
+
+it('resolves file environment variables and preserves its display label in send metadata', async () => {
+  const { RequestsModel } = await import('@/requests/RequestsModel')
+  const { fakeNode, ports } = await import('../helpers/requestsFakeNode')
+  const node = fakeNode()
+  vi.spyOn(node.rpc, 'status').mockResolvedValue({
+    send: {
+      id: 'sample-send',
+      at: '2026-01-01T00:00:00.000Z',
+      method: 'GET',
+      url: 'https://example.test/sample',
+    },
+    outcome: {
+      state: 'answered',
+      response: { status: 200, reason: 'OK', ms: 1, bytes: 2, headers: [], body: '{}' },
+    },
+  })
+  const model = new RequestsModel(
+    node.rpc,
+    'project-1',
+    ports({
+      files: {
+        list: async () => ['sample.http', 'http-client.env.json'],
+        read: async (path) => ({
+          text: path.endsWith('.json')
+            ? JSON.stringify({ dev: { base: 'https://example.test' } })
+            : 'GET {{base}}/sample',
+          contentId: 'sample',
+        }),
+        write: async () => {},
+        watch: async () => () => {},
+      },
+    })
+  )
+  try {
+    await model.load()
+    const environment = model.files!.environments[0].id
+    await model.selectEnvironment(environment)
+    const id = model.files!.collections[0].requests[0].id
+    await model.send(id, { interactive: true })
+    expect(node.sent[0].url).toBe('https://example.test/sample')
+    expect(node.sent[0].environment).toBe(environment)
+  } finally {
+    model.destroy()
+  }
+})
+
+it.fails('BUG: the send protocol rejects file environment display labels', () => {
+  expect(() =>
+    validateParams('http.v1.send', {
+      project_id: 'sample-project',
+      environment: 'http-client.env.json · local',
+      method: 'GET',
+      url: 'https://example.test/sample',
+      headers: [],
+      secrets: [],
+    })
+  ).not.toThrow()
+})
 
 describe('project request files', () => {
   it('keeps origins, named requests and partial parsing problems', () => {
