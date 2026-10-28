@@ -22,7 +22,11 @@ const request = vi.hoisted(() =>
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
-      connection: () => ({ connect: async () => {}, client: { request } }),
+      connection: () => ({
+        state: { value: 'connected' },
+        connect: async () => {},
+        client: { request },
+      }),
     }),
   },
 }))

@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import type { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
+import { plain } from '@/node/storeDraft'
 import { IDBFactory } from 'fake-indexeddb'
 const receipt = {
   run_id: 'sample-run',
@@ -115,7 +116,7 @@ it('recovers an exact retry from retained terminal evidence after manager histor
       original.run = { ...receipt, state: 'exited', exit_code: 0 } as never
       for (let i = 0; i < 200; i++) {
         const id = 'sample-newer-' + i
-        s.managerOperations![id] = structuredClone(original)
+        s.managerOperations![id] = structuredClone(plain(original))
         s.results[id] = { result: original.run }
       }
     })
@@ -137,7 +138,7 @@ it('recovers an exact retry from retained terminal evidence after manager histor
       const terminal = Object.values(s.managerOperations!)[0]
       for (let i = 0; i < 200; i++) {
         const id = 'sample-later-manager-' + i
-        s.managerOperations![id] = structuredClone(terminal)
+        s.managerOperations![id] = structuredClone(plain(terminal))
         s.results[id] = { result: terminal.run }
       }
       for (let i = 0; i < 1100; i++) s.results['sample-later-' + i] = { result: 'settled' }

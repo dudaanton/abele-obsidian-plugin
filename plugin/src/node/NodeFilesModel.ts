@@ -30,6 +30,7 @@ import {
 import type { DiffFile } from '@/github/api'
 import type { DiffSpan } from '@/github/permalinks'
 import { type FileDraft, type FileDraftSnapshot, type DraftReceipt } from './fileDrafts'
+import { plain } from './storeDraft'
 const draftConflict =
   'Local draft changed in another view. Copy your visible text before reloading the shared draft.'
 const assertDraftRevision = (draft: FileDraft | undefined, revision: string | null) => {
@@ -163,7 +164,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
       // Memory adapters and old persisted records both migrate without losing their text.
       if (drafts[key] && !drafts[key].revision) drafts[key].revision = crypto.randomUUID()
       const value = await work(drafts, key)
-      return { value, snapshot: structuredClone(drafts[key]) }
+      return { value, snapshot: structuredClone(plain(drafts[key])) }
     })
     this.observed.set(path, committed.snapshot)
     return committed.value

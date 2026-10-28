@@ -79,8 +79,11 @@ export class ClientRecords {
       const records: Record<string, unknown> = {}
       const touched = new Map<string, ReturnType<typeof storeDraft>>()
       const prefix = `record:${field}:`
-      for (const [key, snapshot] of snapshots) {
+      // Preserve persisted insertion order even when cached rows load before disk rows.
+      // Retention evicts the oldest settled records, not the fastest reads.
+      for (const key of Object.keys(manifest)) {
         if (!key.startsWith(prefix)) continue
+        const snapshot = snapshots.get(key)!
         const id = key.slice(prefix.length)
         Object.defineProperty(records, id, {
           configurable: true,
@@ -93,8 +96,12 @@ export class ClientRecords {
           set: readonly
             ? undefined
             : (value) => {
-                delete records[id]
-                records[id] = value
+                Object.defineProperty(records, id, {
+                  value,
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                })
               },
         })
       }

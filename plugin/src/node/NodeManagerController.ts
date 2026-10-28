@@ -713,7 +713,7 @@ export class NodeManagerController {
   }
   async restore() {
     if (!this.client.connected) return
-    const entries = await this.store.read((s) =>
+    const entries = await this.store.transaction((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         const receipt = RunSchema.safeParse(s.results[operation]?.result)
         return receipt.success && entry.method !== 'command.v1.cancel'
