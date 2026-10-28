@@ -144,6 +144,7 @@ class Mark extends GutterMarker {
     el.onclick = () => emit('breakpoint', line)
     el.oncontextmenu = (e) => {
       e.preventDefault()
+      e.stopPropagation()
       emit('margin-menu', line, e)
     }
     return el

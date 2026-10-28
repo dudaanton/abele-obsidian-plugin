@@ -9,6 +9,70 @@ vi.mock('@/stores/GlobalStore', () => ({
 }))
 
 const service = new DebuggerService()
+it('persists a forgotten ended breakpoint across selection restore', async () => {
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-tree',
+  }
+  const owner = {
+    kind: 'folder-debug',
+    target,
+    connection: { state: ref('connected'), connect: async () => {} },
+  } as unknown as FolderDebugOwner
+  const binding = service.binding(owner, 'sample-debug')
+  service.trackFolder(owner, 'sample-debug', target)
+  binding.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({ lifecycle: 'detached' }),
+  })
+  service.select(binding)
+  binding.forgottenBreakpoints.add('sample-point')
+  const state = service.selectionState()
+  expect(state).toMatchObject({
+    forgottenBreakpoints: [{ sessionId: 'sample-debug', id: 'sample-point' }],
+  })
+  const restored = new DebuggerService()
+  vi.spyOn(restored.binding(owner, 'sample-debug'), 'open').mockResolvedValue()
+  vi.spyOn(restored, 'discover').mockResolvedValue()
+  try {
+    await restored.restoreSelection(state, () => owner)
+    expect(restored.active.value?.forgottenBreakpoints.has('sample-point')).toBe(true)
+  } finally {
+    restored.destroy()
+  }
+})
+it('includes a package folder in sessions sharing an entry basename', () => {
+  const base = debuggerSnapshot()
+  const first = debuggerSnapshot({
+    debug_session_id: 'sample-one',
+    target: { ...base.target, launch_configuration_id: 'index.ts · pid 100' },
+  })
+  const second = debuggerSnapshot({
+    debug_session_id: 'sample-two',
+    target: { ...base.target, launch_configuration_id: 'index.ts · pid 200' },
+  })
+  service.registerSource(
+    'sample-registration',
+    'sample-chat',
+    'source-one',
+    'packages/orders/src/index.ts',
+    'sample-one',
+    first.incarnation
+  )
+  service.registerSource(
+    'sample-registration',
+    'sample-chat',
+    'source-two',
+    'packages/rates/src/index.ts',
+    'sample-two',
+    second.incarnation
+  )
+  expect(service.sessionName(first)).toContain('orders')
+  expect(service.sessionName(second)).toContain('rates')
+})
 it('does not restore a removed watch from an older workspace layout', async () => {
   const target = {
     registrationId: 'sample-registration',

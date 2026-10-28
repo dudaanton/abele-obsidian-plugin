@@ -5,6 +5,28 @@ import { DebuggerBinding } from '@/debugger/DebuggerService'
 import { debuggerSnapshot, debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
 
+it('forgets an ended session breakpoint locally so reattach does not restore it', () => {
+  const c = connection(false)
+  const binding = new DebuggerBinding(c.connection, 'sample-chat', 'sample-registration')
+  const point = {
+    id: 'sample-point',
+    file: 'src/sample.ts',
+    sourceId: 'sample-source',
+    line: 4,
+    requestedLine: 4,
+    state: 'set' as const,
+    enabled: true,
+    reason: '',
+  }
+  binding.retainedBreakpoints = [point]
+  binding.controller.session.breakpoints = [point]
+  binding.controller.session.unavailable = true
+  binding.forgetBreakpoint('sample-point')
+  expect(binding.retainedBreakpoints).toEqual([])
+  expect(binding.controller.session.breakpoints).toEqual([])
+  binding.destroy()
+})
+
 function connection(records: boolean, stop: string[] = []) {
   const rpc = vi.fn(async (method: string): Promise<unknown> => {
     if (method === 'debugger.v1.status')

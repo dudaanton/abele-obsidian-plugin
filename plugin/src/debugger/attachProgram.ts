@@ -2,7 +2,7 @@ import { t } from '@/i18n'
 // Attaching the debugger to a Node.js program already running on the node's machine: the node
 // lists what waits for a debugger on loopback, the owner picks one, and the session opens in the
 // Debug panel as a started program's does. Detaching leaves the program running.
-import { Notice } from 'obsidian'
+import { Notice, Platform } from 'obsidian'
 import { z } from 'zod'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -121,12 +121,16 @@ export async function attachToProgram(
     })
   )
   console.debug('[debugger] Attached', program.pid, program.port, started.debug_session_id)
+  const binding = service.binding(presenter, started.debug_session_id)
+  service.select(binding)
   const snapshot = await registerSources(presenter, started, target)
   // Nothing to restart: the node did not start it, and Detach leaves it running.
-  const binding = DebuggerService.instance.binding(presenter, started.debug_session_id)
   binding.attachmentKey = attachmentKey
   binding.rerun = undefined
   binding.reattach = () => askAndAttachProgram(presenter, show)
+  // A source can be unreadable or slow to open. The attached session must already be selected
+  // before those optional file reads, so a previous detached view cannot remain on screen.
+  await show(started.debug_session_id)
   // Prefer mapped source. Check the ordinary file API before opening an adapter-provided
   // path: ignored build outputs can be admitted for debugging but refused by file browsing.
   const main =
@@ -157,7 +161,11 @@ export async function attachToProgram(
     target,
     main && readable.has(main.path) ? main.path : chatPath(program, open)
   )
-  await show(started.debug_session_id)
+  if (Platform.isMobile) {
+    const { revealSidebarView } = await import('@/views/revealSidebarView')
+    const { DEBUG_VIEW_TYPE } = await import('./register')
+    await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
+  }
   if (exceptionFilters.length) await binding.controller.setExceptionFilters(exceptionFilters)
   binding.controller.session.watches = watches
   ++binding.revision.value

@@ -29,7 +29,6 @@
           :aria-label="t('streamC.658c0b04dc2be861')"
           spellcheck="false"
           autocomplete="off"
-          @keydown.enter.prevent="added.trim() ? add(added) : save()"
           @keydown.backspace="!added && take.length && drop(take[take.length - 1])"
         />
       </div>
@@ -86,7 +85,7 @@ import { t } from '@/i18n'
 // What a record point takes, set up where it is: the names the editor sees on its line are
 // offered under the field, an expression is typed in with `as` for its name. Only what is named
 // is taken: with nothing named a pass is a step with its place and no values.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import Icon from '../../obsidian/Icon.vue'
 import Input from '../../obsidian/Input.vue'
 import type { DebugBreakpoint } from '../types'
@@ -130,10 +129,26 @@ const save = () => {
 }
 
 const root = ref<HTMLElement>()
+let keyWindow: Window | null = null
+const keydown = (event: KeyboardEvent) => {
+  if (!root.value?.contains(event.target as Node) || event.isComposing) return
+  if (event.key !== 'Enter' && event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  if (event.key === 'Escape') return emit('cancel')
+  if (event.target === adding.value && added.value.trim()) add(added.value)
+  else save()
+}
 onMounted(() => {
+  keyWindow = root.value?.ownerDocument.defaultView ?? null
+  keyWindow?.addEventListener('keydown', keydown, true)
   adding.value?.focus({ preventScroll: true })
+  const scroller = root.value?.closest('.cm-scroller')
+  const left = scroller?.scrollLeft
   root.value?.scrollIntoView({ block: 'nearest' })
+  if (scroller && left !== undefined) scroller.scrollLeft = left
 })
+onBeforeUnmount(() => keyWindow?.removeEventListener('keydown', keydown, true))
 </script>
 
 <style lang="scss">

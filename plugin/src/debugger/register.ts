@@ -99,7 +99,7 @@ class SessionPicker extends SuggestModal<DebuggerSnapshot> {
     )
   }
   renderSuggestion(s: DebuggerSnapshot, el: HTMLElement) {
-    el.setText(`${s.target.launch_configuration_id} · ${s.lifecycle}`)
+    el.setText(`${DebuggerService.instance.sessionName(s)} · ${s.lifecycle}`)
   }
   onChooseSuggestion(s: DebuggerSnapshot) {
     void showSession(this.presenter, s.debug_session_id)

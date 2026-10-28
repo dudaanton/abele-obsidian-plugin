@@ -106,7 +106,10 @@ export function marginMenu(
       i
         .setTitle(t('streamC.d7f159f16e10153a'))
         .setIcon('trash-2')
-        .onClick(() => void binding.controller.removeBreakpoint(known.id).catch(fail))
+        .onClick(() => {
+          if (binding.controller.session.unavailable) binding.forgetBreakpoint(known.id)
+          else void binding.controller.removeBreakpoint(known.id).catch(fail)
+        })
     )
   }
   if (known && !record) {
@@ -135,6 +138,7 @@ export function marginMenu(
               title: label,
               value: known[field] ?? '',
               label,
+              placeholder: label,
               submitText: t('settings.GithubConnectionEditor.save.1509f561'),
               validate: (value) => value,
             })
@@ -249,13 +253,22 @@ export function browserMenu(event: MouseEvent) {
 
 /** Names a line of code offers to take: identifiers on it, keywords left out. */
 export function namesOnLine(text: string, line: number): string[] {
-  const code = text.split('\n')[line - 1] ?? ''
+  const lines = text.split('\n')
+  const code = lines[line - 1] ?? ''
   const keywords = new Set(
     'const let var function return if else for while do switch case break continue new this typeof instanceof in of await async import export from default class extends super try catch finally throw true false null undefined void delete yield static get set as'.split(
       ' '
     )
   )
   const out: string[] = []
+  // The current statement often uses locals declared immediately above it. Offer those first,
+  // so a long call on the current line does not crowd them out of the eight suggestions.
+  for (let i = Math.max(0, line - 16); i < line - 1; i++) {
+    const declaration = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g
+    for (const match of lines[i]?.matchAll(declaration) ?? []) {
+      if (!out.includes(match[1])) out.push(match[1])
+    }
+  }
   for (const m of code
     .replace(/(["'`])(?:\\.|(?!\1).)*\1/g, '')
     .replace(/\/\/.*$/, '')

@@ -3781,9 +3781,9 @@ export const de = {
   'debug.sourceUnavailable':
     'Diese Datei konnte nicht zum Debugger hinzugefügt werden. Prüfe die Verbindung zum Knoten und öffne die Datei danach erneut, um es noch einmal zu versuchen.',
   'debug.entryPlaceholder':
-    'Einstiegsdateien oder Paketskripte suchen; oder einen kompilierten JavaScript-Pfad eingeben',
+    'Einstiegsdateien oder Paketskripte suchen; oder einen Quell- oder kompilierten JavaScript-Pfad eingeben',
   'debug.entryEmpty':
-    'Kein Treffer. Sie können den Pfad einer kompilierten JavaScript-Datei eingeben.',
+    'Kein Treffer. Sie können den Pfad einer Quell- oder kompilierten JavaScript-Datei eingeben.',
   'debug.sourceConflict':
     'Diese Datei steht im Konflikt mit einer bereits hinzugefügten Quelldatei',
   'debug.sourceLimit': 'Das Quelldateilimit der Sitzung wurde erreicht',
@@ -3803,7 +3803,7 @@ export const de = {
   'debug.launchTitle': 'Programm ausführen',
   'debug.launchProgram': 'Programm',
   'debug.launchProgramHint':
-    'Pfad relativ zu diesem Ordner. Geben Sie bei kompiliertem TypeScript die JavaScript-Einstiegsdatei an (zum Beispiel dist/main.js).',
+    'Pfad relativ zu diesem Ordner. TypeScript-Quellen können mit Laufzeitargumenten wie --import=tsx gestartet werden; kompiliertes JavaScript funktioniert ebenfalls.',
   'debug.launchArgs': 'Argumente',
   'debug.launchArgsHint':
     'Trennen Sie Argumente durch Leerzeichen; setzen Sie Werte mit Leerzeichen in Anführungszeichen. Shell-Ausdrücke werden nicht ausgewertet.',

@@ -3815,8 +3815,9 @@ export const es = {
   'debug.sourceUnavailable':
     'No se pudo añadir este archivo al depurador. Comprueba la conexión al nodo y después vuelve a abrir el archivo para reintentarlo.',
   'debug.entryPlaceholder':
-    'Buscar archivos de entrada o scripts del paquete; o escribir una ruta JavaScript compilada',
-  'debug.entryEmpty': 'Sin coincidencias. Puede escribir la ruta del JavaScript compilado.',
+    'Buscar archivos de entrada o scripts del paquete; o escribir una ruta de origen o JavaScript compilado',
+  'debug.entryEmpty':
+    'Sin coincidencias. Puede escribir una ruta de origen o JavaScript compilado.',
   'debug.sourceConflict': 'El archivo entra en conflicto con una fuente ya añadida',
   'debug.sourceLimit': 'Se alcanzó el límite de archivos fuente de la sesión',
   'debug.sourceUnreadable': 'El archivo no está disponible o no se puede leer',
@@ -3835,7 +3836,7 @@ export const es = {
   'debug.launchTitle': 'Ejecutar un programa',
   'debug.launchProgram': 'Programa',
   'debug.launchProgramHint':
-    'Ruta relativa a esta carpeta. Para TypeScript compilado, indique el archivo JavaScript de entrada (por ejemplo, dist/main.js).',
+    'Ruta relativa a esta carpeta. Puede ejecutar TypeScript de origen con argumentos de ejecución como --import=tsx; también funciona JavaScript compilado.',
   'debug.launchArgs': 'Argumentos',
   'debug.launchArgsHint':
     'Separe los argumentos con espacios; use comillas para valores con espacios. No se evalúan expresiones del intérprete de comandos.',

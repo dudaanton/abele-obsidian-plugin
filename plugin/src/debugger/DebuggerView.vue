@@ -14,7 +14,7 @@
           :options="
             peers.map((peer) => ({
               value: peer.sessionId!,
-              display: `${peer.controller.session.program} · ${peerState(peer)} · ${peer.sessionId?.slice(0, 8)}`,
+              display: `${peer.controller.snapshot ? service.sessionName(peer.controller.snapshot) : peer.controller.session.program} · ${peerState(peer)} · ${peer.sessionId?.slice(0, 8)}`,
             }))
           "
           :aria-label="t('streamC.95b22255ddc6fba2')"
@@ -160,7 +160,13 @@ const session = computed(() => {
   const b = binding.value
   if (!b) return undefined
   const trace = b.trace
-  const s = { ...b.controller.session }
+  const s = {
+    ...b.controller.session,
+    program: b.controller.snapshot
+      ? service.sessionName(b.controller.snapshot)
+      : b.controller.session.program,
+  }
+  if (s.unavailable) return { ...s, breakpoints: b.retainedBreakpoints }
   if (!trace) return s
   // A stop on record points only lasts as long as the values take: it reads as running.
   return {
@@ -227,7 +233,7 @@ function selectFrame(index: number) {
     if (frame) service.reveal(b, frame.file, frame.line)
   })
 }
-function command(action: string) {
+function command(action: string): void {
   const b = binding.value
   if (!b) return
   if (action === 'restart' && b.controller.session.unavailable) {
@@ -252,6 +258,7 @@ function breakpoint(file: string, line: number) {
   const b = binding.value
   const point = b?.controller.knownBreakpoints().find((p) => p.file === file && p.line === line)
   if (!b || !point) return
+  if (b.controller.session.unavailable) return b.forgetBreakpoint(point.id)
   // A record point goes with what it takes; a breakpoint is only taken off.
   if (b.trace?.points.some((p) => p.breakpoint_id === point.id))
     void run(() => b.trace?.removePoint(point.id) ?? Promise.resolve())

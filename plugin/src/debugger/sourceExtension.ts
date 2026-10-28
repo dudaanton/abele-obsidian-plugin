@@ -68,7 +68,15 @@ export function mountDebugSource(
       const trace = matched ? binding?.trace : undefined
       const marked = trace
         ?.breakpoints()
-        .filter((b) => b.file === context.path || b.file === context.sourceId)
+        .filter(
+          (b) =>
+            (b.file === context.path || b.file === context.sourceId) &&
+            !binding?.forgottenBreakpoints.has(
+              binding?.controller
+                .knownBreakpoints()
+                .find((point) => point.file === b.file && point.line === b.line)?.id ?? ''
+            )
+        )
       const fail = (e: unknown) => binding?.fail(e)
       return h(
         DebugSource,
@@ -81,7 +89,9 @@ export function mountDebugSource(
             marked ??
             model
               ?.knownBreakpoints()
-              .filter((b) => b.sourceId === context.sourceId)
+              .filter(
+                (b) => b.sourceId === context.sourceId && !binding?.forgottenBreakpoints.has(b.id)
+              )
               .map((b) => ({
                 ...b,
                 file: context.path,

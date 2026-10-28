@@ -25970,7 +25970,7 @@
     ]
   },
   "debug.entryPlaceholder": {
-    "englishHash": "2d94cc8968b3d13809ddb2007ffd9e3b595688f52d76e5c88db77d43dad5fbce",
+    "englishHash": "badac085cffa01c1275f31fa7cf8cc459b6178b792167972485e460747cca428",
     "context": "Debugger program picker searches project entry files",
     "reviewedLocales": [
       "ru",
@@ -25980,7 +25980,7 @@
     ]
   },
   "debug.entryEmpty": {
-    "englishHash": "47d59eeb332d54177b3f9c558d5548a1033e333fb59c9f8c119bf77e97b0d878",
+    "englishHash": "89781ee83aafa9aea55b4626ace825e649b3ab54da0cdbad02fb12a38bda4519",
     "context": "Debugger program picker searches project entry files",
     "reviewedLocales": [
       "ru",
@@ -26040,7 +26040,7 @@
     ]
   },
   "debug.launchProgramHint": {
-    "englishHash": "581270953645c346c3dcf770d02307120dc18ec20b5b06eeb96c130b3e1e4664",
+    "englishHash": "82acabb919724d82535be55d560acbf4743c689ce309c2043991853ce6c6597b",
     "context": "Debugger launch configuration",
     "reviewedLocales": [
       "ru",

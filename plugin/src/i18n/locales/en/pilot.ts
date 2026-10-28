@@ -3640,8 +3640,8 @@ export const en = {
   'debug.sourceUnavailable':
     'This file could not be admitted to the debugger. Check the node connection, then reopen the file to retry.',
   'debug.entryPlaceholder':
-    'Search entry files or package scripts; or type a built JavaScript path',
-  'debug.entryEmpty': 'No matching entry. You can type a built JavaScript path.',
+    'Search entry files or package scripts; or type a source or built JavaScript path',
+  'debug.entryEmpty': 'No matching entry. You can type a source or built JavaScript path.',
   'debug.sourceConflict': 'This file conflicts with an admitted source',
   'debug.sourceLimit': 'The session source limit has been reached',
   'debug.sourceUnreadable': 'This file is unavailable or unreadable',
@@ -3659,7 +3659,7 @@ export const en = {
   'debug.launchTitle': 'Run a program',
   'debug.launchProgram': 'Program',
   'debug.launchProgramHint':
-    'Path relative to this folder. For a TypeScript build, enter the built JavaScript entry (for example, dist/main.js).',
+    'Path relative to this folder. TypeScript sources can run with runtime arguments such as --import=tsx; built JavaScript also works.',
   'debug.launchArgs': 'Arguments',
   'debug.launchArgsHint':
     'Separate arguments with spaces; quote values containing spaces. No shell expressions are evaluated.',

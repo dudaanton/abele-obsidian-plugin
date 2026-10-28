@@ -39,7 +39,7 @@ it.each([false, true])(
       expect(item).toBeDefined()
       await item!.handler!()
       expect(promptDialog).toHaveBeenCalledWith(
-        expect.objectContaining({ label: 'Hit count', value: '2' })
+        expect.objectContaining({ label: 'Hit count', placeholder: 'Hit count', value: '2' })
       )
       expect(edit).toHaveBeenCalledWith('sample-point', { hit_condition: '3' })
     } else {

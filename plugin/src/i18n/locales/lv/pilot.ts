@@ -3741,8 +3741,8 @@ export const lv = {
   'debug.sourceUnavailable':
     'Failu neizdevās pievienot atkļūdotājam. Pārbaudiet savienojumu ar mezglu, pēc tam atveriet failu vēlreiz, lai mēģinātu no jauna.',
   'debug.entryPlaceholder':
-    'Meklēt sākuma failus vai pakotnes skriptus; vai ievadīt kompilēta JavaScript ceļu',
-  'debug.entryEmpty': 'Nav atbilstību. Varat ievadīt kompilēta JavaScript ceļu.',
+    'Meklēt sākuma failus vai pakotnes skriptus; vai ievadīt avota vai kompilēta JavaScript ceļu',
+  'debug.entryEmpty': 'Nav atbilstību. Varat ievadīt avota vai kompilēta JavaScript ceļu.',
   'debug.sourceConflict': 'Fails konfliktē ar jau pievienotu pirmkoda failu',
   'debug.sourceLimit': 'Sasniegts sesijas pirmkoda failu skaita ierobežojums',
   'debug.sourceUnreadable': 'Fails nav pieejams vai nav nolasāms',
@@ -3760,7 +3760,7 @@ export const lv = {
   'debug.launchTitle': 'Palaist programmu',
   'debug.launchProgram': 'Programma',
   'debug.launchProgramHint':
-    'Ceļš attiecībā pret šo mapi. Kompilētam TypeScript norādiet JavaScript sākuma failu (piemēram, dist/main.js).',
+    'Ceļš attiecībā pret šo mapi. TypeScript avotu var palaist ar izpildlaika argumentiem, piemēram, --import=tsx; darbojas arī kompilēts JavaScript.',
   'debug.launchArgs': 'Argumenti',
   'debug.launchArgsHint':
     'Atdaliet argumentus ar atstarpēm; vērtības ar atstarpēm lieciet pēdiņās. Čaulas izteiksmes netiek izpildītas.',

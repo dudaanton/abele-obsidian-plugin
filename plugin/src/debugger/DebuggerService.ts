@@ -45,6 +45,20 @@ export class DebuggerBinding {
   readonly controller: DebuggerController
   attachmentKey?: string
   retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
+  readonly forgottenBreakpoints = new Set<string>()
+  /** Ended sessions cannot accept a patch. Forget the local point used by a later reattach. */
+  forgetBreakpoint(id: string) {
+    this.forgottenBreakpoints.add(id)
+    const removed = this.retainedBreakpoints.find((point) => point.id === id)
+    this.retainedBreakpoints = this.retainedBreakpoints.filter((point) => point.id !== id)
+    if (removed)
+      this.controller.session.breakpoints = this.controller.session.breakpoints.filter(
+        (point) => point.file !== removed.file || point.line !== removed.line
+      )
+    if (this.trace)
+      this.trace.points = this.trace.points.filter((point) => point.breakpoint_id !== id)
+    ++this.revision.value
+  }
   sessionMissing = false
   /** The session's recording, where the node records runs. */
   trace?: TraceSession
@@ -87,7 +101,9 @@ export class DebuggerBinding {
           this.controller?.current &&
           !['exited', 'lost'].includes(this.controller.session.status)
         )
-          this.retainedBreakpoints = this.controller.knownBreakpoints()
+          this.retainedBreakpoints = this.controller
+            .knownBreakpoints()
+            .filter((point) => !this.forgottenBreakpoints.has(point.id))
         ++this.revision.value
       }
     )
@@ -751,6 +767,13 @@ export class DebuggerService {
             : []
         )
         .slice(0, 256),
+      forgottenBreakpoints: peers
+        .flatMap((peer) =>
+          peer.sessionId
+            ? [...peer.forgottenBreakpoints].map((id) => ({ sessionId: peer.sessionId, id }))
+            : []
+        )
+        .slice(0, 256),
       sources: peers
         .flatMap((peer) => {
           const id = peer === binding ? sessionId : peer.sessionId
@@ -818,6 +841,15 @@ export class DebuggerService {
           )
           .max(256)
           .default([]),
+        forgottenBreakpoints: z
+          .array(
+            z.object({
+              sessionId: z.string().min(1).max(128),
+              id: z.string().min(1).max(128),
+            })
+          )
+          .max(256)
+          .default([]),
         sources: z
           .array(
             z.object({
@@ -843,6 +875,8 @@ export class DebuggerService {
       if (!watches.some((watch) => watch.expression === saved.expression))
         watches.push({ expression: saved.expression, stale: true })
     }
+    for (const forgotten of parsed.data.forgottenBreakpoints)
+      this.binding(owner, forgotten.sessionId).forgottenBreakpoints.add(forgotten.id)
     for (const attachment of parsed.data.attachments)
       this.binding(owner, attachment.sessionId).attachmentKey = attachment.key
     for (const source of parsed.data.sources) {
@@ -966,6 +1000,20 @@ export class DebuggerService {
   }
   private readonly revealers = new Set<(request: DebugSourceReveal) => boolean>()
   readonly sources = new Map<string, Map<string, SourceMapping>>()
+  sessionName(snapshot: DebuggerSnapshot) {
+    const launch = snapshot.target.launch_configuration_id
+    const entry = launch.split(' · pid ')[0]?.split('/').pop()
+    if (!entry) return launch
+    const source = [...this.sources.values()]
+      .flatMap((sources) => [...sources.values()])
+      .find(
+        (source) =>
+          source.debugSessionId === snapshot.debug_session_id && source.path.endsWith(`/${entry}`)
+      )
+    const parts = source?.path.split('/') ?? []
+    const folder = parts.length > 2 ? parts[parts.length - 3] : undefined
+    return folder ? `${folder}/${launch}` : launch
+  }
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
   }

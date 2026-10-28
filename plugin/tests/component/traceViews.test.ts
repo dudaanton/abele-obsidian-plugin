@@ -34,6 +34,48 @@ const run: TraceRun = {
 }
 
 describe('a record point set up under its line', () => {
+  it('keeps horizontal code position while scrolling the editor into view', () => {
+    const scroller = document.createElement('div')
+    scroller.className = 'cm-scroller'
+    scroller.scrollLeft = 88
+    document.body.append(scroller)
+    const original = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = () => {
+      scroller.scrollLeft = 0
+    }
+    try {
+      const w = mount(TracePointEditor, { props: { line: 4 }, attachTo: scroller })
+      expect(scroller.scrollLeft).toBe(88)
+      w.unmount()
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+      scroller.remove()
+    }
+  })
+  it('adds names before the host capture keymap consumes Enter and keeps pending text', async () => {
+    const w = mount(TracePointEditor, { props: { line: 4 }, attachTo: document.body })
+    const hostKeymap = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }
+    }
+    document.addEventListener('keydown', hostKeymap, true)
+    try {
+      for (const name of ['firstValue', 'secondValue']) {
+        await w.get('.multi-select-input').setValue(name)
+        await w.get('.multi-select-input').trigger('keydown', { key: 'Enter' })
+      }
+      await w.get('.multi-select-input').setValue('thirdValue')
+      await w.get('[aria-label="Keep (Enter)"]').trigger('click')
+      expect(w.emitted('save')?.[0]?.[0]).toMatchObject({
+        take: ['firstValue', 'secondValue', 'thirdValue'],
+      })
+    } finally {
+      document.removeEventListener('keydown', hostKeymap, true)
+      w.unmount()
+    }
+  })
   it('keeps a typed custom expression when Keep is clicked directly', async () => {
     const w = mount(TracePointEditor, { props: { line: 4, inScope: ['sample'] } })
     await w.get('.multi-select-input').setValue('globalThis.sampleCount')

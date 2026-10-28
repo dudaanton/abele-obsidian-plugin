@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { nextTick } from 'vue'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -13,6 +14,25 @@ vi.mock('@/github/codeViewer', () => ({
   },
 }))
 beforeEach(() => useVault([]))
+it('does not bubble the gutter menu into the file menu', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const fileMenu = vi.fn()
+  host.addEventListener('contextmenu', fileMenu)
+  const w = mount(DebugSource, {
+    attachTo: host,
+    props: { text: 'sample', path: 'sample.ts', breakpoints: [] },
+  })
+  try {
+    await nextTick()
+    await w.get('button.abele-debug-source__point').trigger('contextmenu')
+    expect(w.emitted('margin-menu')).toHaveLength(1)
+    expect(fileMenu).not.toHaveBeenCalled()
+  } finally {
+    w.unmount()
+    host.remove()
+  }
+})
 it('names disabled points instead of exposing an undefined label', async () => {
   const w = mount(DebugSource, {
     props: {

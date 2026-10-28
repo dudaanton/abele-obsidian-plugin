@@ -46,6 +46,21 @@ const elsewhere: WaitingProgram = {
   in_chat_folder: false,
 }
 
+it('selects an attached session before optional source navigation can stall', async () => {
+  const { presenter } = fakePresenter([inFolder])
+  fakeWorkspace()
+  const show = vi.fn(async (id: string) =>
+    DebuggerService.instance.select(DebuggerService.instance.binding(presenter, id))
+  )
+  const read = presenter.connection.client.readFile as ReturnType<typeof vi.fn>
+  read.mockImplementation(() => new Promise(() => {}))
+  void attachToProgram(presenter, inFolder, show)
+  await vi.waitFor(() => expect(show).toHaveBeenCalledWith('child-9'))
+  expect(DebuggerService.instance.active.value).toBe(
+    DebuggerService.instance.binding(presenter, 'child-9')
+  )
+})
+
 it('distinguishes package working folders inside the same project', () => {
   const rows = programSuggestions(
     ['gateway', 'rates'].map((name, i) => ({
