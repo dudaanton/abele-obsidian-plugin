@@ -12,6 +12,7 @@ import { ClientArtifacts } from './clientArtifacts'
 import { ClientRecords, RECORD_FIELDS, pruneSettledRecords } from './clientRecords'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
+import { frozen, plain, storeDraft } from './storeDraft'
 
 export interface NodeClientState extends ClientState {
   nodeLetters?: Record<string, NodeLetter>
@@ -22,6 +23,7 @@ export interface NodeClientState extends ClientState {
   managerOperations?: Record<string, ManagerOperation>
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
+  delegationTasks?: DelegationStorage['tasks']
   fileDrafts?: Record<string, FileDraft>
   /** Unsent composer text is local only; reconnect never admits it to the outbox. */
   chatDrafts?: Record<string, { text: string; notice: string }>
@@ -127,15 +129,12 @@ const StateSchema = z
   })
   .strict()
 
-/** Everything but the streamed journal and caches: what must reach the disk before it counts. */
-function intentOf(state: NodeClientState): string {
-  return JSON.stringify(metadataOf(state, ['cursors']))
-}
-
 function metadataOf(state: NodeClientState, omit: string[] = []) {
   return Object.fromEntries(
     Object.keys(state)
-      .filter((key) => !['events', 'artifactData', ...RECORD_FIELDS, ...omit].includes(key))
+      .filter(
+        (key) => !['events', 'artifactData', 'delegation', ...RECORD_FIELDS, ...omit].includes(key)
+      )
       .map((key) => [key, state[key as keyof NodeClientState]])
   )
 }
@@ -183,9 +182,26 @@ export function readStore<T>(store: ClientStore, look: (state: NodeClientState) 
 /** One database per enrolled installation, never a vault file or a transferable setting. */
 export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
+  private metadata?: { revision: string | undefined; state: NodeClientState }
+  private async loadMetadata(tx: IDBTransaction) {
+    const store = tx.objectStore('client')
+    const get = <T>(key: string) =>
+      new Promise<T>((resolve, reject) => {
+        const request = store.get(key)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    const revision = await get<string | undefined>('state-revision')
+    if (this.metadata && this.metadata.revision === revision) return this.metadata
+    return { revision, state: frozen(readState(await get('state'))) }
+  }
   private readonly journal = new ClientJournal()
   private readonly artifacts = new ClientArtifacts()
   private readonly records = new ClientRecords((field, value) => {
+    if (field === 'delegationTasks') {
+      DelegationStorageSchema.parse({ tasks: { record: value } })
+      return
+    }
     StateSchema.shape[field].parse({ record: value })
     if (field === 'operationRequests') {
       const request = value as { method: string; params: unknown }
@@ -199,7 +215,7 @@ export class NodeClientStore implements ClientStore {
 
   private open(): Promise<IDBDatabase> {
     return (this.database ??= new Promise((resolve, reject) => {
-      const request = this.factory.open(`abele-node-${this.namespace}`, 3)
+      const request = this.factory.open(`abele-node-${this.namespace}`, 4)
       request.onupgradeneeded = (event) => {
         const db = request.result
         if (!db.objectStoreNames.contains('client')) db.createObjectStore('client')
@@ -244,7 +260,9 @@ export class NodeClientStore implements ClientStore {
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
       let records: Awaited<ReturnType<ClientRecords['load']>> | undefined
+      let metadata: typeof this.metadata
       tx.oncomplete = () => {
+        this.metadata = metadata
         journal?.committed()
         artifacts?.committed()
         records?.committed()
@@ -296,12 +314,33 @@ export class NodeClientStore implements ClientStore {
         const request = store.count('state')
         request.onsuccess = keepAlive
       }
-      const request = store.get('state')
-      request.onsuccess = () => {
+      {
         void (async () => {
           try {
-            const state = readState(request.result)
-            const metadataBefore = JSON.stringify(metadataOf(request.result ?? state))
+            metadata = await this.loadMetadata(tx)
+            const base = metadata.state
+            const draft = storeDraft(base)
+            const extras: Record<string, unknown> = {}
+            const state = new Proxy(extras, {
+              get: (target, key) =>
+                Object.hasOwn(target, key)
+                  ? Reflect.get(target, key)
+                  : Reflect.get(draft.value, key),
+              set: (target, key, value) =>
+                Object.hasOwn(target, key)
+                  ? Reflect.set(target, key, value)
+                  : Reflect.set(draft.value, key, value),
+              deleteProperty: (target, key) =>
+                Object.hasOwn(target, key)
+                  ? Reflect.deleteProperty(target, key)
+                  : Reflect.deleteProperty(draft.value, key),
+              ownKeys: (target) => [
+                ...new Set([...Reflect.ownKeys(draft.value), ...Reflect.ownKeys(target)]),
+              ],
+              getOwnPropertyDescriptor: (target, key) =>
+                Reflect.getOwnPropertyDescriptor(target, key) ??
+                Reflect.getOwnPropertyDescriptor(draft.value, key),
+            }) as unknown as NodeClientState
             ;[journal, artifacts, records] = await Promise.all([
               this.journal.load(tx, state),
               this.artifacts.load(tx, state),
@@ -310,10 +349,18 @@ export class NodeClientStore implements ClientStore {
             // Journal/cache reads already keep this transaction alive. Only the user's
             // callback may wait without an IndexedDB request outstanding.
             keepAlive()
-            const before = intentOf(state)
-            const executionsBefore = JSON.stringify(state.obsidianExecutions)
+            const abandoned = new Set(
+              Object.entries(state.nodeLetters ?? {})
+                .filter(([id, letter]) => letter.status === 'pending' && !activeNodeLetters.has(id))
+                .map(([id, letter]) => {
+                  letter.status = 'interrupted'
+                  return id
+                })
+            )
+            if (abandoned.size)
+              state.outbox = state.outbox.filter((entry) => !abandoned.has(entry.operation_id))
             const submitted = state.outbox.slice()
-            result = structuredClone(await work(state))
+            result = structuredClone(plain(await work(state)))
             retainPromptAnswerIdentity(state, submitted)
             // Retain controller receipts, including approvals that settle after UI disconnection.
             for (const entry of submitted.filter(
@@ -345,22 +392,44 @@ export class NodeClientStore implements ClientStore {
               delete state.turnDrafts?.[id]
             }
             if (records.changed()) pruneSettledRecords(state)
-            intent = intentOf(state) !== before || records.changed()
-            executionIntent = JSON.stringify(state.obsidianExecutions) !== executionsBefore
             // An awaited callback may finish in a timer/network task, where IndexedDB is
             // inactive even with pending requests. Commit in the next count success handler.
             finish = () => {
               journal!.save()
               artifacts!.save()
+              const recordsChanged = records!.changed()
               records!.save()
-              const metadata = metadataOf(state)
-              if (
-                request.result === undefined ||
-                JSON.stringify(metadata) !== metadataBefore ||
-                request.result?.artifactData ||
-                RECORD_FIELDS.some((field) => Object.keys(request.result?.[field] ?? {}).length)
+              const next = draft.finish()
+              const changed = [...new Set([...Object.keys(next), ...Object.keys(base)])].filter(
+                (key) => next[key as keyof NodeClientState] !== base[key as keyof NodeClientState]
               )
-                store.put({ ...metadata, events: {}, results: {} }, 'state')
+              for (const key of changed) {
+                const schema = StateSchema.shape[key as keyof typeof StateSchema.shape]
+                if (!schema) throw new Error('Invalid node metadata field')
+                schema.parse(next[key as keyof NodeClientState])
+              }
+              if (changed.includes('outbox'))
+                for (const entry of next.outbox) validateParams(entry.method, entry.params)
+              if (changed.includes('nodePathIntents'))
+                for (const entry of Object.values(next.nodePathIntents ?? {}))
+                  validateParams(entry.method, entry.params)
+              intent = changed.some((key) => key !== 'cursors') || recordsChanged
+              executionIntent = next.obsidianExecutions !== base.obsidianExecutions
+              const migrated =
+                !!base.artifactData ||
+                !!base.delegation ||
+                RECORD_FIELDS.some((field) => Object.keys(base[field] ?? {}).length)
+              if (draft.changed() || migrated || !metadata!.revision) {
+                const revision = crypto.randomUUID()
+                const saved = frozen({
+                  ...metadataOf(next),
+                  events: {},
+                  results: {},
+                }) as NodeClientState
+                store.put(saved, 'state')
+                store.put(revision, 'state-revision')
+                metadata = { revision, state: saved }
+              }
             }
           } catch (error) {
             failure = error
@@ -376,21 +445,22 @@ export class NodeClientStore implements ClientStore {
     const db = await this.open()
     return new Promise<T>((resolve, reject) => {
       const tx = db.transaction(['client', 'journal'], 'readonly')
-      const request = tx.objectStore('client').get('state')
       let result: T
       let journal: Awaited<ReturnType<ClientJournal['load']>> | undefined
       let artifacts: Awaited<ReturnType<ClientArtifacts['load']>> | undefined
       let records: Awaited<ReturnType<ClientRecords['load']>> | undefined
-      request.onsuccess = () => {
+      let metadata: typeof this.metadata
+      {
         void (async () => {
           try {
-            const state = readState(request.result)
+            metadata = await this.loadMetadata(tx)
+            const state = { ...metadata.state }
             ;[journal, artifacts, records] = await Promise.all([
-              this.journal.load(tx, state),
-              this.artifacts.load(tx, state),
-              this.records.load(tx, state),
+              this.journal.load(tx, state, true),
+              this.artifacts.load(tx, state, true),
+              this.records.load(tx, state, true),
             ])
-            result = look(state)
+            result = look(Object.freeze(state))
           } catch (error) {
             reject(error instanceof Error ? error : new Error(String(error)))
             tx.abort()
@@ -398,6 +468,7 @@ export class NodeClientStore implements ClientStore {
         })()
       }
       tx.oncomplete = () => {
+        this.metadata = metadata
         journal?.committed()
         artifacts?.committed()
         records?.committed()

@@ -1,4 +1,5 @@
 import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
+import { presenterSnapshot } from './presenterSnapshot'
 
 import { t } from '@/i18n'
 import { rememberSessionOwnerMode } from './sessionOwnerMode'
@@ -169,7 +170,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly error = ref('')
   readonly rejected = ref<{ id: string; text: string; error: string }[]>([])
   readonly answers = ref<Record<string, PromptAnswerState>>({})
-  private readonly receipts = ref<NodeClientState['results']>({})
+  private readonly receipts = shallowRef<NodeClientState['results']>({})
   /** Unchanged messages keep their objects across projections, so only what changed redraws. */
   private readonly stable = new StableMessages()
   readonly presentation = computed(() => {
@@ -339,17 +340,18 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const { history, pending, rejected, artifactData, receipts, draft, firstKept, letters } =
           await readStore(client.store, (raw) => {
             const state = raw
+            const own = presenterSnapshot(state, this.reference.sessionId, [
+              ...this.visibleEvents.values(),
+              ...this.older.value,
+            ])
             return {
-              letters: state.nodeLetters ?? {},
+              ...own,
               draft: state.chatDrafts?.[this.reference.sessionId],
-              receipts: state.results,
-              artifactData: state.artifactData ?? {},
-              history: [...this.older.value, ...(state.events[this.reference.sessionId] ?? [])],
               firstKept:
                 state.events[this.reference.sessionId]?.[0]?.seq ??
                 (state.cursors[this.reference.sessionId] ?? 0) + 1,
               pending: state.outbox,
-              rejected: Object.entries(state.results)
+              rejected: Object.entries(own.receipts)
                 .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
                 .map(([id, r]) => ({ id, text: r.input.text, error: r.error })),
             }
@@ -433,6 +435,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
             data.mapped !== true &&
             NORMALIZED_ARTIFACT_EVENTS.has(event.type)
           ) {
+            if (!artifactData[id]) {
+              const cached = await readStore(client.store, (state) => state.artifactData?.[id])
+              if (cached) artifactData[id] = { ...cached }
+            }
             if (!artifactData[id] && client.connected && !this.unusableArtifacts.has(id)) {
               try {
                 artifactData[id] = await this.cacheArtifact(

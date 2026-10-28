@@ -56,6 +56,31 @@ function fixture(options: { head?: boolean; stored?: JournalEvent[] } = {}) {
 
 afterEach(() => vi.restoreAllMocks())
 
+it('retains only this session receipts in the presentation', async () => {
+  const f = fixture()
+  const p = new NodeChatPresenter(
+    {
+      kind: 'node-session',
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      sessionId: SID,
+      title: 'Sample',
+    },
+    { client: f.client, state: ref('offline'), error: ref('') } as unknown as NodeConnection
+  )
+  try {
+    await f.store.transaction((s) => {
+      s.results.other = { result: { payload: 'Other session' } }
+    })
+    await p.refresh()
+    expect(
+      (p as unknown as { receipts: { value: Record<string, unknown> } }).receipts.value
+    ).not.toHaveProperty('other')
+  } finally {
+    p.destroy()
+  }
+})
+
 it('keeps visible turns when the device event window advances between refreshes', async () => {
   const f = fixture()
   const p = new NodeChatPresenter(

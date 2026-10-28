@@ -217,9 +217,11 @@ it('isolates cached journals across handles, failed callbacks, and readonly muta
         throw new Error('Sample rollback')
       })
     ).rejects.toThrow('Sample rollback')
-    await first.read((state) => {
-      state.events.sample.length = 0
-    })
+    await expect(
+      first.read((state) => {
+        state.events.sample.length = 0
+      })
+    ).rejects.toThrow(TypeError)
     expect(await first.read((state) => state.events.sample)).toEqual(journal)
     await second.transaction((state) => {
       state.events.sample = journal.slice(1)

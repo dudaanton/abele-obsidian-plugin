@@ -3340,6 +3340,12 @@ again nor rewritten during metadata-only polling in the same client handle.
 The catalog cache retains only the latest language diagnostics for each file and root;
 superseded diagnostic snapshots are compacted on write and when an older cache is opened.
 Live listeners still receive every diagnostic push, and replay cursors are unchanged.
+Metadata is cached by a database revision; read-only consumers receive immutable snapshots,
+and writes copy and validate changed branches. Delegation tasks use separate records, with
+their exact tool snapshots shared by content fingerprint and reconstructed for retries.
+The cache retains the latest 200 delivered terminal tasks, plus all unfinished or uncertain
+work, pending sends and owner stop fences. Older cache layouts migrate atomically; older
+clients cannot write the new layout.
 
 Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
 (node ID, display name and provider). Their ordinary permission mode, scope and tool modes

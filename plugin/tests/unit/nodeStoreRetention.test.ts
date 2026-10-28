@@ -55,6 +55,7 @@ it('bounds legacy successful cancellations which have no delivery wake', async (
       for (let i = 0; i < 250; i++) {
         const run = {
           run_id: 'sample-run-' + i,
+          prompt_id: 'sample-prompt',
           session_id: 'sample-session',
           method: 'command.v1.run' as const,
           state: 'cancelled' as const,
@@ -126,6 +127,7 @@ it('retains undelivered and uncertain manager runs while bounding delivered term
   const store = new NodeClientStore('sample-manager-retention', new IDBFactory())
   const run = {
     run_id: 'sample-run',
+    prompt_id: 'sample-prompt',
     session_id: 'sample-session',
     method: 'command.v1.run' as const,
     state: 'exited' as const,
@@ -190,9 +192,11 @@ it('isolates receipt caches across handles, failed transactions and readonly mut
         throw new Error('sample rollback')
       })
     ).rejects.toThrow('sample rollback')
-    await first.read((s) => {
-      s.results.sample.result = 'readonly mutation'
-    })
+    await expect(
+      first.read((s) => {
+        s.results.sample.result = 'readonly mutation'
+      })
+    ).rejects.toThrow(TypeError)
     expect(await first.read((s) => s.results.sample.result)).toEqual({ text: 'original' })
     await second.transaction((s) => {
       s.results.sample.result = { text: 'changed' }

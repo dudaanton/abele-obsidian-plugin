@@ -1,6 +1,7 @@
 import { NodeEventSchema } from '@abele/node-protocol'
 import type { NodeClientState } from './NodeClientStore'
 import { SESSION_WINDOW } from './sessionWindow'
+import { frozen, plain, storeDraft } from './storeDraft'
 
 type Events = NodeClientState['events'][string]
 type Snapshot = { revision: string; events: Events; compacted?: boolean }
@@ -39,7 +40,7 @@ function request<T>(value: IDBRequest<T>): Promise<T> {
 }
 
 /** Session journals are paged from the node; mailbox and other control streams stay intact. */
-function retained(state: NodeClientState, stream: string, events: Events): Events {
+function retained(state: NodeClientState, stream: string, events: Events, classify = true): Events {
   events = currentDiagnostics(stream, events)
   let keep = state.windows?.[stream]
   if (
@@ -54,7 +55,8 @@ function retained(state: NodeClientState, stream: string, events: Events): Event
     })
   ) {
     // Persist the classification: the identifying event itself will leave the window.
-    ;(state.windows ??= {})[stream] = keep = SESSION_WINDOW
+    keep = SESSION_WINDOW
+    if (classify) (state.windows ??= {})[stream] = keep
   }
   return keep && events.length > keep ? events.slice(-keep) : events
 }
@@ -67,7 +69,7 @@ function retained(state: NodeClientState, stream: string, events: Events): Event
 export class ClientJournal {
   private snapshots = new Map<string, Snapshot>()
 
-  async load(tx: IDBTransaction, state: NodeClientState) {
+  async load(tx: IDBTransaction, state: NodeClientState, readonly = false) {
     const client = tx.objectStore('client')
     const journal = tx.objectStore('journal')
     const revisions = ((await request(client.get('streams'))) ?? {}) as Record<string, string>
@@ -81,11 +83,17 @@ export class ClientJournal {
             NodeEventSchema.parse(event)
           )
           const current = currentDiagnostics(stream, events)
-          snapshots.set(stream, { revision, events: current, compacted: current !== events })
+          snapshots.set(stream, {
+            revision,
+            events: frozen(current),
+            compacted: current !== events,
+          })
         }
       })
     )
     const events: NodeClientState['events'] = {}
+    const drafts = new Map<string, ReturnType<typeof storeDraft<Events>>>()
+    const trimmed = new Set<string>()
     const assign = (stream: string, value: Events) =>
       Object.defineProperty(events, stream, {
         configurable: true,
@@ -98,16 +106,28 @@ export class ClientJournal {
         configurable: true,
         enumerable: true,
         get: () => {
-          const copy = structuredClone(retained(state, stream, snapshot.events))
-          assign(stream, copy)
-          return copy
+          if (readonly) return frozen(retained(state, stream, snapshot.events, false))
+          let draft = drafts.get(stream)
+          if (!draft) {
+            const current = retained(state, stream, snapshot.events)
+            if (current !== snapshot.events) trimmed.add(stream)
+            draft = storeDraft(current)
+            drafts.set(stream, draft)
+          }
+          return draft.value
         },
         set: (value: Events) => {
           assign(stream, value)
         },
       })
     }
-    state.events = events
+    if (readonly) Object.freeze(events)
+    Object.defineProperty(state, 'events', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: events,
+    })
     return {
       save: () => {
         const current = state.events
@@ -123,21 +143,22 @@ export class ClientJournal {
           const previous = snapshots.get(stream)
           if (
             !previous?.compacted &&
+            !trimmed.has(stream) &&
             current === events &&
-            Object.getOwnPropertyDescriptor(current, stream)?.get
+            Object.getOwnPropertyDescriptor(current, stream)?.get &&
+            !drafts.get(stream)?.changed()
           )
             continue
-          const next = retained(state, stream, current[stream])
-          if (
-            previous &&
-            !previous.compacted &&
-            JSON.stringify(next) === JSON.stringify(previous.events)
+          const next = retained(
+            state,
+            stream,
+            drafts.get(stream)?.finish() ?? plain(current[stream])
           )
-            continue
+          if (previous && !previous.compacted && next === previous.events) continue
           const revision = crypto.randomUUID()
           revisions[stream] = revision
           journal.put(next, stream)
-          snapshots.set(stream, { revision, events: structuredClone(next) })
+          snapshots.set(stream, { revision, events: frozen(next) })
           changed = true
         }
         if (changed) client.put(revisions, 'streams')
