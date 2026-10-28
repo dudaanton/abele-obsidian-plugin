@@ -3337,6 +3337,9 @@ retain their latest 400 events (or the explicitly requested window); older histo
 on the node and the chat reads it in pages. Control streams, pending operations, local drafts,
 approval answers and execution receipts are retained. Unchanged journals are neither read
 again nor rewritten during metadata-only polling in the same client handle.
+The catalog cache retains only the latest language diagnostics for each file and root;
+superseded diagnostic snapshots are compacted on write and when an older cache is opened.
+Live listeners still receive every diagnostic push, and replay cursors are unchanged.
 
 Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
 (node ID, display name and provider). Their ordinary permission mode, scope and tool modes

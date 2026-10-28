@@ -3,7 +3,33 @@ import type { NodeClientState } from './NodeClientStore'
 import { SESSION_WINDOW } from './sessionWindow'
 
 type Events = NodeClientState['events'][string]
-type Snapshot = { revision: string; events: Events }
+type Snapshot = { revision: string; events: Events; compacted?: boolean }
+
+/** Diagnostics replace a file's previous snapshot; live listeners still receive every push.
+ * Keep control events and unknown payloads intact, and never alter replay cursors. */
+function currentDiagnostics(stream: string, events: Events): Events {
+  if (stream !== 'catalog') return events
+  const seen = new Set<string>()
+  const keep = new Set<Events[number]>()
+  for (let i = events.length - 1; i >= 0; --i) {
+    const event = events[i]
+    const data = event.data as Record<string, unknown> | null
+    if (
+      event.type !== 'lsp.diagnostics' ||
+      !data ||
+      typeof data.path !== 'string' ||
+      !Array.isArray(data.diagnostics) ||
+      (typeof data.workspace_id !== 'string' && typeof data.worktree_id !== 'string')
+    ) {
+      keep.add(event)
+      continue
+    }
+    const key = JSON.stringify([data.workspace_id, data.worktree_id, data.path])
+    if (!seen.has(key)) keep.add(event)
+    seen.add(key)
+  }
+  return keep.size === events.length ? events : events.filter((event) => keep.has(event))
+}
 
 function request<T>(value: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -14,6 +40,7 @@ function request<T>(value: IDBRequest<T>): Promise<T> {
 
 /** Session journals are paged from the node; mailbox and other control streams stay intact. */
 function retained(state: NodeClientState, stream: string, events: Events): Events {
+  events = currentDiagnostics(stream, events)
   let keep = state.windows?.[stream]
   if (
     keep === undefined &&
@@ -48,17 +75,14 @@ export class ClientJournal {
     await Promise.all(
       Object.entries(revisions).map(async ([stream, revision]) => {
         const cached = this.snapshots.get(stream)
-        snapshots.set(
-          stream,
-          cached?.revision === revision
-            ? cached
-            : {
-                revision,
-                events: ((await request(journal.get(stream))) as unknown[]).map((event) =>
-                  NodeEventSchema.parse(event)
-                ),
-              }
-        )
+        if (cached?.revision === revision) snapshots.set(stream, cached)
+        else {
+          const events = ((await request(journal.get(stream))) as unknown[]).map((event) =>
+            NodeEventSchema.parse(event)
+          )
+          const current = currentDiagnostics(stream, events)
+          snapshots.set(stream, { revision, events: current, compacted: current !== events })
+        }
       })
     )
     const events: NodeClientState['events'] = {}
@@ -96,10 +120,20 @@ export class ClientJournal {
           changed = true
         }
         for (const stream of Object.keys(current)) {
-          if (current === events && Object.getOwnPropertyDescriptor(current, stream)?.get) continue
-          const next = retained(state, stream, current[stream])
           const previous = snapshots.get(stream)
-          if (previous && JSON.stringify(next) === JSON.stringify(previous.events)) continue
+          if (
+            !previous?.compacted &&
+            current === events &&
+            Object.getOwnPropertyDescriptor(current, stream)?.get
+          )
+            continue
+          const next = retained(state, stream, current[stream])
+          if (
+            previous &&
+            !previous.compacted &&
+            JSON.stringify(next) === JSON.stringify(previous.events)
+          )
+            continue
           const revision = crypto.randomUUID()
           revisions[stream] = revision
           journal.put(next, stream)
