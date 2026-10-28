@@ -14,7 +14,7 @@
           :options="
             peers.map((peer) => ({
               value: peer.sessionId!,
-              display: `${peer.controller.snapshot ? service.sessionName(peer.controller.snapshot) : peer.controller.session.program} · ${peerState(peer)} · ${peer.sessionId?.slice(0, 8)}`,
+              display: `${peer.controller.snapshot ? service.sessionName(peer.controller.snapshot, peer.controller.session.program) : peer.controller.session.program} · ${peerState(peer)} · ${peer.sessionId?.slice(0, 8)}`,
             }))
           "
           :aria-label="t('streamC.95b22255ddc6fba2')"
@@ -163,7 +163,7 @@ const session = computed(() => {
   const s = {
     ...b.controller.session,
     program: b.controller.snapshot
-      ? service.sessionName(b.controller.snapshot)
+      ? service.sessionName(b.controller.snapshot, b.controller.session.program)
       : b.controller.session.program,
   }
   if (s.unavailable) return { ...s, breakpoints: b.retainedBreakpoints }

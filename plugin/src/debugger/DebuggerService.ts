@@ -1001,8 +1001,8 @@ export class DebuggerService {
   }
   private readonly revealers = new Set<(request: DebugSourceReveal) => boolean>()
   readonly sources = new Map<string, Map<string, SourceMapping>>()
-  sessionName(snapshot: DebuggerSnapshot) {
-    const launch = snapshot.target.launch_configuration_id
+  sessionName(snapshot: DebuggerSnapshot, fallback = '') {
+    const launch = snapshot.target?.launch_configuration_id ?? fallback
     const entry = launch.split(' · pid ')[0]?.split('/').pop()
     if (!entry) return launch
     const source = [...this.sources.values()]
