@@ -329,6 +329,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private bindingWriteBlocked = false
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
+  /** Attachment preparation owns no visible bubbles or history until the batch commits. */
+  private queuePreparation: AbortSignal | null = null
+  /** A stopped batch stays available until an explicit send or the composer takes it back. */
+  private stoppedQueuePreparation = false
   /** Changes before replacing a conversation; saving its first file does not change it. */
   public readonly conversationVersion = ref(0)
   /** The reserved clone tab is read-only until its independent snapshot has been adopted. */
@@ -1556,6 +1560,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         signal?: AbortSignal,
         callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
+        const generation = this.generation
+        const turn = this.currentTurnId()
+        const stopEpoch = this.delegationStopEpoch
+        const isCurrent = () =>
+          !signal?.aborted &&
+          !this.destroyed &&
+          stopEpoch === this.delegationStopEpoch &&
+          generation === this.generation &&
+          turn === this.currentTurnId()
+        const assertCurrent = () => {
+          if (!isCurrent()) throw new DOMException('Stopped', 'AbortError')
+        }
         if (this.toolCeiling && !isSectionOpener(tool) && !this.toolCeiling(tool))
           throw new Error('This tool is outside the hosted run permission ceiling')
         // ZIP's selected array and invocation owner must not change during approval/tracker awaits.
@@ -1579,7 +1595,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           scope: this.scopeResolver,
           session: this,
           onNodeFileTarget: (target) => {
-            if (this.destroyed || this.conversationVersion.value !== version) return
+            if (!isCurrent()) return
             this.updateChatMessage(
               (m) => m.role === 'tool-call' && m.toolCallId === id,
               (m) => ({ ...m, toolNodeTarget: structuredClone(target) })
@@ -1588,6 +1604,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           agentId: tool.name === 'zip' ? ownerAgent?.id : this.agent.value?.id,
           app: invocationApp,
           validateWrite: () => {
+            assertCurrent()
             if (
               this.destroyed ||
               this.conversationVersion.value !== version ||
@@ -1606,17 +1623,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             (tool.name !== 'node_propose_edit' &&
               (await this.turnPolicy.isApproved(id, tool.permissionKey, tool.destinationKey))),
         }
+        assertCurrent()
         // Delegated branches write to their root chat, with the branch's own run identity.
         const recording = this.root.rewind.track(
           tool.name,
-          `${this.id}:${this.currentTurnId() ?? id}`
+          `${this.id}:${turn ?? id}`,
+          undefined,
+          isCurrent
         )
         ctx.app = recording.app
         try {
           // Before anything is written, so a refused call changes nothing at all.
           const refused = await this.readGuard.check(tool.name, params)
           if (refused) throw new Error(refused)
-          signal?.throwIfAborted()
+          assertCurrent()
           const identityRefusal = pendingMcpToolRefusal(
             tool,
             AbeleConfig.getInstance().ai.mcpServers
@@ -1624,12 +1644,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           if (identityRefusal) throw new Error(identityRefusal)
           if (NODE_MUTATION_TOOLS.includes(tool.name) && !this.nodeScopeIdentity) {
             await this.ensureDelegationParentId()
-            signal?.throwIfAborted()
+            assertCurrent()
             if (this.destroyed || this.conversationVersion.value !== version)
               throw new UiError(uiMessage('streamBError.e4184853d0'))
           }
           const result = await tool.execute(id, invocationParams, signal, ctx)
-          await this.readGuard.record(tool.name, params, result)
+          assertCurrent()
+          await this.readGuard.record(tool.name, params, result, isCurrent)
+          assertCurrent()
           // After the guard, which has to see a file's text as the tool gave it.
           this.results.keep(tool.name, id, result)
           // The one place that sees a tool's name, its arguments and its result together, so
@@ -2149,7 +2171,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
           signal: controller.signal,
         },
-        beforeIteration: () => this.takeQueued(),
+        beforeIteration: () => this.takeQueued(controller.signal),
         prepareMessages: async (messages) => {
           if (this.destroyed || generation !== this.generation || controller.signal.aborted)
             return messages
@@ -2677,7 +2699,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       return
     }
     // Only a new explicit send can resume after Stop; automatic mailbox sends carry a fence.
-    if (!isCurrent) this.resumeDelegationWake()
+    if (!isCurrent) {
+      this.stoppedQueuePreparation = false
+      this.resumeDelegationWake()
+    }
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
     // hands it to the loop that is already running, at its next iteration; `drainQueue` gives
     // it a turn of its own when the one it waited behind ends without another iteration.
@@ -2916,6 +2941,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * takes the queue with it.
    */
   private async drainQueue(): Promise<void> {
+    if (this.stoppedQueuePreparation) return
     if (this.isBusy) return
     if (this.pendingToolCalls.value.length) return
 
@@ -2927,20 +2953,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   /**
-   * Put a message from the person into the conversation.
-   *
-   * The chat bubble is appended here; the message the model will be shown is returned rather
-   * than stored, because where it belongs depends on whether a loop is already running — a
-   * fresh turn pushes it into the history, an injected one lets the loop carry it.
+   * Build a person's bubble without publishing it, so queued attachments can be prepared
+   * before anything is removed from the queue or becomes visible in the conversation.
    */
-  private async userMessage(
+  private userBubble(
     content: string,
     attachments?: string[],
-    review = true,
     replyTo?: ChatReplyTo[],
     fromChat?: LetterChat,
     automaticNotice = false
-  ): Promise<Message> {
+  ): ChatMessage {
     const userMsg: ChatMessage = {
       id: nanoid(),
       role: automaticNotice ? 'system' : 'user',
@@ -2953,6 +2975,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       ...(replyTo?.length ? { replyTo: replyTo.map((to) => ({ ...to })) } : {}),
       timestamp: Date.now(),
     }
+    return userMsg
+  }
+
+  private publishUserMessage(userMsg: ChatMessage, review: boolean): void {
+    const content = userMsg.content
+    const attachments = userMsg.attachments
     // Reply-only interceptors comment beside it, one after another, the turn never waiting.
     const readers = review ? this.messageReaders(content).filter((e) => e.replyOnly) : []
     // Snapshot before this bubble joins the conversation, just like a blocking script sees it.
@@ -2975,7 +3003,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         console.error('[Abele interceptor save]', err)
       })
     }
-    return this.modelMessage(userMsg)
+  }
+
+  private async userMessage(
+    content: string,
+    attachments?: string[],
+    review = true,
+    replyTo?: ChatReplyTo[],
+    fromChat?: LetterChat,
+    automaticNotice = false
+  ): Promise<Message> {
+    const bubble = this.userBubble(content, attachments, replyTo, fromChat, automaticNotice)
+    this.publishUserMessage(bubble, review)
+    return this.modelMessage(bubble)
   }
 
   /**
@@ -2983,7 +3023,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * and what is attached to it, read. One builder for a message sent at once and for a draft
    * sent after its interceptor, so the two never differ in what the agent is told.
    */
-  private async modelMessage(bubble: ChatMessage): Promise<Message> {
+  private async modelMessage(bubble: ChatMessage, recordReads = true): Promise<Message> {
     const content = bubble.content
     const attachments = bubble.attachments
     // The model is told where each link points, and which places of earlier answers the
@@ -2994,7 +3034,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     if (attachments?.length) {
       // A picture explicitly sent to the agent is also a file its editing tools may use.
-      for (const path of attachments) {
+      for (const path of recordReads ? attachments : []) {
         if (isImagePath(path) || isHeicImport(path)) this.scopeResolver.addFile(path)
       }
       // An attached note is read: its text is in the message.
@@ -3003,7 +3043,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         reads.push({ ...seen, at: Date.now(), via: 'attachment' })
       )
       const allParts: UserContentPart[] = [{ type: 'text', text }, ...parts]
-      this.readGuard.note(reads)
+      if (recordReads) this.readGuard.note(reads)
       return {
         role: 'user',
         content: allParts,
@@ -3018,10 +3058,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   /**
    * Everything queued since the loop started, as messages for the model.
    *
-   * Emptied before the messages are built so that anything typed while this is running waits
-   * for the iteration after, rather than being handed over twice.
+   * Preparation is transactional: keep the batch queued until all attachment reads finish.
+   * Stop can then return it to the composer without publishing incomplete bubbles.
    */
-  private async takeQueued(): Promise<Message[]> {
+  private async takeQueued(signal: AbortSignal): Promise<Message[]> {
     const queued = this.currentQueuedMessages()
     // Only the run of messages at the front that the interceptor would not look at: one it
     // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
@@ -3029,27 +3069,48 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const cut = queued.findIndex((q) => !q.delegationWake && this.interceptorHolds(q.content))
     const taken = cut === -1 ? queued : queued.slice(0, cut)
     if (!taken.length) return []
-    this.queuedMessages.value = cut === -1 ? [] : queued.slice(cut)
-
-    // The interceptor script's say was about the message it saw; this one it never saw.
-    this.turnPolicy.clear()
-
-    const messages: Message[] = []
-    for (const q of taken) {
-      if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
-      const message = await this.userMessage(
-        q.content,
-        q.attachments,
-        !q.delegationWake,
-        q.replyTo,
-        undefined,
-        !!q.delegationWake
-      )
-      // Stop can win while message/attachment preparation is pending, after dequeue.
-      if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
-      messages.push(message)
+    const generation = this.generation
+    this.queuePreparation = signal
+    try {
+      const prepared = []
+      for (const q of taken) {
+        signal.throwIfAborted()
+        if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
+        const bubble = this.userBubble(
+          q.content,
+          q.attachments,
+          q.replyTo,
+          undefined,
+          !!q.delegationWake
+        )
+        const message = await abortable(this.modelMessage(bubble, false), signal)
+        prepared.push({ q, bubble, message })
+      }
+      signal.throwIfAborted()
+      if (this.destroyed || generation !== this.generation) return []
+      const current = new Set(this.currentQueuedMessages().map((q) => q.id))
+      const messages: Message[] = []
+      // No awaits between publishing the batch and returning it to the loop.
+      this.turnPolicy.clear()
+      for (const { q, bubble, message } of prepared) {
+        if (
+          !current.has(q.id) ||
+          (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake))
+        )
+          continue
+        this.publishUserMessage(bubble, !q.delegationWake)
+        this.readGuard.note(message.role === 'user' ? (message.reads ?? []) : [])
+        for (const path of q.attachments ?? []) {
+          if (isImagePath(path) || isHeicImport(path)) this.scopeResolver.addFile(path)
+        }
+        messages.push(message)
+      }
+      const consumed = new Set(taken.map((q) => q.id))
+      this.queuedMessages.value = this.queuedMessages.value.filter((q) => !consumed.has(q.id))
+      return messages
+    } finally {
+      if (this.queuePreparation === signal) this.queuePreparation = null
     }
-    return messages
   }
 
   /** Drop what is waiting and hand it back, for whoever stopped the agent to keep. */
@@ -3342,6 +3403,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   abort(): void {
+    const wasAborted = this.turnAborted
+    if (this.queuePreparation && this.queuedMessages.value.length)
+      this.stoppedQueuePreparation = true
     const wasRunning =
       !this.destroyed &&
       !this.turnAborted &&
@@ -3398,7 +3462,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
     // the chat hands it back to the input rather than dropping it.
     if (this.queuedMessages.value.length && !this.destroyed) this.markDirty()
-    this.queuedMessages.value = []
+    // A batch preparing attachments still belongs to the queue. Direct Stop callers may
+    // not have taken it back to the composer; keep it recoverable and do not auto-send it.
+    if (!this.queuePreparation && !wasAborted) this.queuedMessages.value = []
   }
 
   // ── Reset (new chat within this session / tab) ─────────────────

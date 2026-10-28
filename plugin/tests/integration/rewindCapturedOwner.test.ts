@@ -11,6 +11,21 @@ afterEach(() => {
   ChangeTracker.get()?.uninstall()
   vi.restoreAllMocks()
 })
+it('does not publish snapshots from an invalidated tool invocation', async () => {
+  const app = useVault([{ path: 'sample.md', content: 'before' }]) as unknown as App
+  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
+  ChangeTracker.install(app)
+  const store = memoryStore()
+  const log = new ChatRewind(app, { key: () => 'sample-chat', turn: () => 'sample-turn' }, store)
+  let current = true
+  const owner = log.track('write', 'sample-run', undefined, () => current)
+  current = false
+  await owner.app.vault.modify(app.vault.getAbstractFileByPath('sample.md') as TFile, 'late')
+  await owner.close()
+  expect(log.entries.value).toEqual([])
+  expect((await store.readLog('sample-chat'))?.entries ?? []).toEqual([])
+})
+
 it.each(['chat-b', null])(
   'saves late text and binary edits under the captured owner after host becomes %s',
   async (next) => {

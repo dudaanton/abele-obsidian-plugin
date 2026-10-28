@@ -10,6 +10,8 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import type { AgentTool, AssistantMessage, Message, StreamEvent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
+import { contentHash, READ_FIRST, ReadGuard } from '@/ai/readGuard'
+import { flushPromises } from '@vue/test-utils'
 
 const reply = (content: AssistantMessage['content']): AssistantMessage => ({
   role: 'assistant',
@@ -171,6 +173,109 @@ function expectStopped(holder: ChatSession, id: string, phase: string) {
 }
 
 describe('durable stopped turns', () => {
+  it('does not authorize writes from an abandoned read completing in a later turn', async () => {
+    const entered = deferred(),
+      release = deferred()
+    const internals = session as unknown as {
+      getTools(): AgentTool[]
+      wrapToolsForSession(tools: AgentTool[]): AgentTool[]
+      readGuard: ReadGuard
+    }
+    session.scopeResolver.entries.value = [{ type: 'folder', path: 'Samples' }]
+    const record = vi.spyOn(internals.readGuard, 'record')
+    const wrapped = internals.wrapToolsForSession([
+      {
+        name: 'sample_write',
+        description: '',
+        parameters: {},
+        execute: async () => {
+          entered.resolve()
+          await release.promise
+          return {
+            content: [{ type: 'text', text: 'before' }],
+            seen: {
+              path: 'Samples/sample-note.md',
+              hash: contentHash('before'),
+            },
+          }
+        },
+      },
+    ])
+    vi.mocked(internals.getTools).mockReturnValue(wrapped)
+    streamBatch(1)
+    const turn = session.sendMessage('Read the sample')
+    await entered.promise
+    session.abort()
+    await turn
+    await continueWithRealClient(session)
+    release.resolve()
+    await flushPromises()
+    expect(record).not.toHaveBeenCalled()
+    expect(await internals.readGuard.check('write', { path: 'Samples/sample-note.md' })).toContain(
+      READ_FIRST
+    )
+  })
+
+  it.each(['queue', 'composer'])(
+    'preserves preparing attachments in the %s on Stop',
+    async (target) => {
+      const entered = deferred(),
+        release = deferred(),
+        toolEntered = deferred(),
+        toolRelease = deferred()
+      const read = app.vault.read.bind(app.vault)
+      vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
+        if (file.path === 'Samples/sample-note.md') {
+          entered.resolve()
+          await release.promise
+        }
+        return read(file)
+      })
+      execute.mockImplementation(async () => {
+        toolEntered.resolve()
+        await toolRelease.promise
+        return { content: [] }
+      })
+      streamBatch(1)
+      const turn = session.sendMessage('Start the sample')
+      await toolEntered.promise
+      await session.sendMessage('Read this attachment', ['Samples/sample-note.md'])
+      await session.sendMessage('Then inspect another sample')
+      toolRelease.resolve()
+      await entered.promise
+      const recovered = target === 'composer' ? session.takeQueuedMessages() : undefined
+      session.abort()
+      await turn
+      session.abort()
+      const visible = session.messages.value.map((m) => m.content)
+      const kept = recovered ?? session.queuedMessages.value
+      expect(kept.map((q) => q.content)).toEqual([
+        'Read this attachment',
+        'Then inspect another sample',
+      ])
+      expect(kept[0].attachments).toEqual(['Samples/sample-note.md'])
+      release.resolve()
+      await flushPromises()
+      expect(session.messages.value.map((m) => m.content)).toEqual(visible)
+      const guard = (session as unknown as { readGuard: ReadGuard }).readGuard
+      expect(guard.view('Samples/sample-note.md')).toBeUndefined()
+      if (recovered) {
+        expect(session.queuedMessages.value).toEqual([])
+        return
+      }
+      const next = await continueWithRealClient(session)
+      expect(next).toContainEqual(
+        expect.objectContaining({
+          role: 'user',
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: 'text', text: expect.stringContaining('before') }),
+          ]),
+        })
+      )
+      expect(session.queuedMessages.value).toEqual([])
+    }
+  )
+
   it('ends a provider stream that ignores abort and whose return never resolves', async () => {
     const entered = deferred()
     const close = vi.fn(() => new Promise<IteratorResult<StreamEvent>>(() => {}))

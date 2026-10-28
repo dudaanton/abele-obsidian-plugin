@@ -86,16 +86,23 @@ export class ChatRewind implements Recording {
   track(
     tool: string,
     run: string,
-    turn = this.host.turn()
+    turn = this.host.turn(),
+    isCurrent: () => boolean = () => true
   ): { app: App; close: () => Promise<void> } {
     if (!this.journalKey)
-      return this.journal()?.track(tool, run, turn) ?? { app: this.app, close: async () => {} }
+      return (
+        this.journal()?.track(tool, run, turn, isCurrent) ?? {
+          app: this.app,
+          close: async () => {},
+        }
+      )
     const tracker = ChangeTracker.get(this.app)
     const chat = this.host.key()
     if (!tracker || rewindLimitBytes() === 0 || !chat || !turn)
       return { app: this.app, close: async () => {} }
     const scope = tracker.scope({
       record: (op, changes, blobs) => {
+        if (!isCurrent()) return
         this.record(op, changes, blobs, { chat, run, turn, tool })
         void this.flush()
       },

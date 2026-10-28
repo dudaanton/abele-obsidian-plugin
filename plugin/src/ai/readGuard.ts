@@ -237,7 +237,8 @@ export class ReadGuard {
   async record(
     toolName: string,
     params: Record<string, unknown> | undefined,
-    result: AgentToolResult
+    result: AgentToolResult,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
     const marks: ReadMark[] = []
     const seen = result.seen
@@ -272,7 +273,7 @@ export class ReadGuard {
       const carried = await this.carry(params, result)
       if (carried) marks.push(carried)
     }
-    if (!marks.length) return
+    if (!marks.length || !isCurrent()) return
     result.reads = marks
     this.live.push(...marks)
   }
