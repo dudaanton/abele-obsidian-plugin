@@ -37,6 +37,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import type { MapBlock } from '@/helpers/mapConfig'
 import { DEFAULT_RETRY, backoffDelay, isTransient, providerErrorPresentation } from './retry'
 import { AgentLoop, failedToolResult } from './client/AgentLoop'
+import { abortable } from './client/abortable'
 import { nodeAccessRefusalOf } from './tools/node/accessRefusal'
 import { mobileBackground } from './mobileBackground'
 import {
@@ -2508,11 +2509,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       return
     }
     try {
-      toolResult = await tool.execute(tc.id, args, signal, {
-        scope: this.scopeResolver,
-        interactive: this.kind !== 'run',
-        approved,
-      })
+      toolResult = await abortable(
+        tool.execute(tc.id, args, signal, {
+          scope: this.scopeResolver,
+          interactive: this.kind !== 'run',
+          approved,
+        }),
+        signal
+      )
     } catch (err: unknown) {
       if (signal?.aborted) {
         this.settleInterruptedCall(tc, 'interrupted')

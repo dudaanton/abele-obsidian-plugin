@@ -171,6 +171,60 @@ function expectStopped(holder: ChatSession, id: string, phase: string) {
 }
 
 describe('durable stopped turns', () => {
+  it('ends a provider stream that ignores abort and whose return never resolves', async () => {
+    const entered = deferred()
+    const close = vi.fn(() => new Promise<IteratorResult<StreamEvent>>(() => {}))
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockReturnValue({
+      next: async () => {
+        entered.resolve()
+        return new Promise<IteratorResult<StreamEvent>>(() => {})
+      },
+      return: close,
+      [Symbol.asyncIterator]() {
+        return this
+      },
+    } as AsyncGenerator<StreamEvent>)
+    const turn = session.sendMessage('Read the sample')
+    await entered.promise
+    session.abort()
+    await Promise.race([
+      turn,
+      new Promise((_, reject) => setTimeout(() => reject(Error('Stream stayed busy')), 700)),
+    ])
+    expect(close).toHaveBeenCalledOnce()
+    expect(session.isStreaming.value).toBe(false)
+    await continueWithRealClient(session)
+  })
+
+  it.each([1, 2])(
+    'ends a hung tool turn after %s Stop presses and accepts the next message',
+    async (presses) => {
+      const entered = deferred()
+      let signal: AbortSignal | undefined
+      execute.mockImplementation((_id, _args, currentSignal) => {
+        signal = currentSignal
+        entered.resolve()
+        return new Promise(() => {})
+      })
+      streamBatch(4)
+      const turn = session.sendMessage('Run the sample batch')
+      await entered.promise
+      for (let i = 0; i < presses; i++) session.abort()
+      await Promise.race([
+        turn,
+        new Promise((_, reject) => setTimeout(() => reject(Error('Stop left the turn busy')), 700)),
+      ])
+      expect(signal?.aborted).toBe(true)
+      expect(session.isStreaming.value).toBe(false)
+      expect(session.isExecutingTool.value).toBe(false)
+      expectStopped(session, 'one', 'interrupted')
+      for (const id of ['two', 'three', 'four']) expectStopped(session, id, 'not-run')
+      const next = await continueWithRealClient(session)
+      expect(next.filter((m) => m.role === 'tool')).toHaveLength(4)
+      expect(execute).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it('keeps an unfinished streamed tool request as not run when the transport throws', async () => {
     vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
       yield { type: 'text_delta', delta: 'Preparing a sample read.' }
@@ -331,6 +385,31 @@ describe('durable stopped turns', () => {
     const next = await continueWithRealClient(opened)
     expect(next.filter((m) => m.role === 'tool')).toHaveLength(2)
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends an approved tool that ignores abort without waiting for its result', async () => {
+    const internals = session as unknown as { needsApproval(): boolean }
+    vi.mocked(internals.needsApproval).mockReturnValue(true)
+    streamBatch(2)
+    await session.sendMessage('Update the sample notes')
+    const entered = deferred()
+    execute.mockImplementation(() => {
+      entered.resolve()
+      return new Promise(() => {})
+    })
+    const approval = session.approveToolCall()
+    await entered.promise
+    session.abort()
+    session.abort()
+    await Promise.race([
+      approval,
+      new Promise((_, reject) => setTimeout(() => reject(Error('Approval stayed busy')), 700)),
+    ])
+    expect(session.isExecutingTool.value).toBe(false)
+    expect(session.isStreaming.value).toBe(false)
+    expectStopped(session, 'one', 'interrupted')
+    expectStopped(session, 'two', 'not-run')
+    await continueWithRealClient(session)
   })
 
   it('does not turn Stop during an approval hook into an executable pending call', async () => {

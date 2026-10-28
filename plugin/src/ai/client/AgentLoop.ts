@@ -1,4 +1,5 @@
 import { OpenAIClient } from './OpenAIClient'
+import { abortable } from './abortable'
 import { interruptedToolResult, type ToolInterruption } from './toolInterruption'
 import { mobileBackground } from '../mobileBackground'
 import { appSuspension } from '../appSuspension'
@@ -144,11 +145,13 @@ export class AgentLoop {
         if (signal.aborted) break
 
         if (opts.beforeIteration) {
-          const injected = await opts.beforeIteration()
+          const injected = await abortable(Promise.resolve(opts.beforeIteration()), signal)
           if (injected.length) messages.push(...injected)
         }
 
-        const context = opts.prepareMessages ? await opts.prepareMessages(messages) : messages
+        const context = opts.prepareMessages
+          ? await abortable(opts.prepareMessages(messages), signal)
+          : messages
         if (signal.aborted) break
         // Stream LLM response
         const requestTools = opts.getTools?.() ?? opts.tools
@@ -315,60 +318,71 @@ export class AgentLoop {
         const partialArguments = new Map<string, string>()
         this.emit({ type: 'message_start', message: empty() })
         try {
-          for await (const event of this.client.stream(model, systemPrompt, messages, toolDefs, {
+          const stream = this.client.stream(model, systemPrompt, messages, toolDefs, {
             ...options,
             signal: request.controller.signal,
-          })) {
-            if (event.type === 'done') result = event.message
-            else if (event.type === 'error') result = event.message ?? empty(event.error)
-            else {
-              request.progress()
-              // Some transports throw on abort rather than returning their assembled turn.
-              // Keep what was actually streamed even in that case.
-              if (event.type === 'text_delta' || event.type === 'thinking_delta') {
-                const type = event.type === 'text_delta' ? 'text' : 'thinking'
-                if (block?.type !== type) {
-                  block = type === 'text' ? { type, text: '' } : { type, thinking: '' }
+          })
+          try {
+            for (;;) {
+              const next = await abortable(stream.next(), options.signal)
+              if (next.done) break
+              const event = next.value
+              if (event.type === 'done') result = event.message
+              else if (event.type === 'error') result = event.message ?? empty(event.error)
+              else {
+                request.progress()
+                // Some transports throw on abort rather than returning their assembled turn.
+                // Keep what was actually streamed even in that case.
+                if (event.type === 'text_delta' || event.type === 'thinking_delta') {
+                  const type = event.type === 'text_delta' ? 'text' : 'thinking'
+                  if (block?.type !== type) {
+                    block = type === 'text' ? { type, text: '' } : { type, thinking: '' }
+                    partial.content.push(block)
+                  }
+                  if (block.type === 'text') block.text += event.delta
+                  if (block.type === 'thinking') block.thinking += event.delta
+                } else if (event.type === 'tool_call_start') {
+                  block = {
+                    type: 'toolCall',
+                    id: event.toolCallId,
+                    name: event.toolName,
+                    arguments: {},
+                  }
                   partial.content.push(block)
+                  partialArguments.set(event.toolCallId, '')
+                } else if (event.type === 'tool_call_delta') {
+                  const call = event.toolCallId
+                    ? partial.content.find(
+                        (item) => item.type === 'toolCall' && item.id === event.toolCallId
+                      )
+                    : block
+                  if (call?.type !== 'toolCall') continue
+                  const raw = (partialArguments.get(call.id) ?? '') + event.delta
+                  partialArguments.set(call.id, raw)
+                  try {
+                    const args: unknown = JSON.parse(raw)
+                    if (args && typeof args === 'object' && !Array.isArray(args))
+                      call.arguments = args as Record<string, unknown>
+                  } catch {
+                    /* Unfinished arguments stay unexecuted, never repaired into an operation. */
+                  }
+                } else if (event.type === 'tool_call_end') {
+                  const index = partial.content.findIndex(
+                    (b) => b.type === 'toolCall' && b.id === event.toolCall.id
+                  )
+                  if (index < 0) partial.content.push(event.toolCall)
+                  else partial.content[index] = event.toolCall
+                  block = undefined
                 }
-                if (block.type === 'text') block.text += event.delta
-                if (block.type === 'thinking') block.thinking += event.delta
-              } else if (event.type === 'tool_call_start') {
-                block = {
-                  type: 'toolCall',
-                  id: event.toolCallId,
-                  name: event.toolName,
-                  arguments: {},
-                }
-                partial.content.push(block)
-                partialArguments.set(event.toolCallId, '')
-              } else if (event.type === 'tool_call_delta') {
-                const call = event.toolCallId
-                  ? partial.content.find(
-                      (item) => item.type === 'toolCall' && item.id === event.toolCallId
-                    )
-                  : block
-                if (call?.type !== 'toolCall') continue
-                const raw = (partialArguments.get(call.id) ?? '') + event.delta
-                partialArguments.set(call.id, raw)
-                try {
-                  const args: unknown = JSON.parse(raw)
-                  if (args && typeof args === 'object' && !Array.isArray(args))
-                    call.arguments = args as Record<string, unknown>
-                } catch {
-                  /* Unfinished arguments stay unexecuted, never repaired into an operation. */
-                }
-              } else if (event.type === 'tool_call_end') {
-                const index = partial.content.findIndex(
-                  (b) => b.type === 'toolCall' && b.id === event.toolCall.id
-                )
-                if (index < 0) partial.content.push(event.toolCall)
-                else partial.content[index] = event.toolCall
-                block = undefined
+                this.emit({ type: 'reconnecting', state: null })
+                this.emit({ type: 'stream_event', event })
               }
-              this.emit({ type: 'reconnecting', state: null })
-              this.emit({ type: 'stream_event', event })
+              if (options.signal?.aborted) break
             }
+          } finally {
+            // Abort reaches the transport through request.controller. Do not await a
+            // generator's return: it can itself be queued behind a hung next().
+            void stream.return(undefined).catch(() => {})
           }
         } catch (error) {
           result = empty(error instanceof Error ? error.message : 'Model connection failed')
@@ -487,8 +501,11 @@ export class AgentLoop {
       try {
         const hookResult =
           tc.permissionKey === undefined
-            ? await beforeToolCall(tc.name, tc.id, args)
-            : await beforeToolCall(tc.name, tc.id, args, tc.permissionKey, tc.destinationKey)
+            ? await abortable(beforeToolCall(tc.name, tc.id, args), signal)
+            : await abortable(
+                beforeToolCall(tc.name, tc.id, args, tc.permissionKey, tc.destinationKey),
+                signal
+              )
         if (signal.aborted) return this.interruptTool(tc, 'not-run')
         if (hookResult) {
           if (hookResult.pause) {
@@ -540,7 +557,7 @@ export class AgentLoop {
       // not admit a request or mutation, even for a tool that cannot cancel once started.
       signal.throwIfAborted()
       started = true
-      toolResult = await tool.execute(tc.id, args, signal)
+      toolResult = await abortable(tool.execute(tc.id, args, signal), signal)
     } catch (err: unknown) {
       if (signal.aborted) return this.interruptTool(tc, started ? 'interrupted' : 'not-run')
       toolResult = failedToolResult(err)
