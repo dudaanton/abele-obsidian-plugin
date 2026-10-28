@@ -5,6 +5,10 @@ export interface NodeAgentTurn {
   error?: string
 }
 
+/** The owner can inspect and approve an in-flight tool before its model turn settles. */
+export const startNodeAgentTurn = (path: string, steps: string) =>
+  `(()=>{window.__sampleNodeActionTurn=${nodeAgentTurn(path, steps)};return true})()`
+
 /**
  * An ordinary Obsidian chat whose agent has every node tool switched on, driven by a scripted
  * model. Each step names the next call from what the earlier results said, the way a model

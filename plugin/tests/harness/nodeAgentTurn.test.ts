@@ -2,7 +2,32 @@ import { openChatSetup } from '../helpers/chatProbeInteractions'
 import { expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
-import { nodeAgentTurn } from '../e2e/helpers/nodeAgentTurn'
+import { nodeAgentTurn, startNodeAgentTurn } from '../e2e/helpers/nodeAgentTurn'
+
+it('starts an approval-waiting command without awaiting its completion before the Allow click', async () => {
+  let allow!: () => void
+  const pending = new Promise<void>((resolve) => {
+    allow = resolve
+  })
+  const session = {
+    summarizer: {},
+    allMessages: { value: [] },
+    error: { value: '' },
+    sendMessage: () => pending,
+  }
+  const browser = {
+    fetch: async () => new Response('unrelated'),
+    __sampleNodeActionTurn: undefined as Promise<string> | undefined,
+    __abeleTest: { ChatService: { getInstance: () => ({ getSessionByFile: () => session }) } },
+  }
+  const started = new Function('window', `return ${startNodeAgentTurn('Sample.abchat', '[]')}`)(
+    browser
+  )
+  expect(started).toBe(true)
+  expect(browser.__sampleNodeActionTurn).toBeInstanceOf(Promise)
+  allow()
+  expect(JSON.parse(await browser.__sampleNodeActionTurn)).toMatchObject({ calls: [] })
+})
 
 it('keeps the fake provider installed while a vault tool waits for owner approval', async () => {
   const originalFetch: typeof fetch = async () => new Response('unrelated')

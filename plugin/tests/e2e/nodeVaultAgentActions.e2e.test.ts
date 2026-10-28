@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { evalLong, enterPhone, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { startPairedNode } from './helpers/pairedNode'
-import { nodeAgentTurn, type NodeAgentTurn } from './helpers/nodeAgentTurn'
+import { nodeAgentTurn, startNodeAgentTurn, type NodeAgentTurn } from './helpers/nodeAgentTurn'
 import { columnShot } from './helpers/columnShots'
 import { shotDir } from './helpers/shots'
 
@@ -17,8 +17,12 @@ async function exercise(label: string, plain: boolean) {
   const plainPath = join(dirname(node.state), 'sample-plain')
   const chat = `Sample node actions ${Date.now()}.abchat`
   const setup = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),session=chats.getSessionByFile(${JSON.stringify(chat)}),connection=T.NodeService.getInstance().connection(${JSON.stringify(node.registration)}),client=connection.client;`
-  const turn = async (steps: string) =>
-    JSON.parse(await evalLong(nodeAgentTurn(chat, steps), 90000)) as NodeAgentTurn
+  const turn = async (steps: string, phase = 'model turn') => {
+    console.info('[node vault actions]', label, phase, 'started')
+    const result = JSON.parse(await evalLong(nodeAgentTurn(chat, steps), 90000)) as NodeAgentTurn
+    console.info('[node vault actions]', label, phase, 'finished')
+    return result
+  }
   const pollCommand = (receipt: { session_id: string; run_id: string }) =>
     turn(`Array.from({length:60},(_,index)=>async r=>{
       await new Promise(r=>setTimeout(r,100));
@@ -111,20 +115,33 @@ async function exercise(label: string, plain: boolean) {
     expect(approved.error, JSON.stringify(approved)).toBeUndefined()
     expect(JSON.parse(approved.calls[0].result).state).toBe('saved')
 
-    const askCommand = await turn(
-      `[()=>({name:'node_command_run',params:{node:${JSON.stringify(node.node)},argv:['node','-e','process.stdout.write("sample-command-approved")'],operation_id:crypto.randomUUID(),justification:'Print the sample approval result.'}})]`
+    console.info('[node vault actions]', label, 'command approval started')
+    await evalLong(
+      startNodeAgentTurn(
+        chat,
+        `[()=>({name:'node_command_run',params:{node:${JSON.stringify(node.node)},argv:['node','-e','process.stdout.write("sample-command-approved")'],operation_id:crypto.randomUUID(),justification:'Print the sample approval result.'}})]`
+      )
     )
-    expect(askCommand.error, JSON.stringify(askCommand)).toBeUndefined()
-    const pendingCommand = JSON.parse(askCommand.calls[0].result)
-    expect(pendingCommand).toMatchObject({ state: 'pending_approval', stdout: '' })
     await evalLong(
       `(async()=>{for(let i=0;i<200;i++){if(document.querySelector('.abele-tool-approval [data-manager-command]'))return;await new Promise(r=>setTimeout(r,50))}throw Error('Command approval missing')})()`
     )
+    const pendingCommand = JSON.parse(
+      await evalLong(`(async()=>{${setup}
+      const cards=await connection.manager.cards(await session.ensureDelegationParentId());
+      const card=cards.find(c=>c.run.state==='pending_approval');
+      if(!card)throw Error('Pending command receipt missing');return JSON.stringify(card.run)
+    })()`)
+    )
+    expect(pendingCommand).toMatchObject({ state: 'pending_approval', stdout: '' })
     columnShot(`${shots}/${label}-command-ask.png`)
     await evalLong(
       `(()=>{const allow=[...document.querySelectorAll('.abele-tool-approval button')].find(b=>b.textContent.trim()==='Allow');if(!allow)throw Error('Command Allow missing');allow.click()})()`
     )
-    const approvedCommand = await pollCommand(pendingCommand)
+    console.info('[node vault actions]', label, 'command approval clicked')
+    const approvedCommand = JSON.parse(
+      await evalLong('window.__sampleNodeActionTurn', 90000)
+    ) as NodeAgentTurn
+    console.info('[node vault actions]', label, 'command approval finished')
     expect(approvedCommand.error, JSON.stringify(approvedCommand)).toBeUndefined()
     expect(JSON.parse(approvedCommand.calls.at(-1)!.result)).toMatchObject({
       state: 'exited',
