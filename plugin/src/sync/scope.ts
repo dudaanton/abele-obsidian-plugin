@@ -91,12 +91,20 @@ export function ignoreFor(
   // Case-folded, as the settings watch compares it: a case-insensitive disk lists the file
   // under whatever spelling it was made with.
   const kept = keptOut === null ? null : caseKey(keptOut)
+  const decisions = new Map<string, boolean>()
   return {
-    ignores: (wirePath) =>
-      (kept !== null && caseKey(wirePath) === kept) ||
-      isDeviceLocalPluginState(wirePath, configDir) ||
-      isHidden(wirePath, configDir) ||
-      (rules?.ignores(wirePath) ?? false),
+    ignores: (wirePath) => {
+      const known = decisions.get(wirePath)
+      if (known !== undefined) return known
+      const ignored =
+        (kept !== null && caseKey(wirePath) === kept) ||
+        isDeviceLocalPluginState(wirePath, configDir) ||
+        isHidden(wirePath, configDir) ||
+        (rules?.ignores(wirePath) ?? false)
+      if (decisions.size >= 131072) decisions.clear()
+      decisions.set(wirePath, ignored)
+      return ignored
+    },
   }
 }
 

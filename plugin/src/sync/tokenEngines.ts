@@ -70,6 +70,8 @@ import { RetainedShareCopies } from './retainedShareCopies'
 import { fingerprintFile } from '@abele/sync-sdk/core'
 import { sha256 } from './external/hash'
 import type { InspectionEntry } from './external/inspectionIdentity'
+import { inspectionCache } from './external/inspectionCache'
+import { SyncTaskBudget } from './syncTaskBudget'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -719,8 +721,27 @@ export class TokenEngines {
 
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
       let inspectionRows: readonly InspectionEntry[] | undefined
+      let inspectionLoad: Promise<readonly InspectionEntry[]> | undefined
+      const loadInspection = () =>
+        (inspectionLoad ??= (async () => {
+          const rows = inspectionRows ?? (await inspectionCache(connectionApp).load())
+          assertActive()
+          inspectionRows = rows
+          if (rows.length) {
+            const known = new Map<string, { path: string; size: number; mtime: number }>()
+            const budget = new SyncTaskBudget()
+            for (const row of rows) {
+              known.set(row.path, row)
+              await budget.metadataRow(startup.signal)
+              assertActive()
+            }
+            inventory = known
+          }
+          return rows
+        })())
       const inspection = {
         scope: scopedRoot,
+        deferCache: true,
         inventory: (files: typeof inventory) => {
           inventory = files
         },
@@ -879,6 +900,9 @@ export class TokenEngines {
           runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
         discovery,
         startupInventory: () => inventory,
+        prepareStartupInventory: async () => {
+          await loadInspection()
+        },
         runtimeFence: fence,
         ledger: physicalLedger,
         preserveEmptyDirectories: true,
@@ -1000,7 +1024,7 @@ export class TokenEngines {
             fence,
             // The filesystem filters before representation reads candidate prefixes.
             fs: ordinary,
-            inspectionRows,
+            inspectionRows: loadInspection,
             placement: externalPlacement,
             manager,
             scriptsFolder: () => this.scriptsFolder,

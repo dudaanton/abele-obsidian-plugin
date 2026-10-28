@@ -4,7 +4,7 @@ import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { IDBFactory } from 'fake-indexeddb'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
@@ -37,9 +37,14 @@ it('restarts a synced 33000-file native representation without reading content',
   const bytes = new Uint8Array(4096).fill(37)
   const sha = await sha256(bytes)
   let contentBytes = 0,
-    lstats = 0
+    lstats = 0,
+    diskListings = 0
   const native = {
     ...disk,
+    readdir: ((...args: Parameters<typeof disk.readdir>) => {
+      diskListings++
+      return disk.readdir(...args)
+    }) as typeof disk.readdir,
     lstat: ((...args: Parameters<typeof disk.lstat>) => {
       lstats++
       return disk.lstat(...args)
@@ -88,6 +93,7 @@ it('restarts a synced 33000-file native representation without reading content',
         new Uint8Array(await native.readFile(join(root, path))).buffer,
       read: async (path: string) => String(await native.readFile(join(root, path))),
       list: async (path: string) => {
+        diskListings++
         const rows = await disk.readdir(join(root, path), { withFileTypes: true })
         return {
           files: rows
@@ -123,6 +129,7 @@ it('restarts a synced 33000-file native representation without reading content',
     state = await IndexedDbStateStore.open(factory, 'sample-restart')
     prune(Reflect.get(Reflect.get(state, 'connection'), 'db'))
     const fs = new ObsidianFileSystem(app as never, { ledger: state })
+    const rawListings = vi.spyOn(fs as never, 'listUnlocked')
     const fence = new RuntimeFence(app, 'sample-restart', () => true)
     fence.activate()
     const placement = new LocalFolderPlacement('Shared', 'Shared')
@@ -146,10 +153,17 @@ it('restarts a synced 33000-file native representation without reading content',
       expect(inspected).toBe(expected)
     }
     if (listings === 1) await list()
-    else
-      await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
-        for (let i = 0; i < listings; i++) await list()
-      })
+    else {
+      const stop = fs.watch(() => {})
+      try {
+        await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+          for (let i = 0; i < listings; i++) await list()
+        })
+      } finally {
+        stop()
+      }
+    }
+    if (listings > 1) expect(rawListings.mock.calls.length).toBeLessThanOrEqual(2)
     if (cycles) {
       // Engine cycles while the vault is watched: each is its own inventory pass and walks the
       // ledger several times, as the engine's preparation, scope review and scans do.
@@ -206,17 +220,20 @@ it('restarts a synced 33000-file native representation without reading content',
     host!.close()
     state!.close()
     contentBytes = 0
+    diskListings = 0
     const started = performance.now()
     const stats = await open(paths.length, 15)
     const idleMs = performance.now() - started
     console.log('native synced representation restart', {
       files: paths.length,
       listings: 15,
+      diskListings,
       contentBytes,
       idleMs,
       callers: stats.callers,
     })
     expect(contentBytes).toBe(0)
+    expect(diskListings).toBeLessThanOrEqual(4)
     expect(stats.contentReads).toBe(0)
     expect(await state!.getCursor()).toBe(1)
     // Fifteen listings cost about one: an unchanged file is verified against the cache once

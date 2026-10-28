@@ -192,6 +192,7 @@ class InventoryProofs extends Set<string> {
   }
 }
 interface InventoryPass {
+  fileList?: { stamp: string; files: FileInfo[] }
   ledgerRows?: { revision: unknown; rows: StateEntry[] }
   indexedNames?: InventoryCache<Set<string>>
   parentFolders?: Set<string>
@@ -236,6 +237,7 @@ export interface ObsidianFileSystemOptions {
   /** Omitted for personal/root connections. Group roots are empty; members are exact paths. */
   discovery?: { roots: readonly string[]; includes(path: string): boolean }
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
+  prepareStartupInventory?: () => Promise<void>
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
   runtimeFence?: RuntimeFence
@@ -944,6 +946,7 @@ export class ObsidianFileSystem implements FileSystem {
   private cachedConfigRevision: number
   private configPolled = false
   private readonly startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
+  private readonly prepareStartupInventory?: () => Promise<void>
   private readonly discovery?: ObsidianFileSystemOptions['discovery']
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
    * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
@@ -1058,6 +1061,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.fileScope = options.fileScope
     this.startupInventory = options.startupInventory
+    this.prepareStartupInventory = options.prepareStartupInventory
     this.discovery = options.discovery
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
@@ -2349,6 +2353,11 @@ export class ObsidianFileSystem implements FileSystem {
     if (own) this.inventory = inventory
     try {
       for (;;) {
+        const before = !own && inventory && (await this.fileListStamp(inventory))
+        if (before && inventory?.fileList?.stamp === before) {
+          yield* inventory.fileList.files
+          break
+        }
         await this.conditional.waitSettled()
         const files: FileInfo[] = []
         try {
@@ -2359,6 +2368,7 @@ export class ObsidianFileSystem implements FileSystem {
           // its entries has escaped to the engine, so start with a fresh view.
           if (own) this.inventory = inventory = this.createInventory()
           else if (inventory) {
+            inventory.fileList = undefined
             inventory.ledgerRows = undefined
             inventory.indexedNames = undefined
             inventory.parentFolders = undefined
@@ -2372,6 +2382,8 @@ export class ObsidianFileSystem implements FileSystem {
           this.configInventory = null
           continue
         }
+        const after = !own && inventory && (await this.fileListStamp(inventory))
+        if (before && before === after && inventory) inventory.fileList = { stamp: before, files }
         yield* files
         break
       }
@@ -2379,11 +2391,55 @@ export class ObsidianFileSystem implements FileSystem {
       if (own && this.inventory === inventory) this.inventory = null
     }
   }
+  /** Reuse one complete disk fallback listing only while its inventory and watcher clocks
+   * still cover it. An unobserved/indexed or group-discovery view keeps fresh listing. */
+  private async fileListStamp(inventory: InventoryPass): Promise<string | undefined> {
+    if (
+      !this.scanWatchers ||
+      this.indexReady() !== false ||
+      (this.discovery && this.discovery.roots.length === 0)
+    )
+      return undefined
+    await this.conditional.waitSettled()
+    await folderMutations(this.app.vault).settled()
+    this.syncInventoryConfig(inventory)
+    const clock =
+      this.ledger && Reflect.get(this.ledger, Symbol.for('abele.sync.local-scan-state-revision-v1'))
+    const state = this.ledger
+      ? typeof clock === 'function'
+        ? await clock.call(this.ledger)
+        : undefined
+      : 0
+    if (state === undefined) return undefined
+    try {
+      return JSON.stringify([
+        inventory.id,
+        inventory.localRevision,
+        inventory.directoryRevision,
+        inventory.pollRevision,
+        inventory.configRevision,
+        this.scanWatchRevision,
+        (
+          Reflect.get(this, Symbol.for('abele.sync.watch-epoch-v1')) as () => number | undefined
+        ).call(this),
+        folderMutations(this.app.vault).revision,
+        this.configRevision(),
+        this.conditional.assertSettled(),
+        this.scopedRoot(),
+        this.discovery?.roots.join('/'),
+        state,
+      ])
+    } catch (error) {
+      if (error instanceof ScanInterrupted) return undefined
+      throw error
+    }
+  }
   private async *listUnlocked(): AsyncIterable<FileInfo> {
     const budget = new SyncTaskBudget()
     const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
     await this.recover()
+    await this.prepareStartupInventory?.()
     const conditionalRevision = this.conditional.assertSettled()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()

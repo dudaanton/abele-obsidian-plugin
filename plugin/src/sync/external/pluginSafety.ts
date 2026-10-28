@@ -239,6 +239,8 @@ export interface ProjectionInspection {
   paths?: readonly string[]
   inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
   cached?(entries: readonly InspectionEntry[]): void
+  /** Ordinary classification loads this cache on first use after the read-only handshake. */
+  deferCache?: boolean
   signal?: AbortSignal
   stage?(stage: string): void
   inventoryProgress?(completed: number, total: number): void
@@ -676,7 +678,7 @@ export async function recoverExternalState(
   inspection: ProjectionInspection = {}
 ): Promise<void> {
   fence.assertOwned()
-  if (inspection.inventory) {
+  if (inspection.inventory && !inspection.deferCache) {
     const cached = await inspectionCache(app).load()
     fence.assertOwned()
     inspection.cached?.(cached)

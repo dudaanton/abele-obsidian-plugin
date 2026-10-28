@@ -18,6 +18,19 @@ const outcome = (path: string) => {
 }
 
 describe('physical path checks are remembered', () => {
+  it('retains a full large inventory across later passes', () => {
+    const validate = vi.mocked(protocol.validatePath)
+    const paths = Array.from(
+      { length: 33000 },
+      (_, i) => `Shared/Section ${i % 40}/Nested/sample-${i}.md`
+    )
+    validate.mockClear()
+    for (const path of paths) assertPhysicalPath(path)
+    const firstPass = validate.mock.calls.length
+    for (const path of paths) assertPhysicalPath(path)
+    expect(validate.mock.calls.length).toBe(firstPass)
+  })
+
   it('validates a passing path once and keeps answering the same', () => {
     const validate = vi.mocked(protocol.validatePath)
     validate.mockClear()

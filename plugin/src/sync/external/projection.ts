@@ -183,7 +183,9 @@ function utf8Bytes(text: string): number {
  * remembered; a failure is recomputed every time and throws exactly as before.
  */
 const physicalPathsPassed = new Set<string>()
-const PHYSICAL_PATH_MEMO = 8192
+// A full large inventory is checked several times before it can settle. Keep its
+// successful proofs across those passes; failed names are never remembered.
+const PHYSICAL_PATH_MEMO = 131072
 const physicalDirectoriesPassed = new Map<string, { bytes: number; normalizedBytes: number }>()
 
 /** Protocol spelling and physical UTF-8 limits are separate checks. */

@@ -58,6 +58,8 @@ const DIRECTORY_IDENTITY = Symbol.for('abele.sync.directory-identity-v1')
 
 /** The engine and its ledger keep server paths; only filesystem calls use local paths. */
 export class LocalFolderPlacement {
+  private localMappings = new Map<string, string>()
+  private mappingRoots: readonly [string, string] | undefined
   constructor(
     public server: string,
     public local: string
@@ -104,7 +106,16 @@ export class LocalFolderPlacement {
     )
   }
   toLocal(path: string): string {
-    return this.replace(path, this.server, this.local, true, 'toLocal')
+    if (this.mappingRoots?.[0] !== this.server || this.mappingRoots?.[1] !== this.local) {
+      this.localMappings.clear()
+      this.mappingRoots = [this.server, this.local]
+    }
+    const known = this.localMappings.get(path)
+    if (known !== undefined) return known
+    const local = this.replace(path, this.server, this.local, true, 'toLocal')
+    if (this.localMappings.size >= 131072) this.localMappings.clear()
+    this.localMappings.set(path, local)
+    return local
   }
   toServer(path: string, caller = 'toServer', enumeration = false): string {
     return this.replace(path, this.local, this.server, false, caller, enumeration)

@@ -57,6 +57,7 @@ type Measurement = {
   polledBytes: number
   beforeRequest: number
   inspectionReads: number
+  inspectionReadsBeforeRequest: number
   walks: { phase: string; caller: string; rows: number }[]
   interrupted: boolean
   timeline: SyncStartupMark[]
@@ -147,7 +148,8 @@ async function measure() {
   let walks: { phase: string; caller: string; rows: number }[] = []
   let phase = 'setup',
     classifications = 0,
-    beforeRequest = 0
+    beforeRequest = 0,
+    inspectionReadsBeforeRequest = 0
   const classify = ExternalRepresentation.prototype.classify
   const classification = vi
     .spyOn(ExternalRepresentation.prototype, 'classify')
@@ -191,6 +193,9 @@ async function measure() {
   )
   let host: TokenEngines | undefined
   try {
+    // Exercise the parsed ignore policy on every nested file without excluding the
+    // synced corpus. A missing rule makes the native fixture understate live path work.
+    const ignoreText = '**/sample-absent-*.tmp\nSample/Section 39/Absent/**\n'
     const paths = Array.from(
       { length: 33000 },
       (_, i) => `Sample/Section ${i % 40}/Nested/sample-${i}.md`
@@ -201,6 +206,7 @@ async function measure() {
       if (path !== '.obsidian/sample.json') ordinaryPaths.add(join(root, path))
     for (const folder of new Set(paths.map(dirname)))
       await disk.mkdir(join(root, folder), { recursive: true })
+    await disk.writeFile(join(root, '.abele-sync-ignore'), ignoreText)
     const bytes = new Uint8Array([37])
     const hash = await sha256(bytes)
     for (let i = 0; i < paths.length; i += 64)
@@ -224,7 +230,7 @@ async function measure() {
       await tx.setCursor(1)
     })
     const selective = f.registry.records()[0].selective ?? defaultSelective()
-    await state.setMeta('scope', await scopeKey(selective, null))
+    await state.setMeta('scope', await scopeKey(selective, ignoreText))
     await state.setMeta('marked-scope', JSON.stringify({ selective, scriptsFolder: 'Scripts' }))
     const filesystem = new ObsidianFileSystem(app as never, { ledger: state })
     const directories = await Array.fromAsync(filesystem.listDirectories())
@@ -293,10 +299,14 @@ async function measure() {
       walks = []
       classifications = 0
       beforeRequest = 0
+      inspectionReadsBeforeRequest = 0
       phase = 'startup'
       const first = requests.push.bind(requests)
       requests.push = (...times) => {
-        if (!requests.length) beforeRequest = classifications
+        if (!requests.length) {
+          beforeRequest = classifications
+          inspectionReadsBeforeRequest = inspectionReads.mock.calls.length
+        }
         return first(...times)
       }
       host = open()
@@ -338,6 +348,7 @@ async function measure() {
         walks: walks.map((walk) => ({ ...walk })),
         beforeRequest,
         inspectionReads: inspectionReads.mock.calls.length,
+        inspectionReadsBeforeRequest,
         interrupted,
         timeline: marks,
         firstRequestMs: requests[0] - started,
@@ -389,6 +400,7 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
   for (const result of results) {
     expect(result.firstRequestMs).toBeLessThan(2000)
     expect(result.beforeRequest).toBe(0)
+    expect(result.inspectionReadsBeforeRequest).toBe(0)
     if (!result.interrupted) expect(result.inspectionReads).toBeLessThanOrEqual(1)
     expect(result.classification?.contentReads).toBe(0)
     expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)

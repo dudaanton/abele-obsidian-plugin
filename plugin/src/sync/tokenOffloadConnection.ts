@@ -37,7 +37,7 @@ export async function tokenOffloadConnection(input: {
   binding: ConnectionBinding
   fence: RuntimeFence
   fs: FileSystem
-  inspectionRows?: readonly InspectionEntry[]
+  inspectionRows?: readonly InspectionEntry[] | (() => Promise<readonly InspectionEntry[]>)
   placement?: LocalFolderPlacement
   manager: TokenOffloadCoordinator
   scriptsFolder(): string

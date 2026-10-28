@@ -13,6 +13,28 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { selectiveFrom } from '@/sync/connection'
 
+it('reuses a settled disk listing within an inventory and retires it on a vault event', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  app.metadataCache.isCacheClean = () => false
+  const fs = new ObsidianFileSystem(app as never)
+  const raw = vi.spyOn(fs as never, 'listUnlocked')
+  const stop = fs.watch(() => {})
+  try {
+    await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+      const paths = async () => Array.fromAsync(fs.list()).then((files) => files.map((f) => f.path))
+      expect(await paths()).toEqual(['sample.md'])
+      expect(await paths()).toEqual(['sample.md'])
+      expect(raw).toHaveBeenCalledTimes(1)
+      const created = await app.vault.create('next.md', 'x')
+      app.emit('vault', 'create', created)
+      expect((await paths()).sort()).toEqual(['next.md', 'sample.md'])
+      expect(raw).toHaveBeenCalledTimes(2)
+    })
+  } finally {
+    stop()
+  }
+})
+
 it('overlaps bounded file metadata reads while rebuilding a disk inventory', async () => {
   const app = buildFakeVault(
     Array.from({ length: 32 }, (_, n) => ({ path: `sample-${n}.md`, content: 'x' }))

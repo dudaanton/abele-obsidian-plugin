@@ -30,7 +30,7 @@ export async function pluginRepresentation(options: {
   fs: FileSystem
   placement?: LocalFolderPlacement
   inspectionIncludes?(physicalPath: string): boolean
-  inspectionRows?: readonly InspectionEntry[]
+  inspectionRows?: readonly InspectionEntry[] | (() => Promise<readonly InspectionEntry[]>)
   verify: RepresentationOptions['verify']
   scriptsFolder(): string
   excluded?: RepresentationOptions['excluded']
@@ -48,9 +48,12 @@ export async function pluginRepresentation(options: {
     inspection: {
       entries: [],
       load: async () => {
-        // Startup already validated this snapshot. Classification still verifies each
-        // path's current identity before reusing a row.
-        const entries = options.inspectionRows ?? (await cache.load())
+        // The shared loader validates this snapshot before classification. Classification
+        // still verifies each path's current identity before reusing a row.
+        const entries =
+          typeof options.inspectionRows === 'function'
+            ? await options.inspectionRows()
+            : (options.inspectionRows ?? (await cache.load()))
         const budget = new SyncTaskBudget()
         for (const entry of entries) {
           persisted.set(entry.path, entry)
