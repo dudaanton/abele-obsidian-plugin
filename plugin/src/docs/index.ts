@@ -134,7 +134,8 @@ export function searchDocs(query: string): string {
       let score = 0
       for (const term of terms) {
         const matches = haystack.match(new RegExp(`\\b${escape(term)}\\b`, 'g'))
-        if (matches) score += matches.length
+        // Repeated words in long topics must not outweigh a matching topic title.
+        if (matches) score += Math.log1p(matches.length)
         if (topic.title.toLowerCase().includes(term)) score += 5
       }
       if (score) hits.push({ section, topic, score })
