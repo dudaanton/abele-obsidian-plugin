@@ -512,6 +512,7 @@ export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
   trace_follow: 'auto',
   trace_mark: 'ask',
   trace_point_add: 'ask',
+  trace_point_remove: 'ask',
   trace_note: 'ask',
   // The project's saved requests, in the same section: reading them is on its own, saving one and
   // sending one ask first, the send showing exactly what goes.

@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'requests.trace.removePoint': 'Dzēst ieraksta punktu',
   'requests.file.formUnsupported': 'Šo formas lauku nevar attēlot Bruno failā',
   'requests.file.secretPending':
     'Vides saglabāšanā radās konflikts vai rezultāts vēl nav zināms; pirms atkārtošanas atsvaidziniet',

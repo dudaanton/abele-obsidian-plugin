@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'requests.trace.removePoint': 'Eliminar punto de registro',
   'requests.file.formUnsupported':
     'Este campo de formulario no se puede representar en un archivo Bruno',
   'requests.file.secretPending':

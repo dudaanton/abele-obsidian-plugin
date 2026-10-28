@@ -23,7 +23,13 @@ export async function nodeProjectGuard(
   const access =
     name === 'http_send'
       ? 'run'
-      : ['http_request_save', 'http_import', 'trace_point_add', 'trace_note'].includes(name)
+      : [
+            'http_request_save',
+            'http_import',
+            'trace_point_add',
+            'trace_point_remove',
+            'trace_note',
+          ].includes(name)
         ? 'edit'
         : 'read'
   const guard = () => {

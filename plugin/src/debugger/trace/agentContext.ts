@@ -51,6 +51,23 @@ export function activeTraceContext(): TraceToolContext | undefined {
       current()
       await trace.savePoint(source, line, edit)
     },
+    removePoint: async (file, line, guard = () => {}) => {
+      guard()
+      current()
+      const source = service.sourceFor(binding, file) ?? binding.controller.mappedSource(file)?.[0]
+      const point = binding.controller
+        .knownBreakpoints()
+        .find(
+          (b) =>
+            b.sourceId === source &&
+            b.requestedLine === line &&
+            trace.points.some((p) => p.breakpoint_id === b.id)
+        )
+      if (!point) throw new Error(`No record point at ${file}:${line}`)
+      guard()
+      current()
+      await trace.removePoint(point.id)
+    },
     writeNote: (runId) =>
       writeRunNote({ registrationId: binding.registrationId, projectId, runId }, trace.rpc),
   }

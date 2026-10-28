@@ -258,5 +258,15 @@
       "es",
       "de"
     ]
+  },
+  "requests.trace.removePoint": {
+    "englishHash": "e24c8dec1a1d332fe40a0c2d033c7e47d79826703fc6ede95543157f09402ea6",
+    "context": "Agent tool label for removing a record point",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

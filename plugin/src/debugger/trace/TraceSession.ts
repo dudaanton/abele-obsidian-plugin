@@ -180,9 +180,9 @@ export class TraceSession {
     const session = this.sessionId
     if (!session) throw new Error('No debugger session')
     const known = this.debug.knownBreakpoints()
-    const existing =
-      known.find((b) => b.sourceId === sourceId && b.requestedLine === line) ??
-      known.find((b) => b.sourceId === sourceId && b.line === line)
+    // Resolved lines can collide with a different requested point. Its identity and captures
+    // belong to that request, even when the adapter moves it onto this line.
+    const existing = known.find((b) => b.sourceId === sourceId && b.requestedLine === line)
     const id = existing?.id ?? crypto.randomUUID()
     this.points = await this.rpc.setPoints(
       session,
@@ -273,8 +273,17 @@ export class TraceSession {
   async removePoint(id: string) {
     const session = this.sessionId
     if (!session) return
+    const result = await this.debug.removeBreakpoint(id)
+    if (
+      result &&
+      typeof result === 'object' &&
+      'outcome' in result &&
+      result.outcome !== 'completed'
+    )
+      throw new RecordPointSaveError(
+        typeof result.outcome === 'string' ? result.outcome : 'not_completed'
+      )
     this.points = await this.rpc.setPoints(session, [], [id])
-    await this.debug.removeBreakpoint(id)
     this.changed()
     await this.refresh()
   }

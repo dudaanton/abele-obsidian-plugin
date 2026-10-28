@@ -4,8 +4,20 @@ const state = vi.hoisted(() => {
     registrationId: 'sample-node',
     conversationId: 'sample-chat',
     sessionId: 'sample-debug',
-    controller: { snapshot: { target: { worktree_id: 'sample-tree' } } },
-    trace: { projectId: 'sample-project', rpc: {}, savePoint: vi.fn() },
+    controller: {
+      snapshot: { target: { worktree_id: 'sample-tree' } },
+      knownBreakpoints: vi.fn(() => [
+        { id: 'sample-point', sourceId: 'sample-source', requestedLine: 7 },
+      ]),
+      mappedSource: vi.fn(),
+    },
+    trace: {
+      projectId: 'sample-project',
+      rpc: {},
+      points: [{ breakpoint_id: 'sample-point' }],
+      savePoint: vi.fn(),
+      removePoint: vi.fn(),
+    },
   }
   const folder = {
     registrationId: 'sample-node',
@@ -60,4 +72,14 @@ it('rechecks chat permission after source admission before saving the point', as
     })
   ).rejects.toThrow('Scope revoked')
   expect(state.binding.trace.savePoint).not.toHaveBeenCalled()
+})
+
+it('removes only the point at the requested source line', async () => {
+  const guard = vi.fn()
+  await activeTraceContext()!.removePoint('src/sample.ts', 7, guard)
+  expect(state.binding.trace.removePoint).toHaveBeenCalledExactlyOnceWith('sample-point')
+  expect(guard).toHaveBeenCalledTimes(2)
+  await expect(activeTraceContext()!.removePoint('src/sample.ts', 8)).rejects.toThrow(
+    'No record point'
+  )
 })

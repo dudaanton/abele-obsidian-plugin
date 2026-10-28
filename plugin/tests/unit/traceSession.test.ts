@@ -550,3 +550,38 @@ describe('a run being written', () => {
     }
   })
 })
+
+it('keeps captures separate when another requested line resolves onto the new line', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger([{ id: 'sample-first', line: 6 }])
+  debug.known[0].line = 7
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 6, { take: ['cart'] })
+    await trace.savePoint('sample-source', 7, { take: ['promo'] })
+    expect(trace.points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ breakpoint_id: 'sample-first', take: ['cart'] }),
+        expect.objectContaining({ take: ['promo'] }),
+      ])
+    )
+    expect(trace.points).toHaveLength(2)
+  } finally {
+    trace.dispose()
+  }
+})
+
+it('keeps record captures when breakpoint removal has an unknown outcome', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger()
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 4, { take: ['cart'] })
+    const id = trace.points[0].breakpoint_id
+    vi.mocked(debug.removeBreakpoint).mockResolvedValue({ outcome: 'outcome_unknown' })
+    await expect(trace.removePoint(id)).rejects.toThrow()
+    expect(trace.points).toEqual([expect.objectContaining({ breakpoint_id: id, take: ['cart'] })])
+  } finally {
+    trace.dispose()
+  }
+})

@@ -111,6 +111,7 @@ function setup() {
     registrationId: 'node-1',
     runs: async () => (await rpc.runs('project-1')).runs,
     addPoint: vi.fn(async () => {}),
+    removePoint: vi.fn(async () => {}),
     writeNote: vi.fn(async () => 'Trace/Sample run.md'),
   }
   const tools = Object.fromEntries(createTraceTools(() => context).map((t) => [t.name, t]))
@@ -128,6 +129,7 @@ describe('the agent reading a recorded run', () => {
       'trace_mark',
       'trace_note',
       'trace_point_add',
+      'trace_point_remove',
       'trace_runs',
       'trace_shape',
       'trace_slice',
@@ -254,6 +256,7 @@ describe('the agent reading a recorded run', () => {
       trace_follow: 'auto',
       trace_mark: 'ask',
       trace_point_add: 'ask',
+      trace_point_remove: 'ask',
       trace_note: 'ask',
       // The saved requests' tools stand in the same section.
       http_requests: 'auto',
@@ -271,4 +274,16 @@ describe('the agent reading a recorded run', () => {
     const names = createAgentTools().map((t) => t.name)
     for (const name of Object.keys(TRACE_TOOL_MODES)) expect(names).toContain(name)
   })
+})
+
+it('starts the timeline at a named step', async () => {
+  const s = setup()
+  expect(await s.call('trace_timeline', { from: 't0008' })).toContain('t0008 ·')
+  expect(s.request).toHaveBeenLastCalledWith('trace.v1.run', expect.objectContaining({ from: 7 }))
+})
+it('removes a point by source and requested line', async () => {
+  const s = setup()
+  s.context.removePoint = vi.fn(async () => {})
+  await s.call('trace_point_remove', { file: 'src/sample.ts', line: 7 })
+  expect(s.context.removePoint).toHaveBeenCalledWith('src/sample.ts', 7, expect.any(Function))
 })

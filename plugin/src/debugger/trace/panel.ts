@@ -34,7 +34,10 @@ export async function savePoint(
   if (!trace) return
   try {
     await askFolderOnce(binding)
-    const result = await trace.savePoint(sourceId, line, edit)
+    const point = binding.controller
+      .knownBreakpoints()
+      .find((b) => b.sourceId === sourceId && b.line === line)
+    const result = await trace.savePoint(sourceId, point?.requestedLine ?? line, edit)
     if (result.pending) new Notice(t('node.error.unknownOutcome'))
   } catch (e) {
     if (e instanceof RecordPointSaveError)

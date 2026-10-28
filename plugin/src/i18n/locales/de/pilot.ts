@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'requests.trace.removePoint': 'Aufzeichnungspunkt entfernen',
   'requests.file.formUnsupported':
     'Dieses Formularfeld kann nicht in einer Bruno-Datei dargestellt werden',
   'requests.file.secretPending':

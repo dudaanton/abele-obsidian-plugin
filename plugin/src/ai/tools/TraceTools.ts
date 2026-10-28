@@ -1,6 +1,7 @@
 // Tools over a run the debugger recorded, for the agent to read it a little at a time. The run
 // lives on the node; every answer is one of its bounded views, at the agent's ceiling (80 lines,
 // 6 KB), which no parameter lifts. There is no tool that shows a run or a value whole.
+import { t } from '@/i18n'
 import { nodeProjectGuard } from './node/projectAccess'
 import type { AgentTool, AgentToolResult } from '../client'
 import type { TraceRpc, WireStep } from '@/debugger/trace/wire'
@@ -20,6 +21,7 @@ export interface TraceToolContext {
   /** The newest run first. */
   runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
   addPoint(file: string, line: number, edit: PointEdit, guard?: () => void): Promise<void>
+  removePoint(file: string, line: number, guard?: () => void): Promise<void>
   writeNote(runId: string): Promise<string>
 }
 
@@ -112,6 +114,11 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       const result = await run(
         {
           ...c,
+          removePoint: (file, line) =>
+            c.removePoint(file, line, () => {
+              _signal?.throwIfAborted()
+              guard()
+            }),
           addPoint: (file, line, edit) =>
             c.addPoint(file, line, edit, () => {
               _signal?.throwIfAborted()
@@ -147,7 +154,10 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       'The steps of a recorded run in time: id, time from the start, kind, label, place in the code, each value as name=brief [bytes] (=same when unchanged since the last time, ✕ when it could not be taken). At most 80 lines; continue with from. Read-only.',
       {
         run: RUN,
-        from: { type: 'number', description: 'Step index to start at (0-based).' },
+        from: {
+          type: ['number', 'string'],
+          description: 'Zero-based step index or step id, e.g. t0008 (inclusive).',
+        },
         kind: {
           type: 'string',
           enum: ['probe', 'error', 'http', 'browser-lost'],
@@ -157,7 +167,16 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       [],
       async (c, p) => {
         const run = await runOf(c, p)
-        const from = Math.max(0, Math.floor(num(p.from) ?? 0))
+        const index =
+          typeof p.from === 'string' && /^t[0-9]+$/.test(p.from)
+            ? Number(p.from.slice(1)) - 1
+            : num(p.from)
+        if (
+          p.from !== undefined &&
+          (index === undefined || !Number.isSafeInteger(index) || index < 0)
+        )
+          throw new Error('from must be a nonnegative step index or a step id such as t0008')
+        const from = index ?? 0
         const page = await c.rpc.run(c.projectId, run, from, TRACE_AGENT_LINES)
         const kind = str(p.kind)
         const steps = kind ? page.steps.filter((s) => s.kind === kind) : page.steps
@@ -377,6 +396,20 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         return take.length
           ? `Record point set at ${req(p.file)}:${line}, taking ${take.join(', ')}.`
           : `Record point set at ${req(p.file)}:${line}, taking nothing: name what to take for it to record values.`
+      }
+    ),
+    tool(
+      'trace_point_remove',
+      t('requests.trace.removePoint'),
+      'Remove the record point and its breakpoint at the requested source line in the selected debug session. Requires the same edit access and approval as trace_point_add. Other points are kept.',
+      { file: { type: 'string' }, line: { type: 'integer', minimum: 1 } },
+      ['file', 'line'],
+      async (c, p) => {
+        const line = num(p.line)
+        if (!line || !Number.isInteger(line) || line < 1)
+          throw new Error('line must be a positive line number')
+        await c.removePoint(req(p.file), line)
+        return `Record point removed at ${req(p.file)}:${line}.`
       }
     ),
     tool(

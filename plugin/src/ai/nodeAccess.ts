@@ -36,6 +36,7 @@ export function nodeToolAccess(
       'http_request_save',
       'http_import',
       'trace_point_add',
+      'trace_point_remove',
       'trace_note',
     ].includes(name)
   if (

@@ -72,6 +72,7 @@ it.each(['read', 'edit', 'run'] as const)(
       ['http_request_read', true],
       ['http_request_save', access !== 'read'],
       ['trace_point_add', access !== 'read'],
+      ['trace_point_remove', access !== 'read'],
       ['http_send', access === 'run'],
     ] as const) {
       const inside = nodeProjectGuard(
