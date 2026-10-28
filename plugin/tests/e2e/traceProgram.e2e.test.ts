@@ -156,10 +156,16 @@ beforeAll(async () => {
   )
   expect(created.status, created.stderr).toBe(0)
   token = (JSON.parse(created.stdout) as { token: string }).token
+  console.info('[trace program] setup: installing debugger adapter')
   const installed = spawnSync(
     process.execPath,
     [cli, 'debugger', 'install', 'js', '--state-dir', state, '--json'],
     { encoding: 'utf8', timeout: 60000 }
+  )
+  console.info(
+    '[trace program] setup: adapter install exit',
+    installed.status,
+    installed.stderr.trim()
   )
   expect(installed.status, installed.stderr).toBe(0)
   child = spawn(
@@ -335,7 +341,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     press(restartButton());
     await until(()=>{const id=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;return id&&id!==first},'a new session',600);
     await goOn();
-    await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600).catch(()=>{throw Error('second run did not open: '+debugState())});
+    await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600).catch(()=>{const b=api.DebuggerService.instance.active.value;throw Error('second run did not open: '+JSON.stringify({session:b?.sessionId,status:b?.controller.session.status,error:b?.controller.error,points:b?.trace?.points.length,runs:b?.trace?.runs.map(r=>[r.state,r.steps]),tabs:app.workspace.getLeavesOfType('abele-trace-run').length})+' '+debugState())});
     out.again={session:true,steps:document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length};
     return out
   })()`)

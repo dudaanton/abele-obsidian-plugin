@@ -47,6 +47,8 @@ export class TraceSession {
   latest?: WireRunPoint[]
   folder = ''
   private refreshing?: Promise<void>
+  private observedSession?: string
+  private readonly completedRuns = new Set<string>()
   private readonly endedListeners = new Set<(runId: string) => void>()
   /** While a run is written its steps and time go on, and its end comes with no event of its own. */
   private following?: number
@@ -86,15 +88,37 @@ export class TraceSession {
       const newest = ownRuns[0]
       const latest = newest ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
       if (this.sessionId !== session) return
-      const was = this.status?.recording?.run_id
+      const sameSession = this.observedSession === session
+      if (!sameSession) {
+        this.completedRuns.clear()
+        for (const run of ownRuns) if (run.state !== 'recording') this.completedRuns.add(run.id)
+      }
+      const was = sameSession ? this.status?.recording?.run_id : undefined
+      const ended = new Set<string>()
+      if (was && status.recording?.run_id !== was && runs.runs.some((r) => r.id === was))
+        ended.add(was)
+      // A short run can finish between status reads, including just after Restart.
+      // The first read establishes history; only later completions open themselves.
+      if (sameSession)
+        for (const run of ownRuns)
+          if (
+            run.state !== 'recording' &&
+            run.steps > 0 &&
+            !this.runs.some((previous) => previous.id === run.id && previous.state !== 'recording')
+          )
+            ended.add(run.id)
+      this.observedSession = session
       this.points = points
       this.status = status
       this.runs = ownRuns
       this.folder = runs.folder
       this.latest = latest
       this.changed()
-      if (was && status.recording?.run_id !== was && runs.runs.some((r) => r.id === was))
-        for (const listener of [...this.endedListeners]) listener(was)
+      for (const runId of ended) {
+        if (this.completedRuns.has(runId)) continue
+        this.completedRuns.add(runId)
+        for (const listener of [...this.endedListeners]) listener(runId)
+      }
     })().finally(() => {
       this.refreshing = undefined
       this.follow()

@@ -2,6 +2,100 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+
+it('opens a new completed run even when recording began and ended between reads', async () => {
+  const node = fakeNode()
+  const debug = fakeDebugger()
+  const run = {
+    id: 'sample-fast-run',
+    name: 'Sample fast run',
+    debug_session_id: 'sample-debug',
+    started_at: '2026-01-02T03:04:05.000Z',
+    state: 'done',
+    steps: 3,
+    bytes: 10,
+  }
+  let completed = false
+  vi.spyOn(node.rpc, 'status').mockResolvedValue({
+    folder: '/sample/runs',
+    chosen: true,
+    recording: null,
+  })
+  vi.spyOn(node.rpc, 'runs').mockImplementation(
+    async () => ({ folder: '/sample/runs', chosen: true, runs: completed ? [run] : [] }) as never
+  )
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  const ended = vi.fn()
+  trace.onRunEnded(ended)
+  try {
+    await trace.refresh()
+    completed = true
+    await trace.refresh()
+    expect(ended).toHaveBeenCalledExactlyOnceWith('sample-fast-run')
+    await trace.refresh()
+    expect(ended).toHaveBeenCalledTimes(1)
+  } finally {
+    trace.dispose()
+  }
+})
+
+it('does not reopen historical completed runs when attaching to a session', async () => {
+  const node = fakeNode()
+  vi.spyOn(node.rpc, 'runs').mockResolvedValue({
+    folder: '/sample/runs',
+    chosen: true,
+    runs: [
+      {
+        id: 'sample-history',
+        name: 'Historical sample',
+        debug_session_id: 'sample-debug',
+        started_at: '2026-01-02T03:04:05.000Z',
+        state: 'done',
+        steps: 3,
+        bytes: 10,
+      },
+    ],
+  })
+  const trace = new TraceSession(node.rpc, fakeDebugger(), () => {})
+  const ended = vi.fn()
+  trace.onRunEnded(ended)
+  try {
+    await trace.refresh()
+    await trace.refresh()
+    expect(ended).not.toHaveBeenCalled()
+  } finally {
+    trace.dispose()
+  }
+})
+
+it('emits completion once when the run summary follows the stopped recording status', async () => {
+  const node = fakeNode()
+  const trace = new TraceSession(node.rpc, fakeDebugger(), () => {})
+  const ended = vi.fn()
+  trace.onRunEnded(ended)
+  const status = {
+    folder: '/sample/runs',
+    chosen: true,
+    recording: { run_id: 'run-1', steps: 3, started_at: '2026-01-02T03:04:05.000Z' },
+  }
+  vi.spyOn(node.rpc, 'status')
+    .mockResolvedValueOnce(status)
+    .mockResolvedValue({ ...status, recording: null })
+  try {
+    await trace.refresh()
+    await trace.refresh()
+    expect(ended).toHaveBeenCalledExactlyOnceWith('run-1')
+    const page = await node.rpc.runs('sample-project')
+    vi.spyOn(node.rpc, 'runs').mockResolvedValue({
+      ...page,
+      runs: page.runs.map((run) => ({ ...run, state: 'done' })),
+    })
+    await trace.refresh()
+    expect(ended).toHaveBeenCalledTimes(1)
+  } finally {
+    trace.dispose()
+  }
+})
 it('restores a relocated record point under its existing identity with disabled and hit-count intent', async () => {
   const node = fakeNode()
   const debug = fakeDebugger([{ id: 'sample-existing', line: 4 }])
