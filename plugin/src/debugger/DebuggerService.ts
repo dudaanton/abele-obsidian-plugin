@@ -504,12 +504,18 @@ export class DebuggerService {
           console.debug('[debugger] Pending source admission failed', error)
         )
   }
-  private async applyPendingFile(target: PathTarget, path: string, binding: DebuggerBinding) {
-    const mapping = this.debugFor(target, path)
+  private async applyPendingFile(
+    target: PathTarget,
+    path: string,
+    binding: DebuggerBinding,
+    sessionBound = false
+  ) {
+    const mapping = this.debugFor(target, path, sessionBound ? binding : undefined)
     const points = this.pendingPoints.get(this.pendingKey(target, path))
     if (!mapping || !points) return
     for (const [line, id] of points.lines) {
-      if (this.folderBinding(target) !== binding || !binding.controller.current) return
+      if ((!sessionBound && this.folderBinding(target) !== binding) || !binding.controller.current)
+        return
       // Stable identity makes a retried request idempotent; never toggle an existing point off.
       const existing = binding.controller
         .knownBreakpoints()
@@ -597,12 +603,12 @@ export class DebuggerService {
   ): Promise<SourceAdmission> {
     const binding = sessionBinding ?? this.folderBinding(target)
     if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) return { message: '' }
-    if (!recheck && this.debugFor(target, path)) {
-      await this.applyPendingFile(target, path, binding)
-      return { message: '' }
-    }
     if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(path))
       return { message: t('debug.sourceOutside') }
+    if (!recheck && this.debugFor(target, path, sessionBinding)) {
+      await this.applyPendingFile(target, path, binding, !!sessionBinding)
+      return { message: '' }
+    }
     if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
     const sessionId = binding.sessionId
     const incarnation = binding.controller.snapshot?.incarnation
@@ -661,7 +667,7 @@ export class DebuggerService {
           )
         const refusal = result.refused.find((r) => r.path === path)
         if (refusal) return sourceRefusal(refusal.code)
-        if (accepted) await this.applyPendingFile(target, path, binding)
+        if (accepted) await this.applyPendingFile(target, path, binding, !!sessionBinding)
         return {
           message: accepted ? '' : t('debug.sourceUnavailable'),
         }
@@ -1094,7 +1100,7 @@ export class DebuggerService {
   }
   /** The session mapping for a file a node file tab shows, when a live program took that file of
    * that folder: the tab shows its margin however it came to show the file. */
-  debugFor(target: PathTarget | null | undefined, path: string) {
+  debugFor(target: PathTarget | null | undefined, path: string, sessionBinding?: DebuggerBinding) {
     if (!target) return undefined
     for (const [key, sources] of this.sources) {
       const [registrationId, conversationId] = JSON.parse(key) as [string, string]
@@ -1102,7 +1108,12 @@ export class DebuggerService {
       const binding = this.forSource(registrationId, conversationId)
       // Several sessions can debug one folder: only the selected one draws its margin there.
       // A program started from a chat is not a folder session and keeps its own margin.
-      if (binding && this.folders.has(binding) && binding !== this.folderBinding(target)) continue
+      if (
+        sessionBinding
+          ? binding !== sessionBinding
+          : binding && this.folders.has(binding) && binding !== this.folderBinding(target)
+      )
+        continue
       for (const [sourceId, m] of sources)
         if (
           (m.path === path || m.aliases?.has(path)) &&

@@ -437,3 +437,38 @@ it('keeps an unknown refusal code in the tooltip', async () => {
   expect(wrapper.find('[role="status"]').text()).toMatch(/could not be admitted/i)
   wrapper.unmount()
 })
+
+it('applies pending breakpoints to an explicitly admitted session even when another session is selected', async () => {
+  const { service, binding: selected, request } = fixture()
+  await service.admitFile(target, 'lib/helper.ts')
+  const binding = service.binding({
+    reference: { registrationId: target.registrationId, sessionId: 'sample-chat' },
+    connection: selected.connection,
+  } as never)
+  binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+  const sessionTarget = { ...target, kind: 'worktree' as const, id: 'sample-tree' }
+  // A different session already has the same file with a different source identity.
+  service.registerSource(
+    selected.registrationId,
+    selected.conversationId,
+    'selected-source',
+    'lib/helper.ts',
+    selected.sessionId!,
+    'sample-incarnation',
+    sessionTarget
+  )
+  service.togglePendingBreakpoint(sessionTarget, 'lib/helper.ts', 3)
+  request.mockResolvedValueOnce({
+    incarnation: binding.controller.snapshot!.incarnation,
+    sources: [{ source_id: 'explicit-source', path: 'lib/helper.ts' }],
+    refused: [],
+  })
+  const set = vi
+    .spyOn(binding.controller, 'setBreakpoint')
+    .mockResolvedValue({ outcome: 'completed' } as never)
+  const other = vi.spyOn(selected.controller, 'setBreakpoint')
+  await service.admitSessionFile(binding, 'lib/helper.ts')
+  expect(set).toHaveBeenCalledWith(expect.any(String), 'explicit-source', 3)
+  expect(other).not.toHaveBeenCalled()
+  expect(service.pendingBreakpoints(sessionTarget, 'lib/helper.ts')).toEqual([])
+})
