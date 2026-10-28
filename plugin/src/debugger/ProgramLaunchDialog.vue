@@ -13,7 +13,11 @@
       <Setting :name="t('debug.launchArgs')" :desc="t('debug.launchArgsHint')">
         <Input v-model="argumentsText" :disabled="busy" :aria-label="t('debug.launchArgs')" />
       </Setting>
-      <Disclosure v-model="configurationExpanded" :label="t('debug.launchConfiguration')">
+      <Disclosure
+        v-model="configurationExpanded"
+        class="abele-debug-launch__configuration"
+        :label="t('debug.launchConfiguration')"
+      >
         <Setting :name="t('debug.launchRuntimeArgs')" :desc="t('debug.launchRuntimeArgsHint')">
           <Input
             v-model="runtimeArguments"
@@ -42,9 +46,9 @@
           @toggle="stopAtStart = !stopAtStart"
         />
       </Setting>
-      <div v-if="error" role="alert" class="mod-warning">
-        <p>{{ error }}</p>
-        <p v-if="output" class="abele-debug-launch__error">{{ output }}</p>
+      <div v-if="error" role="alert" class="mod-warning abele-debug-launch__failure">
+        <div>{{ error }}</div>
+        <div v-if="output" class="abele-debug-launch__error">{{ output }}</div>
       </div>
       <Disclosure v-if="technical" v-model="expanded" :label="t('kit.details')">
         <pre class="abele-debug-launch__error">{{ technical }}</pre>
@@ -209,6 +213,17 @@ async function run() {
 </script>
 
 <style scoped>
+.abele-debug-launch__configuration {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-4-2);
+}
+
+.abele-debug-launch__failure {
+  display: grid;
+  gap: var(--size-4-1);
+  margin-block: var(--size-4-2);
+}
+
 .abele-debug-launch__error {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

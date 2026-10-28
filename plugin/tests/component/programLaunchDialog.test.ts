@@ -209,3 +209,21 @@ it('requires complete argument syntax before starting', async () => {
   expect(w.get('[role="alert"]').text()).toContain('quote')
   w.unmount()
 })
+
+it('keeps collapsed runtime fields out of layout and startup errors free of paragraph spacing', async () => {
+  const w = fixture(
+    vi.fn().mockRejectedValue(
+      Object.assign(new Error('debugger_startup_handoff_lost'), {
+        details: { stderr: 'Error: Cannot find module sample-module\n    at dist/main.js:1:1' },
+      })
+    )
+  )
+  expect(w.find('textarea').exists()).toBe(false)
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  const alert = w.get('[role="alert"]')
+  expect(alert.text()).toContain('Cannot find module sample-module')
+  expect(alert.findAll('p')).toHaveLength(0)
+  expect(w.find('textarea').exists()).toBe(false)
+  w.unmount()
+})

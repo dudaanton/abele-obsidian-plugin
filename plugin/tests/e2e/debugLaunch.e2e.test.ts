@@ -26,6 +26,7 @@ async function probe(device: string) {
           if (!configuration) throw Error('Missing runtime configuration');
           configuration.click();
           await wait(100);
+          if (parseFloat(getComputedStyle(configuration.closest('.abele-disclosure')).borderTopWidth) <= 0) throw Error('Missing separator above runtime configuration');
           for (const label of ['Runtime arguments', 'Working folder', 'Environment variables']) {
             if (!modal.querySelector('[aria-label="'+label+'"]')) throw Error('Missing launch field: '+label);
           }
@@ -57,7 +58,7 @@ async function probe(device: string) {
         }
         await wait(200);
         const rect = modal.getBoundingClientRect();
-        if (${JSON.stringify(device)} === 'desktop' && rect.height > 500) throw Error('Short launch form is not sized to its content: '+rect.height);
+        if (${JSON.stringify(device)} === 'desktop' && rect.height > 500) throw Error('Short launch form is not sized to its content: '+rect.height+' ('+state+')');
         const over = [...modal.querySelectorAll('input, button, [role="alert"]')].filter(el => {
           const r = el.getBoundingClientRect(); return r.left < rect.left - 1 || r.right > rect.right + 1;
         }).map(el => el.outerHTML.slice(0,200));
