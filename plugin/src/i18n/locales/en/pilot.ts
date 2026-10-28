@@ -3630,11 +3630,14 @@ export const en = {
     '{command} runs from {path}, not from the selected folder. The debugger can pause it and read its values. Detaching later leaves it running.',
   'debug.sourceUpdate': 'Update the node to set breakpoints in this file',
   'debug.sourceMap':
-    'The node could not find a source map linking this file to the running program. Build with source maps, then restart the program and attach again.',
+    'The node has not linked this file to the running program. Breakpoints stay pending. Restart or attach again to retry; if it still fails, check the program’s source maps.',
   'debug.sourceChanged':
     'This file changed since the program started. Restore that content, or rebuild and restart the program.',
   'debug.sourceOutside': 'This file is outside the debug folder',
-  'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
+  'debug.filePending':
+    'Click a line number to set a pending breakpoint. Start or attach a debug session for this folder to apply it.',
+  'debug.sourceUnavailable':
+    'This file could not be admitted to the debugger. Check the node connection, then reopen the file to retry.',
   'debug.entryPlaceholder':
     'Search entry files or package scripts; or type a built JavaScript path',
   'debug.entryEmpty': 'No matching entry. You can type a built JavaScript path.',

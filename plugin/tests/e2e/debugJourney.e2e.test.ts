@@ -532,7 +532,13 @@ it.each(['desktop', 'phone'])(
       await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/edited.cjs'}});
       await until(()=>leaf.containerEl.textContent.includes('sample edit'),'edited bytes loaded');
       await until(()=>leaf.containerEl.querySelector('[role="status"]')?.textContent.includes('changed'),'changed source refused');
-      if(leaf.containerEl.querySelector('.abele-debug-source__point'))throw Error('Edited source still offers breakpoints');
+      const notice=leaf.containerEl.querySelector('[role="status"]'),card=leaf.containerEl.querySelector('.abele-file-view');
+      if(notice.scrollHeight>notice.clientHeight+1||notice.getBoundingClientRect().bottom>card.getBoundingClientRect().top+1)throw Error('Source notice is clipped or overlaps the file');
+      const revision=binding.controller.snapshot.breakpoint_revision;
+      press(await until(()=>marginAt(4,leaf.containerEl),'pending margin on refused source'));
+      await until(()=>service.pendingBreakpoints(${JSON.stringify(folder)},'src/edited.cjs').includes(4),'pending breakpoint retained');
+      if(binding.controller.snapshot.breakpoint_revision!==revision)throw Error('Refused source changed live breakpoints');
+      if(!leaf.containerEl.querySelector('.abele-breakpoint-mark_pending'))throw Error('Pending breakpoint is not visible');
       app.workspace.rightSplit.collapse();
       await shot('edited-source-${device}-refused');
       const previousSession=binding.sessionId;
@@ -541,8 +547,7 @@ it.each(['desktop', 'phone'])(
       await until(()=>service.active.value?.sessionId&&service.active.value.sessionId!==previousSession&&service.active.value.controller.session.status==='paused','edited program restarted');
       binding=service.active.value;
       await app.workspace.revealLeaf(leaf);
-      const mark=await until(()=>marginAt(4,leaf.containerEl),'edited source admitted after restart');
-      press(mark);
+      await until(()=>marginAt(4,leaf.containerEl),'edited source admitted after restart');
       await until(()=>binding.controller.session.breakpoints.some(point=>point.line===4),'edited breakpoint set');
       await binding.controller.command('continue');
       await until(()=>binding.controller.session.status==='paused'&&binding.controller.session.frames.some(frame=>frame.file==='src/edited.cjs'&&frame.line===4),'edited breakpoint hit');

@@ -24,6 +24,7 @@ export interface SourceAdmission {
 
 type SourceMapping = {
   path: string
+  aliases?: Set<string>
   debugSessionId: string
   incarnation: string
   folder?: PathTarget
@@ -149,11 +150,11 @@ export class DebuggerBinding {
       if (this.controller.session.unavailable) this.controller.session.status = 'exited'
       ++this.revision.value
       if (this.controller.current || this.controller.session.unavailable) this.controller.error = ''
-      DebuggerService.instance.observeFolder(this, sessionId)
       await this.loadGrant(abort)
       if (abort.signal.aborted || this.disposed) return
       await this.refresh()
       if (abort.signal.aborted) return
+      DebuggerService.instance.observeFolder(this, sessionId)
       void this.loop(sessionId, result.snapshot.event_seq, result.snapshot.incarnation, abort)
         .catch((e) => {
           if (!abort.signal.aborted) this.observationFailed(e)
@@ -421,16 +422,68 @@ export class DebuggerService {
     return JSON.stringify([target.registrationId, target.nodeId, target.kind, target.id])
   }
   private readonly admissions = new Map<string, Promise<SourceAdmission>>()
+  readonly pendingRevision = shallowRef(0)
+  private readonly pendingPoints = new Map<
+    string,
+    { target: PathTarget; path: string; lines: Map<number, string> }
+  >()
+  private pendingKey(target: PathTarget, path: string) {
+    return JSON.stringify([this.folderKey(target), path])
+  }
+  pendingBreakpoints(target: PathTarget, path: string): number[] {
+    void this.pendingRevision.value
+    return [...(this.pendingPoints.get(this.pendingKey(target, path))?.lines.keys() ?? [])]
+  }
+  togglePendingBreakpoint(target: PathTarget, path: string, line: number) {
+    if (!Number.isSafeInteger(line) || line < 1) return
+    const key = this.pendingKey(target, path)
+    const points = this.pendingPoints.get(key) ?? { target: { ...target }, path, lines: new Map() }
+    if (points.lines.has(line)) points.lines.delete(line)
+    else points.lines.set(line, crypto.randomUUID())
+    if (points.lines.size) this.pendingPoints.set(key, points)
+    else this.pendingPoints.delete(key)
+    ++this.pendingRevision.value
+    console.debug('[debugger] Pending file breakpoints', path, [...points.lines.keys()])
+  }
+  private admitPendingFiles(target: PathTarget) {
+    for (const points of this.pendingPoints.values())
+      if (this.folderKey(points.target) === this.folderKey(target))
+        void this.admitFile(target, points.path).catch((error) =>
+          console.debug('[debugger] Pending source admission failed', error)
+        )
+  }
+  private async applyPendingFile(target: PathTarget, path: string, binding: DebuggerBinding) {
+    const mapping = this.debugFor(target, path)
+    const points = this.pendingPoints.get(this.pendingKey(target, path))
+    if (!mapping || !points) return
+    for (const [line, id] of points.lines) {
+      if (this.folderBinding(target) !== binding || !binding.controller.current) return
+      // Stable identity makes a retried request idempotent; never toggle an existing point off.
+      const existing = binding.controller
+        .knownBreakpoints()
+        .some((point) => point.sourceId === mapping.sourceId && point.line === line)
+      const result = existing
+        ? undefined
+        : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
+      if ((existing || result?.outcome === 'completed') && points.lines.get(line) === id) {
+        points.lines.delete(line)
+        ++this.pendingRevision.value
+      }
+    }
+    if (!points.lines.size) this.pendingPoints.delete(this.pendingKey(target, path))
+  }
   observeFolder(binding: DebuggerBinding, sessionId: string) {
     const folder = this.folders.get(binding)
     if (folder) {
       folder.sessionId = sessionId
       ++this.sourceRevision.value
+      this.admitPendingFiles(folder.target)
     }
   }
   trackFolder(owner: DebugOwner, sessionId: string, target: PathTarget) {
     this.folders.set(this.binding(owner, sessionId), { sessionId, target: { ...target } })
     ++this.sourceRevision.value
+    this.admitPendingFiles(target)
   }
   takenFiles(binding: DebuggerBinding): string[] {
     return [
@@ -488,12 +541,11 @@ export class DebuggerService {
     sessionBinding?: DebuggerBinding
   ): Promise<SourceAdmission> {
     const binding = sessionBinding ?? this.folderBinding(target)
-    if (
-      !binding ||
-      !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) ||
-      (!recheck && this.debugFor(target, path))
-    )
+    if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) return { message: '' }
+    if (!recheck && this.debugFor(target, path)) {
+      await this.applyPendingFile(target, path, binding)
       return { message: '' }
+    }
     if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(path))
       return { message: t('debug.sourceOutside') }
     if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
@@ -539,6 +591,8 @@ export class DebuggerService {
           )
         if (!current() || result.incarnation !== incarnation) return { message: '' }
         console.debug('[debugger] Source admission', path, result)
+        // One requested file may come back under its canonical, symlink-resolved path.
+        const accepted = result.sources.length === 1 && result.refused.length === 0
         for (const source of result.sources)
           this.registerSource(
             binding.registrationId,
@@ -547,17 +601,22 @@ export class DebuggerService {
             source.path,
             sessionId,
             incarnation,
-            target
+            target,
+            accepted ? path : source.path
           )
         const refusal = result.refused.find((r) => r.path === path)
         if (refusal) return sourceRefusal(refusal.code)
+        if (accepted) await this.applyPendingFile(target, path, binding)
         return {
-          message: result.sources.some((s) => s.path === path) ? '' : t('debug.sourceUnavailable'),
+          message: accepted ? '' : t('debug.sourceUnavailable'),
         }
       } catch (error) {
         console.debug('[debugger] Source admission failed', error)
         this.admissions.delete(key)
-        return { message: current() ? t('debug.sourceUnavailable') : '' }
+        if (!current()) return { message: '' }
+        if (error && typeof error === 'object' && 'code' in error)
+          return sourceRefusal(String(error.code))
+        return { message: t('debug.sourceUnavailable') }
       }
     })()
     this.admissions.set(key, attempt)
@@ -948,22 +1007,23 @@ export class DebuggerService {
     debugSessionId: string,
     incarnation: string,
     /** The folder the file is in, for a file the program took when it started. */
-    folder?: PathTarget
+    folder?: PathTarget,
+    alias = path
   ) {
     const key = this.key(registrationId, conversationId)
     const sources = this.sources.get(key) ?? new Map<string, SourceMapping>()
     const known = sources.get(sourceId)
     // A tab showing a file the program took leaves its mapping when it closes or moves on.
-    if (
-      known?.path === path &&
-      known.debugSessionId === debugSessionId &&
-      known.incarnation === incarnation
-    ) {
+    if (known && known.debugSessionId === debugSessionId && known.incarnation === incarnation) {
       if (folder) known.folder = folder
+      known.aliases ??= new Set()
+      known.aliases.add(path)
+      known.aliases.add(alias)
       return () => {}
     }
     const mapping: SourceMapping = {
       path,
+      aliases: new Set([alias]),
       debugSessionId,
       incarnation,
       ...(folder ? { folder } : {}),
@@ -990,7 +1050,7 @@ export class DebuggerService {
       if (binding && this.folders.has(binding) && binding !== this.folderBinding(target)) continue
       for (const [sourceId, m] of sources)
         if (
-          m.path === path &&
+          (m.path === path || m.aliases?.has(path)) &&
           m.folder &&
           m.folder.kind === target.kind &&
           m.folder.id === target.id &&
@@ -1136,12 +1196,15 @@ export class DebuggerService {
     this.folders.clear()
     this.selectedFolders.clear()
     this.admissions.clear()
+    this.pendingPoints.clear()
+    ++this.pendingRevision.value
     this.revealers.clear()
     this.active.value = null
   }
 }
 
 export function sourceRefusal(code: string): SourceAdmission {
+  if (code === 'project_untrusted') return { message: t('node.error.trust'), code }
   if (code === 'debugger_source_no_map') return { message: t('debug.sourceMap') }
   if (code === 'debugger_source_changed') return { message: t('debug.sourceChanged') }
   if (code === 'debugger_source_test') return { message: t('debug.sourceTest') }

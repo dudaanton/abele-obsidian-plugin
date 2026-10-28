@@ -25930,7 +25930,7 @@
     ]
   },
   "debug.sourceMap": {
-    "englishHash": "88431e77e4948ad7ae3445894a610e7da08d552f6d065018372d35778b880441",
+    "englishHash": "d68c9362c4ca66623d21eaa64785de35a4e7ced8c5480d63155bfd1422464492",
     "context": "Debugger breakpoint controls and source refusal explanation",
     "reviewedLocales": [
       "ru",
@@ -25960,7 +25960,7 @@
     ]
   },
   "debug.sourceUnavailable": {
-    "englishHash": "5d2ebd8f9cdad5ff1bec83cef7bbea5b7817ba3039f9699b87282f65c76602df",
+    "englishHash": "73faedb42720627fcfb0f0a02a6ccd7ebbbce474c38eb74eea6dc77170f815a7",
     "context": "Debugger source admission refusal or node update explanation",
     "reviewedLocales": [
       "ru",
@@ -28602,6 +28602,16 @@
   "requests.file.pendingEdit": {
     "englishHash": "d8581407608fbfbde492091ccd2377c8b54a84918d67aff0f2b074a6dcaa2d8d",
     "context": "Conditional file writes and secret migration diagnostics",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.filePending": {
+    "englishHash": "d1e1fe63329f91eaf101996bcf178bb630cd8d1c6ad57c42b6440d0d88887e31",
+    "context": "Node file breakpoint gutter before source admission; session start or attach guidance",
     "reviewedLocales": [
       "ru",
       "lv",

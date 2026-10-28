@@ -28,7 +28,14 @@ import { t } from '@/i18n'
 // its line, faintly, what it took the last time. Selected code gets the selection bar: ask, add
 // to the chat, note.
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { EditorView, GutterMarker, gutter, Decoration, WidgetType } from '@codemirror/view'
+import {
+  EditorView,
+  GutterMarker,
+  gutter,
+  lineNumbers,
+  Decoration,
+  WidgetType,
+} from '@codemirror/view'
 import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { setTooltip } from 'obsidian'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
@@ -245,6 +252,15 @@ async function draw() {
   editor = EditorView.findFromDOM(host.value.querySelector('.cm-editor'))
   editor?.dispatch({
     effects: StateEffect.appendConfig.of([
+      lineNumbers({
+        domEventHandlers: {
+          click(view, block) {
+            if (props.stale) return false
+            emit('breakpoint', view.state.doc.lineAt(block.from).number)
+            return true
+          },
+        },
+      }),
       marks.of(margin()),
       current.of(here()),
       extras.of(extra()),

@@ -8,7 +8,85 @@ import { debuggerSnapshot } from '../fixtures/debugger'
 import { programFiles } from '@/debugger/programFiles'
 import { NodeClient } from '@abele/node-client'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+import DebugSource from '@/components/debugger/DebugSource.vue'
 const fileViewStub = { template: '<div><slot name="code" /></div>' }
+
+it('retains file breakpoints before a session and applies them after admission', async () => {
+  const service = DebuggerService.instance
+  service.togglePendingBreakpoint(target, 'lib/helper.ts', 2)
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([2])
+  expect(service.pendingBreakpoints({ ...target, id: 'other-folder' }, 'lib/helper.ts')).toEqual([])
+  const { binding } = fixture()
+  const toggle = vi
+    .spyOn(binding.controller, 'setBreakpoint')
+    .mockResolvedValue({ outcome: 'completed' } as never)
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(toggle).toHaveBeenCalledWith(expect.any(String), 'sample-added', 2)
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([])
+})
+it('clears pending breakpoints and keeps refused breakpoints pending', async () => {
+  const { service, binding } = fixture(true, [
+    { path: 'lib/helper.ts', code: 'debugger_source_changed' },
+  ])
+  const toggle = vi.spyOn(binding.controller, 'setBreakpoint')
+  service.togglePendingBreakpoint(target, 'lib/helper.ts', 2)
+  service.togglePendingBreakpoint(target, 'lib/helper.ts', 2)
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([])
+  service.togglePendingBreakpoint(target, 'lib/helper.ts', 3)
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(toggle).not.toHaveBeenCalled()
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([3])
+})
+it('uses the admitted identity when the node canonicalizes a source path', async () => {
+  const { service, binding, request } = fixture()
+  request.mockResolvedValueOnce({
+    incarnation: 'sample-incarnation',
+    sources: [{ source_id: 'sample-added', path: 'packages/sample/src/helper.ts' }],
+    refused: [],
+  })
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toBe('')
+  expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-added')
+  service.registerSource(
+    binding.registrationId,
+    binding.conversationId,
+    'sample-added',
+    'lib/helper.ts',
+    binding.sessionId!,
+    'sample-incarnation'
+  )
+  expect(service.debugFor(target, 'packages/sample/src/helper.ts')?.sourceId).toBe('sample-added')
+})
+it('retains pending intent when the debugger does not confirm a breakpoint', async () => {
+  const { service, binding } = fixture()
+  vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue(undefined)
+  service.togglePendingBreakpoint(target, 'lib/helper.ts', 2)
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([2])
+})
+it('offers a pending gutter before a debug session without contacting the node', async () => {
+  const service = DebuggerService.instance
+  const document = ref({ target, path: 'lib/helper.ts', text: 'const sample = 2' })
+  const wrapper = mount(NodePathFilePane, {
+    props: { model: { document, mode: ref('file'), busy: ref(false), error: ref('') } as never },
+    global: { stubs: { FileView: fileViewStub } },
+  })
+  try {
+    await flushPromises()
+    const gutter = wrapper.findComponent(DebugSource)
+    expect(gutter.exists()).toBe(true)
+    expect(gutter.props('stale')).toBe(false)
+    expect(wrapper.get('[role="status"]').text()).toMatch(/start or attach/i)
+    gutter.vm.$emit('breakpoint', 1)
+    await nextTick()
+    expect(gutter.props('breakpoints')).toEqual([
+      { file: 'lib/helper.ts', line: 1, state: 'pending' },
+    ])
+    wrapper.unmount()
+    expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([1])
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+  }
+})
 
 it('revalidates an admitted source after its document changes', async () => {
   const { request } = fixture()
@@ -220,7 +298,7 @@ it('explains an old node without sending an unsupported RPC', async () => {
   expect(request).not.toHaveBeenCalled()
 })
 it.each([
-  ['debugger_source_no_map', /build with source maps/i],
+  ['debugger_source_no_map', /breakpoints stay pending/i],
   ['debugger_source_changed', /changed since/i],
   ['debugger_source_outside_folder', /outside.*folder/i],
   ['debugger_source_conflict', /conflict/i],
@@ -336,7 +414,7 @@ it('shows a muted source-map refusal in the file tab', async () => {
     global: { stubs: { FileView: fileViewStub, NodePathDebugFile: true } },
   })
   await flushPromises()
-  expect(wrapper.find('[role="status"]').text()).toMatch(/build with source maps/i)
+  expect(wrapper.find('[role="status"]').text()).toMatch(/breakpoints stay pending/i)
   expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(false)
   wrapper.unmount()
 })

@@ -33,12 +33,12 @@
         {{ t('node.codeLineUnavailable') }}
       </div>
       <div
-        v-if="admissionReason"
+        v-if="admissionReason || pendingSource"
         class="setting-item-description"
         role="status"
         :title="admissionCode || undefined"
       >
-        {{ admissionReason }}
+        {{ admissionReason || t('debug.filePending') }}
       </div>
       <div v-if="model.document.value.note" role="status">
         {{ presentUiField(model.document.value, 'note') }}
@@ -85,6 +85,16 @@
             @selection="debugSelection"
           />
         </template>
+        <template v-else-if="pendingSource && !endLine" #code>
+          <DebugSource
+            :text="model.document.value.text"
+            :path="model.document.value.path"
+            :breakpoints="pendingMarks"
+            :line="line"
+            @breakpoint="togglePending"
+            @selection="debugSelection"
+          />
+        </template>
       </FileView>
     </template>
   </div>
@@ -97,6 +107,7 @@ import { t } from '@/i18n'
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
+import DebugSource from '@/components/debugger/DebugSource.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, inject, provide, ref, watch } from 'vue'
 import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
@@ -168,6 +179,29 @@ provide(MARKDOWN_FILE_NAVIGATION, (url) => {
 const admissionReason = ref('')
 const admissionCode = ref('')
 const checkingSource = ref(false)
+const pendingSource = computed(() => {
+  const doc = props.model.document.value
+  return (
+    !!doc?.target &&
+    /\.(?:[cm]?[jt]s|[jt]sx)$/.test(doc.path) &&
+    !/\.d\.[cm]?ts$/.test(doc.path) &&
+    !effectiveDebug.value
+  )
+})
+const pendingMarks = computed(() => {
+  const doc = props.model.document.value
+  return doc?.target
+    ? service.pendingBreakpoints(doc.target, doc.path).map((line) => ({
+        file: doc.path,
+        line,
+        state: 'pending' as const,
+      }))
+    : []
+})
+function togglePending(line: number) {
+  const doc = props.model.document.value
+  if (doc?.target) service.togglePendingBreakpoint(doc.target, doc.path, line)
+}
 const effectiveDebug = computed(() => {
   void service.sourceRevision.value
   const doc = props.model.document.value
@@ -306,7 +340,10 @@ body.is-phone .abele-node-main_file {
   margin-block-end: var(--size-4-2);
 }
 .abele-node-main > [role='status'] {
+  flex: 0 0 auto;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
+  font-size: var(--font-ui-small);
   margin-block-end: var(--size-4-2);
 }
 </style>

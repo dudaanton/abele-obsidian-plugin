@@ -3731,11 +3731,14 @@ export const lv = {
     '{command} darbojas mapē {path}, nevis atlasītajā mapē. Atkļūdotājs var to apturēt un nolasīt vērtības. Pēc atvienošanas programma turpinās darboties.',
   'debug.sourceUpdate': 'Atjauniniet mezglu, lai šajā failā iestatītu pārtraukumpunktus',
   'debug.sourceMap':
-    'Mezgls neatrada avota karti, kas saista šo failu ar palaisto programmu. Izveidojiet projektu ar avota kartēm, tad pārstartējiet programmu un pievienojiet atkļūdotāju.',
+    'Mezgls vēl nav sasaistījis šo failu ar palaisto programmu. Pārtraukumpunkti paliek gaidīšanas režīmā. Pārstartējiet programmu vai pievienojieties vēlreiz; ja tas nepalīdz, pārbaudiet programmas pirmkoda kartes.',
   'debug.sourceChanged':
     'Fails mainījās pēc programmas palaišanas. Atjaunojiet iepriekšējo saturu vai izveidojiet un palaidiet programmu no jauna.',
   'debug.sourceOutside': 'Fails atrodas ārpus atkļūdošanas mapes',
-  'debug.sourceUnavailable': 'Failu neizdevās pievienot atkļūdotājam',
+  'debug.filePending':
+    'Noklikšķiniet uz rindas numura, lai pievienotu gaidošu pārtraukumpunktu. Sāciet vai pievienojiet šīs mapes atkļūdošanas sesiju, lai to lietotu.',
+  'debug.sourceUnavailable':
+    'Failu neizdevās pievienot atkļūdotājam. Pārbaudiet savienojumu ar mezglu un atveriet failu vēlreiz, lai mēģinātu no jauna.',
   'debug.entryPlaceholder':
     'Meklēt sākuma failus vai pakotnes skriptus; vai ievadīt kompilēta JavaScript ceļu',
   'debug.entryEmpty': 'Nav atbilstību. Varat ievadīt kompilēta JavaScript ceļu.',
