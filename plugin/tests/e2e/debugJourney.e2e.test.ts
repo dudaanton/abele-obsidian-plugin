@@ -304,10 +304,23 @@ it.each(['desktop', 'phone'])(
         press(mark);
         await until(()=>leaf.containerEl.querySelector('.abele-breakpoint-mark_pending'),'pending breakpoint');
         for(const control of ['marker','number']) {
-          const el=control==='marker'?mark:leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
+          // Setting the point replaces its gutter marker; query the current click target.
+          const el=control==='marker'?marginAt(1,leaf.containerEl):leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
+          if(!el?.isConnected)throw Error('Detached pending menu target: '+control);
           const rect=el.getBoundingClientRect();
+          if(!rect.width||!rect.height)throw Error('Invisible pending menu target: '+control);
           el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+2,clientY:rect.top+2}));
           for(const title of ['Remove breakpoint','Edit condition','Hit count','Disable breakpoint','Add record point'])await until(()=>item(title),'pending menu '+title);
+          if(${JSON.stringify(device)}==='desktop') {
+            await until(()=>{
+              const menu=item('Remove breakpoint')?.closest('.menu');
+              if(!menu)return false;
+              const bounds=menu.getBoundingClientRect();
+              const dx=Math.max(bounds.left-(rect.left+2),0,rect.left+2-bounds.right);
+              const dy=Math.max(bounds.top-(rect.top+2),0,rect.top+2-bounds.bottom);
+              return bounds.width>0&&bounds.height>0&&Math.hypot(dx,dy)<=40;
+            },'pending menu near '+control);
+          }
           await shot('pending-menu-${device}-'+control);
           document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
           await wait(100);
