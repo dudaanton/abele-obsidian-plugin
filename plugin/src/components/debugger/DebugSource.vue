@@ -76,6 +76,7 @@ const host = ref<HTMLElement>()
 let viewer: CodeViewer | undefined
 let editor: EditorView | null = null
 const marks = new Compartment()
+const refreshMarks = StateEffect.define<null>()
 const current = new Compartment()
 const extras = new Compartment()
 /** Where the setup of a record point is drawn: a block under its line. */
@@ -102,6 +103,8 @@ class Mark extends GutterMarker {
     readonly locked: boolean
   ) {
     super()
+    // Equality compares rendered values even when the caller mutates a reactive point in place.
+    this.point = point ? { ...point } : undefined
   }
   eq(o: Mark) {
     return (
@@ -122,6 +125,7 @@ class Mark extends GutterMarker {
     const el = createEl('button')
     el.type = 'button'
     el.className = 'abele-debug-source__point'
+    el.dataset.line = String(this.line)
     el.disabled = this.locked
     const record = this.point?.kind === 'record'
     const log = this.point?.kind === 'log'
@@ -155,6 +159,11 @@ const margin = () =>
   Prec.high(
     gutter({
       class: 'abele-debug-source__margin',
+      // Keep the gutter configuration (and equal markers' DOM) across prop updates.
+      lineMarkerChange: (update) =>
+        update.transactions.some((transaction) =>
+          transaction.effects.some((effect) => effect.is(refreshMarks))
+        ),
       lineMarker(view, block) {
         const line = view.state.doc.lineAt(block.from).number
         return new Mark(
@@ -288,11 +297,7 @@ watch(
         !!host.value?.offsetParent
       )
     editor?.dispatch({
-      effects: [
-        marks.reconfigure(margin()),
-        current.reconfigure(here()),
-        extras.reconfigure(extra()),
-      ],
+      effects: [refreshMarks.of(null), current.reconfigure(here()), extras.reconfigure(extra())],
     })
     if (values[2] !== previous[2])
       queueMicrotask(() =>

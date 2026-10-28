@@ -1,9 +1,38 @@
 import { afterEach, expect, it } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { reactive } from 'vue'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 
 afterEach(() => {
   document.body.replaceChildren()
+})
+
+it('keeps a pending marker connected across equivalent marks and editor-only updates', async () => {
+  const point = reactive({ file: 'sample.ts', line: 1, state: 'pending' as 'pending' | 'disabled' })
+  const wrapper = mount(DebugSource, {
+    attachTo: document.body,
+    props: { path: 'sample.ts', text: 'const sample = 1', breakpoints: [point] },
+  })
+  try {
+    await flushPromises()
+    const marker = wrapper.get('button.abele-debug-source__point').element
+    await wrapper.setProps({ breakpoints: [{ ...point }] })
+    expect(wrapper.get('button.abele-debug-source__point').element).toBe(marker)
+    await wrapper.setProps({ editing: 1 })
+    expect(wrapper.get('button.abele-debug-source__point').element).toBe(marker)
+    expect(marker.isConnected).toBe(true)
+    await wrapper
+      .get('button.abele-debug-source__point')
+      .trigger('contextmenu', { clientX: 480, clientY: 320 })
+    expect(wrapper.emitted('margin-menu')?.[0]?.[0]).toBe(1)
+    const updated = reactive({ ...point })
+    await wrapper.setProps({ breakpoints: [updated] })
+    updated.state = 'disabled'
+    await flushPromises()
+    expect(wrapper.find('.abele-breakpoint-mark_disabled').exists()).toBe(true)
+  } finally {
+    wrapper.unmount()
+  }
 })
 
 it.each([false, true])(

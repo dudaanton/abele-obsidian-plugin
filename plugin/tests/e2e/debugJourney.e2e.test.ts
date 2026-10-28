@@ -304,9 +304,10 @@ it.each(['desktop', 'phone'])(
         press(mark);
         await until(()=>leaf.containerEl.querySelector('.abele-breakpoint-mark_pending'),'pending breakpoint');
         for(const control of ['marker','number']) {
-          // Setting the point replaces its gutter marker; query the current click target.
-          const el=control==='marker'?marginAt(1,leaf.containerEl):leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
-          if(!el?.isConnected)throw Error('Detached pending menu target: '+control);
+          // A pending marker has a different accessible label from an empty line.
+          const el=control==='marker'?leaf.containerEl.querySelector('button.abele-debug-source__point[data-line="1"]'):leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
+          if(!el)throw Error('Missing pending menu target: '+control);
+          if(!el.isConnected)throw Error('Detached pending menu target: '+control);
           const rect=el.getBoundingClientRect();
           if(!rect.width||!rect.height)throw Error('Invisible pending menu target: '+control);
           el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+2,clientY:rect.top+2}));
