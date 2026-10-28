@@ -3787,6 +3787,18 @@ export const de = {
     'Diese Datei steht im Konflikt mit einer bereits hinzugefügten Quelldatei',
   'debug.sourceLimit': 'Das Quelldateilimit der Sitzung wurde erreicht',
   'debug.sourceUnreadable': 'Diese Datei ist nicht verfügbar oder nicht lesbar',
+  'debug.launchConfiguration': 'Laufzeit und Umgebung',
+  'debug.launchRuntimeArgs': 'Laufzeitargumente',
+  'debug.launchRuntimeArgsHint':
+    'Werden vor der Einstiegsdatei an Node übergeben, zum Beispiel --import=tsx.',
+  'debug.launchCwd': 'Arbeitsordner',
+  'debug.launchCwdHint':
+    'Relativ zum ausgewählten Ordner. Leer: der nächste Paketordner der Einstiegsdatei.',
+  'debug.launchEnv': 'Umgebungsvariablen',
+  'debug.launchEnvHint':
+    'Ein KEY=value pro Zeile. Werte werden wörtlich auf diesem Gerät gespeichert.',
+  'debug.launchEnvInvalid': 'Verwenden Sie für Umgebungsvariablen ein KEY=value pro Zeile.',
+  'debug.launchExitCode': 'Exit-Code: {code}',
   'debug.launchTitle': 'Programm ausführen',
   'debug.launchProgram': 'Programm',
   'debug.launchProgramHint':

@@ -3644,6 +3644,17 @@ export const en = {
   'debug.sourceConflict': 'This file conflicts with an admitted source',
   'debug.sourceLimit': 'The session source limit has been reached',
   'debug.sourceUnreadable': 'This file is unavailable or unreadable',
+  'debug.launchConfiguration': 'Runtime and environment',
+  'debug.launchRuntimeArgs': 'Runtime arguments',
+  'debug.launchRuntimeArgsHint': 'Passed to Node before the entry, for example --import=tsx.',
+  'debug.launchCwd': 'Working folder',
+  'debug.launchCwdHint':
+    'Relative to the selected folder. Leave empty for the nearest package folder of the entry.',
+  'debug.launchEnv': 'Environment variables',
+  'debug.launchEnvHint':
+    'One KEY=value per line. Values are literal and remembered on this device.',
+  'debug.launchEnvInvalid': 'Use one KEY=value per line for environment variables.',
+  'debug.launchExitCode': 'Exit code: {code}',
   'debug.launchTitle': 'Run a program',
   'debug.launchProgram': 'Program',
   'debug.launchProgramHint':

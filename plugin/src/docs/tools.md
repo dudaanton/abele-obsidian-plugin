@@ -1028,6 +1028,12 @@ cursors are device/node-side, not transferable settings or synced secrets.
 
 ## Recorded runs
 
+The **Run a program** dialog accepts Node runtime arguments separately from program arguments,
+a working folder relative to the selected folder (empty means the entry's nearest package
+folder), and literal `KEY=value` environment lines. Launch settings are remembered per entry
+on the device. Failed launches show the exit code when known and a short stderr preview;
+the full supplied diagnostics remain in Details. These are user launch controls, not tools.
+
 `trace_runs`, `trace_timeline`, `trace_shape`, `trace_slice`, `trace_diff`, `trace_find`,
 `trace_follow`, `trace_mark`, `trace_point_add`, `trace_note`.
 

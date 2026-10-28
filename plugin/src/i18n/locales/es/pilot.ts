@@ -3819,6 +3819,18 @@ export const es = {
   'debug.sourceConflict': 'El archivo entra en conflicto con una fuente ya añadida',
   'debug.sourceLimit': 'Se alcanzó el límite de archivos fuente de la sesión',
   'debug.sourceUnreadable': 'El archivo no está disponible o no se puede leer',
+  'debug.launchConfiguration': 'Entorno de ejecución',
+  'debug.launchRuntimeArgs': 'Argumentos del entorno de ejecución',
+  'debug.launchRuntimeArgsHint':
+    'Se pasan a Node antes del archivo de entrada, por ejemplo --import=tsx.',
+  'debug.launchCwd': 'Carpeta de trabajo',
+  'debug.launchCwdHint':
+    'Relativa a la carpeta seleccionada. Vacía: la carpeta de paquete más cercana al archivo de entrada.',
+  'debug.launchEnv': 'Variables de entorno',
+  'debug.launchEnvHint':
+    'Una KEY=value por línea. Los valores son literales y se guardan en este dispositivo.',
+  'debug.launchEnvInvalid': 'Use una KEY=value por línea para las variables de entorno.',
+  'debug.launchExitCode': 'Código de salida: {code}',
   'debug.launchTitle': 'Ejecutar un programa',
   'debug.launchProgram': 'Programa',
   'debug.launchProgramHint':

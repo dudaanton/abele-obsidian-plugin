@@ -85,6 +85,38 @@ function fakePresenter() {
 
 afterEach(() => DebuggerService.instance.destroy())
 
+it('sends runtime configuration separately from program arguments and retains it on restart', async () => {
+  fakeWorkspace()
+  const { presenter, calls } = fakePresenter()
+  const configuration = {
+    runtime_argv: ['--import=tsx'],
+    cwd: 'packages/sample',
+    env: { MODE: 'sample' },
+  }
+  await startProgram(
+    presenter,
+    'src/page.js',
+    [],
+    target,
+    async () => {},
+    [],
+    ['--debug'],
+    configuration
+  )
+  expect(calls.find(([method]) => method === 'debugger.v1.start')?.[1]).toMatchObject({
+    ...configuration,
+    program: 'src/page.js',
+    argv: ['--debug'],
+  })
+  const binding = DebuggerService.instance.binding(presenter, 'child-1')
+  vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
+  binding.controller.session.status = 'exited'
+  await binding.rerun!()
+  expect(
+    calls.filter(([method]) => method === 'debugger.v1.start').map(([, params]) => params)
+  ).toEqual([expect.objectContaining(configuration), expect.objectContaining(configuration)])
+})
+
 it('discovers retained sessions after an uncertain launch without replaying start', async () => {
   fakeWorkspace()
   const { presenter } = fakePresenter()

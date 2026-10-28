@@ -7,6 +7,20 @@ import {
 } from '@/debugger/programLaunchTargets'
 import { DebuggerControlMethodSchemas, DebuggerStartSchema } from '@abele/node-protocol'
 
+// BUG: The node start protocol must accept launch configuration before the paired feature ships.
+it.fails('admits runtime arguments, working folder and environment in the node protocol', () => {
+  expect(
+    DebuggerStartSchema.safeParse({
+      operation_id: 'sample-operation',
+      conversation_id: 'sample-chat',
+      program: 'packages/sample/src/main.ts',
+      runtime_argv: ['--import=tsx'],
+      cwd: 'packages/sample',
+      env: { MODE: 'sample' },
+    }).success
+  ).toBe(true)
+})
+
 it('keeps the recently opened file ahead of discovered built entries', () => {
   expect(
     programLaunchPaths(

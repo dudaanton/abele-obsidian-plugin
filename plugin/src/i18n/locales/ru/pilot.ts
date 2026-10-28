@@ -3815,6 +3815,17 @@ export const ru = {
   'debug.sourceConflict': 'Файл конфликтует с уже добавленным исходником',
   'debug.sourceLimit': 'Достигнут предел числа исходников в сессии',
   'debug.sourceUnreadable': 'Файл недоступен или не читается',
+  'debug.launchConfiguration': 'Среда запуска',
+  'debug.launchRuntimeArgs': 'Аргументы среды выполнения',
+  'debug.launchRuntimeArgsHint': 'Передаются Node перед входным файлом, например --import=tsx.',
+  'debug.launchCwd': 'Рабочая папка',
+  'debug.launchCwdHint':
+    'Относительно выбранной папки. Если пусто — ближайшая папка пакета входного файла.',
+  'debug.launchEnv': 'Переменные окружения',
+  'debug.launchEnvHint':
+    'По одной KEY=value на строку. Значения буквальные и сохраняются на этом устройстве.',
+  'debug.launchEnvInvalid': 'Укажите переменные окружения по одной KEY=value на строку.',
+  'debug.launchExitCode': 'Код завершения: {code}',
   'debug.launchTitle': 'Запустить программу',
   'debug.launchProgram': 'Программа',
   'debug.launchProgramHint':

@@ -16,6 +16,7 @@ import { programFiles } from './programFiles'
 import { pickProgram } from '@/helpers/suggesters/RunnablePicker'
 import { openComponentDialog } from '@/modal/componentDialog'
 import ProgramLaunchDialog from './ProgramLaunchDialog.vue'
+import type { LaunchConfiguration, LaunchOptions } from './launchConfiguration'
 import {
   programLaunchPaths,
   programLaunchTargets,
@@ -196,7 +197,7 @@ export async function startProgram(
   show: (sessionId: string) => Promise<void>,
   carry: CarriedPoint[] = [],
   argv: string[] = [],
-  options: { npmScript?: string; source?: string; stopOnEntry?: boolean } = {}
+  options: LaunchOptions & { npmScript?: string; source?: string; stopOnEntry?: boolean } = {}
 ) {
   argv = [...argv]
   const client = presenter.connection.client
@@ -211,6 +212,9 @@ export async function startProgram(
         ...debugOwnerParams(presenter),
         program,
         argv,
+        ...(options.runtime_argv ? { runtime_argv: options.runtime_argv } : {}),
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...(options.env ? { env: options.env } : {}),
         ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
         ...(options.npmScript ? { npm_script: options.npmScript } : {}),
         sources: sources.filter((s) => s !== program),
@@ -361,7 +365,20 @@ export async function askAndStartProgram(
         },
         rememberArguments: (path: string, text: string) =>
           app.saveLocalStorage(argumentsKey(path), text),
-        launch: (path: string, argv: string[], stopOnEntry?: boolean) => {
+        configurationFor: (path: string) => {
+          const saved = z
+            .object({ runtimeArguments: z.string(), cwd: z.string(), environment: z.string() })
+            .safeParse(app.loadLocalStorage(`${argumentsKey(path)}:configuration`))
+          return saved.success ? saved.data : undefined
+        },
+        rememberConfiguration: (path: string, configuration: LaunchConfiguration) =>
+          app.saveLocalStorage(`${argumentsKey(path)}:configuration`, configuration),
+        launch: (
+          path: string,
+          argv: string[],
+          stopOnEntry?: boolean,
+          configuration?: LaunchOptions
+        ) => {
           const selected = resolveLaunchTarget(path, targets)
           return startProgram(
             presenter,
@@ -371,7 +388,12 @@ export async function askAndStartProgram(
             show,
             carry,
             argv,
-            { npmScript: selected.npm_script, source: selected.sources[0], stopOnEntry }
+            {
+              ...configuration,
+              npmScript: selected.npm_script,
+              source: selected.sources[0],
+              stopOnEntry,
+            }
           )
         },
       })

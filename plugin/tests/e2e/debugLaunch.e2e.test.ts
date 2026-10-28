@@ -22,6 +22,15 @@ async function probe(device: string) {
         if (!stopAtStart || stopAtStart.getAttribute('aria-checked') !== 'false') throw Error('Stop at start must default off');
         if (state === 'ready') {
           stopAtStart.click();
+          const configuration = [...modal.querySelectorAll('.abele-disclosure__control')].find(el => el.textContent.includes('Runtime and environment'));
+          if (!configuration) throw Error('Missing runtime configuration');
+          configuration.click();
+          await wait(100);
+          for (const label of ['Runtime arguments', 'Working folder', 'Environment variables']) {
+            if (!modal.querySelector('[aria-label="'+label+'"]')) throw Error('Missing launch field: '+label);
+          }
+          require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-configuration.png', (await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+          configuration.click();
           await wait(100);
           if (stopAtStart.getAttribute('aria-checked') !== 'true') throw Error('Stop at start did not enable');
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-stop-at-start.png', (await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
@@ -39,12 +48,12 @@ async function probe(device: string) {
           if (!modal.querySelector('[role="alert"]')?.textContent.includes('Cannot find module sample-module')) throw Error('Missing startup stderr');
           if (!modal.querySelector('[role="alert"]')?.textContent.includes('The program exited before the debugger could attach.')) throw Error('Missing plain startup explanation');
           if (modal.innerText.includes('debugger_startup_handoff_lost')) throw Error('Internal code visible before opening details');
-          modal.querySelector('.abele-disclosure__control').click();
+          [...modal.querySelectorAll('.abele-disclosure__control')].at(-1).click();
           await wait(100);
           if (!modal.innerText.includes('debugger_startup_handoff_lost')) throw Error('Missing technical details');
           const detailsImage = await require('@electron/remote').getCurrentWebContents().capturePage();
           require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-details.png', detailsImage.toPNG());
-          modal.querySelector('.abele-disclosure__control').click();
+          [...modal.querySelectorAll('.abele-disclosure__control')].at(-1).click();
         }
         await wait(200);
         const rect = modal.getBoundingClientRect();

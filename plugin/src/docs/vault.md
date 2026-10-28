@@ -3404,3 +3404,10 @@ chat history retains the same text, reasoning, function-call and tool-result rec
 No provider response IDs are needed to resume a chat.
 
 Discussion anchors may also store `code: true` when their selected words originated in a code block. This preserves code typography when the discussion reopens; it does not change the selected text or the context sent to the model.
+
+## Debug launch preferences
+
+The program launch dialog remembers runtime arguments, the working folder and literal
+environment variables per node folder and entry in device-local Obsidian storage.
+These preferences do not travel with vault files. An empty working folder asks the node
+to use the entry's nearest package folder, falling back to the selected folder.

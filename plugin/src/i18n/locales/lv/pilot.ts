@@ -3745,6 +3745,17 @@ export const lv = {
   'debug.sourceConflict': 'Fails konfliktē ar jau pievienotu pirmkoda failu',
   'debug.sourceLimit': 'Sasniegts sesijas pirmkoda failu skaita ierobežojums',
   'debug.sourceUnreadable': 'Fails nav pieejams vai nav nolasāms',
+  'debug.launchConfiguration': 'Izpildvide',
+  'debug.launchRuntimeArgs': 'Izpildvides argumenti',
+  'debug.launchRuntimeArgsHint': 'Nodoti Node pirms ievades faila, piemēram, --import=tsx.',
+  'debug.launchCwd': 'Darba mape',
+  'debug.launchCwdHint':
+    'Attiecībā pret izvēlēto mapi. Atstājiet tukšu, lai izmantotu ievades failam tuvāko pakotnes mapi.',
+  'debug.launchEnv': 'Vides mainīgie',
+  'debug.launchEnvHint':
+    'Viena KEY=value katrā rindā. Vērtības ir burtiskas un tiek saglabātas šajā ierīcē.',
+  'debug.launchEnvInvalid': 'Norādiet vides mainīgos formātā KEY=value, pa vienam katrā rindā.',
+  'debug.launchExitCode': 'Izejas kods: {code}',
   'debug.launchTitle': 'Palaist programmu',
   'debug.launchProgram': 'Programma',
   'debug.launchProgramHint':

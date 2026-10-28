@@ -6,6 +6,76 @@ import Disclosure from '@/components/obsidian/Disclosure.vue'
 import { Platform } from 'obsidian'
 
 const modal = { props: ['size'], template: '<div><slot /><slot name="footer" /></div>' }
+it('passes and remembers runtime configuration even when launch fails', async () => {
+  const launch = vi.fn().mockRejectedValue(new Error('debugger_start_failed'))
+  const rememberConfiguration = vi.fn()
+  const configuration = {
+    runtimeArguments: '--import=tsx',
+    cwd: 'packages/sample',
+    environment: 'MODE=sample',
+  }
+  const w = mount(ProgramLaunchDialog, {
+    props: {
+      program: 'packages/sample/src/main.ts',
+      launch,
+      configurationFor: () => configuration,
+      rememberConfiguration,
+    },
+    global: { stubs: { Modal: modal } },
+  })
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(launch).toHaveBeenCalledWith('packages/sample/src/main.ts', [], undefined, {
+    runtime_argv: ['--import=tsx'],
+    cwd: 'packages/sample',
+    env: { MODE: 'sample' },
+  })
+  expect(rememberConfiguration).toHaveBeenCalledWith('packages/sample/src/main.ts', configuration)
+  w.unmount()
+})
+it('shows known exit status ahead of timeout wording', async () => {
+  const w = fixture(
+    vi.fn().mockRejectedValue(
+      Object.assign(new Error('request_timeout'), {
+        details: { exit_code: 1, stderr: 'module failed' },
+      })
+    )
+  )
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(w.get('[role="alert"]').text()).toContain('Exit code: 1')
+  expect(w.get('[role="alert"]').text()).not.toContain('Reconnect')
+  expect(w.get('[role="alert"]').text()).toContain('module failed')
+  w.unmount()
+})
+it('does not start with malformed environment lines', async () => {
+  const launch = vi.fn()
+  const w = fixture(launch)
+  await w.findAll('.abele-disclosure__control')[0].trigger('click')
+  await w.get('textarea').setValue('MODE=sample\nmissing equals')
+  await w.findAll('button').at(-1)!.trigger('click')
+  expect(launch).not.toHaveBeenCalled()
+  expect(w.get('[role="alert"]').text()).toContain('KEY=value')
+  w.unmount()
+})
+it('passes environment values literally and limits the output preview', async () => {
+  const launch = vi.fn().mockRejectedValue(
+    Object.assign(new Error('debugger_start_failed'), {
+      details: { exit_code: 2, stderr: 'sample failure\n' + 'detail\n'.repeat(50) },
+    })
+  )
+  const w = fixture(launch)
+  await w.findAll('.abele-disclosure__control')[0].trigger('click')
+  await w.get('textarea').setValue('SAMPLE=a=b $HOME\nEMPTY=')
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(launch).toHaveBeenCalledWith('dist/main.js', [], undefined, {
+    env: { SAMPLE: 'a=b $HOME', EMPTY: '' },
+  })
+  expect(w.get('[role="alert"]').text()).toContain('sample failure')
+  expect(w.get('[role="alert"]').text().length).toBeLessThan(200)
+  w.unmount()
+})
 it.each([
   [
     'request_timeout',
@@ -20,8 +90,8 @@ it.each([
   await w.findAll('button').at(-1)!.trigger('click')
   await flushPromises()
   expect(w.get('[role="alert"]').text()).toContain(message)
-  await w.get('.abele-disclosure__control').trigger('click')
-  expect(w.get('.abele-disclosure__content').text()).toContain(code)
+  await w.findAll('.abele-disclosure__control').at(-1)!.trigger('click')
+  expect(w.findAll('.abele-disclosure__content').at(-1)!.text()).toContain(code)
   w.unmount()
 })
 it('offers supported stop-at-start default off and sends the explicit choice', async () => {
@@ -72,8 +142,10 @@ it('retains structured startup reasons in Details when no output was captured', 
   const w = fixture(vi.fn().mockRejectedValue(error))
   await w.findAll('button').at(-1)!.trigger('click')
   await flushPromises()
-  await w.get('.abele-disclosure__control').trigger('click')
-  expect(w.get('.abele-disclosure__content').text()).toContain('The sample entry is not a file.')
+  await w.findAll('.abele-disclosure__control').at(-1)!.trigger('click')
+  expect(w.findAll('.abele-disclosure__content').at(-1)!.text()).toContain(
+    'The sample entry is not a file.'
+  )
   w.unmount()
 })
 
@@ -118,7 +190,7 @@ it('keeps launch failures and program stderr visible without closing the form', 
     'The program exited before the debugger could attach.'
   )
   expect(w.text()).not.toContain('debugger_startup_handoff_lost')
-  const details = w.findComponent(Disclosure)
+  const details = w.findAllComponents(Disclosure).at(-1)!
   expect(details.props('modelValue')).toBe(false)
   details.vm.$emit('update:modelValue', true)
   await flushPromises()

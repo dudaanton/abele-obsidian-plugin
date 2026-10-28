@@ -417,7 +417,11 @@ trusting the registered project and allowing execution in the selected folder or
 Existing chats keep the same actions in their **⋯** menu:
 
 - **Run a program** starts a JavaScript file of the selected folder under the debugger. Pick one of
-  the files open from that folder or type its path. It waits on its first line, so you can set
+  the files open from that folder or type its path. **Runtime and environment** accepts Node
+  arguments (for example `--import=tsx` for a TypeScript entry), a working folder relative to
+  the selected folder, and literal `KEY=value` environment lines. An empty working folder uses
+  the entry's nearest package folder. These choices are remembered per entry on this device.
+  It waits on its first line, so you can set
   breakpoints before it goes on.
 - **Attach to a running program** connects to a program that is already running with its
   debugger port open, for example a server you started with `node --inspect app.js` (or

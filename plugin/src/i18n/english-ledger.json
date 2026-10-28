@@ -28618,5 +28618,95 @@
       "es",
       "de"
     ]
+  },
+  "debug.launchRuntimeArgs": {
+    "englishHash": "0a7e6ffaae9211528e598f41f37dc341705242ab6dd10eb468ff5548ffa0fd9b",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchRuntimeArgsHint": {
+    "englishHash": "5b933f2872b272b156bb051ed18e649b4f9ac938eef677647bb460c32bb8e74e",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchCwd": {
+    "englishHash": "a69c1bcf945844250e5e3a4413e6e631a131ddfe290f4b81e3a0420c25b733d1",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchCwdHint": {
+    "englishHash": "43a83993462af3c8f9a3959821af6bf0abc5294099e161650ae15b92149992a9",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchEnv": {
+    "englishHash": "444ab5fb568904883279f311cc3c0795046c5c238865b93db9e846087ab7b950",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchEnvHint": {
+    "englishHash": "feee88ba3441f2644ab49edceb3b51a1d8ce31e8620b17ab3195a5a800c9941c",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchEnvInvalid": {
+    "englishHash": "ef4b0a77aaf3ad4f6a8ba33442cf0d8a043ec5dda606e995e66f509507971c3a",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchExitCode": {
+    "englishHash": "b027b515b8168eb554b5b7b568c2cd6a7b825097e06119b67bf70b9e31727f0b",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.launchConfiguration": {
+    "englishHash": "5d5853de62b6cccbcf82424709c0e55939d95b42f536b8965dd3838c9924f11d",
+    "context": "Debugger launch configuration",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
