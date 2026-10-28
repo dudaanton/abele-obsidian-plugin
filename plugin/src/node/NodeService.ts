@@ -20,7 +20,7 @@ import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ensureNodeAgents } from './nodeAgentTools'
 import { nodeScopeEntries } from '@/ai/nodeScope'
 import { requireDelegationScope, scopedPlainCommandRoot } from '@/ai/tools/node/delegationScope'
-import { NodeRequestActivity } from './NodeRequestActivity'
+import { NodeRequestActivity, nodeRequestWaitMs } from './NodeRequestActivity'
 import { nodeLogAvailable } from './nodeLogCapability'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
@@ -143,7 +143,8 @@ export class NodeConnection {
     const request = client.request?.bind(client)
     if (request)
       client.request = async (method, params) => {
-        const settled = this.activity.start()
+        const settled = this.activity.start(method, params)
+        const waitMs = nodeRequestWaitMs(method, params)
         const generation = this.transportGeneration
         let timer: number | undefined
         try {
@@ -152,11 +153,13 @@ export class NodeConnection {
             new Promise<never>((_, reject) => {
               timer = window.setTimeout(
                 () => reject(new ChannelError('outcome_unknown')),
-                method === 'lsp.v1.install'
-                  ? 660000
-                  : /^(project|workspace|review|repository)\./.test(method)
-                    ? 60000
-                    : 10000
+                waitMs > 0
+                  ? waitMs + 10000
+                  : method === 'lsp.v1.install'
+                    ? 660000
+                    : /^(project|workspace|review|repository)\./.test(method)
+                      ? 60000
+                      : 10000
               )
             }),
           ])

@@ -13,6 +13,35 @@ import { folderDebugReason } from '@/debugger/folderActions'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
 
+it('lets a debugger long poll finish without blocking foreground requests or expiring early', async () => {
+  vi.useFakeTimers()
+  const client = {
+    target: {},
+    connected: true,
+    disconnect: vi.fn(async () => {}),
+    request: vi.fn(async (method: string, params?: { timeout_ms: number }) => {
+      if (method === 'debugger.v1.wait')
+        await new Promise((resolve) => window.setTimeout(resolve, params!.timeout_ms))
+      return { answered: method }
+    }),
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  try {
+    const wait = client.request('debugger.v1.wait', { timeout_ms: 60000 })
+    const result = expect(wait).resolves.toEqual({ answered: 'debugger.v1.wait' })
+    for (let round = 0; round < 12; round++) {
+      await expect(client.request('node.describe')).resolves.toEqual({ answered: 'node.describe' })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(connection.activity.slowSince.value).toBe(0)
+    }
+    await result
+    expect(client.disconnect).not.toHaveBeenCalled()
+  } finally {
+    connection.destroy()
+    vi.useRealTimers()
+  }
+})
+
 it('approves a plain-root command without requiring a broader project grant', async () => {
   const chat = {
     delegationParentId: 'sample-parent',
