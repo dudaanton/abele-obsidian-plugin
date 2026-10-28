@@ -143,7 +143,14 @@ export async function runProbe(config) {
       const profileReceipt = join(config.output, `restart-${number}.cpuprofile.json`)
       await writeFile(
         observerFile,
-        JSON.stringify({ ...baseObserver, mode, controlReceipt, profileReceipt })
+        JSON.stringify({
+          ...baseObserver,
+          mode,
+          controlReceipt,
+          profileReceipt,
+          waitScreenshot:
+            number === 1 ? join(config.output, 'waiting-for-obsidian.png') : undefined,
+        })
       )
       await checkpoint(`restart ${number} ${mode}`)
       const launchedAt = start()

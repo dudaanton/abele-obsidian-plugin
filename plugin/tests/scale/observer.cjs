@@ -20,6 +20,18 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
       const { createMetadataCacheCapture } = require(config.metadataCache)
       const metadataCache = createMetadataCacheCapture(this.app, receipt, save)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
+      const { createIndexWaitCapture } = require(config.indexWaitCapture)
+      const screenshot = config.waitScreenshot
+        ? async () => {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-only screenshot bridge.
+            const remote = require('@electron/remote')
+            const image = await remote.getCurrentWebContents().capturePage()
+            fs.writeFileSync(config.waitScreenshot, image.toPNG())
+            return true
+          }
+        : undefined
+      const indexWait = createIndexWaitCapture(receipt, save, screenshot)
       let profile
       if (config.mode === 'profile-only') {
         try {
@@ -60,6 +72,7 @@ module.exports = class extends Plugin {
         const ui = host?.ui
         if (!ui) return
         const rows = ui.rows.value
+        indexWait.poll(Object.values(ui.activity.value))
         const engines = [...host.live.values()].map((runtime) => runtime.engine.status)
         if (
           rows.some((row) => row.status === 'error') ||
@@ -84,6 +97,7 @@ module.exports = class extends Plugin {
         ) {
           receipt.firstIdleAt = Date.now()
           metadataCache.finish(receipt.firstIdleAt)
+          indexWait.finish(receipt.firstIdleAt)
           save()
           if (profile)
             void profile
