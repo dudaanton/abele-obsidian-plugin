@@ -9,6 +9,7 @@ import {
 import { formatWhen } from './format'
 import { transferText } from './transferProgress'
 import { splitNotSynced } from './notSynced'
+import { t } from '@/i18n'
 
 /**
  * What one connection row says, as a code and one line: a dot coloured by its state and the one
@@ -30,6 +31,7 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
     row.status === 'joining' ||
     row.status === 'scope_updating' ||
     !!activity?.startup ||
+    !!activity?.indexWaiting ||
     !!activity?.inspection ||
     !!activity?.notSyncedLoading ||
     !!activity?.comparison ||
@@ -73,6 +75,7 @@ export function connectionLine(
   if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity, text)
   if (row.rootIssue) return connectionStatusText(row, activity, text)
   if (row.paused) return text('Paused')
+  if (activity?.indexWaiting) return t('sync.status.waitingForObsidian')
   const phase = activity?.startup ?? activity?.inspection
   const numbered = (stage: string, completed: number, total: number) =>
     text(stage) +

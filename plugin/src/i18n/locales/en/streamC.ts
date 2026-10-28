@@ -46,6 +46,7 @@ export const streamC = {
   'sync.status.held': 'Deletions held',
   'sync.status.review': 'To review',
   'sync.status.waiting': 'Waiting',
+  'sync.status.waitingForObsidian': 'Waiting for Obsidian',
   'sync.status.conflicts': { one: '{count} conflict', other: '{count} conflicts' },
   'sync.status.heldLine': {
     one: '{count} file deleted on this device is held back from the other devices, because so many went at once. Decide on the Sync tab whether they are deleted everywhere or put back.',

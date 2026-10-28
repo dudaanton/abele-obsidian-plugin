@@ -70,8 +70,8 @@ export async function pluginRepresentation(options: {
           : !options.placement ||
             path === options.placement.local ||
             path.startsWith(options.placement.local + '/'),
-      identity: (path) =>
-        projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path),
+      identity: (path, prior) =>
+        projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path, prior),
       save: async (current, retired = []) => {
         fence.assertOwned()
         // Write only rows that changed. Rows are per path, so another connection's completed

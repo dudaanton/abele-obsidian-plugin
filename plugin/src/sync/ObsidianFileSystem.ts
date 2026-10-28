@@ -217,7 +217,6 @@ let inventoryIds = 0
 let watchEpochs = 0
 /** How long watcher coverage alone may stand in for a fresh look, as for a skipped scan. */
 const WATCH_PROOF_MS = 300_000
-const STARTUP_INDEX_WAIT_MS = 2_000
 const STARTUP_INDEX_POLL_MS = 50
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
@@ -240,6 +239,7 @@ export interface ObsidianFileSystemOptions {
   discovery?: { roots: readonly string[]; includes(path: string): boolean }
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   prepareStartupInventory?: () => Promise<void>
+  onIndexWait?: (waiting: boolean) => void
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
   runtimeFence?: RuntimeFence
@@ -466,15 +466,11 @@ export class ObsidianFileSystem implements FileSystem {
   private indexFallback = false
   private layoutReady = false
   private startupIndexWait?: Promise<void>
+  private readonly onIndexWait?: (waiting: boolean) => void
 
-  /** A dirty cache at layout-ready is often a short final indexing window. Wait once before
-   * the first startup inventory chooses its source; a timeout keeps physical discovery. */
-  private async waitForStartupIndex(): Promise<void> {
-    if (
-      !this.prepareStartupInventory ||
-      (this.app.workspace?.layoutReady ?? this.layoutReady) !== true
-    )
-      return
+  /** A dirty host index cannot authorize a startup scan. Let the host finish indexing. */
+  async waitForStartupIndex(signal?: AbortSignal): Promise<void> {
+    if (!this.prepareStartupInventory) return
     this.startupIndexWait ??= (async () => {
       const cache = this.app.metadataCache as typeof this.app.metadataCache & {
         initialized?: boolean
@@ -482,18 +478,33 @@ export class ObsidianFileSystem implements FileSystem {
       }
       const ready = () => {
         try {
-          return cache.initialized !== false && cache.isCacheClean?.() === true
+          return (
+            (this.app.workspace?.layoutReady ?? this.layoutReady) === true &&
+            cache.initialized !== false &&
+            cache.isCacheClean?.() === true
+          )
         } catch {
           return false
         }
       }
-      const deadline = performance.now() + STARTUP_INDEX_WAIT_MS
-      while (performance.now() < deadline) {
-        if (ready()) return
-        await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
+      if (ready()) return
+      this.onIndexWait?.(true)
+      try {
+        while (!ready()) {
+          if (signal) signal.throwIfAborted()
+          else this.runtimeFence?.assertReady()
+          await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
+        }
+        signal?.throwIfAborted()
+      } finally {
+        this.onIndexWait?.(false)
       }
     })()
-    await this.startupIndexWait
+    try {
+      await this.startupIndexWait
+    } finally {
+      this.startupIndexWait = undefined
+    }
   }
 
   private indexReady(): boolean {
@@ -1095,6 +1106,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.fileScope = options.fileScope
     this.startupInventory = options.startupInventory
     this.prepareStartupInventory = options.prepareStartupInventory
+    this.onIndexWait = options.onIndexWait
     this.discovery = options.discovery
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
@@ -1934,6 +1946,10 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
   async *listDirectories() {
+    if (this.prepareStartupInventory) {
+      await this.waitForStartupIndex()
+      if (this.inventoryDepth === 0) this.indexFallback = false
+    }
     for await (const directory of this.listDirectoriesUnlocked())
       if (this.inventoryVisible(directory.path)) yield directory
   }
@@ -2382,11 +2398,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async *list(): AsyncIterable<FileInfo> {
     const own = this.inventory === null && this.inventoryDepth === 0
-    if (
-      own &&
-      this.prepareStartupInventory &&
-      (this.app.workspace?.layoutReady ?? this.layoutReady) === true
-    ) {
+    if (own && this.prepareStartupInventory) {
       await this.waitForStartupIndex()
       this.indexFallback = false
     }
@@ -2405,6 +2417,10 @@ export class ObsidianFileSystem implements FileSystem {
           for await (const file of this.listUnlocked()) files.push(file)
         } catch (error) {
           if (!(error instanceof ScanInterrupted)) throw error
+          if (this.prepareStartupInventory) {
+            await this.waitForStartupIndex()
+            this.indexFallback = false
+          }
           // A conditional effect or folder mutation crossed this inventory. None of
           // its entries has escaped to the engine, so start with a fresh view.
           if (own) this.inventory = inventory = this.createInventory()
@@ -2572,6 +2588,8 @@ export class ObsidianFileSystem implements FileSystem {
     scope?: string
   ): Promise<{ files: Set<string>; folders: Set<string> }> {
     if (this.indexReady() === false) {
+      if (this.prepareStartupInventory)
+        throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
       const files = new Set<string>()
       const folders = new Set<string>()
       for await (const file of this.diskVaultFiles(scope, folders)) files.add(file.path)
@@ -2603,6 +2621,10 @@ export class ObsidianFileSystem implements FileSystem {
       for (let cut = path.indexOf('/'); cut !== -1; cut = path.indexOf('/', cut + 1))
         if (within(path.slice(0, cut))) folders.add(path.slice(0, cut))
     }
+    // Once startup has waited for a settled host index, ordinary indexed paths do
+    // not need a physical spelling probe. A scoped root absent from that index is
+    // still discovered directly below.
+    if (this.prepareStartupInventory && (!scope || root)) return { files, folders }
     const indexedFiles = new Set(files)
     const indexedFolders = new Set(folders)
     // Built once per listing: a walk must not rescan every vault path for every folder it
@@ -2740,12 +2762,15 @@ export class ObsidianFileSystem implements FileSystem {
     path: string
     stat: { size: number; mtime: number }
   }> {
+    if (this.prepareStartupInventory) await this.waitForStartupIndex()
     const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
     const readiness = this.indexReady()
+    if (readiness === false && this.prepareStartupInventory)
+      throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
     let useDisk = readiness === false
     // A bounded rotating metadata probe detects a clean-looking but stale index without
     // turning every restart into a disk stat of every indexed path.
-    if (readiness === true && indexed.size) {
+    if (readiness === true && indexed.size && !this.prepareStartupInventory) {
       const files = [...indexed.values()]
       const startup = this.startupInventory?.()
       for (let n = 0; n < Math.min(16, files.length); n++) {
@@ -2767,12 +2792,14 @@ export class ObsidianFileSystem implements FileSystem {
         useDisk = this.indexFallback = true
     }
     if (useDisk) {
+      if (this.prepareStartupInventory)
+        throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
       yield* this.diskVaultFiles(scope)
       return
     }
     for (const path of (await this.physicalPaths(scope)).files) {
       if (readiness === true && this.indexReady() !== true)
-        throw new ScanInterrupted('Host index changed during inventory; retry using disk')
+        throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
       if (isHidden(path, '')) continue
       const file = indexed.get(path)
       // An indexed row keeps the index's own stat: the caller compares it with the disk to
@@ -2958,9 +2985,6 @@ export class ObsidianFileSystem implements FileSystem {
       signal?.throwIfAborted()
     }
     const revision = host.scanFingerprintRevision(key)
-    const beforeIdentity = await this.fileIdentity(path)
-    const before = await this.rawStat(path)
-    if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
     let saved = await host.readScanFingerprint(key)
     const installed = host.scanInstallation(key)
     // A fresh watcher check bypasses durable scan hints, but not bytes just verified by
@@ -2971,6 +2995,44 @@ export class ObsidianFileSystem implements FileSystem {
     if (legacyKey) saved = await host.readScanFingerprint(legacyKey)
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
+    const indexed = this.app.vault.getFileByPath(path)
+    const indexedStat = indexed?.stat
+    if (
+      !fresh &&
+      !fromInstall &&
+      !legacyKey &&
+      indexedStat &&
+      indexed.path === path &&
+      this.indexReady() &&
+      !this.awaitingIndex.has(path) &&
+      saved?.size === indexedStat.size &&
+      saved.mtime === indexedStat.mtime &&
+      (typeof indexedStat.ctime !== 'number' || saved.ctime === indexedStat.ctime) &&
+      typeof saved.sha === 'string' &&
+      /^[a-f0-9]{64}$/.test(saved.sha) &&
+      host.scanFingerprintRevision(key) === revision
+    ) {
+      const after = this.app.vault.getFileByPath(path)
+      if (
+        after === indexed &&
+        after.stat.size === indexedStat.size &&
+        after.stat.mtime === indexedStat.mtime &&
+        (typeof after.stat.ctime !== 'number' || after.stat.ctime === indexedStat.ctime) &&
+        this.indexReady() &&
+        host.scanFingerprintRevision(key) === revision
+      ) {
+        this.observedBases.set(key, { sha: saved.sha })
+        return {
+          sha: saved.sha,
+          size: saved.size,
+          mtime: stamp(saved.mtime),
+          generation: `${saved.size}:${saved.mtime}:${saved.ctime}`,
+        }
+      }
+    }
+    const beforeIdentity = await this.fileIdentity(path)
+    const before = await this.rawStat(path)
+    if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
     if (
       (!fresh || fromInstall) &&
       saved?.identity === beforeIdentity &&

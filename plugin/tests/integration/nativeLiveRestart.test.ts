@@ -61,6 +61,7 @@ type Measurement = {
   walks: { phase: string; caller: string; rows: number }[]
   interrupted: boolean
   timeline: SyncStartupMark[]
+  native: Record<string, number>
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -425,6 +426,7 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
     expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)
     expect(result.ordinaryBytes).toBe(0)
     expect(result.polledBytes).toBe(0)
+    expect(result.native.lstat ?? 0).toBeLessThan(1000)
     const order = result.timeline.map((mark) => mark.phase)
     const before = (a: string, b: string) => {
       expect(order.indexOf(a), `${a} present`).toBeGreaterThanOrEqual(0)

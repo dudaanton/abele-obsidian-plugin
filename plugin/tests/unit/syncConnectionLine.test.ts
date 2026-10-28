@@ -36,6 +36,19 @@ describe('a connection row', () => {
       expect(statusTooltip(status)).toContain(reason)
     }
   )
+  it('shows the host-index wait in the connection and status bar', () => {
+    expect(connectionLine(idle, { indexWaiting: true })).toBe('Waiting for Obsidian')
+    expect(connectionTone(idle, { indexWaiting: true })).toBe('accent')
+    const ui = tokenUiFixture()
+    const [first] = ui.rows.value
+    ui.rows.value = [{ ...first, status: 'idle' }]
+    ui.candidates.value = []
+    ui.questions.value = []
+    ui.activity.value = { [first.id]: { indexWaiting: true } }
+    expect(statusText(tokenStatus(ui))).toBe('Waiting for Obsidian')
+    ui.publish(first.id, { indexWaiting: false })
+    expect(statusText(tokenStatus(ui))).not.toBe('Waiting for Obsidian')
+  })
   it('keeps a missing root decision visible over stale startup activity', () => {
     const row = { ...idle, rootIssue: { kind: 'deleted' as const } }
     expect(connectionBusy(row, { comparison: { completed: 1, total: 1000 } })).toBe(false)

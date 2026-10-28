@@ -17,6 +17,50 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('trusts a settled unchanged host stat without disk identity or stat calls', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'before', mtime: 1000, ctime: 1000 }])
+  withDesktopFs(app)
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+  try {
+    await new ObsidianFileSystem(app as never).fingerprint('sample.bin')
+    const fs = new ObsidianFileSystem(app as never)
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const identity = vi.spyOn(fs, 'fileIdentity')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    const result = await fs.fingerprint('sample.bin')
+    expect(result.sha).toBe(await sha256(new TextEncoder().encode('before')))
+    expect(stat).not.toHaveBeenCalled()
+    expect(identity).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
+  } finally {
+    host.close()
+  }
+})
+
+it.each(['size', 'mtime', 'ctime', 'hidden'] as const)(
+  'uses disk verification when the host stat differs or the path is %s',
+  async (change) => {
+    const path = change === 'hidden' ? '.obsidian/sample.json' : 'sample.bin'
+    const app = buildFakeVault([{ path, content: 'before', mtime: 1000, ctime: 1000 }])
+    withDesktopFs(app)
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-vault', app)
+    try {
+      await new ObsidianFileSystem(app as never).fingerprint(path)
+      const indexed = app.vault.getFileByPath(path)
+      if (indexed && change !== 'hidden')
+        indexed.stat = { ...indexed.stat, [change]: indexed.stat[change] + 1 }
+      const fs = new ObsidianFileSystem(app as never)
+      const stat = vi.spyOn(app.vault.adapter, 'stat')
+      const identity = vi.spyOn(fs, 'fileIdentity')
+      await fs.fingerprint(path)
+      expect(stat).toHaveBeenCalled()
+      expect(identity).toHaveBeenCalled()
+    } finally {
+      host.close()
+    }
+  }
+)
+
 it('migrates an unchanged pre-normalization scan record without reading content', async () => {
   const app = buildFakeVault([{ path: 'Sample.bin', content: 'before', mtime: 1000, ctime: 1000 }])
   const read = vi.spyOn(app.vault.adapter, 'readBinary')
@@ -280,8 +324,10 @@ it.each([false, 'stat', 'object'] as const)(
       expect(
         read.mock.calls.map(([path]) => path).filter((path) => path !== 'sample-0.bin')
       ).toEqual([])
-      expect(read.mock.calls.some(([path]) => path === 'sample-0.bin')).toBe(!!changed)
-      if (changed)
+      // A replacement with identical indexed size, mtime and ctime is accepted as unchanged.
+      const indexedChange = changed === 'stat'
+      expect(read.mock.calls.some(([path]) => path === 'sample-0.bin')).toBe(indexedChange)
+      if (indexedChange)
         expect(resumed.hashes.get('sample-0.bin')).not.toBe(first.hashes.get('sample-0.bin'))
       else expect(resumed.hashes).toEqual(first.hashes)
       read.mockClear()

@@ -17,7 +17,7 @@ import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 const FILES = Number(process.env.SYNCED_RESTART_FILES ?? 2000)
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 
-it(`restarts a synced ${FILES}-file native vault verifying each file about once`, async () => {
+it(`restarts a synced ${FILES}-file native vault from its settled host index`, async () => {
   const root = await nodeDisk.realpath(
     await nodeDisk.mkdtemp(join(tmpdir(), 'sample-synced-restart-'))
   )
@@ -49,7 +49,16 @@ it(`restarts a synced ${FILES}-file native vault verifying each file about once`
       await Promise.all(
         paths.slice(i, i + 64).map((path) => nodeDisk.writeFile(join(root, path), `sample ${path}`))
       )
-    const app = nativeVault(root, disk)
+    const app = nativeVault(root, disk, paths)
+    for (let i = 0; i < paths.length; i += 64)
+      await Promise.all(
+        paths.slice(i, i + 64).map(async (path) => {
+          const stat = await nodeDisk.stat(join(root, path))
+          const indexed = app.vault.getFileByPath(path)!
+          indexed.stat = { size: stat.size, mtime: stat.mtimeMs, ctime: stat.birthtimeMs }
+        })
+      )
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
     const user = await createUser(
       { db: server.db, pepper: server.config.tokenPepper },
       'Sample user',
@@ -110,11 +119,8 @@ it(`restarts a synced ${FILES}-file native vault verifying each file about once`
       })
     )
     expect(classification?.contentReads).toBe(0)
-    // A synced restart verifies each file about once. The ledger walks of every cycle reuse
-    // that proof while the watcher sees no change, so they add no disk or database round trip.
-    // Before, every walk stated every file, each identity check re-verified the vault root and
-    // every folder above the file, and two walks read the ledger once per file: about 50 lstat,
-    // 6 realpath and 2 ledger transactions per file, and minutes at 33000 files.
+    // A settled host row retains the last verified bytes. Ledger walks reuse that decision
+    // while the watcher sees no change, so they add no per-file disk or database round trip.
     const verified = classification!.callers['state.all']
     expect(verified.hit ?? 0).toBeLessThanOrEqual(FILES * 2)
     expect(Object.keys(verified).sort()).toEqual(['hit', 'pass'])

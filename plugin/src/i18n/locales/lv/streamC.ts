@@ -47,6 +47,7 @@ export const streamC = {
   'sync.status.held': 'Dzēšana aizturēta',
   'sync.status.review': 'Jāpārskata',
   'sync.status.waiting': 'Gaida',
+  'sync.status.waitingForObsidian': 'Gaida Obsidian',
   'sync.status.conflicts': {
     zero: '{count} konfliktu',
     one: '{count} konflikts',

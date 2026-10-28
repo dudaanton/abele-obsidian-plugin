@@ -201,6 +201,7 @@ export interface ConnectionActivity {
   /** Derived from child records; never replaces the parent's own recovery evidence. */
   sharedAttention?: string
   sharedSafetyStop?: string
+  indexWaiting?: boolean
   waiting?: number
   waitingFiles?: import('@abele/sync-sdk/core').EngineStatus['waitingFiles']
   missingKeptCopies?: string[]

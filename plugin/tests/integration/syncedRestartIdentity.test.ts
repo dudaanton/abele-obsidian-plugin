@@ -49,7 +49,7 @@ it.each([true, false])(
         scriptsFolder: () => 'Scripts',
         inspection: {
           entries,
-          identity: (path) => projectionInspectionIdentity(app as never, path),
+          identity: (path, prior) => projectionInspectionIdentity(app as never, path, prior),
           save: (updated) => {
             entries = updated
           },
@@ -119,7 +119,7 @@ it('does not reuse a byte classification without native identity or portable cre
     scriptsFolder: () => 'Scripts',
     inspection: {
       entries: [],
-      identity: (path) => projectionInspectionIdentity(app as never, path),
+      identity: (path, prior) => projectionInspectionIdentity(app as never, path, prior),
       save: () => {},
     },
     verify: async () => {

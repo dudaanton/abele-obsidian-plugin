@@ -48,6 +48,7 @@ export const streamC = {
   'sync.status.held': 'Eliminaciones retenidas',
   'sync.status.review': 'Por revisar',
   'sync.status.waiting': 'En espera',
+  'sync.status.waitingForObsidian': 'Esperando a Obsidian',
   'sync.status.conflicts': {
     one: '{count} conflicto',
     many: '{count} conflictos',

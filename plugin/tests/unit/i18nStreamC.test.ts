@@ -47,6 +47,17 @@ it('translates the startup activity label while preserving phase codes and elaps
   }
 })
 
+it('names the host-index wait in every sync catalog', () => {
+  const english = t('sync.status.waitingForObsidian')
+  expect(english).toBe('Waiting for Obsidian')
+  for (const language of ['ru', 'lv', 'es', 'de']) {
+    initializeLocale(language)
+    const localized = t('sync.status.waitingForObsidian')
+    expect(localized).toContain('Obsidian')
+    expect(localized).not.toBe(english)
+  }
+})
+
 it('keeps trace-note exceptions stable for agent callers in every language', async () => {
   const path = '/sample-outside'
   for (const adapter of [

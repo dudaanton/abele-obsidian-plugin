@@ -48,6 +48,7 @@ export const streamC = {
   'sync.status.held': 'Löschungen zurückgehalten',
   'sync.status.review': 'Zu prüfen',
   'sync.status.waiting': 'Wartet',
+  'sync.status.waitingForObsidian': 'Wartet auf Obsidian',
   'sync.status.conflicts': { one: '{count} Konflikt', other: '{count} Konflikte' },
   'sync.status.heldLine': {
     one: 'Die Löschung von {count} Datei auf diesem Gerät wurde noch nicht an die anderen Geräte gesendet, weil so viele auf einmal gelöscht wurden. Entscheide im Tab Synchronisierung, ob sie überall gelöscht oder wiederhergestellt werden.',

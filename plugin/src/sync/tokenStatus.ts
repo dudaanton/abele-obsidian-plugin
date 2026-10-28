@@ -20,6 +20,7 @@ export function tokenStatus(
     ['idle', 'syncing', 'joining'].includes(one.status) &&
     (one.status === 'syncing' ||
       one.status === 'joining' ||
+      !!activity[one.id]?.indexWaiting ||
       !!activity[one.id]?.transfer ||
       !!activity[one.id]?.startup ||
       !!activity[one.id]?.notSyncedLoading ||

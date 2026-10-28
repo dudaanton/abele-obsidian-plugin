@@ -16,9 +16,11 @@ import { selectiveFrom } from '@/sync/connection'
 it('waits for the host index to settle shortly after layout readiness', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
   let clean = false
+  const marks: boolean[] = []
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
   const fs = new ObsidianFileSystem(app as never, {
     prepareStartupInventory: async () => {},
+    onIndexWait: (waiting) => marks.push(waiting),
   })
   const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
   const settled = setTimeout(() => {
@@ -28,20 +30,251 @@ it('waits for the host index to settle shortly after layout readiness', async ()
   try {
     expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toEqual(['sample.md'])
     expect(diskWalk).not.toHaveBeenCalled()
+    expect(marks).toEqual([true, false])
   } finally {
     clearTimeout(settled)
   }
 })
 
-it('falls back to the physical inventory when the host index stays dirty', async () => {
+it('does not start disk discovery before layout and indexing finish', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
-  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => false })
+  app.workspace.layoutReady = false
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const listing = Array.fromAsync(fs.list())
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  expect(diskWalk).not.toHaveBeenCalled()
+  app.workspace.layoutReady = true
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await listing).map((file) => file.path)).toEqual(['sample.md'])
+  expect(diskWalk).not.toHaveBeenCalled()
+})
+
+it('waits through a long host rebuild without walking the vault', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  let clean = false
+  const marks: boolean[] = []
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
   const fs = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+    onIndexWait: (waiting) => marks.push(waiting),
+  })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const listing = Array.fromAsync(fs.list())
+  await new Promise((resolve) => setTimeout(resolve, 2200))
+  expect(diskWalk).not.toHaveBeenCalled()
+  expect(marks).toEqual([true])
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await listing).map((file) => file.path)).toEqual(['sample.md'])
+  expect(diskWalk).not.toHaveBeenCalled()
+  expect(marks).toEqual([true, false])
+})
+
+it('uses the settled host stat after a file changed while the app was closed', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'old', mtime: 1000 }])
+  const indexed = app.vault.getFileByPath('sample.md')!
+  const oldStat = { ...indexed.stat }
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const listing = Array.fromAsync(fs.list())
+  await app.vault.adapter.writeBinary('sample.md', new TextEncoder().encode('newer').buffer, {
+    mtime: 2000,
+  })
+  const settledStat = { ...indexed.stat }
+  indexed.stat = oldStat
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  expect(diskWalk).not.toHaveBeenCalled()
+  indexed.stat = settledStat
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await listing).map((file) => [file.path, file.size, file.mtime])).toEqual([
+    ['sample.md', 5, 2000],
+  ])
+  expect(diskWalk).not.toHaveBeenCalled()
+})
+
+it('does not report a cache rebuild as a local change or deletion', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x', mtime: 1000 }])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const state = new MemoryStateStore()
+  await state.put({
+    path: 'sample.md',
+    wirePath: 'sample.md',
+    fileId: 'sample',
+    versionId: 'v1',
+    sha: await sha256(new TextEncoder().encode('x')),
+    size: 1,
+    mtime: 1000,
+  })
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: state,
+    prepareStartupInventory: async () => {},
+  })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const operation = scan(fs, state, { excluded: () => false })
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await operation).ops).toEqual([])
+  expect(diskWalk).not.toHaveBeenCalled()
+})
+
+it('includes edits made while the host is indexing, once its index settles', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'old' }])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const listing = Array.fromAsync(fs.list())
+  await app.vault.create('new.md', 'new')
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await listing).map((file) => file.path).sort()).toEqual(['new.md', 'sample.md'])
+  expect(diskWalk).not.toHaveBeenCalled()
+})
+
+it('reports an edit made during indexing once in the first settled scan', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'old', mtime: 1000 }])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const state = new MemoryStateStore()
+  await state.put({
+    path: 'sample.md',
+    wirePath: 'sample.md',
+    fileId: 'sample',
+    versionId: 'v1',
+    sha: await sha256(new TextEncoder().encode('old')),
+    size: 3,
+    mtime: 1000,
+  })
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: state,
+    prepareStartupInventory: async () => {},
+  })
+  const operation = scan(fs, state, { excluded: () => false })
+  await app.vault.adapter.writeBinary('sample.md', new TextEncoder().encode('newer').buffer, {
+    mtime: 2000,
+  })
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await operation).ops).toHaveLength(1)
+})
+
+it('abandons an interrupted index wait and resumes from a settled index on reload', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  let clean = false
+  let stopped = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+    runtimeFence: {
+      assertReady: () => {
+        if (stopped) throw new Error('sample stopped')
+      },
+    } as never,
+  })
+  const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+  const interrupted = expect(Array.fromAsync(fs.list())).rejects.toThrow('sample stopped')
+  stopped = true
+  await interrupted
+  expect(diskWalk).not.toHaveBeenCalled()
+  const reopened = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+  })
+  const resumedWalk = vi.spyOn(reopened as never, 'diskVaultFiles')
+  const resumed = Array.fromAsync(reopened.list())
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  expect(resumedWalk).not.toHaveBeenCalled()
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  expect((await resumed).map((file) => file.path)).toEqual(['sample.md'])
+  expect(resumedWalk).not.toHaveBeenCalled()
+})
+
+it('still discovers hidden configuration files after ordinary indexing finishes', async () => {
+  const app = buildFakeVault([
+    { path: 'sample.md', content: 'x' },
+    { path: '.obsidian/sample.json', content: '{}' },
+  ])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+  const listing = Array.fromAsync(fs.list())
+  await app.vault.adapter.writeBinary(
+    '.obsidian/sample.json',
+    new TextEncoder().encode('{"changed":true}').buffer,
+    { mtime: 2000 }
+  )
+  clean = true
+  app.emit('metadataCache', 'resolved')
+  const files = await listing
+  expect(files.map((file) => file.path).sort()).toEqual(['.obsidian/sample.json', 'sample.md'])
+  expect(files.find((file) => file.path === '.obsidian/sample.json')?.mtime).toBe(2000)
+})
+
+it('follows sync rules for a vault file excluded from metadata parsing', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'old', mtime: 1000 }])
+  vi.spyOn(app.metadataCache, 'getFileCache').mockReturnValue(null)
+  const state = new MemoryStateStore()
+  await state.put({
+    path: 'sample.md',
+    wirePath: 'sample.md',
+    fileId: 'sample',
+    versionId: 'v1',
+    sha: await sha256(new TextEncoder().encode('old')),
+    size: 3,
+    mtime: 1000,
+  })
+  await app.vault.adapter.writeBinary('sample.md', new TextEncoder().encode('newer').buffer, {
+    mtime: 2000,
+  })
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: state,
+    prepareStartupInventory: async () => {},
+  })
+  expect(app.vault.getFiles().map((file) => file.path)).toEqual(['sample.md'])
+  expect((await scan(fs, state, { excluded: () => false })).ops).toHaveLength(1)
+})
+
+it('checks a saved path omitted from the host file list by exact disk spelling', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x', mtime: 1000 }])
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const state = new MemoryStateStore()
+  await state.put({
+    path: 'sample.md',
+    wirePath: 'sample.md',
+    fileId: 'sample',
+    versionId: 'v1',
+    sha: await sha256(new TextEncoder().encode('x')),
+    size: 1,
+    mtime: 1000,
+  })
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: state,
     prepareStartupInventory: async () => {},
   })
   const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
   expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toEqual(['sample.md'])
-  expect(diskWalk).toHaveBeenCalled()
+  expect(diskWalk).not.toHaveBeenCalled()
+})
+
+it('does not probe an unchanged indexed Unicode path on disk at startup', async () => {
+  const app = buildFakeVault([{ path: 'Café/sample.md', content: 'x' }])
+  const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  const directories = await Array.fromAsync(fs.listDirectories())
+  const files = await Array.fromAsync(fs.list())
+  expect(directories.map((one) => one.path)).toContain('Café')
+  expect(files.map((one) => one.path)).toContain('Café/sample.md')
+  expect(list.mock.calls.some(([path]) => path === '' || path === 'Café')).toBe(false)
+  expect(stat.mock.calls.some(([path]) => path === 'Café/sample.md')).toBe(false)
 })
 
 it('reuses a settled disk listing within an inventory and retires it on a vault event', async () => {
@@ -293,6 +526,7 @@ it('waits through repeated directory changes before publishing their inventory',
       changed++
       Reflect.get(fs, 'inventory').directoryRevision++
     }
+    yield* []
   })
   const inventory = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).bind(fs)
   const directories = Reflect.get(fs, Symbol.for('abele.sync.inventory-directories-v1')).bind(fs)

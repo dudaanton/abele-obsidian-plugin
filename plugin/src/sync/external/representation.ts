@@ -61,7 +61,7 @@ export interface RepresentationOptions {
     load?(): Promise<readonly InspectionEntry[]>
     cacheKey?(path: string): string
     ownsKey?(path: string): boolean
-    identity?(path: string): Promise<InspectionIdentity | null>
+    identity?(path: string, prior?: InspectionIdentity): Promise<InspectionIdentity | null>
     /** Where the cache is kept, for diagnostics. */
     storage?: string
     save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
@@ -429,7 +429,7 @@ export class ExternalRepresentation {
     }
     const identity =
       !supplied && this.options.inspection?.identity
-        ? await this.options.inspection.identity(path)
+        ? await this.options.inspection.identity(path, this.inspected.get(cachePath))
         : null
     this.ownedRead()
     const prior = this.inspected.get(cachePath)
@@ -443,7 +443,7 @@ export class ExternalRepresentation {
         : prior.size === info.size && prior.mtime === info.mtime)
     ) {
       const stable = this.options.inspection?.identity
-        ? await this.options.inspection.identity(path)
+        ? await this.options.inspection.identity(path, prior)
         : identity
       if (
         !this.options.inspection?.identity ||
@@ -535,7 +535,7 @@ export class ExternalRepresentation {
       return decision(known.marker)
     }
     if (!prior) return undefined
-    const identity = await inspection.identity(path)
+    const identity = await inspection.identity(path, prior)
     this.ownedRead()
     if (
       identity === null ||

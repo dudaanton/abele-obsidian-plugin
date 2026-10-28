@@ -903,6 +903,7 @@ export class TokenEngines {
         prepareStartupInventory: async () => {
           await loadInspection()
         },
+        onIndexWait: (waiting) => this.ui.publish(record.id, { indexWaiting: waiting }),
         runtimeFence: fence,
         ledger: physicalLedger,
         preserveEmptyDirectories: true,
@@ -913,6 +914,8 @@ export class TokenEngines {
         },
       })
       physicalLedger.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
+      await ordinary.waitForStartupIndex(startup.signal)
+      assertActive()
       if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)
