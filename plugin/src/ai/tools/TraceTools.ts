@@ -19,7 +19,12 @@ export interface TraceToolContext {
   workspaceId?: string
   /** The newest run first. */
   runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
-  addPoint(file: string, line: number, edit: PointEdit, guard?: () => void): Promise<void>
+  addPoint(
+    file: string,
+    line: number,
+    edit: PointEdit,
+    guard?: () => void
+  ): Promise<void | { recording: boolean; reason?: string }>
   removePoint(file: string, line: number, guard?: () => void): Promise<void>
   writeNote(runId: string): Promise<string>
 }
@@ -387,11 +392,13 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
           : []
         const line = Math.floor(num(p.line) ?? 0)
         if (line < 1) throw new Error('line must be a positive line number')
-        await c.addPoint(req(p.file), line, {
+        const result = await c.addPoint(req(p.file), line, {
           take,
           ...(str(p.when) ? { when: req(p.when) } : {}),
           ...(str(p.note) ? { note: req(p.note) } : {}),
         })
+        if (result && !result.recording)
+          return `Record point is not recording at ${req(p.file)}:${line}. ${result.reason ?? 'Check that the selected process runs this file.'}`
         return take.length
           ? `Record point set at ${req(p.file)}:${line}, taking ${take.join(', ')}.`
           : `Record point set at ${req(p.file)}:${line}, taking nothing: name what to take for it to record values.`

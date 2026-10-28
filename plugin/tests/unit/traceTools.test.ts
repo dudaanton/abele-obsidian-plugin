@@ -227,6 +227,13 @@ describe('the agent reading a recorded run', () => {
     expect(await s.call('trace_point_add', { file: 'src/sample.ts', line: 5, take: [] })).toBe(
       'Record point set at src/sample.ts:5, taking nothing: name what to take for it to record values.'
     )
+    s.context.addPoint = vi.fn(async () => ({
+      recording: false,
+      reason: 'This process does not run that source.',
+    }))
+    expect(
+      await s.call('trace_point_add', { file: 'src/other.ts', line: 5, take: ['value'] })
+    ).toContain('not recording at src/other.ts:5. This process does not run that source.')
     await expect(
       s.call('trace_point_add', { file: 'src/sample.ts', line: 0, take: [] })
     ).rejects.toThrow(/line/)

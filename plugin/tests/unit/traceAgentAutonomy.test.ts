@@ -5,6 +5,8 @@ const state = vi.hoisted(() => {
     conversationId: 'sample-chat',
     sessionId: 'sample-debug',
     controller: {
+      current: true,
+      session: { unavailable: false },
       snapshot: { target: { worktree_id: 'sample-tree' } },
       knownBreakpoints: vi.fn(() => [
         { id: 'sample-point', sourceId: 'sample-source', requestedLine: 7 },
@@ -56,6 +58,30 @@ it('attaches a source before saving a trace point', async () => {
     take: [],
     note: 'Inspect sample',
   })
+})
+
+it('refuses to promise recording after the selected session detached', async () => {
+  state.binding.trace.savePoint.mockClear()
+  Object.assign(state.binding.controller, { current: false })
+  await expect(
+    activeTraceContext()!.addPoint('src/sample.ts', 4, { take: ['sample'] })
+  ).rejects.toThrow(/detached|ended|active/i)
+  expect(state.binding.trace.savePoint).not.toHaveBeenCalled()
+  Object.assign(state.binding.controller, { current: true })
+})
+
+it('warns when a source is not bound to the selected process', async () => {
+  state.binding.controller.knownBreakpoints.mockReturnValueOnce([
+    {
+      id: 'sample-point',
+      sourceId: 'sample-source',
+      requestedLine: 4,
+      state: 'pending',
+      reason: 'Source not loaded',
+    },
+  ])
+  const result = await activeTraceContext()!.addPoint('src/sample.ts', 4, { take: ['sample'] })
+  expect(result).toEqual({ recording: false, reason: 'Source not loaded' })
 })
 
 it('rechecks chat permission after source admission before saving the point', async () => {

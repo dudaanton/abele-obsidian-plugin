@@ -433,7 +433,21 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           await childReadGuard()
           guard()
         }
-        const result = await work()
+        let result: T
+        try {
+          result = await work()
+        } catch (error) {
+          if (
+            error &&
+            typeof error === 'object' &&
+            (('code' in error && error.code === 'unsafe_path') ||
+              ('message' in error && String(error.message).includes('unsafe_path')))
+          )
+            throw new Error(
+              'The node excludes this path from file access, often because it is ignored or generated. Use a tracked source path, or change the node folder policy to include this source.'
+            )
+          throw error
+        }
         if (childReadGuard) await childReadGuard()
         guard()
         return result
@@ -927,7 +941,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           )
         requestedPath = requestedPath.slice(prefix.length)
       }
-      const path = pathSchema.parse(requestedPath.replace(/^\.\//, ''))
+      const path = pathSchema.parse(
+        (name === 'node_ls' ? requestedPath.replace(/\/+$/, '') : requestedPath).replace(
+          /^\.\//,
+          ''
+        )
+      )
       const revision = async (): Promise<RepositoryRevision> =>
         text(params, 'ref')
           ? safe(() => repo.resolve({ worktree_id: id, ref: text(params, 'ref') }))

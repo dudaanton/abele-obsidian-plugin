@@ -1073,8 +1073,9 @@ default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` 
   `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
   inside this session's granted node folder. The agent attaches the source itself; an open
-  file tab is unnecessary. The session records from then on. Only what `take`
-  names is taken; an empty list takes nothing.
+  file tab is unnecessary. An ended or detached session refuses the point. A point not bound
+  to the selected process reports that it is not recording and why. Only what `take` names
+  is taken; an empty list takes nothing.
 - `trace_point_remove(file, line)` removes the record point and breakpoint at its requested
   source line, keeping other points. It needs the same folder edit access and approval as adding a point.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
@@ -1119,7 +1120,9 @@ order.http`), method, address as written and last status, and the environments.
   `script_after` name scripts marked `@request`.
 - `http_send(id, environment?, into_recording?)` sends it from the node and answers with the
   status, the checks and the body up to 80 lines or 6 KB. A key goes in only where the person has
-  already allowed its address; a script waiting to be confirmed stops the send. An unknown
+  already allowed its address; a script waiting to be confirmed stops the send. When
+  `into_recording` is true and no active recording handles the destination, the send stops
+  before reaching the service and explains what to attach. An unknown
   outcome may have reached the service: never send again to find out.
 - `http_send_result(id, send, from?)` reads what came of a send, a page at a time.
 - `http_import(text, format?, collection?)` brings requests in from the text of a `.http` file, a
@@ -1286,6 +1289,9 @@ node display name is accepted too. Paths may be relative to the selected target 
 inside that target. Traversal, `.git` paths and paths outside the target remain forbidden.
 `node_open(path)` with chat node access loads a bounded in-memory source without requiring an
 open repository tab; it returns the same content and identity as `node_read`.
+`node_ls` accepts a directory path with or without a trailing slash. If the node excludes an
+ignored or generated source, these file tools explain the exclusion; a person must change the
+node folder's file policy before the agent can read that source.
 No arbitrary filesystem
 picker, shell, stage or push is exposed by this toolset. Delegation tools use the same chat node chips.
 

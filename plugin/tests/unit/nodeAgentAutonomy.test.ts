@@ -2,6 +2,16 @@ import { expect, it, vi } from 'vitest'
 import { setup, setupGit, digest } from '../helpers/nodeAgentFixture'
 import { createNodeTools, NodeRepositoryToolsHost } from '@/ai/tools/node'
 
+it('normalizes a directory slash and explains a node refusal for ignored sources', async () => {
+  const f = setupGit()
+  const tree = vi.fn(async () => {
+    throw Object.assign(new Error('unsafe_path'), { code: 'unsafe_path' })
+  })
+  Object.assign(f.repository, { tree })
+  await expect(f.call('node_ls', { path: 'src/generated/' })).rejects.toThrow(/ignored|excluded/i)
+  expect(tree).toHaveBeenCalledWith(expect.objectContaining({ path: 'src/generated' }))
+})
+
 it.each(['', undefined, 'Sample node'])('infers or resolves node: %s', async (node) => {
   const f = setupGit()
   expect((await f.call('list_node_worktrees', { node })).content[0].text).toContain('sample-tree')

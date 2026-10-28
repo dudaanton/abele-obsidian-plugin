@@ -647,6 +647,10 @@ export class RequestsModel {
         (options.intoRecording ?? this.state.intoRecording)
           ? await this.ports.recording(originOf(keyed.out.url))
           : undefined
+      if (!options.interactive && options.intoRecording === true && !recording)
+        throw new Error(
+          'No active recording handles this request destination. Attach to the program that receives it and start recording before sending.'
+        )
       const into = recording
       if (file) this.files?.forget(id)
       const started = await this.rpc.send(this.projectId, {

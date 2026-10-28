@@ -28,6 +28,16 @@ it('looks up recordings with only the origin of a send containing secrets', asyn
   expect(recording).toHaveBeenCalledExactlyOnceWith('https://example.test:8443')
   expect(node.sent[0].url).toContain('/sample-private?token=sample-token')
 })
+
+it('does not send an agent request that explicitly requires a missing recording', async () => {
+  const node = fakeNode()
+  const model = new RequestsModel(node.rpc, 'project-1', ports({ recording: () => undefined }))
+  await model.load()
+  await expect(
+    model.send('Samples/Create sample.http', { interactive: false, intoRecording: true })
+  ).rejects.toThrow(/recording/i)
+  expect(node.sent).toHaveLength(0)
+})
 it('routes recorded sends by destination and enables instrumentation correlation', async () => {
   const node = fakeNode()
   const model = new RequestsModel(

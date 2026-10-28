@@ -35,6 +35,10 @@ export function activeTraceContext(): TraceToolContext | undefined {
     addPoint: async (file, line, edit, guard = () => {}) => {
       guard()
       current()
+      if (!binding.controller.current || binding.controller.session.unavailable)
+        throw new Error(
+          'The debug session has ended or detached. Attach to the program before setting a record point.'
+        )
       let source = service.sourceFor(binding, file)
       if (!source) {
         const admission = await service.admitSessionFile(binding, file)
@@ -49,7 +53,18 @@ export function activeTraceContext(): TraceToolContext | undefined {
         )
       guard()
       current()
-      await trace.savePoint(source, line, edit)
+      const result = await trace.savePoint(source, line, edit)
+      const point = binding.controller
+        .knownBreakpoints()
+        .find((p) => p.sourceId === source && p.requestedLine === line)
+      if (result?.pending || point?.state !== 'set')
+        return {
+          recording: false,
+          reason:
+            point?.reason ||
+            'The selected process has not bound this source. Check that it runs this file.',
+        }
+      return { recording: true }
     },
     removePoint: async (file, line, guard = () => {}) => {
       guard()
