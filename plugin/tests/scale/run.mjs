@@ -310,6 +310,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
+  await copyFile(join(here, 'metadata-cache.cjs'), join(observer, 'metadata-cache.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -344,6 +345,7 @@ export async function setupVault(config, root, device) {
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
       profileOnly: join(observer, 'profile-only.cjs'),
+      metadataCache: join(observer, 'metadata-cache.cjs'),
       profileDirectory: join(config.output, 'profiles'),
       continuousCpu: config.continuousCpu === true,
       heapDiagnostics: config.heapDiagnostics === true,

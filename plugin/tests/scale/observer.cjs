@@ -17,6 +17,9 @@ module.exports = class extends Plugin {
       const receipt = { observerStartedAt: Date.now() }
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
       save()
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
+      const { createMetadataCacheCapture } = require(config.metadataCache)
+      const metadataCache = createMetadataCacheCapture(this.app, receipt, save)
       let profile
       if (config.mode === 'profile-only') {
         try {
@@ -52,6 +55,7 @@ module.exports = class extends Plugin {
       }
       let sawActive = false
       const timer = setInterval(() => {
+        metadataCache.poll()
         const host = this.app.plugins?.plugins?.abele?.tokenEngines
         const ui = host?.ui
         if (!ui) return
@@ -79,6 +83,7 @@ module.exports = class extends Plugin {
           engines.every((engine) => engine.state === 'idle' && engine.lastSyncAt)
         ) {
           receipt.firstIdleAt = Date.now()
+          metadataCache.finish(receipt.firstIdleAt)
           save()
           if (profile)
             void profile
