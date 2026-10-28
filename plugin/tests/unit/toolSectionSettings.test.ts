@@ -143,6 +143,7 @@ describe('what each node action holds', () => {
         'node_delegations',
       ].sort()
     )
+    // Removing a record point belongs beside placing it in Debugger; both require folder edit access.
     expect(members('debugger')).toEqual(
       [
         'http_import',
@@ -157,6 +158,7 @@ describe('what each node action holds', () => {
         'trace_mark',
         'trace_note',
         'trace_point_add',
+        'trace_point_remove',
         'trace_runs',
         'trace_shape',
         'trace_slice',
