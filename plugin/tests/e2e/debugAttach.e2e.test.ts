@@ -294,14 +294,19 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
     return {offered,detach:detachButton.getAttribute('aria-label'),paused,after,state:debugState()}
   })()`)
   expect(seen.offered.find((r) => r.title.includes('src/serve.js'))).toMatchObject({
-    note: expect.stringMatching(/^This chat's folder · pid \d+ · port \d+$/),
+    note: expect.stringMatching(
+      /^This chat's folder · …\/debug-attach-[A-Za-z0-9]+\/sample-app · pid \d+ · port \d+$/
+    ),
     kind: "Runs from this chat's folder",
   })
+  expect(seen.offered.find((r) => r.title.includes('src/serve.js'))!.note).toContain(
+    ` · …/${dir.split('/').at(-1)}/sample-app · `
+  )
   expect(seen.offered.find((r) => r.title.includes('tool.js'))!.kind).toContain('outside this chat')
   expect(seen.detach).toBe('Detach (Shift+F5): the program runs on')
   expect(seen.paused, seen.state).toMatch(/^Paused/)
   // Detach confirms separation; its snapshot does not observe the process's later liveness.
-  expect(seen.after, seen.state).toBe('Detached · Program state unknown')
+  expect(seen.after, seen.state).toBe('Detached')
   // The program goes on by itself, as it was before the debugger came.
   const held = ticks(mine)
   for (let i = 0; i < 100 && ticks(mine) < held + 20; i++) await wait(50)
