@@ -238,6 +238,7 @@ export interface ProjectionInspection {
   roots?: readonly string[]
   paths?: readonly string[]
   inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
+  cached?(entries: readonly InspectionEntry[]): void
   signal?: AbortSignal
   stage?(stage: string): void
   inventoryProgress?(completed: number, total: number): void
@@ -678,6 +679,7 @@ export async function recoverExternalState(
   if (inspection.inventory) {
     const cached = await inspectionCache(app).load()
     fence.assertOwned()
+    inspection.cached?.(cached)
     if (cached.length) {
       const inventory = new Map<string, { path: string; size: number; mtime: number }>()
       const budget = new SyncTaskBudget()

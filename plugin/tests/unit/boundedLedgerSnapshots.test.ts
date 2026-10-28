@@ -5,6 +5,35 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { inspectExistingLedger } from '@/sync/external/pluginSafety'
 
+it('keeps a large state snapshot responsive without one host yield per small page', async () => {
+  vi.stubGlobal('IDBKeyRange', IDBKeyRange)
+  const yieldHost = vi.fn(async () => {})
+  vi.stubGlobal('window', { scheduler: { yield: yieldHost } })
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-metadata-yields')
+  try {
+    const db = Reflect.get(Reflect.get(state, 'connection'), 'db') as IDBDatabase
+    const tx = db.transaction('entries', 'readwrite')
+    for (let i = 0; i < 4096; i++)
+      tx.objectStore('entries').put({
+        path: `sample-${i}.md`,
+        fileId: `file-${i}`,
+        versionId: 'v1',
+        sha: 'a'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    for await (const _entry of state.all()) void _entry
+    expect(yieldHost.mock.calls.length).toBeLessThan(12)
+  } finally {
+    state.close()
+    vi.unstubAllGlobals()
+  }
+})
+
 it('bounds native result deserialization for entry, classification and lifecycle snapshots', async () => {
   vi.stubGlobal('IDBKeyRange', IDBKeyRange)
   const factory = new IDBFactory()

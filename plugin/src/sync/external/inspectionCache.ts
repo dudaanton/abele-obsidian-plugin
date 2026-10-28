@@ -24,7 +24,7 @@ const valid = async (values: readonly unknown[]): Promise<InspectionEntry[]> => 
   for (const value of values) {
     const row = entrySchema.safeParse(value)
     if (row.success) result.push(row.data)
-    await budget.account(4096)
+    await budget.metadataRow()
   }
   return result
 }

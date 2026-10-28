@@ -56,6 +56,7 @@ type Measurement = {
   ordinaryBytes: number
   polledBytes: number
   beforeRequest: number
+  inspectionReads: number
   walks: { phase: string; caller: string; rows: number }[]
   interrupted: boolean
   timeline: SyncStartupMark[]
@@ -140,6 +141,7 @@ async function measure() {
   const factory = new IDBFactory()
   const transactions = countTransactions(factory, idbWait.begin)
   const storage = await HostSyncStorage.open(factory, 'sample-vault', app)
+  const inspectionReads = vi.spyOn(storage, 'readInspections')
   const f = tokenHostFixture(transport, [], { app, factory })
   let cycleReceipts: string[] | undefined
   let walks: { phase: string; caller: string; rows: number }[] = []
@@ -274,6 +276,7 @@ async function measure() {
     const measurements = []
     for (let generation = 0; generation < 2; generation++) {
       requests.length = 0
+      inspectionReads.mockClear()
       timeline = new SyncStartupTimeline()
       const marks: SyncStartupMark[] = []
       timeline.subscribe((mark) => marks.push(mark))
@@ -334,6 +337,7 @@ async function measure() {
         idbWaitMs: idbWait.read() - idbBefore,
         walks: walks.map((walk) => ({ ...walk })),
         beforeRequest,
+        inspectionReads: inspectionReads.mock.calls.length,
         interrupted,
         timeline: marks,
         firstRequestMs: requests[0] - started,
@@ -385,6 +389,7 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
   for (const result of results) {
     expect(result.firstRequestMs).toBeLessThan(2000)
     expect(result.beforeRequest).toBe(0)
+    if (!result.interrupted) expect(result.inspectionReads).toBeLessThanOrEqual(1)
     expect(result.classification?.contentReads).toBe(0)
     expect(result.classification?.callers.list?.pass ?? 0).toBeLessThanOrEqual(33000)
     expect(result.ordinaryBytes).toBe(0)

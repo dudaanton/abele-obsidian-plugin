@@ -134,7 +134,7 @@ export class ExternalRepresentation {
       const budget = new SyncTaskBudget()
       for (const row of rows) {
         this.inspected.set(row.path, row)
-        await budget.account(4096)
+        await budget.metadataRow()
       }
       this.stats.loaded = this.inspected.size
       this.owned()

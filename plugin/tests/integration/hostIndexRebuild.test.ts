@@ -13,6 +13,32 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { selectiveFrom } from '@/sync/connection'
 
+it('overlaps bounded file metadata reads while rebuilding a disk inventory', async () => {
+  const app = buildFakeVault(
+    Array.from({ length: 32 }, (_, n) => ({ path: `sample-${n}.md`, content: 'x' }))
+  )
+  app.metadataCache.isCacheClean = () => false
+  const fs = new ObsidianFileSystem(app as never)
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  let active = 0
+  let maximum = 0
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    active++
+    maximum = Math.max(maximum, active)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      return await stat(path)
+    } finally {
+      active--
+    }
+  })
+  const paths: string[] = []
+  for await (const file of fs.list()) paths.push(file.path)
+  expect(paths).toHaveLength(32)
+  expect(maximum).toBeGreaterThan(1)
+  expect(maximum).toBeLessThanOrEqual(16)
+})
+
 it('distinguishes a missing download parent from a failed listing during rebuild', async () => {
   const app = buildFakeVault([])
   app.metadataCache.isCacheClean = () => false

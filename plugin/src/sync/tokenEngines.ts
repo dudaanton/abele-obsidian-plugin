@@ -69,6 +69,7 @@ import { removeDetachedCopies } from './removeDetachedCopies'
 import { RetainedShareCopies } from './retainedShareCopies'
 import { fingerprintFile } from '@abele/sync-sdk/core'
 import { sha256 } from './external/hash'
+import type { InspectionEntry } from './external/inspectionIdentity'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -717,10 +718,14 @@ export class TokenEngines {
         : journalApp
 
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
+      let inspectionRows: readonly InspectionEntry[] | undefined
       const inspection = {
         scope: scopedRoot,
         inventory: (files: typeof inventory) => {
           inventory = files
+        },
+        cached: (rows: readonly InspectionEntry[]) => {
+          inspectionRows = rows
         },
         signal: startup.signal,
         stage: (name: string) => {
@@ -995,6 +1000,7 @@ export class TokenEngines {
             fence,
             // The filesystem filters before representation reads candidate prefixes.
             fs: ordinary,
+            inspectionRows,
             placement: externalPlacement,
             manager,
             scriptsFolder: () => this.scriptsFolder,

@@ -2699,12 +2699,12 @@ export class ObsidianFileSystem implements FileSystem {
       spellings.set(key, known)
     }
     for (const file of this.indexedFiles(scope)) {
-      await budget.account(4096)
+      await budget.metadataRow()
       remember(file.path)
     }
     if (this.ledger)
       for await (const entry of this.ledgerEntries()) {
-        await budget.account(4096)
+        await budget.metadataRow()
         if (this.withinFileScope(entry.path)) remember(entry.path)
       }
     const pending = [scope ?? '']
@@ -2717,21 +2717,24 @@ export class ObsidianFileSystem implements FileSystem {
       if (parent) folders?.add(parent)
       const listing = await this.inventoryListing(parent)
       const listed = new Set(listing.files)
-      for (const rawPath of listing.files) {
-        await budget.account(4096)
+      const inspectFile = async (rawPath: string) => {
+        await budget.metadataRow()
         const candidates = spellings.get(rawPath.normalize('NFC'))
         const preferred = candidates?.size === 1 ? [...candidates][0] : undefined
-        const path =
-          preferred && !listed.has(preferred) && (await this.rawStat(preferred))
-            ? preferred
-            : rawPath
-        if (isHidden(path, '') || !this.withinFileScope(path)) continue
-        if (await this.isSymlink(path)) continue
-        const stat = await this.rawStat(path)
-        if (stat?.type === 'file') yield { path, stat }
+        const preferredStat =
+          preferred && !listed.has(preferred) ? await this.rawStat(preferred) : null
+        const path = preferredStat && preferred ? preferred : rawPath
+        if (isHidden(path, '') || !this.withinFileScope(path)) return null
+        if (await this.isSymlink(path)) return null
+        const stat = preferredStat ?? (await this.rawStat(path))
+        return stat?.type === 'file' ? { path, stat } : null
+      }
+      for (let start = 0; start < listing.files.length; start += 16) {
+        const found = await Promise.all(listing.files.slice(start, start + 16).map(inspectFile))
+        for (const file of found) if (file) yield file
       }
       for (const path of listing.folders) {
-        await budget.account(4096)
+        await budget.metadataRow()
         if (!isHidden(path, '')) pending.push(path)
       }
     }

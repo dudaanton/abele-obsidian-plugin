@@ -30,6 +30,7 @@ export async function pluginRepresentation(options: {
   fs: FileSystem
   placement?: LocalFolderPlacement
   inspectionIncludes?(physicalPath: string): boolean
+  inspectionRows?: readonly InspectionEntry[]
   verify: RepresentationOptions['verify']
   scriptsFolder(): string
   excluded?: RepresentationOptions['excluded']
@@ -47,11 +48,13 @@ export async function pluginRepresentation(options: {
     inspection: {
       entries: [],
       load: async () => {
-        const entries = await cache.load()
+        // Startup already validated this snapshot. Classification still verifies each
+        // path's current identity before reusing a row.
+        const entries = options.inspectionRows ?? (await cache.load())
         const budget = new SyncTaskBudget()
         for (const entry of entries) {
           persisted.set(entry.path, entry)
-          await budget.account(4096)
+          await budget.metadataRow()
         }
         fence.assertOwned()
         return entries

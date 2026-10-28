@@ -25,6 +25,7 @@ import { retryTransientOperation } from './transientOperation'
 import { parseProjection } from './external/projection'
 import { saveExternalPreview } from './external/preview'
 import type { LocalFolderPlacement } from './localFolderPlacement'
+import type { InspectionEntry } from './external/inspectionIdentity'
 import { placedExternalHost } from './placedExternalHost'
 
 /** Composition of the existing durable external-file state machine with token authority. */
@@ -36,6 +37,7 @@ export async function tokenOffloadConnection(input: {
   binding: ConnectionBinding
   fence: RuntimeFence
   fs: FileSystem
+  inspectionRows?: readonly InspectionEntry[]
   placement?: LocalFolderPlacement
   manager: TokenOffloadCoordinator
   scriptsFolder(): string
@@ -67,6 +69,7 @@ export async function tokenOffloadConnection(input: {
     ...input,
     inspectionIncludes: (path) => input.includes(path),
     fs: input.placement?.fileSystem(input.fs) ?? input.fs,
+    inspectionRows: input.inspectionRows,
     store: state,
     verify: (id, request) => input.client().verifyExternalFile(id, request),
   })
