@@ -374,6 +374,17 @@ describe('the path sidebar model on the change stream', () => {
     port.inspect.mockClear()
     return { model, port, changed }
   }
+  it('keeps the same watch lease while the panel reselects its current target', async () => {
+    const { model, port } = await open()
+    try {
+      await model.select(target.id)
+      await model.select(target.id)
+      expect(port.watch).toHaveBeenCalledTimes(1)
+      expect(await port.watch.mock.results[0].value).not.toHaveBeenCalled()
+    } finally {
+      model.destroy()
+    }
+  })
   it('keeps an open file current after the sidebar switches to another worktree, sharing its watch', async () => {
     const { model, port, changed } = await open()
     const other = { ...target, id: 'sample-other' }

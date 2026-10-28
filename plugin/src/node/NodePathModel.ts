@@ -795,9 +795,10 @@ export class NodePathModel {
       this.report(new ChannelError('repository_unavailable'))
       return
     }
-    this.stopWatch?.()
+    const previousWatch = this.stopWatch
     this.stopWatch = undefined
     if (!this.online.value) {
+      previousWatch?.()
       if (!this.inspections.value[pathTargetKey(target)])
         throw new UiError(uiMessage('streamBError.e1b43e1573'))
       this.openMode(target)
@@ -811,6 +812,9 @@ export class NodePathModel {
     } catch (error) {
       watchError = error
     }
+    // Acquire the shared lease first: selecting the same target must never drop its
+    // last user and close the node's filesystem watcher between renders.
+    previousWatch?.()
     if (this.disposed || generation !== this.selectionGeneration) {
       stop?.()
       return
