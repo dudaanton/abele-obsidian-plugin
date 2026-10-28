@@ -1604,10 +1604,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           agentId: tool.name === 'zip' ? ownerAgent?.id : this.agent.value?.id,
           app: invocationApp,
           validateWrite: () => {
-            assertCurrent()
+            // Ownership/permission validation is distinct from cancellation. ZIP checks
+            // cancellation before issuance, but a confirmed native save still has an
+            // honest result and may grant its output to the unchanged invocation owner.
             if (
               this.destroyed ||
               this.conversationVersion.value !== version ||
+              turn !== this.currentTurnId() ||
               !ownerAgent ||
               this.agent.value !== ownerAgent ||
               GlobalStore.getInstance().app !== invocationApp
@@ -1649,9 +1652,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               throw new UiError(uiMessage('streamBError.e4184853d0'))
           }
           const result = await tool.execute(id, invocationParams, signal, ctx)
-          assertCurrent()
+          // Cancellation stops the caller waiting; it cannot recall a native save. Return
+          // its real outcome to direct callers, while fencing all session bookkeeping.
+          if (!isCurrent()) return result
           await this.readGuard.record(tool.name, params, result, isCurrent)
-          assertCurrent()
+          if (!isCurrent()) return result
           // After the guard, which has to see a file's text as the tool gave it.
           this.results.keep(tool.name, id, result)
           // The one place that sees a tool's name, its arguments and its result together, so
