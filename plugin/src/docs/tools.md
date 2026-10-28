@@ -966,6 +966,11 @@ own permissions and cannot move them to a similarly named server.
 
 ## Nodes
 
+`node_read` accepts `offset` (first line, 1-based) and `limit` (line count), as well as
+`start_line`/`end_line`. With one granted project and exactly one available folder/worktree,
+node file tools infer that target; multiple targets still require a choice. `node_folders`
+omits `node` when the chat has a sole granted node.
+
 `node_delegations`, `node_delegate`, `node_delegation_send`, `node_delegation_status`,
 `node_delegation_cancel`.
 
@@ -1035,7 +1040,7 @@ on the device. Failed launches show the exit code when known and a short stderr 
 the full supplied diagnostics remain in Details. These are user launch controls, not tools.
 
 `trace_runs`, `trace_timeline`, `trace_shape`, `trace_slice`, `trace_diff`, `trace_find`,
-`trace_follow`, `trace_mark`, `trace_point_add`, `trace_note`.
+`trace_follow`, `trace_mark`, `trace_point_add`, `trace_point_remove`, `trace_note`.
 
 A run is what the debugger recorded while a record point was set: a record point is a
 breakpoint that takes named values whole each time the program passes and lets it go on. The
@@ -1047,13 +1052,14 @@ parameter lifts, and says where to continue. There is no tool that returns a run
 whole.
 
 Like every other tool each has its own Off/Ask/On mode: reading a run runs on its own by
-default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
+default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` ask first.
 
 - `trace_runs` lists the project's runs, newest first. Every other tool reads the newest run
   unless given `run`.
 - `trace_timeline` lists steps: id (`t0042`), time from the start, kind, label, place in the
   code, and each value as `name=brief [bytes]`, `=same` when unchanged since the last time,
-  `✕` when it could not be taken. `from` continues; `kind` filters.
+  `✕` when it could not be taken. `from` continues from a zero-based step index or an inclusive
+  step id such as `t0008`; `kind` filters.
 - `trace_shape(step, name)` gives a value's keys, types, list lengths, optional keys and one
   example per leaf, an XML element tree with counts. Read it before slicing.
 - `trace_slice(step, name, path)` is the only way to see the data: a JSON path such as
@@ -1069,11 +1075,17 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
   inside this session's granted node folder. The agent attaches the source itself; an open
   file tab is unnecessary. The session records from then on. Only what `take`
   names is taken; an empty list takes nothing.
+- `trace_point_remove(file, line)` removes the record point and breakpoint at its requested
+  source line, keeping other points. It needs the same folder edit access and approval as adding a point.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
   last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.
 
 ## Saved requests
+
+`http_send` accepts `timeout_ms` (1000–300000) for one send without changing the saved wait.
+After an unknown outcome, use `http_send_result` with the original send id: it reads the
+node again and shows a late answer when the node retains one. Never resend to check an outcome.
 
 `http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`,
 `http_import`.
