@@ -892,7 +892,12 @@ export class NodePathClientPort implements NodePathPort {
       const observedChange = entries.find((entry) => entry.path === path)
       if (!observedChange) return undefined
       const change = { ...observedChange }
-      if (change.kind === 'conflict') throw new UiError(uiMessage('streamBError.6e57d7786b'))
+      if (change.kind === 'conflict') {
+        // An unmerged index has several sides, not a reversible two-way patch. Citations
+        // still open the working file verbatim, including any conflict markers.
+        if (stage === 'staged') throw new UiError(uiMessage('streamBError.6e57d7786b'))
+        return undefined
+      }
       const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
       if (
         change.kind === 'deleted' &&
