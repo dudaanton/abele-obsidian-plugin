@@ -452,12 +452,19 @@ describe('running a program under the debugger', () => {
     expect([...(sources?.entries() ?? [])]).toEqual([
       [
         's1',
-        { path: 'src/page.js', debugSessionId: 'child-1', incarnation: 'i-child', folder: target },
+        {
+          path: 'src/page.js',
+          aliases: new Set(['src/page.js']),
+          debugSessionId: 'child-1',
+          incarnation: 'i-child',
+          folder: target,
+        },
       ],
       [
         's2',
         {
           path: 'src/service.js',
+          aliases: new Set(['src/service.js']),
           debugSessionId: 'child-1',
           incarnation: 'i-child',
           folder: target,
