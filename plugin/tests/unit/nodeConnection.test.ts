@@ -42,44 +42,50 @@ it('lets a debugger long poll finish without blocking foreground requests or exp
   }
 })
 
-it('does no delegation restore on an idle tick and wakes after a mailbox event', async () => {
-  const memory = new MemoryClientStore()
-  let event!: (event: { type: string; stream_id: string; data: unknown }) => void
-  const chats = vi
-    .spyOn(ChatService, 'getInstance')
-    .mockReturnValue({ getAllSessions: () => [] } as never)
-  const connection = new NodeConnection(
-    {
-      connected: true,
-      disconnect: async () => {},
-      onEvent: (listener: typeof event) => {
-        event = listener
-        return () => {}
-      },
-    } as never,
-    {
-      transaction: memory.transaction.bind(memory),
-      read: memory.transaction.bind(memory),
-      close() {},
-    } as never
-  )
-  try {
-    await connection.refreshDelegations()
-    const restore = vi.spyOn(connection.delegation, 'restore')
-    await connection.refreshDelegations(false)
-    expect(restore).not.toHaveBeenCalled()
-    event({
-      type: 'delegation.progress',
-      stream_id: 'sample-mailbox',
-      data: { delegation_id: 'sample-child' },
+it.each(['completed', 'failed', 'cancelled', 'unknown', 'stopped'])(
+  'does no delegation restore for %s cards on an idle tick and wakes after a mailbox event',
+  async (state) => {
+    const memory = new MemoryClientStore()
+    let event!: (event: { type: string; stream_id: string; data: unknown }) => void
+    const chats = vi
+      .spyOn(ChatService, 'getInstance')
+      .mockReturnValue({ getAllSessions: () => [] } as never)
+    const connection = new NodeConnection(
+      {
+        connected: true,
+        disconnect: async () => {},
+        onEvent: (listener: typeof event) => {
+          event = listener
+          return () => {}
+        },
+      } as never,
+      {
+        transaction: memory.transaction.bind(memory),
+        read: memory.transaction.bind(memory),
+        close() {},
+      } as never
+    )
+    vi.spyOn(connection.delegation, 'snapshot').mockResolvedValue({
+      'sample-parent': [{ state } as never],
     })
-    await connection.refreshDelegations(false)
-    expect(restore).toHaveBeenCalledOnce()
-  } finally {
-    connection.destroy()
-    chats.mockRestore()
+    try {
+      await connection.refreshDelegations()
+      const restore = vi.spyOn(connection.delegation, 'restore')
+      await connection.refreshDelegations(false)
+      expect(restore).not.toHaveBeenCalled()
+      event({
+        type: 'delegation.progress',
+        stream_id: 'sample-mailbox',
+        data: { delegation_id: 'sample-child' },
+      })
+      await connection.refreshDelegations(false)
+      expect(restore).toHaveBeenCalledOnce()
+    } finally {
+      connection.destroy()
+      chats.mockRestore()
+    }
   }
-})
+)
 
 it('approves a plain-root command without requiring a broader project grant', async () => {
   const chat = {

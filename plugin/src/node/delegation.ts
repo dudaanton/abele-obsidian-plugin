@@ -75,6 +75,10 @@ export const DelegationStorageSchema = z
   .strict()
   .transform(({ tasks }) => ({ tasks }))
 export type DelegationStorage = z.infer<typeof DelegationStorageSchema>
+/** Settled projections refresh from mailbox events or an explicit refresh, never idle ticks. */
+export function delegationSettled(state: string): boolean {
+  return ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(state)
+}
 export const OWNER_STOP_REASON = 'Stopped by the owner. Only the owner may restart this developer.'
 
 export function setOwnerStopped(

@@ -43,23 +43,77 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
-it('does not poll a settled task again without a mailbox change', async () => {
+it.each(['completed', 'failed', 'cancelled', 'unknown', 'stopped'] as const)(
+  'does not poll a %s task again without a mailbox change',
+  async (state) => {
+    const f = fixture()
+    try {
+      await f.controller.create('parent', task)
+      await f.store.transaction((s) => {
+        const entry = Object.values(s.delegation!.tasks)[0]
+        entry.status = {
+          ...child,
+          state,
+          session_head_seq: 17,
+          mailbox_head_seq: 2,
+          pending_human_prompts: 0,
+        }
+      })
+      f.client.delegationStatus.mockClear()
+      await f.controller.restore()
+      expect(f.client.delegationStatus).not.toHaveBeenCalled()
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
+it('caches failed workspace activity until a mailbox change for a settled task', async () => {
   const f = fixture()
+  const getWorkspace = vi.fn(async () => {
+    throw new Error('resource_not_found')
+  })
+  const workspaceStatus = vi.fn()
+  Object.assign(f.client, { getWorkspace, workspaceStatus, subscribe: async () => {} })
+  f.client.createDelegation.mockImplementation(async (request) => ({
+    ...child,
+    delegation_key: request.delegation_key,
+    workspace_id: 'sample-workspace',
+  }))
   try {
     await f.controller.create('parent', task)
     await f.store.transaction((s) => {
       const entry = Object.values(s.delegation!.tasks)[0]
       entry.status = {
-        ...child,
+        ...entry.child!,
         state: 'completed',
         session_head_seq: 17,
         mailbox_head_seq: 2,
         pending_human_prompts: 0,
       }
     })
-    f.client.delegationStatus.mockClear()
+    for (let i = 0; i < 4; i++) await f.controller.restore()
+    expect(getWorkspace).toHaveBeenCalledTimes(1)
+    expect(workspaceStatus).not.toHaveBeenCalled()
+    f.controller.mailboxChanged('mailbox')
     await f.controller.restore()
-    expect(f.client.delegationStatus).not.toHaveBeenCalled()
+    expect(getWorkspace).toHaveBeenCalledTimes(2)
+  } finally {
+    f.store.close()
+  }
+})
+
+it('does not re-describe or read chat bindings on live polling ticks', async () => {
+  const f = fixture()
+  try {
+    await f.controller.create('parent', task)
+    f.client.describe.mockClear()
+    f.client.nodePath.sessionWorktreeGet.mockClear()
+    f.client.delegationStatus.mockClear()
+    for (let i = 0; i < 3; i++) await f.controller.restore()
+    expect(f.client.delegationStatus).toHaveBeenCalledTimes(3)
+    expect(f.client.describe).not.toHaveBeenCalled()
+    expect(f.client.nodePath.sessionWorktreeGet).not.toHaveBeenCalled()
   } finally {
     f.store.close()
   }
@@ -278,6 +332,7 @@ it('refreshes a paused child quietly when the owner later continues it directly'
     } as never)
     await f.controller.restore()
     now.mockReturnValue(17000)
+    f.controller.mailboxChanged('mailbox')
     await f.controller.restore()
     expect((await f.controller.cards('parent'))[0].state).toBe('running')
   } finally {

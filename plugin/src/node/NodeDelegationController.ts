@@ -16,6 +16,7 @@ import { readStore } from './NodeClientStore'
 import { requireGrantFreeDelegation } from './delegationCapability'
 import {
   DelegationTaskInputSchema,
+  delegationSettled,
   OWNER_STOP_REASON,
   setOwnerStopped,
   type DelegationTaskInput,
@@ -73,6 +74,7 @@ export class NodeDelegationController {
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
   private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
+  private expectedTargetSupport?: Promise<boolean>
   private readonly statusCheckedAt = new Map<string, number>()
   private readonly changedTasks = new Set<string>()
   private readonly streams = new Map<string, string>()
@@ -93,6 +95,8 @@ export class NodeDelegationController {
 
   /** Server subscriptions belong to a transport, never to this controller's lifetime. */
   connectionChanged() {
+    this.expectedTargetSupport = undefined
+    this.workspaces.clear()
     this.subscribed.clear()
     this.pendingPrompts.clear()
     this.denied.clear()
@@ -361,8 +365,16 @@ export class NodeDelegationController {
       if (current.workspace_id !== workspace) throw new Error('Child workspace changed')
     }
   }
-  private async observeTarget(id: string, session: string): Promise<void> {
-    if (!supportsExpectedTarget(await this.client.describe())) {
+  private async observeTarget(id: string, session: string, cached = false): Promise<void> {
+    if (!cached) this.expectedTargetSupport = undefined
+    const supported = await (this.expectedTargetSupport ??= this.client
+      .describe()
+      .then(supportsExpectedTarget)
+      .catch((error) => {
+        this.expectedTargetSupport = undefined
+        throw error
+      }))
+    if (!supported) {
       this.targets.delete(id)
       return
     }
@@ -569,23 +581,23 @@ export class NodeDelegationController {
       await Promise.all(cancellations.map(({ key, id }) => this.cancelAborted(key, id)))
       // A parent need not subscribe to every child tool event to show running state
       // or direct a human to a pending permission/extension question.
+      const activityChanged = new Set<string>()
+      const polled = new Set<string>()
       await Promise.all(
         children.map(async (child) => {
-          const current = await this.store.transaction(
-            (s) => storage(s).tasks[child.delegation_key].status?.state
-          )
+          const current = await this.store.read((s) => {
+            const task = s.delegation!.tasks[child.delegation_key]
+            return task.ownerStopped ? 'stopped' : (task.status?.state ?? child.state)
+          })
           const changed = this.changedTasks.delete(child.delegation_id)
-          if (
-            current &&
-            ['completed', 'failed', 'cancelled'].includes(current) &&
-            !force &&
-            !changed
-          )
-            return
+          if (changed || force) activityChanged.add(child.delegation_id)
+          if (delegationSettled(current) && !force && !changed) return
+          polled.add(child.delegation_id)
           try {
             const status = await this.client.delegationStatus(child.delegation_id)
             this.statusCheckedAt.set(child.delegation_id, Date.now())
-            await this.observeTarget(child.delegation_id, child.session_id)
+            if (force || changed || !this.targets.has(child.delegation_id))
+              await this.observeTarget(child.delegation_id, child.session_id, true)
             await this.store.transaction((s) => {
               const task = storage(s).tasks[child.delegation_key]
               if (!task.status || status.session_head_seq >= task.status.session_head_seq)
@@ -616,11 +628,16 @@ export class NodeDelegationController {
       // One sequential read per child keeps the overview within the node's request
       // budget.
       for (const child of children) {
+        if (activityChanged.has(child.delegation_id)) this.workspaces.delete(child.delegation_id)
         const count = await this.store.transaction(
           (s) => storage(s).tasks[child.delegation_key].status?.pending_human_prompts
         )
         if (count === 0) this.pendingPrompts.delete(child.session_id)
-        else if (count && typeof this.client.prompts === 'function') {
+        else if (
+          count &&
+          polled.has(child.delegation_id) &&
+          typeof this.client.prompts === 'function'
+        ) {
           try {
             this.pendingPrompts.set(
               child.session_id,
@@ -630,22 +647,29 @@ export class NodeDelegationController {
             console.debug('[Abele node] pending child prompts unavailable')
           }
         }
+        let activityState: string | undefined
         try {
-          if (!this.subscribed.has(child.session_id)) {
-            const window = await openWindow(this.client, child.session_id)
-            if (window) await catchUp(this.client, child.session_id, window.head)
-            await this.client.subscribe(child.session_id)
-            this.subscribed.add(child.session_id)
+          if (!this.subscribed.has(child.session_id) && !this.denied.has(child.session_id)) {
+            try {
+              const window = await openWindow(this.client, child.session_id)
+              if (window) await catchUp(this.client, child.session_id, window.head)
+              await this.client.subscribe(child.session_id)
+              this.subscribed.add(child.session_id)
+            } catch (error) {
+              this.denied.add(child.session_id)
+              throw error
+            }
           }
           if (child.workspace_id) {
-            const state = await this.store.transaction(
-              (s) => storage(s).tasks[child.delegation_key].status?.state ?? child.state
-            )
+            const state = await this.store.transaction((s) => {
+              const task = storage(s).tasks[child.delegation_key]
+              return task.ownerStopped ? 'stopped' : (task.status?.state ?? child.state)
+            })
+            activityState = state
             const previous = this.workspaces.get(child.delegation_id)
             if (
               previous?.state === state &&
-              (['completed', 'failed', 'unknown', 'cancelled', 'stopped'].includes(state) ||
-                Date.now() - previous.checkedAt < 5000)
+              (delegationSettled(state) || Date.now() - previous.checkedAt < 5000)
             )
               continue
             const workspace = await this.client.getWorkspace(child.workspace_id)
@@ -658,6 +682,15 @@ export class NodeDelegationController {
             })
           }
         } catch {
+          if (activityState) {
+            const previous = this.workspaces.get(child.delegation_id)
+            this.workspaces.set(child.delegation_id, {
+              branch: previous?.branch,
+              files: previous?.files ?? [],
+              state: activityState,
+              checkedAt: Date.now(),
+            })
+          }
           console.debug('[Abele node] child activity unavailable')
         }
       }

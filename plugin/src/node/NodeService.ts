@@ -14,7 +14,7 @@ import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './N
 import { NodeClientStore } from './NodeClientStore'
 import { NodeDelegationController } from './NodeDelegationController'
 import { NodeManagerController } from './NodeManagerController'
-import type { DelegationCard } from './delegation'
+import { delegationSettled, type DelegationCard } from './delegation'
 import { NodeObsidianTools } from './NodeObsidianTools'
 import { nodeAdvertisesMethod } from './advertisedMethods'
 import { ensureNodeAgents } from './nodeAgentTools'
@@ -260,9 +260,7 @@ export class NodeConnection {
             pendingManager ||
             Object.values(cards)
               .flat()
-              .some(
-                (card) => !['completed', 'failed', 'cancelled', 'stopped'].includes(card.state)
-              ) ||
+              .some((card) => !delegationSettled(card.state)) ||
             Object.values(managerCards)
               .flat()
               .some(
