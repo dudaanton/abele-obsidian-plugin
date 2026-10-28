@@ -305,7 +305,7 @@ it.each(['desktop', 'phone'])(
         await until(()=>leaf.containerEl.querySelector('.abele-breakpoint-mark_pending'),'pending breakpoint');
         for(const control of ['marker','number']) {
           // A pending marker has a different accessible label from an empty line.
-          const el=control==='marker'?leaf.containerEl.querySelector('button.abele-debug-source__point[data-line="1"]'):leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
+          const el=control==='marker'?leaf.containerEl.querySelector('button.abele-debug-source__point[data-line="1"]'):[...leaf.containerEl.querySelectorAll('.cm-lineNumbers .cm-gutterElement')].find(el=>el.textContent.trim()==='1'&&getComputedStyle(el).visibility!=='hidden');
           if(!el)throw Error('Missing pending menu target: '+control);
           if(!el.isConnected)throw Error('Detached pending menu target: '+control);
           const rect=el.getBoundingClientRect();

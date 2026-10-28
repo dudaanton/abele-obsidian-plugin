@@ -41,7 +41,10 @@ it('opens a populated pending menu on markers and line numbers without a session
         'button.abele-debug-source__point',
         '.cm-lineNumbers .cm-gutterElement',
       ]) {
-        await wrapper.get(selector).trigger('contextmenu', { clientX: 480, clientY: 320 })
+        const control = wrapper
+          .findAll(selector)
+          .find((element) => (element.element as HTMLElement).style.visibility !== 'hidden')!
+        await control.trigger('contextmenu', { clientX: 480, clientY: 320 })
         expect(show).toHaveBeenLastCalledWith(
           expect.objectContaining({ clientX: 480, clientY: 320 })
         )

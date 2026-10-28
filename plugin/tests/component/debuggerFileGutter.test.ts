@@ -48,7 +48,13 @@ it.each([false, true])(
     })
     try {
       await flushPromises()
-      await wrapper.get('.cm-lineNumbers .cm-gutterElement').trigger('contextmenu')
+      await wrapper
+        .findAll('.cm-lineNumbers .cm-gutterElement')
+        .find(
+          (element) =>
+            element.text() === '1' && (element.element as HTMLElement).style.visibility !== 'hidden'
+        )!
+        .trigger('contextmenu')
       expect(wrapper.emitted('margin-menu')?.[0]?.[0]).toBe(1)
     } finally {
       wrapper.unmount()
@@ -65,7 +71,13 @@ it.each([false, true])(
     })
     try {
       await flushPromises()
-      const number = wrapper.get('.cm-lineNumbers .cm-gutterElement')
+      const number = wrapper
+        .findAll('.cm-lineNumbers .cm-gutterElement')
+        .find(
+          (element) =>
+            element.text() === '1' && (element.element as HTMLElement).style.visibility !== 'hidden'
+        )!
+      expect((number.element as HTMLElement).style.visibility).not.toBe('hidden')
       await number.trigger('click')
       expect(wrapper.emitted('breakpoint')).toEqual(stale ? undefined : [[1]])
     } finally {
