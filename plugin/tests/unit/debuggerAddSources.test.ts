@@ -11,6 +11,49 @@ import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 const fileViewStub = { template: '<div><slot name="code" /></div>' }
 
+it('keeps pending record settings until recording confirms them', async () => {
+  const { service, binding } = fixture()
+  service.editPendingPoint(target, 'lib/helper.ts', 2, {
+    record: { take: ['sample'], note: 'sample capture' },
+    condition: 'sample > 0',
+  })
+  vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue({ outcome: 'completed' } as never)
+  const savePoint = vi
+    .fn()
+    .mockResolvedValueOnce({ pending: true })
+    .mockResolvedValue({ pending: false })
+  binding.trace = { savePoint, dispose: vi.fn() } as never
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([2])
+  expect(savePoint).toHaveBeenCalledWith('sample-added', 2, {
+    take: ['sample'],
+    note: 'sample capture',
+    when: 'sample > 0',
+    enabled: true,
+    hitCondition: undefined,
+  })
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([])
+})
+
+it('carries pending condition, hit count and disabled state into the admitted source', async () => {
+  const { service, binding } = fixture()
+  service.editPendingPoint(target, 'lib/helper.ts', 2, {
+    condition: 'sample > 2',
+    hitCondition: '3',
+    enabled: false,
+  })
+  const set = vi
+    .spyOn(binding.controller, 'setBreakpoint')
+    .mockResolvedValue({ outcome: 'completed' } as never)
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(set).toHaveBeenCalledWith(expect.any(String), 'sample-added', 2, 'sample > 2', {
+    enabled: false,
+    hit_condition: '3',
+  })
+  expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([])
+})
+
 it('retains file breakpoints before a session and applies them after admission', async () => {
   const service = DebuggerService.instance
   service.togglePendingBreakpoint(target, 'lib/helper.ts', 2)

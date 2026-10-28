@@ -288,6 +288,42 @@ it('restarts an ended folder program through node RPC without a debugger present
 }, 120000)
 
 it.each(['desktop', 'phone'])(
+  'opens pending margin menus without a debug session on %s',
+  async (device) => {
+    writeFileSync(join(repo, 'src/pending.cjs'), 'const sample = 1\nconsole.log(sample)\n')
+    openChat()
+    const probe = () =>
+      inAppLong(`(async()=>{${prelude}
+      const service=api.DebuggerService.instance;
+      const binding=service.folderBinding(${JSON.stringify(folder)});
+      if(binding?.controller.current)await binding.controller.command('stop');
+      const leaf=app.workspace.getLeaf('tab');
+      try {
+        await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/pending.cjs'}});
+        const mark=await until(()=>marginAt(1,leaf.containerEl),'pending source margin');
+        press(mark);
+        await until(()=>leaf.containerEl.querySelector('.abele-breakpoint-mark_pending'),'pending breakpoint');
+        for(const control of ['marker','number']) {
+          const el=control==='marker'?mark:leaf.containerEl.querySelector('.cm-lineNumbers .cm-gutterElement');
+          const rect=el.getBoundingClientRect();
+          el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+2,clientY:rect.top+2}));
+          for(const title of ['Remove breakpoint','Edit condition','Hit count','Disable breakpoint','Add record point'])await until(()=>item(title),'pending menu '+title);
+          await shot('pending-menu-${device}-'+control);
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          await wait(100);
+        }
+        return true;
+      } finally {
+        if(service.pendingBreakpoints(${JSON.stringify(folder)},'src/pending.cjs').includes(1))service.togglePendingBreakpoint(${JSON.stringify(folder)},'src/pending.cjs',1);
+        leaf.detach();
+      }
+    })()`)
+    expect(await (device === 'phone' ? withEmulatedPhone(probe) : probe())).toBe(true)
+  },
+  240000
+)
+
+it.each(['desktop', 'phone'])(
   'opens folder debugging from the node menu without any chat on %s',
   async (device) => {
     const probe = async (name: string) => {

@@ -25,6 +25,13 @@ export interface SourceAdmission {
   message: string
   code?: string
 }
+export interface PendingPoint {
+  id: string
+  enabled: boolean
+  condition?: string
+  hitCondition?: string
+  record?: { take: string[]; note?: string }
+}
 
 type SourceMapping = {
   path: string
@@ -494,7 +501,7 @@ export class DebuggerService {
   readonly pendingRevision = shallowRef(0)
   private readonly pendingPoints = new Map<
     string,
-    { target: PathTarget; path: string; lines: Map<number, string> }
+    { target: PathTarget; path: string; lines: Map<number, PendingPoint> }
   >()
   private pendingKey(target: PathTarget, path: string) {
     return JSON.stringify([this.folderKey(target), path])
@@ -503,12 +510,23 @@ export class DebuggerService {
     void this.pendingRevision.value
     return [...(this.pendingPoints.get(this.pendingKey(target, path))?.lines.keys() ?? [])]
   }
+  pendingPoint(target: PathTarget, path: string, line: number) {
+    void this.pendingRevision.value
+    return this.pendingPoints.get(this.pendingKey(target, path))?.lines.get(line)
+  }
+  editPendingPoint(target: PathTarget, path: string, line: number, edit: Partial<PendingPoint>) {
+    if (!Number.isSafeInteger(line) || line < 1) return
+    if (!this.pendingPoint(target, path, line)) this.togglePendingBreakpoint(target, path, line)
+    const points = this.pendingPoints.get(this.pendingKey(target, path))
+    points.lines.set(line, { ...points.lines.get(line), ...edit })
+    ++this.pendingRevision.value
+  }
   togglePendingBreakpoint(target: PathTarget, path: string, line: number) {
     if (!Number.isSafeInteger(line) || line < 1) return
     const key = this.pendingKey(target, path)
     const points = this.pendingPoints.get(key) ?? { target: { ...target }, path, lines: new Map() }
     if (points.lines.has(line)) points.lines.delete(line)
-    else points.lines.set(line, crypto.randomUUID())
+    else points.lines.set(line, { id: crypto.randomUUID(), enabled: true })
     if (points.lines.size) this.pendingPoints.set(key, points)
     else this.pendingPoints.delete(key)
     ++this.pendingRevision.value
@@ -530,19 +548,36 @@ export class DebuggerService {
     const mapping = this.debugFor(target, path, sessionBound ? binding : undefined)
     const points = this.pendingPoints.get(this.pendingKey(target, path))
     if (!mapping || !points) return
-    for (const [line, id] of points.lines) {
+    for (const [line, point] of points.lines) {
+      const { id } = point
       if ((!sessionBound && this.folderBinding(target) !== binding) || !binding.controller.current)
         return
+      if (point.record && !binding.trace) continue
       // Stable identity makes a retried request idempotent; never toggle an existing point off.
       const existing = binding.controller
         .knownBreakpoints()
         .some((point) => point.sourceId === mapping.sourceId && point.line === line)
       const result = existing
         ? undefined
-        : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
+        : point.condition || point.hitCondition || !point.enabled
+          ? await binding.controller.setBreakpoint(id, mapping.sourceId, line, point.condition, {
+              enabled: point.enabled,
+              hit_condition: point.hitCondition,
+            })
+          : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
+      if (point.record) {
+        if (!binding.trace) continue
+        const saved = await binding.trace.savePoint(mapping.sourceId, line, {
+          ...point.record,
+          when: point.condition,
+          enabled: point.enabled,
+          hitCondition: point.hitCondition,
+        })
+        if (saved.pending) continue
+      }
       if (
         (existing || (result && result.outcome === 'completed')) &&
-        points.lines.get(line) === id
+        points.lines.get(line) === point
       ) {
         points.lines.delete(line)
         ++this.pendingRevision.value

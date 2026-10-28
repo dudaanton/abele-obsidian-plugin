@@ -7,6 +7,27 @@ afterEach(() => {
 })
 
 it.each([false, true])(
+  'opens line-number menus with pending or session marks: %s',
+  async (session) => {
+    const wrapper = mount(DebugSource, {
+      attachTo: document.body,
+      props: {
+        path: 'sample.ts',
+        text: 'const sample = 1',
+        breakpoints: [{ file: 'sample.ts', line: 1, state: session ? 'set' : 'pending' }],
+      },
+    })
+    try {
+      await flushPromises()
+      await wrapper.get('.cm-lineNumbers .cm-gutterElement').trigger('contextmenu')
+      expect(wrapper.emitted('margin-menu')?.[0]?.[0]).toBe(1)
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
+
+it.each([false, true])(
   'line numbers toggle breakpoints only on a current source (stale: %s)',
   async (stale) => {
     const wrapper = mount(DebugSource, {

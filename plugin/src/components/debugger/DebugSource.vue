@@ -255,6 +255,12 @@ async function draw() {
     effects: StateEffect.appendConfig.of([
       lineNumbers({
         domEventHandlers: {
+          contextmenu(view, block, event) {
+            event.preventDefault()
+            event.stopPropagation()
+            emit('margin-menu', view.state.doc.lineAt(block.from).number, event)
+            return true
+          },
           click(view, block) {
             if (props.stale) return false
             emit('breakpoint', view.state.doc.lineAt(block.from).number)

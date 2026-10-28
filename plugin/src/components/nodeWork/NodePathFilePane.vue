@@ -91,9 +91,24 @@
             :path="model.document.value.path"
             :breakpoints="pendingMarks"
             :line="line"
+            :editing="pendingEditing"
             @breakpoint="togglePending"
+            @margin-menu="pendingMenu"
             @selection="debugSelection"
-          />
+          >
+            <template #point-editor="{ line: pointLine }">
+              <TracePointEditor
+                :key="pointLine"
+                :line="pointLine"
+                :point="pendingMarks.find((point) => point.line === pointLine)"
+                :in-scope="namesOnLine(model.document.value.text, pointLine)"
+                @save="(edit) => savePendingRecord(pointLine, edit)"
+                @cancel="pendingEditing = undefined"
+                @remove="removePending(pointLine)"
+                @to-breakpoint="savePendingRecord(pointLine, undefined)"
+              />
+            </template>
+          </DebugSource>
         </template>
       </FileView>
     </template>
@@ -113,7 +128,10 @@ import { computed, inject, provide, ref, watch } from 'vue'
 import { FILE_NAVIGATION, MARKDOWN_FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
 import { openNodeFileDestination, type NodePathTabState } from '@/node/nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { Platform } from 'obsidian'
+import { Menu, Platform } from 'obsidian'
+import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
+import { namesOnLine } from '@/debugger/trace/panel'
+import { promptDialog } from '@/components/obsidian/dialogs'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { RepositorySource } from '@/repository/source'
 const props = withDefaults(
@@ -194,10 +212,84 @@ const pendingMarks = computed(() => {
     ? service.pendingBreakpoints(doc.target, doc.path).map((line) => ({
         file: doc.path,
         line,
-        state: 'pending' as const,
+        state:
+          service.pendingPoint(doc.target, doc.path, line)?.enabled === false
+            ? ('disabled' as const)
+            : ('pending' as const),
+        ...(service.pendingPoint(doc.target, doc.path, line)?.record
+          ? {
+              kind: 'record' as const,
+              ...service.pendingPoint(doc.target, doc.path, line)?.record,
+              when: service.pendingPoint(doc.target, doc.path, line)?.condition,
+            }
+          : {}),
       }))
     : []
 })
+const pendingEditing = ref<number>()
+function removePending(line: number) {
+  togglePending(line)
+  pendingEditing.value = undefined
+}
+function savePendingRecord(line: number, edit?: { take: string[]; when?: string; note?: string }) {
+  const doc = props.model.document.value
+  if (doc?.target)
+    service.editPendingPoint(doc.target, doc.path, line, {
+      record: edit ? { take: edit.take, note: edit.note } : undefined,
+      condition: edit?.when,
+    })
+  pendingEditing.value = undefined
+}
+function pendingMenu(line: number, event: MouseEvent) {
+  const doc = props.model.document.value
+  if (!doc?.target) return
+  const target = doc.target
+  const point = service.pendingPoint(target, doc.path, line)
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(t(point ? 'streamC.d7f159f16e10153a' : 'streamC.0bb179c57e2cf318'))
+      .setIcon(point ? 'trash-2' : 'circle')
+      .onClick(() => togglePending(line))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle(t('settings.metadata.bf774e203130976f'))
+      .setIcon('diamond')
+      .onClick(() => {
+        pendingEditing.value = line
+      })
+  )
+  if (point) {
+    for (const field of ['condition', 'hitCondition'] as const) {
+      const label = t(field === 'condition' ? 'debug.editCondition' : 'debug.editHitCount')
+      menu.addItem((item) =>
+        item
+          .setTitle(label)
+          .setIcon('pencil')
+          .onClick(async () => {
+            const value = await promptDialog({
+              title: label,
+              label,
+              value: point[field] ?? '',
+              placeholder: label,
+              submitText: t('settings.GithubConnectionEditor.save.1509f561'),
+            })
+            if (value !== null) service.editPendingPoint(target, doc.path, line, { [field]: value })
+          })
+      )
+    }
+    menu.addItem((item) =>
+      item
+        .setTitle(t(point.enabled ? 'debug.disableBreakpoint' : 'debug.enableBreakpoint'))
+        .setIcon('circle')
+        .onClick(() =>
+          service.editPendingPoint(target, doc.path, line, { enabled: !point.enabled })
+        )
+    )
+  }
+  menu.showAtMouseEvent(event)
+}
 function togglePending(line: number) {
   const doc = props.model.document.value
   if (doc?.target) service.togglePendingBreakpoint(doc.target, doc.path, line)
