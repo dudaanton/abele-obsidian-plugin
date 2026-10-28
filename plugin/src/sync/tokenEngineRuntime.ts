@@ -91,6 +91,7 @@ export interface TokenEngineOptions {
   uploadAllowed?(path: string): boolean
   retainedChanged?(items: ConnectionItem[]): void
   fs: FileSystem
+  indexWaitRunSignal?(signal?: AbortSignal): void
   state: StateStore
   reviews: DeviceReviews
   fetch: typeof fetch
@@ -324,6 +325,14 @@ export class TokenEngineRuntime
   private comparisonPublished = 0
   private comparisonRun = 0
   private comparisonCancellation = new AbortController()
+  private indexWaitCancellation = new AbortController()
+  indexWaitSignal(): AbortSignal {
+    return this.indexWaitCancellation.signal
+  }
+  private renewIndexWait(): void {
+    if (this.indexWaitCancellation.signal.aborted)
+      this.indexWaitCancellation = new AbortController()
+  }
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly groupCandidates = new Set<string>()
@@ -942,6 +951,7 @@ export class TokenEngineRuntime
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded, signal, deferLocalScan) => {
+      options.indexWaitRunSignal?.(signal)
       this.comparisonCancellation.abort()
       this.comparisonCancellation = new AbortController()
       this.comparisonRun++
@@ -1981,6 +1991,7 @@ export class TokenEngineRuntime
           'restore',
           held.map((one) => one.fileId)
         )
+      this.renewIndexWait()
       await this.engine.sync()
       this.engine.resume()
       this.engine.start()
@@ -2059,6 +2070,7 @@ export class TokenEngineRuntime
       this.options.rootChanged?.(undefined)
       console.debug('[abele-sync] following renamed server folder at unchanged local placement')
     })
+    this.renewIndexWait()
     await this.engine.sync()
     this.engine.resume()
     this.engine.start()
@@ -2094,6 +2106,7 @@ export class TokenEngineRuntime
       this.unroot = this.options.watchRoot?.((issue) => this.scopeRootGone(issue))
       console.debug('[abele-sync] following folder at its new local placement')
     })
+    this.renewIndexWait()
     await this.engine.rescan()
     this.engine.resume()
     this.engine.start()
@@ -2745,6 +2758,7 @@ export class TokenEngineRuntime
     await this.sync(false)
   }
   async sync(retryHeld = true): Promise<void> {
+    this.renewIndexWait()
     await this.checkRoot()
     if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
     if (retryHeld) return this.quiet.flush(() => this.syncUnpaced(retryHeld))
@@ -2942,6 +2956,7 @@ export class TokenEngineRuntime
     await this.engine.reconcile()
   }
   invalidate(): void {
+    this.indexWaitCancellation.abort()
     this.quiet.stop()
     this.active = false
     const retention = Reflect.get(this.options.fs, Symbol.for('abele.sync.retention-idle-v1'))
@@ -3015,6 +3030,7 @@ export class TokenEngineRuntime
     await this.close()
   }
   private pauseEngine(): void {
+    this.indexWaitCancellation.abort()
     this.quiet.pause(true)
     this.comparisonCancellation.abort()
     this.engine.pause()
@@ -3024,6 +3040,7 @@ export class TokenEngineRuntime
     this.userPaused = paused
     if (paused) this.pauseEngine()
     else {
+      this.renewIndexWait()
       this.fatalFailure = undefined
       this.runFailure = undefined
       this.quiet.pause(false)
@@ -3234,6 +3251,7 @@ export class TokenEngineRuntime
     }
     try {
       if (interrupted) {
+        this.indexWaitCancellation.abort()
         // Manifest reads stage review metadata in the host, so core waits for them
         // like writes. Cancel only their network wait, before response processing.
         for (const request of this.readRequests) request.abort()
@@ -3243,7 +3261,10 @@ export class TokenEngineRuntime
       await this.refreshHolds()
     } finally {
       if (interrupted) this.reviewYield--
-      if (interrupted && this.active && !this.rootIssue) this.engine.start()
+      if (interrupted && this.active && !this.rootIssue) {
+        this.renewIndexWait()
+        this.engine.start()
+      }
     }
   }
 

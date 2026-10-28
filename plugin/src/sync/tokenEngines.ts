@@ -904,6 +904,7 @@ export class TokenEngines {
           await loadInspection()
         },
         onIndexWait: (waiting) => this.ui.publish(record.id, { indexWaiting: waiting }),
+        indexWaitSignal: () => runtime?.indexWaitSignal() ?? startup.signal,
         runtimeFence: fence,
         ledger: physicalLedger,
         preserveEmptyDirectories: true,
@@ -1111,6 +1112,11 @@ export class TokenEngines {
             )
           },
           fs,
+          indexWaitRunSignal: (signal) =>
+            Reflect.get(ordinary, Symbol.for('abele.sync.index-wait-signal-v1')).call(
+              ordinary,
+              signal
+            ),
           followRecoveredRoot: (from, to) => ordinary.followRecoveredRoot(from, to),
           localRootChanged: (path) => {
             this.ui.registry.setLocalRoot(record.id, path)

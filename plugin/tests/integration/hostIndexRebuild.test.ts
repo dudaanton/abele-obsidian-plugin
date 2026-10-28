@@ -53,6 +53,50 @@ it('does not start disk discovery before layout and indexing finish', async () =
   expect(diskWalk).not.toHaveBeenCalled()
 })
 
+it('cancels one index waiter without releasing another waiter or hiding its status', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+  let clean = false
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+  const marks: boolean[] = []
+  const fs = new ObsidianFileSystem(app as never, {
+    prepareStartupInventory: async () => {},
+    onIndexWait: (waiting) => marks.push(waiting),
+  })
+  const first = new AbortController()
+  const second = new AbortController()
+  const interrupted = fs.waitForStartupIndex(first.signal)
+  const survivor = fs.waitForStartupIndex(second.signal)
+  first.abort()
+  await expect(interrupted).rejects.toThrow()
+  expect(marks).toEqual([true])
+  clean = true
+  await survivor
+  expect(marks).toEqual([true, false])
+})
+
+it.each(['inventory', 'directories', 'files'] as const)(
+  'cancels the %s index wait before a physical walk',
+  async (entry) => {
+    const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => false })
+    const controller = new AbortController()
+    const fs = new ObsidianFileSystem(app as never, {
+      prepareStartupInventory: async () => {},
+      indexWaitSignal: () => controller.signal,
+    })
+    const diskWalk = vi.spyOn(fs as never, 'diskVaultFiles')
+    const waiting =
+      entry === 'inventory'
+        ? Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {})
+        : entry === 'directories'
+          ? Array.fromAsync(fs.listDirectories())
+          : Array.fromAsync(fs.list())
+    controller.abort()
+    await expect(waiting).rejects.toThrow()
+    expect(diskWalk).not.toHaveBeenCalled()
+  }
+)
+
 it('waits through a long host rebuild without walking the vault', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
   let clean = false
@@ -221,6 +265,72 @@ it('holds a running reconciliation through a cache rebuild without transfers', a
     await engine.stop()
   }
 })
+
+it.each(['pause', 'stop'] as const)(
+  'cancels a %s during a running host index rebuild',
+  async (action) => {
+    const app = buildFakeVault([{ path: 'sample.md', content: 'x', mtime: 1000 }])
+    let clean = true
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => clean })
+    let waiting!: () => void
+    const entered = new Promise<void>((resolve) => (waiting = resolve))
+    const marks: boolean[] = []
+    const fs = new ObsidianFileSystem(app as never, {
+      prepareStartupInventory: async () => {},
+      onIndexWait: (value) => {
+        marks.push(value)
+        if (value) waiting()
+      },
+    })
+    const state = new MemoryStateStore()
+    await state.put({
+      path: 'sample.md',
+      wirePath: 'sample.md',
+      fileId: 'sample',
+      versionId: 'v1',
+      sha: await sha256(new TextEncoder().encode('x')),
+      size: 1,
+      mtime: 1000,
+    })
+    await state.setCursor(1)
+    const client = {
+      prepare: async (_fs: unknown, _state: unknown, _excluded: unknown, signal: AbortSignal) => {
+        Reflect.get(fs, Symbol.for('abele.sync.index-wait-signal-v1'))?.call(fs, signal)
+      },
+      state: async () => ({
+        head_seq: 1,
+        settings: {
+          conflict: 'merge',
+          max_file_bytes: 1000000,
+          quota_bytes: null,
+          retention: { notes_days: 30, attachments_days: 30, settings_days: 30 },
+        },
+      }),
+      changes: async () => ({ items: [], head_seq: 1, next_since: 1 }),
+    } as unknown as EngineClient
+    const engine = new SyncEngine({ fs, state, client, selective: selectiveFrom(undefined) })
+    try {
+      await engine.sync()
+      clean = false
+      const run = engine.sync().catch(() => {})
+      await entered
+      if (action === 'pause') engine.pause()
+      else
+        await Promise.race([
+          engine.stop(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('stop hung')), 300)),
+        ])
+      await Promise.race([
+        run,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('run hung')), 300)),
+      ])
+      expect(marks.at(-1)).toBe(false)
+    } finally {
+      clean = true
+      await engine.stop()
+    }
+  }
+)
 
 it('finds every offline change only after the host index catches up', async () => {
   const app = buildFakeVault([

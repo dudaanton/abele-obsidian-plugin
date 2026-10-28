@@ -240,6 +240,7 @@ export interface ObsidianFileSystemOptions {
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   prepareStartupInventory?: () => Promise<void>
   onIndexWait?: (waiting: boolean) => void
+  indexWaitSignal?: () => AbortSignal | undefined
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
   runtimeFence?: RuntimeFence
@@ -465,45 +466,51 @@ export class ObsidianFileSystem implements FileSystem {
   private indexProbe = 0
   private indexFallback = false
   private layoutReady = false
-  private startupIndexWait?: Promise<void>
-  private readonly onIndexWait?: (waiting: boolean) => void
+  private indexWaiters = 0
+  private runIndexSignal?: AbortSignal
+  private readonly indexWaitSignal?: () => AbortSignal | undefined
+  private readonly onIndexWait?: (waiting: boolean) => void;
+
+  [Symbol.for('abele.sync.index-wait-signal-v1')](signal?: AbortSignal): void {
+    this.runIndexSignal = signal
+  }
 
   /** A dirty host index cannot authorize a startup scan. Let the host finish indexing. */
   async waitForStartupIndex(signal?: AbortSignal): Promise<void> {
     if (!this.prepareStartupInventory) return
-    this.startupIndexWait ??= (async () => {
-      const cache = this.app.metadataCache as typeof this.app.metadataCache & {
-        initialized?: boolean
-        isCacheClean?: () => boolean
-      }
-      const ready = () => {
-        try {
-          return (
-            (this.app.workspace?.layoutReady ?? this.layoutReady) === true &&
-            cache.initialized !== false &&
-            cache.isCacheClean?.() === true
-          )
-        } catch {
-          return false
-        }
-      }
-      if (ready()) return
-      this.onIndexWait?.(true)
+    const runSignal = this.runIndexSignal
+    const cancellation =
+      signal ??
+      (runSignal?.aborted
+        ? (this.indexWaitSignal?.() ?? runSignal)
+        : (runSignal ?? this.indexWaitSignal?.()))
+    const cache = this.app.metadataCache as typeof this.app.metadataCache & {
+      initialized?: boolean
+      isCacheClean?: () => boolean
+    }
+    const ready = () => {
       try {
-        while (!ready()) {
-          if (signal) signal.throwIfAborted()
-          else this.runtimeFence?.assertReady()
-          await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
-        }
-        signal?.throwIfAborted()
-      } finally {
-        this.onIndexWait?.(false)
+        return (
+          (this.app.workspace?.layoutReady ?? this.layoutReady) === true &&
+          cache.initialized !== false &&
+          cache.isCacheClean?.() === true
+        )
+      } catch {
+        return false
       }
-    })()
+    }
+    cancellation?.throwIfAborted()
+    if (ready()) return
+    if (this.indexWaiters++ === 0) this.onIndexWait?.(true)
     try {
-      await this.startupIndexWait
+      while (!ready()) {
+        if (cancellation) cancellation.throwIfAborted()
+        else this.runtimeFence?.assertReady()
+        await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
+      }
+      cancellation?.throwIfAborted()
     } finally {
-      this.startupIndexWait = undefined
+      if (--this.indexWaiters === 0) this.onIndexWait?.(false)
     }
   }
 
@@ -1107,6 +1114,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.startupInventory = options.startupInventory
     this.prepareStartupInventory = options.prepareStartupInventory
     this.onIndexWait = options.onIndexWait
+    this.indexWaitSignal = options.indexWaitSignal
     this.discovery = options.discovery
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
