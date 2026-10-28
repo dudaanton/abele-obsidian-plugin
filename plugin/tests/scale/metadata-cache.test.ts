@@ -36,3 +36,39 @@ it('records layout readiness and the first clean poll without sampling after idl
   expect(readClean).toHaveBeenCalledTimes(4)
   expect(save).toHaveBeenCalledTimes(3)
 })
+
+it('records when cache first becomes clean after a dirty layout-ready state', () => {
+  let at = 100
+  let clean = true
+  let layoutReady: () => void = () => {}
+  const app = {
+    metadataCache: { isCacheClean: () => clean },
+    workspace: {
+      onLayoutReady: (callback: () => void) => {
+        layoutReady = callback
+      },
+    },
+  }
+  const receipt: Record<string, unknown> = {}
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- The disposable host helper is CommonJS.
+  const { createMetadataCacheCapture } = require('./metadata-cache.cjs')
+  const capture = createMetadataCacheCapture(
+    app,
+    receipt,
+    () => {},
+    () => at
+  )
+
+  capture.poll()
+  at = 125
+  clean = false
+  layoutReady()
+  at = 200
+  clean = true
+  capture.poll()
+  capture.finish()
+
+  expect(receipt.metadataCacheFirstCleanAt).toBe(100)
+  expect(receipt.metadataCacheAtLayoutReady).toEqual({ at: 125, clean: false })
+  expect(receipt.metadataCacheFirstCleanAfterLayoutReadyAt).toBe(200)
+})
