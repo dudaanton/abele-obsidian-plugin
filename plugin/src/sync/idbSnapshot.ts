@@ -23,7 +23,7 @@ export function readIdbSnapshot<T>(
     const page = (bounds?: IDBKeyRange) => {
       // Small snapshots keep tiny native result objects. A sustained inventory
       // amortizes request callbacks without ever cloning the whole store at once.
-      const pageSize = loaded < 128 ? 32 : 384
+      const pageSize = loaded < 128 ? 32 : 512
       const request = store.getAll(bounds, pageSize)
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {

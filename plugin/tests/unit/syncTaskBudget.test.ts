@@ -31,3 +31,16 @@ it('bounds host yields for a large metadata inventory while still yielding', asy
     vi.unstubAllGlobals()
   }
 })
+
+it('does not allocate an awaitable for every unchanged metadata row', async () => {
+  const budget = new SyncTaskBudget()
+  let awaitables = 0
+  for (let i = 0; i < 33000; i++) {
+    const pause = budget.metadataRow()
+    if (pause) {
+      awaitables++
+      await pause
+    }
+  }
+  expect(awaitables).toBeLessThan(80)
+})

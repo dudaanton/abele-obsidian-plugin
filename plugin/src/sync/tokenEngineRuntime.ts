@@ -950,6 +950,15 @@ export class TokenEngineRuntime
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
+    const connect = this.client.connection.bind(this.client)
+    this.client.connection = async (signal) => {
+      options.startupMark?.('reconcile:inventory:connection:begin')
+      try {
+        return await connect(signal)
+      } finally {
+        options.startupMark?.('reconcile:inventory:connection:end')
+      }
+    }
     this.client.prepare = async (fs, state, excluded, signal, deferLocalScan) => {
       options.indexWaitRunSignal?.(signal)
       this.comparisonCancellation.abort()
@@ -998,7 +1007,22 @@ export class TokenEngineRuntime
       this.pullProgress('Reading server inventory')
       options.startupMark?.('reconcile:inventory:begin')
       try {
-        await prepare(inventoryFs(fs), state, excluded, signal, deferLocalScan)
+        const timedState = new Proxy(state, {
+          get(target, name) {
+            if (name === 'all')
+              return async function* () {
+                options.startupMark?.('reconcile:inventory:ledger-rows:begin')
+                try {
+                  yield* target.all()
+                } finally {
+                  options.startupMark?.('reconcile:inventory:ledger-rows:end')
+                }
+              }
+            const value = Reflect.get(target, name)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+        await prepare(inventoryFs(fs), timedState, excluded, signal, deferLocalScan)
       } finally {
         options.startupMark?.('reconcile:inventory:end')
       }

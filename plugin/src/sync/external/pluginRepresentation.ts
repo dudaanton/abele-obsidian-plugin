@@ -57,7 +57,8 @@ export async function pluginRepresentation(options: {
         const budget = new SyncTaskBudget()
         for (const entry of entries) {
           persisted.set(entry.path, entry)
-          await budget.metadataRow()
+          const pause = budget.metadataRow()
+          if (pause !== undefined) await pause
         }
         fence.assertOwned()
         return entries

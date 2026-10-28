@@ -676,7 +676,8 @@ export async function recoverExternalState(
   fence: RuntimeFence,
   factory?: IDBFactory,
   inspection: ProjectionInspection = {},
-  mark?: (phase: `connection:Recovery ${string}:${'begin' | 'end'}`) => void
+  mark?: (phase: `connection:Recovery ${string}:${'begin' | 'end'}`) => void,
+  startReadOnlyConnection?: () => void
 ): Promise<void> {
   const stage = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
     mark?.(`connection:Recovery ${name}:begin`)
@@ -696,7 +697,8 @@ export async function recoverExternalState(
       const budget = new SyncTaskBudget()
       for (const row of cached) {
         inventory.set(row.path, row)
-        await budget.metadataRow(inspection.signal)
+        const pause = budget.metadataRow(inspection.signal)
+        if (pause !== undefined) await pause
         fence.assertOwned()
       }
       // Metadata hints carry no directory-absence proof and never recognize bytes.
@@ -828,7 +830,11 @@ export async function recoverExternalState(
       publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
   )
     throw new ExternalRecoveryRequired('publication journal is unreadable')
-  await stage('plugin-metadata', () => store.validatePluginMeta())
+  await stage('plugin-metadata', () => {
+    // The request is read-only; its response is consumed only after this fence.
+    startReadOnlyConnection?.()
+    return store.validatePluginMeta()
+  })
   fence.assertOwned()
   if (item?.phase === 'preparing') {
     item.phase = 'active'

@@ -28,6 +28,24 @@ function local() {
   }
 }
 
+it('validates 33k unchanged ownership checks without copying the registry document each time', async () => {
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-registry-validation', local())
+  try {
+    const registry = TokenConnectionRegistry.open(host)
+    const id = registry.add()
+    await registry.flush()
+    const clone = vi.spyOn(globalThis, 'structuredClone')
+    try {
+      for (let i = 0; i < 33000; i++) expect(registry.hasRecord((record) => record.id === id)).toBe(true)
+      expect(clone.mock.calls.length).toBeLessThan(100)
+    } finally {
+      clone.mockRestore()
+    }
+  } finally {
+    host.close()
+  }
+})
+
 it.each([JOURNAL_KEY, RECOVERED_WRITES_KEY])(
   'reports an unknown preview after invalidation and further mutations (%s)',
   async (key) => {

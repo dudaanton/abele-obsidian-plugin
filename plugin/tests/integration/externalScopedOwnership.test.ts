@@ -13,13 +13,19 @@ async function fixture() {
   const built = await s.build()
   return { ...s, built }
 }
+function expectOnlyConnectionReads(calls: readonly [RequestInfo | URL, RequestInit?][]) {
+  expect(calls.length).toBeGreaterThan(0)
+  expect(calls.map(([input, init]) => [new URL(String(input)).pathname, init?.method])).toEqual(
+    Array.from({ length: calls.length }, () => ['/v2/connection', 'GET'])
+  )
+}
 
 it('a replacement token key immediately fences local filesystem effects', async () => {
   const s = await fixture()
   s.keys.set(s.record.secretReference, 'b'.repeat(43))
   await expect(s.built.fs.remove('Media/sample.bin')).rejects.toThrow(/ownership|held|recovery/i)
   expect(await s.app.vault.adapter.read('Media/sample.bin')).toBe('sample original')
-  expect(s.fetcher).not.toHaveBeenCalled()
+  expectOnlyConnectionReads(s.fetcher.mock.calls)
 })
 it('a new token runtime claim fences its predecessor with both raw ledgers still open', async () => {
   const s = await fixture(),
@@ -35,7 +41,7 @@ it('a stale host cannot forget a successor connection through Disconnect', async
   await expect(s.built.ui.disconnect(s.id)).rejects.toThrow(/ownership|held|recovery/i)
   expect(s.registry.records()).toEqual(before)
   expect(s.keys.size).toBe(1)
-  expect(s.fetcher).not.toHaveBeenCalled()
+  expectOnlyConnectionReads(s.fetcher.mock.calls)
 })
 it('a queued Disconnect rechecks its claim after a successor opens during inspection', async () => {
   const s = await fixture()
@@ -120,5 +126,5 @@ it('cold token recovery holds pending downloads before watchers or publication r
   })
   await s.built.host.close()
   await expect(s.build()).rejects.toThrow(/external|recovery/i)
-  expect(s.fetcher).not.toHaveBeenCalled()
+  expectOnlyConnectionReads(s.fetcher.mock.calls)
 })

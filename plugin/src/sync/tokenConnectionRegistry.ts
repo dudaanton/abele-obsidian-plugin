@@ -304,9 +304,12 @@ export class TokenConnectionRegistry {
   /** The validated document, read-only: shared with later reads until the storage changes. */
   private validated(): Document {
     this.repairWrite()
-    const raw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
-    const itemRaw = this.local.loadLocalStorage(ITEM_REGISTRY_KEY)
-    const selection = this.local.loadLocalStorage(ITEM_SELECTION_KEY)
+    const host = durableHostOf(this.local)
+    const read = (key: string) =>
+      host ? host.readRegistryForValidation(key) : this.local.loadLocalStorage(key)
+    const raw = read(TOKEN_REGISTRY_KEY)
+    const itemRaw = read(ITEM_REGISTRY_KEY)
+    const selection = read(ITEM_SELECTION_KEY)
     const text = JSON.stringify([raw, itemRaw, selection])
     const known = validatedDocuments.get(this.local)
     if (known && known.text === text) return known.doc

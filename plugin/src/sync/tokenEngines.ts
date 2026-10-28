@@ -588,6 +588,7 @@ export class TokenEngines {
     let starting: Promise<void> | undefined
     let draining: Promise<void> | undefined
     let startup = new AbortController()
+    let prefetchedConnection: Promise<Response> | undefined
     const cancel = () => {
       const error = Object.assign(new Error('Vault inspection cancelled'), {
         code: 'startup-cancelled',
@@ -732,7 +733,8 @@ export class TokenEngines {
             const budget = new SyncTaskBudget()
             for (const row of rows) {
               known.set(row.path, row)
-              await budget.metadataRow(startup.signal)
+              const pause = budget.metadataRow(startup.signal)
+              if (pause !== undefined) await pause
               assertActive()
             }
             inventory = known
@@ -1007,7 +1009,29 @@ export class TokenEngines {
             fence,
             factoryOf(this.deps),
             scopedInspection,
-            (phase) => this.deps.startupTimeline?.mark(phase)
+            (phase) => this.deps.startupTimeline?.mark(phase),
+            () => {
+              const encoded = this.ui.itemSets.encoded(record)
+              const item = this.ui.itemSets.store.forRecord(record.id)?.item.id
+              let response: Response | undefined
+              const client = new V2EngineClient(encoded, {
+                item,
+                fetch: async (input, init) => {
+                  const received = await transportOf(this.deps)(input, init)
+                  response = received.clone()
+                  return received
+                },
+              })
+              prefetchedConnection = client.connection(startup.signal).then(
+                () => response,
+                (error) => {
+                  if (response) return response
+                  throw error
+                }
+              )
+              // Recovery may fail before the engine consumes the result.
+              void prefetchedConnection.catch(() => {})
+            }
           )
         },
         true
@@ -1167,7 +1191,21 @@ export class TokenEngines {
             }
           },
           reviews: this.ui.reviews,
-          fetch: transportOf(this.deps),
+          fetch: (input, init) => {
+            const path = new URL(
+              typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+            ).pathname
+            if (path === '/v2/connection' && prefetchedConnection !== undefined) {
+              const pending = prefetchedConnection
+              prefetchedConnection = undefined
+              init?.signal?.throwIfAborted()
+              return pending.then((response) => {
+                init?.signal?.throwIfAborted()
+                return response
+              })
+            }
+            return transportOf(this.deps)(input, init)
+          },
           WebSocket: socketOf(this.deps),
           paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
           paused: current.paused,

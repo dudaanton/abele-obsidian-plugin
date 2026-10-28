@@ -34,6 +34,38 @@ it('keeps a large state snapshot responsive without one host yield per small pag
   }
 })
 
+it('reads a 33k entry inventory with at most 70 native callbacks', async () => {
+  vi.stubGlobal('IDBKeyRange', IDBKeyRange)
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-large-snapshot')
+  const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+  try {
+    const db = Reflect.get(Reflect.get(state, 'connection'), 'db') as IDBDatabase
+    const tx = db.transaction('entries', 'readwrite')
+    for (let i = 0; i < 33000; i++)
+      tx.objectStore('entries').put({
+        path: `sample-${String(i).padStart(5, '0')}.md`,
+        fileId: `file-${i}`,
+        versionId: 'v1',
+        sha: 'a'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    getAll.mockClear()
+    let count = 0
+    for await (const _entry of state.all()) count++
+    expect(count).toBe(33000)
+    expect(getAll.mock.calls.length).toBeLessThanOrEqual(70)
+  } finally {
+    getAll.mockRestore()
+    state.close()
+    vi.unstubAllGlobals()
+  }
+})
+
 it('bounds native result deserialization for entry, classification and lifecycle snapshots', async () => {
   vi.stubGlobal('IDBKeyRange', IDBKeyRange)
   const factory = new IDBFactory()

@@ -10,12 +10,12 @@ it('reaches the first request after restart without inspecting ordinary payloads
       await s.app.vault.adapter.write(`Media/sample-${n}.md`, 'ordinary content')
     s.store.close()
     const read = vi.spyOn(s.app.vault.adapter, 'readBinary')
-    const built = await s.build()
     const beforeRequest: number[] = []
     s.fetcher.mockImplementation(async () => {
       beforeRequest.push(read.mock.calls.filter(([path]) => path.startsWith('Media/')).length)
       throw new Error('sample network interruption')
     })
+    const built = await s.build()
     await built.engine.sync().catch(() => {})
     expect(beforeRequest.length).toBeGreaterThan(0)
     expect(beforeRequest[0]).toBe(0)

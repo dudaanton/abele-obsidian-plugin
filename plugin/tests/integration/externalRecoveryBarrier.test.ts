@@ -51,6 +51,13 @@ async function pending(s: Awaited<ReturnType<typeof fixture>>) {
     ],
   })
 }
+/** Recovery may issue its read-only handshake; no other network effect is permitted. */
+function expectOnlyConnectionReads(calls: readonly [RequestInfo | URL, RequestInit?][]) {
+  expect(calls.length).toBeGreaterThan(0)
+  expect(calls.map(([input, init]) => [new URL(String(input)).pathname, init?.method])).toEqual(
+    Array.from({ length: calls.length }, () => ['/v2/connection', 'GET'])
+  )
+}
 
 describe('external recovery before ordinary engine activation', () => {
   it('does not impose a configuration-directory depth limit on ordinary content folders', async () => {
@@ -58,7 +65,7 @@ describe('external recovery before ordinary engine activation', () => {
     s.store.close()
     const built = await s.build()
     expect(built.store.permitsEngineEffects).toBe(true)
-    expect(s.fetcher).not.toHaveBeenCalled()
+    expectOnlyConnectionReads(s.fetcher.mock.calls)
   })
   it('does not complete startup after losing ownership during awaited external inspection', async () => {
     const s = await fixture()
@@ -85,7 +92,7 @@ describe('external recovery before ordinary engine activation', () => {
     expect(await first).toBeInstanceOf(Error)
     expect(next.store.permitsEngineEffects).toBe(true)
     expect(s.app.loadLocalStorage(SCRIPT_TRUST_KEY)).toBeNull()
-    expect(s.fetcher).not.toHaveBeenCalled()
+    expectOnlyConnectionReads(s.fetcher.mock.calls)
   })
 
   it('completes installation recovery before creating script provenance state or sentinel', async () => {
@@ -138,7 +145,7 @@ describe('external recovery before ordinary engine activation', () => {
     await expect(built.vault.restoreDeleted('sample-file')).rejects.toThrow(
       /ownership|held|recovery/i
     )
-    expect(s.fetcher).not.toHaveBeenCalled()
+    expectOnlyConnectionReads(s.fetcher.mock.calls)
   })
 
   it('rechecks ownership after awaited inspection immediately before a filesystem removal', async () => {
@@ -169,7 +176,7 @@ describe('external recovery before ordinary engine activation', () => {
       Promise.resolve().then(() => (first as any).fs.remove('Media/sample.bin'))
     ).rejects.toThrow(/ownership|held|recovery/i)
     expect(next.store.permitsEngineEffects).toBe(true)
-    expect(s.fetcher).not.toHaveBeenCalled()
+    expectOnlyConnectionReads(s.fetcher.mock.calls)
     expect(await s.app.vault.adapter.read('Media/sample.bin')).toBe('sample original')
   })
 
@@ -190,8 +197,9 @@ describe('external recovery before ordinary engine activation', () => {
     await expect(
       built.vault.putBlob('a'.repeat(64), new Uint8Array(9 * 1024 * 1024))
     ).rejects.toThrow()
-    expect(s.fetcher).toHaveBeenCalledTimes(3)
+    expect(s.fetcher).toHaveBeenCalledTimes(4)
     expect(s.fetcher.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/v2/connection',
       '/v2/uploads/' + 'a'.repeat(64),
       '/v2/uploads/' + 'a'.repeat(64) + '/begin',
       '/v2/uploads/' + 'a'.repeat(64) + '/sample-upload/0',
@@ -216,7 +224,7 @@ describe('external recovery before ordinary engine activation', () => {
     await expect(built.vault.restore('sample-file', 'sample-version')).rejects.toThrow(
       /ownership|held|recovery/i
     )
-    expect(s.fetcher).not.toHaveBeenCalled()
+    expectOnlyConnectionReads(s.fetcher.mock.calls)
   })
 
   it('never spends a fresh bootstrap grant over a recognizable renamed projection', async () => {

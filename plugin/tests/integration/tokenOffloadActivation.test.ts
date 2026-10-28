@@ -59,6 +59,43 @@ it('starts a fresh connection after private projection staging loses its ledger 
     fence.release()
   }
 })
+it('issues the read-only connection request while checking metadata and holds effects on a corrupt last row', async () => {
+  s = await tokenBuildFixture()
+  const db = Reflect.get(Reflect.get(s.store, 'connection'), 'db') as IDBDatabase
+  const tx = db.transaction('meta', 'readwrite')
+  tx.objectStore('meta').put({ key: 'plugin:zzzz-corrupt', value: 7 })
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+  const fence = new RuntimeFence(s.app, s.record.ledgerId, () => true)
+  const marks: string[] = []
+  let requests = 0
+  try {
+    await expect(
+      recoverExternalState(
+        s.app as never,
+        s.store,
+        s.record.ledgerId,
+        s.record.ledgerId,
+        s.binding,
+        fence,
+        s.factory,
+        {},
+        (mark) => marks.push(mark),
+        () => {
+          requests++
+          expect(marks).toContain('connection:Recovery plugin-metadata:begin')
+          expect(() => fence.assertReady()).toThrow()
+        }
+      )
+    ).rejects.toThrow('Invalid plugin metadata')
+    expect(requests).toBe(1)
+    expect(() => fence.assertReady()).toThrow()
+  } finally {
+    fence.release()
+  }
+})
 it('activating independent token ledgers concurrently retains both ownership proofs', async () => {
   s = await tokenBuildFixture()
   const id = s.registry.add(),

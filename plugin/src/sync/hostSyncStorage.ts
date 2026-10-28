@@ -156,9 +156,15 @@ export class HostSyncStorage implements LocalStorage {
     if (journalKey(key) && !this.journalHints.has(key))
       throw new Error('Sync journal preview is unknown; await readValue before reading it')
     this.materializeHint(key)
-    return this.values.has(key)
-      ? structuredClone(this.values.get(key))
-      : this.local.loadLocalStorage(key)
+    if (!this.values.has(key)) return this.local.loadLocalStorage(key)
+    const value = this.values.get(key)
+    return value === null || typeof value !== 'object' ? value : structuredClone(value)
+  }
+  /** Schema validation reads the registry synchronously and never changes its source object.
+   * The public preview still copies mutable values for every other caller. */
+  readRegistryForValidation(key: string): unknown {
+    if (!this.values.has(key)) return this.local.loadLocalStorage(key)
+    return this.values.get(key)
   }
   saveLocalStorage(key: string, value: unknown): void {
     if (this.closed) throw new Error('Sync host storage is closed')

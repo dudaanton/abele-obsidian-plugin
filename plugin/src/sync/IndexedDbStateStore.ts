@@ -442,7 +442,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       : read())
     const budget = new SyncTaskBudget()
     for (const row of rows) {
-      await budget.metadataRow()
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
       yield { ...row }
     }
   }

@@ -4,18 +4,19 @@ export class SyncTaskBudget {
   private since = performance.now()
 
   /** A path/stat row is metadata, not a file-content read. Keep the time limit. */
-  metadataRow(signal?: AbortSignal): Promise<void> {
+  metadataRow(signal?: AbortSignal): Promise<void> | undefined {
     return this.account(256, signal)
   }
 
-  async account(bytes: number, signal?: AbortSignal): Promise<void> {
+  account(bytes: number, signal?: AbortSignal): Promise<void> | undefined {
     signal?.throwIfAborted()
     this.bytes += bytes
     if (this.bytes < 1024 * 1024 && performance.now() - this.since < 8) return
     this.bytes = 0
-    await yieldSyncTask()
-    this.since = performance.now()
-    signal?.throwIfAborted()
+    return yieldSyncTask().then(() => {
+      this.since = performance.now()
+      signal?.throwIfAborted()
+    })
   }
 }
 
