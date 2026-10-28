@@ -207,7 +207,7 @@ const Sidebar = defineComponent({
         environment: m?.state.environment,
         offline,
         notice,
-        project: c ? (c.label ?? c.projectId) : '',
+        project: c?.label ?? '',
         node: c?.node,
         open:
           open && c && open.projectId === c.projectId && open.worktreeId === c.worktreeId

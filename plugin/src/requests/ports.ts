@@ -53,5 +53,6 @@ export interface SendOptions {
   interactive: boolean
   signal?: AbortSignal
   /** For one send, rather than the switch the view keeps. */
+  timeoutMs?: number
   intoRecording?: boolean
 }

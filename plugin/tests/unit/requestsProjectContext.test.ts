@@ -125,3 +125,13 @@ it('keeps the exact worktree of a current node repository file', () => {
     })
   ).toEqual({ registrationId: 'node-1', projectId: 'project-1', worktreeId: 'sample-copy' })
 })
+
+it('keeps the friendly name while the same project is restored from a tab', () => {
+  RequestsService.destroy()
+  const service = RequestsService.instance()
+  vi.spyOn(service, 'contexts').mockResolvedValue([])
+  service.choose({ registrationId: 'node-1', projectId: 'project-1', label: 'Sample project' })
+  service.chooseOpenProject({ registrationId: 'node-1', projectId: 'project-1' })
+  expect(service.context.value?.label).toBe('Sample project')
+  RequestsService.destroy()
+})

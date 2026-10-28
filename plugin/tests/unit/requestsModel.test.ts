@@ -492,3 +492,40 @@ describe('names and times', () => {
     expect(sentAtWords(new Date(2026, 8, 3, 9, 5).toISOString(), now)).toBe('3 Sep 09:05')
   })
 })
+
+it('restores saved collections and the environment in a fresh model and on refresh', async () => {
+  const node = fakeNode(),
+    p = ports()
+  const original = new RequestsModel(node.rpc, 'project-1', p)
+  await original.load()
+  await original.selectEnvironment('staging')
+  const restored = new RequestsModel(node.rpc, 'project-1', p)
+  await restored.load()
+  expect(restored.state.environment).toBe('staging')
+  expect(restored.state.collections[0].name).toBe('Samples')
+  restored.state.collections = []
+  await restored.load()
+  expect(restored.state.collections[0].requests[0].id).toBe('Samples/Create sample.http')
+})
+
+it('restores saved requests and their environment before a slow file inventory finishes', async () => {
+  const node = fakeNode(),
+    model = new RequestsModel(node.rpc, 'project-1', ports())
+  let finish!: () => void
+  vi.spyOn(model, 'refreshFiles').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  const loaded = model.load()
+  try {
+    await vi.waitFor(() => expect(model.state.collections[0]?.name).toBe('Samples'), {
+      timeout: 100,
+    })
+    expect(model.state.environment).toBe('local')
+  } finally {
+    finish()
+    await loaded
+  }
+})

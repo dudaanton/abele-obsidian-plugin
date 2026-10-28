@@ -180,3 +180,40 @@ describe('the agent’s tools over saved requests', () => {
     )
   })
 })
+
+it('passes an invocation timeout without changing the saved timeout', async () => {
+  const s = setup(),
+    id = 'Samples/Create sample.http'
+  const before = s.model.timeout(id)
+  await s.call('http_send', { id, timeout_ms: 60000 })
+  expect(s.node.sent[0].timeout_ms).toBe(60000)
+  expect(s.model.timeout(id)).toBe(before)
+})
+it('does not double punctuation of an unknown outcome', async () => {
+  const s = setup()
+  vi.spyOn(s.node.rpc, 'status').mockResolvedValue({
+    send: {} as never,
+    outcome: { state: 'unknown', reason: 'No answer in 30 s.', after_ms: 30000 },
+  })
+  expect(
+    await s.call('http_send_result', { id: 'Samples/Create sample.http', send: 'sample-send' })
+  ).not.toContain('..')
+})
+
+it('reads a late answer from the node after an unknown result without resending', async () => {
+  const s = setup(),
+    id = 'Samples/Create sample.http'
+  const sent = await s.call('http_send', { id })
+  const send = s.model.entry(id).history[0].id
+  const original = s.node.rpc.status.bind(s.node.rpc)
+  vi.spyOn(s.node.rpc, 'status')
+    .mockResolvedValueOnce({
+      send: {} as never,
+      outcome: { state: 'unknown', reason: 'Still waiting.', after_ms: 30000 },
+    })
+    .mockImplementation(original)
+  expect(await s.call('http_send_result', { id, send })).toContain('Outcome unknown')
+  expect(await s.call('http_send_result', { id, send })).toContain('201 Created')
+  expect(s.node.sent).toHaveLength(1)
+  expect(sent).toContain('201 Created')
+})

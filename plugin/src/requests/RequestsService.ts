@@ -260,7 +260,9 @@ export class RequestsService {
           }
         : undefined)
     if (c && nodeKnown(c.registrationId)) {
-      this.choose({ ...c, label: c.projectId })
+      const previous = this.chosen.value
+      const same = previous && key(previous) === key(c)
+      this.choose({ ...c, ...(same ? { label: previous.label, node: previous.node } : {}) })
       // Fill in the friendly project name without undoing a later manual selection.
       void this.contexts()
         .then((contexts) => {

@@ -159,7 +159,8 @@ export class RequestsModel {
   async load() {
     this.state.loading = true
     try {
-      await this.refreshFiles()
+      // Saved collections do not depend on walking project request files. Restore them and
+      // their environment first, even while the file index is slow after reconnecting.
       const list = await this.rpc.list(this.projectId)
       this.state.folder = list.folder
       this.state.collections = this.collectionsWithEdits(list.collections)
@@ -176,6 +177,15 @@ export class RequestsModel {
             ? remembered
             : this.state.environments[0]
       if (pick !== this.state.environment || !this.state.env) await this.readEnvironment(pick)
+      await this.refreshFiles()
+      // File environments are known only after that inventory. Keep a person's selection
+      // made while it ran; otherwise restore the remembered file environment as well.
+      const filePick =
+        remembered && this.state.environments.includes(remembered)
+          ? remembered
+          : (this.state.environment ?? this.state.environments[0])
+      if (this.state.environment === pick && (filePick !== pick || !this.state.env))
+        await this.readEnvironment(filePick)
     } catch (e) {
       console.debug('[requests] List unavailable', e)
       this.state.error = reasonOf(e)
@@ -643,7 +653,7 @@ export class RequestsModel {
         ...(!file ? { requestId: id } : {}),
         ...(environment ? { environment } : {}),
         method: keyed.out.method,
-        timeoutMs: this.timeout(id),
+        timeoutMs: options.timeoutMs ?? this.timeout(id),
         url: keyed.out.url,
         headers: Object.entries(keyed.out.headers).map(([key, value]) => ({ key, value })),
         ...(keyed.out.body !== undefined ? { body: keyed.out.body } : {}),

@@ -88,3 +88,28 @@ it.fails('BUG: Stop cancels the in-flight HTTP request on the node', async () =>
   await result
   expect(node.calls).toContain('http.v1.send.cancel')
 })
+
+it('waits for a forty-five-second answer when the invocation allows sixty seconds', async () => {
+  vi.useFakeTimers()
+  const node = fakeNode(),
+    model = new RequestsModel(node.rpc, 'sample-project', ports())
+  await model.load()
+  const status = node.rpc.status.bind(node.rpc)
+  vi.spyOn(node.rpc, 'status').mockImplementationOnce(async (project, send) => {
+    await new Promise((resolve) => window.setTimeout(resolve, 45000))
+    await status(project, send)
+    return status(project, send)
+  })
+  const tool = createRequestTools(() => ({ model, project: 'Sample' })).find(
+    (t) => t.name === 'http_send'
+  )!
+  const result = tool.execute('sample-call', {
+    id: 'Samples/Create sample.http',
+    timeout_ms: 60000,
+  })
+  await vi.advanceTimersByTimeAsync(45001)
+  expect((await result).content[0].text).toContain('201 Created')
+  expect(node.sent).toHaveLength(1)
+  expect(node.sent[0].timeout_ms).toBe(60000)
+  expect(vi.getTimerCount()).toBe(0)
+})

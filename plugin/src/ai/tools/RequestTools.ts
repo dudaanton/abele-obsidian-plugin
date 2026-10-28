@@ -72,6 +72,15 @@ function pairs(v: unknown) {
     : []
 }
 
+function sendTimeout(p: Record<string, unknown>): number | undefined {
+  if (p.timeout_ms === undefined) return undefined
+  const ms = num(p.timeout_ms)
+  if (ms === undefined || !Number.isInteger(ms) || ms < 1000 || ms > 300000)
+    throw new Error('timeout_ms must be an integer between 1000 and 300000')
+  return ms
+}
+const sentence = (value: string) => value.replace(/[.\s]+$/, '')
+
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 
 /** A request id as the node gives it: a path inside the requests folder ending in `.http`. */
@@ -180,7 +189,8 @@ export function createRequestTools(
           lifetime.signal
         )
         lifetime.signal.throwIfAborted()
-        if (name === 'http_send') lifetime.deadline(c.model.timeout(req(params.id)) + 1000)
+        if (name === 'http_send')
+          lifetime.deadline((sendTimeout(params) ?? c.model.timeout(req(params.id))) + 1000)
         const model = c.model.forAgent(lifetime.signal, guard, (id) => {
           sendId = id
         })
@@ -338,6 +348,13 @@ export function createRequestTools(
         id: ID,
         environment: { type: 'string', description: 'Switches the Requests view to it first.' },
         into_recording: { type: 'boolean' },
+        timeout_ms: {
+          type: 'integer',
+          minimum: 1000,
+          maximum: 300000,
+          description:
+            'Wait for this send, in milliseconds. Defaults to the request wait (up to 300 seconds). Does not change the saved wait.',
+        },
       },
       ['id'],
       async (c, p, signal) => {
@@ -350,6 +367,7 @@ export function createRequestTools(
         const id = requestId(p.id)
         const outcome = await m.send(id, {
           interactive: false,
+          timeoutMs: sendTimeout(p),
           signal,
           intoRecording: p.into_recording === true,
         })
@@ -378,7 +396,7 @@ export function createRequestTools(
           case 'failed':
             return `${head}\nDid not reach the service: ${outcome.reason}`
           case 'unknown':
-            return `${head}\nOutcome unknown: ${outcome.reason ?? `no answer in ${outcome.after}`}. It may have reached the service; do not send it again to find out.`
+            return `${head}\nOutcome unknown: ${sentence(outcome.reason ?? `no answer in ${outcome.after}`)}. It may have reached the service; do not send it again to find out.`
           default:
             return `${head}\nStill sending; ask http_send_result.`
         }
@@ -432,7 +450,7 @@ export function createRequestTools(
         if (!o) return 'Nothing known of that send.'
         if (o.kind === 'failed') return `Did not reach the service: ${o.reason}`
         if (o.kind === 'unknown')
-          return `Outcome unknown: ${o.reason ?? `no answer in ${o.after}`}. It may have reached the service.`
+          return `Outcome unknown: ${sentence(o.reason ?? `no answer in ${o.after}`)}. It may have reached the service.`
         if (o.kind !== 'answered') return 'Still sending.'
         const r = o.response
         const from = num(p.from) ?? 0
