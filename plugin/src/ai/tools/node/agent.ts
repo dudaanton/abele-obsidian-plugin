@@ -281,6 +281,16 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         case_sensitive: { type: 'boolean' },
         start: { type: 'integer', minimum: 1 },
         count: { type: 'integer', minimum: 1, maximum: 1500 },
+        offset: {
+          type: 'integer',
+          minimum: 1,
+          description: 'First line to read (1-based); alias for start_line.',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Maximum lines to read from offset/start_line.',
+        },
         start_line: { type: 'integer', minimum: 1 },
         end_line: { type: 'integer', minimum: 1 },
       },
@@ -608,6 +618,61 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           cursor = result.cursor
         }
         throw new Error('Worktree catalogue exceeds bounded listing limit')
+      }
+      if (
+        !params.workspace &&
+        params.node &&
+        params.project &&
+        candidates.some(
+          (entry) =>
+            entry.kind === 'node' ||
+            (entry.kind === 'project' && entry.project_id === params.project)
+        )
+      ) {
+        const connection = admittedConnection(text(params, 'node'))
+        const project = await safe(() => connection.client.getProject(text(params, 'project')))
+        const available: { id: string; kind: 'workspace' | 'worktree' }[] = []
+        let cursor: string | undefined
+        let complete = false
+        for (let page = 0; page < 64; page++) {
+          if (project.repository_path) {
+            const result = await safe(() =>
+              connection.client.repository.worktrees({ project_id: project.project_id, cursor })
+            )
+            available.push(
+              ...result.entries
+                .filter((e) => e.availability === 'available')
+                .map((e) => ({ id: e.worktree_id, kind: 'worktree' as const }))
+            )
+            if (!result.cursor) {
+              complete = !result.incomplete
+              break
+            }
+            if (cursor === result.cursor) throw new Error('Invalid worktree cursor')
+            cursor = result.cursor
+          } else {
+            const result = await safe(() =>
+              connection.client.listWorkspaces(project.project_id, cursor)
+            )
+            available.push(
+              ...result
+                .filter((e) => e.kind === 'root' && e.state === 'ready')
+                .map((e) => ({ id: e.workspace_id, kind: 'workspace' as const }))
+            )
+            if (result.length < 100) {
+              complete = true
+              break
+            }
+            const next = result.at(-1)?.workspace_id
+            if (!next) throw new Error('Invalid workspace cursor')
+            if (cursor === next) throw new Error('Invalid workspace cursor')
+            cursor = next
+          }
+        }
+        if (complete && available.length === 1) {
+          params.workspace = available[0].id
+          params.target_kind = available[0].kind
+        }
       }
       if (!params.workspace) {
         if (!entries.length)
@@ -952,15 +1017,22 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       if (name === 'node_read') {
         const result = await read(fileSchema.parse(path))
-        if (params.start_line !== undefined || params.end_line !== undefined) {
+        if (
+          params.start_line !== undefined ||
+          params.end_line !== undefined ||
+          params.offset !== undefined ||
+          params.limit !== undefined
+        ) {
           const start = z
             .number()
             .int()
             .min(1)
-            .parse(params.start_line ?? 1)
+            .parse(params.start_line ?? params.offset ?? 1)
           const end =
             params.end_line === undefined
-              ? undefined
+              ? params.limit === undefined
+                ? undefined
+                : start + z.number().int().positive().parse(params.limit) - 1
               : z.number().int().min(start).parse(params.end_line)
           result.text = result.text
             .split('\n')

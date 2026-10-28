@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { setup, setupGit } from '../helpers/nodeAgentFixture'
+import { setup, setupGit, digest } from '../helpers/nodeAgentFixture'
 import { createNodeTools, NodeRepositoryToolsHost } from '@/ai/tools/node'
 
 it.each(['', undefined, 'Sample node'])('infers or resolves node: %s', async (node) => {
@@ -59,4 +59,79 @@ it('opens an in-memory source without a repository tab', async () => {
     project_id: 'sample-project',
     target: { kind: 'worktree', worktree_id: 'sample-tree' },
   })
+})
+
+it('infers the only plain folder from a project grant', async () => {
+  const f = setup()
+  await f.call('node_read', {
+    node: undefined,
+    project: undefined,
+    workspace: undefined,
+    target_kind: undefined,
+    path: 'sample.txt',
+  })
+  expect(f.client.readFile).toHaveBeenCalledWith('sample-workspace', 'sample.txt')
+  expect((await f.call('node_folders', { node: undefined })).content[0].text).toContain(
+    'sample-project'
+  )
+})
+it('honors offset and limit as one-based line bounds', async () => {
+  const f = setup()
+  const text = 'first\nsecond\nthird'
+  f.client.readFile.mockResolvedValue({
+    ...(await f.client.readFile()),
+    content_id: digest(text),
+    size: text.length,
+  })
+  f.client.readContent.mockResolvedValue({ offset: 0, total: text.length, base64: btoa(text) })
+  const result = await f.call('node_read', { path: 'sample.txt', offset: 2, limit: 1 })
+  expect(JSON.parse(result.content[0].text).text).toBe('second')
+})
+
+it('infers a sole available worktree for a project grant', async () => {
+  const f = setupGit()
+  const page = await f.repository.worktrees()
+  f.repository.worktrees.mockResolvedValue({ ...page, entries: [page.entries[0]] })
+  const result = await f.call('node_read', {
+    node: undefined,
+    project: undefined,
+    workspace: undefined,
+    target_kind: undefined,
+    path: 'sample.txt',
+  })
+  expect(JSON.parse(result.content[0].text).text).toBe('old')
+})
+
+it('keeps a project with multiple available worktrees ambiguous', async () => {
+  const f = setupGit()
+  await expect(
+    f.call('node_read', {
+      node: undefined,
+      project: undefined,
+      workspace: undefined,
+      target_kind: undefined,
+      path: 'sample.txt',
+    })
+  ).rejects.toThrow('Choose a worktree or folder')
+})
+
+it('searches a sole granted project without target arguments', async () => {
+  const search = vi.fn(async () => ({
+    entries: [],
+    cursor: null,
+    incomplete: false,
+    omissions: [],
+  }))
+  const f = setupGit(),
+    page = await f.repository.worktrees()
+  f.repository.worktrees.mockResolvedValue({ ...page, entries: [page.entries[0]] })
+  Object.assign(f.repository, { search })
+  await f.call('node_search', {
+    node: undefined,
+    project: undefined,
+    workspace: undefined,
+    target_kind: undefined,
+    query: 'sample',
+  })
+  expect(search).toHaveBeenCalledWith(expect.objectContaining({ worktree_id: 'sample-tree' }))
 })

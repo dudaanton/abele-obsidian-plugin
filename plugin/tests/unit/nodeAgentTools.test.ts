@@ -849,7 +849,13 @@ describe('what the node file tools tell a model that cannot reach a file yet', (
     expect(JSON.parse(read.content[0].text)).toMatchObject({ text: 'old', content_id: hash })
   })
   it('points at node_folders when the call names no target and the chat may reach several', async () => {
-    const { call } = setup()
+    const { call, session } = setup()
+    session.overrides.value.nodeScope!.push({
+      kind: 'project',
+      node_id: 'sample-node',
+      project_id: 'sample-other-project',
+      access: 'read',
+    })
     await expect(call('node_read', { ...none, path: 'sample.txt' })).rejects.toThrow(/node_folders/)
   })
   it('describes each tool by what it does rather than one text shared by all of them', () => {
