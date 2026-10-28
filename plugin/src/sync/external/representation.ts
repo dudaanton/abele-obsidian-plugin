@@ -362,12 +362,12 @@ export class ExternalRepresentation {
   ): Promise<RepresentationDecision> {
     await this.loadInspection()
     this.ownedRead()
-    if (observed === undefined && !supplied) {
-      const known = await this.unchanged(path, caller)
+    if (!supplied && observed !== null) {
+      const known = await this.unchanged(path, caller, observed)
       if (known) return known
     }
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
-    this.owned()
+    this.ownedRead()
     for (const file of this.document.files) {
       if (this.managed(file) && this.original(file, path)) {
         if (
@@ -379,6 +379,7 @@ export class ExternalRepresentation {
           // durable before scanner/metadata callers can acknowledge it; no second head table.
           try {
             if (!this.options.state) throw new ExternalRecoveryRequired('external state missing')
+            this.owned()
             await this.options.state.commit({
               expectedRevision: this.document.revision,
               ledger: { metadata: [{ key: unexpectedKey(file.fileId), value: 'unresolved' }] },
@@ -430,7 +431,7 @@ export class ExternalRepresentation {
       !supplied && this.options.inspection?.identity
         ? await this.options.inspection.identity(path)
         : null
-    this.owned()
+    this.ownedRead()
     const prior = this.inspected.get(cachePath)
     if (
       !supplied &&
@@ -448,7 +449,7 @@ export class ExternalRepresentation {
         !this.options.inspection?.identity ||
         (identity && stable && sameInspectionIdentity(identity, stable))
       ) {
-        this.owned()
+        this.ownedRead()
         if (stable?.size === info.size)
           this.rememberVerified(cachePath, proof, info.size, prior.marker)
         this.count(caller, 'hit')
@@ -472,13 +473,13 @@ export class ExternalRepresentation {
     this.count(caller, reason)
     const bytes = supplied ?? (await this.bytes(path, info))
     if (!supplied && bytes) this.stats.contentBytes += bytes.byteLength
-    this.owned()
+    this.ownedRead()
     const marker = !!bytes && recognizeProjection(bytes)
     if (!supplied) {
       const after = this.options.inspection?.identity
         ? await this.options.inspection.identity(path)
         : null
-      this.owned()
+      this.ownedRead()
       if (
         !this.options.inspection?.identity ||
         (identity !== null &&
@@ -508,7 +509,7 @@ export class ExternalRepresentation {
    * inventory pass, or one identity read that matches its cached classification. Ledger walks
    * ask about every file several times per cycle, so a stat each time made a synced restart
    * take minutes. Managed originals, artifacts and anything unproven take the full path. */
-  private async unchanged(path: string, caller: string) {
+  private async unchanged(path: string, caller: string, observed?: FileInfo) {
     const inspection = this.options.inspection
     if (!inspection?.identity || this.artifact(path)) return undefined
     for (const file of this.document.files)
@@ -518,19 +519,30 @@ export class ExternalRepresentation {
     const cachePath = inspection.cacheKey?.(path) ?? path
     const proof = this.passProof(path)
     const known = this.verified.get(cachePath)
-    if (proof && known && known.pass === proof.pass && known.revision === proof.revision) {
+    const prior = this.inspected.get(cachePath)
+    if (
+      proof &&
+      known &&
+      known.pass === proof.pass &&
+      known.revision === proof.revision &&
+      (!observed ||
+        (prior?.size === observed.size &&
+          prior.mtime === observed.mtime &&
+          known.size === observed.size))
+    ) {
       if (this.options.excluded?.(path, known.size)) return { kind: 'ordinary' } as const
       this.count(caller, 'pass')
       return decision(known.marker)
     }
-    const prior = this.inspected.get(cachePath)
     if (!prior) return undefined
     const identity = await inspection.identity(path)
     this.ownedRead()
     if (
       identity === null ||
       !cacheableInspectionIdentity(identity) ||
-      !sameInspectionIdentity(prior, identity)
+      !sameInspectionIdentity(prior, identity) ||
+      (observed !== undefined &&
+        (identity.size !== observed.size || identity.mtime !== observed.mtime))
     )
       return undefined
     if (this.options.excluded?.(path, identity.size) || identity.size > MAX_PROJECTION_BYTES)

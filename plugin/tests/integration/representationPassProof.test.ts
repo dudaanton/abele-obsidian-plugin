@@ -5,6 +5,7 @@ import { ExternalRepresentation } from '@/sync/external/representation'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { yieldSyncTask } from '@/sync/syncTaskBudget'
 
 const binding = {
   endpoint: 'https://sync.example.invalid',
@@ -96,6 +97,53 @@ it('loads advisory inspection records only when reconciliation first classifies 
   expect(load).toHaveBeenCalledOnce()
 })
 
+it('reuses a matching observed index row with one identity proof per path', async () => {
+  const { app, representation, identity, list } = await setup(2)
+  await list()
+  identity.mockClear()
+  for (let i = 0; i < 2; i++) {
+    const file = app.vault.getFileByPath(`Shared/sample-${i}.md`)!
+    expect(
+      await representation.classify(file.path, {
+        path: file.path,
+        size: file.stat.size,
+        mtime: file.stat.mtime,
+      })
+    ).toEqual({ kind: 'ordinary' })
+  }
+  expect(identity).toHaveBeenCalledTimes(2)
+})
+
+it('does not accept a stale observed index row as an unchanged identity', async () => {
+  const { app, representation, identity, list } = await setup(1)
+  await list()
+  identity.mockClear()
+  const file = app.vault.getFileByPath('Shared/sample-0.md')!
+  const decision = await representation.classify(file.path, {
+    path: file.path,
+    size: file.stat.size + 1,
+    mtime: file.stat.mtime,
+  })
+  expect(decision).toEqual({ kind: 'ordinary' })
+  // One advisory comparison, then the full before/after proof for the stale row.
+  expect(identity).toHaveBeenCalledTimes(3)
+})
+
+it('proves ownership once for a read-only classification within one host task', async () => {
+  const owned = vi.fn()
+  const { app, representation, list } = await setup(1, false, owned)
+  await list()
+  await yieldSyncTask()
+  owned.mockClear()
+  const file = app.vault.getFileByPath('Shared/sample-0.md')!
+  await representation.classify(file.path, {
+    path: file.path,
+    size: file.stat.size,
+    mtime: file.stat.mtime,
+  })
+  expect(owned).toHaveBeenCalledOnce()
+})
+
 it('keeps watched proofs when a polled path uses the inventory clock', async () => {
   const { raw, identity, list } = await setup(40)
   const revision = Symbol.for('abele.sync.watch-revision-v1')
@@ -112,17 +160,14 @@ it('keeps watched proofs when a polled path uses the inventory clock', async () 
       await list()
       await list()
     })
-    // Only the polled path needs a new identity check in the next inventory pass.
-    expect(identity.mock.calls.slice(before).map(([path]) => path)).toEqual([
-      'Shared/sample-20.md',
-      'Shared/sample-20.md',
-    ])
+    // Only the polled path needs one new identity check against its cached proof.
+    expect(identity.mock.calls.slice(before).map(([path]) => path)).toEqual(['Shared/sample-20.md'])
   } finally {
     stop()
   }
 })
 
-async function setup(count: number, placed = false) {
+async function setup(count: number, placed = false, assertOwned: () => void = () => {}) {
   const app = buildFakeVault(
     Array.from({ length: count }, (_, i) => ({
       path: `Shared/sample-${i}.md`,
@@ -144,7 +189,7 @@ async function setup(count: number, placed = false) {
     emptyView: { ledgerId: 'sample-ledger', binding },
     ledger,
     fs,
-    assertOwned: () => {},
+    assertOwned,
     scriptsFolder: () => 'Scripts',
     inspection: {
       entries: [],
