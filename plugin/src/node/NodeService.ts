@@ -22,6 +22,7 @@ import { nodeScopeEntries } from '@/ai/nodeScope'
 import { requireDelegationScope, scopedPlainCommandRoot } from '@/ai/tools/node/delegationScope'
 import { NodeRequestActivity, nodeRequestWaitMs } from './NodeRequestActivity'
 import { nodeLogAvailable } from './nodeLogCapability'
+import { pruneNodeDatabases } from './pruneNodeDatabases'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
@@ -30,7 +31,12 @@ export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
   readonly activity = new NodeRequestActivity()
   readonly version = ref('')
+  private capabilities = ''
+  private capabilityKey(description: unknown): string {
+    return JSON.stringify((description as { capabilities?: unknown } | null)?.capabilities ?? {})
+  }
   private recordVersion(description: unknown): void {
+    this.capabilities = this.capabilityKey(description)
     if (
       description &&
       typeof description === 'object' &&
@@ -51,6 +57,9 @@ export class NodeConnection {
   readonly delegation: NodeDelegationController
   readonly delegationCards = ref<Record<string, DelegationCard[]>>({})
   private refreshingDelegations?: Promise<void>
+  private delegationDirty = true
+  private delegationActive = true
+  private stopEvents?: () => unknown
   private disposed = false
   private generation = 0
   private timer?: number
@@ -130,6 +139,12 @@ export class NodeConnection {
       return () => guards.forEach((guard) => guard())
     }
     this.delegation = new NodeDelegationController(client, store)
+    this.stopEvents = client.onEvent?.((event) => {
+      const delegation = (event.data as { delegation_id?: string })?.delegation_id
+      const changed = this.delegation.mailboxChanged(event.stream_id, delegation)
+      if (changed || /^(delegation\.|command\.|integration\.)/.test(event.type))
+        this.delegationDirty = true
+    })
     this.delegation.ownerNodeId = tools?.nodeId
     this.delegation.ownerPermissionMode = (provider) => {
       if (!this.tools) return undefined
@@ -197,15 +212,25 @@ export class NodeConnection {
       }
   }
 
-  refreshDelegations(): Promise<void> {
+  refreshDelegations(force = true): Promise<void> {
+    if (this.refreshingDelegations) return this.refreshingDelegations
+    if (!force && !this.delegationDirty && !this.delegationActive) return Promise.resolve()
+    this.delegationDirty = false
     return (this.refreshingDelegations ??= (async () => {
       try {
-        await this.delegation.restore()
+        await this.delegation.restore(force)
         await this.manager.restore()
       } finally {
-        const parents = await this.store.read((s) => [
-          ...new Set(Object.values(s.managerOperations ?? {}).map((e) => e.parent)),
-        ])
+        const { parents, pendingManager } = await this.store.read((s) => ({
+          parents: [...new Set(Object.values(s.managerOperations ?? {}).map((e) => e.parent))],
+          pendingManager: Object.values(s.managerOperations ?? {}).some(
+            (entry) =>
+              !entry.notified ||
+              !['exited', 'applied', 'failed', 'cancelled', 'denied', 'timed_out'].includes(
+                entry.run?.state ?? ''
+              )
+          ),
+        }))
         const managerCards = Object.fromEntries(
           await Promise.all(
             parents.map(async (parent) => [parent, await this.manager.cards(parent)])
@@ -231,6 +256,21 @@ export class NodeConnection {
               .find((s) => s.delegationParentId === parent)
             return session?.wakeDelegationResult('', notice) ?? false
           })
+          this.delegationActive =
+            pendingManager ||
+            Object.values(cards)
+              .flat()
+              .some(
+                (card) => !['completed', 'failed', 'cancelled', 'stopped'].includes(card.state)
+              ) ||
+            Object.values(managerCards)
+              .flat()
+              .some(
+                (card) =>
+                  !['exited', 'applied', 'failed', 'cancelled', 'denied', 'timed_out'].includes(
+                    card.run.state
+                  )
+              )
         }
       }
     })().finally(() => {
@@ -286,6 +326,13 @@ export class NodeConnection {
   connect(reason = 'explicit'): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
     if (this.connecting) return this.connecting
+    if (
+      this.client.connected &&
+      this.executionPolicyReady &&
+      this.state.value === 'connected' &&
+      !this.error.value
+    )
+      return Promise.resolve()
     if (this.client.connected) {
       const generation = this.generation
       this.connecting = this.enableExecutionPolicy()
@@ -338,6 +385,7 @@ export class NodeConnection {
           return
         }
         this.delegation.connectionChanged()
+        this.delegationDirty = true
         this.manager.connectionChanged()
         uiField(this.error, 'value', uiErrorMessage(''))
         nodeLogAvailable(this)
@@ -440,8 +488,17 @@ export class NodeConnection {
         const transportGeneration = this.transportGeneration
         await this.client
           .describe()
-          .then(() => {
+          .then(async (description) => {
             if (!this.disposed && transportGeneration === this.transportGeneration) {
+              const changed = this.capabilities !== this.capabilityKey(description)
+              this.recordVersion(description)
+              if (changed) {
+                this.executionPolicyReady = false
+                await this.enableExecutionPolicy()
+                this.admitObsidianTools()
+                await this.obsidian?.connectionChanged(description)
+              }
+              if (this.disposed || transportGeneration !== this.transportGeneration) return
               this.state.value = 'connected'
               uiField(this.error, 'value', uiErrorMessage(''))
               ++this.healthEpoch.value
@@ -450,7 +507,7 @@ export class NodeConnection {
           .catch(() => {})
       }
       // Mailbox restoration must never own the transport retry lifetime.
-      void this.refreshDelegations().catch(() => {})
+      void this.refreshDelegations(false).catch(() => {})
       void this.obsidian
         ?.tick()
         .catch((error: unknown) =>
@@ -470,6 +527,7 @@ export class NodeConnection {
 
   destroy(): void {
     this.disposed = true
+    this.stopEvents?.()
     this.activity.destroy()
     ++this.generation
     ++this.transportGeneration
@@ -498,6 +556,11 @@ export class NodeService {
   readonly pairedConnector = new NodePairingConnector(this.deviceKeys)
   private readonly connections = new Map<string, NodeConnection>()
   private readonly installation: string
+  private readonly openStores = new Set<string>()
+  private clientStore(namespace: string): NodeClientStore {
+    this.openStores.add(`abele-node-${namespace}`)
+    return new NodeClientStore(namespace)
+  }
   private readonly foreground = () => {
     if (document.visibilityState !== 'hidden')
       for (const connection of this.connections.values())
@@ -538,6 +601,15 @@ export class NodeService {
       removeSecret: (id) => secrets().forgetLocal(id),
     })
     this.nodes = ref(this.registry.list())
+    void pruneNodeDatabases(
+      indexedDB,
+      this.installation,
+      () =>
+        new Set([
+          ...this.openStores,
+          ...this.registry.list().map((node) => `abele-node-${this.installation}-${node.id}`),
+        ])
+    ).catch((error) => console.debug('[Abele node] Old cache cleanup pending', error))
     document.addEventListener('visibilitychange', this.foreground)
     window.addEventListener('focus', this.foreground)
   }
@@ -550,7 +622,7 @@ export class NodeService {
     current: () => boolean = () => true
   ): Promise<RegisteredNode> {
     const id = crypto.randomUUID()
-    const store = new NodeClientStore(`${this.installation}-${id}`)
+    const store = this.clientStore(`${this.installation}-${id}`)
     const client = new NodeClient(
       {
         url: channelUrl(url),
@@ -692,7 +764,7 @@ export class NodeService {
     const node = this.registry.list().find((node) => node.id === id)
     if (!node) throw new Error('Reconnect this node in Nodes settings')
     const paired = isPairedNode(node)
-    const store = new NodeClientStore(
+    const store = this.clientStore(
       paired ? `paired-${node.expectedNodeId}-${node.installationId}` : `${this.installation}-${id}`
     )
     const client = new NodeClient(

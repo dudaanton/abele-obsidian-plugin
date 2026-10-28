@@ -74,6 +74,14 @@ export class NodeDelegationController {
   private readonly wakeEpochs = new Map<string, number>()
   private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
   private readonly statusCheckedAt = new Map<string, number>()
+  private readonly changedTasks = new Set<string>()
+  private readonly streams = new Map<string, string>()
+  mailboxChanged(stream: string, delegation?: string): boolean {
+    const id = delegation ?? this.streams.get(stream)
+    if (!id) return false
+    this.changedTasks.add(id)
+    return true
+  }
   private readonly workspaces = new Map<
     string,
     { branch?: string; files: string[]; state: string; checkedAt: number }
@@ -489,7 +497,7 @@ export class NodeDelegationController {
   }
 
   /** Recover receipts before subscribing. Does not depend on an open parent/child tab. */
-  async restore() {
+  async restore(force = false) {
     const { children, cancellations } = await this.store.transaction((s) => {
       const local = storage(s)
       // Retry waiter clearing if Stop's initial durable write failed.
@@ -554,6 +562,10 @@ export class NodeDelegationController {
       }
     })
     if (this.client.connected) {
+      for (const child of children) {
+        this.streams.set(child.mailbox_stream_id, child.delegation_id)
+        this.streams.set(child.session_id, child.delegation_id)
+      }
       await Promise.all(cancellations.map(({ key, id }) => this.cancelAborted(key, id)))
       // A parent need not subscribe to every child tool event to show running state
       // or direct a human to a pending permission/extension question.
@@ -562,10 +574,12 @@ export class NodeDelegationController {
           const current = await this.store.transaction(
             (s) => storage(s).tasks[child.delegation_key].status?.state
           )
+          const changed = this.changedTasks.delete(child.delegation_id)
           if (
             current &&
-            ['completed', 'failed', 'cancelled', 'unknown', 'stopped'].includes(current) &&
-            Date.now() - (this.statusCheckedAt.get(child.delegation_id) ?? -Infinity) < 15000
+            ['completed', 'failed', 'cancelled'].includes(current) &&
+            !force &&
+            !changed
           )
             return
           try {
@@ -627,7 +641,7 @@ export class NodeDelegationController {
             const state = await this.store.transaction(
               (s) => storage(s).tasks[child.delegation_key].status?.state ?? child.state
             )
-            const previous = this.workspaces.get(child.workspace_id)
+            const previous = this.workspaces.get(child.delegation_id)
             if (
               previous?.state === state &&
               (['completed', 'failed', 'unknown', 'cancelled', 'stopped'].includes(state) ||
@@ -636,7 +650,7 @@ export class NodeDelegationController {
               continue
             const workspace = await this.client.getWorkspace(child.workspace_id)
             const status = await this.client.workspaceStatus(child.workspace_id, 0, 20)
-            this.workspaces.set(child.workspace_id, {
+            this.workspaces.set(child.delegation_id, {
               branch: workspace.branch ?? undefined,
               files: status.entries.map((entry) => entry.path),
               state,
@@ -792,7 +806,7 @@ export class NodeDelegationController {
         const messages = transcript?.messages ?? []
         const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
         const tool = messages.findLast((m) => m.role === 'tool-call' && m.toolResult === undefined)
-        const workspace = child?.workspace_id ? this.workspaces.get(child.workspace_id) : undefined
+        const workspace = child?.workspace_id ? this.workspaces.get(child.delegation_id) : undefined
         // Terminal mail can beat status polling. A dead worker cannot own an
         // actionable approval, even while its last status still says one is pending.
         const settled =

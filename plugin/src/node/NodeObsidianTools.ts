@@ -95,6 +95,14 @@ export class NodeObsidianTools {
   private readonly preparing = new Map<string, Promise<void>>()
   private readonly running = new Map<string, Promise<void>>()
   private lastDiscovery = 0
+  private advertised = ''
+  private readonly snapshotCache = new Map<
+    string,
+    { key: string; value: Promise<Awaited<ReturnType<NodeObsidianTools['buildSnapshot']>>> }
+  >()
+  private readonly configurations = new Map<string, z.infer<typeof Configuration>>()
+  private readonly sessionLiveness = new Map<string, boolean>()
+  private readonly cleanup: (() => void)[] = []
   private async forget(session: string): Promise<void> {
     this.sessions.delete(session)
     this.sessionModes.delete(session)
@@ -110,6 +118,32 @@ export class NodeObsidianTools {
     readonly label: string
   ) {
     const app = GlobalStore.getInstance().app
+    const invalidate = () => this.snapshotCache.clear()
+    this.cleanup.push(AbeleConfig.getInstance().onSaved(invalidate))
+    const skillsChanged = app.metadataCache.on?.('changed', invalidate)
+    if (skillsChanged) this.cleanup.push(() => app.metadataCache.offref(skillsChanged))
+    this.cleanup.push(
+      client.onEvent?.((event) => {
+        if (event.stream_id === 'catalog' && event.type === 'obsidian.tools.questionnaire')
+          void this.refreshQuestionnaires().catch((error) =>
+            console.debug('[Abele node] Questionnaire recovery pending', error)
+          )
+        const data = event.data as { revision?: string }
+        const session = event.stream_id
+        if (
+          event.type === 'obsidian.tools.configured' &&
+          data.revision !== this.sessionRevisions.get(session)
+        ) {
+          this.sessionRevisions.delete(session)
+          this.configurations.delete(session)
+        }
+        if (['turn.started', 'input.accepted'].includes(event.type))
+          this.sessionLiveness.set(session, true)
+        if (['turn.completed', 'session.ended'].includes(event.type))
+          this.sessionLiveness.set(session, false)
+        if (event.type === 'session.updated') this.sessionLiveness.delete(session)
+      }) ?? (() => {})
+    )
     const localId = (key: string) => {
       const previous = app.loadLocalStorage(key) as string | undefined
       const id = previous || crypto.randomUUID()
@@ -211,9 +245,15 @@ export class NodeObsidianTools {
   private async snapshot(session: string, agentId: string) {
     const agent = AgentRegistry.getInstance().get(agentId)
     if (!agent) throw new Error('This node agent is no longer configured')
-    if (this.permissionSnapshots && !['delegate-target', 'delegation'].includes(session)) {
+    if (
+      this.permissionSnapshots &&
+      !['delegate-target', 'delegation'].includes(session) &&
+      this.sessionLiveness.get(session) !== false
+    ) {
       try {
-        const policy = readToolPermissions(await this.client.sessionState(session))
+        const state = await this.client.sessionState(session)
+        this.sessionLiveness.set(session, state.live === true)
+        const policy = readToolPermissions(state)
         if (policy)
           this.sessionModes.set(
             session,
@@ -229,6 +269,22 @@ export class NodeObsidianTools {
         console.debug('[Abele node] session permission snapshot unavailable', error)
       }
     }
+    const key = JSON.stringify([
+      agent,
+      AbeleConfig.getInstance().ai.mcpServers,
+      AbeleConfig.getInstance().ai.skillsFolder,
+    ])
+    const cached = this.snapshotCache.get(agentId)
+    if (cached?.key === key) return cached.value
+    const value = this.buildSnapshot(session, agentId)
+    this.snapshotCache.set(agentId, { key, value })
+    void value.catch(() => {
+      if (this.snapshotCache.get(agentId)?.value === value) this.snapshotCache.delete(agentId)
+    })
+    return value
+  }
+  private async buildSnapshot(session: string, agentId: string) {
+    const agent = AgentRegistry.getInstance().get(agentId)!
     const tools = this.adapter(session, agentId, 'snapshot').tools()
     const conversation = nodeConversation(agent)
     const max_delegate_depth = Math.min(3, Math.max(0, Math.floor(agent.maxDelegateDepth ?? 0)))
@@ -259,8 +315,12 @@ export class NodeObsidianTools {
   }
   async connectionChanged(description: unknown): Promise<void> {
     this.connected = false
+    this.advertised = ''
     this.permissionSnapshots = !!ownerPermissionPatch(description).permission_mode
     this.sessionModes.clear()
+    this.sessionLiveness.clear()
+    this.configurations.clear()
+    this.sessionRevisions.clear()
     if (!nodeAdvertisesMethod(this.client, prefix + 'advertise')) return
     const before = AgentRegistry.getInstance().list({
       includeUtility: true,
@@ -281,13 +341,6 @@ export class NodeObsidianTools {
     // Re-admit only snapshots this installation can actually execute for this vault.
     this.connected = true
     if (nodeAdvertisesMethod(this.client, prefix + 'questions.pending')) {
-      this.stopQuestionnaires?.()
-      this.stopQuestionnaires = this.client.onEvent((event) => {
-        if (event.stream_id === 'catalog' && event.type === 'obsidian.tools.questionnaire')
-          void this.refreshQuestionnaires().catch((error) =>
-            console.debug('[Abele node] Questionnaire recovery pending', error)
-          )
-      })
       await this.client.subscribe('catalog')
       await this.refreshQuestionnaires()
     }
@@ -399,11 +452,20 @@ export class NodeObsidianTools {
       conversation,
       max_delegate_depth,
     } = await this.snapshot(session, agentId)
+    const configured = this.snapshots.get(agentId)
+    if (
+      configured?.fingerprint === fingerprint &&
+      this.sessionRevisions.get(session) === configured.revision &&
+      this.configurations.has(session)
+    )
+      return
     let remote: z.infer<typeof Config> | undefined
     try {
-      remote = Configuration.parse(
+      const response = Configuration.parse(
         await this.client.request(prefix + 'configuration', { session_id: session })
-      ).configuration
+      )
+      this.configurations.set(session, response)
+      remote = response.configuration
     } catch (error) {
       if ((error as { code?: string }).code !== 'obsidian_not_configured') throw error
     }
@@ -449,13 +511,26 @@ export class NodeObsidianTools {
     this.snapshots.set(agentId, { fingerprint, revision })
     this.sessions.set(session, agentId)
     this.sessionRevisions.set(session, revision)
+    const previous = this.configurations.get(session)
+    this.configurations.set(session, {
+      clients: previous?.clients ?? [],
+      configuration: {
+        session_id: session,
+        vault_id: this.vaultId,
+        agent_id: agentId,
+        revision,
+        tools,
+        conversation,
+        max_delegate_depth,
+      },
+    })
     await this.store.transaction((state) => {
       ;(state.obsidianSessions ??= {})[session] = agentId
     })
     this.adapter(session, agentId, revision)
   }
   private async advertise() {
-    await this.client.request(prefix + 'advertise', {
+    const advertisement = {
       client_id: this.clientId,
       vault_id: this.vaultId,
       platform: Platform.isMobile ? 'mobile' : 'desktop',
@@ -463,7 +538,11 @@ export class NodeObsidianTools {
       revisions: Object.fromEntries(
         [...this.snapshots].map(([agent, snapshot]) => [agent, snapshot.revision])
       ),
-    })
+    }
+    const signature = JSON.stringify(advertisement)
+    if (this.advertised === signature) return
+    await this.client.request(prefix + 'advertise', advertisement)
+    this.advertised = signature
   }
   tick(): Promise<void> {
     if (!this.connected || this.disposed) return Promise.resolve()
@@ -498,10 +577,9 @@ export class NodeObsidianTools {
       }
     }
     const first = this.sessions.keys().next().value as string | undefined
-    if (first) {
-      const { clients, configuration } = Configuration.parse(
-        await this.client.request(prefix + 'configuration', { session_id: first })
-      )
+    const configured = first ? this.configurations.get(first) : undefined
+    if (configured) {
+      const { clients, configuration } = configured
       const eligible = clients
         .filter((client) => client.revisions[configuration.agent_id] === configuration.revision)
         .sort((a, b) => Number(b.platform === 'desktop') - Number(a.platform === 'desktop'))
@@ -586,10 +664,13 @@ export class NodeObsidianTools {
   }
   disconnected(): void {
     this.connected = false
+    this.advertised = ''
     nodeToolRunners[this.nodeId] = { state: 'none' }
   }
   async destroy(): Promise<void> {
     this.disposed = true
+    for (const stop of this.cleanup) stop()
+    this.cleanup.length = 0
     this.stopQuestionnaires?.()
     this.disconnected()
     await this.executor.destroy()

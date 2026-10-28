@@ -7,6 +7,7 @@ vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
       connection: () => ({
+        state: { value: 'connected' },
         connect: async () => {},
         client: {
           request: state.request,

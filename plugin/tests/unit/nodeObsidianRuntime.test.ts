@@ -11,6 +11,7 @@ import type { NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
 import { ObsidianToolsSnapshotSchema, PromptSchema } from '@abele/node-protocol'
 import { rememberSessionOwnerMode } from '@/node/sessionOwnerMode'
+import { NodeObsidianAdapter } from '@/node/NodeObsidianAdapter'
 
 it.each([
   ['confirm-all', undefined, 'bypassPermissions', 'confirm-all'],
@@ -27,14 +28,16 @@ it.each([
     const agent = ensureNodeAgents('sample-node', 'Sample node', ['fake'])[0]!
     agent.permissionMode = own
     const store = new NodeClientStore('sample-mode-' + crypto.randomUUID(), new IDBFactory())
+    const sessionState = vi.fn(async () => ({
+      live: false,
+      tool_permissions: {
+        permission_mode: remote,
+        status: 'supported',
+        per_action_approval: true,
+      },
+    }))
     const client = {
-      sessionState: async () => ({
-        tool_permissions: {
-          permission_mode: remote,
-          status: 'supported',
-          per_action_approval: true,
-        },
-      }),
+      sessionState,
     } as unknown as NodeClient
     const runtime = new NodeObsidianTools(client, store, 'sample-node', 'Sample node')
     try {
@@ -53,6 +56,8 @@ it.each([
       }
       internal.permissionSnapshots = true
       await internal.snapshot('sample', agent.id)
+      await internal.snapshot('sample', agent.id)
+      expect(sessionState).toHaveBeenCalledTimes(1)
       expect(internal.adapter('sample', agent.id, 'test').agent().permissionMode).toBe(expected)
       expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(
         expected === 'confirm-all'
@@ -182,6 +187,18 @@ it('configures ordinary schemas before execution, advertises on reconnect and co
     await runtime.connectionChanged({ providers: [{ provider: 'fake', available: true }] })
     await runtime.ensureSession('sample-session', 'fake')
     await runtime.ensureSession('sample-second-session', 'fake')
+    const tools = vi.spyOn(NodeObsidianAdapter.prototype, 'tools')
+    const idleCalls = request.mock.calls.length
+    await runtime.tick()
+    await runtime.tick()
+    expect(tools).not.toHaveBeenCalled()
+    tools.mockRestore()
+    expect(
+      request.mock.calls.slice(idleCalls).filter(([method]) => method.endsWith('.configuration'))
+    ).toHaveLength(0)
+    expect(
+      request.mock.calls.slice(idleCalls).filter(([method]) => method.endsWith('.advertise'))
+    ).toHaveLength(0)
     const configuration = configs.get('sample-session')!
     const { session_id: _sessionId, ...wireSnapshot } = configuration
     expect(ObsidianToolsSnapshotSchema.safeParse(wireSnapshot).success).toBe(true)

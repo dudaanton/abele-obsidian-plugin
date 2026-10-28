@@ -53,7 +53,7 @@ function rpcFor(registrationId: string) {
   return {
     connection,
     rpc: new TraceRpc(async (method, params) => {
-      await connection.connect()
+      if (connection.state.value !== 'connected') await connection.connect()
       return connection.client.request(method, params)
     }),
   }

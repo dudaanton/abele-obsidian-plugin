@@ -3346,6 +3346,9 @@ their exact tool snapshots shared by content fingerprint and reconstructed for r
 The cache retains the latest 200 delivered terminal tasks, plus all unfinished or uncertain
 work, pending sends and owner stop fences. Older cache layouts migrate atomically; older
 clients cannot write the new layout.
+Startup removes orphaned registration caches belonging to this vault installation, while
+preserving current registrations and caches whose ownership cannot be established (including
+other installations and legacy paired caches).
 
 Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
 (node ID, display name and provider). Their ordinary permission mode, scope and tool modes

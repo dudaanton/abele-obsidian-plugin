@@ -43,6 +43,63 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it('does not poll a settled task again without a mailbox change', async () => {
+  const f = fixture()
+  try {
+    await f.controller.create('parent', task)
+    await f.store.transaction((s) => {
+      const entry = Object.values(s.delegation!.tasks)[0]
+      entry.status = {
+        ...child,
+        state: 'completed',
+        session_head_seq: 17,
+        mailbox_head_seq: 2,
+        pending_human_prompts: 0,
+      }
+    })
+    f.client.delegationStatus.mockClear()
+    await f.controller.restore()
+    expect(f.client.delegationStatus).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
+
+it('keeps activity caches independent for tasks in the same workspace with different states', async () => {
+  const f = fixture()
+  const getWorkspace = vi.fn(async () => ({ branch: 'sample-branch' }))
+  const workspaceStatus = vi.fn(async () => ({ entries: [] }))
+  Object.assign(f.client, { getWorkspace, workspaceStatus, subscribe: async () => {} })
+  f.client.createDelegation.mockImplementation(async (request) => ({
+    ...child,
+    delegation_id: request.delegation_key,
+    delegation_key: request.delegation_key,
+    workspace_id: 'sample-shared-workspace',
+  }))
+  try {
+    await f.controller.create('parent', task)
+    await f.controller.create('parent', { ...task, task_key: 'sample-other-task' })
+    await f.store.transaction((s) => {
+      Object.values(s.delegation!.tasks).forEach((entry, i) => {
+        entry.status = {
+          ...entry.child!,
+          state: i ? 'failed' : 'completed',
+          session_head_seq: 17,
+          mailbox_head_seq: 2,
+          pending_human_prompts: 0,
+        }
+      })
+    })
+    await f.controller.restore()
+    getWorkspace.mockClear()
+    workspaceStatus.mockClear()
+    await f.controller.restore()
+    expect(getWorkspace).not.toHaveBeenCalled()
+    expect(workspaceStatus).not.toHaveBeenCalled()
+  } finally {
+    f.store.close()
+  }
+})
 it('keeps an owner stop durable across restore and refuses autonomous follow-ups', async () => {
   const f = fixture()
   try {

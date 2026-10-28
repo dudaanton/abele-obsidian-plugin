@@ -42,6 +42,45 @@ it('lets a debugger long poll finish without blocking foreground requests or exp
   }
 })
 
+it('does no delegation restore on an idle tick and wakes after a mailbox event', async () => {
+  const memory = new MemoryClientStore()
+  let event!: (event: { type: string; stream_id: string; data: unknown }) => void
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [] } as never)
+  const connection = new NodeConnection(
+    {
+      connected: true,
+      disconnect: async () => {},
+      onEvent: (listener: typeof event) => {
+        event = listener
+        return () => {}
+      },
+    } as never,
+    {
+      transaction: memory.transaction.bind(memory),
+      read: memory.transaction.bind(memory),
+      close() {},
+    } as never
+  )
+  try {
+    await connection.refreshDelegations()
+    const restore = vi.spyOn(connection.delegation, 'restore')
+    await connection.refreshDelegations(false)
+    expect(restore).not.toHaveBeenCalled()
+    event({
+      type: 'delegation.progress',
+      stream_id: 'sample-mailbox',
+      data: { delegation_id: 'sample-child' },
+    })
+    await connection.refreshDelegations(false)
+    expect(restore).toHaveBeenCalledOnce()
+  } finally {
+    connection.destroy()
+    chats.mockRestore()
+  }
+})
+
 it('approves a plain-root command without requiring a broader project grant', async () => {
   const chat = {
     delegationParentId: 'sample-parent',
@@ -654,7 +693,7 @@ it('shares concurrent capability refreshes on an already admitted connection', a
     // Initial policy discovery plus the fresh capability response, shared by both callers.
     expect(client.describe).toHaveBeenCalledTimes(2)
     await connection.connect()
-    expect(client.describe).toHaveBeenCalledTimes(3)
+    expect(client.describe).toHaveBeenCalledTimes(2)
   } finally {
     release()
     connection.destroy()

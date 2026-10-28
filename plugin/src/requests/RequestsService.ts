@@ -42,7 +42,7 @@ export function rpcFor(registrationId: string) {
   return {
     rpc: new HttpRpc(async (method, params) => {
       const connection = NodeService.getInstance().connection(registrationId)
-      await connection.connect()
+      if (connection.state.value !== 'connected') await connection.connect()
       return connection.client.request(method, params)
     }),
   }
@@ -177,7 +177,7 @@ export async function destinationRecording(
   url = originOf(url)
   if (!url) return undefined
   const connection = NodeService.getInstance().connection(c.registrationId)
-  await connection.connect()
+  if (connection.state.value !== 'connected') await connection.connect()
   const support = httpRecordingCapabilities(await connection.client.describe())
   if (!support.destination) return recordingOf(c, url)
   const owner = await rpcFor(c.registrationId).rpc.destination(c.projectId, url)
@@ -298,7 +298,12 @@ export class RequestsService {
                   .expectedNodeId,
                 ...c,
               },
-              () => NodeService.getInstance().connection(c.registrationId).connect(),
+              () => {
+                const connection = NodeService.getInstance().connection(c.registrationId)
+                return connection.state.value === 'connected'
+                  ? Promise.resolve()
+                  : connection.connect()
+              },
               c.worktreeId,
               () => NodeService.getInstance().transientClient(c.registrationId)
             )
@@ -362,7 +367,7 @@ export class RequestsService {
     for (const node of service.nodes.value) {
       const connection = service.connection(node.id)
       try {
-        await connection.connect()
+        if (connection.state.value !== 'connected') await connection.connect()
         if (!nodeHttpSupported(await connection.client.describe())) continue
         let after: string | undefined
         for (let page = 0; page < 64; page++) {
