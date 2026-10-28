@@ -1302,7 +1302,7 @@ describe('debugger shared control', () => {
             resolve = r
           }) as never
       )
-      const pending = model.command('stop')
+      const pending = model.command('step-over')
       await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
       model.observe({
         observation: 'current',
@@ -1390,7 +1390,7 @@ describe('debugger shared control', () => {
     const { model, rpc, command } = fixture()
     rpc.mockResolvedValueOnce({ proposals: [], truncated: false, next: null } as never)
     rpc.mockResolvedValueOnce(receipt() as never)
-    await expect(model.command('stop')).rejects.toThrow('retirement')
+    await expect(model.command('step-over')).rejects.toThrow('retirement')
     expect(command).not.toHaveBeenCalled()
     expect(model.actions[0].status).toBe('done')
     expect(model.actions[0].result).toContain('not confirmed')
@@ -1409,7 +1409,7 @@ describe('debugger shared control', () => {
             resolve = r
           }) as never
       )
-      const move = model.command('stop')
+      const move = model.command('step-over')
       await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
       try {
         await vi.waitFor(() => expect(command).toHaveBeenCalled(), { timeout: 150 })

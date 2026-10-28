@@ -3,7 +3,11 @@ import { computed, shallowRef, watch, type WatchStopHandle } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { debugIdentity, debugOwnerParams, isFolderOwner, type DebugOwner } from './owner'
-import { DebuggerSnapshotSchema, type DebuggerSnapshot } from '@abele/node-protocol'
+import {
+  DebuggerSnapshotSchema,
+  DebuggerControlMethodSchemas,
+  type DebuggerSnapshot,
+} from '@abele/node-protocol'
 import { z } from 'zod'
 import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
@@ -64,11 +68,18 @@ export class DebuggerBinding {
     this.controller = new DebuggerController(
       {
         rpc: (method, params) => connection.client.request(method, params),
-        command: (method, params) =>
-          connection.client.debugger.command(
-            method as Parameters<typeof connection.client.debugger.command>[0],
-            params as never
-          ),
+        command: (method, params) => {
+          const wireMethod = `debugger.v1.${method}` as keyof typeof DebuggerControlMethodSchemas
+          const schema = DebuggerControlMethodSchemas[wireMethod]
+          if (!schema) return Promise.reject(new Error('Unsupported debugger command'))
+          // The controller already fences its snapshot and consumes receipts. The SDK helper
+          // adds a status preflight that can delay dispatch until after a disconnect click.
+          return connection.client.request(wireMethod, schema.parse(params))
+        },
+        cancelPending: () => {
+          this.stopWatch()
+          this.trace?.dispose()
+        },
       },
       () => {
         if (
@@ -87,6 +98,7 @@ export class DebuggerBinding {
           this.controller.invalidate()
         } else if (
           !this.disposed &&
+          !this.controller.disconnectRequested &&
           this.observationId &&
           (previous !== 'connected' ||
             (!this.controller.current && !this.controller.session.unavailable)) &&
@@ -117,6 +129,8 @@ export class DebuggerBinding {
     this.sessionMissing = false
     this.stopWatch()
     this.controller.invalidate()
+    if (this.controller.disconnectRequested) this.trace = undefined
+    this.controller.resumeObservation()
     this.controller.clearGrant('Live agent grant is being loaded')
     this.loadedEpoch = undefined
     const abort = (this.abort = new AbortController())
@@ -361,7 +375,7 @@ export class DebuggerBinding {
     }))
   }
   fail(error: unknown) {
-    if (this.disposed) return
+    if (this.disposed || this.controller.disconnectRequested) return
     console.debug('[debugger] Request unavailable', error)
     this.controller.error = error instanceof Error ? error.message : t('streamC.e6d2c5631ed60d81')
     if (this.connection.state.value !== 'connected') this.controller.disconnected()
@@ -465,7 +479,10 @@ export class DebuggerService {
       const result = existing
         ? undefined
         : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
-      if ((existing || (result && result.outcome === 'completed')) && points.lines.get(line) === id) {
+      if (
+        (existing || (result && result.outcome === 'completed')) &&
+        points.lines.get(line) === id
+      ) {
         points.lines.delete(line)
         ++this.pendingRevision.value
       }

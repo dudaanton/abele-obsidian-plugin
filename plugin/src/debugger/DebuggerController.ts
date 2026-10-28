@@ -49,6 +49,7 @@ type Invocation = {
 export interface DebuggerTransport {
   rpc(method: string, params: unknown): Promise<unknown>
   command(method: string, params: unknown): Promise<unknown>
+  cancelPending?(): void
 }
 /** What a refused or uncertain command says in the panel: words for the codes a person can act
  * on, the code itself for the rest. */
@@ -93,6 +94,21 @@ export class DebuggerController {
   private inspections = new Map<string, { expression?: string; handle?: string }>()
   private lost = false
   private serial = 0
+  private disconnectTarget?: string
+  private readonly pendingRequests = new Set<() => void>()
+  get disconnectRequested() {
+    return this.disconnectTarget !== undefined
+  }
+  resumeObservation() {
+    this.disconnectTarget = undefined
+  }
+  private pendingRequest<T>(request: Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const cancel = () => reject(new Error('Debugger request cancelled by disconnect'))
+      this.pendingRequests.add(cancel)
+      request.then(resolve, reject).finally(() => this.pendingRequests.delete(cancel))
+    })
+  }
   private frameHandles: string[] = []
   loadedStackEpoch?: number
   private watchesEpoch?: number
@@ -190,6 +206,8 @@ export class DebuggerController {
       return
     }
     const s = DebuggerSnapshotSchema.parse(observation.snapshot)
+    if (this.disconnectTarget === JSON.stringify([s.debug_session_id, s.incarnation])) return
+    this.disconnectTarget = undefined
     if (
       this.snapshot?.debug_session_id === s.debug_session_id &&
       (s.event_seq < this.snapshot.event_seq ||
@@ -279,7 +297,7 @@ export class DebuggerController {
     this.notify()
   }
   get current() {
-    return !!this.snapshot && !this.lost
+    return !!this.snapshot && !this.lost && !this.disconnectRequested
   }
   private invocation(): Invocation {
     if (!this.current || !this.snapshot) throw new Error('A fresh debugger snapshot is required')
@@ -427,7 +445,7 @@ export class DebuggerController {
         `debugger.v1.${method}` as keyof typeof DebuggerControlMethodSchemas
       ]
     if (!schema) throw new Error('Unsupported debugger operation')
-    return this.transport.rpc(`debugger.v1.${method}`, schema.parse(params))
+    return this.pendingRequest(this.transport.rpc(`debugger.v1.${method}`, schema.parse(params)))
   }
   addProposal(raw: unknown) {
     const p = ProposalSchema.parse(raw)
@@ -478,8 +496,8 @@ export class DebuggerController {
     })
     this.notify()
   }
-  async refreshApprovals(): Promise<Proposal[]> {
-    if (!this.current || !this.snapshot) return []
+  async refreshApprovals(current: () => boolean = () => this.current): Promise<Proposal[]> {
+    if (!current() || !this.snapshot) return []
     const generation = this.serial,
       sessionId = this.snapshot.debug_session_id
     const proposals: Proposal[] = []
@@ -488,7 +506,7 @@ export class DebuggerController {
       const page = ApprovalPageSchema.parse(
         await this.rpc('approvals', { debug_session_id: sessionId, after })
       )
-      if (!this.current || generation !== this.serial) return []
+      if (!current() || generation !== this.serial) return []
       for (const p of page.proposals) {
         this.addProposal(p)
         proposals.push(p)
@@ -501,12 +519,18 @@ export class DebuggerController {
     } while (after !== '')
     return proposals
   }
-  private async ownerCommand(method: string, params: Record<string, unknown>) {
+  private async ownerCommand(
+    method: string,
+    params: Record<string, unknown>,
+    current: () => boolean = () => this.current
+  ) {
     const generation = this.serial
-    const result = DebuggerReceiptSchema.parse(await this.transport.command(method, params))
-    if (result.outcome !== 'pending' || !this.current || generation !== this.serial) return result
-    const proposals = await this.refreshApprovals()
-    if (!this.current || generation !== this.serial) return result
+    const result = DebuggerReceiptSchema.parse(
+      await this.pendingRequest(this.transport.command(method, params))
+    )
+    if (result.outcome !== 'pending' || !current() || generation !== this.serial) return result
+    const proposals = await this.refreshApprovals(current)
+    if (!current() || generation !== this.serial) return result
     const own = proposals.find(
       (p) =>
         p.actor.kind === 'human' &&
@@ -569,6 +593,56 @@ export class DebuggerController {
       this.deciding.delete(id)
     }
   }
+  private async disconnect(method: 'detach' | 'terminate') {
+    const invocation = this.invocation()
+    this.disconnectTarget = JSON.stringify([
+      invocation.snapshot.debug_session_id,
+      invocation.snapshot.incarnation,
+    ])
+    this.disconnected()
+    const generation = this.serial
+    const current = () => generation === this.serial && this.disconnectRequested
+    this.session.status = 'exited'
+    this.session.detached = method === 'detach'
+    this.error = ''
+    for (const cancel of this.pendingRequests) cancel()
+    this.pendingRequests.clear()
+    this.transport.cancelPending?.()
+    this.notify()
+    console.debug('[debugger] Disconnect requested', method, invocation.snapshot.debug_session_id)
+    try {
+      // The node fences prior work when this control arrives. Do not queue it behind the work
+      // it is meant to stop, or wait for proposal retirement before dispatching it.
+      const result = await this.ownerCommand(
+        method,
+        {
+          ...this.precondition(invocation),
+          operation_id: crypto.randomUUID(),
+        },
+        current
+      )
+      if (!current()) return
+      if (
+        result.snapshot.debug_session_id !== invocation.snapshot.debug_session_id ||
+        result.snapshot.incarnation !== invocation.snapshot.incarnation
+      )
+        throw new Error(t('node.error.generic'))
+      this.snapshot = result.snapshot
+      if (result.outcome !== 'completed') {
+        this.session.status = 'lost'
+        this.session.detached = false
+        this.error = receiptMessage(result.code ?? result.outcome)
+      }
+      this.notify()
+    } catch (error) {
+      if (!current()) return
+      this.session.status = 'lost'
+      this.session.detached = false
+      this.error = error instanceof Error ? error.message : t('node.error.generic')
+      this.notify()
+      throw error
+    }
+  }
   command(action: string) {
     const paused = this.session.status === 'paused'
     if (
@@ -578,16 +652,16 @@ export class DebuggerController {
       (action === 'pause' && this.session.status !== 'running')
     )
       return Promise.resolve()
+    if (action === 'stop' || action === 'detach' || action === 'terminate')
+      return this.disconnect(
+        action === 'detach' || this.snapshot?.target.process_ownership !== 'owned'
+          ? 'detach'
+          : 'terminate'
+      )
     return this.human(async (invocation) => {
       const s = invocation.snapshot,
         thread = s.selected_thread_id ?? s.threads.find((t) => t.status === 'stopped')?.thread_id
-      const method = action.startsWith('step-')
-        ? 'step'
-        : action === 'stop'
-          ? s.target.process_ownership === 'owned'
-            ? 'terminate'
-            : 'detach'
-          : action
+      const method = action.startsWith('step-') ? 'step' : action
       const params = {
         ...this.precondition(invocation),
         operation_id: crypto.randomUUID(),
