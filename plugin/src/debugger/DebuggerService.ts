@@ -58,6 +58,7 @@ export class DebuggerBinding {
     if (this.trace)
       this.trace.points = this.trace.points.filter((point) => point.breakpoint_id !== id)
     ++this.revision.value
+    GlobalStore.getInstance().app?.workspace?.requestSaveLayout?.()
   }
   sessionMissing = false
   /** The session's recording, where the node records runs. */
