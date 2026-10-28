@@ -30,3 +30,20 @@ it('selects the recording at the request destination rather than the displayed s
   state.bindings[0].controller.session.output = ''
   expect(recordingOf(context, 'http://localhost:4567/items')?.sessionId).toBe('sample-server')
 })
+
+it('does not infer an unknown destination from the only recording when another session exists', () => {
+  state.bindings = ['recording-service', 'attached-service'].map((sessionId, i) => ({
+    sessionId,
+    controller: {
+      snapshot: { target: { launch_configuration_id: sessionId } },
+      session: { output: '' },
+    },
+    trace: { status: { recording: i === 0 ? {} : undefined } },
+  }))
+  expect(
+    recordingOf(
+      { registrationId: 'sample-node', projectId: 'sample-project' },
+      'http://localhost:4568/items'
+    )
+  ).toBeUndefined()
+})

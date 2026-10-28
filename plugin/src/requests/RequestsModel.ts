@@ -270,6 +270,12 @@ export class RequestsModel {
         const file = this.files?.get(id)
         if (!file) throw new Error('The request file is gone')
         entry.doc = file.doc
+        entry.error = undefined
+        const answer = this.ports.prefs.get(`answer:${id}`)
+        if (!entry.outcome && answer)
+          await this.showSend(id, answer).catch((e) =>
+            console.debug('[requests] Retained file answer unavailable', e)
+          )
         return
       }
       entry.doc = await this.rpc.get(this.projectId, id)
@@ -669,6 +675,7 @@ export class RequestsModel {
             }
           : {}),
       })
+      if (file) this.ports.prefs.set(`answer:${id}`, started.send_id)
       const status = await followSend(
         this.rpc,
         this.projectId,
@@ -763,6 +770,7 @@ export class RequestsModel {
     if (this.answerReads.get(id) !== selection) return
     entry.outcome = outcome
     entry.shown = sendId
+    if (id.startsWith('file:')) this.ports.prefs.set(`answer:${id}`, sendId)
     if (entry.compare?.id === sendId) entry.compare = undefined
   }
 

@@ -147,13 +147,14 @@ export function recordingOf(
       return undefined
     }
   }
-  const candidates = DebuggerService.instance
-    .projectBindings(c.registrationId, c.projectId)
-    .filter((binding) => binding.trace?.status?.recording && binding.sessionId)
+  const sessions = DebuggerService.instance.projectBindings(c.registrationId, c.projectId)
+  const candidates = sessions.filter(
+    (binding) => binding.trace?.status?.recording && binding.sessionId
+  )
   const bindings = candidates.filter((binding) => {
     if (!url) return true
     const address = serverAddress(binding.controller.session.output)
-    if (!address && candidates.length === 1) return true
+    if (!address && sessions.length === 1) return true
     return address && origin(address) === origin(url)
   })
   // Ambiguous destinations never silently record a different program.
