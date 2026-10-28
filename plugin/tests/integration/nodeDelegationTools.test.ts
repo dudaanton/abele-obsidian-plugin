@@ -9,6 +9,7 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
+import { DelegationSchema } from '@abele/node-protocol'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
 it('refuses stale node instructions when Delegate is off despite run access and approval', async () => {
@@ -284,18 +285,21 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
       providers: [{ provider: 'pi', available: true }],
     }),
     approveDelegationGrant: vi.fn(async () => grant),
-    createDelegation: vi.fn(async (request) => ({
-      ...request,
-      node_id: 'node',
-      session_id: 'child',
-      delegation_id: 'delegation',
-      parent_id: 'parent',
-      mailbox_stream_id: 'mailbox',
-      workspace_id: null,
-      job_id: null,
-      state: 'running',
-      created_at: '2028-01-01T00:00:00Z',
-    })),
+    createDelegation: vi.fn(async (request) =>
+      DelegationSchema.parse({
+        delegation_key: request.delegation_key,
+        grant_id: grant.grant_id,
+        node_id: 'node',
+        session_id: 'child',
+        delegation_id: 'delegation',
+        parent_id: 'parent',
+        mailbox_stream_id: 'mailbox',
+        workspace_id: null,
+        job_id: null,
+        state: 'running',
+        created_at: '2028-01-01T00:00:00Z',
+      })
+    ),
     subscribeDelegation: vi.fn(async () => {}),
   }
   const controller = new NodeDelegationController(client as unknown as NodeClient, store)

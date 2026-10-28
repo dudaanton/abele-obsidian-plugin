@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 const saved = vi.hoisted(() => new Map<string, unknown>())
 const catalogue = vi.hoisted(() => ({
+  state: { value: 'connected' },
   connect: async () => {},
   client: {
     describe: async () => ({
