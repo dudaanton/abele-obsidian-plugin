@@ -465,7 +465,7 @@ export class DebuggerService {
       const result = existing
         ? undefined
         : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
-      if ((existing || result?.outcome === 'completed') && points.lines.get(line) === id) {
+      if ((existing || (result && result.outcome === 'completed')) && points.lines.get(line) === id) {
         points.lines.delete(line)
         ++this.pendingRevision.value
       }
