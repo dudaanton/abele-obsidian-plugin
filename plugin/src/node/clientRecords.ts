@@ -25,7 +25,15 @@ export class ClientRecords {
 
   async load(tx: IDBTransaction, state: NodeClientState, readonly = false) {
     const store = tx.objectStore('client')
-    const manifest = ((await read(store.get('record-revisions'))) ?? {}) as Record<string, string>
+    const sharedManifest = ((await read(store.get('record-revisions'))) ?? {}) as Record<
+      string,
+      string
+    >
+    const taskManifest = ((await read(store.get('delegation-revisions'))) ?? {}) as Record<
+      string,
+      string
+    >
+    const manifest = { ...sharedManifest, ...taskManifest }
     const snapshots = new Map<string, Snapshot>()
     const tools = new Map(this.toolSnapshots)
     const loadingTools = new Map<string, Promise<unknown>>()
@@ -83,6 +91,8 @@ export class ClientRecords {
       // Retention evicts the oldest settled records, not the fastest reads.
       for (const key of Object.keys(manifest)) {
         if (!key.startsWith(prefix)) continue
+        if (field === 'delegationTasks' && legacy) continue
+        if (legacy && Object.hasOwn(legacy, key.slice(prefix.length))) continue
         const snapshot = snapshots.get(key)!
         const id = key.slice(prefix.length)
         Object.defineProperty(records, id, {
@@ -157,6 +167,9 @@ export class ClientRecords {
       })
     return {
       changed: () => changes().length > 0,
+      delegationChanged: () =>
+        changes().some((change) => change.key.startsWith('record:delegationTasks:')),
+      delegationSnapshot: () => frozen(plain({ tasks: state.delegation!.tasks })),
       save: () => {
         const updates = changes()
         for (const update of updates) {
@@ -203,7 +216,19 @@ export class ClientRecords {
               store.delete(reference)
               tools.delete(reference)
             }
-          store.put(manifest, 'record-revisions')
+          // Older clients reject unknown collections in their shared manifest.
+          store.put(
+            Object.fromEntries(
+              Object.entries(manifest).filter(([key]) => !key.startsWith('record:delegationTasks:'))
+            ),
+            'record-revisions'
+          )
+          store.put(
+            Object.fromEntries(
+              Object.entries(manifest).filter(([key]) => key.startsWith('record:delegationTasks:'))
+            ),
+            'delegation-revisions'
+          )
         }
       },
       committed: () => {

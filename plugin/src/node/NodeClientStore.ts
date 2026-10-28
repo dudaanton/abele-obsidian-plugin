@@ -182,7 +182,11 @@ export function readStore<T>(store: ClientStore, look: (state: NodeClientState) 
 /** One database per enrolled installation, never a vault file or a transferable setting. */
 export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
-  private metadata?: { revision: string | undefined; state: NodeClientState }
+  private metadata?: {
+    revision: string | undefined
+    state: NodeClientState
+    delegation?: DelegationStorage
+  }
   private async loadMetadata(tx: IDBTransaction) {
     const store = tx.objectStore('client')
     const get = <T>(key: string) =>
@@ -193,7 +197,8 @@ export class NodeClientStore implements ClientStore {
       })
     const revision = await get<string | undefined>('state-revision')
     if (this.metadata && this.metadata.revision === revision) return this.metadata
-    return { revision, state: frozen(readState(await get('state'))) }
+    const state = frozen(readState(await get('state')))
+    return { revision, state, delegation: state.delegation }
   }
   private readonly journal = new ClientJournal()
   private readonly artifacts = new ClientArtifacts()
@@ -215,7 +220,8 @@ export class NodeClientStore implements ClientStore {
 
   private open(): Promise<IDBDatabase> {
     return (this.database ??= new Promise((resolve, reject) => {
-      const request = this.factory.open(`abele-node-${this.namespace}`, 4)
+      const name = `abele-node-${this.namespace}`
+      const request = this.factory.open(name, 3)
       request.onupgradeneeded = (event) => {
         const db = request.result
         if (!db.objectStoreNames.contains('client')) db.createObjectStore('client')
@@ -236,7 +242,17 @@ export class NodeClientStore implements ClientStore {
         request.result.onversionchange = () => request.result.close()
         resolve(request.result)
       }
-      request.onerror = () => reject(request.error)
+      request.onerror = () => {
+        if (request.error?.name !== 'VersionError') return reject(request.error)
+        // Retain caches already written at a higher version without deleting their data.
+        const existing = this.factory.open(name)
+        existing.onsuccess = () => {
+          existing.result.onversionchange = () => existing.result.close()
+          resolve(existing.result)
+        }
+        existing.onerror = () => reject(existing.error)
+        existing.onblocked = () => reject(new Error('Close other windows using this node store'))
+      }
       request.onblocked = () => reject(new Error('Close other windows using this node store'))
     }))
   }
@@ -398,6 +414,11 @@ export class NodeClientStore implements ClientStore {
               journal!.save()
               artifacts!.save()
               const recordsChanged = records!.changed()
+              const delegationChanged = records!.delegationChanged()
+              const delegation =
+                delegationChanged || !metadata!.delegation
+                  ? records!.delegationSnapshot()
+                  : metadata!.delegation
               records!.save()
               const next = draft.finish()
               const changed = [...new Set([...Object.keys(next), ...Object.keys(base)])].filter(
@@ -419,16 +440,18 @@ export class NodeClientStore implements ClientStore {
                 !!base.artifactData ||
                 !!base.delegation ||
                 RECORD_FIELDS.some((field) => Object.keys(base[field] ?? {}).length)
-              if (draft.changed() || migrated || !metadata!.revision) {
+              if (draft.changed() || migrated || !metadata!.revision || delegationChanged) {
                 const revision = crypto.randomUUID()
                 const saved = frozen({
                   ...metadataOf(next),
                   events: {},
                   results: {},
                 }) as NodeClientState
-                store.put(saved, 'state')
+                // Keep a rollback-readable snapshot on writes; idle callbacks use only
+                // the compact cached metadata and per-record revision manifests.
+                store.put({ ...saved, delegation }, 'state')
                 store.put(revision, 'state-revision')
-                metadata = { revision, state: saved }
+                metadata = { revision, state: saved, delegation }
               }
             }
           } catch (error) {

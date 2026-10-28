@@ -3344,8 +3344,10 @@ Metadata is cached by a database revision; read-only consumers receive immutable
 and writes copy and validate changed branches. Delegation tasks use separate records, with
 their exact tool snapshots shared by content fingerprint and reconstructed for retries.
 The cache retains the latest 200 delivered terminal tasks, plus all unfinished or uncertain
-work, pending sends and owner stop fences. Older cache layouts migrate atomically; older
-clients cannot write the new layout.
+work, pending sends and owner stop fences. Older cache layouts migrate atomically without
+raising the version-3 database format. Delegation revisions have their own manifest, and
+writes retain an exact legacy-readable task snapshot for rollback. Reopening after an older
+client ran imports its task changes without discarding the retained retry bodies.
 Startup removes orphaned registration caches belonging to this vault installation, while
 preserving current registrations and caches whose ownership cannot be established (including
 other installations and legacy paired caches).
