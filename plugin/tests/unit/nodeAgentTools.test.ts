@@ -15,6 +15,44 @@ import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it.each(['node_read', 'node_ls', 'node_search'])(
+    '%s includes ignored source in its working observation',
+    async (name) => {
+      const f = setupGit()
+      const page = { entries: [], cursor: null, incomplete: false, omissions: [] }
+      Object.assign(f.repository, {
+        tree: vi.fn(async () => page),
+        search: vi.fn(async () => page),
+      })
+      await f.call(name, { path: 'generated/sample.ts', query: 'sample' })
+      expect(f.repository.observe).toHaveBeenCalledWith({
+        worktree_id: 'sample-tree',
+        include_ignored: true,
+      })
+    }
+  )
+  it('retries without the flag when an older node rejects observation parameters', async () => {
+    const f = setupGit()
+    f.repository.observe.mockRejectedValueOnce(
+      Object.assign(new Error('Unknown field'), { code: 'invalid_params' })
+    )
+    await f.call('node_read', { path: 'sample.txt' })
+    expect(f.repository.observe.mock.calls).toEqual([
+      [{ worktree_id: 'sample-tree', include_ignored: true }],
+      [{ worktree_id: 'sample-tree' }],
+    ])
+  })
+  it('does not retry permission failures or include ignored files in Git status', async () => {
+    const f = setupGit()
+    f.repository.observe.mockRejectedValueOnce(
+      Object.assign(new Error('Denied'), { code: 'forbidden' })
+    )
+    await expect(f.call('node_read', { path: 'generated/sample.ts' })).rejects.toThrow('Denied')
+    expect(f.repository.observe).toHaveBeenCalledOnce()
+    f.repository.observe.mockClear()
+    await f.call('node_git_status')
+    expect(f.repository.observe).toHaveBeenCalledWith({ worktree_id: 'sample-tree' })
+  })
   it('recovers a settled legacy removal receipt without resolving the deleted worktree', async () => {
     const f = setupGit()
     const remove = vi.fn()

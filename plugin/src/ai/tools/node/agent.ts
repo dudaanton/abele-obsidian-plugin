@@ -947,10 +947,32 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           ''
         )
       )
-      const revision = async (): Promise<RepositoryRevision> =>
-        text(params, 'ref')
-          ? safe(() => repo.resolve({ worktree_id: id, ref: text(params, 'ref') }))
-          : (await safe(() => repo.observe({ worktree_id: id }))).revision
+      const revision = async (): Promise<RepositoryRevision> => {
+        if (text(params, 'ref'))
+          return safe(() => repo.resolve({ worktree_id: id, ref: text(params, 'ref') }))
+        const includeIgnored = ['node_read', 'node_ls', 'node_search'].includes(name)
+        try {
+          return (
+            await safe(() =>
+              repo.observe({
+                worktree_id: id,
+                ...(includeIgnored ? { include_ignored: true } : {}),
+              })
+            )
+          ).revision
+        } catch (error) {
+          // Older nodes may reject the optional observation field.
+          if (
+            !includeIgnored ||
+            !error ||
+            typeof error !== 'object' ||
+            !('code' in error) ||
+            error.code !== 'invalid_params'
+          )
+            throw error
+          return (await safe(() => repo.observe({ worktree_id: id }))).revision
+        }
+      }
       const content = async (contentId: string): Promise<string> => {
         const prefix: number[] = []
         const decoded = await readNodeText(async (offset) => {

@@ -1289,9 +1289,11 @@ node display name is accepted too. Paths may be relative to the selected target 
 inside that target. Traversal, `.git` paths and paths outside the target remain forbidden.
 `node_open(path)` with chat node access loads a bounded in-memory source without requiring an
 open repository tab; it returns the same content and identity as `node_read`.
-`node_ls` accepts a directory path with or without a trailing slash. If the node excludes an
-ignored or generated source, these file tools explain the exclusion; a person must change the
-node folder's file policy before the agent can read that source.
+`node_ls` accepts a directory path with or without a trailing slash. Working-tree reads,
+listings and searches include git-ignored source inside the granted folder; the person's
+default file tree still hides it. Folder access, traversal and symlink restrictions still
+apply. Older nodes that reject the optional flag fall back to their ordinary observation;
+ignored directories require a node update to become readable.
 No arbitrary filesystem
 picker, shell, stage or push is exposed by this toolset. Delegation tools use the same chat node chips.
 
