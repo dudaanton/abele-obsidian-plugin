@@ -314,6 +314,80 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
   expect(mine.child.exitCode).toBeNull()
 }, 180000)
 
+async function sessionLifecycle(phone: boolean) {
+  openChat()
+  await program(repo, 'src/serve.js')
+  const name = phone ? 'session-lifecycle-phone' : 'session-lifecycle-desktop'
+  const result = inApp<{ attaches: number; points: number }>(`(async()=>{${prelude}
+    await openPicker();press((await until(()=>rows().find(r=>r.title.includes('src/serve.js')),'sample program')).el);
+    const service=api.DebuggerService.instance;
+    await until(()=>service.active.value?.controller.session.status==='running','attached running',600);
+    let binding=service.active.value;
+    const mark=await until(()=>marginAt(3),'source margin');mark.click();
+    await until(()=>binding.controller.session.status==='paused','breakpoint stop',600);
+    const source=binding.controller.knownBreakpoints()[0].sourceId;
+    await binding.controller.watch('missingSample.field');
+    await until(()=>binding.controller.session.watches[0]?.error,'watch error');
+    // Read the authoritative state again: evaluating a failing watch must not hide a real stop.
+    const actual=(await binding.connection.client.debugger.status(binding.sessionId)).snapshot;
+    binding.controller.observe({observation:'current',snapshot:actual});
+    if(actual.execution==='stopped') {
+      const go=document.querySelector('[aria-label="Continue (F5)"]');
+      if(!go||go.hasAttribute('disabled'))throw Error('A real stop has no Continue');
+    }
+    const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0],debugSplit=debugLeaf.getRoot()===app.workspace.leftSplit?app.workspace.leftSplit:app.workspace.rightSplit;await app.workspace.revealLeaf(debugLeaf);
+    if(${phone}){debugSplit.collapse();await wait(300);debugSplit.expand();await wait(700)}
+    document.querySelector('.abele-debug-panel__value_error')?.scrollIntoView({block:'center'});
+    await shot(${JSON.stringify(name + '-watch-error')});
+    await binding.controller.unwatch('missingSample.field');
+    await binding.controller.removeAllBreakpoints();
+    if(binding.controller.session.status==='paused')await binding.controller.command('continue');
+    await until(()=>binding.controller.session.status==='running','continued');
+    if(document.querySelector('.abele-debug-source__line_here'))throw Error('Stop line survived Continue');
+    if(${phone}){debugSplit.collapse();await wait(500)}
+    await shot(${JSON.stringify(name + '-continued')});
+    for(const line of [3,4])await binding.trace.savePoint(source,line,{take:['ticks']});
+    await app.workspace.revealLeaf(debugLeaf);
+    if(${phone}){debugSplit.collapse();await wait(300);debugSplit.expand();await wait(700)}
+    await binding.controller.command('stop');
+    await until(()=>binding.controller.session.status==='exited','detached');
+    if(document.querySelector('.abele-debug-source__line_here'))throw Error('Stop line survived Detach');
+    if(document.querySelector('.abele-debug-panel__group .abele-status-dot_red'))throw Error('Detached session still recording');
+    for(const line of [3,4]){
+      const row=await until(()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()==='serve.js:'+line),'ended point row');
+      const remove=row.querySelector('[aria-label="Remove"]');if(remove.hasAttribute('disabled'))throw Error('Ended removal disabled');remove.click();
+      await until(()=>!binding.trace.breakpoints().some(p=>p.line===line&&!binding.forgottenBreakpoints.has(binding.controller.knownBreakpoints().find(k=>k.line===line)?.id)),'point removed');
+    }
+    await shot(${JSON.stringify(name + '-detached')});
+    let attaches=1;
+    for(let i=0;i<4;i++){
+      const old=binding.sessionId;
+      const reattach=await until(()=>document.querySelector('[aria-label="Attach to a running program"]'),'reattach control');reattach.click();
+      // A chat-owned session uses the picker; a folder-owned session can use its retained recipe.
+      await until(()=>service.active.value?.sessionId!==old||rows().some(r=>r.title.includes('src/serve.js')),'reattach started',600);
+      const offered=rows().find(r=>r.title.includes('src/serve.js'));if(offered)offered.el.click();
+      await until(()=>service.active.value?.sessionId!==old&&service.active.value?.controller.session.status==='running','new session selected',600);
+      binding=service.active.value;attaches++;
+      await wait(700);
+      if(binding.controller.session.status!=='running'||binding.controller.knownBreakpoints().length)throw Error('Removed point stopped the next attach: '+debugState());
+      const texts=[...document.querySelectorAll('.abele-debug-panel .abele-tree-item__text')].map(e=>e.textContent);
+      if(texts.some(t=>/^s[0-9]+:[0-9]+$/.test(t)))throw Error('Raw source id in point row');
+      await shot(${JSON.stringify(name + '-reattached')}+'-'+i);
+      if(i<3)await binding.controller.command('stop');
+    }
+    const points=binding.controller.knownBreakpoints().length;
+    await binding.controller.command('stop');return {attaches,points};
+  })()`)
+  expect(result).toEqual({ attaches: 5, points: 0 })
+}
+
+it('keeps watch errors, ended point removal and five reattaches consistent on desktop', async () => {
+  await sessionLifecycle(false)
+}, 240000)
+it('keeps watch errors, ended point removal and five reattaches consistent on phone', async () => {
+  await withEmulatedPhone(() => sessionLifecycle(true))
+}, 240000)
+
 it('asks before attaching to a program outside the chat’s folder, and attaches nothing on Cancel', async () => {
   openChat()
   await program(other, 'tool.js')

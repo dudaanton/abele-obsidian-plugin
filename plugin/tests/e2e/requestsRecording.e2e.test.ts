@@ -257,7 +257,10 @@ const PAUSED_SEND = (shots: string) => `
     await shot(${JSON.stringify(shots + '-pause-unavailable')});
     throw Error('Paused request unavailable: '+JSON.stringify(diagnostic)+' '+debugState());
   });
-  ${shots.includes('phone') ? "if(app.workspace.activeLeaf!==requestLeaf)throw Error('Paused request lost behind a source tab');" : 'await wait(31000);'}
+  await until(()=>app.workspace.getLeavesOfType('abele-node-file').some(leaf=>leaf.containerEl.offsetParent)&&!requestLeaf.containerEl.offsetParent,'stopped source tab brought forward');
+  if(document.querySelector('.abele-debug-view__error'))throw Error('An unrelated request failure leaked into Debug');
+  await shot(${JSON.stringify(shots + '-stopped-source')});
+  ${shots.includes('phone') ? '' : 'await wait(31000);'}
   app.workspace.setActiveLeaf(requestLeaf,{focus:true});
   await wait(250);
   ${shots.includes('phone') ? "const pauseRect=tab().querySelector('.abele-http-request__paused').getBoundingClientRect();if(pauseRect.top<100||pauseRect.bottom>innerHeight-80)throw Error('Paused notice is covered by native chrome: '+JSON.stringify(pauseRect.toJSON()));" : ''}
