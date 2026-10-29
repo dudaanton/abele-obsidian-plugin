@@ -144,6 +144,15 @@ export function createTraceTools(
       additionalProperties: false,
     },
     execute: async (_id, params, _signal, ctx) => {
+      const base = resolve()
+      if (base)
+        await nodeProjectGuard(
+          ctx?.session,
+          name,
+          base,
+          undefined,
+          ctx?.interactive === true && ctx?.approved === true
+        )
       const c = context(params)
       const guard = await nodeProjectGuard(
         ctx?.session,

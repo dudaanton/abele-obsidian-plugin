@@ -1,5 +1,6 @@
 // Project authorization has its own tests; these cases exercise request/trace behavior.
-vi.mock('@/ai/tools/node/projectAccess', () => ({ nodeProjectGuard: async () => () => {} }))
+vi.mock('@/ai/tools/node/projectAccess', () => ({ nodeProjectGuard: vi.fn(async () => () => {}) }))
+import { nodeProjectGuard } from '@/ai/tools/node/projectAccess'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createTraceTools,
@@ -180,6 +181,24 @@ it('routes tools by file or explicit process and remembers the agent process for
     line: 4,
     process: 101,
   })
+})
+
+it('checks folder access before resolving a file into private process choices', async () => {
+  const s = setup()
+  const resolve = vi.fn((params?: Record<string, unknown>) => {
+    if (params?.file) throw new Error('Ambiguous source: private process choices')
+    return s.context
+  })
+  vi.mocked(nodeProjectGuard).mockRejectedValueOnce(new Error('No node folder access'))
+  await expect(
+    createTraceTools(resolve)
+      .find((t) => t.name === 'trace_point_list')!
+      .execute('sample', { file: 'src/shared.ts' })
+  ).rejects.toThrow('No node folder access')
+  expect(resolve).toHaveBeenCalledExactlyOnceWith()
+  vi.mocked(nodeProjectGuard)
+    .mockReset()
+    .mockImplementation(async () => () => {})
 })
 
 describe('the agent reading a recorded run', () => {
