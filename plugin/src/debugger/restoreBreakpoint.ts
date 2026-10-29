@@ -41,8 +41,27 @@ export async function removeForgottenBreakpoints(
     controller.snapshot?.incarnation === target?.incarnation
   const isPaused = () => controller.session.status === 'paused'
   let heldEpoch: number | undefined
-  const initialStop = target?.threads.find(
-    (thread) => thread.thread_id === target.selected_thread_id
+  let captureEpoch: number | undefined
+  if (next.trace) {
+    // A restored capture can consume every observed stop and resume before Pause reaches
+    // the adapter. Remove only the discarded registrations first, so their next hit holds.
+    await next.trace.refreshPoints()
+    if (!current()) throw new Error(t('node.error.generic'))
+    if (next.trace.isRecordStop()) captureEpoch = controller.snapshot?.stop_epoch
+    for (const point of points) {
+      if (!current()) throw new Error(t('node.error.generic'))
+      await next.trace.toBreakpoint(point.id)
+      if (next.trace.points.some((record) => record.breakpoint_id === point.id))
+        throw new Error(t('node.error.generic'))
+    }
+    console.debug(
+      '[debugger] Discarded attach recording removed',
+      JSON.stringify({ sessionId: next.sessionId, captureEpoch, snapshot: controller.snapshot })
+    )
+  }
+  const stopped = controller.snapshot
+  const initialStop = stopped?.threads.find(
+    (thread) => thread.thread_id === stopped.selected_thread_id
   )?.stop
   const hits = initialStop?.hit_breakpoint_ids ?? []
   // The node can restore ordinary breakpoints before their record metadata. A stop
@@ -52,17 +71,27 @@ export async function removeForgottenBreakpoints(
     initialStop?.reason === 'breakpoint' &&
     hits.length &&
     isPaused() &&
+    stopped.stop_epoch !== captureEpoch &&
     hits.every((id) => points.some((point) => point.id === id))
   )
-    heldEpoch = target.stop_epoch
-  // Restored record points may fire on every timer tick. Hold execution while patching their
-  // intent, rather than racing each capture's changing state fence or removing captures first.
-  if (next.trace && (controller.session.status === 'running' || next.trace.isRecordStop())) {
+    heldEpoch = stopped.stop_epoch
+  // A capture already in flight may still resume. Do not mistake its cached stop for
+  // a stable ordinary breakpoint merely because its recording registration is now gone.
+  if (
+    next.trace &&
+    (controller.session.status === 'running' ||
+      next.trace.isRecordStop() ||
+      (captureEpoch !== undefined && controller.snapshot?.stop_epoch === captureEpoch))
+  ) {
     let sent = 0
     let requestedPause = false
     for (let round = 0; round < 100; ++round) {
       if (!current()) throw new Error(t('node.error.generic'))
-      if (isPaused() && !next.trace.isRecordStop()) {
+      if (
+        isPaused() &&
+        !next.trace.isRecordStop() &&
+        controller.snapshot?.stop_epoch !== captureEpoch
+      ) {
         const snapshot = controller.snapshot
         const stop = snapshot?.threads.find(
           (thread) => thread.thread_id === snapshot.selected_thread_id
@@ -72,6 +101,12 @@ export async function removeForgottenBreakpoints(
           continue
         }
         if (requestedPause && stop?.reason === 'pause') heldEpoch = snapshot?.stop_epoch
+        if (
+          stop?.reason === 'breakpoint' &&
+          stop.hit_breakpoint_ids?.length &&
+          stop.hit_breakpoint_ids.every((id) => points.some((point) => point.id === id))
+        )
+          heldEpoch = snapshot?.stop_epoch
         break
       }
       if (controller.session.status === 'running' && !requestedPause) {
@@ -90,7 +125,11 @@ export async function removeForgottenBreakpoints(
       }
       await new Promise((resolve) => window.setTimeout(resolve, 20))
     }
-    if (controller.session.status !== 'paused' || next.trace.isRecordStop())
+    if (
+      controller.session.status !== 'paused' ||
+      next.trace.isRecordStop() ||
+      controller.snapshot?.stop_epoch === captureEpoch
+    )
       throw new Error(t('node.error.generic'))
   }
   for (const point of points) {

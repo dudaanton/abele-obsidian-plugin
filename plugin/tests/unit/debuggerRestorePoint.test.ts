@@ -5,6 +5,101 @@ import {
   forgottenBreakpointLocations,
 } from '@/debugger/restoreBreakpoint'
 
+it.each([false, true])(
+  'discards recording before waiting for a stable stop (mixed: %s)',
+  async (mixed) => {
+    vi.useFakeTimers()
+    const session = { status: 'paused' }
+    const snapshot = {
+      stop_epoch: 4,
+      selected_thread_id: 1,
+      threads: [
+        { thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: ['sample-restored'] } },
+      ],
+    }
+    let recording = true
+    const points = [{ breakpoint_id: 'sample-restored' }]
+    const toBreakpoint = vi.fn(async () => {
+      recording = false
+      points.length = 0
+      // A capture already in flight can still resume after its registration is removed.
+      window.setTimeout(() => {
+        session.status = 'running'
+        window.setTimeout(() => {
+          session.status = 'paused'
+          snapshot.stop_epoch++
+          if (mixed) snapshot.threads[0].stop.hit_breakpoint_ids.push('sample-other')
+        }, 20)
+      }, 20)
+    })
+    const removePoint = vi.fn(async () => {
+      expect(recording).toBe(false)
+      expect(session.status).toBe('paused')
+      expect(snapshot.stop_epoch).toBe(5)
+    })
+    const command = vi.fn(async () => ({ outcome: 'completed' }))
+    const result = removeForgottenBreakpoints(
+      undefined,
+      {
+        controller: {
+          current: true,
+          session,
+          snapshot,
+          command,
+          knownBreakpoints: () => [{ id: 'sample-restored', file: 'sample.ts', requestedLine: 4 }],
+        },
+        trace: {
+          points,
+          refreshPoints: vi.fn(async () => {}),
+          isRecordStop: () => recording && session.status === 'paused',
+          toBreakpoint,
+          removePoint,
+        },
+      } as never,
+      [{ file: 'sample.ts', requestedLine: 4 }]
+    )
+    const settled = result.catch((error: unknown) => error)
+    try {
+      await vi.runAllTimersAsync()
+      expect(await settled).toBeUndefined()
+      expect(toBreakpoint).toHaveBeenCalledExactlyOnceWith('sample-restored')
+      expect(removePoint).toHaveBeenCalledExactlyOnceWith('sample-restored')
+      expect(command.mock.calls).toEqual(mixed ? [['pause']] : [['pause'], ['continue']])
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+)
+
+it('does not remove breakpoints or resume when recording removal is unconfirmed', async () => {
+  const removePoint = vi.fn()
+  const command = vi.fn()
+  await expect(
+    removeForgottenBreakpoints(
+      undefined,
+      {
+        controller: {
+          current: true,
+          session: { status: 'running' },
+          snapshot: { debug_session_id: 'sample-session', incarnation: 'sample-incarnation' },
+          command,
+          knownBreakpoints: () => [{ id: 'sample-record', file: 'sample.ts', requestedLine: 4 }],
+        },
+        trace: {
+          points: [{ breakpoint_id: 'sample-record' }],
+          refreshPoints: vi.fn(async () => {}),
+          toBreakpoint: vi.fn(async () => {}),
+          isRecordStop: () => false,
+          removePoint,
+        },
+      } as never,
+      [{ file: 'sample.ts', requestedLine: 4 }]
+    )
+  ).rejects.toThrow()
+  expect(removePoint).not.toHaveBeenCalled()
+  expect(command).not.toHaveBeenCalled()
+})
+
 it('holds restored points even before their recording metadata reaches the local cache', async () => {
   const session = { status: 'running' }
   const snapshot = { stop_epoch: 1, selected_thread_id: 1, threads: [] as any[] }
@@ -28,7 +123,13 @@ it('holds restored points even before their recording metadata reaches the local
         removeBreakpoint,
         knownBreakpoints: () => [{ id: 'sample-restored', file: 'sample.ts', requestedLine: 4 }],
       },
-      trace: { points: [], isRecordStop: () => false, removePoint },
+      trace: {
+        points: [],
+        refreshPoints: vi.fn(async () => {}),
+        toBreakpoint: vi.fn(async () => {}),
+        isRecordStop: () => false,
+        removePoint,
+      },
     } as never,
     [{ file: 'sample.ts', requestedLine: 4 }]
   )
@@ -92,7 +193,13 @@ it.each([false, true])(
         removeBreakpoint: removePoint,
       },
       // The node restored the breakpoint before its record metadata, so it is a plain stop.
-      trace: { points: [], isRecordStop: () => false, removePoint },
+      trace: {
+        points: [],
+        refreshPoints: vi.fn(async () => {}),
+        toBreakpoint: vi.fn(async () => {}),
+        isRecordStop: () => false,
+        removePoint,
+      },
     }
     await removeForgottenBreakpoints(undefined, next as never, [
       { file: 'sample.ts', requestedLine: 5 },
@@ -136,7 +243,15 @@ it.each([
         command,
         knownBreakpoints: () => [{ id: 'sample-new', file: 'sample.ts', requestedLine: 5 }],
       },
-      trace: { points: [{ breakpoint_id: 'sample-new' }], isRecordStop: () => false, removePoint },
+      trace: {
+        points: [{ breakpoint_id: 'sample-new' }],
+        refreshPoints: vi.fn(async () => {}),
+        toBreakpoint: vi.fn(async () => {
+          next.trace.points = []
+        }),
+        isRecordStop: () => false,
+        removePoint,
+      },
     }
     await removeForgottenBreakpoints(undefined, next as never, [
       { file: 'sample.ts', requestedLine: 5 },
