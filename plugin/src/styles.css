@@ -1,3 +1,7 @@
+.cm-editor .abele-code-occurrence {
+  background-color: var(--text-highlight-bg);
+}
+
 /*
  * Sidebar widths, one setting per kind of device. Obsidian caps a drawer at
  * `--mobile-sidebar-max-width` (450px), which a phone never reaches but half a tablet does, so

@@ -4,7 +4,34 @@ import GithubBlob from '@/components/github/GithubBlob.vue'
 import SelectionBar from '@/components/obsidian/SelectionBar.vue'
 import { LINKER } from '@/github/linking'
 import { useVault } from '../helpers/testEnv'
+import { readFileSync } from 'node:fs'
 let view: VueWrapper | undefined
+it.each(['rgb(245, 245, 245)', 'rgb(30, 30, 30)'])(
+  'ships occurrence styling independently of runtime editor themes over %s',
+  (background) => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/styles.css', 'utf8')
+    document.head.append(style)
+    try {
+      const editor = document.createElement('div')
+      editor.className = 'cm-editor'
+      editor.style.setProperty('--text-highlight-bg', 'rgb(255, 208, 0)')
+      editor.style.backgroundColor = background
+      const line = editor.appendChild(document.createElement('div'))
+      line.className = 'cm-line'
+      const mark = line.appendChild(document.createElement('span'))
+      mark.className = 'cm-selectionMatch abele-code-occurrence'
+      mark.textContent = 'sample'
+      document.body.append(editor)
+      expect(getComputedStyle(mark).backgroundColor).toBe('rgb(255, 208, 0)')
+      expect(getComputedStyle(mark).backgroundColor).not.toBe(
+        getComputedStyle(editor).backgroundColor
+      )
+    } finally {
+      style.remove()
+    }
+  }
+)
 afterEach(() => {
   view?.unmount()
   window.getSelection()?.removeAllRanges()

@@ -43,7 +43,12 @@ function scrollProbe(shell: string, place: string, mode: string) {
             };
             const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
             const capture=async suffix=>{
-              await until(visibleOccurrence,'Visible occurrence on another line with a contrasting background');
+              try {
+                await until(visibleOccurrence,'Visible occurrence on another line with a contrasting background',5000);
+              } catch(error) {
+                require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-selection-failure`))}+suffix+'.png',(await web.capturePage()).toPNG());
+                throw Error(error.message+'; '+JSON.stringify({theme:document.body.className,selection:String(window.getSelection()),viewport:root.getBoundingClientRect().toJSON(),marks:[...root.querySelectorAll('.abele-code-occurrence')].slice(0,12).map(mark=>({text:mark.textContent,line:mark.closest('.cm-line')?.textContent,background:getComputedStyle(mark).backgroundColor,lineBackground:getComputedStyle(mark.closest('.cm-line')).backgroundColor,box:mark.getBoundingClientRect().toJSON()}))}));
+              }
               await frame();
               if(!visibleOccurrence())throw Error('Occurrence highlight is not visible before screenshot');
               require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-selection`))}+suffix+'.png',(await web.capturePage()).toPNG());
