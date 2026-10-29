@@ -158,6 +158,7 @@ describe('what each node action holds', () => {
         'trace_mark',
         'trace_note',
         'trace_point_add',
+        'trace_point_list',
         'trace_point_remove',
         'trace_runs',
         'trace_shape',
