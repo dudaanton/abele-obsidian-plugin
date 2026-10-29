@@ -12,6 +12,7 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { cleanupDebugAttachViews, nodeFailureMessage } from './helpers/debugAttachLifecycle'
 targets('desktop')
 
 const SHOTS = shotDir('abele-debug-attach')
@@ -20,10 +21,22 @@ function inApp<T>(script: string): T {
   try {
     return evalAsync<T>(script)
   } catch (e) {
-    throw new Error(
-      `node: ${daemonExit || 'running'}\n${daemonErrors.slice(-1200)}\n${e instanceof Error ? e.message : String(e)}`
-    )
+    throw new Error(nodeFailureMessage(e, daemonExit || 'running', daemonErrors))
   }
+}
+function cleanupViews() {
+  evalAsync(
+    `(async()=>{await (${cleanupDebugAttachViews.toString()})(window.__abeleTest,app.workspace);return true})()`
+  )
+}
+function onPhone<T>(probe: () => Promise<T>): Promise<T> {
+  return withEmulatedPhone(async () => {
+    try {
+      return await probe()
+    } finally {
+      cleanupViews()
+    }
+  })
 }
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+debugState())};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
@@ -181,10 +194,12 @@ afterEach(async () => {
   evalRaw(
     `(()=>{const m=document.querySelector('.modal-container .modal-bg');if(m)m.click();return true})()`
   )
+  cleanupViews()
   await stopPrograms()
 })
 
 afterAll(async () => {
+  cleanupViews()
   evalRaw(
     `(()=>{const api=window.__abeleTest,chats=api.ChatService.getInstance();for(const t of ['abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();for(const id of chats.tabOrder.value.filter(id=>id.startsWith('node:'+${JSON.stringify(registration)}+':')))chats.closeTab(id);if(${JSON.stringify(registration)})api.NodeService.getInstance().remove(${JSON.stringify(registration)});return true})()`
   )
@@ -228,7 +243,7 @@ it('retains independent folder sessions across switching and reload on desktop a
     app.workspace.requestSaveLayout();await wait(1500);await shot('folder-sessions-paused-desktop');return ids;
   })()`)
   expect(ids).toHaveLength(2)
-  const phone = await withEmulatedPhone(async () =>
+  const phone = await onPhone(async () =>
     inApp<{ restored: boolean; overflow: number }>(`(async()=>{${prelude}
     const service=api.DebuggerService.instance,ids=${JSON.stringify(ids)};
     await until(()=>service.active.value?.sessionId===ids[0]&&service.active.value.controller.current,'restored selected session; saved='+JSON.stringify(app.workspace.getLeavesOfType('abele-debug-view').map(l=>l.getViewState())),600);
@@ -394,7 +409,7 @@ it('keeps watch errors, ended point removal and five reattaches consistent on de
   await sessionLifecycle(false)
 }, 240000)
 it('keeps watch errors, ended point removal and five reattaches consistent on phone', async () => {
-  await withEmulatedPhone(() => sessionLifecycle(true))
+  await onPhone(() => sessionLifecycle(true))
 }, 240000)
 
 it('asks before attaching to a program outside the chat’s folder, and attaches nothing on Cancel', async () => {
@@ -435,7 +450,7 @@ it('says how to start a program that waits for a debugger when none does', () =>
 })
 
 it('on a phone: the menu, the picker, the attached panel and the empty list fit the screen', async () => {
-  await withEmulatedPhone(async () => {
+  await onPhone(async () => {
     openChat()
     await program(repo, 'src/serve.js')
     const seen = inApp<{ offered: string[]; detach: string; overflow: number }>(
@@ -468,7 +483,8 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       const detach=detachButton.getAttribute('aria-label');
       return {offered,detach,overflow}
       }finally{
-        for(const t of ['abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
+        api.DebuggerService.instance.destroy();
+        for(const t of ['abele-node-file','abele-debug-view','abele-trace-run','abele-trace-value'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
         await app.workspace.requestSaveLayout.run();
       }
     })()`

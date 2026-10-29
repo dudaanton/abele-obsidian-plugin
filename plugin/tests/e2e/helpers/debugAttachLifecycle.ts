@@ -1,0 +1,23 @@
+export function nodeFailureMessage(error: unknown, state: string, stderr: string): string {
+  return `${error instanceof Error ? error.message : String(error)}\nnode: ${state}\n${stderr.slice(-1200)}`
+}
+
+/** Runs in the active window, before switching away from its separately saved phone layout. */
+export async function cleanupDebugAttachViews(
+  api: { DebuggerService: { instance: { destroy(): void } } },
+  workspace: {
+    getLeavesOfType(type: string): { detach(): void }[]
+    requestSaveLayout: { run(): unknown }
+  }
+): Promise<void> {
+  // A completed trace can otherwise reopen a run tab after the cleanup has closed it.
+  api.DebuggerService.instance.destroy()
+  for (const type of [
+    'abele-node-file',
+    'abele-debug-view',
+    'abele-trace-run',
+    'abele-trace-value',
+  ])
+    for (const leaf of workspace.getLeavesOfType(type)) leaf.detach()
+  await workspace.requestSaveLayout.run()
+}
