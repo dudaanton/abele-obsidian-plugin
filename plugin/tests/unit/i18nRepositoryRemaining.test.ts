@@ -51,7 +51,7 @@ it('localizes generated diff notes without translating source or serialized text
 
 it('has reviewed import navigation labels in every language', () => {
   for (const key of ['repository.openImport', 'repository.importMissing'] as const) {
-    expect(createHash('sha256').update(testCatalogs.en[key]).digest('hex')).toBe(
+    expect(createHash('sha256').update(JSON.stringify(testCatalogs.en[key])).digest('hex')).toBe(
       ledger[key].englishHash
     )
     for (const language of ['ru', 'lv', 'es', 'de'] as const) {
