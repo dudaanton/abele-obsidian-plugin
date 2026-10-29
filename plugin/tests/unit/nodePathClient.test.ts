@@ -498,6 +498,34 @@ it('ignores repository invalidations belonging to another watched target', async
 })
 
 describe('independent file reads', () => {
+  it('opts explicit working-file reads into ignored source without changing tree observations', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    const request = vi.fn(f.request)
+    Object.assign(f.client, { request })
+    await f.port.file(catalogue.targets[0], 'app.ts')
+    expect(request).toHaveBeenCalledWith(
+      'repository.v1.blob',
+      expect.objectContaining({ path: 'app.ts', include_ignored: true })
+    )
+  })
+
+  it('retries without the ignored-file flag when an older node rejects that parameter', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    const request = vi
+      .fn()
+      .mockRejectedValue(new ChannelError('invalid_params', 'Unknown parameter'))
+    Object.assign(f.client, { request })
+    const blob = vi.spyOn(f.client.repository, 'blob')
+    await f.port.file(catalogue.targets[0], 'app.ts')
+    expect(request).toHaveBeenCalledWith(
+      'repository.v1.blob',
+      expect.objectContaining({ include_ignored: true })
+    )
+    expect(blob).toHaveBeenCalledTimes(1)
+    expect(blob.mock.calls[0][0]).not.toHaveProperty('include_ignored')
+  })
   it('reads file bytes while status is pending, without listing the tree', async () => {
     const f = fake()
     const catalogue = await f.port.catalogue()

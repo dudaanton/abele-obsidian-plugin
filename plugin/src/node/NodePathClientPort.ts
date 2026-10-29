@@ -10,6 +10,7 @@ import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
 import {
   RepositoryChangeBatchSchema,
+  RepositoryBlobSchema,
   WorkspaceChangeBatchSchema,
   type RepositoryChangeBatch,
   type WorkspaceChangeBatch,
@@ -56,7 +57,8 @@ type ReadClient = Pick<
   | 'onEvent'
   | 'subscribe'
   | 'store'
->
+> &
+  Partial<Pick<NodeClient, 'request'>>
 export async function pathPages<T>(
   read: (
     cursor?: string
@@ -887,7 +889,22 @@ export class NodePathClientPort implements NodePathPort {
       : known?.changes
         ? Promise.resolve(known.changes)
         : this.status(target, revision).then((entries) => entries.map(pathStatus))
-    const blob = this.client.repository.blob({ worktree_id: target.id, revision, path })
+    const params = { worktree_id: target.id, revision, path }
+    // The bundled SDK predates this optional person-read flag. Validate its response here.
+    const blob =
+      revision.kind === 'working' && this.client.request
+        ? this.client
+            .request('repository.v1.blob', { ...params, include_ignored: true })
+            .then((value) => {
+              const blob = RepositoryBlobSchema.parse(value)
+              return { ...blob, content_id: blob.content_id ?? null }
+            })
+            .catch((error: unknown) => {
+              if (error instanceof ChannelError && error.code === 'invalid_params')
+                return this.client.repository.blob(params)
+              throw error
+            })
+        : this.client.repository.blob(params)
     const comparison = changes.then(async (entries) => {
       const observedChange = entries.find((entry) => entry.path === path)
       if (!observedChange) return undefined
