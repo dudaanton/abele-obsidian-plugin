@@ -9,15 +9,17 @@ import {
 /** Deferred sidebar leaves need their view loaded to restore its title and retained state. */
 export async function loadDeferredSidebarViews(
   workspace: Workspace,
-  types: readonly string[]
+  types: readonly string[],
+  includeMainTabs = false
 ): Promise<void> {
   const leaves = new Set(types.flatMap((type) => workspace.getLeavesOfType(type)))
   await Promise.all(
     [...leaves].map(async (leaf) => {
       const root = leaf.getRoot()
-      if (root !== workspace.leftSplit && root !== workspace.rightSplit) return
+      if (!includeMainTabs && root !== workspace.leftSplit && root !== workspace.rightSplit) return
       try {
         await leaf.loadIfDeferred?.()
+        ;(leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.()
       } catch (error) {
         console.debug('[Abele] Deferred sidebar unavailable', error)
       }

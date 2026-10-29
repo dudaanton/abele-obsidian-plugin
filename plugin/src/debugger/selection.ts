@@ -12,6 +12,19 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
   const saved: unknown = plugin.app.loadLocalStorage(SELECTION_KEY)
   const releasePreference = service.preferSelection(saved)
   plugin.register(releasePreference)
+  let deduplicating = false
+  const deduplicate = () => {
+    if (deduplicating) return
+    deduplicating = true
+    try {
+      const leaves = plugin.app.workspace.getLeavesOfType(viewType)
+      for (const duplicate of leaves.slice(1)) duplicate.detach()
+    } finally {
+      deduplicating = false
+    }
+  }
+  const layoutEvent = plugin.app.workspace.on?.('layout-change', deduplicate)
+  if (layoutEvent) plugin.registerEvent(layoutEvent)
   let previous: string | undefined
   let established = false
   plugin.register(
@@ -37,11 +50,11 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
   plugin.app.workspace.onLayoutReady(async () => {
     try {
       const leaves = plugin.app.workspace.getLeavesOfType(viewType)
-      for (const duplicate of leaves.slice(1)) duplicate.detach()
-      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
+      deduplicate()
       const workspace = plugin.app.workspace
-      const existing = workspace.getLeavesOfType(viewType)[0]
+      const existing = leaves[0]
       await existing?.loadIfDeferred?.()
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
       if (existing && service.active.value) return
       const leaf = existing ?? workspace.getRightLeaf(false)
       if (!leaf) return

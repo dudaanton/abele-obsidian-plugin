@@ -5,6 +5,33 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import { registerDebuggerSelection } from '@/debugger/selection'
 
 const cleanups: (() => void)[] = []
+it('loads a deferred Debug title without a saved selection and removes later reload duplicates', async () => {
+  const ready: (() => Promise<void>)[] = []
+  let layout: (() => void) | undefined
+  const first = { loadIfDeferred: vi.fn(async () => {}) }
+  const duplicate = { detach: vi.fn() }
+  let leaves: unknown[] = [first]
+  const plugin = {
+    app: {
+      loadLocalStorage: () => null,
+      workspace: {
+        onLayoutReady: (cb: () => Promise<void>) => ready.push(cb),
+        on: (_event: string, cb: () => void) => {
+          layout = cb
+        },
+        getLeavesOfType: () => leaves,
+      },
+    },
+    register: (stop: () => void) => cleanups.push(stop),
+    registerEvent: vi.fn(),
+  } as unknown as Plugin
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  await ready[0]()
+  expect(first.loadIfDeferred).toHaveBeenCalledOnce()
+  leaves = [first, duplicate]
+  layout?.()
+  expect(duplicate.detach).toHaveBeenCalledOnce()
+})
 it('keeps one Debug leaf when an old layout restores duplicates', async () => {
   const ready: (() => Promise<void>)[] = []
   const first = { loadIfDeferred: vi.fn(async () => {}), setViewState: vi.fn(async () => {}) }
