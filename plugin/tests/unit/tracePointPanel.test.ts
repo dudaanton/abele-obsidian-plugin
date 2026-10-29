@@ -86,6 +86,14 @@ it('offers declarations immediately above the selected line', () => {
   expect(namesOnLine(text, 4)).toEqual(expect.arrayContaining(['rate', 'surge', 'deliveryFee']))
 })
 
+it('excludes a completed loop binding and catch parameter', () => {
+  const text =
+    'const values = [1]\nfor (const item of values) {\n  console.log(item)\n}\ntry { read() } catch (error) {\n  console.log(error)\n}\nconsole.log(values)'
+  expect(namesOnLine(text, 8)).toContain('values')
+  expect(namesOnLine(text, 8)).not.toContain('item')
+  expect(namesOnLine(text, 8)).not.toContain('error')
+})
+
 it('edits the margin point at its original requested line after relocation', async () => {
   const save = vi.fn(async () => ({ pending: false }))
   const binding = {

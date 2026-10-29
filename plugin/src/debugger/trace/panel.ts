@@ -281,19 +281,14 @@ export function namesOnLine(text: string, line: number): string[] {
   const end = start + lines[line - 1].length
   const tree = javascriptLanguage.parser.configure({ dialect: 'ts jsx' }).parse(text)
   const out: string[] = []
-  const functions = /^(?:FunctionDeclaration|FunctionExpression|ArrowFunction|MethodDeclaration)$/
+  const scopes =
+    /^(?:Block|Script|CatchClause|ForStatement|SwitchBody|FunctionDeclaration|FunctionExpression|ArrowFunction|MethodDeclaration)$/
   tree.iterate({
     enter(ref) {
       if (ref.name !== 'VariableDefinition' || ref.from > end) return
       let scope: SyntaxNode | null = ref.node.parent
       // Parameters belong to their function, declarations to the nearest lexical block.
-      while (
-        scope &&
-        scope.name !== 'Block' &&
-        scope.name !== 'Script' &&
-        !functions.test(scope.name)
-      )
-        scope = scope.parent
+      while (scope && !scopes.test(scope.name)) scope = scope.parent
       if (!scope || scope.from > position || scope.to < position) return
       const name = text.slice(ref.from, ref.to)
       if (!out.includes(name)) out.push(name)
