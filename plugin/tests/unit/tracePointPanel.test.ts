@@ -3,6 +3,46 @@ import { savePoint, namesOnLine, marginMenu } from '@/debugger/trace/panel'
 import { Menu } from 'obsidian'
 import type { DebuggerBinding } from '@/debugger/DebuggerService'
 
+it('accepts Escape immediately after opening and releases its keyboard listener when hidden', async () => {
+  vi.useFakeTimers()
+  let keyboardScopeLoaded = false
+  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent').mockImplementation(function (
+    this: Menu
+  ) {
+    window.setTimeout(() => {
+      keyboardScopeLoaded = true
+    }, 0)
+    return this
+  })
+  const originalHide = Menu.prototype.hide
+  const hide = vi.spyOn(Menu.prototype, 'hide').mockImplementation(function (this: Menu) {
+    expect(keyboardScopeLoaded).toBe(true)
+    keyboardScopeLoaded = false
+    return originalHide.call(this)
+  })
+  try {
+    marginMenu(
+      { controller: { knownBreakpoints: () => [], current: true } } as never,
+      'sample-source',
+      1,
+      new MouseEvent('contextmenu', { clientX: 1 })
+    )
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await vi.runOnlyPendingTimersAsync()
+    expect(hide).toHaveBeenCalledOnce()
+    expect(hide.mock.instances[0]).toBe(show.mock.instances[0])
+    expect(keyboardScopeLoaded).toBe(false)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await vi.runOnlyPendingTimersAsync()
+    expect(hide).toHaveBeenCalledOnce()
+  } finally {
+    for (const menu of show.mock.instances as Menu[]) originalHide.call(menu)
+    show.mockRestore()
+    hide.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it.each([true, false])('names the record point in its enable action (%s)', (enabled) => {
   const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
   const binding = {

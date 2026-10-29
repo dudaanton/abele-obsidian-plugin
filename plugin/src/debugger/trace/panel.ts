@@ -59,7 +59,7 @@ export function marginMenu(
     .knownBreakpoints()
     .find((b) => b.sourceId === sourceId && b.line === line)
   const record = trace?.pointAt(sourceId, line)
-  const menu = new Menu()
+  const menu = new Menu().setUseNativeMenu(false)
   if (!known) {
     menu.addItem((i) =>
       i
@@ -169,6 +169,21 @@ export function marginMenu(
     const rect = anchor.getBoundingClientRect()
     menu.showAtPosition({ x: rect.left, y: rect.bottom })
   } else menu.showAtMouseEvent(event)
+  // The menu is visible before the host loads its keyboard scope on the next timer turn.
+  // Catch Escape now, then hide after that load so no hidden scope is left behind.
+  const win = (anchor instanceof Element ? anchor.ownerDocument.defaultView : null) ?? window
+  let closing: number | undefined
+  const escape = (key: KeyboardEvent) => {
+    if (key.key !== 'Escape') return
+    key.preventDefault()
+    key.stopImmediatePropagation()
+    closing ??= win.setTimeout(() => menu.hide(), 0)
+  }
+  win.addEventListener('keydown', escape, true)
+  menu.onHide(() => {
+    win.removeEventListener('keydown', escape, true)
+    win.clearTimeout(closing)
+  })
 }
 
 /** Opens a run in its tab; given a record point, at the last step that point gave. */
