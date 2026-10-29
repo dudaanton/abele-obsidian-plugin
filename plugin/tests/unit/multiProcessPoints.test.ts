@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import type { FolderDebugOwner } from '@/debugger/owner'
+import { activeTraceContext } from '@/debugger/trace/agentContext'
 
 const service = new DebuggerService()
 const target = {
@@ -33,7 +34,64 @@ function session(id: string, entry: string, pid: number) {
   )
   return binding
 }
-afterEach(() => service.destroy())
+afterEach(() => {
+  service.destroy()
+  DebuggerService.instance.destroy()
+  vi.restoreAllMocks()
+})
+
+it('keeps a mapped shared package source with its process for person points', () => {
+  const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
+  service.registerSource(
+    orders.registrationId,
+    orders.conversationId,
+    'shared',
+    'packages/common/money.ts',
+    orders.sessionId!,
+    orders.controller.snapshot!.incarnation,
+    target
+  )
+  expect(service.fileBinding(target, 'packages/common/money.ts')).toBe(orders)
+  expect(service.debugFor(target, 'packages/common/money.ts')?.sourceId).toBe('shared')
+})
+
+it('adds, lists and removes an explicit agent point in a mapped shared package', async () => {
+  const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
+  const file = 'packages/common/money.ts'
+  service.registerSource(
+    orders.registrationId,
+    orders.conversationId,
+    'shared',
+    file,
+    orders.sessionId!,
+    orders.controller.snapshot!.incarnation,
+    target
+  )
+  const savePoint = vi.fn(async () => ({ pending: false }))
+  const removePoint = vi.fn(async () => {})
+  orders.trace = {
+    projectId: target.projectId,
+    rpc: {},
+    points: [{ breakpoint_id: 'shared-point' }],
+    savePoint,
+    removePoint,
+    dispose: vi.fn(),
+  } as never
+  vi.spyOn(orders.controller, 'knownBreakpoints').mockReturnValue([
+    { id: 'shared-point', sourceId: 'shared', file, line: 4, requestedLine: 4, state: 'set' },
+  ] as never)
+  const live = DebuggerService.instance
+  live.select(orders)
+  vi.spyOn(live, 'folder').mockReturnValue(target)
+  vi.spyOn(live, 'fileBinding').mockImplementation(service.fileBinding.bind(service))
+  vi.spyOn(live, 'sourceFor').mockImplementation(service.sourceFor.bind(service))
+  const context = activeTraceContext({ file, session: orders.sessionId })!
+  expect(await context.addPoint(file, 4, { take: ['value'] })).toEqual({ recording: true })
+  expect(savePoint).toHaveBeenCalledWith('shared', 4, { take: ['value'] })
+  expect(await context.listPoints!()).toContain(`${file}:4`)
+  await context.removePoint(file, 4)
+  expect(removePoint).toHaveBeenCalledWith('shared-point')
+})
 
 it('retains explicit session selection for reading runs after a process ended', () => {
   const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)

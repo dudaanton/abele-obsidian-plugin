@@ -675,21 +675,14 @@ export class DebuggerService {
       /(?:^|\/)((?:packages|apps|services)\/[^/]+)\//.exec(file)?.[1]
     const filePackage = packageOf(path)
     const mapped = candidates.filter((binding) => !!this.sourceFor(binding, path))
-    if (
-      mapped.length > 1 &&
-      !candidates.some((binding) => filePackage && packageOf(this.entryOf(binding)) === filePackage)
-    )
+    if (mapped.length === 1) return mapped[0]
+    if (mapped.length > 1)
       throw new Error(
         `Ambiguous source ${path}; specify session or process: ${mapped.map((b) => b.sessionId).join(', ')}`
       )
     const matches = candidates.filter((binding) => {
       const entryPackage = packageOf(this.entryOf(binding))
       if (filePackage && entryPackage === filePackage) return true
-      if (
-        this.sourceFor(binding, path) &&
-        (!filePackage || !entryPackage || filePackage === entryPackage)
-      )
-        return true
       return !filePackage && !entryPackage && candidates.length === 1
     })
     if (matches.length > 1)
