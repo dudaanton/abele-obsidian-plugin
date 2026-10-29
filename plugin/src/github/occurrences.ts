@@ -17,7 +17,7 @@ export function occurrences() {
     marks,
     EditorView.baseTheme({
       '.abele-code-occurrence': {
-        backgroundColor: 'color-mix(in srgb, var(--text-highlight-bg) 45%, transparent)',
+        backgroundColor: 'var(--text-highlight-bg)',
       },
     }),
     ViewPlugin.define((view) => {
@@ -54,7 +54,10 @@ export function occurrences() {
             )
               continue
             found.push(
-              Decoration.mark({ class: 'abele-code-occurrence' }).range(at, at + text.length)
+              Decoration.mark({ class: 'cm-selectionMatch abele-code-occurrence' }).range(
+                at,
+                at + text.length
+              )
             )
           }
         }

@@ -25,10 +25,39 @@ function scrollProbe(shell: string, place: string, mode: string) {
             range.setStart(text,at);range.setEnd(text,at+11);
             window.getSelection().removeAllRanges();window.getSelection().addRange(range);
             document.dispatchEvent(new Event("selectionchange"));
-            await until(()=>root.querySelector(".abele-code-occurrence"),"Occurrence highlight");
             await until(()=>document.querySelector(".abele-selection-bar_placed"),"Floating selection menu");
             if(root.querySelector(".abele-github-code__bar,.abele-github-selection"))throw Error("Inline selection bar remains");
-            require("fs").writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-selection.png`))},(await web.capturePage()).toPNG());
+            const transparent=color=>!color||color==='transparent'||color.endsWith(', 0)')||color.endsWith('/ 0)');
+            const visibleOccurrence=()=>{
+              const viewport=root.getBoundingClientRect();
+              return [...root.querySelectorAll('.abele-code-occurrence')].find(mark=>{
+                const line=mark.closest('.cm-line'),box=mark.getBoundingClientRect();
+                if(!line||line===content||mark.textContent!=='sampleValue'||box.width<=0||box.height<=0)return false;
+                if(box.top<Math.max(0,viewport.top)||box.bottom>Math.min(innerHeight,viewport.bottom)||box.left<Math.max(0,viewport.left)||box.right>Math.min(innerWidth,viewport.right))return false;
+                const background=getComputedStyle(mark).backgroundColor;
+                if(transparent(background)||background===getComputedStyle(line).backgroundColor)return false;
+                let parent=line;
+                while(parent&&transparent(getComputedStyle(parent).backgroundColor))parent=parent.parentElement;
+                return parent&&background!==getComputedStyle(parent).backgroundColor;
+              });
+            };
+            const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+            const capture=async suffix=>{
+              await until(visibleOccurrence,'Visible occurrence on another line with a contrasting background');
+              await frame();
+              if(!visibleOccurrence())throw Error('Occurrence highlight is not visible before screenshot');
+              require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-selection`))}+suffix+'.png',(await web.capturePage()).toPNG());
+            };
+            const themes=['theme-light','theme-dark'],original=themes.filter(theme=>document.body.classList.contains(theme));
+            try {
+              for(const theme of themes){
+                document.body.classList.remove(...themes);document.body.classList.add(theme);
+                await frame();await capture('-'+theme);
+              }
+            } finally {
+              document.body.classList.remove(...themes);document.body.classList.add(...original);await frame();
+            }
+            await capture('');
             window.getSelection().removeAllRanges();document.dispatchEvent(new Event("selectionchange"));
           }
 

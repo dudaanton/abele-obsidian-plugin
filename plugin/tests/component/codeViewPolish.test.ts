@@ -46,6 +46,8 @@ it('uses only the floating menu for gutter selection and retains insertion with 
 })
 it('highlights whole identifier occurrences and clears them with the selection', async () => {
   const view = await open()
+  // Supply the host theme token: the DOM shim has no Obsidian stylesheet.
+  ;(view.element as HTMLElement).style.setProperty('--text-highlight-bg', 'rgb(255, 208, 0)')
   const walker = document.createTreeWalker(view.get('.cm-line').element, NodeFilter.SHOW_TEXT)
   let node: Node | null
   while ((node = walker.nextNode())) {
@@ -63,6 +65,10 @@ it('highlights whole identifier occurrences and clears them with the selection',
     'sample',
     'sample',
   ])
+  for (const mark of view.findAll('.abele-code-occurrence')) {
+    expect(mark.classes()).toContain('cm-selectionMatch')
+    expect(getComputedStyle(mark.element).backgroundColor).toBe('rgb(255, 208, 0)')
+  }
   window.getSelection()!.removeAllRanges()
   document.dispatchEvent(new Event('selectionchange'))
   await new Promise((resolve) => setTimeout(resolve, 180))
