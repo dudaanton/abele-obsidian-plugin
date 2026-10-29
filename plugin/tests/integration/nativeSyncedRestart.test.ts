@@ -54,7 +54,9 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
       await nodeDisk.mkdir(join(root, folder), { recursive: true })
     for (let i = 0; i < paths.length; i += 64)
       await Promise.all(
-        paths.slice(i, i + 64).map((path) => nodeDisk.writeFile(join(root, path), `sample ${path}`))
+        paths.slice(i, i + 64).map((path) =>
+          nodeDisk.writeFile(join(root, path), path === paths[0] ? 'x'.repeat(32 * 1024) : `sample ${path}`)
+        )
       )
     // A metadata-only update changes native status time while creation time stays put.
     // The settled host index reports creation time at its own precision.
@@ -148,6 +150,10 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
     )
     expect(classification?.contentReads).toBe(0)
     expect(classification?.callers['state.trust']?.hit).toBeGreaterThanOrEqual(FILES)
+    // An ordinary file above the projection inspection cap has no saved inspection.
+    // Its verified index identity must still avoid a repeated restart classification.
+    expect(classification?.callers['state.trust']?.['no-saved-inspection'] ?? 0).toBe(0)
+    expect(classification?.callers['state.trust']?.['uninspected-trusted']).toBeGreaterThanOrEqual(2)
     expect(fileProbes).toEqual([])
     // A settled host row retains the last verified bytes. Ledger walks reuse that decision
     // while the watcher sees no change, so they add no per-file disk or database round trip.

@@ -88,7 +88,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   /** The pass snapshot by path, for lookups of every scanned file. Tied to its snapshot. */
   private entryIndex: {
     snapshot: Promise<StateEntry[]>
-    paths: Promise<Map<string, StateEntry>>
+    paths: Promise<Map<string, StateEntry>> | Map<string, StateEntry>
   } | null = null
   /** The pull-write intent keys, read once per pass: a ledger walk asks for each file's. */
   private pullWrites: Promise<Set<string>> | Set<string> | null = null
@@ -97,6 +97,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     // Overlapping passes never share a snapshot. Only the ordinary single-owner pass caches.
     this.normalizationCache = ++this.normalizationPassDepth === 1 ? new Map() : null
     this.entrySnapshot = null
+    this.entryIndex = null
     this.pullWrites = null
     try {
       return await work()
@@ -104,6 +105,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       this.normalizationPassDepth--
       this.normalizationCache = null
       this.entrySnapshot = null
+      this.entryIndex = null
       this.pullWrites = null
     }
   }
@@ -182,7 +184,13 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
             break
           }
         }
-      if (changed) this.scanStateRevision++
+      if (changed) {
+        this.scanStateRevision++
+        this.entrySnapshot = null
+        this.entryIndex = null
+        this.pullWrites = null
+        this.normalizationCache?.clear()
+      }
     }
     return this.scanStateRevision
   }
@@ -315,22 +323,26 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     // Inside a pass, a lookup reuses the walk's snapshot; any entry write drops that snapshot.
     const snapshot = this.entrySnapshot
     if (this.normalizationCache && !this.transactionPending && snapshot !== null) {
-      if (this.entryIndex?.snapshot !== snapshot)
+      if (this.entryIndex?.snapshot !== snapshot) {
+        const building = snapshot.then(async (rows) => {
+          const paths = new Map<string, StateEntry>()
+          const budget = new SyncTaskBudget()
+          for (const row of rows) {
+            paths.set(row.path, row)
+            const pause = budget.account(4096)
+            if (pause !== undefined) await pause
+          }
+          if (this.entryIndex?.snapshot === snapshot && this.entryIndex.paths === building)
+            this.entryIndex.paths = paths
+          return paths
+        })
         this.entryIndex = {
           snapshot,
-          paths: snapshot.then(async (rows) => {
-            const paths = new Map<string, StateEntry>()
-            const budget = new SyncTaskBudget()
-            for (const row of rows) {
-              paths.set(row.path, row)
-              const pause = budget.account(4096)
-              if (pause !== undefined) await pause
-            }
-            return paths
-          }),
+          paths: building,
         }
+      }
       const index = this.entryIndex.paths
-      const rows = await index.catch((): null => null)
+      const rows = index instanceof Map ? index : await index.catch((): null => null)
       if (rows && this.entrySnapshot === snapshot) return copyEntry(rows.get(path))
     }
     return this.read(`cannot read the state of ${path}`, [ENTRIES], async (tx) =>
@@ -438,6 +450,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     const rows = await (this.normalizationCache
       ? (this.entrySnapshot ??= read().catch((error) => {
           this.entrySnapshot = null
+          this.entryIndex = null
           throw error
         }))
       : read())
@@ -737,6 +750,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   async commitExternalPhase(batch: ExternalPhaseBatch): Promise<void> {
     this.assertExternalBoundary()
     this.entrySnapshot = null
+    this.entryIndex = null
     this.pullWrites = null
     batch = structuredClone(batch)
     this.externalPhasePending = true
@@ -803,6 +817,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     } finally {
       this.externalPhasePending = false
       this.entrySnapshot = null
+      this.entryIndex = null
       this.pullWrites = null
     }
   }
@@ -1051,7 +1066,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     entriesChanged = stores.includes(ENTRIES)
   ): Promise<T> {
     const owner = new Error(what).stack ?? what
-    if (stores.includes(ENTRIES)) this.entrySnapshot = null
+    if (stores.includes(ENTRIES)) {
+      this.entrySnapshot = null
+      this.entryIndex = null
+    }
     this.pullWrites = null
     return this.once(what, async () => {
       const tx = this.begin(
@@ -1081,7 +1099,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         this.recentWrites.delete(this.recentWrites.keys().next().value)
       return result
     }).finally(() => {
-      if (stores.includes(ENTRIES)) this.entrySnapshot = null
+      if (stores.includes(ENTRIES)) {
+        this.entrySnapshot = null
+        this.entryIndex = null
+      }
       // An inventory read while this write was queued may predate its commit.
       this.pullWrites = null
     })

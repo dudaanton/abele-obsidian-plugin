@@ -65,6 +65,8 @@ type Measurement = {
   timeline: SyncStartupMark[]
   native: Record<string, number>
   ledgerRows: { native: Record<string, number>; indexedFileProbes: number; readonly: number; requests: number; yields: number; classifications: number }
+  afterList: { readonly: number; requests: number; gets: number; metadataGets: number }
+  fileList: { lstat: number; indexedFileProbes: number }
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -166,6 +168,18 @@ async function measure() {
     vi.spyOn(IDBObjectStore.prototype, 'getAll'),
     vi.spyOn(IDBObjectStore.prototype, 'openCursor'),
   ]
+  let stateGets = 0,
+    metadataGets = 0
+  const getEntry = IndexedDbStateStore.prototype.get
+  const getMetadata = IndexedDbStateStore.prototype.getMeta
+  const getSpy = vi.spyOn(IndexedDbStateStore.prototype, 'get').mockImplementation(function (...args) {
+    stateGets++
+    return getEntry.apply(this, args)
+  })
+  const getMetaSpy = vi.spyOn(IndexedDbStateStore.prototype, 'getMeta').mockImplementation(function (...args) {
+    metadataGets++
+    return getMetadata.apply(this, args)
+  })
   let metadataYields = 0
   const metadataRow = SyncTaskBudget.prototype.metadataRow
   const budgetSpy = vi.spyOn(SyncTaskBudget.prototype, 'metadataRow').mockImplementation(function (...args) {
@@ -323,6 +337,10 @@ async function measure() {
       const marks: SyncStartupMark[] = []
       let ledgerStart: Measurement['ledgerRows'] | undefined
       let ledgerRows: Measurement['ledgerRows'] | undefined
+      let afterListStart: ReturnType<typeof snapshot> | undefined
+      let afterList: Measurement['afterList'] | undefined
+      let fileListStart: ReturnType<typeof snapshot> | undefined
+      let fileList: Measurement['fileList'] | undefined
       const snapshot = () => ({
         native: Object.fromEntries(counted.calls),
         indexedFileProbes,
@@ -330,9 +348,29 @@ async function measure() {
         requests: idbRequests.reduce((sum, spy) => sum + spy.mock.calls.length, 0),
         yields: metadataYields,
         classifications,
+        gets: stateGets,
+        metadataGets,
       })
       timeline.subscribe((mark) => {
         marks.push(mark)
+        if (mark.phase === 'reconcile:file-list:begin') fileListStart = snapshot()
+        if (mark.phase === 'reconcile:file-list:end') {
+          const end = snapshot()
+          if (fileListStart) fileList = {
+            lstat: (end.native.lstat ?? 0) - (fileListStart.native.lstat ?? 0),
+            indexedFileProbes: end.indexedFileProbes - fileListStart.indexedFileProbes,
+          }
+          afterListStart = end
+        }
+        if (mark.phase === 'reconcile:cycle:end' && afterListStart) {
+          const end = snapshot()
+          afterList = {
+            readonly: end.readonly - afterListStart.readonly,
+            requests: end.requests - afterListStart.requests,
+            gets: end.gets - afterListStart.gets,
+            metadataGets: end.metadataGets - afterListStart.metadataGets,
+          }
+        }
         if (mark.phase === 'reconcile:inventory:ledger-rows:begin') ledgerStart = snapshot()
         if (mark.phase === 'reconcile:inventory:ledger-rows:end' && ledgerStart) {
           const end = snapshot()
@@ -354,6 +392,7 @@ async function measure() {
       indexedFileProbes = 0
       counted.calls.clear()
       transactions.readonly = transactions.readwrite = 0
+      stateGets = metadataGets = 0
       const started = performance.now()
       const cpu = process.cpuUsage(),
         diskBefore = diskWait.read(),
@@ -424,6 +463,8 @@ async function measure() {
         firstRequestMs: requests[0] - started,
         native: Object.fromEntries(counted.calls),
         ledgerRows: ledgerRows!,
+        afterList: afterList!,
+        fileList: fileList!,
         transactions: { ...transactions },
         classification: f.ui.activity.value[f.id]?.classification,
         cycles: cycleReceipts,
@@ -454,6 +495,8 @@ async function measure() {
     trace.mockRestore()
     ledger.mockRestore()
     classification.mockRestore()
+    getSpy.mockRestore()
+    getMetaSpy.mockRestore()
     budgetSpy.mockRestore()
     for (const spy of idbRequests) spy.mockRestore()
     clearInterval(progress)
@@ -544,6 +587,17 @@ it('walks 33000 trusted ledger rows without per-file classification, disk work o
     // Two paged snapshots (ledger and inspection) plus small metadata reads.
     expect(result.ledgerRows.requests).toBeLessThanOrEqual(150)
     expect(result.ledgerRows.yields).toBeLessThan(64)
+  }
+}, 240000)
+
+it('answers post-listing state lookups without one database round trip per file', async () => {
+  await ensureMeasured()
+  for (const result of results) {
+    console.log('native post-listing state', result.afterList, result.fileList)
+    expect(result.afterList.requests).toBeLessThanOrEqual(256)
+    expect(result.afterList.readonly).toBeLessThanOrEqual(256)
+    expect(result.fileList.lstat).toBeLessThanOrEqual(64)
+    expect(result.fileList.indexedFileProbes).toBe(0)
   }
 }, 240000)
 

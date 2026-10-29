@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHook } from 'node:async_hooks'
 import { IDBFactory, IDBObjectStore, IDBKeyRange } from 'fake-indexeddb'
 import { expect, it, vi } from 'vitest'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
@@ -63,6 +64,44 @@ it('lets a host task run while indexing an already loaded ledger snapshot', asyn
   }
 })
 
+it('answers 33000 settled path lookups without a promise chain per row', async () => {
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-snapshot-lookups')
+  const rows = Array.from({ length: 33000 }, (_, i) => ({
+    path: `sample-${i}.md`,
+    wirePath: `sample-${i}.md`,
+    fileId: `sample-${i}`,
+    versionId: 'v1',
+    sha: 'a'.repeat(64),
+    size: 1,
+    mtime: 1,
+  }))
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  let promises = 0
+  const hook = createHook({ init(_id, type) { if (type === 'PROMISE') promises++ } })
+  try {
+    await Reflect.get(state, Symbol.for('abele.sync.normalization-pass-v1')).call(
+      state,
+      async () => {
+        Reflect.set(state, 'entrySnapshot', Promise.resolve(rows))
+        expect((await state.get(rows[0].path))?.fileId).toBe(rows[0].fileId)
+        hook.enable()
+        try {
+          for (const row of rows) expect((await state.get(row.path))?.fileId).toBe(row.fileId)
+        } finally {
+          hook.disable()
+        }
+      }
+    )
+    console.log('settled path lookup promises', { rows: rows.length, promises, requests: get.mock.calls.length })
+    expect(get).not.toHaveBeenCalled()
+    expect(promises).toBeLessThanOrEqual(rows.length * 3)
+  } finally {
+    hook.disable()
+    get.mockRestore()
+    state.close()
+  }
+})
+
 it('loads entries once per pass and retires the snapshot after writes and rollback', async () => {
   const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-startup-bulk')
   const read = async () => {
@@ -103,5 +142,36 @@ it('loads entries once per pass and retires the snapshot after writes and rollba
   } finally {
     getAll.mockRestore()
     state.close()
+  }
+})
+
+it('retires a loaded pass snapshot after another connection changes the ledger', async () => {
+  const factory = new IDBFactory()
+  const reader = await IndexedDbStateStore.open(factory, 'sample-external-entry-revision')
+  const writer = await IndexedDbStateStore.open(factory, 'sample-external-entry-revision')
+  const path = 'sample-added.md'
+  const entry = {
+    path,
+    wirePath: path,
+    fileId: 'sample-added',
+    versionId: 'v1',
+    sha: 'a'.repeat(64),
+    size: 1,
+    mtime: 1,
+  }
+  const pass = Symbol.for('abele.sync.normalization-pass-v1')
+  const revision = Symbol.for('abele.sync.local-scan-state-revision-v1')
+  try {
+    await Reflect.get(reader, pass).call(reader, async () => {
+      expect(await Reflect.get(reader, revision).call(reader)).toBe(0)
+      expect(await Array.fromAsync(reader.all())).toEqual([])
+      expect(await reader.get(path)).toBeNull()
+      await writer.put(entry)
+      expect(await Reflect.get(reader, revision).call(reader)).toBe(1)
+      expect(await reader.get(path)).toEqual(entry)
+    })
+  } finally {
+    reader.close()
+    writer.close()
   }
 })

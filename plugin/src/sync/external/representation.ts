@@ -64,6 +64,8 @@ export interface RepresentationOptions {
     identity?(path: string, prior?: InspectionIdentity): Promise<InspectionIdentity | null>
     /** Read-only settled-index proof for a saved inspection; no disk or await. */
     trusted?(path: string, prior: InspectionIdentity): boolean | string
+    /** A large or excluded ordinary ledger row has no byte inspection to save. */
+    trustedUninspected?(entry: StateEntry): boolean | string
     /** Where the cache is kept, for diagnostics. */
     storage?: string
     save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
@@ -290,6 +292,17 @@ export class ExternalRepresentation {
     }
     const prior = this.inspected.get(inspection.cacheKey?.(entry.path) ?? entry.path)
     if (!prior) {
+      if (
+        inspection.trustedUninspected &&
+        (entry.size > MAX_PROJECTION_BYTES || this.options.excluded?.(entry.path, entry.size))
+      ) {
+        const decision = inspection.trustedUninspected(entry)
+        this.count(
+          'state.trust',
+          decision === true ? 'uninspected-trusted' : typeof decision === 'string' ? decision : 'other'
+        )
+        return decision === true
+      }
       this.count('state.trust', 'no-saved-inspection')
       return false
     }

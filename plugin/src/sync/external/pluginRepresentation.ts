@@ -18,7 +18,7 @@ import {
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
 import { SyncTaskBudget } from '../syncTaskBudget'
-import type { InspectionEntry } from './inspectionIdentity'
+import type { InspectionEntry, InspectionIdentity } from './inspectionIdentity'
 
 /** Called only after the startup fence/journal inspection, before engine activation.
  * During receive/recovery this callback runs inside the owning sync job; it does not enqueue
@@ -48,6 +48,14 @@ export async function pluginRepresentation(options: {
   fence.assertOwned()
   const cache = inspectionCache(app)
   const persisted = new Map<string, InspectionEntry>()
+  const trustedIndex = (path: string, prior: InspectionIdentity): boolean | string => {
+    const physical = options.placement?.toLocal(path) ?? path
+    const reason = Reflect.get(options.fs, Symbol.for('abele.sync.unchanged-index-reason-v1'))
+    const indexReason = typeof reason === 'function' ? reason.call(options.fs, path) : 'other'
+    if (indexReason !== 'hit') return indexReason
+    const inspectionReason = trustedProjectionInspectionReason(app, physical, prior)
+    return inspectionReason === 'hit' ? true : inspectionReason
+  }
   return ExternalRepresentation.open({
     inspection: {
       entries: [],
@@ -77,14 +85,8 @@ export async function pluginRepresentation(options: {
             path.startsWith(options.placement.local + '/'),
       identity: (path, prior) =>
         projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path, prior),
-      trusted: (path, prior) => {
-        const physical = options.placement?.toLocal(path) ?? path
-        const reason = Reflect.get(options.fs, Symbol.for('abele.sync.unchanged-index-reason-v1'))
-        const indexReason = typeof reason === 'function' ? reason.call(options.fs, path) : 'other'
-        if (indexReason !== 'hit') return indexReason
-        const inspectionReason = trustedProjectionInspectionReason(app, physical, prior)
-        return inspectionReason === 'hit' ? true : inspectionReason
-      },
+      trusted: trustedIndex,
+      trustedUninspected: (entry) => trustedIndex(entry.path, entry),
       save: async (current, retired = []) => {
         fence.assertOwned()
         // Write only rows that changed. Rows are per path, so another connection's completed
