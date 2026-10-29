@@ -2,6 +2,34 @@ import { expect, it, vi } from 'vitest'
 import { RequestsModel } from '@/requests/RequestsModel'
 import { fakeNode, ports } from '../helpers/requestsFakeNode'
 
+it('shares one polling loop between the sidebar and request tabs until the last closes', async () => {
+  vi.useFakeTimers()
+  const node = fakeNode()
+  const list = vi.spyOn(node.rpc, 'list')
+  const model = new RequestsModel(node.rpc, 'sample-project', ports())
+  const sidebar = model.followList(() => true)
+  const first = model.followList(() => true)
+  const second = model.followList(() => true)
+  try {
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(list).toHaveBeenCalledTimes(1)
+    sidebar()
+    first()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(list).toHaveBeenCalledTimes(2)
+    second()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    sidebar()
+    first()
+    second()
+    model.destroy()
+    vi.useRealTimers()
+  }
+})
+
 it('updates a project-file send and its history row when a late answer arrives', async () => {
   vi.useFakeTimers()
   const node = fakeNode()

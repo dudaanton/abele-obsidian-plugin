@@ -8,7 +8,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
-import { evalRaw } from './helpers/obsidianCli'
+import { evalLong, evalRaw } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
@@ -33,8 +33,9 @@ const openRequest=async name=>{
 };
 const send=async()=>{
   const b=await until(()=>{const x=tab()?.querySelector('.abele-http-request__send');return x&&!x.disabled&&!x.classList.contains('is-disabled')?x:null},'Send offered');
+  const state=shown.view.getState(),model=requests.model(state),previous=model.entry(state.id).latestSend;
   b.click();
-  await until(()=>!tab().querySelector('.abele-http-request__send').textContent.includes('Sending'),'answer in',600);
+  await until(()=>{const entry=model.entry(state.id);return entry.latestSend&&entry.latestSend!==previous&&entry.outcome&&entry.outcome.kind!=='sending'&&!model.state.sending.includes(state.id)},'new send settled',600);
 };`
 
 let child: ChildProcess | undefined
@@ -259,7 +260,7 @@ it('shows a late answer live, after changing tabs and after reopening without re
     model.setTimeout(state.id,1000);
     await send();
     if(!notice().includes('No answer'))throw Error('Expected an unknown outcome before the late answer');
-    const sendId=model.entry(state.id).shown;
+    const sendId=model.entry(state.id).latestSend;
     await until(()=>facts().includes('200')&&tab().textContent.includes('late sample answer'),'late answer shown live',300);
     if(model.entry(state.id).history[0].status!==200)throw Error('History disagrees with the tab');
     await shot('late-answer-live');
@@ -272,7 +273,7 @@ it('shows a late answer live, after changing tabs and after reopening without re
     await shot('late-answer-reopened');
     await send();
     if(!notice().includes('No answer'))throw Error('Expected another unknown outcome');
-    const secondId=model.entry(state.id).shown;
+    const secondId=model.entry(state.id).latestSend;
     shown.detach();for(const leaf of app.workspace.getLeavesOfType('abele-requests'))leaf.detach();
     await wait(5000);
     await api.requests.openTab(state,state.id);shown=await until(()=>leafOf('Late answer'),'reopened tab');
@@ -354,7 +355,7 @@ it('lists a long collection under its environment, each request with its method'
     scrolls: boolean
   }>(`(async()=>{${prelude}
     ${CHOOSE(() => project, 'repo')}
-    await until(()=>document.querySelectorAll('.abele-requests-panel__request').length>=34,'every request listed');
+    await until(()=>document.querySelectorAll('.abele-requests-panel__request').length===35,'every request listed');
     const collections=[...panel().querySelectorAll(':scope > .tree-item:not(.abele-requests-panel__project):not(.abele-requests-panel__environment):not(.abele-requests-panel__recording) > .tree-item-self .abele-tree-item__text')].map(e=>e.textContent.trim());
     const methods=[...panel().querySelectorAll('.abele-requests-panel__request .abele-http-method')].map(e=>e.textContent.trim()).filter(Boolean).slice(0,6);
     const scroller=panel().closest('.view-content');
@@ -362,7 +363,7 @@ it('lists a long collection under its environment, each request with its method'
     return {collections,rows:document.querySelectorAll('.abele-requests-panel__request').length,methods,environment:panel().querySelector('.abele-requests-panel__environment .abele-tree-item__text')?.textContent.trim()??'',scrolls:scroller.scrollHeight>scroller.clientHeight}
   })()`)
   expect(seen.collections).toEqual(['Catalogue', 'Samples'])
-  expect(seen.rows).toBe(34)
+  expect(seen.rows).toBe(35)
   expect(seen.environment).toBe('local')
   expect(seen.methods).toContain('GET')
   expect(seen.scrolls).toBe(true)
@@ -741,7 +742,7 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
 }, 180000)
 
 it('reads a project request file, sends its chain and writes an edit back on both layouts', async () => {
-  const check = (device: string) => {
+  const check = async (device: string) => {
     connect()
     const path = join(repo, 'sample-chain.http')
     const env = join(repo, 'http-client.env.json')
@@ -751,11 +752,9 @@ it('reads a project request file, sends its chain and writes an edit back on bot
     )
     writeFileSync(env, JSON.stringify({ sample: { base, token: 'fixture-secret' } }))
     try {
-      const result = evalAsync<{
-        url: string
-        edited: boolean
-        gone: boolean
-      }>(`(async()=>{${prelude}
+      const result = JSON.parse(
+        await evalLong(
+          `(async()=>{${prelude}
         let stage='choose project';
         try {
         ${CHOOSE(() => project, 'repo')}
@@ -841,7 +840,10 @@ it('reads a project request file, sends its chain and writes an edit back on bot
         await shot('file-requests-09-gone-${device}');
         return {url,edited,gone};
         } catch(error) { throw Error('${device} '+stage+': '+(error?.message??String(error))) }
-      })()`)
+      })()`,
+          60_000
+        )
+      ) as { url: string; edited: boolean; gone: boolean }
       expect(result.edited).toBe(true)
       expect(result.gone).toBe(true)
     } finally {
@@ -852,6 +854,6 @@ it('reads a project request file, sends its chain and writes an edit back on bot
       )
     }
   }
-  check('desktop')
+  await check('desktop')
   await withEmulatedPhone(async () => check('phone'))
 }, 180000)

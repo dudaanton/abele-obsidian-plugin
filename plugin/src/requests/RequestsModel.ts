@@ -43,6 +43,8 @@ export interface RequestEntry {
   /** The answer shown: the latest, or the one of `shown`. */
   outcome?: HttpOutcome
   shown?: string
+  /** Most recently started send, separate from an explicitly selected history answer. */
+  latestSend?: string
   compare?: HttpSend
   /** Sends that went into a recording: their run and step. */
   runs: Map<string, { runId: string; step?: string }>
@@ -82,6 +84,8 @@ export class RequestsModel {
   private readonly saves = new Map<string, { timer: number; work?: Promise<void> }>()
   /** A new send or answer selection supersedes reads already in flight. */
   private readonly answerReads = new Map<string, symbol>()
+  private readonly listFollowers = new Set<() => boolean>()
+  private stopListPolling?: () => void
   private readonly wait: (ms: number) => Promise<void>
   private readonly held: HeldSecrets
 
@@ -307,9 +311,9 @@ export class RequestsModel {
     if (
       restore &&
       (!entry.outcome || entry.outcome.kind === 'unknown') &&
-      (entry.shown || sends[0])
+      (entry.shown || entry.latestSend || sends[0])
     )
-      await this.showSend(id, entry.shown ?? sends[0].id).catch(() => {})
+      await this.showSend(id, entry.shown ?? entry.latestSend ?? sends[0].id).catch(() => {})
   }
 
   private sendView(id: string, s: SendSummary): HttpSend {
@@ -441,6 +445,9 @@ export class RequestsModel {
   }
 
   destroy() {
+    this.stopListPolling?.()
+    this.stopListPolling = undefined
+    this.listFollowers.clear()
     this.fileFollowers = 0
     this.fileWatchEpoch++
     this.stopFiles?.()
@@ -474,6 +481,23 @@ export class RequestsModel {
   /** Files can arrive from outside this client; follow only while the Requests view is open. */
   followList(online: () => boolean): () => void {
     const stopFiles = this.followFiles()
+    const follower = () => online()
+    this.listFollowers.add(follower)
+    this.stopListPolling ??= this.pollList()
+    let closed = false
+    return () => {
+      if (closed) return
+      closed = true
+      stopFiles()
+      this.listFollowers.delete(follower)
+      if (!this.listFollowers.size) {
+        this.stopListPolling?.()
+        this.stopListPolling = undefined
+      }
+    }
+  }
+
+  private pollList(): () => void {
     let stopped = false
     let timer: number | undefined
     const schedule = (): void => {
@@ -481,11 +505,12 @@ export class RequestsModel {
     }
     const refresh = async (): Promise<void> => {
       try {
-        if (online() && !this.state.loading) {
+        if ([...this.listFollowers].some((online) => online()) && !this.state.loading) {
           await this.refreshList()
           for (const [id, entry] of Object.entries(this.state.entries)) {
-            if (entry.outcome?.kind !== 'unknown' || !entry.shown) continue
-            await this.showSend(id, entry.shown)
+            const sendId = entry.shown ?? entry.latestSend
+            if (entry.outcome?.kind !== 'unknown' || !sendId) continue
+            await this.showSend(id, sendId)
             if (!id.startsWith('file:')) await this.readHistory(id, false)
           }
         }
@@ -498,7 +523,6 @@ export class RequestsModel {
     schedule()
     return () => {
       stopped = true
-      stopFiles()
       window.clearTimeout(timer)
     }
   }
@@ -630,6 +654,7 @@ export class RequestsModel {
     this.answerReads.set(id, Symbol())
     entry.outcome = { kind: 'sending' }
     entry.shown = undefined
+    entry.latestSend = undefined
     entry.compare = undefined
     try {
       const vars = this.vars(doc, options.interactive)
@@ -701,7 +726,7 @@ export class RequestsModel {
             }
           : {}),
       })
-      entry.shown = started.send_id
+      entry.latestSend = started.send_id
       if (file) this.ports.prefs.set(`answer:${id}`, started.send_id)
       const status = await followSend(
         this.rpc,
