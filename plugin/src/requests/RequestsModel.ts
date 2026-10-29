@@ -282,7 +282,7 @@ export class RequestsModel {
         entry.doc = file.doc
         entry.error = undefined
         const answer = this.ports.prefs.get(`answer:${id}`)
-        if (!entry.outcome && answer)
+        if ((!entry.outcome || entry.outcome.kind === 'unknown') && answer)
           await this.showSend(id, answer).catch((e) =>
             console.debug('[requests] Retained file answer unavailable', e)
           )
@@ -304,7 +304,12 @@ export class RequestsModel {
     if (this.answerReads.get(id) !== selection) return
     entry.history = sends.map((s) => this.sendView(id, s))
     // A request opened later shows its last answer, as it was left.
-    if (restore && !entry.outcome && sends[0]) await this.showSend(id, sends[0].id).catch(() => {})
+    if (
+      restore &&
+      (!entry.outcome || entry.outcome.kind === 'unknown') &&
+      (entry.shown || sends[0])
+    )
+      await this.showSend(id, entry.shown ?? sends[0].id).catch(() => {})
   }
 
   private sendView(id: string, s: SendSummary): HttpSend {
@@ -476,7 +481,14 @@ export class RequestsModel {
     }
     const refresh = async (): Promise<void> => {
       try {
-        if (online() && !this.state.loading) await this.refreshList()
+        if (online() && !this.state.loading) {
+          await this.refreshList()
+          for (const [id, entry] of Object.entries(this.state.entries)) {
+            if (entry.outcome?.kind !== 'unknown' || !entry.shown) continue
+            await this.showSend(id, entry.shown)
+            if (!id.startsWith('file:')) await this.readHistory(id, false)
+          }
+        }
       } catch (error) {
         console.debug('[requests] External changes unavailable', error)
       } finally {
@@ -689,6 +701,7 @@ export class RequestsModel {
             }
           : {}),
       })
+      entry.shown = started.send_id
       if (file) this.ports.prefs.set(`answer:${id}`, started.send_id)
       const status = await followSend(
         this.rpc,
@@ -784,6 +797,20 @@ export class RequestsModel {
     if (this.answerReads.get(id) !== selection) return
     entry.outcome = outcome
     entry.shown = sendId
+    if (outcome.kind === 'answered') {
+      const response = outcome.response
+      entry.history = entry.history.map((send) =>
+        send.id === sendId
+          ? {
+              ...send,
+              status: response.status,
+              ms: response.ms,
+              bytes: response.bytes,
+              failed: false,
+            }
+          : send
+      )
+    }
     if (id.startsWith('file:')) this.ports.prefs.set(`answer:${id}`, sendId)
     if (entry.compare?.id === sendId) entry.compare = undefined
   }

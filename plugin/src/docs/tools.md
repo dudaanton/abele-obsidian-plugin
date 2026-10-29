@@ -1085,7 +1085,8 @@ default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` 
 ## Saved requests
 
 `http_send` accepts `timeout_ms` (1000–300000) for one send without changing the saved wait.
-After an unknown outcome, use `http_send_result` with the original send id: it reads the
+The result includes the started send id even when the wait expires. After an unknown outcome,
+use `http_send_result` with that send id: it reads the
 node again and shows a late answer when the node retains one. Never resend to check an outcome.
 
 `http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`,

@@ -7,6 +7,21 @@ import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 
 beforeEach(() => forgetRequestSecrets())
 
+it('returns the started send id when timeout history is empty', async () => {
+  const s = setup()
+  const send = 's00000000000000000000000009'
+  vi.spyOn(s.node.rpc, 'send').mockResolvedValue({ send_id: send })
+  vi.spyOn(s.node.rpc, 'status').mockResolvedValue({
+    send: { id: send, at: '2026-01-02T03:04:05Z', method: 'GET', url: 'https://example.test' },
+    outcome: { state: 'unknown', after_ms: 1000 },
+  })
+  vi.spyOn(s.node.rpc, 'history').mockResolvedValue([])
+  const result = await s.call('http_send', { id: 'Samples/Create sample.http', timeout_ms: 1000 })
+  expect(result).toContain(`Send ${send} in`)
+  expect(result).toContain('Outcome unknown')
+  s.model.destroy()
+})
+
 function setup(over: Parameters<typeof ports>[0] = {}) {
   const node = fakeNode()
   const p = ports(over)

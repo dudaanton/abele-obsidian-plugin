@@ -379,9 +379,9 @@ export class RequestTab extends ItemView {
         (s, _was, cleanup) => {
           if (s) {
             const model = RequestsService.instance().model(s)
-            cleanup(model.followFiles())
             try {
               const connection = NodeService.getInstance().connection(s.registrationId)
+              cleanup(model.followList(() => connection.state.value === 'connected'))
               cleanup(
                 watch([connection.state, connection.healthEpoch], () => {
                   if (

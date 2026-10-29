@@ -140,7 +140,8 @@ export function createRequestTools(
     run: (
       c: RequestToolContext,
       p: Record<string, unknown>,
-      signal?: AbortSignal
+      signal?: AbortSignal,
+      startedSend?: () => string | undefined
     ) => Promise<string>
   ): AgentTool => ({
     name,
@@ -195,7 +196,7 @@ export function createRequestTools(
           sendId = id
         })
         const result = await untilAborted(
-          run({ ...c, model }, params, lifetime.signal),
+          run({ ...c, model }, params, lifetime.signal, () => sendId),
           lifetime.signal
         )
         guard()
@@ -357,7 +358,7 @@ export function createRequestTools(
         },
       },
       ['id'],
-      async (c, p, signal) => {
+      async (c, p, signal, startedSend) => {
         const m = await loaded(c)
         const env = str(p.environment)
         if (env && env !== m.state.environment) {
@@ -372,7 +373,7 @@ export function createRequestTools(
           intoRecording: p.into_recording === true,
         })
         const e = m.entry(id)
-        const sendId = e.history[0]?.id
+        const sendId = startedSend?.()
         const run = sendId ? e.runs.get(sendId) : undefined
         const head = `Send ${sendId ?? '(id unknown)'} in ${m.state.environment ?? 'no environment'}.`
         switch (outcome.kind) {

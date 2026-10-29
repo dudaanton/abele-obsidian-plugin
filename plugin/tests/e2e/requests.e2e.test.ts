@@ -61,6 +61,7 @@ const server = createServer((req, res) => {
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(value, null, 2))
     }
+    if (req.url === '/late') return setTimeout(() => json(200, { answer: 'late sample answer' }), 4500)
     if (req.url.startsWith('/samples/missing')) return json(404, { error: 'No such sample: ' + 'sample-reference '.repeat(12) })
     if (req.method === 'POST' && req.url.startsWith('/samples')) {
       const sent = JSON.parse(body || '{}')
@@ -94,6 +95,7 @@ function writeRequests(root: string) {
     mkdirSync(join(root, '.abele/requests', path, '..'), { recursive: true })
     writeFileSync(join(root, '.abele/requests', path), text)
   }
+  at('Samples/Late answer.http', httpFile(['# @name Late answer', 'GET {{base}}/late']))
   at(
     'Samples/Create sample.http',
     httpFile([
@@ -247,6 +249,55 @@ const CHOOSE = (projectId: () => string, label: string) => `
   requests.choose({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(projectId())},label:${JSON.stringify(label)},node:'Requests fixture'});
   await api.requests.openView();
   await until(()=>panel()&&panel().querySelector('.abele-requests-panel__project .abele-tree-item__text')?.textContent.trim()===${JSON.stringify(label)},'project shown');`
+
+it('shows a late answer live, after changing tabs and after reopening without resending', () => {
+  connect()
+  const seen = evalAsync<boolean>(`(async()=>{${prelude}
+    ${CHOOSE(() => project, 'repo')}
+    await openRequest('Late answer');
+    const state=shown.view.getState(),model=requests.model(state);
+    model.setTimeout(state.id,1000);
+    await send();
+    if(!notice().includes('No answer'))throw Error('Expected an unknown outcome before the late answer');
+    const sendId=model.entry(state.id).shown;
+    await until(()=>facts().includes('200')&&tab().textContent.includes('late sample answer'),'late answer shown live',300);
+    if(model.entry(state.id).history[0].status!==200)throw Error('History disagrees with the tab');
+    await shot('late-answer-live');
+    const other=app.workspace.getLeaf('tab');await other.setViewState({type:'empty',active:true});
+    await app.workspace.revealLeaf(shown);
+    if(!facts().includes('200'))throw Error('Answer lost after switching tabs');
+    shown.detach();await openRequest('Late answer');
+    await until(()=>facts().includes('200')&&tab().textContent.includes('late sample answer'),'late answer reopened');
+    if(model.entry(state.id).shown!==sendId||model.entry(state.id).history.length!==1)throw Error('Read changed the send identity');
+    await shot('late-answer-reopened');other.detach();return true;
+  })()`)
+  expect(seen).toBe(true)
+})
+
+it('gives the agent the timed-out send id for reading its late answer', () => {
+  connect()
+  const seen = evalAsync<boolean>(`(async()=>{${prelude}
+    ${CHOOSE(() => project, 'repo')}
+    const chats=api.ChatService.getInstance(),chatId=chats.createTab(),session=chats.getSession(chatId);
+    try {
+      const connection=nodes.connection(${JSON.stringify(registration)});
+      const nodeId=await connection.client.store.transaction(state=>state.node_id);
+      await api.giveNodeChatAccess(session,{kind:'project',node_id:nodeId,project_id:${JSON.stringify(project)},access:'run'});
+      session.permissionMode.value='allow-all';
+      const tools=api.createAgentTools({session}),params={node:${JSON.stringify(registration)},project:${JSON.stringify(project)},id:'Samples/Late answer.http'};
+      const sent=(await tools.find(t=>t.name==='http_send').execute('sample-send', {...params,timeout_ms:1000},undefined,{session})).content[0].text;
+      const send=/^Send (s[a-z0-9]+) in/.exec(sent)?.[1];
+      if(!send||!sent.includes('Outcome unknown'))throw Error('Missing timed-out send identity: '+sent);
+      await wait(5000);
+      const answer=(await tools.find(t=>t.name==='http_send_result').execute('sample-result',{...params,send},undefined,{session})).content[0].text;
+      if(!answer.includes('200')||!answer.includes('late sample answer'))throw Error('Cannot read late answer with returned id: '+answer);
+      return true;
+    } finally {
+      const file=session.currentChatFile.value;chats.closeTab(chatId);if(file)await app.vault.delete(file);
+    }
+  })()`)
+  expect(seen).toBe(true)
+})
 
 it('refreshes requests added on disk without reopening the view on either layout', async () => {
   const check = (device: string) => {
