@@ -1,10 +1,22 @@
 // Resolve the recording by source or explicit process without changing the viewed session.
 import type { TraceToolContext } from '@/ai/tools/TraceTools'
-import { DebuggerService } from '../DebuggerService'
+import { DebuggerService, type DebuggerBinding } from '../DebuggerService'
+import type { PathTarget } from '@/node/NodePathModel'
 import { writeRunNote } from './runNote'
 
 export function activeTraceContext(
   params: Record<string, unknown> = {}
+): TraceToolContext | undefined {
+  const service = DebuggerService.instance
+  const binding = service.active.value
+  const folder = binding && service.folder(binding)
+  return traceContextFor(binding, folder ? { ...folder } : undefined, params)
+}
+
+function traceContextFor(
+  captured: DebuggerBinding | null,
+  folder: PathTarget | undefined,
+  params: Record<string, unknown>
 ): TraceToolContext | undefined {
   const service = DebuggerService.instance
   if (
@@ -12,8 +24,7 @@ export function activeTraceContext(
     /^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(params.file)
   )
     throw new Error('Use a source path inside the node folder')
-  let selected = service.active.value
-  const folder = selected && service.folder(selected)
+  let selected = captured
   let pendingFile = false
   if (folder && (params.file || params.session || params.process !== undefined)) {
     const matched = service.fileBinding(
@@ -58,6 +69,10 @@ export function activeTraceContext(
       throw new Error('Debug session changed; retry trace_point_add')
   }
   return {
+    select: (params) => {
+      current()
+      return traceContextFor(binding, folder, params)
+    },
     sessionId,
     rpc: trace.rpc,
     projectId,

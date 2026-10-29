@@ -31,6 +31,7 @@ const state = vi.hoisted(() => {
   let admitted = false
   return {
     binding,
+    active: { value: binding },
     fileBinding: vi.fn(() => binding),
     editPendingPoint: vi.fn(),
     folder,
@@ -44,7 +45,7 @@ const state = vi.hoisted(() => {
 vi.mock('@/debugger/DebuggerService', () => ({
   DebuggerService: {
     instance: {
-      active: { value: state.binding },
+      active: state.active,
       sourceFor: state.sourceFor,
       folder: () => state.folder,
       admitSessionFile: state.admitFile,
@@ -55,6 +56,22 @@ vi.mock('@/debugger/DebuggerService', () => ({
 }))
 vi.mock('@/debugger/trace/runNote', () => ({ writeRunNote: vi.fn() }))
 import { activeTraceContext } from '@/debugger/trace/agentContext'
+it('resolves selectors from the captured binding after the viewed session changes', async () => {
+  const captured = activeTraceContext()!
+  const original = state.active.value
+  state.active.value = { ...original, trace: undefined } as never
+  try {
+    const selected = captured.select!({ file: 'src/sample.ts' })!
+    expect(selected.sessionId).toBe(original.sessionId)
+    expect(state.fileBinding).toHaveBeenLastCalledWith(state.folder, 'src/sample.ts', {
+      session: undefined,
+      process: undefined,
+    })
+    expect(selected.projectId).toBe(original.trace.projectId)
+  } finally {
+    state.active.value = original
+  }
+})
 it('keeps an agent point pending instead of admitting it to a different process', async () => {
   state.fileBinding.mockReturnValueOnce(undefined as never)
   const before = state.binding.trace.savePoint.mock.calls.length

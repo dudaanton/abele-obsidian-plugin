@@ -142,7 +142,7 @@ it('locates a named step by position when ids are not in time order', async () =
 
 it('routes tools by file or explicit process and remembers the agent process for implicit runs', async () => {
   const s = setup()
-  const resolve = vi.fn((p?: Record<string, unknown>) => ({
+  const select = vi.fn((p: Record<string, unknown>) => ({
     ...s.context,
     sessionId:
       p?.file === 'packages/orders/src/index.ts' ||
@@ -161,12 +161,20 @@ it('routes tools by file or explicit process and remembers the agent process for
       },
     ],
   }))
-  const tools = createTraceTools(resolve)
+  const tools = createTraceTools(() => ({ ...s.context, select }))
+  const ctx = { session: {} } as never
   await tools
     .find((t) => t.name === 'trace_point_add')!
-    .execute('sample', { file: 'packages/orders/src/index.ts', line: 4, take: ['value'] })
-  const timeline = await tools.find((t) => t.name === 'trace_timeline')!.execute('sample', {})
-  expect(resolve).toHaveBeenLastCalledWith({ session: 'sample-orders' })
+    .execute(
+      'sample',
+      { file: 'packages/orders/src/index.ts', line: 4, take: ['value'] },
+      undefined,
+      ctx
+    )
+  const timeline = await tools
+    .find((t) => t.name === 'trace_timeline')!
+    .execute('sample', {}, undefined, ctx)
+  expect(select).toHaveBeenLastCalledWith({ session: 'sample-orders' })
   expect(s.request).toHaveBeenLastCalledWith(
     'trace.v1.run',
     expect.objectContaining({ run_id: 'orders-old' })
@@ -175,8 +183,8 @@ it('routes tools by file or explicit process and remembers the agent process for
   expect(timeline.content[0]!.text).toContain('rates-new')
   await tools
     .find((t) => t.name === 'trace_point_remove')!
-    .execute('sample', { file: 'packages/common/money.ts', line: 4, process: 101 })
-  expect(resolve).toHaveBeenLastCalledWith({
+    .execute('sample', { file: 'packages/common/money.ts', line: 4, process: 101 }, undefined, ctx)
+  expect(select).toHaveBeenLastCalledWith({
     file: 'packages/common/money.ts',
     line: 4,
     process: 101,
@@ -185,10 +193,10 @@ it('routes tools by file or explicit process and remembers the agent process for
 
 it('checks folder access before resolving a file into private process choices', async () => {
   const s = setup()
-  const resolve = vi.fn((params?: Record<string, unknown>) => {
-    if (params?.file) throw new Error('Ambiguous source: private process choices')
-    return s.context
+  const select = vi.fn(() => {
+    throw new Error('Ambiguous source: private process choices')
   })
+  const resolve = vi.fn(() => ({ ...s.context, select }))
   vi.mocked(nodeProjectGuard).mockRejectedValueOnce(new Error('No node folder access'))
   await expect(
     createTraceTools(resolve)
@@ -196,9 +204,67 @@ it('checks folder access before resolving a file into private process choices', 
       .execute('sample', { file: 'src/shared.ts' })
   ).rejects.toThrow('No node folder access')
   expect(resolve).toHaveBeenCalledExactlyOnceWith()
+  expect(select).not.toHaveBeenCalled()
   vi.mocked(nodeProjectGuard)
     .mockReset()
     .mockImplementation(async () => () => {})
+})
+
+it('fails closed without resolving selectors while the base trace is loading', async () => {
+  const resolve = vi.fn((params?: Record<string, unknown>) => {
+    if (params?.file) throw new Error('Ambiguous source: private process choices')
+    return undefined
+  })
+  await expect(
+    createTraceTools(resolve)
+      .find((t) => t.name === 'trace_point_list')!
+      .execute('sample', { file: 'src/shared.ts' })
+  ).rejects.toThrow(/No debugger session/)
+  expect(resolve).toHaveBeenCalledExactlyOnceWith()
+})
+
+it('keeps selector resolution in the captured folder when the active folder changes during authorization', async () => {
+  const s = setup()
+  let switched = false
+  const select = vi.fn(() => s.context)
+  const resolve = vi.fn(() => {
+    if (switched) throw new Error('Private choices from another folder')
+    return { ...s.context, select }
+  })
+  vi.mocked(nodeProjectGuard).mockImplementationOnce(async () => {
+    switched = true
+    return () => {}
+  })
+  await expect(
+    createTraceTools(resolve)
+      .find((t) => t.name === 'trace_point_list')!
+      .execute('sample', { file: 'src/shared.ts' })
+  ).resolves.toBeDefined()
+  expect(resolve).toHaveBeenCalledExactlyOnceWith()
+  expect(select).toHaveBeenCalledWith({ file: 'src/shared.ts' })
+})
+
+it('remembers the process per chat across tool recreation without sharing another chat history', async () => {
+  const s = setup()
+  const select = vi.fn((p: Record<string, unknown>) => ({
+    ...s.context,
+    sessionId: p.file === 'src/orders.ts' || p.session === 'orders' ? 'orders' : 'rates',
+    runs: async () => [
+      { id: 'rates-run', name: 'Rates', steps: 1, state: 'done', debugSessionId: 'rates' },
+      { id: 'orders-run', name: 'Orders', steps: 1, state: 'done', debugSessionId: 'orders' },
+    ],
+  }))
+  const capture = () => ({ ...s.context, sessionId: 'rates', select })
+  const chat = {} as never
+  const call = (name: string, params: Record<string, unknown>, session = chat) =>
+    createTraceTools(capture)
+      .find((t) => t.name === name)!
+      .execute('sample', params, undefined, { session } as never)
+  await call('trace_point_add', { file: 'src/orders.ts', line: 4, take: ['value'] })
+  expect((await call('trace_timeline', {})).content[0]!.text).toContain('run orders-run')
+  expect((await call('trace_timeline', {}, {} as never)).content[0]!.text).toContain(
+    'run rates-run'
+  )
 })
 
 describe('the agent reading a recorded run', () => {

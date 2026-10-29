@@ -10,8 +10,15 @@ import { isAbsoluteFolder } from '@/debugger/trace/notesFolder'
 export const TRACE_AGENT_LINES = 80
 export const TRACE_AGENT_BYTES = 6 * 1024
 
+// Tool arrays are rebuilt for each execution; the executing chat owns its process history.
+const processesByChat = new WeakMap<object, Map<string, string>>()
+const folderKey = (c: TraceToolContext) =>
+  JSON.stringify([c.registrationId, c.projectId, c.worktreeId, c.workspaceId])
+
 /** The recording the tools read, resolved by source or explicit process. */
 export interface TraceToolContext {
+  /** Resolve only within this captured folder, never the currently viewed debugger. */
+  select?(params: Record<string, unknown>): TraceToolContext | undefined
   sessionId?: string
   rpc: TraceRpc
   projectId: string
@@ -83,21 +90,8 @@ const RUN = {
 const STEP = { type: 'string', description: 'Step id, e.g. t0042.' }
 const NAME = { type: 'string', description: 'The value name at that step, e.g. result.' }
 
-export function createTraceTools(
-  resolve: (params?: Record<string, unknown>) => TraceToolContext | undefined
-): AgentTool[] {
-  let lastSession: string | undefined
-  const context = (params: Record<string, unknown>) => {
-    const c = resolve({
-      ...(!params.run &&
-      !params.file &&
-      !params.session &&
-      params.process === undefined &&
-      lastSession
-        ? { session: lastSession }
-        : {}),
-      ...params,
-    })
+export function createTraceTools(resolve: () => TraceToolContext | undefined): AgentTool[] {
+  const context = (c: TraceToolContext | undefined) => {
     if (!c)
       throw new Error(
         'No debugger session that records runs is open. Use the node debugger tools to start or attach to a program, then retry.'
@@ -144,16 +138,29 @@ export function createTraceTools(
       additionalProperties: false,
     },
     execute: async (_id, params, _signal, ctx) => {
-      const base = resolve()
-      if (base)
-        await nodeProjectGuard(
-          ctx?.session,
-          name,
-          base,
-          undefined,
-          ctx?.interactive === true && ctx?.approved === true
-        )
-      const c = context(params)
+      const base = context(resolve())
+      const baseGuard = await nodeProjectGuard(
+        ctx?.session,
+        name,
+        base,
+        undefined,
+        ctx?.interactive === true && ctx?.approved === true
+      )
+      _signal?.throwIfAborted()
+      baseGuard()
+      const history = ctx?.session && processesByChat.get(ctx.session)
+      const lastSession = history?.get(folderKey(base))
+      const selection = {
+        ...(!params.run &&
+        !params.file &&
+        !params.session &&
+        params.process === undefined &&
+        lastSession
+          ? { session: lastSession }
+          : {}),
+        ...params,
+      }
+      const c = context(base.select ? base.select(selection) : base)
       const guard = await nodeProjectGuard(
         ctx?.session,
         name,
@@ -179,7 +186,11 @@ export function createTraceTools(
         params
       )
       guard()
-      if (c.sessionId) lastSession = c.sessionId
+      if (ctx?.session && c.sessionId) {
+        const history = processesByChat.get(ctx.session) ?? new Map<string, string>()
+        history.set(folderKey(c), c.sessionId)
+        processesByChat.set(ctx.session, history)
+      }
       return text(result)
     },
   })
