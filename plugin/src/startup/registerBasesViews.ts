@@ -6,8 +6,7 @@ import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from '@/bases/FindAndRep
 import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from '@/bases/CalendarView'
 import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from '@/bases/TimelineView'
 import type { Plugin } from 'obsidian'
-import { isPrintMode } from '@/markdown/printMode'
-import { PrintView } from '@/bases/PrintView'
+import { printableBasesView } from '@/bases/PrintView'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerBasesViews(plugin: Plugin) {
@@ -21,7 +20,7 @@ export function registerBasesViews(plugin: Plugin) {
       const probe = probeFor(containerEl)
       return probe
         ? new BaseProbeView(controller, CHART_VIEW_ID, probe)
-        : new ChartView(controller, containerEl)
+        : printableBasesView(new ChartView(controller, containerEl), containerEl)
     },
     options: () => [
       {
@@ -87,9 +86,7 @@ export function registerBasesViews(plugin: Plugin) {
     name: 'Find and replace',
     icon: 'replace-all',
     factory: (controller, containerEl) =>
-      isPrintMode(containerEl)
-        ? new PrintView(controller, containerEl, FIND_AND_REPLACE_VIEW_ID)
-        : new FindAndReplaceView(controller, containerEl),
+      printableBasesView(new FindAndReplaceView(controller, containerEl), containerEl),
   })
 
   // The notes a base finds on a month, a week or a year, placed by a date property.
@@ -97,9 +94,7 @@ export function registerBasesViews(plugin: Plugin) {
     name: 'Calendar',
     icon: 'calendar-days',
     factory: (controller, containerEl) =>
-      isPrintMode(containerEl)
-        ? new PrintView(controller, containerEl, CALENDAR_VIEW_ID)
-        : new CalendarView(controller, containerEl),
+      printableBasesView(new CalendarView(controller, containerEl), containerEl),
     options: calendarViewOptions,
   })
 
@@ -108,18 +103,14 @@ export function registerBasesViews(plugin: Plugin) {
     name: 'Timeline',
     icon: 'gantt-chart',
     factory: (controller, containerEl) =>
-      isPrintMode(containerEl)
-        ? new PrintView(controller, containerEl, TIMELINE_VIEW_ID)
-        : new TimelineView(controller, containerEl),
+      printableBasesView(new TimelineView(controller, containerEl), containerEl),
     options: timelineViewOptions,
   })
   plugin.registerBasesView(MAP_VIEW_ID, {
     name: t('maps.viewName'),
     icon: 'map',
     factory: (controller, containerEl) =>
-      isPrintMode(containerEl)
-        ? new PrintView(controller, containerEl, MAP_VIEW_ID)
-        : new MapView(controller, containerEl),
+      printableBasesView(new MapView(controller, containerEl), containerEl),
     options: mapViewOptions,
   })
 }

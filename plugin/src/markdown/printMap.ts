@@ -7,7 +7,15 @@ export function printMap(el: HTMLElement, config: MapConfig): void {
   const figure = el.appendChild(doc.win.createEl('figure'))
   figure.className = 'abele-print-map'
   figure.appendChild(doc.win.createEl('figcaption')).textContent = t('pdf.mapFallback')
-  const points = [...config.points, ...config.lines.flatMap((line) => line.points)]
+  const seen = new Set<string>()
+  const points = [...config.points, ...config.lines.flatMap((line) => line.points)].filter(
+    (point) => {
+      const key = `${point.lat},${point.lon}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }
+  )
   if (!points.length && config.center) points.push(config.center)
   const svg = doc.win.createSvg('svg')
   svg.setAttribute('viewBox', '0 0 720 320')

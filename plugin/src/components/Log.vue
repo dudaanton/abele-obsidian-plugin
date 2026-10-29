@@ -37,8 +37,8 @@ import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { Log } from '@/entities/Log'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import { computed, inject, onMounted, ref, watch } from 'vue'
-import { PRINT_MODE } from '@/markdown/printMode'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { PRINT_MODE, PRINT_TASKS } from '@/markdown/printMode'
 import { extractDateFromFilename } from '@/helpers/datesHelper'
 import { useElementVisibility } from '@vueuse/core'
 
@@ -52,7 +52,9 @@ const MAX_LINES = 10
 
 const logEl = ref(null)
 const isVisible = useElementVisibility(logEl)
-const contentLoaded = ref(inject(PRINT_MODE, false))
+const printing = inject(PRINT_MODE, false)
+const printTask = inject(PRINT_TASKS, undefined)
+const contentLoaded = ref(false)
 const isExpanded = ref(false)
 
 const isCollapsible = computed(() => {
@@ -64,7 +66,7 @@ const isCollapsible = computed(() => {
 watch(
   isVisible,
   () => {
-    if (isVisible.value && !contentLoaded.value) {
+    if (!printing && isVisible.value && !contentLoaded.value) {
       props.log.loadContent()
       contentLoaded.value = true
     }
@@ -96,6 +98,13 @@ const shoudShowDate = computed(() => {
 
 onMounted(() => {
   props.log.load()
+  if (printing) {
+    const loading = props.log.loadContent().then(async () => {
+      contentLoaded.value = true
+      await nextTick()
+    })
+    printTask?.(loading)
+  }
 })
 </script>
 

@@ -4,8 +4,25 @@ import { registerChartCodeblock } from '@/editor/ChartCodeblock'
 import { registerMapCodeblock } from '@/editor/MapCodeblock'
 import { useVault } from '../helpers/testEnv'
 import { slideDividers } from '@/slides/dividers'
+import { registerSnippetBlock } from '@/github/snippetCard'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it('prints every code card line without a virtualized editor', () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  root.className = 'print'
+  const code = Array.from({ length: 80 }, (_, i) => `const sampleValue${i} = ${i}`).join('\n')
+  registerSnippetBlock((_language, render) => {
+    render(
+      'url: https://github.com/example/sample/blob/main/sample.ts\nlabel: Sample code\nlang: ts\n---\n' +
+        code,
+      root,
+      { addChild() {} } as unknown as MarkdownPostProcessorContext
+    )
+  })
+  expect(root.querySelector('pre code')?.textContent).toBe(code)
+  expect(root.querySelector('.cm-editor')).toBeNull()
+})
 
 beforeEach(() => {
   useVault([])
@@ -32,13 +49,17 @@ it('prints presentation body without source directives when the host supplies no
 it('draws a complete chart without layout or animation in the hidden export window', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   root.className = 'print'
+  document.body.style.setProperty('--font-interface', '"Sample Sans", sans-serif')
   registerChartCodeblock((_language, render) => {
-    render('series:\n  - data: [1, 3, 2]', root, {
+    render('title: Sample chart\nseries:\n  - data: [1, 3, 2]', root, {
       addChild() {},
     } as unknown as MarkdownPostProcessorContext)
   })
   expect(root.querySelector('svg path')).not.toBeNull()
+  expect(root.firstElementChild?.localName).toBe('svg')
+  expect(root.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 720 300')
   expect(root.querySelector('canvas')).toBeNull()
+  expect(root.textContent).toContain('Sample chart')
 })
 
 it('prints map coordinates and routes without relying on network tiles or WebGL', async () => {

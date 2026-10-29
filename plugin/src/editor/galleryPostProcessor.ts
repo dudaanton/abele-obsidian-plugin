@@ -173,10 +173,23 @@ function takeEmbeds(
       anchor = anchor.parentElement
     }
     let sibling = anchor.nextElementSibling
-    while (sibling && sibling.tagName === 'P' && embedsOnly(sibling)) {
+    while (sibling) {
+      // Export wraps each top-level markdown block in a neutral div before post-processing.
+      const p =
+        sibling.tagName === 'DIV' &&
+        sibling.children.length === 1 &&
+        sibling.firstElementChild?.tagName === 'P'
+          ? sibling.firstElementChild
+          : sibling
+      if (p.tagName !== 'P' || !embedsOnly(p)) break
+      if (
+        p !== sibling &&
+        !Array.from(sibling.childNodes).every((node) => node === p || isBlank(node))
+      )
+        break
       const next = sibling.nextElementSibling
       embeds.push(
-        ...Array.from(sibling.childNodes)
+        ...Array.from(p.childNodes)
           .filter(isEmbed)
           .map((n) => n as Element)
       )

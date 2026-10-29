@@ -161,7 +161,7 @@ function buildTheme(doc: Document): Record<string, any> {
 export function echartsInit(el: HTMLElement): EChartsType {
   ensureRegistered()
   if (isPrintMode(el)) {
-    return init(
+    const chart = init(
       el,
       { ...buildTheme(el.ownerDocument), animation: false },
       {
@@ -170,6 +170,16 @@ export function echartsInit(el: HTMLElement): EChartsType {
         height: el.clientHeight || Number.parseFloat(el.style.height) || 300,
       }
     )
+    chart.on('finished', () => {
+      const svg = el.querySelector('svg')
+      if (svg)
+        svg.setAttribute(
+          'viewBox',
+          `0 0 ${svg.getAttribute('width')} ${svg.getAttribute('height')}`
+        )
+      el.classList.add('abele-print-chart')
+    })
+    return chart
   }
   registerTheme(THEME_NAME, buildTheme(el.ownerDocument))
   return init(el, THEME_NAME)
@@ -186,21 +196,29 @@ export function printChartWith(
   render: (chart: EChartsType) => void
 ): void {
   ensureRegistered()
-  const chart = init(null, buildTheme(el.ownerDocument), {
-    renderer: 'svg',
-    ssr: true,
-    width: el.clientWidth || 720,
-    height,
-  })
+  const width = el.clientWidth || 720
+  const chart = init(
+    el,
+    { ...buildTheme(el.ownerDocument), animation: false },
+    {
+      renderer: 'svg',
+      width,
+      height,
+    }
+  )
+  let snapshot: SVGSVGElement
   try {
     render(chart)
-    chart.setOption({ animation: false })
-    const parsed = new DOMParser().parseFromString(chart.renderToSVGString(), 'image/svg+xml')
-    el.classList.add('abele-print-chart')
-    el.replaceChildren(el.ownerDocument.importNode(parsed.documentElement, true))
+    const svg = el.querySelector('svg')
+    if (!svg) throw new Error('Chart produced no SVG')
+    // Clone DOM instead of parsing serialized markup: CSS font families can contain quotes.
+    snapshot = svg.cloneNode(true) as SVGSVGElement
+    snapshot.setAttribute('viewBox', `0 0 ${width} ${height}`)
   } finally {
     chart.dispose()
   }
+  el.classList.add('abele-print-chart')
+  el.replaceChildren(snapshot)
 }
 
 /** Get current resolved Obsidian CSS color values for use in chart options */

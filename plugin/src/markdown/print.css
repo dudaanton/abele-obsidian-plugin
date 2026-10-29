@@ -4,7 +4,7 @@
   break-inside: avoid;
 }
 .print .abele-print-gallery img,
-.print .abele-print-chart > svg,
+.print .abele-print-chart svg,
 .print .abele-mermaid-host > svg,
 .print .abele-print-map svg {
   display: block;
@@ -34,10 +34,12 @@
 .print .abele-columns-controls,
 .print .abele-drawing-embed__actions,
 .print .abele-drawing-embed__handle,
+.print .abele-drawing-embed__resize,
 .print .abele-card__actions,
 .print .abele-list-section-header__actions,
 .print .abele-agent-view__foot,
 .print .abele-mermaid__bar,
+.print .bases-header,
 .print .abele-log__toggle,
 .print button:not(.abele-image-thumbnail):not(.abele-fold-heading),
 .print input:not([type='checkbox']),
@@ -75,4 +77,32 @@
 }
 .print .abele-canvas-embed-picture {
   max-height: none;
+}
+.print .bases-embed,
+.print .bases-view {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+.print .abele-print-chart,
+.print .abele-print-chart > div {
+  height: auto !important;
+  max-width: 100%;
+  break-inside: avoid;
+}
+.print .abele-github-snippet pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.print .abele-print-chrome .abele-entry-row__codes button.abele-obsidian-icon_with-text {
+  display: contents !important;
+}
+.print .abele-print-chrome .abele-entry-row__codes .abele-obsidian-icon__icon {
+  display: none;
+}
+.print .abele-print-chrome .task-list-label::before {
+  content: '☐';
+}
+.print .abele-print-chrome .task-list-label:has(input:checked)::before {
+  content: '☑';
 }

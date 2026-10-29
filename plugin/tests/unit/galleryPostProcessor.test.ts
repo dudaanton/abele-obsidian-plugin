@@ -53,6 +53,22 @@ beforeEach(() => {
 })
 
 describe('a whole document, as MarkdownRenderer hands it over', () => {
+  it('prints gallery captions and images through the host export block wrappers', () => {
+    const el = render(
+      '<div><p>::abele-gallery{layout=slider}::</p></div><div><p>' +
+        EMBED('sample-a.png', 'First picture') +
+        '</p></div><div><p>' +
+        EMBED('sample-b.png', 'Last picture') +
+        '</p></div><div><p>After gallery</p></div>'
+    )
+    el.classList.add('print')
+    galleryPostProcessor(el, context())
+    expect(el.querySelectorAll('.abele-print-gallery img')).toHaveLength(2)
+    expect(el.querySelectorAll('.internal-embed')).toHaveLength(0)
+    expect(el.textContent).toContain('First picture')
+    expect(el.textContent).toContain('Last picture')
+    expect(el.textContent).toContain('After gallery')
+  })
   it('prints every slider image eagerly without the application gallery mount', async () => {
     const el = render(
       '<p>::abele-gallery{layout=slider}::</p><p>![first](https://example.com/sample-a.png)</p><p>![last](https://example.com/sample-b.png)</p>'

@@ -2,9 +2,10 @@ import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian
 import { h, nextTick, provide, reactive } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { mountKit } from '@/components/obsidian/mount'
-import { isPrintMode, PRINT_MODE } from './printMode'
-import { printReady } from './printReady'
+import { isPrintMode, PRINT_MODE, PRINT_TASKS } from './printMode'
+import { printReady, trackPrintTask } from './printReady'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { renderPrintBases } from '@/bases/PrintView'
 
 const handled = new WeakSet<HTMLElement>()
 
@@ -21,6 +22,13 @@ export async function printNoteChrome(
   )
     return
   handled.add(el)
+  // The host appends our returned promise only after this function returns. Snapshot its
+  // existing processor promises now, so the final pass never waits on itself.
+  const pending =
+    (ctx as MarkdownPostProcessorContext & { promises?: Promise<unknown>[] }).promises?.slice() ??
+    []
+  await Promise.all(pending)
+  await renderPrintBases(el)
   if (AbeleConfig.getInstance().pdfIncludeHeaderFooter) {
     const [{ Header }, { Footer }, { default: HeaderView }, { default: FooterView }] =
       await Promise.all([
@@ -48,11 +56,6 @@ export async function printNoteChrome(
         ...relations.timeEntries.values(),
       ].map((entry) => entry.load())
     )
-    // Their reading-view components normally fetch excerpts only when visible.
-    await Promise.all([
-      ...Array.from(relations.tasks.values(), (entry) => entry.loadContent()),
-      ...Array.from(relations.logs.values(), (entry) => entry.loadContent()),
-    ])
     for (const [component, props, position] of [
       [HeaderView, { header }, 'header'],
       [FooterView, { footer }, 'footer'],
@@ -66,6 +69,7 @@ export async function printNoteChrome(
         {
           setup() {
             provide(PRINT_MODE, true)
+            provide(PRINT_TASKS, (task) => trackPrintTask(host, task))
             return () => h(component, props)
           },
         },

@@ -6,6 +6,7 @@ import { watch } from 'vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import dayjs from 'dayjs'
+import { isPrintMode } from '@/markdown/printMode'
 
 export const CHART_VIEW_ID = 'abele-chart'
 
@@ -240,7 +241,7 @@ export class ChartView extends BasesView {
         legend: {
           data: seriesList.map((s) => s.name),
           bottom: 0,
-          type: 'scroll',
+          type: isPrintMode(this.containerEl) ? 'plain' : 'scroll',
         },
         grid: {
           left: 12,
@@ -380,7 +381,7 @@ export class ChartView extends BasesView {
         legend: {
           data: seriesList.map((s) => s.name),
           bottom: 0,
-          type: 'scroll',
+          type: isPrintMode(this.containerEl) ? 'plain' : 'scroll',
         },
         grid: {
           left: 12,

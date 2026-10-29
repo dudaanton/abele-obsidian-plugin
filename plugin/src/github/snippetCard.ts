@@ -8,6 +8,7 @@ import { h } from 'vue'
 import GithubSnippet from '@/components/github/GithubSnippet.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import { SNIPPET_BLOCK, FORGE_SNIPPET_BLOCK, parseSnippet } from './snippetBlock'
+import { isPrintMode } from '@/markdown/printMode'
 
 export function registerSnippetBlock(
   register: (
@@ -28,6 +29,12 @@ function registerBlock(
 ): void {
   register(language, (source, el, ctx) => {
     const snippet = parseSnippet(source)
+    if (snippet && snippet.kind !== 'comment' && isPrintMode(el)) {
+      const card = el.createDiv({ cls: 'abele-github-snippet' })
+      card.createDiv({ text: snippet.label })
+      card.createEl('pre').createEl('code', { text: snippet.text })
+      return
+    }
     const host = el.createDiv()
     const child = new MarkdownRenderChild(host)
     mountKit(

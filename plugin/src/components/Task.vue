@@ -164,8 +164,8 @@ import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { areaCompactDate as compactDate } from '@/helpers/areaDateFormat'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
-import { computed, inject, onMounted, ref, watch } from 'vue'
-import { PRINT_MODE } from '@/markdown/printMode'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { PRINT_MODE, PRINT_TASKS } from '@/markdown/printMode'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import EntryRow from './obsidian/EntryRow.vue'
@@ -211,12 +211,13 @@ const isVisible = useOwnerVisibility(taskEl, (visible) => {
   clockVisible.value = visible
 })
 const printing = inject(PRINT_MODE, false)
-const contentLoaded = ref(printing)
+const printTask = inject(PRINT_TASKS, undefined)
+const contentLoaded = ref(false)
 
 watch(
   isVisible,
   () => {
-    if (isVisible.value && !contentLoaded.value) {
+    if (!printing && isVisible.value && !contentLoaded.value) {
       props.task.loadContent()
       contentLoaded.value = true
     }
@@ -442,6 +443,13 @@ const removeOrphaned = () => {
 
 onMounted(() => {
   props.task.load()
+  if (printing) {
+    const loading = props.task.loadContent().then(async () => {
+      contentLoaded.value = true
+      await nextTick()
+    })
+    printTask?.(loading)
+  }
 })
 </script>
 
