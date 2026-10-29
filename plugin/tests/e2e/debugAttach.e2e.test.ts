@@ -17,6 +17,7 @@ import {
   nodeFailureMessage,
   parseDebugAttachResult,
 } from './helpers/debugAttachLifecycle'
+import { isFixtureProgram } from './helpers/programIdentity'
 targets('desktop')
 
 const SHOTS = shotDir('abele-debug-attach')
@@ -54,6 +55,7 @@ const checkpoint=(stage,binding=api.DebuggerService.instance.active.value)=>{
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
 const press=el=>{el.click()};
+const isFixtureProgram=${isFixtureProgram.toString()};
 const rows=()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].map(r=>({el:r,title:r.querySelector('.suggestion-title')?.textContent.trim()??'',note:r.querySelector('.suggestion-note')?.textContent.trim()??'',kind:r.querySelector('.abele-node-suggestion__kind')?.getAttribute('aria-label')??''}));
 const marginAt=line=>{const sel='button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]';return document.querySelector('.workspace-leaf.mod-active '+sel)??[...document.querySelectorAll(sel)].find(b=>b.offsetParent)};
 const debugState=()=>{const service=api.DebuggerService.instance,b=service.active.value,c=b?.controller,n=c?.snapshot,reg=nodes.nodes.value.find(n=>n.label==='Attach fixture')?.id,saved=app.loadLocalStorage('abele-debug-selection');return JSON.stringify({id:b?.sessionId,peers:b?service.peers(b).map(b=>[b.sessionId,b.controller.session.status]):[],options:[...document.querySelectorAll('select[aria-label="Select a debug session"]')].map(s=>[s.value,[...s.options].map(o=>o.value)]),saved:[saved?.sessionId,saved?.sessions],known:[...(service.bindings?.values()??[])].filter(b=>b.registrationId===reg).map(b=>({id:b.sessionId,wanted:b.observationId,state:b.controller.session.status,error:b.controller.error,program:b.controller.session.program})),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,owner:n?.target.process_ownership,identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status])})};
@@ -76,6 +78,7 @@ let chatSession = ''
 let daemonErrors = ''
 let daemonExit = ''
 const programs: { child: ChildProcess; output: string }[] = []
+const fixturePids: number[] = []
 
 const SERVE = [
   'let ticks = 0',
@@ -95,6 +98,7 @@ async function program(cwd: string, script: string) {
   })
   const entry = { child, output: '' }
   programs.push(entry)
+  if (child.pid !== undefined) fixturePids.push(child.pid)
   child.stdout!.on('data', (b) => (entry.output += b))
   child.stderr!.on('data', (b) => (entry.output += b))
   for (let i = 0; !/Debugger listening on/.test(entry.output); i++) {
@@ -291,10 +295,10 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
     await until(()=>item('Attach to a running program'),'Attach in the menu');
     await shot('2026-10-16-debug-attach-menu-desktop');
     press(item('Attach to a running program'));
-    await until(()=>rows().some(r=>r.title.includes('src/serve.js'))&&rows().some(r=>r.title.includes('tool.js')),'both programs listed');
-    const offered=rows().filter(r=>/serve\\.js|tool\\.js/.test(r.title)).map(({el,...r})=>r);
+    await until(()=>rows().some(r=>isFixtureProgram(r,[${mine.child.pid}]))&&rows().some(r=>isFixtureProgram(r,${JSON.stringify(fixturePids)})&&r.title.includes('tool.js')),'both fixture programs listed');
+    const offered=rows().filter(r=>isFixtureProgram(r,${JSON.stringify(fixturePids)})).map(({el,...r})=>r);
     await shot('2026-10-16-debug-attach-picker-desktop');
-    press(rows().find(r=>r.title.includes('src/serve.js')).el);
+    press(rows().find(r=>isFixtureProgram(r,[${mine.child.pid}])).el);
     const detachButton=await until(()=>document.querySelector('.abele-debug-panel [aria-label^="Detach"]'),'Detach in the panel',600);
     const mark=await until(()=>marginAt(3),'margin of line 3',600);
     press(mark);
@@ -429,14 +433,14 @@ it('keeps watch errors, ended point removal and five reattaches consistent on ph
 
 it('asks before attaching to a program outside the chat’s folder, and attaches nothing on Cancel', async () => {
   openChat()
-  await program(other, 'tool.js')
+  const outside = await program(other, 'tool.js')
   const seen = inApp<{ title: string; message: string; sessions: number; after: number }>(
     `(async()=>{${prelude}
     const sessions=async()=>(await nodes.connection(${JSON.stringify(registration)}).client.request('debugger.v1.sessions',{conversation_id:${JSON.stringify(chatSession)}})).length;
     const before=await sessions();
     await openPicker();
-    await until(()=>rows().some(r=>r.title.includes('tool.js')),'program listed');
-    press(rows().find(r=>r.title.includes('tool.js')).el);
+    await until(()=>rows().some(r=>isFixtureProgram(r,[${outside.child.pid}])),'fixture program listed');
+    press(rows().find(r=>isFixtureProgram(r,[${outside.child.pid}])).el);
     const modal=await until(()=>[...document.querySelectorAll('.modal-container .modal')].find(m=>m.textContent.includes('outside this folder')),'confirmation');
     await shot('2026-10-16-debug-attach-confirm-desktop');
     const title=modal.querySelector('.modal-title')?.textContent.trim()??'',message=modal.querySelector('.abele-confirm__message')?.textContent.trim()??'';
@@ -452,22 +456,22 @@ it('asks before attaching to a program outside the chat’s folder, and attaches
 
 it('says how to start a program that waits for a debugger when none does', () => {
   openChat()
-  const seen = inApp<{ empty: string; rows: string[] }>(`(async()=>{${prelude}
+  const seen = inApp<{ empty: string; rows: string[]; total: number }>(`(async()=>{${prelude}
     await openPicker();
     await wait(500);
     const empty=document.querySelector('.modal-container .prompt .suggestion-empty')?.textContent.trim()??'';
     await shot('2026-10-16-debug-attach-empty-desktop');
-    return {empty,rows:rows().map(r=>r.title)}
+    return {empty,rows:rows().filter(r=>isFixtureProgram(r,${JSON.stringify(fixturePids)})).map(r=>r.title),total:rows().length}
   })()`)
   // Other programs of this machine may wait too; none of this test's does.
-  expect(seen.rows.filter((t) => /serve\.js|tool\.js/.test(t))).toEqual([])
-  if (!seen.rows.length) expect(seen.empty).toContain('node --inspect app.js')
+  expect(seen.rows).toEqual([])
+  if (!seen.total) expect(seen.empty).toContain('node --inspect app.js')
 })
 
 it('on a phone: the menu, the picker, the attached panel and the empty list fit the screen', async () => {
   await onPhone(async () => {
     openChat()
-    await program(repo, 'src/serve.js')
+    const mine = await program(repo, 'src/serve.js')
     const seen = inApp<{ offered: string[]; detach: string; overflow: number }>(
       `(async()=>{${prelude}
       try{
@@ -475,10 +479,10 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       await until(()=>item('Attach to a running program'),'Attach in the menu');
       await shot('2026-10-16-debug-attach-menu-phone');
       press(item('Attach to a running program'));
-      await until(()=>rows().some(r=>r.title.includes('src/serve.js')),'program listed');
+      await until(()=>rows().some(r=>isFixtureProgram(r,[${mine.child.pid}])),'fixture program listed');
       const offered=rows().map(r=>r.title);
       await shot('2026-10-16-debug-attach-picker-phone');
-      press(rows().find(r=>r.title.includes('src/serve.js')).el);
+      press(rows().find(r=>isFixtureProgram(r,[${mine.child.pid}])).el);
       const detachButton=await until(()=>document.querySelector('.abele-debug-panel [aria-label^="Detach"]'),'Detach in the panel',600);
       const mark=await until(()=>marginAt(3),'margin of line 3',600);
       press(mark);
@@ -505,20 +509,20 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
     })()`
     )
     await stopPrograms()
-    const empty = inApp<{ text: string; rows: string[] }>(`(async()=>{${prelude}
+    const empty = inApp<{ text: string; rows: string[]; total: number }>(`(async()=>{${prelude}
       await openPicker();
       await wait(500);
       await shot('2026-10-16-debug-attach-empty-phone');
       const text=document.querySelector('.modal-container .prompt .suggestion-empty')?.textContent.trim()??'';
-      const listed=rows().map(r=>r.title);
+      const total=rows().length,listed=rows().filter(r=>isFixtureProgram(r,${JSON.stringify(fixturePids)})).map(r=>r.title);
       closePicker();
-      return {text,rows:listed}
+      return {text,rows:listed,total}
     })()`)
     expect(seen.offered.some((t) => t.includes('src/serve.js'))).toBe(true)
     expect(seen.detach).toBe('Detach (Shift+F5): the program runs on')
     expect(seen.overflow).toBeLessThanOrEqual(1)
     // Other programs of this machine may wait too; none of this test's does.
-    expect(empty.rows.filter((t) => /serve\.js|tool\.js/.test(t))).toEqual([])
-    if (!empty.rows.length) expect(empty.text).toContain('node --inspect app.js')
+    expect(empty.rows).toEqual([])
+    if (!empty.total) expect(empty.text).toContain('node --inspect app.js')
   })
 }, 240000)
