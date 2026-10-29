@@ -15,7 +15,7 @@ it.each(['rgb(245, 245, 245)', 'rgb(30, 30, 30)'])(
     try {
       const editor = document.createElement('div')
       editor.className = 'cm-editor'
-      editor.style.setProperty('--text-highlight-bg', 'rgb(255, 208, 0)')
+      editor.style.setProperty('--text-selection', 'rgb(255, 208, 0)')
       editor.style.backgroundColor = background
       const line = editor.appendChild(document.createElement('div'))
       line.className = 'cm-line'
@@ -74,7 +74,7 @@ it('uses only the floating menu for gutter selection and retains insertion with 
 it('highlights whole identifier occurrences and clears them with the selection', async () => {
   const view = await open()
   // Supply the host theme token: the DOM shim has no Obsidian stylesheet.
-  ;(view.element as HTMLElement).style.setProperty('--text-highlight-bg', 'rgb(255, 208, 0)')
+  ;(view.element as HTMLElement).style.setProperty('--text-selection', 'rgb(255, 208, 0)')
   const walker = document.createTreeWalker(view.get('.cm-line').element, NodeFilter.SHOW_TEXT)
   let node: Node | null
   while ((node = walker.nextNode())) {

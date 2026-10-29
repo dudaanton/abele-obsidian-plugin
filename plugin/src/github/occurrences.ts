@@ -17,7 +17,7 @@ export function occurrences() {
     marks,
     EditorView.baseTheme({
       '.abele-code-occurrence': {
-        backgroundColor: 'var(--text-highlight-bg)',
+        backgroundColor: 'var(--text-selection)',
       },
     }),
     ViewPlugin.define((view) => {
