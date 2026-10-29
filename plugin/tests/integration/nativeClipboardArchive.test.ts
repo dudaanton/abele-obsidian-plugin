@@ -24,7 +24,7 @@ it.runIf(process.platform === 'darwin')(
       restoreNativeClipboard('[]', name)
     }
   },
-  // Five native subprocesses (write/read, explicit read, cleanup write/read), each bounded
+  // Three native subprocesses (write+verify, explicit read, cleanup+verify), each bounded
   // at ten seconds. Scheduling them in a loaded test run can exceed Vitest's default 5s.
   60_000
 )

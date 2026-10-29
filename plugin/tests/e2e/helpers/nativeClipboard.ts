@@ -9,7 +9,7 @@ function clipboardCode(code: string, name?: string) {
   if (!name) return code
   if (!/^abele-clipboard-fixture-[a-f0-9-]+$/.test(name))
     throw new Error('Non-owned named clipboard refused')
-  return code.replace(
+  return code.replaceAll(
     '$.NSPasteboard.generalPasteboard',
     `$.NSPasteboard.pasteboardWithName($(${JSON.stringify(name)}))`
   )
@@ -31,13 +31,24 @@ export function captureNativeClipboard(name?: string): string {
 }
 export function restoreNativeClipboard(archive: string, name?: string): void {
   try {
-    execFileSync('osascript', ['-l', 'JavaScript', '-e', clipboardCode(RESTORE_CLIPBOARD, name)], {
-      input: archive,
-      encoding: 'utf8',
-      timeout: 10000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    if (!sameNativeClipboard(archive, captureNativeClipboard(name))) throw new Error()
+    // Materialize and verify every format before the native writer exits. A second
+    // process introduces an ownership handoff between publication and verification.
+    const restored = execFileSync(
+      'osascript',
+      [
+        '-l',
+        'JavaScript',
+        '-e',
+        clipboardCode(RESTORE_CLIPBOARD + '{' + CAPTURE_CLIPBOARD + '}', name),
+      ],
+      {
+        input: archive,
+        encoding: 'utf8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    )
+    if (!sameNativeClipboard(archive, restored.trim())) throw new Error()
   } catch {
     throw new Error('Native clipboard exact restoration failed')
   }

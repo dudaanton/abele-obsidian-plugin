@@ -390,6 +390,7 @@ it('retains changed victims in legacy completed records during recovery', async 
   expect(await fs.readdir(join(privateRoot, 'active'))).toEqual([])
   await expect(fs.stat(join(root, 'sample.bin'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
+// Native durability work can exceed the default 5s on a busy volume.
 it('refuses a directory replacing a tracked file before capturing it', async () => {
   const { root, disk } = await setup()
   await fs.mkdir(join(root, 'sample.bin'))
@@ -402,7 +403,7 @@ it('refuses a directory replacing a tracked file before capturing it', async () 
     })
   ).toBe(false)
   expect(await fs.readFile(join(root, 'sample.bin/note.md'), 'utf8')).toBe('sample note')
-})
+}, 30_000)
 
 it.each([false, true])(
   'recovers legacy directory captures without blocking later records (occupied=%s)',
@@ -480,6 +481,7 @@ async function setup(overrides: Partial<typeof fs> = {}, existingRoot?: string) 
   return { root, app, disk: () => new ObsidianFileSystem(app as never) }
 }
 
+// Keep the real flushes and inode checks, with headroom for native I/O scheduling.
 it('proves publication by the retained inode, refusing an independent equal-byte replacement', async () => {
   const { root, disk } = await setup(),
     bytes = new TextEncoder().encode('sample bytes')
@@ -498,7 +500,7 @@ it('proves publication by the retained inode, refusing an independent equal-byte
   expect(await disk().installedFile('sample-receipt', 'sample.bin', sha)).toBe(false)
   await disk().recoverConditionalFiles()
   expect(await fs.readFile(join(root, 'sample.bin'))).toEqual(Buffer.from(bytes))
-})
+}, 30_000)
 
 it('retains a captured inode for saves through a handle opened before removal', async () => {
   const { root, disk } = await setup(),

@@ -1,7 +1,28 @@
 // @vitest-environment node
-import { it, expect } from 'vitest'
+import { it, expect, vi, afterEach } from 'vitest'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { sameNativeClipboard } from '../e2e/helpers/nativeClipboard'
+import { restoreNativeClipboard, sameNativeClipboard } from '../e2e/helpers/nativeClipboard'
+
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }))
+afterEach(() => vi.resetAllMocks())
+
+it('verifies restoration in the writer process while native items remain alive', () => {
+  vi.mocked(execFileSync).mockReturnValue('[]')
+  restoreNativeClipboard('[]')
+  expect(execFileSync).toHaveBeenCalledTimes(1)
+  const script = vi.mocked(execFileSync).mock.calls[0][1] as string[]
+  expect(script[3]).toContain('pb.writeObjects')
+  expect(script[3]).toContain('items=pb.pasteboardItems')
+})
+
+it('still refuses an inexact native restore immediately', () => {
+  vi.mocked(execFileSync).mockReturnValue('[]')
+  expect(() => restoreNativeClipboard('[[["sample/custom","AP8="]]]')).toThrow(
+    'Native clipboard exact restoration failed'
+  )
+  expect(execFileSync).toHaveBeenCalledTimes(1)
+})
 it('a last-format-only clipboard restore cannot certify an original multiformat item', () => {
   const original = JSON.stringify([
     [
