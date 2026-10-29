@@ -68,6 +68,17 @@ const recordPoint=async (line,takes,root,options={})=>{
     if(rect.left<Math.max(0,pane.left)-1||rect.right>Math.min(innerWidth,pane.right)+1)throw Error('Record editor overflows visible pane: '+JSON.stringify({left:rect.left,right:rect.right,pane:pane.right,width:innerWidth}));
   }
   if(options.when){const field=document.querySelector('.abele-trace-point__code input');field.value=options.when;field.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.abele-trace-point').scrollIntoView({block:'center'});if(options.shot)await shot(options.shot)}
+  if(options.phoneShot){
+    if(innerWidth!==390||innerHeight!==844)throw Error('Record editor capture requires a 390x844 viewport');
+    const keep=pointEditor.querySelector('[aria-label="Keep (Enter)"]'),leave=pointEditor.querySelector('[aria-label="Leave as it was (Escape)"]');
+    const when=pointEditor.querySelector('.abele-trace-point__code input'),note=pointEditor.querySelector('.abele-obsidian-input:not(.abele-trace-point__code) input');
+    if(!keep||!leave||!when||!note||!pointEditor.querySelector('.multi-select-pill'))throw Error('Record editor fields, chips or actions are missing');
+    for(const el of [pointEditor,when,note,keep,leave,...pointEditor.querySelectorAll('.multi-select-pill')]){
+      const rect=el.getBoundingClientRect();
+      if(!rect.width||!rect.height||rect.left<0||rect.right>innerWidth||rect.top<0||rect.bottom>innerHeight)throw Error('Record editor field or action is outside the phone viewport: '+JSON.stringify({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}));
+    }
+    await shot(options.phoneShot);
+  }
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   // The first record point of a project asks once where its runs go: the offered folder.
   for(let i=0;i<40;i++){const keep=[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Keep them here');if(keep){press(keep);break}if(document.querySelector('.abele-breakpoint-mark_record'))break;await wait(50)}
@@ -472,7 +483,7 @@ it.each(['desktop', 'phone'])(
       const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0];
       const sourceLeaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
       await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
-      await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',menuShot:${JSON.stringify(name)}+'-gutter-menu',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();noOwnerApproval()}});
+      await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',menuShot:${JSON.stringify(name)}+'-gutter-menu',shot:${JSON.stringify(name)}+'-record-point-editor',phoneShot:${JSON.stringify(device === 'phone' ? 'record-point-editor-phone' : undefined)},approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();noOwnerApproval()}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
       const recordMark=await until(()=>sourceLeaf.containerEl.querySelector('.abele-breakpoint-mark_record')?.closest('button'),'record marker');
       recordMark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
